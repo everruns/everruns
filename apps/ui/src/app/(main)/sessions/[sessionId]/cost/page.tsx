@@ -11,7 +11,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { Bot, Boxes, Fingerprint, RefreshCcw, Sparkles, Zap } from "lucide-react";
-import { useAgentIdentity } from "@/hooks/use-agent-identities";
+import { useVirtualUser } from "@/hooks/use-virtual-users";
 import { useAgentVersions } from "@/hooks/use-agents";
 import { useHarness } from "@/hooks/use-harnesses";
 import { useSessionContextReport } from "@/hooks/use-sessions";
@@ -68,7 +68,7 @@ export default function CostPage() {
   const { data: report, isLoading: reportLoading } = useSessionContextReport(sessionId);
   const { data: harness } = useHarness(session?.harness_id ?? "");
   const { data: versions } = useAgentVersions(agentId);
-  const { data: identity } = useAgentIdentity(session?.agent_identity_id ?? undefined);
+  const { data: identity } = useVirtualUser(session?.virtual_user_id ?? undefined);
 
   // Retries are not a first-class event: they are the failed attempts the run
   // recovered from. Count failed turns and failed LLM calls separately so a
@@ -173,12 +173,9 @@ export default function CostPage() {
           </DefinitionRow>
 
           <DefinitionRow icon={Fingerprint} label="Identity">
-            {session?.agent_identity_id ? (
-              <Link
-                href={`/agent-identities/${session.agent_identity_id}`}
-                className="hover:underline"
-              >
-                {identity ? getDisplayName(identity) : session.agent_identity_id}
+            {session?.virtual_user_id ? (
+              <Link href={`/virtual-users/${session.virtual_user_id}`} className="hover:underline">
+                {identity ? getDisplayName(identity) : session.virtual_user_id}
               </Link>
             ) : (
               <span className="text-muted-foreground">

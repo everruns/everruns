@@ -6,7 +6,7 @@ tags:
   - everruns
   - test-case
   - ui
-  - agent-identities
+  - virtual-users
 ---
 # TC005: Archive Identity
 
@@ -17,7 +17,7 @@ Verify that archiving an identity preserves historical references but prevents n
 ## Preconditions
 
 - UI running (dev or full mode)
-- An agent identity exists and is assigned to at least one session or app
+- An service virtual user exists and is assigned to at least one session or app
 
 ## Steps
 

@@ -1749,6 +1749,12 @@
             "null"
           ]
         },
+        "service_virtual_user_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "short_description": {
           "description": "One-line description in simplified Markdown, shown below the chat title\nonce the intro is hidden. Wins over the harness value.",
           "example": "Answers account questions in seconds.",
@@ -1938,57 +1944,6 @@
     "name": "create_agent_endpoint",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/endpoints",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_identities",
-    "cli": null,
-    "description": "Create a new agent identity (virtual principal for unattended execution).",
-    "input_schema": {
-      "properties": {
-        "avatar_url": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "description": {
-          "description": "Human-readable description. Safe to render in user-facing messages.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "locale": {
-          "example": "en-US",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Human-readable name. Safe to render in user-facing messages.",
-          "example": "Ops Bot",
-          "type": "string"
-        },
-        "timezone": {
-          "example": "America/Los_Angeles",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "create_agent_identity",
-    "output_shape": "unknown",
-    "path": "/v1/agent-identities",
     "positional_arg": null,
     "read_only": false
   },
@@ -5333,13 +5288,13 @@
           "description": "Free-form metadata attached to this account (caller-defined; opaque to the platform).\nExample: `{\"team\": \"support\", \"cost_center\": \"ops\"}`."
         },
         "owner_id": {
-          "description": "Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`\n(see above). Example below pairs with `owner_type = \"agent_identity\"`.",
+          "description": "Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`\n(see above). Example below pairs with `owner_type = \"virtual_user\"`.",
           "example": "identity_01933b5a00007000800000000000001",
           "type": "string"
         },
         "owner_type": {
-          "description": "Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.\nThe prefix on `owner_id` must match this: `user` → `user_…`, `agent_identity` → `identity_…`,\n`organization` → `org_…`.",
-          "example": "agent_identity",
+          "description": "Principal class that owns the account. One of: `user`, `virtual_user`, `organization`.\nThe prefix on `owner_id` must match this: `user` → `user_…`, `virtual_user` → `identity_…`,\n`organization` → `org_…`.",
+          "example": "virtual_user",
           "type": "string"
         },
         "private_key": {
@@ -5464,13 +5419,13 @@
           ]
         },
         "subject_id": {
-          "description": "Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`\n(see above). Example below pairs with `subject_type = \"agent_identity\"`.",
+          "description": "Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`\n(see above). Example below pairs with `subject_type = \"virtual_user\"`.",
           "example": "identity_01933b5a00007000800000000000001",
           "type": "string"
         },
         "subject_type": {
-          "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`,\n`agent`, `agent_endpoint`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,\n`agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
-          "example": "agent_identity",
+          "description": "Class of subject this policy binds to. One of: `user`, `virtual_user`,\n`agent`, `agent_endpoint`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,\n`agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
+          "example": "virtual_user",
           "type": "string"
         }
       },
@@ -6531,14 +6486,6 @@
             "null"
           ]
         },
-        "agent_identity_id": {
-          "description": "Optional resident agent identity used for unattended/background execution.",
-          "example": "identity_01933b5a00007000800000000000001",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "agent_name": {
           "description": "Name of the agent to work in this session (optional).\nAlternative to `agent_id` — looked up by name within the org.\nMutually exclusive with `agent_id`.",
           "example": "support",
@@ -6726,6 +6673,14 @@
           },
           "type": "array"
         },
+        "virtual_user_id": {
+          "description": "Optional resident virtual user used for unattended/background execution.",
+          "example": "identity_01933b5a00007000800000000000001",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "workspace_id": {
           "description": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`)\ninstead of auto-creating a default per-session workspace. The workspace\nmust exist in the caller's org and be `active`. Lets multiple sessions\nshare one working filesystem. Omit for the default 1:1 behavior.",
           "example": "wsp_01933b5a00007000800000000000001",
@@ -6844,6 +6799,76 @@
     "name": "create_task_push_config",
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "virtual_users",
+    "cli": null,
+    "description": "Create a new virtual user (org-scoped runtime account for a consumer or service).",
+    "input_schema": {
+      "$defs": {
+        "VirtualUserUsage": {
+          "description": "VirtualUser is a durable virtual principal.",
+          "enum": [
+            "end_user",
+            "service"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "Create an organization-scoped runtime account.",
+      "properties": {
+        "avatar_url": {
+          "description": "Profile image URL.",
+          "example": "https://example.com/avatar.png",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "description": "Human-readable description. Safe to render in user-facing messages.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "locale": {
+          "description": "Locale used for agent-facing defaults.",
+          "example": "en-US",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Human-readable name. Safe to render in user-facing messages.",
+          "example": "Ops Bot",
+          "type": "string"
+        },
+        "timezone": {
+          "description": "IANA time zone used for agent-facing defaults.",
+          "example": "America/Los_Angeles",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/VirtualUserUsage",
+          "description": "Runtime purpose; service accounts may be attached to agents."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "create_virtual_user",
+    "output_shape": "unknown",
+    "path": "/v1/virtual-users",
     "positional_arg": null,
     "read_only": false
   },
@@ -7022,30 +7047,6 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
     "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_identities",
-    "cli": null,
-    "description": "Archive an agent identity (soft delete). Can be restored.",
-    "input_schema": {
-      "description": "Archive an agent identity (soft delete).",
-      "properties": {
-        "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id"
-      ],
-      "type": "object"
-    },
-    "method": "DELETE",
-    "name": "delete_agent_identity",
-    "output_shape": "unknown",
-    "path": "/v1/agent-identities/{identity_id}",
-    "positional_arg": "id",
     "read_only": false
   },
   {
@@ -7593,6 +7594,30 @@
     "read_only": false
   },
   {
+    "category": "virtual_users",
+    "cli": null,
+    "description": "Archive a virtual user (soft delete). Can be restored.",
+    "input_schema": {
+      "description": "Archive a virtual user (soft delete).",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_virtual_user",
+    "output_shape": "unknown",
+    "path": "/v1/virtual-users/{identity_id}",
+    "positional_arg": "id",
+    "read_only": false
+  },
+  {
     "category": "workspaces",
     "cli": null,
     "description": "Archive a Workspace (soft-delete).",
@@ -7666,30 +7691,6 @@
     "name": "destroy_agent",
     "output_shape": "unknown",
     "path": "/v1/agents/{id}/delete",
-    "positional_arg": "id",
-    "read_only": false
-  },
-  {
-    "category": "agent_identities",
-    "cli": null,
-    "description": "Permanently delete an agent identity.",
-    "input_schema": {
-      "description": "Permanently delete an agent identity.",
-      "properties": {
-        "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "destroy_agent_identity",
-    "output_shape": "unknown",
-    "path": "/v1/agent-identities/{identity_id}/delete",
     "positional_arg": "id",
     "read_only": false
   },
@@ -7785,6 +7786,30 @@
     "name": "destroy_skill",
     "output_shape": "unknown",
     "path": "/v1/skills/{id}/delete",
+    "positional_arg": "id",
+    "read_only": false
+  },
+  {
+    "category": "virtual_users",
+    "cli": null,
+    "description": "Permanently delete a virtual user.",
+    "input_schema": {
+      "description": "Permanently delete a virtual user.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "destroy_virtual_user",
+    "output_shape": "unknown",
+    "path": "/v1/virtual-users/{identity_id}/delete",
     "positional_arg": "id",
     "read_only": false
   },
@@ -8632,30 +8657,6 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/health-checks/{run_id}",
     "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "agent_identities",
-    "cli": null,
-    "description": "Get a single agent identity by ID.",
-    "input_schema": {
-      "description": "Get a single agent identity by ID.",
-      "properties": {
-        "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "get_agent_identity",
-    "output_shape": "unknown",
-    "path": "/v1/agent-identities/{identity_id}",
-    "positional_arg": "id",
     "read_only": true
   },
   {
@@ -9761,6 +9762,30 @@
     "read_only": true
   },
   {
+    "category": "virtual_users",
+    "cli": null,
+    "description": "Get a single virtual user by ID.",
+    "input_schema": {
+      "description": "Get a single virtual user by ID.",
+      "properties": {
+        "id": {
+          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_virtual_user",
+    "output_shape": "unknown",
+    "path": "/v1/virtual-users/{identity_id}",
+    "positional_arg": "id",
+    "read_only": true
+  },
+  {
     "category": "workspaces",
     "cli": null,
     "description": "Fetch a Workspace by its public ID.",
@@ -10540,6 +10565,12 @@
             "null"
           ]
         },
+        "service_virtual_user_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "short_description": {
           "description": "One-line description in simplified Markdown, shown below the chat title\nonce the intro is hidden. Wins over the harness value.",
           "example": "Answers account questions in seconds.",
@@ -11058,32 +11089,6 @@
     "name": "list_agent_health_check_runs",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/health-checks",
-    "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "agent_identities",
-    "cli": null,
-    "description": "List all active agent identities. Use search for name search, include_archived=true to include archived.",
-    "input_schema": {
-      "description": "List agent identities. Supports search and include_archived.",
-      "properties": {
-        "include_archived": {
-          "type": "boolean"
-        },
-        "search": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "list_agent_identities",
-    "output_shape": "unknown",
-    "path": "/v1/agent-identities",
     "positional_arg": null,
     "read_only": true
   },
@@ -12876,6 +12881,77 @@
     "name": "list_users",
     "output_shape": "unknown",
     "path": "/v1/users",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "virtual_users",
+    "cli": null,
+    "description": "List virtual users by usage and search. Supports pagination (limit/offset) and include_archived.",
+    "input_schema": {
+      "$defs": {
+        "VirtualUserUsage": {
+          "description": "VirtualUser is a durable virtual principal.",
+          "enum": [
+            "end_user",
+            "service"
+          ],
+          "type": "string"
+        }
+      },
+      "description": "List virtual users. Supports search and include_archived.",
+      "properties": {
+        "include_archived": {
+          "description": "Include archived runtime accounts.",
+          "example": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "Maximum results per page, capped at the platform pagination limit.",
+          "example": 20,
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "description": "Zero-based page offset.",
+          "example": 0,
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "search": {
+          "description": "Search runtime names and descriptions.",
+          "example": "Alex",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/VirtualUserUsage",
+              "description": "Immutable account purpose filter."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_virtual_users",
+    "output_shape": "paginated",
+    "path": "/v1/virtual-users",
     "positional_arg": null,
     "read_only": true
   },
@@ -15683,6 +15759,12 @@
                 "null"
               ]
             },
+            "service_virtual_user_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "short_description": {
               "description": "One-line description in simplified Markdown. Outer `None` leaves\nunchanged; inner `None` clears.",
               "example": "Answers account questions in seconds.",
@@ -15840,96 +15922,6 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
     "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_identities",
-    "cli": null,
-    "description": "Update an agent identity. Only provided fields are changed.",
-    "input_schema": {
-      "$defs": {
-        "AgentIdentityStatus": {
-          "description": "Agent identity lifecycle status.",
-          "enum": [
-            "active",
-            "archived",
-            "deleted"
-          ],
-          "type": "string"
-        },
-        "UpdateAgentIdentityRequest": {
-          "properties": {
-            "avatar_url": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "description": {
-              "description": "Human-readable description. Safe to render in user-facing messages.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "locale": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "name": {
-              "description": "Human-readable name. Safe to render in user-facing messages.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "status": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentIdentityStatus",
-                  "description": "Current lifecycle status."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "timezone": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/UpdateAgentIdentityRequest"
-        },
-        {
-          "properties": {
-            "id": {
-              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-              "type": "string"
-            }
-          },
-          "required": [
-            "id"
-          ],
-          "type": "object"
-        }
-      ],
-      "description": "Update an agent identity. Only provided fields are changed."
-    },
-    "method": "PATCH",
-    "name": "update_agent_identity",
-    "output_shape": "unknown",
-    "path": "/v1/agent-identities/{identity_id}",
-    "positional_arg": "id",
     "read_only": false
   },
   {
@@ -19560,14 +19552,6 @@
         "UpdateSessionRequest": {
           "description": "Request to update a session. Only provided fields will be updated.",
           "properties": {
-            "agent_identity_id": {
-              "description": "Optional resident agent identity used for unattended/background execution.",
-              "example": "identity_01933b5a00007000800000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "goal": {
               "description": "Updated session objective.",
               "example": "Summarize the incident and list remediations",
@@ -19600,6 +19584,14 @@
             "title": {
               "description": "Human-readable title for the session.",
               "example": "Updated session title",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "virtual_user_id": {
+              "description": "Optional resident virtual user used for unattended/background execution.",
+              "example": "identity_01933b5a00007000800000000000001",
               "type": [
                 "string",
                 "null"
@@ -19698,6 +19690,103 @@
     "name": "update_skill",
     "output_shape": "unknown",
     "path": "/v1/skills/{id}",
+    "positional_arg": "id",
+    "read_only": false
+  },
+  {
+    "category": "virtual_users",
+    "cli": null,
+    "description": "Update a virtual user. Only provided fields are changed.",
+    "input_schema": {
+      "$defs": {
+        "UpdateVirtualUserRequest": {
+          "description": "Update a runtime account profile or its management lifecycle.",
+          "properties": {
+            "avatar_url": {
+              "description": "Profile image URL.",
+              "example": "https://example.com/avatar.png",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "description": "Human-readable description. Safe to render in user-facing messages.",
+              "example": "Support team member",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "locale": {
+              "description": "Locale used for agent-facing defaults.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Human-readable name. Safe to render in user-facing messages.",
+              "example": "Alex",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/VirtualUserStatus",
+                  "description": "Current lifecycle status."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "timezone": {
+              "description": "IANA time zone used for agent-facing defaults.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "VirtualUserStatus": {
+          "description": "Virtual user lifecycle status.",
+          "enum": [
+            "active",
+            "archived",
+            "deleted"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateVirtualUserRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Update a virtual user. Only provided fields are changed."
+    },
+    "method": "PATCH",
+    "name": "update_virtual_user",
+    "output_shape": "unknown",
+    "path": "/v1/virtual-users/{identity_id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -20193,6 +20282,12 @@
               "example": true,
               "type": [
                 "boolean",
+                "null"
+              ]
+            },
+            "service_virtual_user_id": {
+              "type": [
+                "string",
                 "null"
               ]
             },

@@ -438,7 +438,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** @description Revokes the current caller's user connection or the agent identity's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged. */
+    /** @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged. */
     delete: operations["revoke_agent_mcp_connection"];
     options?: never;
     head?: never;
@@ -965,6 +965,23 @@ export interface paths {
     };
     /** GET /v1/capabilities/{capability_id} - Get a specific capability */
     get: operations["get_capability"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/connection-providers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List providers available to this runtime account and endpoint. */
+    get: operations["list_runtime_connectors"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1625,6 +1642,23 @@ export interface paths {
     put?: never;
     /** @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token. */
     post: operations["invoke_webhook_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{endpoint_id}/runtime-auth": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Exchange verified endpoint authentication for a bounded runtime credential. */
+    post: operations["exchange"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4117,6 +4151,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/user/connection-migrations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List legacy credentials requiring an explicit organization destination. */
+    get: operations["list_pending_connection_migrations"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/user/connection-migrations/{connection_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Move one legacy credential into the selected organization without copying it. */
+    post: operations["migrate_pending_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/user/mcp-connections": {
     parameters: {
       query?: never;
@@ -4213,6 +4281,235 @@ export interface paths {
      *     The user must be a member of the requested organization.
      */
     post: operations["switch_org"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List virtual users. */
+    get: operations["list_virtual_users"];
+    put?: never;
+    /** Create virtual user. */
+    post: operations["create_virtual_user"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/me": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the authenticated consumer runtime account. */
+    get: operations["get_me"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update the runtime profile without changing management identity or lifecycle. */
+    patch: operations["update_me"];
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get virtual user. */
+    get: operations["get_virtual_user"];
+    put?: never;
+    post?: never;
+    /** Delete virtual user. */
+    delete: operations["delete_virtual_user"];
+    options?: never;
+    head?: never;
+    /** Update virtual user. */
+    patch: operations["update_virtual_user"];
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/bindings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List verified external identity bindings. */
+    get: operations["list_bindings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/bindings/{binding_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke an external binding and its runtime self authority. */
+    delete: operations["revoke_binding"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/connections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List connections. */
+    get: operations["list_connections"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/connections/{provider}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create api key connection. */
+    post: operations["create_api_key_connection"];
+    /** Delete connection. */
+    delete: operations["delete_connection"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/connections/{provider}/authorize": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Start provider setup bound to the authorized virtual user. */
+    get: operations["authorize_target_connection"];
+    put?: never;
+    /** Create a target-bound provider setup URL. */
+    post: operations["start_target_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/connections/{provider}/verify": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Verify connection. */
+    post: operations["verify_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Destroy virtual user. */
+    post: operations["destroy_virtual_user"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/preferences": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List agent-facing preferences. */
+    get: operations["list_preferences"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/preferences/{key}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one agent-facing preference. */
+    get: operations["get_preference"];
+    /** Set a bounded agent-facing preference. */
+    put: operations["set_preference"];
+    post?: never;
+    /** Delete an agent-facing preference. */
+    delete: operations["delete_preference"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List recent sessions associated with the authorized virtual user. */
+    get: operations["list_sessions_get_v1_virtual_users_identity_id_sessions"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -4571,6 +4868,8 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       root_agent_id?: string | null;
+      /** @description Org-scoped service account used when a tool acts as the agent. */
+      service_virtual_user_id?: string | null;
       /**
        * @description Optional one-line description in simplified Markdown, shown below the
        *     chat title once the intro is hidden. Wins over the harness value.
@@ -4906,7 +5205,7 @@ export interface components {
        * @example 2026-04-20T14:22:00Z
        */
       created_at: string;
-      /** @description Identity of the principal (user or agent identity) that created this version. `None` for system-generated snapshots. */
+      /** @description Identity of the principal (user or virtual user) that created this version. `None` for system-generated snapshots. */
       created_by_principal_id?: string | null;
       /**
        * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
@@ -5079,6 +5378,10 @@ export interface components {
     };
     /** @description Request body for API-key-based connections (e.g., Brave Search) */
     ApiKeyConnectionRequest: {
+      /**
+       * @description Provider API key, encrypted before storage.
+       * @example example-api-key
+       */
       api_key: string;
     };
     /**
@@ -5092,11 +5395,6 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       agent_id?: string | null;
-      /**
-       * @description Optional virtual identity that represents the app in unattended/channel execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      agent_identity_id?: string | null;
       /**
        * @description Pinned agent version. Required when policy is `pinned`.
        * @example agentver_01933b5a00007000800000000000001
@@ -5159,6 +5457,11 @@ export interface components {
        * @description Timestamp when the app was last updated.
        */
       updated_at: string;
+      /**
+       * @description Optional virtual identity that represents the app in unattended/channel execution.
+       * @example identity_01933b5a00007000800000000000001
+       */
+      virtual_user_id?: string | null;
     };
     /**
      * @description A single distribution channel attached to an App.
@@ -5929,12 +6232,40 @@ export interface components {
     CompactionTrigger: "context_budget" | "cost_pressure";
     /** @description Connection info returned in API responses (never includes token) */
     Connection: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time the grant was created.
+       * @example 2026-09-29T12:00:00Z
+       */
       connected_at: string;
+      /**
+       * @description Credential mechanism used by this connection.
+       * @example oauth
+       */
       connection_type: string;
+      /**
+       * @description Stable provider identifier.
+       * @example github
+       */
       provider: string;
+      /**
+       * @description Display name on the provider.
+       * @example octocat
+       */
       provider_username?: string | null;
+      /**
+       * @description Provider scopes granted to this account.
+       * @example read:user
+       */
       scopes?: string | null;
+    };
+    /** @description Browser URL returned to a bearer-authenticated consumer before navigation. */
+    ConnectionSetupResponse: {
+      /**
+       * @description Navigate the browser to this provider authorization URL.
+       * @example https://provider.example/authorize?state=opaque
+       */
+      authorization_url: string;
     };
     /**
      * @description What the user decided about opening the URL.
@@ -6541,6 +6872,7 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      service_virtual_user_id?: string | null;
       /**
        * @description One-line description in simplified Markdown, shown below the chat title
        *     once the intro is hidden. Wins over the harness value.
@@ -6693,6 +7025,19 @@ export interface components {
        * @example agent
        */
       subject_type: string;
+    };
+    /**
+     * @description Request body for API-key connection creation (plugin-based providers).
+     *     Accepts api_key plus any additional form fields as extra_fields.
+     */
+    CreateConnectionRequest: {
+      /**
+       * @description Provider API key, encrypted before storage.
+       * @example example-api-key
+       */
+      api_key: string;
+    } & {
+      [key: string]: unknown;
     };
     /** @description Request body for creating a database. */
     CreateDatabaseRequest: {
@@ -7058,15 +7403,15 @@ export interface components {
       metadata?: unknown;
       /**
        * @description Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`
-       *     (see above). Example below pairs with `owner_type = "agent_identity"`.
+       *     (see above). Example below pairs with `owner_type = "virtual_user"`.
        * @example identity_01933b5a00007000800000000000001
        */
       owner_id: string;
       /**
-       * @description Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.
-       *     The prefix on `owner_id` must match this: `user` → `user_…`, `agent_identity` → `identity_…`,
+       * @description Principal class that owns the account. One of: `user`, `virtual_user`, `organization`.
+       *     The prefix on `owner_id` must match this: `user` → `user_…`, `virtual_user` → `identity_…`,
        *     `organization` → `org_…`.
-       * @example agent_identity
+       * @example virtual_user
        */
       owner_type: string;
       /**
@@ -7149,19 +7494,19 @@ export interface components {
       require_approval_above_usd?: number | null;
       /**
        * @description Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`
-       *     (see above). Example below pairs with `subject_type = "agent_identity"`.
+       *     (see above). Example below pairs with `subject_type = "virtual_user"`.
        * @example identity_01933b5a00007000800000000000001
        */
       subject_id: string;
       /**
-       * @description Class of subject this policy binds to. One of: `user`, `agent_identity`,
+       * @description Class of subject this policy binds to. One of: `user`, `virtual_user`,
        *     `agent`, `agent_endpoint`, `session`, `org`.
-       *     The prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,
+       *     The prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,
        *     `agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the
        *     identifier it carried as an App channel), `session`→`session_…`,
        *     `org`→`org_…`. The identifier must be the API-facing one — an internal
        *     uuid will be stored and then never match (EVE-1130).
-       * @example agent_identity
+       * @example virtual_user
        */
       subject_type: string;
     };
@@ -7314,11 +7659,6 @@ export interface components {
        */
       agent_id?: string | null;
       /**
-       * @description Optional resident agent identity used for unattended/background execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      agent_identity_id?: string | null;
-      /**
        * @description Name of the agent to work in this session (optional).
        *     Alternative to `agent_id` — looked up by name within the org.
        *     Mutually exclusive with `agent_id`.
@@ -7467,6 +7807,11 @@ export interface components {
        */
       tools?: components["schemas"]["ToolDefinition"][];
       /**
+       * @description Optional resident virtual user used for unattended/background execution.
+       * @example identity_01933b5a00007000800000000000001
+       */
+      virtual_user_id?: string | null;
+      /**
        * @description Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
        *     instead of auto-creating a default per-session workspace. The workspace
        *     must exist in the caller's org and be `active`. Lets multiple sessions
@@ -7501,6 +7846,33 @@ export interface components {
       secret?: string | null;
       /** @description The URL to POST task terminal-state events to. */
       url: string;
+    };
+    /** @description Create an organization-scoped runtime account. */
+    CreateVirtualUserRequest: {
+      /**
+       * @description Profile image URL.
+       * @example https://example.com/avatar.png
+       */
+      avatar_url?: string | null;
+      /** @description Human-readable description. Safe to render in user-facing messages. */
+      description?: string | null;
+      /**
+       * @description Locale used for agent-facing defaults.
+       * @example en-US
+       */
+      locale?: string | null;
+      /**
+       * @description Human-readable name. Safe to render in user-facing messages.
+       * @example Ops Bot
+       */
+      name: string;
+      /**
+       * @description IANA time zone used for agent-facing defaults.
+       * @example America/Los_Angeles
+       */
+      timezone?: string | null;
+      /** @description Runtime purpose; service accounts may be attached to agents. */
+      usage?: components["schemas"]["VirtualUserUsage"];
     };
     CreateWorkspaceRequest: {
       /** @example Shared workspace for the Q4 research project */
@@ -8641,6 +9013,49 @@ export interface components {
       placeholder?: string | null;
       /** @description Whether the field is required. */
       required: boolean;
+    };
+    /** @description Single form field */
+    FormFieldResponse: {
+      /**
+       * @description Input type used by the form.
+       * @example password
+       */
+      field_type: string;
+      /**
+       * @description Explanation for this form field.
+       * @example Your key is stored encrypted.
+       */
+      help_text?: string | null;
+      /**
+       * @description Provider form field label.
+       * @example API key
+       */
+      label: string;
+      /**
+       * @description Provider form field name.
+       * @example api_key
+       */
+      name: string;
+      /**
+       * @description Suggested input placeholder.
+       * @example Enter your API key
+       */
+      placeholder?: string | null;
+      /**
+       * @description Whether the field must be supplied.
+       * @example true
+       */
+      required: boolean;
+    };
+    /** @description Form schema for API-key providers */
+    FormSchemaResponse: {
+      /** @description Provider form fields. */
+      fields: components["schemas"]["FormFieldResponse"][];
+      /**
+       * @description Instructions shown before connection setup.
+       * @example Create an API key in provider settings.
+       */
+      instructions_markdown: string;
     };
     /** @description Query parameters for GET requests */
     GetQuery: {
@@ -10009,6 +10424,8 @@ export interface components {
          * @example agent_01933b5a00007000800000000000001
          */
         root_agent_id?: string | null;
+        /** @description Org-scoped service account used when a tool acts as the agent. */
+        service_virtual_user_id?: string | null;
         /**
          * @description Optional one-line description in simplified Markdown, shown below the
          *     chat title once the intro is hidden. Wins over the harness value.
@@ -11202,11 +11619,6 @@ export interface components {
          */
         agent_id?: string | null;
         /**
-         * @description Optional virtual identity that represents the app in unattended/channel execution.
-         * @example identity_01933b5a00007000800000000000001
-         */
-        agent_identity_id?: string | null;
-        /**
          * @description Pinned agent version. Required when policy is `pinned`.
          * @example agentver_01933b5a00007000800000000000001
          */
@@ -11268,6 +11680,11 @@ export interface components {
          * @description Timestamp when the app was last updated.
          */
         updated_at: string;
+        /**
+         * @description Optional virtual identity that represents the app in unattended/channel execution.
+         * @example identity_01933b5a00007000800000000000001
+         */
+        virtual_user_id?: string | null;
       } & {
         /**
          * @description State-aware hypermedia actions the caller can take on this resource
@@ -13132,6 +13549,33 @@ export interface components {
       /** @description Blocked host patterns. Always denied, even if matched by `allowed`. */
       blocked?: string[];
     };
+    /** @description Browser setup options. The canonical target is selected by the authorized resource path. */
+    OAuthAuthorizeQuery: {
+      /**
+       * @description Required when `mode = identity`: the agent whose service grant this is.
+       *     The grant is owned by the agent's identity, not by the admin who
+       *     authorizes it (EVE-1030).
+       *     Optional legacy service agent target.
+       */
+      agent_id?: string | null;
+      /**
+       * @description Legacy setup mode; canonical resource paths capture the target.
+       * @example virtual_user
+       */
+      mode?: string | null;
+      /**
+       * @description Whether setup completes in a popup.
+       * @example false
+       */
+      popup?: boolean | null;
+      /**
+       * @description Same-origin return path after setup.
+       * @example /settings/connections
+       */
+      return_to?: string | null;
+      /** @description Optional session grant destination for legacy setup. */
+      session_id?: string | null;
+    };
     /**
      * @description A single inline bundle file, for callers that send files as JSON rather
      *     than a tarball.
@@ -13340,11 +13784,6 @@ export interface components {
          * @example agent_01933b5a00007000800000000000001
          */
         agent_id?: string | null;
-        /**
-         * @description Optional resident agent identity for unattended/background execution.
-         * @example identity_01933b5a00007000800000000000001
-         */
-        agent_identity_id?: string | null;
         /**
          * @description Immutable agent version captured when the session was created or rebound.
          * @example agentver_01933b5a00007000800000000000001
@@ -13582,12 +14021,95 @@ export interface components {
         updated_at: string;
         usage?: components["schemas"]["TokenUsage"] | null;
         /**
+         * @description Optional resident virtual user for unattended/background execution.
+         * @example identity_01933b5a00007000800000000000001
+         */
+        virtual_user_id?: string | null;
+        /**
          * @description Workspace this session is attached to (format: wsp_{32-hex}). Owns the
          *     session's virtual filesystem. For the default 1:1 case this mirrors the
          *     session id, but clients should read it here rather than deriving it.
          * @example wsp_01933b5a00007000800000000000001
          */
         workspace_id: string;
+      }[];
+      /**
+       * Format: int32
+       * @description Maximum number of items per page.
+       */
+      limit: number;
+      /** @description Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page. */
+      next_url?: string | null;
+      /**
+       * Format: int32
+       * @description Current offset (starting position).
+       */
+      offset: number;
+      /** @description Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page. */
+      prev_url?: string | null;
+      /**
+       * Format: int32
+       * @description Total number of items matching the query (across all pages).
+       */
+      total: number;
+    };
+    /**
+     * @description Response wrapper for paginated list endpoints.
+     *     Includes pagination metadata along with the data array.
+     *
+     *     `next_url` and `prev_url` are populated by the [`decorate_pagination_links`]
+     *     middleware after the handler returns, so handlers don't need to thread the
+     *     request URL into every construction site.
+     */
+    PaginatedResponse_VirtualUser: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /**
+         * Format: date-time
+         * @description Archive timestamp.
+         */
+        archived_at?: string | null;
+        /** @description Optional avatar URL for UI surfaces. */
+        avatar_url?: string | null;
+        /**
+         * Format: date-time
+         * @description Creation timestamp.
+         */
+        created_at: string;
+        /**
+         * Format: date-time
+         * @description Delete timestamp.
+         */
+        deleted_at?: string | null;
+        /** @description Optional description shown in management UI. */
+        description?: string | null;
+        effective_owner?: components["schemas"]["PrincipalSummary"] | null;
+        /**
+         * @description External identifier (identity_<32-hex>). Shown as `id` in API.
+         * @example identity_01933b5a000070008000000000000001
+         */
+        id: string;
+        /** @description Default locale for unattended runs. */
+        locale?: string | null;
+        /** @description Display name used when the identity acts autonomously. */
+        name: string;
+        /**
+         * @description Organization that owns the runtime account.
+         * @example org_example
+         */
+        organization_id: string;
+        principal?: components["schemas"]["PrincipalSummary"] | null;
+        /** @description Lifecycle status. */
+        status: components["schemas"]["VirtualUserStatus"];
+        /** @description Default timezone for unattended runs. */
+        timezone?: string | null;
+        /**
+         * Format: date-time
+         * @description Last update timestamp.
+         */
+        updated_at: string;
+        /** @description Immutable runtime account purpose. */
+        usage: components["schemas"]["VirtualUserUsage"];
       }[];
       /**
        * Format: int32
@@ -13853,11 +14375,6 @@ export interface components {
          */
         agent_id?: string | null;
         /**
-         * @description Optional resident agent identity for unattended/background execution.
-         * @example identity_01933b5a00007000800000000000001
-         */
-        agent_identity_id?: string | null;
-        /**
          * @description Immutable agent version captured when the session was created or rebound.
          * @example agentver_01933b5a00007000800000000000001
          */
@@ -14094,6 +14611,11 @@ export interface components {
         updated_at: string;
         usage?: components["schemas"]["TokenUsage"] | null;
         /**
+         * @description Optional resident virtual user for unattended/background execution.
+         * @example identity_01933b5a00007000800000000000001
+         */
+        virtual_user_id?: string | null;
+        /**
          * @description Workspace this session is attached to (format: wsp_{32-hex}). Owns the
          *     session's virtual filesystem. For the default 1:1 case this mirrors the
          *     session id, but clients should read it here rather than deriving it.
@@ -14137,7 +14659,7 @@ export interface components {
     };
     /**
      * @description A payment account — the org-scoped source of funds for paid agent calls.
-     *     Each account binds an owning principal (user, agent identity, or org)
+     *     Each account binds an owning principal (user, virtual user, or org)
      *     to one settlement rail and tracks its provisioning lifecycle.
      */
     PaymentAccount: {
@@ -14166,7 +14688,7 @@ export interface components {
        * @example agent_01933b5a000070008000000000000001
        */
       owner_id: string;
-      /** @description Principal class that owns this account (user, agent identity, or organization). */
+      /** @description Principal class that owns this account (user, virtual user, or organization). */
       owner_type: components["schemas"]["PaymentOwnerType"];
       /**
        * @description Public address on the rail (chain address, account number, etc.). Optional; `None` until provisioning completes.
@@ -14261,10 +14783,10 @@ export interface components {
      * @description Principal class that owns a payment account.
      * @enum {string}
      */
-    PaymentOwnerType: "user" | "agent_identity" | "organization";
+    PaymentOwnerType: "user" | "virtual_user" | "organization";
     /**
      * @description A payment policy — the binding between a paying account and a subject
-     *     (agent identity, session) that controls which paid calls are
+     *     (virtual user, session) that controls which paid calls are
      *     authorized and at what spend caps.
      */
     PaymentPolicy: {
@@ -14335,8 +14857,8 @@ export interface components {
        */
       subject_id: string;
       /**
-       * @description Class of subject this policy binds to (e.g. `agent_identity`, `session`).
-       * @example agent_identity
+       * @description Class of subject this policy binds to (e.g. `virtual_user`, `session`).
+       * @example virtual_user
        */
       subject_type: string;
       /**
@@ -14446,10 +14968,10 @@ export interface components {
      *     public API.
      * @enum {string}
      */
-    PrincipalKind: "user" | "agent_identity" | "system";
+    PrincipalKind: "user" | "virtual_user" | "system";
     /**
      * @description Compact view of a principal — id + kind + the subject-id pointer back
-     *     into the user/agent-identity row. Used wherever a full `Principal`
+     *     into the user/virtual-user row. Used wherever a full `Principal`
      *     would be redundant (e.g. as a sub-field of a session or audit record).
      */
     PrincipalSummary: {
@@ -14583,6 +15105,35 @@ export interface components {
        *     connection-level headers (`host`, `content-length`, ...) are ignored.
        */
       headers?: components["schemas"]["ProviderRequestHeader"][];
+    };
+    /** @description Provider info for the connections UI */
+    ProviderResponse: {
+      /**
+       * @description Provider credential mechanism.
+       * @example oauth
+       */
+      connection_type: string;
+      /**
+       * @description Provider description.
+       * @example Connect your repositories
+       */
+      description: string;
+      /**
+       * @description Provider display name.
+       * @example GitHub
+       */
+      display_name: string;
+      form_schema?: components["schemas"]["FormSchemaResponse"] | null;
+      /**
+       * @description Provider icon name.
+       * @example github
+       */
+      icon: string;
+      /**
+       * @description Stable provider identifier.
+       * @example github
+       */
+      provider_id: string;
     };
     /**
      * @description LLM provider status
@@ -15765,11 +16316,6 @@ export interface components {
        */
       agent_id?: string | null;
       /**
-       * @description Optional resident agent identity for unattended/background execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      agent_identity_id?: string | null;
-      /**
        * @description Immutable agent version captured when the session was created or rebound.
        * @example agentver_01933b5a00007000800000000000001
        */
@@ -16005,6 +16551,11 @@ export interface components {
        */
       updated_at: string;
       usage?: components["schemas"]["TokenUsage"] | null;
+      /**
+       * @description Optional resident virtual user for unattended/background execution.
+       * @example identity_01933b5a00007000800000000000001
+       */
+      virtual_user_id?: string | null;
       /**
        * @description Workspace this session is attached to (format: wsp_{32-hex}). Owns the
        *     session's virtual filesystem. For the default 1:1 case this mirrors the
@@ -16509,6 +17060,10 @@ export interface components {
        * @example agentver_01933b5a00007000800000000000001
        */
       version_id: string;
+    };
+    /** @description Request body for setting a preference value. */
+    SetPreferenceRequest: {
+      value: Record<string, unknown>;
     };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
@@ -17681,6 +18236,7 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      service_virtual_user_id?: string | null;
       /**
        * @description One-line description in simplified Markdown. Outer `None` leaves
        *     unchanged; inner `None` clears.
@@ -18308,11 +18864,6 @@ export interface components {
     /** @description Request to update a session. Only provided fields will be updated. */
     UpdateSessionRequest: {
       /**
-       * @description Optional resident agent identity used for unattended/background execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      agent_identity_id?: string | null;
-      /**
        * @description Updated session objective.
        * @example Summarize the incident and list remediations
        */
@@ -18334,6 +18885,11 @@ export interface components {
        * @example Updated session title
        */
       title?: string | null;
+      /**
+       * @description Optional resident virtual user used for unattended/background execution.
+       * @example identity_01933b5a00007000800000000000001
+       */
+      virtual_user_id?: string | null;
     };
     /** @description Request to update a skill */
     UpdateSkillRequest: {
@@ -18349,6 +18905,29 @@ export interface components {
       secret?: string | null;
       /** @description New target URL. */
       url?: string | null;
+    };
+    /** @description Update a runtime account profile or its management lifecycle. */
+    UpdateVirtualUserRequest: {
+      /**
+       * @description Profile image URL.
+       * @example https://example.com/avatar.png
+       */
+      avatar_url?: string | null;
+      /**
+       * @description Human-readable description. Safe to render in user-facing messages.
+       * @example Support team member
+       */
+      description?: string | null;
+      /** @description Locale used for agent-facing defaults. */
+      locale?: string | null;
+      /**
+       * @description Human-readable name. Safe to render in user-facing messages.
+       * @example Alex
+       */
+      name?: string | null;
+      status?: components["schemas"]["VirtualUserStatus"] | null;
+      /** @description IANA time zone used for agent-facing defaults. */
+      timezone?: string | null;
     };
     UpdateWorkspaceRequest: {
       description?: string | null;
@@ -18492,6 +19071,78 @@ export interface components {
       /** @description Whether the cited source supports the claim. */
       status: components["schemas"]["VerificationStatus"];
     };
+    /** @description Response for connection verification */
+    VerifyConnectionResponse: {
+      /**
+       * @description Provider verification failure without credential details.
+       * @example Credential expired
+       */
+      error?: string | null;
+      /**
+       * @description Whether the provider accepted the saved credential.
+       * @example true
+       */
+      valid: boolean;
+    };
+    /** @description Organization-scoped runtime account with its own profile and connections. */
+    VirtualUser: {
+      /**
+       * Format: date-time
+       * @description Archive timestamp.
+       */
+      archived_at?: string | null;
+      /** @description Optional avatar URL for UI surfaces. */
+      avatar_url?: string | null;
+      /**
+       * Format: date-time
+       * @description Creation timestamp.
+       */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description Delete timestamp.
+       */
+      deleted_at?: string | null;
+      /** @description Optional description shown in management UI. */
+      description?: string | null;
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description External identifier (identity_<32-hex>). Shown as `id` in API.
+       * @example identity_01933b5a000070008000000000000001
+       */
+      id: string;
+      /** @description Default locale for unattended runs. */
+      locale?: string | null;
+      /** @description Display name used when the identity acts autonomously. */
+      name: string;
+      /**
+       * @description Organization that owns the runtime account.
+       * @example org_example
+       */
+      organization_id: string;
+      principal?: components["schemas"]["PrincipalSummary"] | null;
+      /** @description Lifecycle status. */
+      status: components["schemas"]["VirtualUserStatus"];
+      /** @description Default timezone for unattended runs. */
+      timezone?: string | null;
+      /**
+       * Format: date-time
+       * @description Last update timestamp.
+       */
+      updated_at: string;
+      /** @description Immutable runtime account purpose. */
+      usage: components["schemas"]["VirtualUserUsage"];
+    };
+    /**
+     * @description Virtual user lifecycle status.
+     * @enum {string}
+     */
+    VirtualUserStatus: "active" | "archived" | "deleted";
+    /**
+     * @description VirtualUser is a durable virtual principal.
+     * @enum {string}
+     */
+    VirtualUserUsage: "end_user" | "service";
     /** @description Request body for voice attach. */
     VoiceAttachRequest: components["schemas"]["VoiceSessionOptions"] & {
       provider_call_id: string;
@@ -18868,6 +19519,8 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       root_agent_id?: string | null;
+      /** @description Org-scoped service account used when a tool acts as the agent. */
+      service_virtual_user_id?: string | null;
       /**
        * @description Optional one-line description in simplified Markdown, shown below the
        *     chat title once the intro is hidden. Wins over the harness value.
@@ -18968,11 +19621,6 @@ export interface components {
        */
       agent_id?: string | null;
       /**
-       * @description Optional virtual identity that represents the app in unattended/channel execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      agent_identity_id?: string | null;
-      /**
        * @description Pinned agent version. Required when policy is `pinned`.
        * @example agentver_01933b5a00007000800000000000001
        */
@@ -19034,6 +19682,11 @@ export interface components {
        * @description Timestamp when the app was last updated.
        */
       updated_at: string;
+      /**
+       * @description Optional virtual identity that represents the app in unattended/channel execution.
+       * @example identity_01933b5a00007000800000000000001
+       */
+      virtual_user_id?: string | null;
     } & {
       /**
        * @description State-aware hypermedia actions the caller can take on this resource
@@ -19943,11 +20596,6 @@ export interface components {
        */
       agent_id?: string | null;
       /**
-       * @description Optional resident agent identity for unattended/background execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      agent_identity_id?: string | null;
-      /**
        * @description Immutable agent version captured when the session was created or rebound.
        * @example agentver_01933b5a00007000800000000000001
        */
@@ -20183,6 +20831,11 @@ export interface components {
        */
       updated_at: string;
       usage?: components["schemas"]["TokenUsage"] | null;
+      /**
+       * @description Optional resident virtual user for unattended/background execution.
+       * @example identity_01933b5a00007000800000000000001
+       */
+      virtual_user_id?: string | null;
       /**
        * @description Workspace this session is attached to (format: wsp_{32-hex}). Owns the
        *     session's virtual filesystem. For the default 1:1 case this mirrors the
@@ -23433,6 +24086,26 @@ export interface operations {
       };
     };
   };
+  list_runtime_connectors: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Available connection providers */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderResponse"][];
+        };
+      };
+    };
+  };
   list_circuit_breakers: {
     parameters: {
       query?: never;
@@ -25235,6 +25908,42 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  exchange: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -28356,7 +29065,7 @@ export interface operations {
   list_payment_accounts: {
     parameters: {
       query?: {
-        /** @description Filter to a single owner class (user, agent identity, or organization). */
+        /** @description Filter to a single owner class (user, virtual user, or organization). */
         owner_type?: string | null;
         /** @description Filter to a specific owner principal id. */
         owner_id?: string | null;
@@ -33257,6 +33966,74 @@ export interface operations {
       };
     };
   };
+  list_pending_connection_migrations: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  migrate_pending_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_mcp_connections: {
     parameters: {
       query?: {
@@ -33502,6 +34279,804 @@ export interface operations {
       };
       /** @description Organization not found or user is not a member */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_virtual_users: {
+    parameters: {
+      query?: {
+        usage?: components["schemas"]["VirtualUserUsage"] | null;
+        search?: string | null;
+        include_archived?: boolean | null;
+        /** @description Zero-based page offset. */
+        offset?: number | null;
+        /** @description Maximum results per page. */
+        limit?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedResponse_VirtualUser"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_virtual_user: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateVirtualUserRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_me: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_me: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_virtual_user: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_virtual_user: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_virtual_user: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_bindings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_binding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        binding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_connections: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"][];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Virtual user not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_api_key_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        provider: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateConnectionRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Virtual user not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        provider: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Virtual user not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  authorize_target_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        provider: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      303: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  start_target_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        provider: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["OAuthAuthorizeQuery"];
+      };
+    };
+    responses: {
+      /** @description Browser setup created */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectionSetupResponse"];
+        };
+      };
+      /** @description Setup not authorized */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  verify_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        provider: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VerifyConnectionResponse"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Virtual user not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  destroy_virtual_user: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_preferences: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_preference: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        key: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_preference: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        key: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPreferenceRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_preference: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+        key: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_sessions_get_v1_virtual_users_identity_id_sessions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
         headers: {
           [name: string]: unknown;
         };

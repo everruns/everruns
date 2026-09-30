@@ -29,8 +29,8 @@ const mockUseEvals = jest.fn((_options?: { enabled?: boolean }) => ({ data: [] }
 jest.mock("@/hooks/use-evals", () => ({
   useEvals: (options?: { enabled?: boolean }) => mockUseEvals(options),
 }));
-jest.mock("@/hooks/use-agent-identities", () => ({
-  useAgentIdentities: () => ({ data: [] }),
+jest.mock("@/hooks/use-virtual-users", () => ({
+  useVirtualUsers: () => ({ data: [] }),
 }));
 const mockUseMemories = jest.fn((_options?: { enabled?: boolean }) => ({
   data: [

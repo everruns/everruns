@@ -11,6 +11,23 @@ use uuid::Uuid;
 
 const TEST_KEY: &str = "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
+#[test]
+fn setup_return_target_stays_on_the_console_origin() {
+    let fallback = "/settings/connections";
+    for target in [
+        "//attacker.example",
+        "/\\attacker.example",
+        "/path\n",
+        "https://attacker.example",
+    ] {
+        assert_eq!(normalize_return_to(Some(target), fallback), fallback);
+    }
+    assert_eq!(
+        normalize_return_to(Some("/virtual-users/me?tab=connections"), fallback),
+        "/virtual-users/me?tab=connections"
+    );
+}
+
 struct FakeOAuthEgress;
 
 #[async_trait::async_trait]
@@ -182,6 +199,25 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
         .await
         .unwrap();
     let user_id = Uuid::now_v7();
+    db.create_user_with_id(
+        user_id,
+        crate::storage::models::CreateUserRow {
+            email: format!("{user_id}@example.com"),
+            name: "Owner".into(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    db.add_organization_member(everruns_core::DEFAULT_ORG_ID, user_id, "owner")
+        .await
+        .unwrap();
     (
         state,
         test_org(user_id),
@@ -204,7 +240,12 @@ async fn begin_identity_oauth(
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
     authorize_connection(
         State(state),
-        org,
+        org.clone(),
+        ConnectionUser {
+            id: org.user_id.unwrap(),
+            management_user_id: org.user_id.unwrap(),
+            org_id: org.org_id,
+        },
         CookieJar::new(),
         Path(mcp_oauth_provider_id_for_uuid(server_id)),
         Query(OAuthAuthorizeQuery {
@@ -232,12 +273,12 @@ async fn identity_oauth_callback_stores_only_an_identity_grant() {
         .await
         .unwrap()
         .unwrap()
-        .agent_identity_id
+        .virtual_user_id
         .unwrap();
 
     let _ = connection_oauth_callback(
         State(state.clone()),
-        org,
+        Ok(org),
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
@@ -252,7 +293,7 @@ async fn identity_oauth_callback_stores_only_an_identity_grant() {
 
     let grant = state
         .db
-        .get_agent_identity_connection(identity_id, &provider)
+        .get_virtual_user_connection(identity_id, &provider)
         .await
         .unwrap()
         .unwrap();
@@ -292,7 +333,7 @@ async fn identity_oauth_permission_denial_creates_no_identity() {
             .await
             .unwrap()
             .unwrap()
-            .agent_identity_id
+            .virtual_user_id
             .is_none()
     );
 }
@@ -313,7 +354,7 @@ async fn identity_oauth_discovery_failure_creates_no_identity() {
             .await
             .unwrap()
             .unwrap()
-            .agent_identity_id
+            .virtual_user_id
             .is_none()
     );
 }
@@ -416,7 +457,7 @@ async fn identity_oauth_missing_registration_creates_no_identity() {
             .await
             .unwrap()
             .unwrap()
-            .agent_identity_id
+            .virtual_user_id
             .is_none()
     );
 }
@@ -428,8 +469,8 @@ async fn identity_oauth_callback_rejects_mismatched_state_without_grant() {
     let (jar, _) = begin_identity_oauth(state.clone(), org.clone(), server_id, agent_id)
         .await
         .unwrap();
-    let identity_id: AgentIdentityId = pending_state(&jar, &provider)
-        .agent_identity_id
+    let identity_id: VirtualUserId = pending_state(&jar, &provider)
+        .virtual_user_id
         .as_deref()
         .unwrap()
         .parse()
@@ -437,7 +478,7 @@ async fn identity_oauth_callback_rejects_mismatched_state_without_grant() {
 
     let error = connection_oauth_callback(
         State(state.clone()),
-        org,
+        Ok(org),
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
@@ -454,7 +495,7 @@ async fn identity_oauth_callback_rejects_mismatched_state_without_grant() {
     assert!(
         state
             .db
-            .get_agent_identity_connection(identity_id, &provider)
+            .get_virtual_user_connection(identity_id, &provider)
             .await
             .unwrap()
             .is_none()
@@ -469,12 +510,7 @@ async fn identity_oauth_callback_rejects_archived_server_without_grant() {
         .await
         .unwrap();
     let pending = pending_state(&jar, &provider);
-    let identity_id: AgentIdentityId = pending
-        .agent_identity_id
-        .as_deref()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let identity_id: VirtualUserId = pending.virtual_user_id.as_deref().unwrap().parse().unwrap();
     state
         .db
         .update_mcp_server(
@@ -490,7 +526,7 @@ async fn identity_oauth_callback_rejects_archived_server_without_grant() {
 
     let error = connection_oauth_callback(
         State(state.clone()),
-        org,
+        Ok(org),
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
@@ -507,7 +543,7 @@ async fn identity_oauth_callback_rejects_archived_server_without_grant() {
     assert!(
         state
             .db
-            .get_agent_identity_connection(identity_id, &provider)
+            .get_virtual_user_connection(identity_id, &provider)
             .await
             .unwrap()
             .is_none()
@@ -522,17 +558,12 @@ async fn identity_oauth_callback_rechecks_permission_before_writing_grant() {
         .await
         .unwrap();
     let pending = pending_state(&jar, &provider);
-    let identity_id: AgentIdentityId = pending
-        .agent_identity_id
-        .as_deref()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let identity_id: VirtualUserId = pending.virtual_user_id.as_deref().unwrap().parse().unwrap();
     state.auth.permission_resolver = Arc::new(DenyAllResolver);
 
     let error = connection_oauth_callback(
         State(state.clone()),
-        org,
+        Ok(org),
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
@@ -549,7 +580,7 @@ async fn identity_oauth_callback_rechecks_permission_before_writing_grant() {
     assert!(
         state
             .db
-            .get_agent_identity_connection(identity_id, &provider)
+            .get_virtual_user_connection(identity_id, &provider)
             .await
             .unwrap()
             .is_none()
@@ -565,17 +596,12 @@ async fn identity_oauth_callback_rejects_deleted_authorized_agent_without_grant(
         .unwrap();
     let pending = pending_state(&jar, &provider);
     let agent_id: AgentId = pending.agent_id.as_deref().unwrap().parse().unwrap();
-    let identity_id: AgentIdentityId = pending
-        .agent_identity_id
-        .as_deref()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let identity_id: VirtualUserId = pending.virtual_user_id.as_deref().unwrap().parse().unwrap();
     state.db.delete_agent(org.org_id, agent_id).await.unwrap();
 
     let error = connection_oauth_callback(
         State(state.clone()),
-        org,
+        Ok(org),
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
@@ -592,7 +618,7 @@ async fn identity_oauth_callback_rejects_deleted_authorized_agent_without_grant(
     assert!(
         state
             .db
-            .get_agent_identity_connection(identity_id, &provider)
+            .get_virtual_user_connection(identity_id, &provider)
             .await
             .unwrap()
             .is_none()
@@ -605,137 +631,50 @@ async fn oauth_discovery_rejects_mismatched_issuer() {
     assert_eq!(error.unwrap_err().0, StatusCode::BAD_GATEWAY);
 }
 #[test]
-fn valid_state_accepted() {
-    let state_value = "abc123deadbeef";
+fn github_setup_validates_the_canonical_pending_state() {
+    let pending = PendingOAuthState {
+        state: "unguessable-state".into(),
+        org_id: 1,
+        management_user_id: Some(Uuid::new_v4()),
+        runtime_credential: None,
+        provider: "github".into(),
+        return_to: "/settings/connections".into(),
+        mode: "virtual_user".into(),
+        session_id: None,
+        agent_id: None,
+        virtual_user_id: Some(VirtualUserId::new().to_string()),
+        popup: false,
+        code_verifier: String::new(),
+    };
     let jar = CookieJar::new().add(Cookie::new(
-        GITHUB_INSTALL_STATE_COOKIE,
-        state_value.to_string(),
+        oauth_state_cookie_name("github"),
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&pending).unwrap()),
     ));
-    let result = validate_install_state(&jar, Some(state_value));
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), state_value);
-}
-
-#[test]
-fn missing_cookie_rejected() {
-    let jar = CookieJar::new();
-    let (status, msg) = validate_install_state(&jar, Some("abc123")).unwrap_err();
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(msg.contains("expired"));
-}
-
-#[test]
-fn missing_query_state_rejected() {
-    let jar = CookieJar::new().add(Cookie::new(
-        GITHUB_INSTALL_STATE_COOKIE,
-        "abc123".to_string(),
-    ));
-    let (status, msg) = validate_install_state(&jar, None).unwrap_err();
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(msg.contains("Missing state"));
-}
-
-#[test]
-fn mismatched_state_rejected() {
-    let jar = CookieJar::new().add(Cookie::new(
-        GITHUB_INSTALL_STATE_COOKIE,
-        "correct_state".to_string(),
-    ));
-    let (status, msg) = validate_install_state(&jar, Some("wrong_state")).unwrap_err();
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(msg.contains("Invalid installation state"));
-}
-
-#[test]
-fn both_missing_reports_expired() {
-    let jar = CookieJar::new();
-    // Cookie checked first — reports expired state
-    let (status, _) = validate_install_state(&jar, None).unwrap_err();
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[test]
-fn state_cookie_has_secure_properties() {
-    let state_value = "test_state";
-    let cookie = Cookie::build((GITHUB_INSTALL_STATE_COOKIE, state_value))
-        .path("/")
-        .http_only(true)
-        .secure(true)
-        .same_site(SameSite::Lax)
-        .max_age(time::Duration::minutes(10))
-        .build();
-
-    assert_eq!(cookie.name(), GITHUB_INSTALL_STATE_COOKIE);
-    assert_eq!(cookie.value(), state_value);
-    assert!(cookie.http_only().unwrap_or(false));
-    assert!(cookie.secure().unwrap_or(false));
-    assert_eq!(cookie.same_site(), Some(SameSite::Lax));
-    assert_eq!(cookie.max_age(), Some(time::Duration::minutes(10)));
-    assert_eq!(cookie.path(), Some("/"));
-}
-
-#[test]
-fn callback_query_deserialize_with_state() {
-    let json = r#"{"installation_id": 12345, "state": "abc123"}"#;
-    let query: GitHubInstallationCallbackQuery = serde_json::from_str(json).unwrap();
-    assert_eq!(query.installation_id, 12345);
-    assert_eq!(query.state, Some("abc123".to_string()));
-}
-
-#[test]
-fn callback_query_deserialize_without_state() {
-    let json = r#"{"installation_id": 12345}"#;
-    let query: GitHubInstallationCallbackQuery = serde_json::from_str(json).unwrap();
-    assert_eq!(query.installation_id, 12345);
-    assert_eq!(query.state, None);
-}
-
-// =========================================================================
-// GitHub installation callback security negative tests (EVE-54 / EVE-61)
-// =========================================================================
-
-#[test]
-fn empty_cookie_does_not_match_nonempty_query() {
-    let jar = CookieJar::new().add(Cookie::new(GITHUB_INSTALL_STATE_COOKIE, "".to_string()));
-    let result = validate_install_state(&jar, Some("attacker_state"));
+    let validated =
+        validate_pending_oauth_state(&jar, "github", Some("unguessable-state")).unwrap();
+    assert_eq!(validated.virtual_user_id, pending.virtual_user_id);
+    assert_eq!(validated.management_user_id, pending.management_user_id);
+    for query in [
+        None,
+        Some(""),
+        Some("wrong-state"),
+        Some(" unguessable-state "),
+    ] {
+        assert_eq!(
+            validate_pending_oauth_state(&jar, "github", query)
+                .unwrap_err()
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
     assert!(
-        result.is_err(),
-        "empty cookie must not match non-empty query"
+        validate_pending_oauth_state(&CookieJar::new(), "github", Some("unguessable-state"))
+            .is_err()
     );
-}
-
-#[test]
-fn nonempty_cookie_does_not_match_empty_query() {
-    let jar = CookieJar::new().add(Cookie::new(
-        GITHUB_INSTALL_STATE_COOKIE,
-        "real_state".to_string(),
-    ));
-    let result = validate_install_state(&jar, Some(""));
     assert!(
-        result.is_err(),
-        "non-empty cookie must not match empty query"
+        validate_pending_oauth_state(&jar, "different-provider", Some("unguessable-state"))
+            .is_err()
     );
-}
-
-#[test]
-fn whitespace_padded_state_rejected() {
-    let jar = CookieJar::new().add(Cookie::new(
-        GITHUB_INSTALL_STATE_COOKIE,
-        "abc123".to_string(),
-    ));
-    let result = validate_install_state(&jar, Some(" abc123 "));
-    assert!(result.is_err(), "whitespace-padded state must not match");
-}
-
-#[test]
-fn all_state_failures_return_bad_request() {
-    let (status, _) = validate_install_state(&CookieJar::new(), Some("x")).unwrap_err();
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    let jar = CookieJar::new().add(Cookie::new(GITHUB_INSTALL_STATE_COOKIE, "x".to_string()));
-    let (status, _) = validate_install_state(&jar, None).unwrap_err();
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    let (status, _) = validate_install_state(&jar, Some("y")).unwrap_err();
-    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 // =========================================================================

@@ -53,6 +53,8 @@ fn fixture_records() -> (Harness, Agent, ExecutionSession) {
         deleted_at: None,
     };
     let agent = Agent {
+        service_virtual_user_id: None,
+
         public_id: agent_id,
         internal_id: agent_id.uuid(),
         name: "hosted-agent".into(),

@@ -20,8 +20,8 @@ use everruns_core::principal::PrincipalSummary;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_provider::tool_types::ToolDefinition;
 use everruns_provider::typed_id::{
-    AgentId, AgentIdentityId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId,
-    SessionParticipantId, WorkspaceId,
+    AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId, SessionParticipantId,
+    VirtualUserId, WorkspaceId,
 };
 
 #[cfg(feature = "openapi")]
@@ -412,10 +412,10 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
     pub agent_version_id: Option<AgentVersionId>,
-    /// Optional resident agent identity for unattended/background execution.
+    /// Optional resident virtual user for unattended/background execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
-    pub agent_identity_id: Option<AgentIdentityId>,
+    pub virtual_user_id: Option<VirtualUserId>,
     /// Owning principal for this session.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "principal_01933b5a000070008000000000000001"))]
     pub owner_principal_id: PrincipalId,
@@ -660,7 +660,7 @@ impl Session {
             harness_id: execution.harness_id,
             agent_id: execution.agent_id,
             agent_version_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
             owner: None,

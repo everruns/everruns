@@ -123,7 +123,7 @@ export const harnessFormSchema = z.object({
   starters: startersSchema.optional(),
 });
 
-export const agentIdentityFormSchema = z.object({
+export const virtualUserFormSchema = z.object({
   name: requiredString("Name"),
   description: optionalString(),
   locale: optionalSelection(localeValues, "Locale"),

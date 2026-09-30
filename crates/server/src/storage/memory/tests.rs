@@ -28,7 +28,7 @@ fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
         agent_id,
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
         title: None,
@@ -920,7 +920,7 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
 }
 
 #[tokio::test]
-async fn test_session_connection_resolution_uses_resolved_owner_user() {
+async fn test_session_connections_never_use_management_owner_lineage() {
     let db = InMemoryDatabase::new();
 
     let owner = db
@@ -1061,25 +1061,25 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
         db.get_connection_token_for_session(session.id, "gitlab")
             .await
             .unwrap(),
-        Some(b"owner-token".to_vec())
+        None
     );
     assert_eq!(
         db.get_connection_metadata_for_session(session.id, "gitlab")
             .await
             .unwrap(),
-        Some(serde_json::json!({ "user": "owner" }))
+        None
     );
     assert_eq!(
         db.get_connection_user_for_session(session.id, "gitlab")
             .await
             .unwrap(),
-        Some(owner.id)
+        None
     );
     assert_eq!(
         db.get_installation_id_for_session(session.id, "github")
             .await
             .unwrap(),
-        Some(111)
+        None
     );
 }
 
@@ -2955,7 +2955,7 @@ async fn test_search_apps() {
             agent_id: Some(agent.id.into()),
             agent_version_policy: "default".to_string(),
             agent_version_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             channel_type: Some("slack".to_string()),
@@ -2976,7 +2976,7 @@ async fn test_search_apps() {
             agent_id: Some(agent.id.into()),
             agent_version_policy: "default".to_string(),
             agent_version_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             channel_type: Some("web".to_string()),
@@ -3803,7 +3803,7 @@ fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow {
         execution_harness_id: None,
         execution_owner_principal_id: None,
         execution_resolved_owner_user_id: None,
-        execution_agent_identity_id: None,
+        execution_virtual_user_id: None,
         execution_app_id: None,
         execution_app_public_id: None,
         execution_app_name: None,

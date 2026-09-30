@@ -44,7 +44,7 @@ use everruns_internal_protocol::{
 // the gRPC wire carries the pre-merged record between server and worker.
 use everruns_platform::{Agent, Harness, HarnessStatus};
 use std::sync::Arc;
-use tokio::sync::{Mutex, OnceCell};
+use tokio::sync::Mutex;
 use tonic::service::interceptor::InterceptedService;
 use tonic::transport::Channel;
 use uuid::Uuid;
@@ -391,6 +391,7 @@ impl GrpcClient {
     ) -> Result<crate::mcp_executor::McpServerInfo> {
         let request = proto::GetMcpServerByPrefixRequest {
             server_prefix: server_prefix.to_string(),
+            input_message_id: None,
             org_id,
             session_id: session_id.map(uuid_to_proto),
         };
@@ -406,6 +407,34 @@ impl GrpcClient {
         })?;
 
         proto_mcp_server_to_info(proto_server)
+    }
+
+    pub async fn get_mcp_server_for_execution(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        server_prefix: &str,
+        input_message_id: Uuid,
+    ) -> Result<crate::mcp_executor::McpServerInfo> {
+        let request = proto::GetMcpServerByPrefixRequest {
+            server_prefix: server_prefix.into(),
+            org_id,
+            session_id: Some(uuid_to_proto(session_id)),
+            input_message_id: Some(uuid_to_proto(input_message_id)),
+        };
+        let response = self
+            .inner
+            .lock()
+            .await
+            .get_mcp_server_by_prefix(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+        proto_mcp_server_to_info(
+            response
+                .into_inner()
+                .server
+                .ok_or_else(|| grpc_missing_field("MCP server missing"))?,
+        )
     }
 
     /// Claim due leased resources for cleanup.
@@ -588,6 +617,8 @@ impl GrpcClient {
 /// SessionSqlDbStore.
 #[derive(Clone)]
 pub struct GrpcAdapter {
+    input_message_id: Option<Uuid>,
+    mcp_server_prefix: Option<String>,
     pub(crate) client: GrpcClient,
     /// The org this adapter speaks for, when it has one.
     ///
@@ -604,6 +635,8 @@ impl GrpcAdapter {
         Self {
             client,
             org_id: None,
+            input_message_id: None,
+            mcp_server_prefix: None,
             proactive_compaction_attempts: Arc::new(
                 everruns_core::ProactiveCompactionAttemptTracker::default(),
             ),
@@ -643,6 +676,9 @@ impl GrpcAdapter {
         let mut client = self.client.inner.lock().await;
         let response = client
             .execute_command(proto::ExecuteCommandRequest {
+                input_message_id: None,
+                platform_session_id: None,
+
                 name: name.to_string(),
                 api_version: COMMAND_API_VERSION_V1.to_string(),
                 params_json: serde_json::to_vec(&params).map_err(|error| {
@@ -678,10 +714,10 @@ impl GrpcAdapter {
 /// ImageResolver, SessionMutator, SessionScheduleStore, PlatformStore.
 #[derive(Clone)]
 pub struct GrpcOrgAdapter {
+    input_message_id: Option<Uuid>,
     client: GrpcClient,
     org_id: i64,
     platform_session_id: Option<SessionId>,
-    platform_user_id: Arc<OnceCell<Uuid>>,
 }
 
 impl GrpcOrgAdapter {
@@ -690,7 +726,7 @@ impl GrpcOrgAdapter {
             client,
             org_id,
             platform_session_id: None,
-            platform_user_id: Arc::new(OnceCell::new()),
+            input_message_id: None,
         }
     }
 
@@ -703,42 +739,8 @@ impl GrpcOrgAdapter {
             client,
             org_id,
             platform_session_id: session_id,
-            platform_user_id: Arc::new(OnceCell::new()),
+            input_message_id: None,
         }
-    }
-
-    async fn platform_user_id(&self) -> Result<Uuid> {
-        let session_id = self.platform_session_id.ok_or_else(|| {
-            AgentLoopError::store("PlatformStore requires a platform session context")
-        })?;
-
-        let user_id = self
-            .platform_user_id
-            .get_or_try_init(|| async {
-                let mut client = self.client.inner.lock().await;
-                let response = client
-                    .get_session(proto::GetSessionRequest {
-                        session_id: Some(uuid_to_proto(session_id.uuid())),
-                        org_id: self.org_id,
-                    })
-                    .await
-                    .map_err(grpc_status_to_error)?;
-
-                let session = response
-                    .into_inner()
-                    .session
-                    .ok_or_else(|| grpc_missing_field("No session in response"))?;
-                let user_id = session.resolved_owner_user_id.as_ref().ok_or_else(|| {
-                    AgentLoopError::config(
-                        "Platform tool authorization requires a user-owned session with a resolved owner"
-                            .to_string(),
-                    )
-                })?;
-                proto_uuid_to_uuid(Some(user_id))
-            })
-            .await?;
-
-        Ok(*user_id)
     }
 
     async fn execute_platform_command_raw(
@@ -746,7 +748,11 @@ impl GrpcOrgAdapter {
         name: &str,
         params: serde_json::Value,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
-        let user_id = self.platform_user_id().await?;
+        if self.input_message_id.is_none() {
+            return Err(AgentLoopError::config(
+                "Platform command requires a management-authorized invocation",
+            ));
+        }
         let mut client = self.client.inner.lock().await;
         let response = client
             .execute_command(proto::ExecuteCommandRequest {
@@ -756,7 +762,9 @@ impl GrpcOrgAdapter {
                     AgentLoopError::store(format!("JSON serialization failed: {}", e))
                 })?,
                 org_id: self.org_id,
-                user_id: Some(user_id.to_string()),
+                user_id: None,
+                platform_session_id: self.platform_session_id.map(|id| uuid_to_proto(id.uuid())),
+                input_message_id: self.input_message_id.map(uuid_to_proto),
                 idempotency_key: None,
                 metadata: Default::default(),
             })
@@ -790,6 +798,7 @@ impl GrpcOrgAdapter {
         let mut client = self.client.inner.lock().await;
         let response = client
             .invoke_platform_command_surface(proto::InvokePlatformCommandSurfaceRequest {
+                input_message_id: self.input_message_id.map(uuid_to_proto),
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 org_id: self.org_id,
                 operation: operation as i32,
@@ -897,7 +906,9 @@ pub struct GrpcPaymentAuthority {
 }
 
 /// Session-creation authority backed by the control-plane permission resolver.
+#[derive(Clone)]
 pub struct GrpcSessionCreationAuthority {
+    input_message_id: Option<Uuid>,
     client: GrpcClient,
     org_id: i64,
     session_id: SessionId,
@@ -936,6 +947,7 @@ impl GrpcPaymentAuthority {
 impl GrpcSessionCreationAuthority {
     pub fn new(client: GrpcClient, org_id: i64, session_id: SessionId) -> Self {
         Self {
+            input_message_id: None,
             client,
             org_id,
             session_id,
@@ -1465,6 +1477,12 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
     };
 
     Ok(Agent {
+        service_virtual_user_id: proto_agent
+            .service_virtual_user_id
+            .as_ref()
+            .map(|id| proto_uuid_to_uuid(Some(id)))
+            .transpose()?
+            .map(Into::into),
         public_id: everruns_provider::typed_id::AgentId::from_uuid(id),
         internal_id: id,
         name: proto_agent.name.clone(),
@@ -1989,12 +2007,21 @@ pub async fn load_turn_context(
     org_id: i64,
     session_id: SessionId,
 ) -> Result<TurnContext> {
+    load_turn_context_for_execution(client, org_id, session_id, None).await
+}
+pub async fn load_turn_context_for_execution(
+    client: &GrpcClient,
+    org_id: i64,
+    session_id: SessionId,
+    input_message_id: Option<Uuid>,
+) -> Result<TurnContext> {
     let mut grpc_client = client.inner.lock().await;
 
     let request = proto::GetTurnContextRequest {
         session_id: Some(uuid_to_proto(session_id.uuid())),
         org_id,
         message_limit: None, // use server default
+        input_message_id: input_message_id.map(uuid_to_proto),
     };
 
     let response = grpc_client
@@ -2674,6 +2701,12 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
 
 #[async_trait]
 impl everruns_platform::PlatformStore for GrpcOrgAdapter {
+    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
+        let mut bound = self.clone();
+        bound.input_message_id = Some(id);
+        Some(Arc::new(bound))
+    }
+
     async fn platform_discover(&self, arguments: serde_json::Value) -> Result<String> {
         self.invoke_platform_command_surface(
             proto::PlatformCommandSurfaceOperation::Discover,
@@ -3074,6 +3107,15 @@ impl everruns_core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
 
 #[async_trait]
 impl everruns_core::delegation_services::SessionCreationAuthority for GrpcSessionCreationAuthority {
+    fn for_execution(
+        &self,
+        id: Uuid,
+    ) -> Option<Arc<dyn everruns_core::delegation_services::SessionCreationAuthority>> {
+        let mut bound = self.clone();
+        bound.input_message_id = Some(id);
+        Some(Arc::new(bound))
+    }
+
     async fn authorize_session_creation(
         &self,
         session_id: SessionId,
@@ -3086,6 +3128,7 @@ impl everruns_core::delegation_services::SessionCreationAuthority for GrpcSessio
         let mut client = self.client.inner.lock().await;
         let response = client
             .authorize_session_creation(proto::AuthorizeSessionCreationRequest {
+                input_message_id: self.input_message_id.map(uuid_to_proto),
                 org_id: self.org_id,
                 session_id: session_id.to_string(),
             })
@@ -3357,279 +3400,5 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use uuid::Uuid;
-
-    #[test]
-    fn worker_parses_the_neutral_capability_reference_shape() {
-        // EVE-873: worker resolution consumes the same `{"ref", "config"}`
-        // representation the Framework serializes and the control plane
-        // persists — no worker-side semantic model.
-        let framework_ref = everruns_capability::CapabilityRef::new("web_fetch")
-            .config(serde_json::json!({"enable_file_download": true}));
-        let wire = serde_json::to_string(&framework_ref).unwrap();
-
-        let parsed = serde_json::from_str::<everruns_capability::CapabilityRef>(&wire).unwrap();
-        assert_eq!(parsed, framework_ref);
-        assert_eq!(parsed.capability_id(), "web_fetch");
-
-        // Legacy rows without a config payload load as `{}`.
-        let bare =
-            serde_json::from_str::<everruns_capability::CapabilityRef>(r#"{"ref":"current_time"}"#)
-                .unwrap();
-        assert_eq!(bare.config_value(), &serde_json::json!({}));
-    }
-
-    #[test]
-    fn resolved_model_proto_conversion_is_credential_free() {
-        let resolved = proto_model_to_model_spec(proto::ResolvedModel {
-            model: "custom-model".into(),
-            provider_id: "provider-123".into(),
-            provider_type: "custom-protocol".into(),
-        })
-        .unwrap();
-
-        assert_eq!(resolved.model, "custom-model");
-        assert_eq!(resolved.provider.as_str(), "provider-123");
-    }
-
-    #[test]
-    fn grpc_worker_adapter_parses_acts_as_and_defaults_old_servers() {
-        let id = Uuid::new_v4();
-        let proto_server = proto::McpServerInfo {
-            id: Some(uuid_to_proto(id)),
-            name: "linear".to_string(),
-            url: "https://mcp.linear.app/mcp".to_string(),
-            acts_as: "service".to_string(),
-            ..Default::default()
-        };
-
-        let info = proto_mcp_server_to_info(proto_server).unwrap();
-        assert_eq!(info.acts_as, everruns_core::McpServerActsAs::Service);
-
-        let old_server = proto::McpServerInfo {
-            id: Some(uuid_to_proto(id)),
-            ..Default::default()
-        };
-        let info = proto_mcp_server_to_info(old_server).unwrap();
-        assert_eq!(info.acts_as, everruns_core::McpServerActsAs::None);
-    }
-
-    #[test]
-    fn test_proto_harness_to_harness_preserves_metadata() {
-        let harness_id = Uuid::new_v4();
-        let parent_id = Uuid::new_v4();
-        let proto = proto::Harness {
-            id: Some(uuid_to_proto(harness_id)),
-            name: "platform-chat".into(),
-            description: "Built-in chat harness".into(),
-            system_prompt: "prompt".into(),
-            default_model_id: None,
-            status: "active".into(),
-            created_at: None,
-            updated_at: None,
-            capability_ids: vec!["platform".into()],
-            tags: vec!["chat".into(), "built-in".into()],
-            parent_harness_id: Some(uuid_to_proto(parent_id)),
-            is_built_in: true,
-            display_name: Some("Platform Chat".into()),
-            capabilities: vec![
-                serde_json::json!({
-                    "ref": "plugin:plugin_019fda530ed27b4291c67d9f786961d9",
-                    "config": {"name": "resend", "description": "Send email"}
-                })
-                .to_string(),
-            ],
-        };
-
-        let harness = proto_harness_to_harness(proto).expect("proto harness should convert");
-
-        assert_eq!(harness.id.uuid(), harness_id);
-        assert_eq!(
-            harness.parent_harness_id.map(|id| id.uuid()),
-            Some(parent_id)
-        );
-        assert_eq!(
-            harness.tags,
-            vec!["chat".to_string(), "built-in".to_string()]
-        );
-        assert_eq!(harness.capabilities[0].config_value()["name"], "resend");
-        assert!(harness.is_built_in);
-    }
-
-    #[test]
-    fn test_proto_value_to_json_null() {
-        let val = prost_types::Value {
-            kind: Some(prost_types::value::Kind::NullValue(0)),
-        };
-        assert_eq!(proto_value_to_json(val), serde_json::Value::Null);
-    }
-
-    #[test]
-    fn test_proto_value_to_json_none_kind() {
-        let val = prost_types::Value { kind: None };
-        assert_eq!(proto_value_to_json(val), serde_json::Value::Null);
-    }
-
-    #[test]
-    fn test_proto_value_to_json_string() {
-        let val = prost_types::Value {
-            kind: Some(prost_types::value::Kind::StringValue("hello".into())),
-        };
-        assert_eq!(
-            proto_value_to_json(val),
-            serde_json::Value::String("hello".into())
-        );
-    }
-
-    #[test]
-    fn test_proto_value_to_json_number() {
-        let val = prost_types::Value {
-            kind: Some(prost_types::value::Kind::NumberValue(42.5)),
-        };
-        assert_eq!(proto_value_to_json(val), serde_json::json!(42.5));
-    }
-
-    #[test]
-    fn test_proto_value_to_json_bool() {
-        let val = prost_types::Value {
-            kind: Some(prost_types::value::Kind::BoolValue(true)),
-        };
-        assert_eq!(proto_value_to_json(val), serde_json::Value::Bool(true));
-    }
-
-    #[test]
-    fn test_proto_value_to_json_list() {
-        let val = prost_types::Value {
-            kind: Some(prost_types::value::Kind::ListValue(
-                prost_types::ListValue {
-                    values: vec![
-                        prost_types::Value {
-                            kind: Some(prost_types::value::Kind::NumberValue(1.0)),
-                        },
-                        prost_types::Value {
-                            kind: Some(prost_types::value::Kind::StringValue("two".into())),
-                        },
-                    ],
-                },
-            )),
-        };
-        assert_eq!(proto_value_to_json(val), serde_json::json!([1.0, "two"]));
-    }
-
-    #[test]
-    fn test_proto_value_to_json_struct() {
-        let mut fields = std::collections::BTreeMap::new();
-        fields.insert(
-            "key".to_string(),
-            prost_types::Value {
-                kind: Some(prost_types::value::Kind::StringValue("value".into())),
-            },
-        );
-        fields.insert(
-            "num".to_string(),
-            prost_types::Value {
-                kind: Some(prost_types::value::Kind::NumberValue(42.0)),
-            },
-        );
-        let val = prost_types::Value {
-            kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                fields: fields.into_iter().collect(),
-            })),
-        };
-        let json = proto_value_to_json(val);
-        assert_eq!(json["key"], "value");
-        assert_eq!(json["num"], 42.0);
-    }
-
-    #[test]
-    fn test_grpc_status_to_error_not_found() {
-        let status = tonic::Status::not_found("Session not found");
-        let err = grpc_status_to_error(status);
-        assert!(matches!(err, AgentLoopError::MessageStore(_)));
-        assert!(err.to_string().contains("not found"));
-    }
-
-    #[test]
-    fn test_grpc_status_to_error_invalid_argument() {
-        let status = tonic::Status::invalid_argument("bad field");
-        let err = grpc_status_to_error(status);
-        assert!(matches!(err, AgentLoopError::Configuration(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_error_resource_exhausted_payload() {
-        let status = tonic::Status::resource_exhausted("message too large");
-        let err = grpc_status_to_error(status);
-        assert!(err.is_request_too_large());
-    }
-
-    #[test]
-    fn test_grpc_status_to_error_resource_exhausted_non_payload() {
-        let status = tonic::Status::resource_exhausted("task queue limit exceeded");
-        let err = grpc_status_to_error(status);
-        assert!(!err.is_request_too_large());
-        assert!(matches!(err, AgentLoopError::MessageStore(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_error_unauthenticated() {
-        let status = tonic::Status::unauthenticated("bad token");
-        let err = grpc_status_to_error(status);
-        assert!(matches!(err, AgentLoopError::Configuration(_)));
-        assert!(err.to_string().contains("Auth error"));
-    }
-
-    #[test]
-    fn test_grpc_status_to_error_unavailable() {
-        let status = tonic::Status::unavailable("service down");
-        let err = grpc_status_to_error(status);
-        assert!(matches!(err, AgentLoopError::MessageStore(_)));
-        assert!(err.to_string().contains("unavailable"));
-    }
-
-    #[test]
-    fn test_grpc_status_to_error_internal_fallback() {
-        let status = tonic::Status::internal("server error");
-        let err = grpc_status_to_error(status);
-        assert!(matches!(err, AgentLoopError::MessageStore(_)));
-        assert!(err.to_string().contains("Internal"));
-    }
-
-    #[test]
-    fn test_grpc_missing_field() {
-        let err = grpc_missing_field("No session in response");
-        assert!(matches!(err, AgentLoopError::MessageStore(_)));
-        assert!(err.to_string().contains("No session in response"));
-    }
-
-    #[test]
-    fn test_proto_stored_image_info_to_schema_roundtrips_image_id_uuid_transport() {
-        let image_id = everruns_provider::typed_id::ImageId::new();
-        let info = proto_stored_image_info_to_schema(proto::StoredImageInfo {
-            id: Some(proto::Uuid {
-                value: image_id.uuid().to_string(),
-            }),
-            filename: "generated-image.png".into(),
-            content_type: "image/png".into(),
-            size_bytes: 128,
-            metadata: None,
-            created_at: None,
-        })
-        .expect("stored image info should convert");
-
-        assert_eq!(info.id, image_id);
-    }
-
-    #[test]
-    fn test_grpc_command_error_to_error_not_found() {
-        let err = grpc_command_error_to_error(proto::CommandError {
-            kind: 3,
-            message: "Harness not found".into(),
-        });
-
-        assert!(matches!(err, AgentLoopError::MessageStore(_)));
-        assert!(err.to_string().contains("Harness not found"));
-    }
-}
+#[path = "grpc_adapters/tests.rs"]
+mod tests;

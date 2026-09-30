@@ -36,7 +36,7 @@ pub fn base_session_row(org_id: i64) -> CreateSessionRow {
         agent_id: None,
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id: PrincipalId::new(),
         resolved_owner_user_id: None,
         title: None,

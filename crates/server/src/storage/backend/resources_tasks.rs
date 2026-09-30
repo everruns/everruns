@@ -17,37 +17,37 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Agent Identity Connections
+    // Virtual User Connections
     // ============================================
 
-    pub async fn upsert_agent_identity_connection(
+    pub async fn upsert_virtual_user_connection(
         &self,
-        input: CreateAgentIdentityConnectionRow,
-    ) -> Result<AgentIdentityConnectionRow> {
-        dispatch!(self, upsert_agent_identity_connection, input)
+        input: CreateVirtualUserConnectionRow,
+    ) -> Result<VirtualUserConnectionRow> {
+        dispatch!(self, upsert_virtual_user_connection, input)
     }
 
-    pub async fn upsert_agent_identity_connection_for_active_agent(
+    pub async fn upsert_virtual_user_connection_for_active_agent(
         &self,
         org_id: i64,
         agent_id: AgentId,
-        input: CreateAgentIdentityConnectionRow,
-    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        input: CreateVirtualUserConnectionRow,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
         dispatch!(
             self,
-            upsert_agent_identity_connection_for_active_agent,
+            upsert_virtual_user_connection_for_active_agent,
             org_id,
             agent_id,
             input
         )
     }
 
-    pub async fn get_agent_identity_connection(
+    pub async fn get_virtual_user_connection(
         &self,
-        identity_id: AgentIdentityId,
+        identity_id: VirtualUserId,
         provider: &str,
-    ) -> Result<Option<AgentIdentityConnectionRow>> {
-        dispatch!(self, get_agent_identity_connection, identity_id, provider)
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        dispatch!(self, get_virtual_user_connection, identity_id, provider)
     }
 
     pub async fn create_github_app(&self, input: CreateGitHubAppRow) -> Result<GitHubAppRow> {
@@ -61,58 +61,46 @@ impl StorageBackend {
     pub async fn get_github_app_for_identity(
         &self,
         org_id: i64,
-        agent_identity_id: AgentIdentityId,
+        virtual_user_id: VirtualUserId,
     ) -> Result<Option<GitHubAppRow>> {
-        dispatch!(self, get_github_app_for_identity, org_id, agent_identity_id)
-    }
-
-    pub async fn get_identity_github_app_for_session(
-        &self,
-        session_id: SessionId,
-    ) -> Result<Option<(GitHubAppRow, i64)>> {
-        dispatch!(self, get_identity_github_app_for_session, session_id)
+        dispatch!(self, get_github_app_for_identity, org_id, virtual_user_id)
     }
 
     pub async fn delete_github_app(&self, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_github_app, id)
     }
 
-    pub async fn list_agent_identity_connections(
+    pub async fn list_virtual_user_connections(
         &self,
-        identity_id: AgentIdentityId,
-    ) -> Result<Vec<AgentIdentityConnectionRow>> {
-        dispatch!(self, list_agent_identity_connections, identity_id)
+        identity_id: VirtualUserId,
+    ) -> Result<Vec<VirtualUserConnectionRow>> {
+        dispatch!(self, list_virtual_user_connections, identity_id)
     }
-    pub async fn update_agent_identity_connection_oauth_tokens(
+    pub async fn update_virtual_user_connection_oauth_tokens(
         &self,
         input: UpdateOAuthConnectionTokens,
-    ) -> Result<Option<AgentIdentityConnectionRow>> {
-        dispatch!(self, update_agent_identity_connection_oauth_tokens, input)
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        dispatch!(self, update_virtual_user_connection_oauth_tokens, input)
     }
 
-    pub async fn delete_all_agent_identity_connections(
+    pub async fn delete_all_virtual_user_connections(
         &self,
-        identity_id: AgentIdentityId,
+        identity_id: VirtualUserId,
     ) -> Result<u64> {
-        dispatch!(self, delete_all_agent_identity_connections, identity_id)
+        dispatch!(self, delete_all_virtual_user_connections, identity_id)
     }
 
-    pub async fn delete_agent_identity_connection(
+    pub async fn delete_virtual_user_connection(
         &self,
-        identity_id: AgentIdentityId,
+        identity_id: VirtualUserId,
         provider: &str,
     ) -> Result<bool> {
-        dispatch!(
-            self,
-            delete_agent_identity_connection,
-            identity_id,
-            provider
-        )
+        dispatch!(self, delete_virtual_user_connection, identity_id, provider)
     }
 
     pub async fn invalidate_mcp_service_connection_if_access_token_matches(
         &self,
-        identity_id: AgentIdentityId,
+        identity_id: VirtualUserId,
         provider: &str,
         expected_access_token_encrypted: &[u8],
         org_id: i64,
@@ -244,8 +232,8 @@ impl StorageBackend {
         dispatch!(self, get_mcp_server_organization_id, public_id)
     }
 
-    pub async fn get_agent_identity_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
-        dispatch!(self, get_agent_identity_organization_id, public_id)
+    pub async fn get_virtual_user_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_virtual_user_organization_id, public_id)
     }
 
     pub async fn get_eval_organization_id(&self, public_id: &str) -> Result<Option<i64>> {

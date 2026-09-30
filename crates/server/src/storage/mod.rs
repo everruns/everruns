@@ -36,6 +36,7 @@ pub mod provider_store;
 pub mod reporting;
 pub mod repositories;
 pub mod repository;
+pub mod runtime_identity;
 pub mod sandbox_checkpoint_store;
 pub mod session_file_store;
 pub mod session_resource_store;

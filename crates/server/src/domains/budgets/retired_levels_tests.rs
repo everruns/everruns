@@ -42,7 +42,7 @@ async fn create_session(
         agent_id: None,
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id: PrincipalId::new(),
         resolved_owner_user_id: None,
         title: Some("Retired level budget test session".into()),

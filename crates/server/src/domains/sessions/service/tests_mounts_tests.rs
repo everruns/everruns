@@ -132,6 +132,8 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
     .unwrap();
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: "other-agent".to_string(),
         display_name: Some("Other Agent".to_string()),
@@ -168,7 +170,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
             agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Corrupt Session".to_string()),
@@ -472,6 +474,8 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
     .unwrap();
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: "other-agent".to_string(),
         display_name: Some("Other Agent".to_string()),
@@ -508,7 +512,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
             agent_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Mount Test".to_string()),
@@ -779,7 +783,7 @@ async fn update_rejects_reserved_routing_tags_for_external_callers() {
                 UpdateSessionRequest {
                     title: None,
                     goal: None,
-                    agent_identity_id: UpdateField::Unchanged,
+                    virtual_user_id: UpdateField::Unchanged,
                     locale: None,
                     tags: Some(forbidden.clone()),
                 },
@@ -915,7 +919,7 @@ async fn internal_callers_can_set_reserved_routing_tags() {
             UpdateSessionRequest {
                 title: None,
                 goal: None,
-                agent_identity_id: UpdateField::Unchanged,
+                virtual_user_id: UpdateField::Unchanged,
                 locale: None,
                 tags: Some(updated_tags.clone()),
             },
@@ -1231,6 +1235,9 @@ async fn memory_test_caller(db: &Arc<StorageBackend>, email: &str) -> Caller {
         })
         .await
         .unwrap();
+    db.add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+        .await
+        .unwrap();
     Caller {
         user_id: Some(user.id),
         ..external_caller(DEFAULT_ORG_ID)
@@ -1380,6 +1387,8 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
     let harness_id = create_named_harness(&ctx, "agent-memory-harness").await;
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: "memory-agent".to_string(),
         display_name: Some("Memory Agent".to_string()),

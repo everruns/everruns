@@ -5,6 +5,7 @@ use crate::storage::models::{CreateMcpServerRow, CreateSessionRow, CreateUserCon
 use everruns_core::connection_services::UserConnectionResolver;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+const INPUT_MESSAGE: Uuid = Uuid::from_u128(71);
 const TEST_KEY: &str = "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 struct FakeRefreshExchange {
@@ -64,7 +65,7 @@ fn session_input(owner_user_id: Option<Uuid>) -> CreateSessionRow {
         agent_id: None,
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id: owner_user_id,
         title: None,
@@ -114,10 +115,23 @@ async fn setup(
     )
     .await
     .unwrap();
+    if let Some(id) = owner_user_id {
+        seed_runtime_user(&db, VirtualUserId::from_uuid(id), "end_user").await;
+    }
     let session = db
         .create_session(session_input(owner_user_id))
         .await
         .unwrap();
+    db.record_runtime_invocation(
+        DEFAULT_ORG_ID,
+        session.id,
+        INPUT_MESSAGE,
+        owner_user_id.map(VirtualUserId::from_uuid),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let server = db
         .get_mcp_server(session.org_id, server_id)
         .await
@@ -144,15 +158,15 @@ async fn setup(
 // alone would pass just as well with the fallback still in place.
 // ---------------------------------------------------------------
 
-use crate::kernel_imports::AgentIdentityId;
-use crate::storage::models::{CreateAgentIdentityConnectionRow, CreatePrincipalRow};
+use crate::kernel_imports::VirtualUserId;
+use crate::storage::models::{CreatePrincipalRow, CreateVirtualUserConnectionRow};
 use everruns_core::McpServerActsAs;
 
 /// A session whose owner principal really is a person.
 const ATTENDED: &str = "user";
 /// A session fired by a trigger/schedule: the owner principal is the
 /// agent's own identity, which may still *resolve* to a human by lineage.
-const UNATTENDED: &str = "agent_identity";
+const UNATTENDED: &str = "virtual_user";
 
 struct McpFixture {
     db: StorageBackend,
@@ -160,7 +174,8 @@ struct McpFixture {
     session_id: SessionId,
     provider: String,
     user_id: Uuid,
-    identity_id: AgentIdentityId,
+    identity_id: VirtualUserId,
+    agent_id: everruns_provider::typed_id::AgentId,
 }
 
 /// Seed a session with both stores populated unless told otherwise, so a
@@ -198,7 +213,38 @@ async fn mcp_setup(
     .unwrap();
 
     let user_id = Uuid::now_v7();
-    let identity_id = AgentIdentityId::from_seed(7);
+    let identity_id = VirtualUserId::from_seed(7);
+    seed_runtime_user(&db, VirtualUserId::from_uuid(user_id), "end_user").await;
+    seed_runtime_user(&db, identity_id, "service").await;
+    let agent = db
+        .create_agent(
+            DEFAULT_ORG_ID,
+            crate::storage::models::CreateAgentRow {
+                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                name: "Responder".into(),
+                display_name: None,
+                description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
+                system_prompt: "".into(),
+                default_model_id: None,
+                harness_id: everruns_provider::typed_id::HarnessId::from_seed(1),
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                is_built_in: false,
+            },
+        )
+        .await
+        .unwrap();
+    db.set_virtual_user_id(DEFAULT_ORG_ID, agent.id, identity_id)
+        .await
+        .unwrap();
     let owner_principal_id = PrincipalId::from_seed(42);
     db.create_principal(CreatePrincipalRow {
         id: owner_principal_id,
@@ -216,8 +262,19 @@ async fn mcp_setup(
 
     let mut input = session_input(Some(user_id));
     input.owner_principal_id = owner_principal_id;
-    input.agent_identity_id = Some(identity_id);
+    input.virtual_user_id = Some(identity_id);
+    input.agent_id = Some(agent.id);
     let session = db.create_session(input).await.unwrap();
+    db.record_runtime_invocation(
+        DEFAULT_ORG_ID,
+        session.id,
+        INPUT_MESSAGE,
+        (owner_kind == ATTENDED).then_some(VirtualUserId::from_uuid(user_id)),
+        None,
+        Some(agent.id.uuid()),
+    )
+    .await
+    .unwrap();
 
     let provider = format!("mcp_oauth_{server_id}");
 
@@ -240,8 +297,8 @@ async fn mcp_setup(
     }
 
     if with_identity_grant {
-        db.upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-            agent_identity_id: identity_id,
+        db.upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: identity_id,
             provider: provider.clone(),
             connection_type: "oauth".to_string(),
             provider_user_id: None,
@@ -264,6 +321,7 @@ async fn mcp_setup(
         provider,
         user_id,
         identity_id,
+        agent_id: agent.id,
     }
 }
 
@@ -282,6 +340,7 @@ fn resolver_for(fixture: &McpFixture) -> DbConnectionResolver {
         None,
         exchange,
     )
+    .bound_to_input_message(INPUT_MESSAGE)
 }
 
 #[tokio::test]
@@ -317,7 +376,7 @@ async fn user_attachment_without_user_grant_fails_closed_leaving_identity_grant_
     // The identity grant is still there, unread and unmodified.
     let identity = fixture
         .db
-        .get_agent_identity_connection_for_session(fixture.session_id, &fixture.provider)
+        .get_virtual_user_connection_for_session(fixture.session_id, &fixture.provider)
         .await
         .unwrap()
         .expect("identity grant should be untouched");
@@ -374,7 +433,7 @@ async fn service_attachment_without_identity_grant_fails_closed_despite_a_user_g
 
 #[tokio::test]
 async fn user_attachment_in_an_unattended_session_fails_closed_though_the_owner_holds_a_grant() {
-    // The owner principal is the agent identity, but its lineage resolves
+    // The owner principal is the virtual user, but its lineage resolves
     // to a human who *does* hold a grant. That is precisely the borrow this
     // rule forbids.
     let fixture = mcp_setup(UNATTENDED, true, false).await;
@@ -431,7 +490,7 @@ async fn none_attachment_reads_no_connection_store_at_all() {
     assert!(
         fixture
             .db
-            .get_agent_identity_connection_for_session(fixture.session_id, &fixture.provider)
+            .get_virtual_user_connection_for_session(fixture.session_id, &fixture.provider)
             .await
             .unwrap()
             .is_some()
@@ -439,7 +498,7 @@ async fn none_attachment_reads_no_connection_store_at_all() {
 }
 
 #[tokio::test]
-async fn attended_session_is_decided_by_the_owner_principal_not_the_resolved_owner() {
+async fn runtime_subject_is_decided_by_the_invocation_not_the_resolved_owner() {
     // Both fixtures carry the same resolved_owner_user_id; only the owner
     // principal's kind differs. If resolution ever regresses to reading the
     // denormalized column, these two agree and this test fails.
@@ -449,14 +508,14 @@ async fn attended_session_is_decided_by_the_owner_principal_not_the_resolved_own
     assert!(
         attended
             .db
-            .session_has_human_initiator(attended.session_id)
+            .runtime_invocation_has_subject(attended.session_id, INPUT_MESSAGE)
             .await
             .unwrap()
     );
     assert!(
         !unattended
             .db
-            .session_has_human_initiator(unattended.session_id)
+            .runtime_invocation_has_subject(unattended.session_id, INPUT_MESSAGE)
             .await
             .unwrap()
     );
@@ -525,8 +584,28 @@ async fn two_different_invoking_users_reach_the_remote_as_the_same_identity() {
         .unwrap();
     let mut second_input = session_input(Some(second_user_id));
     second_input.owner_principal_id = second_principal_id;
-    second_input.agent_identity_id = Some(first.identity_id);
+    second_input.virtual_user_id = Some(first.identity_id);
+    second_input.agent_id = Some(first.agent_id);
     let second_session = first.db.create_session(second_input).await.unwrap();
+    seed_runtime_user(
+        &first.db,
+        VirtualUserId::from_uuid(second_user_id),
+        "end_user",
+    )
+    .await;
+    let second_message = Uuid::new_v4();
+    first
+        .db
+        .record_runtime_invocation(
+            DEFAULT_ORG_ID,
+            second_session.id,
+            second_message,
+            Some(VirtualUserId::from_uuid(second_user_id)),
+            None,
+            Some(first.agent_id.uuid()),
+        )
+        .await
+        .unwrap();
     first
         .db
         .upsert_user_connection(CreateUserConnectionRow {
@@ -556,6 +635,7 @@ async fn two_different_invoking_users_reach_the_remote_as_the_same_identity() {
         .await
         .unwrap();
     let second_token = resolver
+        .bound_to_input_message(second_message)
         .get_mcp_connection_token(second_session.id, &first.provider, McpServerActsAs::Service)
         .await
         .unwrap();
@@ -568,7 +648,7 @@ async fn two_different_invoking_users_reach_the_remote_as_the_same_identity() {
     assert_eq!(
         first
             .db
-            .list_agent_identity_connections(first.identity_id)
+            .list_virtual_user_connections(first.identity_id)
             .await
             .unwrap()
             .len(),
@@ -599,7 +679,7 @@ async fn revoking_the_identity_grant_returns_the_attachment_to_connection_requir
     assert!(
         fixture
             .db
-            .delete_agent_identity_connection(fixture.identity_id, &fixture.provider)
+            .delete_virtual_user_connection(fixture.identity_id, &fixture.provider)
             .await
             .unwrap()
     );
@@ -640,7 +720,7 @@ async fn identity_grant_is_unreachable_from_a_session_without_that_identity() {
     assert!(
         other
             .db
-            .get_agent_identity_connection_for_session(other.session_id, &other.provider)
+            .get_virtual_user_connection_for_session(other.session_id, &other.provider)
             .await
             .unwrap()
             .is_none()
@@ -677,7 +757,8 @@ async fn resend_connection_after_sixteen_minutes_refreshes_without_reconnect() {
         encryption.clone(),
         None,
         exchange.clone(),
-    );
+    )
+    .bound_to_input_message(INPUT_MESSAGE);
 
     let token = resolver
         .get_connection_token(session_id, &provider)
@@ -712,8 +793,8 @@ async fn expired_identity_grant_refreshes_and_persists_rotated_grant() {
     let fixture = mcp_setup(ATTENDED, false, false).await;
     fixture
         .db
-        .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-            agent_identity_id: fixture.identity_id,
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: fixture.identity_id,
             provider: fixture.provider.clone(),
             connection_type: "oauth".to_string(),
             provider_user_id: None,
@@ -741,7 +822,8 @@ async fn expired_identity_grant_refreshes_and_persists_rotated_grant() {
         fixture.encryption.clone(),
         None,
         exchange.clone(),
-    );
+    )
+    .bound_to_input_message(INPUT_MESSAGE);
 
     let token = resolver
         .get_mcp_connection_token(
@@ -756,7 +838,7 @@ async fn expired_identity_grant_refreshes_and_persists_rotated_grant() {
     assert_eq!(exchange.calls.load(Ordering::SeqCst), 1);
     let updated = fixture
         .db
-        .get_agent_identity_connection(fixture.identity_id, &fixture.provider)
+        .get_virtual_user_connection(fixture.identity_id, &fixture.provider)
         .await
         .unwrap()
         .unwrap();
@@ -783,8 +865,8 @@ async fn invalid_identity_refresh_grant_is_revoked_without_retry() {
     let fixture = mcp_setup(ATTENDED, false, false).await;
     fixture
         .db
-        .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-            agent_identity_id: fixture.identity_id,
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: fixture.identity_id,
             provider: fixture.provider.clone(),
             connection_type: "oauth".to_string(),
             provider_user_id: None,
@@ -812,7 +894,8 @@ async fn invalid_identity_refresh_grant_is_revoked_without_retry() {
         fixture.encryption.clone(),
         None,
         exchange.clone(),
-    );
+    )
+    .bound_to_input_message(INPUT_MESSAGE);
 
     for _ in 0..2 {
         assert_eq!(
@@ -832,7 +915,7 @@ async fn invalid_identity_refresh_grant_is_revoked_without_retry() {
     assert!(
         fixture
             .db
-            .get_agent_identity_connection(fixture.identity_id, &fixture.provider)
+            .get_virtual_user_connection(fixture.identity_id, &fixture.provider)
             .await
             .unwrap()
             .is_none()
@@ -841,8 +924,9 @@ async fn invalid_identity_refresh_grant_is_revoked_without_retry() {
 
 #[tokio::test]
 async fn expired_session_grant_refreshes_and_persists_rotated_grant() {
-    let (db, encryption, session_id, server_id, provider) = setup(None).await;
+    let (db, encryption, session_id, server_id, provider) = setup(Some(Uuid::from_u128(77))).await;
     db.upsert_mcp_oauth_session_credentials(UpsertMcpOAuthSessionCredentials {
+        virtual_user_id: Some(VirtualUserId::from_uuid(Uuid::from_u128(77))),
         session_id,
         server_id,
         access_token_encrypted: encryption.encrypt_string("stale-access").unwrap(),
@@ -865,11 +949,12 @@ async fn expired_session_grant_refreshes_and_persists_rotated_grant() {
         encryption.clone(),
         None,
         exchange.clone(),
-    );
+    )
+    .bound_to_input_message(INPUT_MESSAGE);
 
     assert_eq!(
         resolver
-            .get_connection_token(session_id, &provider)
+            .get_mcp_connection_token(session_id, &provider, McpServerActsAs::User)
             .await
             .unwrap()
             .as_deref(),
@@ -918,12 +1003,10 @@ async fn concurrent_expired_resolution_coalesces_refresh() {
         delay: StdDuration::from_millis(50),
         result: FakeRefreshResult::Success,
     });
-    let resolver = Arc::new(DbConnectionResolver::with_oauth_refresh(
-        db,
-        encryption,
-        None,
-        exchange.clone(),
-    ));
+    let resolver = Arc::new(
+        DbConnectionResolver::with_oauth_refresh(db, encryption, None, exchange.clone())
+            .bound_to_input_message(INPUT_MESSAGE),
+    );
 
     let mut tasks = Vec::new();
     for _ in 0..8 {
@@ -969,7 +1052,8 @@ async fn failed_refresh_fails_closed_and_preserves_existing_grant() {
         result: FakeRefreshResult::Failed,
     });
     let resolver =
-        DbConnectionResolver::with_oauth_refresh(db.clone(), encryption, None, exchange.clone());
+        DbConnectionResolver::with_oauth_refresh(db.clone(), encryption, None, exchange.clone())
+            .bound_to_input_message(INPUT_MESSAGE);
 
     assert_eq!(
         resolver
@@ -1013,9 +1097,10 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
         .mount(&github)
         .await;
 
-    let db = StorageBackend::InMemory(Arc::new(InMemoryDatabase::new()));
-    let encryption = encryption();
-    let identity_id = AgentIdentityId::from_seed(11);
+    let fixture = mcp_setup(UNATTENDED, false, false).await;
+    let db = fixture.db.clone();
+    let encryption = fixture.encryption.clone();
+    let identity_id = fixture.identity_id;
     let pem = std::fs::read_to_string(format!(
         "{}/tests/fixtures/test-server-key.pem",
         env!("CARGO_MANIFEST_DIR")
@@ -1024,7 +1109,7 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
     db.create_github_app(crate::storage::github_app_rows::CreateGitHubAppRow {
         id: Uuid::now_v7(),
         org_id: DEFAULT_ORG_ID,
-        agent_identity_id: identity_id,
+        virtual_user_id: identity_id,
         app_id: 99,
         slug: "pr-bot".to_string(),
         name: "pr-bot".to_string(),
@@ -1038,8 +1123,8 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
     })
     .await
     .unwrap();
-    db.upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-        agent_identity_id: identity_id,
+    db.upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+        virtual_user_id: identity_id,
         provider: "github".to_string(),
         connection_type: "github_app".to_string(),
         provider_user_id: None,
@@ -1053,9 +1138,23 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
     })
     .await
     .unwrap();
+    // Session configuration is not the responder's authority.
+    let unrelated = VirtualUserId::from_seed(99);
+    seed_runtime_user(&db, unrelated, "service").await;
     let mut input = session_input(None);
-    input.agent_identity_id = Some(identity_id);
+    input.virtual_user_id = Some(unrelated);
     let session = db.create_session(input).await.unwrap();
+    let message_id = Uuid::new_v4();
+    db.record_runtime_invocation(
+        DEFAULT_ORG_ID,
+        session.id,
+        message_id,
+        None,
+        None,
+        Some(fixture.agent_id.uuid()),
+    )
+    .await
+    .unwrap();
 
     let exchange = Arc::new(FakeRefreshExchange {
         calls: AtomicUsize::new(0),
@@ -1074,6 +1173,7 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
             ));
 
     let token = resolver
+        .bound_to_input_message(message_id)
         .get_connection_token(session.id, "github")
         .await
         .unwrap();
@@ -1088,4 +1188,19 @@ async fn github_token_is_minted_from_the_identitys_own_app() {
             .unwrap(),
         None
     );
+}
+
+async fn seed_runtime_user(db: &StorageBackend, id: VirtualUserId, usage: &str) {
+    db.create_virtual_user(crate::storage::models::CreateVirtualUserRow {
+        org_id: DEFAULT_ORG_ID,
+        id,
+        usage: usage.into(),
+        name: "Runtime user".into(),
+        description: None,
+        avatar_url: None,
+        locale: None,
+        timezone: None,
+    })
+    .await
+    .unwrap();
 }

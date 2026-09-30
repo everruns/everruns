@@ -88,6 +88,13 @@ fn redact_tool_result(result: &mut ToolResult, secrets: &[String]) {
 /// per host (runtime: effective scoped servers; worker: gRPC lookup).
 #[async_trait]
 pub trait McpConnectionResolver: Send + Sync {
+    fn for_execution(
+        &self,
+        _input_message_id: uuid::Uuid,
+    ) -> Option<Arc<dyn McpConnectionResolver>> {
+        None
+    }
+
     async fn resolve(&self, server_prefix: &str) -> Result<Option<McpConnection>>;
     async fn invalidate(
         &self,
@@ -418,6 +425,12 @@ fn form_elicitation_result(
 
 #[async_trait]
 impl McpToolInvoker for McpExecutor {
+    fn for_execution(&self, id: uuid::Uuid) -> Option<Arc<dyn McpToolInvoker>> {
+        self.resolver.for_execution(id).map(|resolver| {
+            Arc::new(Self::new(self.client.clone(), resolver)) as Arc<dyn McpToolInvoker>
+        })
+    }
+
     async fn invoke(&self, tool_call: &ToolCall) -> CoreResult<ToolResult> {
         self.execute_mcp_tool(tool_call).await.map_err(|e| {
             tracing::error!(error = %e, "MCP tool execution failed");

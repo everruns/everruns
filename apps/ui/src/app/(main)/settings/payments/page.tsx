@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { usePageTitle } from "@/hooks";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useAgentIdentities } from "@/hooks/use-agent-identities";
+import { useVirtualUsers } from "@/hooks/use-virtual-users";
 import {
   useCreatePaymentAccount,
   useCreatePaymentPolicy,
@@ -44,7 +44,7 @@ const railLabels: Record<PaymentRail, string> = {
 
 const ownerLabels: Record<PaymentOwnerType, string> = {
   user: "User",
-  agent_identity: "Agent Identity",
+  virtual_user: "Virtual User",
   organization: "Organization",
 };
 
@@ -63,7 +63,7 @@ function splitCsv(value: string) {
 export default function PaymentSettingsPage() {
   usePageTitle("Payments", "Settings");
   const { data: currentUser } = useCurrentUser();
-  const { data: identities = [] } = useAgentIdentities();
+  const { data: identities = [] } = useVirtualUsers();
   const { data: accounts = [], isLoading: accountsLoading } = usePaymentAccounts();
   const { data: policies = [] } = usePaymentPolicies();
   const { data: attempts = [] } = usePaymentAttempts({ limit: 25 });
@@ -80,14 +80,14 @@ export default function PaymentSettingsPage() {
   const [privateKey, setPrivateKey] = useState("");
 
   const [policyAccountId, setPolicyAccountId] = useState("");
-  const [subjectType, setSubjectType] = useState<PaymentPolicy["subject_type"]>("agent_identity");
+  const [subjectType, setSubjectType] = useState<PaymentPolicy["subject_type"]>("virtual_user");
   const [subjectId, setSubjectId] = useState("");
   const [perRequest, setPerRequest] = useState("0.30");
   const [capabilities, setCapabilities] = useState("parallel");
   const [hosts, setHosts] = useState("parallelmpp.dev");
 
   const ownerOptions = useMemo(() => {
-    if (ownerType === "agent_identity") {
+    if (ownerType === "virtual_user") {
       return identities.map((identity) => ({ id: identity.id, label: identity.name }));
     }
     if (ownerType === "user" && currentUser) {
@@ -157,7 +157,7 @@ export default function PaymentSettingsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="agent_identity">Agent Identity</SelectItem>
+                  <SelectItem value="virtual_user">Virtual User</SelectItem>
                   <SelectItem value="organization">Organization</SelectItem>
                 </SelectContent>
               </Select>
@@ -318,7 +318,7 @@ export default function PaymentSettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="agent_identity">Agent Identity</SelectItem>
+                  <SelectItem value="virtual_user">Virtual User</SelectItem>
                   <SelectItem value="user">User</SelectItem>
                   <SelectItem value="agent">Agent</SelectItem>
                   <SelectItem value="agent_endpoint">Endpoint</SelectItem>

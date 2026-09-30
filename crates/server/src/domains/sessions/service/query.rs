@@ -28,7 +28,11 @@ impl SessionService {
                     .await?;
                 // Populate is_pinned if user context available
                 if let Some(uid) = user_id {
-                    let pinned = self.db.list_pinned_session_ids(uid, caller.org_id).await?;
+                    let runtime = self.db.default_virtual_user(caller.org_id, uid).await?;
+                    let pinned = self
+                        .db
+                        .list_pinned_session_ids(runtime.id.uuid(), caller.org_id)
+                        .await?;
                     session.is_pinned = Some(pinned.iter().any(|s| s.uuid() == id));
                 }
                 Ok(Some(session))
@@ -147,7 +151,11 @@ impl SessionService {
 
         // Populate is_pinned if user context available
         if let Some(uid) = user_id {
-            let pinned_ids = self.db.list_pinned_session_ids(uid, org_id).await?;
+            let runtime = self.db.default_virtual_user(org_id, uid).await?;
+            let pinned_ids = self
+                .db
+                .list_pinned_session_ids(runtime.id.uuid(), org_id)
+                .await?;
             let pinned_set: std::collections::HashSet<Uuid> =
                 pinned_ids.iter().map(|id| id.uuid()).collect();
             for session in &mut sessions {
@@ -422,7 +430,7 @@ impl SessionService {
             }),
             agent_id: row.agent_id,
             agent_version_id: row.agent_version_id,
-            agent_identity_id: row.agent_identity_id,
+            virtual_user_id: row.virtual_user_id,
             owner_principal_id: row.owner_principal_id,
             resolved_owner_user_id: row.resolved_owner_user_id,
             owner: None,

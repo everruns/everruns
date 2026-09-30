@@ -38,7 +38,7 @@ async function mockAppApi(page: Page) {
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
-    } else if (pathname === "/api/v1/user/connections") {
+    } else if (pathname === "/api/v1/virtual-users/me/connections") {
       json = [];
     } else if (pathname === "/api/v1/models") {
       json = {

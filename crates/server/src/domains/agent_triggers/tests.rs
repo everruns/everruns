@@ -244,7 +244,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let app_harness_id = everruns_provider::typed_id::HarnessId::from_seed(20);
     let owner_principal_id = everruns_provider::typed_id::PrincipalId::from_seed(30);
     let resolved_owner_user_id = Some(uuid::Uuid::from_u128(40));
-    let agent_identity_id = Some(everruns_provider::typed_id::AgentIdentityId::from_uuid(
+    let virtual_user_id = Some(everruns_provider::typed_id::VirtualUserId::from_uuid(
         uuid::Uuid::from_u128(50),
     ));
     let app_id = Some(uuid::Uuid::from_u128(60));
@@ -263,7 +263,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         default_model_id: None,
         harness_id: agent_harness_id,
         harness_source: "explicit".to_string(),
-        agent_identity_id: None,
+        virtual_user_id: None,
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
@@ -303,7 +303,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         execution_harness_id: Some(app_harness_id),
         execution_owner_principal_id: Some(owner_principal_id),
         execution_resolved_owner_user_id: resolved_owner_user_id,
-        execution_agent_identity_id: agent_identity_id,
+        execution_virtual_user_id: virtual_user_id,
         execution_app_id: app_id,
         execution_app_public_id: Some("app_frozen".to_string()),
         execution_app_name: Some("Frozen App".to_string()),
@@ -325,7 +325,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     assert_eq!(context.harness_id, app_harness_id);
     assert_eq!(context.owner_principal_id, owner_principal_id);
     assert_eq!(context.resolved_owner_user_id, resolved_owner_user_id);
-    assert_eq!(context.agent_identity_id, agent_identity_id);
+    assert_eq!(context.virtual_user_id, virtual_user_id);
     assert_eq!(context.app_id, app_id);
     assert_eq!(
         context.agent_version_policy,
@@ -381,7 +381,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
             agent_id: Some(agent.id),
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: owner.id,
             resolved_owner_user_id: owner.resolved_user_id,
             title: Some("preserved app trigger".to_string()),
@@ -770,21 +770,21 @@ async fn seed_agent_row(db: &Arc<StorageBackend>) -> crate::storage::models::Age
 async fn ensure_identity_for_agent_creates_and_links_when_none() {
     let db = Arc::new(StorageBackend::in_memory());
     let agent = seed_agent_row(&db).await;
-    assert!(agent.agent_identity_id.is_none());
+    assert!(agent.virtual_user_id.is_none());
 
     let (identity_id, owner) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
         .await
         .expect("lazily create identity");
 
     // The trigger session owner is the agent's own identity principal.
-    assert_eq!(owner.kind, "agent_identity");
+    assert_eq!(owner.kind, "virtual_user");
     // The agent row is now linked to the freshly-created identity.
     let linked = db
         .get_agent(DEFAULT_ORG_ID, agent.id)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(linked.agent_identity_id, Some(identity_id));
+    assert_eq!(linked.virtual_user_id, Some(identity_id));
 }
 
 #[tokio::test]
@@ -810,14 +810,15 @@ async fn ensure_identity_for_agent_is_idempotent_across_fires() {
 
 #[tokio::test]
 async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
-    use crate::storage::models::CreateAgentIdentityRow;
-    use everruns_provider::typed_id::AgentIdentityId;
+    use crate::storage::models::CreateVirtualUserRow;
+    use everruns_provider::typed_id::VirtualUserId;
 
     let db = Arc::new(StorageBackend::in_memory());
     let mut agent = seed_agent_row(&db).await;
 
-    let explicit = AgentIdentityId::new();
-    db.create_agent_identity(CreateAgentIdentityRow {
+    let explicit = VirtualUserId::new();
+    db.create_virtual_user(CreateVirtualUserRow {
+        usage: "service".to_string(),
         org_id: DEFAULT_ORG_ID,
         id: explicit,
         name: "Explicit".to_string(),
@@ -829,48 +830,49 @@ async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
     .await
     .unwrap();
     assert!(
-        db.set_agent_identity_id(DEFAULT_ORG_ID, agent.id, explicit)
+        db.set_virtual_user_id(DEFAULT_ORG_ID, agent.id, explicit)
             .await
             .unwrap()
     );
-    agent.agent_identity_id = Some(explicit);
+    agent.virtual_user_id = Some(explicit);
 
     let (identity_id, owner) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
         .await
         .expect("resolve explicit identity");
 
     assert_eq!(identity_id, explicit, "explicit identity is returned as-is");
-    assert_eq!(owner.kind, "agent_identity");
+    assert_eq!(owner.kind, "virtual_user");
     let linked = db
         .get_agent(DEFAULT_ORG_ID, agent.id)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(
-        linked.agent_identity_id,
+        linked.virtual_user_id,
         Some(explicit),
         "explicit identity is never overridden"
     );
 
     // A guarded set on an already-linked agent is a no-op.
     assert!(
-        !db.set_agent_identity_id(DEFAULT_ORG_ID, agent.id, AgentIdentityId::new())
+        !db.set_virtual_user_id(DEFAULT_ORG_ID, agent.id, VirtualUserId::new())
             .await
             .unwrap(),
-        "set_agent_identity_id refuses to override an existing link"
+        "set_virtual_user_id refuses to override an existing link"
     );
 }
 
 #[tokio::test]
 async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
-    use crate::storage::models::CreateAgentIdentityRow;
-    use everruns_provider::typed_id::AgentIdentityId;
+    use crate::storage::models::CreateVirtualUserRow;
+    use everruns_provider::typed_id::VirtualUserId;
 
     let db = Arc::new(StorageBackend::in_memory());
     let mut agent = seed_agent_row(&db).await;
 
-    let identity_id = AgentIdentityId::new();
-    db.create_agent_identity(CreateAgentIdentityRow {
+    let identity_id = VirtualUserId::new();
+    db.create_virtual_user(CreateVirtualUserRow {
+        usage: "service".to_string(),
         org_id: DEFAULT_ORG_ID,
         id: identity_id,
         name: "Archived".to_string(),
@@ -881,13 +883,13 @@ async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
     })
     .await
     .unwrap();
-    db.set_agent_identity_id(DEFAULT_ORG_ID, agent.id, identity_id)
+    db.set_virtual_user_id(DEFAULT_ORG_ID, agent.id, identity_id)
         .await
         .unwrap();
-    db.delete_agent_identity(DEFAULT_ORG_ID, identity_id)
+    db.delete_virtual_user(DEFAULT_ORG_ID, identity_id)
         .await
         .unwrap();
-    agent.agent_identity_id = Some(identity_id);
+    agent.virtual_user_id = Some(identity_id);
 
     let err = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
         .await
@@ -1268,7 +1270,7 @@ async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
         .create_github_app(CreateGitHubAppRow {
             id: uuid::Uuid::new_v4(),
             org_id: DEFAULT_ORG_ID,
-            agent_identity_id: identity_id,
+            virtual_user_id: identity_id,
             app_id: 42,
             slug: "pr-summarizer".to_string(),
             name: "pr-summarizer".to_string(),

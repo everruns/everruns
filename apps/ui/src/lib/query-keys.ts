@@ -197,7 +197,7 @@ export const queryKeys = {
     pending: () => ["invitations", "pending"] as const,
   },
 
-  // Agent Identity Connection queries
+  // Virtual User Connection queries
   identityConnections: {
     all: ["identity-connections"] as const,
     list: (identityId: string) => ["identity-connections", identityId] as const,

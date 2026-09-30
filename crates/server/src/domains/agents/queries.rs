@@ -52,6 +52,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_capability::Capabi
         .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
 
     Agent {
+        service_virtual_user_id: row.virtual_user_id,
         public_id,
         internal_id: row.id.uuid(),
         name: row.name,

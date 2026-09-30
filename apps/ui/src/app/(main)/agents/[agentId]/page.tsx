@@ -78,6 +78,7 @@ import {
   SectionTabs,
 } from "@/components/layout";
 import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
+import { AgentServiceAccount } from "@/components/agents/agent-service-account";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { AgentPreview } from "@/components/agents/agent-preview";
@@ -549,18 +550,25 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   ) : undefined
                 }
               />
-              <AgentConfigColumn
-                className="border-t lg:border-t-0"
-                agent={agent}
-                draft={draft}
-                editing={editing}
-                readOnly={readOnly}
-                allCapabilities={allCapabilities ?? []}
-                defaultModel={defaultModel}
-                onStartEdit={startEdit}
-                moreRows={moreRows}
-                onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
-              />
+              <div className="space-y-5">
+                <AgentConfigColumn
+                  className="border-t lg:border-t-0"
+                  agent={agent}
+                  draft={draft}
+                  editing={editing}
+                  readOnly={readOnly}
+                  allCapabilities={allCapabilities ?? []}
+                  defaultModel={defaultModel}
+                  onStartEdit={startEdit}
+                  moreRows={moreRows}
+                  onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
+                />
+                <AgentServiceAccount
+                  agentId={agentId}
+                  value={agent.service_virtual_user_id}
+                  disabled={readOnly}
+                />
+              </div>
             </div>
           )}
 

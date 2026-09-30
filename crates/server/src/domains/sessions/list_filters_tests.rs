@@ -60,6 +60,36 @@ async fn new_db(orgs: &[i64]) -> Arc<StorageBackend> {
 }
 
 async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
+    let owner_principal_id = if let Some(user) = spec.owner_user_id {
+        if db.get_user(user).await.unwrap().is_none() {
+            db.create_user_with_id(
+                user,
+                crate::storage::models::CreateUserRow {
+                    email: format!("{user}@example.com"),
+                    name: "User".into(),
+                    avatar_url: None,
+                    roles: vec![],
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        db.add_organization_member(DEFAULT_ORG_ID, user, "member")
+            .await
+            .unwrap();
+        crate::services::PrincipalService::new(db.clone())
+            .ensure_default_virtual_user_principal(DEFAULT_ORG_ID, user)
+            .await
+            .unwrap()
+            .id
+    } else {
+        PrincipalId::from_seed(1)
+    };
     let row = db
         .create_session(CreateSessionRow {
             source: spec.source,
@@ -71,8 +101,8 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
             agent_id: spec.agent_id,
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
-            owner_principal_id: PrincipalId::from_seed(1),
+            virtual_user_id: None,
+            owner_principal_id,
             resolved_owner_user_id: spec.owner_user_id,
             title: Some(spec.title.to_string()),
             locale: None,
@@ -411,7 +441,7 @@ async fn facets_never_count_across_organizations() {
         agent_id: None,
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
         title: Some("theirs".to_string()),

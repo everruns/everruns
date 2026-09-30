@@ -577,21 +577,21 @@ impl StorageBackend {
         dispatch!(self, update_agent, org_id, id, input)
     }
 
-    pub async fn set_agent_identity_id(
+    pub async fn set_virtual_user_id(
         &self,
         org_id: i64,
         id: AgentId,
-        agent_identity_id: AgentIdentityId,
+        virtual_user_id: VirtualUserId,
     ) -> Result<bool> {
-        dispatch!(self, set_agent_identity_id, org_id, id, agent_identity_id)
+        dispatch!(self, set_virtual_user_id, org_id, id, virtual_user_id)
     }
 
     pub async fn has_agent_with_identity(
         &self,
         org_id: i64,
-        agent_identity_id: AgentIdentityId,
+        virtual_user_id: VirtualUserId,
     ) -> Result<bool> {
-        dispatch!(self, has_agent_with_identity, org_id, agent_identity_id)
+        dispatch!(self, has_agent_with_identity, org_id, virtual_user_id)
     }
 
     pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {

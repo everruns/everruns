@@ -33,73 +33,6 @@ use crate::api::validation::{
 
 const MAX_AUTO_SNAPSHOTS_PER_AGENT: i64 = 50;
 
-fn validate_create_limits(req: &CreateAgentRequest) -> Result<(), CommandError> {
-    if req.name.len() > MAX_AGENT_NAME_BYTES
-        || req
-            .display_name
-            .as_ref()
-            .is_some_and(|d| d.len() > MAX_AGENT_NAME_BYTES)
-        || req
-            .description
-            .as_ref()
-            .is_some_and(|d| d.len() > MAX_AGENT_DESCRIPTION_BYTES)
-        || req.system_prompt.len() > MAX_AGENT_SYSTEM_PROMPT_BYTES
-        || req.capabilities.len() > MAX_AGENT_CAPABILITIES
-        || req.initial_files.len() > MAX_INITIAL_FILES
-        || initial_files_total_bytes(&req.initial_files) > MAX_INITIAL_FILES_TOTAL_BYTES
-    {
-        return Err(CommandError::bad_request("Input exceeds allowed limits"));
-    }
-    check_platform_chat_content(
-        req.intro_markdown.as_deref(),
-        req.short_description.as_deref(),
-        &req.starters,
-    )
-    .map_err(CommandError::bad_request)?;
-    Ok(())
-}
-
-fn validate_update_limits(req: &UpdateAgentRequest) -> Result<(), CommandError> {
-    if req
-        .display_name
-        .as_ref()
-        .is_some_and(|d| d.len() > MAX_AGENT_NAME_BYTES)
-        || req
-            .description
-            .as_ref()
-            .is_some_and(|d| d.len() > MAX_AGENT_DESCRIPTION_BYTES)
-        || req
-            .system_prompt
-            .as_ref()
-            .is_some_and(|s| s.len() > MAX_AGENT_SYSTEM_PROMPT_BYTES)
-        || req
-            .capabilities
-            .as_ref()
-            .is_some_and(|c| c.len() > MAX_AGENT_CAPABILITIES)
-        || req
-            .initial_files
-            .as_ref()
-            .is_some_and(|f| f.len() > MAX_INITIAL_FILES)
-        || req
-            .initial_files
-            .as_ref()
-            .is_some_and(|f| initial_files_total_bytes(f) > MAX_INITIAL_FILES_TOTAL_BYTES)
-    {
-        return Err(CommandError::bad_request("Input exceeds allowed limits"));
-    }
-    check_platform_chat_content(
-        req.intro_markdown.as_ref().and_then(|v| v.as_deref()),
-        req.short_description.as_ref().and_then(|v| v.as_deref()),
-        req.starters.as_deref().unwrap_or_default(),
-    )
-    .map_err(CommandError::bad_request)?;
-    Ok(())
-}
-
-fn initial_files_total_bytes(files: &[InitialFile]) -> usize {
-    files.iter().map(|f| f.content.len()).sum()
-}
-
 async fn check_high_risk_caps(
     ctx: &Ctx,
     caps: &[AgentCapabilityConfig],
@@ -360,6 +293,7 @@ impl Command for CreateAgent {
         let harness_id =
             resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
 
+        validate_service_account(ctx, req.service_virtual_user_id).await?;
         // Persist
         let client_id = req.id;
         let (row, agent_uuid) = if let Some(client_id) = client_id {
@@ -436,6 +370,22 @@ impl Command for CreateAgent {
             (row, internal_uuid)
         };
 
+        let row = if let Some(id) = req.service_virtual_user_id {
+            ctx.db
+                .update_agent(
+                    ctx.org_id(),
+                    row.id,
+                    UpdateAgent {
+                        virtual_user_id: Some(Some(id)),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map_err(classify_anyhow)?
+                .ok_or_else(|| CommandError::not_found("Agent"))?
+        } else {
+            row
+        };
         let row = persist_harness_source(ctx, row, harness_source).await?;
         persist_capabilities(&ctx.db, agent_uuid, &caps).await?;
         Ok(q::row_to_agent(row, caps))
@@ -733,8 +683,28 @@ impl Command for UpdateAgentCmd {
         let harness_id =
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
 
+        if let everruns_durable::UpdateField::Set(id) = req.service_virtual_user_id {
+            validate_service_account(ctx, Some(id)).await?;
+        }
+        if matches!(
+            req.service_virtual_user_id,
+            everruns_durable::UpdateField::Clear
+        ) {
+            crate::domains::virtual_users::VIRTUAL_USER_MANAGE
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .map_err(|_| {
+                    CommandError::forbidden(
+                        "Service account binding requires virtual-user management permission",
+                    )
+                })?;
+        }
         // Persist
         let input = UpdateAgent {
+            virtual_user_id: match req.service_virtual_user_id {
+                everruns_durable::UpdateField::Unchanged => None,
+                everruns_durable::UpdateField::Clear => Some(None),
+                everruns_durable::UpdateField::Set(id) => Some(Some(id)),
+            },
             name: req.name,
             display_name: req.display_name,
             description: req.description,
@@ -1123,6 +1093,8 @@ impl Command for CopyAgent {
                 .map_err(classify_anyhow)?;
 
         let req = CreateAgentRequest {
+            service_virtual_user_id: None,
+
             id: None,
             name: copy_name,
             display_name: source.display_name.map(|d| format!("{d} (copy)")),
@@ -2019,6 +1991,8 @@ impl Command for ForkAgentVersion {
         fork.display_name = self.req.display_name;
         fork.description = self.req.description.or(fork.description);
         let created = CreateAgent(CreateAgentRequest {
+            service_virtual_user_id: None,
+
             id: None,
             name: fork.name.clone(),
             display_name: fork.display_name.clone(),
@@ -2481,3 +2455,6 @@ impl Command for DestroyAgent {
 }
 
 inventory::submit! { CommandDescriptor::of::<DestroyAgent>() }
+
+mod service_account;
+use service_account::{validate_create_limits, validate_service_account, validate_update_limits};

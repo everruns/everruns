@@ -103,7 +103,7 @@ Not emitted yet: `server.address` and `server.port` on model calls, and paramete
 | | Supported | Attributes |
 |---|-----------|------------|
 | ✅ | Span kinds | `openinference.span.kind`: `AGENT`, `CHAIN`, `LLM`, `TOOL` |
-| ✅ | Session and agent identity | `session.id`, `agent.name`, `metadata` |
+| ✅ | Session and virtual user | `session.id`, `agent.name`, `metadata` |
 | ✅ | Model identity | `llm.model_name`, `llm.provider`, `llm.system` |
 | ✅ | Token counts | `llm.token_count.prompt`, `.completion`, `.total` |
 | ✅ | Prompt cache detail | `llm.token_count.prompt_details.cache_read`, `.cache_write` |

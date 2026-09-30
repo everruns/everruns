@@ -2,6 +2,8 @@
 
 ## 2026-09-30
 
+* **Virtual users now own runtime profiles, preferences, and connections.** [Virtual Users and Everruns Users](runtime-resources/virtual-users.md) separates organization-scoped agent consumers and service accounts from management users. Chats and personal connection settings use the console default runtime account. Per-input authority replaces historical-owner credential resolution; ambiguous global grants require an explicit destination.
+
 * **Computer use**: Added the provider-neutral [computer use](execution/computer-use.md)
   contract and its first backend on Browserless, with threat-model entries
   TM-TOOL-048 to TM-TOOL-050.
@@ -31,6 +33,18 @@
   prototype covers one function tool, one MCP tool, event projection, and config
   import. It ran end to end against the live API on 2026-09-30 with one
   function and one MCP tool; the recorded stream is the test fixture. See [OpenAI Agents API Runtime Backend](execution/openai-agents-api-runtime.md).
+## 2026-09-29
+
+* **Virtual users have a proposed replacement design for the runtime identity
+  paths.** [Virtual Users and Everruns Users](runtime-resources/virtual-users.md)
+  separates management accounts from agent consumers, generalizes agent identities
+  into one runtime aggregate, unifies connection ownership, and makes invocation
+  authority explicit. It covers external identity binding, console proxying,
+  Platform Chat management authorization, and cutover. Organization scope is
+  accepted: virtual users and their connections are org-scoped, with explicit
+  destinations for migrating existing multi-org grants. UI and API proposals
+  map console self-service, virtual-user management, and verified external
+  consumer access onto the same model. No product behavior changes.
 
 ## 2026-09-28
 

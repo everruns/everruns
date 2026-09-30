@@ -3,15 +3,15 @@ pub use super::session_turn_claim::*;
 
 use crate::kernel_imports::{
     everruns_provider::driver_registry::ServiceKind, everruns_provider::typed_id::AgentId,
-    everruns_provider::typed_id::AgentIdentityId, everruns_provider::typed_id::AgentVersionId,
-    everruns_provider::typed_id::EventId, everruns_provider::typed_id::FileId,
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::ImageId,
-    everruns_provider::typed_id::LeasedResourceId, everruns_provider::typed_id::McpServerId,
-    everruns_provider::typed_id::MessageId, everruns_provider::typed_id::ModelId,
-    everruns_provider::typed_id::NotificationId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::ProviderId, everruns_provider::typed_id::ScheduleId,
-    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
-    everruns_provider::typed_id::SkillId, everruns_provider::typed_id::TriggerId,
+    everruns_provider::typed_id::AgentVersionId, everruns_provider::typed_id::EventId,
+    everruns_provider::typed_id::FileId, everruns_provider::typed_id::HarnessId,
+    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
+    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
+    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
+    everruns_provider::typed_id::PrincipalId, everruns_provider::typed_id::ProviderId,
+    everruns_provider::typed_id::ScheduleId, everruns_provider::typed_id::SessionId,
+    everruns_provider::typed_id::SessionParticipantId, everruns_provider::typed_id::SkillId,
+    everruns_provider::typed_id::TriggerId, everruns_provider::typed_id::VirtualUserId,
 };
 use chrono::{DateTime, Utc};
 use everruns_durable::UpdateField;
@@ -508,11 +508,11 @@ pub struct AgentRow {
     pub harness_source: String,
     /// Lazily-created identity principal subject for this agent (EVE-758).
     /// NULL until the agent first acts unattended (e.g. an agent trigger fire),
-    /// at which point an `agent_identities` row is created and linked so the
+    /// at which point an `virtual_users` row is created and linked so the
     /// agent owns its unattended sessions as itself. Storage-only: intentionally
     /// not surfaced on the public `everruns_platform::Agent` API.
     #[sqlx(default)]
-    pub agent_identity_id: Option<AgentIdentityId>,
+    pub virtual_user_id: Option<VirtualUserId>,
     #[sqlx(default)]
     pub default_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
     #[sqlx(default)]
@@ -685,6 +685,7 @@ pub struct CreateAgentRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateAgent {
+    pub virtual_user_id: Option<Option<VirtualUserId>>,
     pub name: Option<String>,
     pub display_name: Option<String>,
     pub description: Option<String>,
@@ -873,7 +874,7 @@ pub struct SessionRow {
     #[sqlx(default)]
     pub agent_config_hash: Option<String>,
     #[sqlx(default)]
-    pub agent_identity_id: Option<AgentIdentityId>,
+    pub virtual_user_id: Option<VirtualUserId>,
     pub owner_principal_id: PrincipalId,
     #[sqlx(default)]
     pub resolved_owner_user_id: Option<Uuid>,
@@ -1136,7 +1137,7 @@ pub struct UpdateSession {
     pub agent_config_hash: Option<String>,
     pub title: Option<String>,
     pub goal: Option<String>,
-    pub agent_identity_id: UpdateField<AgentIdentityId>,
+    pub virtual_user_id: UpdateField<VirtualUserId>,
     pub owner_principal_id: Option<PrincipalId>,
     pub resolved_owner_user_id: UpdateField<Uuid>,
     pub locale: Option<String>,
@@ -2129,6 +2130,8 @@ pub struct SessionKeyInfoRow {
 /// Session secret row from database
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionSecretRow {
+    #[sqlx(default)]
+    pub virtual_user_id: Option<VirtualUserId>,
     pub id: Uuid,
     pub session_id: SessionId,
     pub name: String,
@@ -2337,6 +2340,7 @@ pub struct CreateUserConnectionRow {
 /// Encrypted MCP OAuth credential bundle stored in session secrets.
 #[derive(Debug, Clone)]
 pub struct McpOAuthSessionCredentialsRow {
+    pub virtual_user_id: Option<VirtualUserId>,
     pub access_token_encrypted: Vec<u8>,
     pub refresh_token_encrypted: Option<Vec<u8>>,
     pub expires_at_encrypted: Option<Vec<u8>>,
@@ -2345,6 +2349,7 @@ pub struct McpOAuthSessionCredentialsRow {
 /// Atomic replacement for a session-scoped MCP OAuth grant.
 #[derive(Debug, Clone)]
 pub struct UpsertMcpOAuthSessionCredentials {
+    pub virtual_user_id: Option<VirtualUserId>,
     pub session_id: SessionId,
     pub server_id: Uuid,
     pub access_token_encrypted: Vec<u8>,
@@ -2363,14 +2368,14 @@ pub struct UpdateOAuthConnectionTokens {
 }
 
 // ============================================
-// Agent Identity Connection models
+// Virtual User Connection models
 // ============================================
 
 /// Agent identity connection row from database
 #[derive(Debug, Clone, FromRow)]
-pub struct AgentIdentityConnectionRow {
+pub struct VirtualUserConnectionRow {
     pub id: Uuid,
-    pub agent_identity_id: AgentIdentityId,
+    pub virtual_user_id: VirtualUserId,
     pub provider: String,
     pub connection_type: String,
     pub provider_user_id: Option<String>,
@@ -2386,10 +2391,10 @@ pub struct AgentIdentityConnectionRow {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Input for creating an agent identity connection
+/// Input for creating an virtual user connection
 #[derive(Debug, Clone)]
-pub struct CreateAgentIdentityConnectionRow {
-    pub agent_identity_id: AgentIdentityId,
+pub struct CreateVirtualUserConnectionRow {
+    pub virtual_user_id: VirtualUserId,
     pub provider: String,
     pub connection_type: String,
     pub provider_user_id: Option<String>,
@@ -2690,43 +2695,6 @@ pub struct NewSessionTaskMessageRow {
 // Agent identity models (virtual principals)
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
-pub struct AgentIdentityRow {
-    pub id: AgentIdentityId,
-    pub org_id: i64,
-    pub name: String,
-    pub description: Option<String>,
-    pub avatar_url: Option<String>,
-    pub locale: Option<String>,
-    pub timezone: Option<String>,
-    pub status: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub archived_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateAgentIdentityRow {
-    pub org_id: i64,
-    pub id: AgentIdentityId,
-    pub name: String,
-    pub description: Option<String>,
-    pub avatar_url: Option<String>,
-    pub locale: Option<String>,
-    pub timezone: Option<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct UpdateAgentIdentity {
-    pub name: Option<String>,
-    pub description: UpdateField<String>,
-    pub avatar_url: UpdateField<String>,
-    pub locale: UpdateField<String>,
-    pub timezone: UpdateField<String>,
-    pub status: Option<String>,
-}
-
 // ============================================
 // Agent trigger models (agent-owned invocation triggers)
 // ============================================
@@ -2745,7 +2713,7 @@ pub struct AgentTriggerRow {
     pub execution_harness_id: Option<HarnessId>,
     pub execution_owner_principal_id: Option<PrincipalId>,
     pub execution_resolved_owner_user_id: Option<Uuid>,
-    pub execution_agent_identity_id: Option<AgentIdentityId>,
+    pub execution_virtual_user_id: Option<VirtualUserId>,
     pub execution_app_id: Option<Uuid>,
     pub execution_app_public_id: Option<String>,
     pub execution_app_name: Option<String>,
@@ -2772,7 +2740,7 @@ pub struct CreateAgentTriggerRow {
     pub execution_harness_id: Option<HarnessId>,
     pub execution_owner_principal_id: Option<PrincipalId>,
     pub execution_resolved_owner_user_id: Option<Uuid>,
-    pub execution_agent_identity_id: Option<AgentIdentityId>,
+    pub execution_virtual_user_id: Option<VirtualUserId>,
     pub execution_app_id: Option<Uuid>,
     pub execution_app_public_id: Option<String>,
     pub execution_app_name: Option<String>,
@@ -2808,7 +2776,7 @@ pub struct AppRow {
     pub agent_version_policy: String,
     #[sqlx(default)]
     pub agent_version_id: Option<Uuid>,
-    pub agent_identity_id: Option<Uuid>,
+    pub virtual_user_id: Option<Uuid>,
     pub owner_principal_id: PrincipalId,
     #[sqlx(default)]
     pub resolved_owner_user_id: Option<Uuid>,
@@ -2833,7 +2801,7 @@ pub struct CreateAppRow {
     pub agent_id: Option<Uuid>,
     pub agent_version_policy: String,
     pub agent_version_id: Option<Uuid>,
-    pub agent_identity_id: Option<Uuid>,
+    pub virtual_user_id: Option<Uuid>,
     pub owner_principal_id: PrincipalId,
     pub resolved_owner_user_id: Option<Uuid>,
     pub channel_type: Option<String>,
@@ -2851,7 +2819,7 @@ pub struct UpdateApp {
     pub agent_id: Option<Uuid>,
     pub agent_version_policy: Option<String>,
     pub agent_version_id: UpdateField<Uuid>,
-    pub agent_identity_id: UpdateField<Uuid>,
+    pub virtual_user_id: UpdateField<Uuid>,
     pub owner_principal_id: Option<PrincipalId>,
     pub resolved_owner_user_id: UpdateField<Uuid>,
     pub channel_type: Option<String>,
@@ -3817,3 +3785,6 @@ pub struct InstallCompactionCheckpointRow {
     pub format_version: i32,
     pub payload_encrypted: Vec<u8>,
 }
+
+mod virtual_users;
+pub use virtual_users::*;

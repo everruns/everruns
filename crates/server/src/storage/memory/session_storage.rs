@@ -114,6 +114,7 @@ impl InMemoryDatabase {
             existing.clone()
         } else {
             let row = SessionSecretRow {
+                virtual_user_id: None,
                 id: Uuid::now_v7(),
                 session_id: input.session_id,
                 name: input.name,
@@ -151,6 +152,12 @@ impl InMemoryDatabase {
 
         Ok(
             access_token_encrypted.map(|access_token_encrypted| McpOAuthSessionCredentialsRow {
+                virtual_user_id: storage
+                    .get(&(
+                        session_id,
+                        everruns_core::mcp_oauth_session_secret_name(server_id, "access_token"),
+                    ))
+                    .and_then(|r| r.virtual_user_id),
                 access_token_encrypted,
                 refresh_token_encrypted: storage
                     .get(&(session_id, refresh_name))
@@ -189,10 +196,12 @@ impl InMemoryDatabase {
                 if let Some(existing) = storage.get_mut(&key) {
                     existing.value_encrypted = value_encrypted;
                     existing.updated_at = now;
+                    existing.virtual_user_id = input.virtual_user_id;
                 } else {
                     storage.insert(
                         key,
                         SessionSecretRow {
+                            virtual_user_id: input.virtual_user_id,
                             id: uuid::Uuid::now_v7(),
                             session_id: input.session_id,
                             name,
@@ -308,6 +317,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
                 row.updated_at = now;
             })
             .or_insert_with(|| SessionSecretRow {
+                virtual_user_id: None,
                 id: Uuid::now_v7(),
                 session_id,
                 name: name.to_string(),

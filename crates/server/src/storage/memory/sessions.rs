@@ -112,7 +112,7 @@ impl InMemoryDatabase {
             agent_id: input.agent_id,
             agent_version_id: input.agent_version_id,
             agent_config_hash: input.agent_config_hash,
-            agent_identity_id: input.agent_identity_id,
+            virtual_user_id: input.virtual_user_id,
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             title: input.title,
@@ -264,9 +264,19 @@ impl InMemoryDatabase {
                 )
             })
             .filter(|s| {
-                filters
-                    .owner_user_id
-                    .is_none_or(|uid| s.resolved_owner_user_id == Some(uid))
+                filters.owner_user_id.is_none_or(|uid| {
+                    self.principals
+                        .read()
+                        .get(&s.owner_principal_id)
+                        .is_some_and(|p| {
+                            p.kind == "virtual_user"
+                                && self.virtual_user_bindings.read().values().any(|b| {
+                                    b.org_id == s.org_id
+                                        && Some(b.virtual_user_id.uuid()) == p.subject_id
+                                        && b.management_user_id == Some(uid)
+                                })
+                        })
+                })
             })
             .filter(|s| filters.include_archived || s.archived_at.is_none())
             .filter(|s| filters.created_after.is_none_or(|t| s.created_at >= t))
@@ -1049,9 +1059,7 @@ impl InMemoryDatabase {
             if let Some(goal) = input.goal {
                 session.goal = Some(goal);
             }
-            input
-                .agent_identity_id
-                .apply(&mut session.agent_identity_id);
+            input.virtual_user_id.apply(&mut session.virtual_user_id);
             if let Some(owner_principal_id) = input.owner_principal_id {
                 session.owner_principal_id = owner_principal_id;
             }

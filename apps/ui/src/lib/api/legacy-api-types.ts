@@ -1,44 +1,8 @@
-// From legacy agent-identity-types.ts; retained as UI compatibility over generated OpenAPI schemas.
+// From legacy virtual-user-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 
 // Enums that stay generated (closed sets the server owns) while the entity they
 // annotate is still hand-maintained here.
 import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
-
-// Agent Identity types
-export type AgentIdentityStatus = "active" | "archived" | "deleted";
-
-export interface AgentIdentity {
-  id: string;
-  name: string;
-  description?: string | null;
-  avatar_url?: string | null;
-  locale?: string | null;
-  timezone?: string | null;
-  principal?: PrincipalSummary | null;
-  effective_owner?: PrincipalSummary | null;
-  status: AgentIdentityStatus;
-  created_at: string;
-  updated_at: string;
-  archived_at?: string | null;
-  deleted_at?: string | null;
-}
-
-export interface CreateAgentIdentityRequest {
-  name: string;
-  description?: string;
-  avatar_url?: string;
-  locale?: string;
-  timezone?: string;
-}
-
-export interface UpdateAgentIdentityRequest {
-  name?: string;
-  description?: string | null;
-  avatar_url?: string | null;
-  locale?: string | null;
-  timezone?: string | null;
-  status?: AgentIdentityStatus;
-}
 
 // From legacy agent-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // ============================================
@@ -67,6 +31,7 @@ export interface ConversationStarter {
 }
 
 export interface Agent {
+  service_virtual_user_id?: string | null;
   id: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens (e.g. "customer-support") */
   name: string;
@@ -197,6 +162,7 @@ export interface AgentVersionDiffResponse {
 }
 
 export interface CreateAgentRequest {
+  service_virtual_user_id?: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name: string;
   /** Human-readable display name shown in UI */
@@ -225,6 +191,7 @@ export interface CreateAgentRequest {
 }
 
 export interface UpdateAgentRequest {
+  service_virtual_user_id?: string | null;
   /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name?: string;
   /** Human-readable display name shown in UI */
@@ -808,7 +775,7 @@ export interface App {
   agent_id: string | null;
   agent_version_policy: AgentVersionPolicy;
   agent_version_id: string | null;
-  agent_identity_id?: string | null;
+  virtual_user_id?: string | null;
   owner_principal_id: string;
   resolved_owner_user_id?: string | null;
   owner?: PrincipalSummary | null;
@@ -1274,7 +1241,7 @@ export interface InitialFile {
   is_readonly: boolean;
 }
 
-export type PrincipalKind = "user" | "agent_identity" | "system";
+export type PrincipalKind = "user" | "virtual_user" | "system";
 
 export interface PrincipalSummary {
   id: string;
@@ -3168,7 +3135,7 @@ export function getToolCallsFromContent(content: ContentPart[]): Array<{
 // From legacy payment-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 export type PaymentRail = "mpp_tempo" | "x402_base";
 
-export type PaymentOwnerType = "user" | "agent_identity" | "organization";
+export type PaymentOwnerType = "user" | "virtual_user" | "organization";
 
 export type PaymentStatus = "active" | "disabled" | "pending" | "succeeded" | "failed" | "released";
 
@@ -3208,7 +3175,7 @@ export interface PaymentPolicy {
   id: string;
   organization_id: string;
   payment_account_id: string;
-  subject_type: "user" | "agent_identity" | "agent" | "app" | "session" | "org";
+  subject_type: "user" | "virtual_user" | "agent" | "app" | "session" | "org";
   subject_id: string;
   allowed_capabilities: string[];
   allowed_hosts: string[];
@@ -3892,7 +3859,7 @@ export interface Session {
   agent_id: string | null;
   /** Immutable agent version captured when the session was created or rebound. */
   agent_version_id?: string | null;
-  agent_identity_id?: string | null;
+  virtual_user_id?: string | null;
   owner_principal_id: string;
   resolved_owner_user_id?: string | null;
   owner?: PrincipalSummary | null;
@@ -4025,7 +3992,7 @@ export interface CreateSessionRequest {
   agent_id?: string;
   /** Agent name to work in this session (optional). Mutually exclusive with `agent_id`. */
   agent_name?: string;
-  agent_identity_id?: string;
+  virtual_user_id?: string;
   title?: string;
   locale?: string;
   tags?: string[];

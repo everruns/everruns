@@ -1,8 +1,8 @@
 use super::super::common::ErrorResponse;
 use super::super::pagination::bounded_page_limit;
 use super::AppState;
+use super::ConnectionUser;
 use crate::auth::ResolvedOrg;
-use crate::auth::middleware::AuthUser;
 use axum::{
     Json,
     extract::{Query, State},
@@ -81,7 +81,7 @@ pub struct UserMcpConnectionsResponse {
 pub async fn list_mcp_connections(
     State(state): State<AppState>,
     org: ResolvedOrg,
-    auth: AuthUser,
+    auth: ConnectionUser,
     Query(query): Query<ListUserMcpConnectionsQuery>,
 ) -> Result<Json<UserMcpConnectionsResponse>, (StatusCode, Json<ErrorResponse>)> {
     let limit = bounded_page_limit(query.limit, DEFAULT_LIMIT, MAX_LIMIT)

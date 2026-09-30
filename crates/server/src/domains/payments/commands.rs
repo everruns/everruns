@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 
 fn validate_owner_type(value: &str) -> Result<(), CommandError> {
     match value {
-        "user" | "agent_identity" | "organization" => Ok(()),
+        "user" | "virtual_user" | "organization" => Ok(()),
         _ => Err(CommandError::bad_request("Invalid owner_type")),
     }
 }
@@ -37,7 +37,7 @@ fn validate_subject_type(value: &str) -> Result<(), CommandError> {
     // produces it from `sessions.endpoint_id`, which is what makes it enforceable
     // rather than merely storable.
     match value {
-        "user" | "agent_identity" | "agent" | "agent_endpoint" | "session" | "org" => Ok(()),
+        "user" | "virtual_user" | "agent" | "agent_endpoint" | "session" | "org" => Ok(()),
         _ => Err(CommandError::bad_request("Invalid subject_type")),
     }
 }
@@ -665,7 +665,7 @@ mod tests {
 
         for subject_type in [
             "user",
-            "agent_identity",
+            "virtual_user",
             "agent",
             "agent_endpoint",
             "session",

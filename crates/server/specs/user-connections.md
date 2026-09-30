@@ -102,7 +102,7 @@ Connections are **user-scoped**. The installation represents the user's/org's gr
 **Visibility:** Connections are private to the user who created them. Other org members cannot list, view, or manage another user's connections via the API. The `GET /v1/user/connections` endpoint only returns the authenticated user's own connections.
 
 **Token resolution:** Although connections are private, the lazy token resolver (`UserConnectionResolver`) may use a connection for tool execution without exposing the connection object through the API, but it is scoped to the session's resolved owner. A session can use:
-- an `agent_identity_connection` attached to that session's `agent_identity_id`, or
+- an `virtual_user_connection` attached to that session's `virtual_user_id`, or
 - a `user_connection` owned by `sessions.resolved_owner_user_id`
 
 It must not fall back to another org member's connection. If the resolved owner has not connected the provider, tool execution returns guidance to connect the provider in Settings.

@@ -9,8 +9,6 @@ pub mod agent_credentials;
 pub mod agent_discovery;
 pub mod agent_endpoints;
 pub mod agent_examples;
-pub mod agent_identities;
-pub mod agent_identity_connections;
 pub mod agent_mcp_attachments;
 pub mod agent_triggers;
 pub mod agents;
@@ -89,9 +87,13 @@ pub mod user_connections;
 pub mod user_preferences;
 pub mod users;
 pub mod validation;
+pub mod virtual_user_connections;
+pub mod virtual_users;
 pub mod voice;
 pub mod workspace_files;
 pub mod workspaces;
 
 // Re-export common types
 pub use common::{ErrorResponse, ListResponse, PaginatedResponse};
+
+pub mod runtime_auth;

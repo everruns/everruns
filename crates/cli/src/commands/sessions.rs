@@ -34,9 +34,9 @@ pub enum SessionsCommand {
         #[arg(long)]
         model: Option<String>,
 
-        /// Resident agent identity ID for unattended/background execution
-        #[arg(long = "agent-identity")]
-        agent_identity: Option<String>,
+        /// Resident virtual user ID for unattended/background execution
+        #[arg(long = "virtual-user")]
+        virtual_user: Option<String>,
 
         /// Session-level system prompt override
         #[arg(long = "system-prompt")]
@@ -155,7 +155,7 @@ pub async fn run(
             title,
             locale,
             model,
-            agent_identity,
+            virtual_user,
             system_prompt,
             tags,
             capabilities,
@@ -180,7 +180,7 @@ pub async fn run(
                 title,
                 locale,
                 model,
-                agent_identity,
+                virtual_user,
                 system_prompt,
                 tags,
                 capabilities,
@@ -224,7 +224,7 @@ async fn create(
     title: Option<String>,
     locale: Option<String>,
     model_id: Option<String>,
-    agent_identity_id: Option<String>,
+    virtual_user_id: Option<String>,
     system_prompt: Option<String>,
     tags: Vec<String>,
     raw_capabilities: Vec<String>,
@@ -245,7 +245,7 @@ async fn create(
         title,
         locale,
         model_id,
-        agent_identity_id,
+        virtual_user_id,
         system_prompt,
         tags,
         raw_capabilities,
@@ -299,7 +299,7 @@ async fn create(
             if let Some(agent) = session.get("agent_id").and_then(|v| v.as_str()) {
                 print_field("Agent", agent);
             }
-            if let Some(identity) = session.get("agent_identity_id").and_then(|v| v.as_str()) {
+            if let Some(identity) = session.get("virtual_user_id").and_then(|v| v.as_str()) {
                 print_field("Identity", identity);
             }
             if let Some(status) = session.get("status").and_then(value_as_status) {
@@ -364,7 +364,7 @@ struct CreateSessionArgs {
     title: Option<String>,
     locale: Option<String>,
     model_id: Option<String>,
-    agent_identity_id: Option<String>,
+    virtual_user_id: Option<String>,
     system_prompt: Option<String>,
     tags: Vec<String>,
     raw_capabilities: Vec<String>,
@@ -394,7 +394,7 @@ fn build_create_session_body(args: CreateSessionArgs) -> Result<serde_json::Valu
             body.insert("agent_name".to_string(), serde_json::json!(a));
         }
     }
-    insert_opt_string(&mut body, "agent_identity_id", args.agent_identity_id);
+    insert_opt_string(&mut body, "virtual_user_id", args.virtual_user_id);
     insert_opt_string(&mut body, "title", args.title);
     insert_opt_string(&mut body, "locale", args.locale);
     insert_opt_string(&mut body, "model_id", args.model_id);
@@ -1319,7 +1319,7 @@ mod tests {
             title: Some("Debug".into()),
             locale: Some("uk-UA".into()),
             model_id: Some("model_abc".into()),
-            agent_identity_id: Some("identity_abc".into()),
+            virtual_user_id: Some("identity_abc".into()),
             system_prompt: Some("Be concise".into()),
             tags: vec!["bug".into()],
             raw_capabilities: vec!["web_fetch={\"timeout\":10}".into()],
@@ -1333,7 +1333,7 @@ mod tests {
 
         assert_eq!(body["harness_name"], "generic");
         assert_eq!(body["agent_id"], "agent_00000000000000000000000000000001");
-        assert_eq!(body["agent_identity_id"], "identity_abc");
+        assert_eq!(body["virtual_user_id"], "identity_abc");
         assert_eq!(body["locale"], "uk-UA");
         assert_eq!(body["system_prompt"], "Be concise");
         assert_eq!(body["tags"], serde_json::json!(["bug"]));
@@ -1359,7 +1359,7 @@ mod tests {
             title: None,
             locale: None,
             model_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             system_prompt: None,
             tags: vec![],
             raw_capabilities: vec![],
@@ -1387,7 +1387,7 @@ mod tests {
             title: None,
             locale: None,
             model_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             system_prompt: None,
             tags: vec![],
             raw_capabilities: vec![],
@@ -1407,7 +1407,7 @@ mod tests {
             title: None,
             locale: None,
             model_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             system_prompt: None,
             tags: vec![],
             raw_capabilities: vec![],
@@ -1430,7 +1430,7 @@ mod tests {
             title: None,
             locale: None,
             model_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             system_prompt: None,
             tags: vec![],
             raw_capabilities: vec![],

@@ -425,13 +425,13 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
     },
     // User connection access tokens are encrypted at rest
     EncryptedColumn {
-        table: "user_connections",
+        table: "pending_user_connections",
         column: "access_token_encrypted",
         id_column: "id",
     },
     // User connection refresh tokens are encrypted at rest
     EncryptedColumn {
-        table: "user_connections",
+        table: "pending_user_connections",
         column: "refresh_token_encrypted",
         id_column: "id",
     },
@@ -457,13 +457,13 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
     },
     // Agent identity connection access tokens are encrypted at rest
     EncryptedColumn {
-        table: "agent_identity_connections",
+        table: "virtual_user_connections",
         column: "access_token_encrypted",
         id_column: "id",
     },
     // Agent identity connection refresh tokens are encrypted at rest
     EncryptedColumn {
-        table: "agent_identity_connections",
+        table: "virtual_user_connections",
         column: "refresh_token_encrypted",
         id_column: "id",
     },

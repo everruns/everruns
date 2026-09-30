@@ -199,11 +199,15 @@ impl WorkerServiceImpl {
             .await
             .map_err(|error| internal_status("Failed to load session", error))?
             .ok_or_else(|| Status::not_found("Session not found"))?;
-        let user_id = session.resolved_owner_user_id.ok_or_else(|| {
-            Status::permission_denied(
-                "Detached session creation requires a user-owned session with a resolved owner",
-            )
-        })?;
+        let message = parse_uuid(req.input_message_id.as_ref())?;
+        let user_id = self
+            .db
+            .runtime_invocation_management_user(session.id, message)
+            .await
+            .map_err(|_| Status::internal("Invocation unavailable"))?
+            .ok_or_else(|| {
+                Status::permission_denied("Management-authorized invocation required")
+            })?;
         let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
             .await
             .map_err(|error| {

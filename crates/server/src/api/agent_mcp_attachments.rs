@@ -385,10 +385,10 @@ pub async fn list_agent_mcp_attachments(
                     .map(|row| row.provider_username),
                 None => None,
             },
-            (McpServerActsAs::Service, Some(provider)) => match row.agent_identity_id {
+            (McpServerActsAs::Service, Some(provider)) => match row.virtual_user_id {
                 Some(identity_id) => state
                     .db
-                    .get_agent_identity_connection(identity_id, provider)
+                    .get_virtual_user_connection(identity_id, provider)
                     .await
                     .log_internal_error_json("load service MCP connection")?
                     .map(|row| row.provider_username),
@@ -466,7 +466,7 @@ pub async fn list_agent_mcp_attachments(
 #[utoipa::path(
     delete,
     path = "/v1/agents/{agent_id}/mcp-attachments/{name}/connection",
-    description = "Revokes the current caller's user connection or the agent identity's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.",
+    description = "Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name"),
         ("name" = String, Path, description = "Effective MCP attachment name"),
@@ -557,10 +557,10 @@ pub async fn revoke_agent_mcp_connection(
                 .map_err(|error| {
                     ErrorResponse::new(error.message).into_response(StatusCode::FORBIDDEN)
                 })?;
-            match row.agent_identity_id {
+            match row.virtual_user_id {
                 Some(identity_id) => state
                     .db
-                    .delete_agent_identity_connection(identity_id, &provider)
+                    .delete_virtual_user_connection(identity_id, &provider)
                     .await
                     .log_internal_error_json("revoke service MCP connection")?,
                 None => false,

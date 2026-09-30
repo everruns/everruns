@@ -66,7 +66,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
             warn!(error = %e, "Failed to emit session.activated event");
         }
 
-        // Best-effort agent identity for the turn root: it only labels
+        // Best-effort virtual user for the turn root: it only labels
         // traces, so a lookup failure degrades to `None` instead of blocking
         // the turn.
         let agent_id = self

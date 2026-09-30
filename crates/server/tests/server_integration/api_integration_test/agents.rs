@@ -8,7 +8,7 @@ use everruns_platform::Agent;
 use everruns_platform::Session;
 use everruns_provider::model::Model;
 use everruns_provider::provider::Provider;
-use everruns_provider::typed_id::{AgentId, AgentIdentityId, HarnessId};
+use everruns_provider::typed_id::{AgentId, HarnessId, VirtualUserId};
 use everruns_server::storage::models::{
     CreateAgentRow, CreateMcpServerRow, UpdateOrganizationSettings,
 };
@@ -1085,7 +1085,7 @@ async fn test_delete_agent_referenced_by_app_returns_conflict() {
 }
 
 #[tokio::test]
-async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
+async fn test_delete_virtual_user_referenced_by_app_returns_conflict() {
     let server = TestServer::in_memory().await;
 
     let agent: Value = server
@@ -1102,10 +1102,7 @@ async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
         .json();
 
     let identity: Value = server
-        .post(
-            "/v1/agent-identities",
-            json!({"name": "Delete App Identity"}),
-        )
+        .post("/v1/virtual-users", json!({"name": "Delete App Identity"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -1119,7 +1116,7 @@ async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
             identity["id"]
                 .as_str()
                 .unwrap()
-                .parse::<AgentIdentityId>()
+                .parse::<VirtualUserId>()
                 .unwrap(),
         ),
     )
@@ -1127,7 +1124,7 @@ async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
 
     server
         .delete(&format!(
-            "/v1/agent-identities/{}",
+            "/v1/virtual-users/{}",
             identity["id"].as_str().unwrap()
         ))
         .await

@@ -39,7 +39,7 @@ async fn create_session_with_owner(
         agent_id,
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id: PrincipalId::new(),
         resolved_owner_user_id,
         title: Some("Agent subject budget test session".into()),

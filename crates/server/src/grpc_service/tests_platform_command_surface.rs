@@ -7,7 +7,7 @@ use super::tests::test_worker_service;
 use super::*;
 
 #[tokio::test]
-async fn platform_command_surface_uses_session_owner_and_org() {
+async fn platform_command_surface_uses_current_invocation_and_org() {
     use crate::storage::models::{CreateSessionRow, CreateUserRow};
 
     let service = test_worker_service().await;
@@ -42,7 +42,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
             trigger_id: None,
             harness_id: None,
             agent_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             agent_version_id: None,
             agent_config_hash: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(2),
@@ -68,8 +68,29 @@ async fn platform_command_surface_uses_session_owner_and_org() {
         .await
         .expect("create session");
 
+    let subject = service
+        .db
+        .default_virtual_user(session.org_id, user.id)
+        .await
+        .unwrap();
+    service
+        .db
+        .record_runtime_invocation(
+            session.org_id,
+            session.id,
+            session.id.uuid(),
+            Some(subject.id),
+            Some(user.id),
+            None,
+        )
+        .await
+        .unwrap();
     let response = service
         .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+
             session_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -101,7 +122,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
             trigger_id: None,
             harness_id: None,
             agent_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             agent_version_id: None,
             agent_config_hash: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(2),
@@ -128,6 +149,10 @@ async fn platform_command_surface_uses_session_owner_and_org() {
         .expect("create session without platform");
     let missing_capability = service
         .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+
             session_id: Some(proto::Uuid {
                 value: session_without_platform.id.uuid().to_string(),
             }),
@@ -156,7 +181,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
             trigger_id: None,
             harness_id: None,
             agent_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             agent_version_id: None,
             agent_config_hash: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(3),
@@ -188,8 +213,24 @@ async fn platform_command_surface_uses_session_owner_and_org() {
         })
         .await
         .expect("create session with platform via dependency");
+    service
+        .db
+        .record_runtime_invocation(
+            session_via_dependency.org_id,
+            session_via_dependency.id,
+            session_via_dependency.id.uuid(),
+            Some(subject.id),
+            Some(user.id),
+            None,
+        )
+        .await
+        .unwrap();
     let via_dependency = service
         .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session_via_dependency.id.uuid().to_string(),
+            }),
+
             session_id: Some(proto::Uuid {
                 value: session_via_dependency.id.uuid().to_string(),
             }),
@@ -218,6 +259,10 @@ async fn platform_command_surface_uses_session_owner_and_org() {
     ] {
         let response = service
             .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+                input_message_id: Some(proto::Uuid {
+                    value: session.id.uuid().to_string(),
+                }),
+
                 session_id: Some(proto::Uuid {
                     value: session.id.uuid().to_string(),
                 }),
@@ -243,6 +288,10 @@ async fn platform_command_surface_uses_session_owner_and_org() {
 
     let denied = service
         .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+
             session_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),
@@ -268,6 +317,10 @@ async fn platform_command_surface_uses_session_owner_and_org() {
 
     let foreign = service
         .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+
             session_id: Some(proto::Uuid {
                 value: session.id.uuid().to_string(),
             }),

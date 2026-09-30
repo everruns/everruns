@@ -11,7 +11,7 @@ export * from "./notifications";
 export * from "./organizations";
 export * from "./auth";
 export * from "./durable";
-export * from "./agent-identities";
+export * from "./virtual-users";
 export * from "./memory";
 export * from "./knowledge-indexes";
 export * from "./reporting";

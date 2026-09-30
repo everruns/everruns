@@ -77,7 +77,7 @@ pub(super) async fn create_config(
     agent: &AgentRow,
     req: &CreateAgentTriggerRequest,
 ) -> Result<Value, CommandError> {
-    let identity_id = agent.agent_identity_id.ok_or_else(connect_first)?;
+    let identity_id = agent.virtual_user_id.ok_or_else(connect_first)?;
     ctx.db
         .get_github_app_for_identity(ctx.org_id(), identity_id)
         .await
@@ -314,7 +314,7 @@ pub async fn dispatch_github_delivery(
             .await
             .map_err(classify_anyhow)?
             .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
-            .filter(|agent| agent.agent_identity_id == Some(app.agent_identity_id))
+            .filter(|agent| agent.virtual_user_id == Some(app.virtual_user_id))
         else {
             continue;
         };

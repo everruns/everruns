@@ -12,7 +12,7 @@
  * 8. Capabilities (client-side filter over cached list)
  * 9. ID-based lookup (detects prefixed IDs and provides direct navigation)
  * 10. Evals (client-side filter over cached list)
- * 11. Agent Identities (client-side filter over cached list)
+ * 11. Virtual Users (client-side filter over cached list)
  * 12. Memories, knowledge indexes, plugins, observers, and saved reports
  *
  * All entity searches are client-side over already-fetched React Query data.
@@ -55,7 +55,7 @@ import { useSkills } from "@/hooks/use-skills";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useCapabilities, useDeclarativeCapabilities } from "@/hooks/use-capabilities";
 import { useEvals } from "@/hooks/use-evals";
-import { useAgentIdentities } from "@/hooks/use-agent-identities";
+import { useVirtualUsers } from "@/hooks/use-virtual-users";
 import { useMemories } from "@/hooks/use-memory";
 import { useKnowledgeIndexes } from "@/hooks/use-knowledge-indexes";
 import { useInstalledPlugins } from "@/hooks/use-plugins";
@@ -71,7 +71,7 @@ import type { FeatureFlags } from "@/lib/api/types";
 export type SearchResultCategory =
   | "navigation"
   | "agent"
-  | "agent_identity"
+  | "virtual_user"
   | "session"
   | "harness"
   | "skill"
@@ -142,8 +142,8 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["bot", "assistant"],
   },
   {
-    title: "Agent Identities",
-    href: "/agent-identities",
+    title: "Virtual Users",
+    href: "/virtual-users",
     icon: UserRound,
     keywords: ["persona", "principal", "identity"],
   },
@@ -317,9 +317,9 @@ const ID_PREFIX_MAP: Record<
     flag: "observers",
   },
   identity_: {
-    category: "agent_identity",
-    label: "Agent Identity",
-    path: "/agent-identities",
+    category: "virtual_user",
+    label: "Virtual User",
+    path: "/virtual-users",
   },
 };
 
@@ -369,7 +369,7 @@ export function useGlobalSearch(query: string) {
     enabled: entitySearchEnabled,
   });
   const { data: evalsData } = useEvals({ enabled: evalsEnabled && entitySearchEnabled });
-  const { data: agentIdentitiesData } = useAgentIdentities({ enabled: entitySearchEnabled });
+  const { data: virtualUsersData } = useVirtualUsers({ enabled: entitySearchEnabled });
   const { data: memoriesData } = useMemories({ enabled: memoryEnabled && entitySearchEnabled });
   const { data: knowledgeIndexesData } = useKnowledgeIndexes({
     enabled: knowledgeEnabled && entitySearchEnabled,
@@ -390,7 +390,7 @@ export function useGlobalSearch(query: string) {
   const capabilities = capabilitiesData ?? EMPTY_ARRAY;
   const declarativeCapabilities = declarativeCapabilitiesData ?? EMPTY_ARRAY;
   const evals = evalsEnabled ? (evalsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
-  const agentIdentities = agentIdentitiesData ?? EMPTY_ARRAY;
+  const virtualUsers = virtualUsersData ?? EMPTY_ARRAY;
   const memories = memoryEnabled ? (memoriesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const knowledgeIndexes = knowledgeEnabled ? (knowledgeIndexesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const installedPlugins = pluginsEnabled ? (installedPluginsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
@@ -441,7 +441,7 @@ export function useGlobalSearch(query: string) {
         } else if (prefix === "eval_") {
           resolvedName = evals.find((e) => e.id === idValue)?.name;
         } else if (prefix === "identity_") {
-          resolvedName = agentIdentities.find((ai) => ai.id === idValue)?.name;
+          resolvedName = virtualUsers.find((ai) => ai.id === idValue)?.name;
         } else if (prefix === "mem_") {
           resolvedName = memories.find((memory) => memory.id === idValue)?.name;
         } else if (prefix === "kidx_") {
@@ -686,20 +686,18 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 11. Agent Identities
+    // 11. Virtual Users
     let identityCount = 0;
-    for (const identity of agentIdentities) {
+    for (const identity of virtualUsers) {
       if (identityCount >= MAX_PER_CATEGORY) break;
-      if (
-        matchesTokens(tokens, identity.name, identity.description, identity.id, "agent identity")
-      ) {
+      if (matchesTokens(tokens, identity.name, identity.description, identity.id, "virtual user")) {
         results.push({
           id: `identity:${identity.id}`,
-          category: "agent_identity",
+          category: "virtual_user",
           icon: UserRound,
           title: identity.name,
-          subtitle: `Agent Identities > ${identity.name}`,
-          href: `/agent-identities/${identity.id}`,
+          subtitle: `Virtual Users > ${identity.name}`,
+          href: `/virtual-users/${identity.id}`,
         });
         identityCount++;
       }
@@ -810,7 +808,7 @@ export function useGlobalSearch(query: string) {
     capabilities,
     declarativeCapabilities,
     evals,
-    agentIdentities,
+    virtualUsers,
     memories,
     knowledgeIndexes,
     installedPlugins,

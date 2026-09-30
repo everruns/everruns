@@ -13,7 +13,6 @@ use super::webhook;
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
-use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
 use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::apps::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
@@ -21,6 +20,7 @@ use crate::domains::apps::invocation::{
 use crate::domains::common::*;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
+use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::execution_metadata;
 use crate::kernel_imports::{Caller, Policy};
 use crate::storage::StorageBackend;
@@ -360,25 +360,6 @@ pub(super) fn parse_agent_id(raw: &str) -> Result<AgentId, CommandError> {
         .map_err(|e| CommandError::bad_request(format!("Invalid agent ID: {e}")))
 }
 
-/// Resolve a trigger and confirm it belongs to the named agent (org-scoped).
-pub(super) async fn resolve_trigger_for_agent(
-    ctx: &Ctx,
-    agent_id: &str,
-    trigger_id: &str,
-) -> Result<(AgentRow, AgentTriggerRow), CommandError> {
-    let agent_public = parse_agent_id(agent_id)?;
-    let agent = q::require_active_agent(&ctx.db, ctx.org_id(), &agent_public).await?;
-    let trigger_id = parse_trigger_id(trigger_id)?;
-    let trigger = q::get_by_id(&ctx.db, ctx.org_id(), trigger_id)
-        .await?
-        .filter(|row| row.status != "deleted")
-        .ok_or_else(|| CommandError::not_found("Agent trigger"))?;
-    if trigger.agent_id != agent.id {
-        return Err(CommandError::not_found("Agent trigger"));
-    }
-    Ok((agent, trigger))
-}
-
 // ============================================================================
 // CreateAgentTrigger
 // ============================================================================
@@ -488,7 +469,7 @@ impl Command for CreateAgentTrigger {
                 execution_harness_id: None,
                 execution_owner_principal_id: None,
                 execution_resolved_owner_user_id: None,
-                execution_agent_identity_id: None,
+                execution_virtual_user_id: None,
                 execution_app_id: None,
                 execution_app_public_id: None,
                 execution_app_name: None,
@@ -1066,7 +1047,7 @@ pub(super) struct TriggerExecutionContext {
     pub(super) harness_id: everruns_provider::typed_id::HarnessId,
     pub(super) owner_principal_id: everruns_provider::typed_id::PrincipalId,
     resolved_owner_user_id: Option<Uuid>,
-    agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
+    virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
     app_id: Option<Uuid>,
     agent_version_policy: everruns_platform::AgentVersionPolicy,
     agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
@@ -1104,7 +1085,7 @@ pub(super) async fn resolve_trigger_execution_context(
             harness_id,
             owner_principal_id,
             resolved_owner_user_id: trigger.execution_resolved_owner_user_id,
-            agent_identity_id: trigger.execution_agent_identity_id,
+            virtual_user_id: trigger.execution_virtual_user_id,
             app_id: trigger.execution_app_id,
             agent_version_policy: trigger
                 .execution_agent_version_policy
@@ -1115,7 +1096,7 @@ pub(super) async fn resolve_trigger_execution_context(
         });
     }
 
-    let (agent_identity_id, owner) = ensure_identity_for_agent(db, org_id, agent)
+    let (virtual_user_id, owner) = ensure_identity_for_agent(db, org_id, agent)
         .await
         .map_err(classify_anyhow)?;
     let harness_id = if agent.harness_source == "organization_default" {
@@ -1132,7 +1113,7 @@ pub(super) async fn resolve_trigger_execution_context(
         harness_id,
         owner_principal_id: owner.id,
         resolved_owner_user_id: owner.resolved_user_id,
-        agent_identity_id: Some(agent_identity_id),
+        virtual_user_id: Some(virtual_user_id),
         app_id: None,
         agent_version_policy: everruns_platform::AgentVersionPolicy::Default,
         agent_version_id: None,
@@ -1239,7 +1220,7 @@ pub(super) async fn find_or_create_trigger_session(
         harness_name: None,
         agent_id: Some(agent.id),
         agent_name: None,
-        agent_identity_id: execution_context.agent_identity_id,
+        virtual_user_id: execution_context.virtual_user_id,
         title: Some(title),
         goal: None,
         locale: None,
@@ -1338,6 +1319,7 @@ pub(super) async fn dispatch_trigger_message(
     message_service
         .create(
             CreateMessageContext {
+                runtime_subject_principal_id: None,
                 org_id,
                 user_id: None,
                 harness_id: harness_id.uuid(),
@@ -1392,3 +1374,6 @@ pub(super) fn emit_agent_trigger_audit_event(
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+mod resolve_trigger;
+pub(super) use resolve_trigger::resolve_trigger_for_agent;

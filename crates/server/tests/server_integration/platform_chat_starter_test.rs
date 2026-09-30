@@ -60,7 +60,7 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
         agent_id: None,
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id,
         resolved_owner_user_id: None,
         title: Some("Platform Chat".to_string()),

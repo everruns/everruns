@@ -17,10 +17,10 @@ describe("navigationGroupForPath", () => {
   });
 
   it("matches on segment boundaries, not string prefixes", () => {
-    // `/agent-identities` starts with `/agent` but is its own route; a naive
+    // `/virtual-users` starts with `/agent` but is its own route; a naive
     // prefix match would resolve it through `/agents`.
-    expect(navigationGroupForPath("/agent-identities")).toBe("Building");
-    expect(navigationGroupForPath("/agent-identities/id-1")).toBe("Building");
+    expect(navigationGroupForPath("/virtual-users")).toBe("Building");
+    expect(navigationGroupForPath("/virtual-users/id-1")).toBe("Building");
   });
 
   it("prefers the longest matching route", () => {

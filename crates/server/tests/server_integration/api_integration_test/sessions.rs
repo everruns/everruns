@@ -1268,7 +1268,7 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
         .json();
     let identity: Value = server
         .post(
-            "/v1/agent-identities",
+            "/v1/virtual-users",
             json!({"name": "Session Only Delete Identity"}),
         )
         .await
@@ -1281,7 +1281,7 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
             json!({
                 "harness_id": harness.id,
                 "agent_id": agent["id"],
-                "agent_identity_id": identity["id"],
+                "virtual_user_id": identity["id"],
                 "title": "Session-only references"
             }),
         )
@@ -1298,7 +1298,7 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
         .assert_status(StatusCode::NO_CONTENT);
     server
         .delete(&format!(
-            "/v1/agent-identities/{}",
+            "/v1/virtual-users/{}",
             identity["id"].as_str().unwrap()
         ))
         .await

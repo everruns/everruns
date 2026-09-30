@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use everruns_server::org_init;
 use everruns_server::storage::{
-    CreateAgentRow, CreateMcpServerRow, CreateOrganizationRow, CreateUserConnectionRow,
-    CreateUserRow, Database, StorageBackend, UpdateMcpServer,
+    CreateAgentRow, CreateMcpServerRow, CreateOrganizationRow, CreateUserRow,
+    CreateVirtualUserConnectionRow, Database, StorageBackend, UpdateMcpServer,
 };
 use test_harness::get_database_url;
 
@@ -378,6 +378,23 @@ async fn user_mcp_connections_are_user_and_org_scoped_and_include_tombstones() {
     let current_user = create_test_user(&backend, "mcp-current").await;
     let other_user = create_test_user(&backend, "mcp-other").await;
 
+    backend
+        .add_organization_member(TEST_ORG_ID, current_user.id, "member")
+        .await
+        .unwrap();
+    backend
+        .add_organization_member(TEST_ORG_ID, other_user.id, "member")
+        .await
+        .unwrap();
+    let current_runtime = backend
+        .default_virtual_user(TEST_ORG_ID, current_user.id)
+        .await
+        .unwrap();
+    let other_runtime = backend
+        .default_virtual_user(TEST_ORG_ID, other_user.id)
+        .await
+        .unwrap();
+
     let active = backend
         .create_mcp_server(
             TEST_ORG_ID,
@@ -435,36 +452,37 @@ async fn user_mcp_connections_are_user_and_org_scoped_and_include_tombstones() {
         .await
         .expect("create other org server");
 
-    let insert_connection =
-        |user_id: Uuid, server_id: everruns_provider::typed_id::McpServerId, username: &str| {
-            let backend = &backend;
-            let username = username.to_string();
-            async move {
-                backend
-                    .upsert_user_connection(CreateUserConnectionRow {
-                        user_id,
-                        provider: everruns_core::mcp_oauth_provider_id_for_uuid(server_id.uuid()),
-                        connection_type: "oauth".to_string(),
-                        provider_user_id: None,
-                        provider_username: Some(username),
-                        access_token_encrypted: Some(vec![1, 2, 3]),
-                        refresh_token_encrypted: None,
-                        scopes: Some("read write".to_string()),
-                        expires_at: None,
-                        installation_id: None,
-                        provider_metadata: None,
-                    })
-                    .await
-                    .expect("insert user MCP connection")
-            }
-        };
-    let active_connection = insert_connection(current_user.id, active.id, "current").await;
-    insert_connection(current_user.id, deleted.id, "current-deleted").await;
-    insert_connection(current_user.id, other_org_server.id, "current-other-org").await;
-    insert_connection(other_user.id, active.id, "other-user").await;
+    let insert_connection = |virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+                             server_id: everruns_provider::typed_id::McpServerId,
+                             username: &str| {
+        let backend = &backend;
+        let username = username.to_string();
+        async move {
+            backend
+                .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+                    virtual_user_id,
+                    provider: everruns_core::mcp_oauth_provider_id_for_uuid(server_id.uuid()),
+                    connection_type: "oauth".to_string(),
+                    provider_user_id: None,
+                    provider_username: Some(username),
+                    access_token_encrypted: Some(vec![1, 2, 3]),
+                    refresh_token_encrypted: None,
+                    scopes: Some("read write".to_string()),
+                    expires_at: None,
+                    installation_id: None,
+                    provider_metadata: None,
+                })
+                .await
+                .expect("insert user MCP connection")
+        }
+    };
+    let active_connection = insert_connection(current_runtime.id, active.id, "current").await;
+    insert_connection(current_runtime.id, deleted.id, "current-deleted").await;
+    insert_connection(current_runtime.id, other_org_server.id, "current-other-org").await;
+    insert_connection(other_runtime.id, active.id, "other-user").await;
 
     let rows = backend
-        .list_user_mcp_connections(TEST_ORG_ID, current_user.id)
+        .list_user_mcp_connections(TEST_ORG_ID, current_runtime.id.uuid())
         .await
         .expect("list current user MCP connections");
     assert_eq!(rows.len(), 2);
@@ -479,14 +497,14 @@ async fn user_mcp_connections_are_user_and_org_scoped_and_include_tombstones() {
     }));
 
     let first_page = backend
-        .list_user_mcp_connections_page(TEST_ORG_ID, current_user.id, None, 1)
+        .list_user_mcp_connections_page(TEST_ORG_ID, current_runtime.id.uuid(), None, 1)
         .await
         .expect("list first connection page");
     assert_eq!(first_page.len(), 1);
     let second_page = backend
         .list_user_mcp_connections_page(
             TEST_ORG_ID,
-            current_user.id,
+            current_runtime.id.uuid(),
             Some(first_page[0].connection_id),
             1,
         )
@@ -498,13 +516,13 @@ async fn user_mcp_connections_are_user_and_org_scoped_and_include_tombstones() {
 
     assert!(
         backend
-            .delete_user_connection(current_user.id, &active_connection.provider)
+            .delete_virtual_user_connection(current_runtime.id, &active_connection.provider)
             .await
             .expect("delete current user connection")
     );
     assert!(
         !backend
-            .delete_user_connection(current_user.id, &active_connection.provider)
+            .delete_virtual_user_connection(current_runtime.id, &active_connection.provider)
             .await
             .expect("repeat current user connection deletion")
     );

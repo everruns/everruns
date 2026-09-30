@@ -29,9 +29,9 @@
 //! means nothing to an API caller reading the OpenAPI spec.
 
 use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::AgentIdentityId,
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::ModelId,
-    everruns_provider::typed_id::PrincipalId,
+    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::HarnessId,
+    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::PrincipalId,
+    everruns_provider::typed_id::VirtualUserId,
 };
 use uuid::Uuid;
 
@@ -52,7 +52,7 @@ pub struct CreateSessionRow {
     pub agent_id: Option<AgentId>,
     pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
     pub agent_config_hash: Option<String>,
-    pub agent_identity_id: Option<AgentIdentityId>,
+    pub virtual_user_id: Option<VirtualUserId>,
     pub owner_principal_id: PrincipalId,
     pub resolved_owner_user_id: Option<Uuid>,
     pub title: Option<String>,
@@ -104,7 +104,7 @@ impl Default for CreateSessionRow {
             agent_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: PrincipalId::new(),
             resolved_owner_user_id: None,
             title: None,

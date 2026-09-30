@@ -53,7 +53,7 @@ async fn app_archival_reads_remain_available() {
                 agent_id: None,
                 agent_version_policy: "draft".to_string(),
                 agent_version_id: None,
-                agent_identity_id: None,
+                virtual_user_id: None,
                 owner_principal_id: principal_id,
                 resolved_owner_user_id: None,
                 channel_type: None,
@@ -180,7 +180,7 @@ async fn test_list_connections_initially_empty() {
 }
 
 // ============================================================================
-// Agent Identity Connection tests
+// Virtual User Connection tests
 // ============================================================================
 
 #[tokio::test]
@@ -189,7 +189,7 @@ async fn test_identity_connections_list_empty() {
 
     // Create an identity first
     let identity: Value = server
-        .post("/v1/agent-identities", json!({"name": "ConnTest"}))
+        .post("/v1/virtual-users", json!({"name": "ConnTest"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -197,7 +197,7 @@ async fn test_identity_connections_list_empty() {
 
     // List connections — should be empty
     let connections: Vec<Value> = server
-        .get(&format!("/v1/agent-identities/{id}/connections"))
+        .get(&format!("/v1/virtual-users/{id}/connections"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -209,7 +209,7 @@ async fn test_identity_connections_not_found_for_missing_identity() {
     let server = TestServer::in_memory().await;
 
     server
-        .get("/v1/agent-identities/identity_019d166cd0147e638c72892ecb30ffff/connections")
+        .get("/v1/virtual-users/identity_019d166cd0147e638c72892ecb30ffff/connections")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -219,16 +219,14 @@ async fn test_identity_connections_delete_not_found() {
     let server = TestServer::in_memory().await;
 
     let identity: Value = server
-        .post("/v1/agent-identities", json!({"name": "ConnDel"}))
+        .post("/v1/virtual-users", json!({"name": "ConnDel"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let id = identity["id"].as_str().unwrap();
 
     server
-        .delete(&format!(
-            "/v1/agent-identities/{id}/connections/nonexistent"
-        ))
+        .delete(&format!("/v1/virtual-users/{id}/connections/nonexistent"))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -238,7 +236,7 @@ async fn test_identity_connections_create_unknown_provider() {
     let server = TestServer::in_memory().await;
 
     let identity: Value = server
-        .post("/v1/agent-identities", json!({"name": "ConnProv"}))
+        .post("/v1/virtual-users", json!({"name": "ConnProv"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -246,7 +244,7 @@ async fn test_identity_connections_create_unknown_provider() {
 
     server
         .post(
-            &format!("/v1/agent-identities/{id}/connections/nonexistent"),
+            &format!("/v1/virtual-users/{id}/connections/nonexistent"),
             json!({"api_key": "test"}),
         )
         .await

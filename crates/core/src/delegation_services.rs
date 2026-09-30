@@ -136,6 +136,14 @@ impl SubagentNestingPolicy {
 /// call from choosing or forging its authorization identity.
 #[async_trait]
 pub trait SessionCreationAuthority: Send + Sync {
+    /// Scope management authority to the persisted input that caused execution.
+    fn for_execution(
+        &self,
+        _input_message_id: uuid::Uuid,
+    ) -> Option<std::sync::Arc<dyn SessionCreationAuthority>> {
+        None
+    }
+
     /// Authorize creation and return the org-validated budget root for the
     /// current session. Returning the root from the authority keeps detached
     /// chains linked without exposing internal root metadata to model input.

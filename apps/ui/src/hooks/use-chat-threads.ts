@@ -8,7 +8,6 @@ import { useQuery } from "@tanstack/react-query";
 import { listSessions } from "@/lib/api/sessions";
 import { queryKeys } from "@/lib/query-keys";
 import { selectChatThreads, THREAD_SCAN_LIMIT } from "@/lib/chat-threads";
-import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import type { Session } from "@/lib/api/types";
 
@@ -36,10 +35,7 @@ export interface UseChatThreadsOptions {
   /** Widen the list to archived threads too. Off by default: archiving a thread
    *  is the user asking for it to stop showing up. */
   includeArchived?: boolean;
-  /** Ask the server for this user's sessions only. The client-side owner
-   *  filter runs either way; this narrows the page the server returns, so a
-   *  busy org's other sessions cannot push the user's threads out of the
-   *  scanned window. */
+  /** Scope threads to the console account’s linked virtual user. On by default. */
   mine?: boolean;
   /** Keep the list fresh on a timer. On by default for surfaces that display
    *  threads; a caller that only needs to read the list once (e.g. deciding
@@ -51,12 +47,11 @@ export interface UseChatThreadsOptions {
 /** This user's chat threads, pinned first and then ordered by recent activity. */
 export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThreadsResult {
   const { currentOrg, isLoading: orgLoading } = useOrg();
-  const { user } = useAuth();
   const org = currentOrg?.public_id;
   const enabled = !!org && (options.enabled ?? true);
   const includeArchived = options.includeArchived ?? false;
   const poll = options.poll ?? true;
-  const mine = options.mine ?? false;
+  const mine = options.mine ?? true;
 
   const query = useQuery({
     // Still under the `["sessions"]` prefix, so a create/update invalidation of
@@ -74,8 +69,8 @@ export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThre
   });
 
   const threads = useMemo(
-    () => selectChatThreads(query.data?.data ?? [], user?.id, { includeArchived }),
-    [query.data, user?.id, includeArchived],
+    () => selectChatThreads(query.data?.data ?? [], { includeArchived }),
+    [query.data, includeArchived],
   );
 
   return {

@@ -35,6 +35,14 @@ An Agent is a domain-specific or task-specific configuration for the agentic loo
 - Each agent has capabilities with position ordering
 - Each agent references a default LLM model
 
+### Everruns user and virtual user
+
+An **Everruns user** signs in to manage organizations, agents, permissions, and personal access tokens. A **virtual user** is the organization-scoped account that uses agents. It owns an agent-facing profile, preferences, and provider connections.
+
+Each organization membership has a default end-user virtual user. Chats and **Settings → My agent experience / Connections** use that account. Verified external callers, such as an authenticated public-chat visitor or Slack user, get virtual users without becoming Everruns organization members. Provider, issuer or workspace, and subject identify each external binding; matching email addresses do not merge accounts.
+
+A service virtual user is an agent's account for unattended execution. User connections resolve from the speaker of the current turn. Service connections resolve from the responding agent's service account. Neither inherits credentials from a session owner's management identity.
+
 ### Session
 
 A Session is a working instance of an agentic loop. It is configured by its harness and, optionally, by an agent. Sessions are the primary execution context where conversations happen.

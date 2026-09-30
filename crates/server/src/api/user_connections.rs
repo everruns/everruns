@@ -1,18 +1,18 @@
 // User Connections API routes
-// Decision: User-scoped (not org-scoped) — token represents user's identity
+// Console adapters use the selected organization’s default virtual user.
 // Decision: GitHub App installation flow replaces OAuth App for repo access
 // Decision: API-key providers (Daytona etc.) register via ConnectorPlugin
 //   and define their own form schema + validation. Server discovers them at runtime.
 
 use crate::auth::ResolvedOrg;
 use crate::auth::config::AuthConfig;
-use crate::auth::middleware::{AuthState, AuthUser};
+use crate::auth::middleware::{AuthState, AuthUser as ManagementUser};
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
     Caller, McpServerAuthMode,
-    everruns_provider::typed_id::{AgentId, AgentIdentityId, SessionId},
+    everruns_provider::typed_id::{AgentId, SessionId, VirtualUserId},
     everruns_provider::url_validation::validate_safe_url,
     mcp_oauth_provider_id_for_uuid,
 };
@@ -22,8 +22,8 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Redirect,
-    routing::{delete, get, post, put},
+    response::{IntoResponse, Redirect},
+    routing::{delete, get, post},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -39,10 +39,10 @@ use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
 
 use super::common::{impl_auth_state, sanitized_internal_error};
-use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
 use crate::domains::mcp_servers::MCP_SERVER_MANAGE;
+use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::storage::models::{
-    CreateAgentIdentityConnectionRow, CreateUserConnectionRow, UpsertMcpOAuthSessionCredentials,
+    CreateUserConnectionRow, CreateVirtualUserConnectionRow, UpsertMcpOAuthSessionCredentials,
 };
 pub mod mcp_connections;
 use mcp_connections::list_mcp_connections;
@@ -84,6 +84,47 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
+/// Console connections proxy the authenticated account's default runtime account
+/// in its selected organization. Management authentication stays separate.
+#[derive(Debug, Clone)]
+pub struct ConnectionUser {
+    pub id: uuid::Uuid,
+    pub management_user_id: uuid::Uuid,
+    pub org_id: i64,
+}
+impl<S> axum::extract::FromRequestParts<S> for ConnectionUser
+where
+    S: Send + Sync,
+    AuthState: axum::extract::FromRef<S>,
+{
+    type Rejection = crate::auth::middleware::AuthError;
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        use axum::extract::FromRef;
+        let management = ManagementUser::from_request_parts(parts, state).await?;
+        let org = ResolvedOrg::from_request_parts(parts, state).await?;
+        let auth = AuthState::from_ref(state);
+        let db = auth
+            .db
+            .as_ref()
+            .ok_or_else(|| Self::Rejection::internal("Runtime identity unavailable"))?;
+        let user = db
+            .default_virtual_user(org.org_id, management.id)
+            .await
+            .map_err(|_| Self::Rejection::internal("Runtime identity unavailable"))?;
+        if user.status != "active" {
+            return Err(Self::Rejection::forbidden("Runtime account is not active"));
+        }
+        Ok(Self {
+            id: user.id.uuid(),
+            management_user_id: management.id,
+            org_id: org.org_id,
+        })
+    }
+}
+
 // ============================================================================
 // Response / Request Types
 // ============================================================================
@@ -92,51 +133,90 @@ impl_auth_state!(AppState);
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Connection)]
 pub struct ConnectionResponse {
+    /// Stable provider identifier.
+    #[schema(example = "github")]
     pub provider: String,
+    /// Credential mechanism used by this connection.
+    #[schema(example = "oauth")]
     pub connection_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Display name on the provider.
+    #[schema(example = "octocat")]
     pub provider_username: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Provider scopes granted to this account.
+    #[schema(example = "read:user")]
     pub scopes: Option<String>,
+    /// Time the grant was created.
+    #[schema(example = "2026-09-29T12:00:00Z")]
     pub connected_at: DateTime<Utc>,
 }
 
 /// Provider info for the connections UI
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ProviderResponse {
+    /// Stable provider identifier.
+    #[schema(example = "github")]
     pub provider_id: String,
+    /// Provider display name.
+    #[schema(example = "GitHub")]
     pub display_name: String,
+    /// Provider description.
+    #[schema(example = "Connect your repositories")]
     pub description: String,
+    /// Provider icon name.
+    #[schema(example = "github")]
     pub icon: String,
+    /// Provider credential mechanism.
+    #[schema(example = "oauth")]
     pub connection_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Fields required for API key providers.
     pub form_schema: Option<FormSchemaResponse>,
 }
 
 /// Form schema for API-key providers
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct FormSchemaResponse {
+    /// Provider form fields.
     pub fields: Vec<FormFieldResponse>,
+    /// Instructions shown before connection setup.
+    #[schema(example = "Create an API key in provider settings.")]
     pub instructions_markdown: String,
 }
 
 /// Single form field
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct FormFieldResponse {
+    /// Provider form field name.
+    #[schema(example = "api_key")]
     pub name: String,
+    /// Provider form field label.
+    #[schema(example = "API key")]
     pub label: String,
+    /// Input type used by the form.
+    #[schema(example = "password")]
     pub field_type: String,
+    /// Whether the field must be supplied.
+    #[schema(example = true)]
     pub required: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Suggested input placeholder.
+    #[schema(example = "Enter your API key")]
     pub placeholder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Explanation for this form field.
+    #[schema(example = "Your key is stored encrypted.")]
     pub help_text: Option<String>,
 }
 
 /// Request body for API-key connection creation (plugin-based providers).
 /// Accepts api_key plus any additional form fields as extra_fields.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(as = CreateConnectionRequest)]
 pub struct CreateApiKeyConnectionRequest {
+    /// Provider API key, encrypted before storage.
+    #[schema(example = "example-api-key")]
     pub api_key: String,
     /// Additional provider-specific form fields (e.g. org_slug for Deno personal tokens).
     #[serde(flatten)]
@@ -146,14 +226,10 @@ pub struct CreateApiKeyConnectionRequest {
 /// Request body for API-key-based connections (e.g., Brave Search)
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ApiKeyConnectionRequest {
+    /// Provider API key, encrypted before storage.
+    #[schema(example = "example-api-key")]
     pub api_key: String,
 }
-
-/// Providers that support API-key-based connections (legacy, prefer ConnectorPlugin).
-const API_KEY_PROVIDERS: &[&str] = &[];
-
-/// Cookie name for GitHub App installation CSRF state
-const GITHUB_INSTALL_STATE_COOKIE: &str = "github_install_state";
 
 /// GitHub App installation callback query params
 #[derive(Debug, Deserialize)]
@@ -164,15 +240,24 @@ pub struct GitHubInstallationCallbackQuery {
     pub state: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+/// Browser setup options. The canonical target is selected by the authorized resource path.
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct OAuthAuthorizeQuery {
+    /// Same-origin return path after setup.
+    #[schema(example = "/settings/connections")]
     pub return_to: Option<String>,
+    /// Legacy setup mode; canonical resource paths capture the target.
+    #[schema(example = "virtual_user")]
     pub mode: Option<String>,
+    /// Optional session grant destination for legacy setup.
     pub session_id: Option<String>,
     /// Required when `mode = identity`: the agent whose service grant this is.
     /// The grant is owned by the agent's identity, not by the admin who
     /// authorizes it (EVE-1030).
+    /// Optional legacy service agent target.
     pub agent_id: Option<String>,
+    /// Whether setup completes in a popup.
+    #[schema(example = false)]
     pub popup: Option<bool>,
 }
 
@@ -187,6 +272,10 @@ pub struct OAuthCallbackQuery {
 #[derive(Debug, Serialize, Deserialize)]
 struct PendingOAuthState {
     state: String,
+    org_id: i64,
+    management_user_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    runtime_credential: Option<String>,
     provider: String,
     return_to: String,
     mode: String,
@@ -197,7 +286,7 @@ struct PendingOAuthState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     agent_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    agent_identity_id: Option<String>,
+    virtual_user_id: Option<String>,
     popup: bool,
     code_verifier: String,
 }
@@ -209,6 +298,23 @@ struct PendingOAuthState {
 /// Create user connections routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/connection-providers", get(list_runtime_connectors))
+        .route(
+            "/v1/user/connection-migrations",
+            get(list_pending_connection_migrations),
+        )
+        .route(
+            "/v1/user/connection-migrations/{connection_id}",
+            post(migrate_pending_connection),
+        )
+        .route(
+            "/v1/virtual-users/{identity_id}/connections/{provider}/authorize",
+            get(authorize_target_connection).post(start_target_connection),
+        )
+        .route(
+            "/v1/virtual-users/me/mcp-connections",
+            get(list_mcp_connections),
+        )
         .route("/v1/user/connections", get(list_connections))
         .route("/v1/user/mcp-connections", get(list_mcp_connections))
         .route("/v1/user/connections/providers", get(list_connectors))
@@ -234,9 +340,10 @@ pub fn routes(state: AppState) -> Router {
         )
         .route("/v1/user/connections/github/callback", get(github_callback))
         .route(
-            "/v1/user/connections/api-key/{provider}",
-            put(put_api_key_connection),
+            "/v1/connection-callbacks/{provider}",
+            get(connection_oauth_callback),
         )
+        .route("/v1/connection-callbacks/github", get(github_callback))
         .with_state(state)
 }
 
@@ -247,7 +354,7 @@ pub fn routes(state: AppState) -> Router {
 /// GET /v1/user/connections — List user's connected accounts
 pub async fn list_connections(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: ConnectionUser,
 ) -> Result<Json<Vec<ConnectionResponse>>, StatusCode> {
     let rows = state.db.list_user_connections(auth.id).await.map_err(|e| {
         tracing::error!("Failed to list user connections: {}", e);
@@ -276,6 +383,26 @@ pub async fn list_connectors(
     State(state): State<AppState>,
     org: ResolvedOrg,
 ) -> Json<Vec<ProviderResponse>> {
+    list_connectors_for_org(&state, org.org_id).await
+}
+#[utoipa::path(summary = "List providers available to this runtime account and endpoint.", get, path="/v1/connection-providers", responses((status=200,description="Available connection providers",body=Vec<ProviderResponse>)),tag="virtual-users")]
+async fn list_runtime_connectors(
+    State(state): State<AppState>,
+    account: crate::auth::runtime::RuntimeAccount,
+) -> Result<Json<Vec<ProviderResponse>>, StatusCode> {
+    let allowed = account
+        .allowed_mcp_providers(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Json(mut providers) = list_connectors_for_org(&state, account.org_id).await;
+    if let Some(allowed) = allowed {
+        providers.retain(|p| {
+            !p.provider_id.starts_with("mcp_oauth_") || allowed.contains(&p.provider_id)
+        });
+    }
+    Ok(Json(providers))
+}
+async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<ProviderResponse>> {
     let mut providers = Vec::new();
 
     // Hardcoded GitHub OAuth provider (only if configured)
@@ -307,7 +434,7 @@ pub async fn list_connectors(
         });
     }
 
-    let plugin_display_names = match state.db.list_active_plugin_installs(org.org_id).await {
+    let plugin_display_names = match state.db.list_active_plugin_installs(org_id).await {
         Ok(installs) => installs
             .into_iter()
             .map(|install| {
@@ -329,12 +456,12 @@ pub async fn list_connectors(
             })
             .collect::<HashMap<_, _>>(),
         Err(error) => {
-            tracing::error!(%error, org_id = org.org_id, "Failed to list plugin connection labels");
+            tracing::error!(%error, org_id = org_id, "Failed to list plugin connection labels");
             HashMap::new()
         }
     };
 
-    match state.db.list_mcp_servers(org.org_id, None, false).await {
+    match state.db.list_mcp_servers(org_id, None, false).await {
         Ok(servers) => {
             providers.extend(servers.into_iter().filter_map(|server| {
                 let settings = McpServerService::settings_from_row(&server);
@@ -355,7 +482,7 @@ pub async fn list_connectors(
             }));
         }
         Err(error) => {
-            tracing::error!(%error, org_id = org.org_id, "Failed to list MCP OAuth providers");
+            tracing::error!(%error, org_id = org_id, "Failed to list MCP OAuth providers");
         }
     }
 
@@ -398,7 +525,7 @@ fn mcp_connection_display_name(
 /// Validates the key via the provider's validate() method before saving.
 pub async fn create_api_key_connection(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: ConnectionUser,
     Path(provider_id): Path<String>,
     Json(body): Json<CreateApiKeyConnectionRequest>,
 ) -> Result<(StatusCode, Json<ConnectionResponse>), (StatusCode, String)> {
@@ -490,7 +617,7 @@ pub async fn create_api_key_connection(
 /// DELETE /v1/user/connections/:provider — Disconnect
 pub async fn delete_connection(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: ConnectionUser,
     Path(provider): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     state
@@ -506,10 +633,14 @@ pub async fn delete_connection(
 }
 
 /// Response for connection verification
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct VerifyConnectionResponse {
+    /// Whether the provider accepted the saved credential.
+    #[schema(example = true)]
     pub valid: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Provider verification failure without credential details.
+    #[schema(example = "Credential expired")]
     pub error: Option<String>,
 }
 
@@ -520,7 +651,7 @@ pub struct VerifyConnectionResponse {
 /// Connector::validate().
 pub async fn verify_connection(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: ConnectionUser,
     Path(provider_id): Path<String>,
 ) -> Result<Json<VerifyConnectionResponse>, (StatusCode, String)> {
     // Look up the stored connection
@@ -608,9 +739,47 @@ pub async fn verify_connection(
 pub async fn authorize_connection(
     State(state): State<AppState>,
     org: ResolvedOrg,
+    auth: ConnectionUser,
     jar: CookieJar,
     Path(provider): Path<String>,
     Query(query): Query<OAuthAuthorizeQuery>,
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+    authorize_connection_inner(
+        state,
+        OAuthAuthority {
+            org_id: org.org_id,
+            caller: Some(Caller::from(&org)),
+            target_id: auth.id,
+            management_user_id: Some(auth.management_user_id),
+            runtime_credential: None,
+        },
+        jar,
+        provider,
+        query,
+    )
+    .await
+}
+struct OAuthAuthority {
+    org_id: i64,
+    caller: Option<Caller>,
+    target_id: uuid::Uuid,
+    management_user_id: Option<uuid::Uuid>,
+    runtime_credential: Option<String>,
+}
+impl OAuthAuthority {
+    fn management_caller(&self) -> Result<&Caller, (StatusCode, String)> {
+        self.caller.as_ref().ok_or((
+            StatusCode::FORBIDDEN,
+            "Management authority required".into(),
+        ))
+    }
+}
+async fn authorize_connection_inner(
+    state: AppState,
+    authority: OAuthAuthority,
+    jar: CookieJar,
+    provider: String,
+    query: OAuthAuthorizeQuery,
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
     let Some(server_id) = parse_mcp_oauth_provider_id(&provider) else {
         return Err((
@@ -620,7 +789,7 @@ pub async fn authorize_connection(
     };
     let row = state
         .db
-        .get_mcp_server(org.org_id, server_id)
+        .get_mcp_server(authority.org_id, server_id)
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
@@ -663,14 +832,14 @@ pub async fn authorize_connection(
                 StatusCode::BAD_REQUEST,
                 "agent_id is required for identity OAuth flows".to_string(),
             ))?;
-            let caller = Caller::from(&org);
+            let caller = authority.management_caller()?;
             // THREAT[TM-AUTHZ-018]: service grants require MCP management
             // authority before any discovery, registration, or identity write.
-            enforce_identity_grant_policy(&state, &caller)?;
+            enforce_identity_grant_policy(&state, caller)?;
 
             let agent = state
                 .db
-                .get_agent_by_public_id(org.org_id, &agent_public_id)
+                .get_agent_by_public_id(authority.org_id, &agent_public_id)
                 .await
                 .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
                 .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -694,7 +863,7 @@ pub async fn authorize_connection(
     state
         .db
         .update_mcp_server(
-            org.org_id,
+            authority.org_id,
             server_id,
             crate::storage::models::UpdateMcpServer {
                 settings: Some(serde_json::to_value(&updated_settings).unwrap_or_default()),
@@ -704,30 +873,40 @@ pub async fn authorize_connection(
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
 
-    let (agent_id, agent_identity_id) = match identity_agent {
+    let (agent_id, virtual_user_id) = match identity_agent {
         Some(agent) => {
             let agent_id = agent.id.to_string();
             let (identity_id, _principal) =
-                ensure_identity_for_agent(&state.db, org.org_id, &agent)
+                ensure_identity_for_agent(&state.db, authority.org_id, &agent)
                     .await
                     .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
             (Some(agent_id), Some(identity_id.to_string()))
         }
-        None => (None, None),
+        None => (
+            None,
+            Some(
+                everruns_provider::typed_id::VirtualUserId::from_uuid(authority.target_id)
+                    .to_string(),
+            ),
+        ),
     };
 
     let service_grant = mode == "identity";
     let pending = PendingOAuthState {
         state: oauth_state.clone(),
+        org_id: authority.org_id,
+        management_user_id: authority.management_user_id,
+        runtime_credential: authority.runtime_credential,
         provider: provider.clone(),
         return_to,
         mode,
         session_id,
-        agent_identity_id,
+        virtual_user_id,
         agent_id,
         popup,
         code_verifier,
     };
+    register_pending_setup(&state, &pending).await?;
     let cookie = Cookie::build((
         oauth_state_cookie_name(&provider),
         URL_SAFE_NO_PAD.encode(
@@ -791,7 +970,7 @@ pub async fn authorize_connection(
 
 pub async fn connection_oauth_callback(
     State(state): State<AppState>,
-    org: ResolvedOrg,
+    org: Result<ResolvedOrg, crate::auth::middleware::AuthError>,
     jar: CookieJar,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
@@ -809,6 +988,8 @@ pub async fn connection_oauth_callback(
         ));
     };
     let pending = validate_pending_oauth_state(&jar, &provider, query.state.as_deref())?;
+    consume_pending_setup(&state, &pending).await?;
+    let authority = callback_authority(&state, &pending, org).await?;
     let clear_cookie = jar.remove(Cookie::from(oauth_state_cookie_name(&provider)));
     if let Some(error) = query.error.as_deref() {
         return Err((
@@ -823,7 +1004,7 @@ pub async fn connection_oauth_callback(
 
     let row = state
         .db
-        .get_mcp_server(org.org_id, server_id)
+        .get_mcp_server(authority.org_id, server_id)
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
@@ -884,7 +1065,7 @@ pub async fn connection_oauth_callback(
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid session_id: {e}")))?;
         state
             .db
-            .get_session(org.org_id, session_id)
+            .get_session(authority.org_id, session_id)
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
             .ok_or((StatusCode::NOT_FOUND, "Session not found".to_string()))?;
@@ -900,6 +1081,10 @@ pub async fn connection_oauth_callback(
         state
             .db
             .upsert_mcp_oauth_session_credentials(UpsertMcpOAuthSessionCredentials {
+                virtual_user_id: pending
+                    .virtual_user_id
+                    .as_deref()
+                    .and_then(|id| id.parse::<VirtualUserId>().ok()),
                 session_id,
                 server_id,
                 access_token_encrypted: encryption
@@ -929,17 +1114,17 @@ pub async fn connection_oauth_callback(
             .parse::<AgentId>()
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid agent_id: {e}")))?;
         let identity_id = pending
-            .agent_identity_id
+            .virtual_user_id
             .as_deref()
             .ok_or((
                 StatusCode::BAD_REQUEST,
-                "Missing agent_identity_id for identity OAuth flow".to_string(),
+                "Missing virtual_user_id for identity OAuth flow".to_string(),
             ))?
-            .parse::<AgentIdentityId>()
+            .parse::<VirtualUserId>()
             .map_err(|e| {
                 (
                     StatusCode::BAD_REQUEST,
-                    format!("Invalid agent_identity_id: {e}"),
+                    format!("Invalid virtual_user_id: {e}"),
                 )
             })?;
 
@@ -947,8 +1132,8 @@ pub async fn connection_oauth_callback(
         // trusting the cookie. The state cookie is browser-bound but not
         // signed, so a planted one must not be able to aim a grant at another
         // tenant's identity or clear a gate the authorizing user never passed.
-        let caller = Caller::from(&org);
-        enforce_identity_grant_policy(&state, &caller)?;
+        let caller = authority.management_caller()?;
+        enforce_identity_grant_policy(&state, caller)?;
 
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -956,11 +1141,11 @@ pub async fn connection_oauth_callback(
         ))?;
         let connection = state
             .db
-            .upsert_agent_identity_connection_for_active_agent(
-                org.org_id,
+            .upsert_virtual_user_connection_for_active_agent(
+                authority.org_id,
                 agent_id,
-                CreateAgentIdentityConnectionRow {
-                    agent_identity_id: identity_id,
+                CreateVirtualUserConnectionRow {
+                    virtual_user_id: identity_id,
                     provider: provider.clone(),
                     connection_type: "oauth".to_string(),
                     provider_user_id: None,
@@ -998,10 +1183,21 @@ pub async fn connection_oauth_callback(
         state
             .db
             .upsert_user_connection(CreateUserConnectionRow {
-                user_id: org.user_id.ok_or((
-                    StatusCode::UNAUTHORIZED,
-                    "User identity required for OAuth connection".to_string(),
-                ))?,
+                user_id: pending
+                    .virtual_user_id
+                    .as_deref()
+                    .ok_or((
+                        StatusCode::BAD_REQUEST,
+                        "Missing runtime subject".to_string(),
+                    ))?
+                    .parse::<VirtualUserId>()
+                    .map_err(|_| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            "Invalid runtime subject".to_string(),
+                        )
+                    })?
+                    .uuid(),
                 provider: provider.clone(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
@@ -1038,9 +1234,29 @@ pub async fn connection_oauth_callback(
 /// GET /v1/user/connections/github/authorize — Redirect to GitHub App installation
 pub async fn github_authorize(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: ConnectionUser,
     jar: CookieJar,
     Query(_params): Query<std::collections::HashMap<String, String>>,
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+    github_authorize_inner(
+        state,
+        OAuthAuthority {
+            org_id: _auth.org_id,
+            caller: None,
+            target_id: _auth.id,
+            management_user_id: Some(_auth.management_user_id),
+            runtime_credential: None,
+        },
+        jar,
+        None,
+    )
+    .await
+}
+async fn github_authorize_inner(
+    state: AppState,
+    authority: OAuthAuthority,
+    jar: CookieJar,
+    return_to: Option<String>,
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
     let config = state
         .auth_config
@@ -1056,18 +1272,39 @@ pub async fn github_authorize(
     let service = GitHubAppService::new(config);
 
     // Generate state for CSRF protection
-    let mut rng = rand::rng();
-    let bytes: [u8; 16] = rng.random();
+    let bytes: [u8; 16] = rand::rng().random();
     let install_state = hex::encode(bytes);
-
-    // Store state in HttpOnly cookie for validation in callback
-    let state_cookie = Cookie::build((GITHUB_INSTALL_STATE_COOKIE, install_state.clone()))
-        .path("/")
-        .http_only(true)
-        .secure(true)
-        .same_site(SameSite::Lax)
-        .max_age(time::Duration::minutes(10))
-        .build();
+    let pending = PendingOAuthState {
+        state: install_state.clone(),
+        org_id: authority.org_id,
+        management_user_id: authority.management_user_id,
+        runtime_credential: authority.runtime_credential,
+        provider: "github".into(),
+        return_to: normalize_return_to(
+            return_to.as_deref(),
+            "/settings/connections?connected=github",
+        ),
+        mode: "virtual_user".into(),
+        session_id: None,
+        agent_id: None,
+        virtual_user_id: Some(VirtualUserId::from_uuid(authority.target_id).to_string()),
+        popup: false,
+        code_verifier: String::new(),
+    };
+    register_pending_setup(&state, &pending).await?;
+    let state_cookie = Cookie::build((
+        oauth_state_cookie_name("github"),
+        URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&pending)
+                .map_err(|e| sanitized_internal_error("GitHub setup", &e))?,
+        ),
+    ))
+    .path("/")
+    .http_only(true)
+    .secure(true)
+    .same_site(SameSite::Lax)
+    .max_age(time::Duration::minutes(10))
+    .build();
     let jar = jar.add(state_cookie);
 
     let auth_url = service.installation_url(&install_state);
@@ -1081,16 +1318,14 @@ pub async fn github_authorize(
 /// Validates CSRF state from cookie before proceeding.
 pub async fn github_callback(
     State(state): State<AppState>,
-    auth: AuthUser,
+    org: Result<ResolvedOrg, crate::auth::middleware::AuthError>,
     jar: CookieJar,
     Query(query): Query<GitHubInstallationCallbackQuery>,
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
-    // Validate CSRF state parameter
-    validate_install_state(&jar, query.state.as_deref())?;
-
-    // Clear the state cookie after validation
-    let jar = jar.remove(Cookie::from(GITHUB_INSTALL_STATE_COOKIE));
-
+    let pending = validate_pending_oauth_state(&jar, "github", query.state.as_deref())?;
+    consume_pending_setup(&state, &pending).await?;
+    let auth = callback_authority(&state, &pending, org).await?;
+    let jar = jar.remove(Cookie::from(oauth_state_cookie_name("github")));
     let config = state
         .auth_config
         .github_connection
@@ -1129,10 +1364,10 @@ pub async fn github_callback(
                 "Failed to store connection".to_string(),
             )
         })?
-        && existing_owner_id != auth.id
+        && existing_owner_id != auth.target_id
     {
         tracing::warn!(
-            user_id = %auth.id,
+            user_id = %auth.target_id,
             existing_owner_id = %existing_owner_id,
             installation_id = result.installation_id,
             "GitHub installation already linked to another user"
@@ -1147,7 +1382,7 @@ pub async fn github_callback(
     state
         .db
         .upsert_user_connection(CreateUserConnectionRow {
-            user_id: auth.id,
+            user_id: auth.target_id,
             provider: "github".to_string(),
             connection_type: "oauth".to_string(),
             provider_user_id: Some(result.account_id),
@@ -1168,302 +1403,16 @@ pub async fn github_callback(
             )
         })?;
 
-    // Redirect back to settings page
     let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
     Ok((
         jar,
-        Redirect::to(&format!(
-            "{}/settings/connections?connected=github",
-            frontend_url
-        )),
+        Redirect::to(&format!("{}{}", frontend_url, pending.return_to)),
     ))
 }
 
-/// PUT /v1/user/connections/api-key/:provider — Store an API-key-based connection
-///
-/// For providers that authenticate with a simple API key (e.g., brave_search).
-/// The API key is encrypted at rest using envelope encryption.
-pub async fn put_api_key_connection(
-    State(state): State<AppState>,
-    auth: AuthUser,
-    Path(provider): Path<String>,
-    Json(body): Json<ApiKeyConnectionRequest>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    // Validate provider
-    if !API_KEY_PROVIDERS.contains(&provider.as_str()) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Provider '{}' does not support API key connections. Supported: {}",
-                provider,
-                API_KEY_PROVIDERS.join(", ")
-            ),
-        ));
-    }
-
-    if body.api_key.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "API key cannot be empty".to_string(),
-        ));
-    }
-
-    // Encrypt the API key
-    let encryption = state.encryption.as_ref().ok_or_else(|| {
-        tracing::error!("Encryption service not available for API key storage");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Encryption not configured".to_string(),
-        )
-    })?;
-
-    let encrypted = encryption.encrypt_string(&body.api_key).map_err(|e| {
-        tracing::error!("Failed to encrypt API key: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to encrypt API key".to_string(),
-        )
-    })?;
-
-    // Upsert connection
-    state
-        .db
-        .upsert_user_connection(CreateUserConnectionRow {
-            user_id: auth.id,
-            provider: provider.clone(),
-            connection_type: "api_key".to_string(),
-            provider_user_id: None,
-            provider_username: None,
-            access_token_encrypted: Some(encrypted),
-            refresh_token_encrypted: None,
-            scopes: None,
-            expires_at: None,
-            installation_id: None,
-            provider_metadata: None,
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to store {} connection: {}", provider, e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to store connection".to_string(),
-            )
-        })?;
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
-// ============================================================================
-// State validation
-// ============================================================================
-
-/// Validate CSRF state: cookie must exist, query param must exist, and they must match.
-fn validate_install_state(
-    jar: &CookieJar,
-    query_state: Option<&str>,
-) -> Result<String, (StatusCode, String)> {
-    let stored = jar
-        .get(GITHUB_INSTALL_STATE_COOKIE)
-        .map(|c| c.value().to_string())
-        .ok_or_else(|| {
-            tracing::warn!("GitHub install callback missing state cookie (possible CSRF attempt)");
-            (
-                StatusCode::BAD_REQUEST,
-                "Invalid or expired installation state".to_string(),
-            )
-        })?;
-
-    let callback = query_state.ok_or_else(|| {
-        tracing::warn!("GitHub install callback missing state parameter");
-        (
-            StatusCode::BAD_REQUEST,
-            "Missing state parameter".to_string(),
-        )
-    })?;
-
-    if stored != callback {
-        tracing::warn!("GitHub install callback state mismatch (possible CSRF attempt)");
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Invalid installation state".to_string(),
-        ));
-    }
-
-    Ok(stored)
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-fn form_schema_to_response(schema: &CoreFormSchema) -> FormSchemaResponse {
-    FormSchemaResponse {
-        instructions_markdown: schema.instructions_markdown.clone(),
-        fields: schema
-            .fields
-            .iter()
-            .map(|f| {
-                let field_type = match f.field_type {
-                    everruns_platform::connector::FieldType::Password => "password",
-                    everruns_platform::connector::FieldType::Text => "text",
-                    everruns_platform::connector::FieldType::Url => "url",
-                };
-                FormFieldResponse {
-                    name: f.name.clone(),
-                    label: f.label.clone(),
-                    field_type: field_type.to_string(),
-                    required: f.required,
-                    placeholder: f.placeholder.clone(),
-                    help_text: f.help_text.clone(),
-                }
-            })
-            .collect(),
-    }
-}
-
-fn oauth_state_cookie_name(provider: &str) -> String {
-    format!("oauth_connection_state_{}", provider.replace(':', "_"))
-}
-
-fn normalize_return_to(value: Option<&str>, default_path: &str) -> String {
-    match value {
-        Some(path) if path.starts_with('/') => path.to_string(),
-        _ => default_path.to_string(),
-    }
-}
-
-fn mcp_oauth_redirect_uri(config: &AuthConfig, provider: &str) -> String {
-    // base_url already includes any API prefix (set by AUTH_BASE_URL / BASE_URL env)
-    format!(
-        "{}/v1/user/connections/{provider}/callback",
-        config.base_url.trim_end_matches('/')
-    )
-}
-
-fn parse_mcp_oauth_provider_id(provider: &str) -> Option<uuid::Uuid> {
-    provider
-        .strip_prefix("mcp_oauth_")
-        .and_then(|value| uuid::Uuid::parse_str(value).ok())
-}
-
-fn generate_pkce_verifier() -> String {
-    let bytes: [u8; 32] = rand::rng().random();
-    URL_SAFE_NO_PAD.encode(bytes)
-}
-
-fn pkce_challenge(verifier: &str) -> String {
-    let digest = Sha256::digest(verifier.as_bytes());
-    URL_SAFE_NO_PAD.encode(digest)
-}
-
-fn validate_pending_oauth_state(
-    jar: &CookieJar,
-    provider: &str,
-    query_state: Option<&str>,
-) -> Result<PendingOAuthState, (StatusCode, String)> {
-    let cookie_name = oauth_state_cookie_name(provider);
-    let cookie = jar.get(&cookie_name).ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid or expired OAuth state".to_string(),
-        )
-    })?;
-    let decoded = URL_SAFE_NO_PAD
-        .decode(cookie.value())
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
-    let pending: PendingOAuthState = serde_json::from_slice(&decoded)
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
-    let callback_state = query_state.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Missing state parameter".to_string(),
-        )
-    })?;
-    if pending.state != callback_state {
-        return Err((StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()));
-    }
-    Ok(pending)
-}
-
-fn finalize_oauth_redirect(
-    auth_config: &AuthConfig,
-    return_to: &str,
-    provider: &str,
-    popup: bool,
-) -> String {
-    let frontend = auth_config.frontend_url.trim_end_matches('/');
-    let encoded_provider = urlencoding::encode(provider);
-    if popup {
-        format!(
-            "{}/connection-complete?provider={}&status=success&return_to={}",
-            frontend,
-            encoded_provider,
-            urlencoding::encode(return_to),
-        )
-    } else if return_to.contains('?') {
-        format!("{frontend}{return_to}&connected={encoded_provider}")
-    } else {
-        format!("{frontend}{return_to}?connected={encoded_provider}")
-    }
-}
-
-/// Gate for authorizing a grant owned by an agent identity.
-///
-/// Requires the organization MCP-server management permission. Connecting your
-/// own account stays ungated because it spends only your own access (EVE-1030).
-fn enforce_identity_grant_policy(
-    state: &AppState,
-    caller: &Caller,
-) -> Result<(), (StatusCode, String)> {
-    let resolver = state.auth.permission_resolver.as_ref();
-    MCP_SERVER_MANAGE
-        .evaluate_with(resolver, caller)
-        .map_err(|_| {
-            (
-            StatusCode::FORBIDDEN,
-            "Permission denied: authorizing an agent service grant requires MCP server management"
-                .to_string(),
-        )
-        })?;
-    Ok(())
-}
-
-fn normalize_oauth_mode(mode: Option<&str>) -> Result<String, (StatusCode, String)> {
-    match mode.unwrap_or("user") {
-        "user" => Ok("user".to_string()),
-        "session" => Ok("session".to_string()),
-        // A grant owned by the agent itself, shared by every session and every
-        // invoking user (EVE-1030).
-        "identity" => Ok("identity".to_string()),
-        other => Err((
-            StatusCode::BAD_REQUEST,
-            format!("Invalid OAuth mode: {other}"),
-        )),
-    }
-}
-
-fn resource_origin(url: &Url) -> Result<String, (StatusCode, String)> {
-    let host = url.host_str().ok_or((
-        StatusCode::BAD_REQUEST,
-        "Invalid MCP server URL: missing host".to_string(),
-    ))?;
-    let host = if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]")
-    } else {
-        host.to_string()
-    };
-    let mut origin = format!("{}://{}", url.scheme(), host);
-    if let Some(port) = url.port() {
-        origin.push(':');
-        origin.push_str(&port.to_string());
-    }
-    Ok(origin)
-}
-
-fn parse_and_validate_url(url: &str) -> Result<Url, (StatusCode, String)> {
-    validate_safe_url(url).map_err(|e| (StatusCode::BAD_REQUEST, format!("Blocked URL: {e}")))?;
-    Url::parse(url).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid URL: {e}")))
-}
+pub(crate) mod runtime_accounts;
+pub use runtime_accounts::ConnectionSetupResponse;
+use runtime_accounts::*;
 
 #[cfg(test)]
 #[path = "user_connections_tests.rs"]
