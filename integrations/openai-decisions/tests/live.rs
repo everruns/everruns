@@ -4,6 +4,7 @@
 //! `OPENAI_API_KEY`. Needs an account with Decisions API access:
 //! `doppler run -- cargo test -p everruns-integrations-openai-decisions --features live-tests`.
 #![cfg(feature = "live-tests")]
+#![allow(clippy::expect_used)]
 
 use everruns_core::{DecisionDriver, DecisionQuestion, DecisionRequest};
 use everruns_integrations_openai_decisions::OpenAIDecisions;
