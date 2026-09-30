@@ -20,6 +20,13 @@ use std::sync::Arc;
 use crate::error::Result;
 use crate::typed_id::SessionId;
 
+mod turn_correlation;
+
+use turn_correlation::redacted_public_task_spec;
+pub use turn_correlation::{
+    TurnCorrelatedSessionTaskRegistry, set_task_origin_event_context, task_origin_event_context,
+};
+
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
@@ -274,22 +281,6 @@ where
     S: Serializer,
 {
     redacted_public_task_spec(spec).serialize(serializer)
-}
-
-fn redacted_public_task_spec(spec: &Value) -> Value {
-    let mut public = spec.clone();
-    let Some(configs) = public.get_mut("push_configs").and_then(Value::as_array_mut) else {
-        return public;
-    };
-    for config in configs {
-        let Some(config) = config.as_object_mut() else {
-            continue;
-        };
-        if config.remove("secret").is_some() {
-            config.insert("has_secret".to_string(), Value::Bool(true));
-        }
-    }
-    public
 }
 
 /// Input for creating a task.

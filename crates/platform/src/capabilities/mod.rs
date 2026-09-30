@@ -121,6 +121,7 @@ pub fn register_environment_capabilities(
     registry.register(everruns_integrations_bashkit::BashkitShellCapability);
     registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
     registry.register(everruns_integrations_openrouter::OpenRouterServerToolsCapability);
+    registry.register(everruns_builtins::OpenAiServerToolsCapability);
     registry.register(everruns_integrations_openrouter::ModelScoutCapability);
     registry.register(everruns_integrations_openrouter::OpenRouterWorkspaceCapability);
 
@@ -290,6 +291,7 @@ mod tests {
             "model_scout",
             "openrouter_workspace",
             "openrouter_server_tools",
+            "openai_server_tools",
         ] {
             assert!(
                 registry.has(capability_id),

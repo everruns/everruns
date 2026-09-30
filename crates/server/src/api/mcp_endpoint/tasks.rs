@@ -331,6 +331,39 @@ async fn handle_question_update(
         }
     };
     let caller = Caller::from(org);
+    let session = match state
+        .session_service
+        .get(&caller, session_id.uuid(), None)
+        .await
+    {
+        Ok(Some(session)) => session,
+        Ok(None) => {
+            return JsonRpcResponse::invalid_params(
+                id,
+                "Task has no pending ask_user input request",
+            );
+        }
+        Err(error) => {
+            tracing::error!(error = %error, "Failed to load task for question authorization");
+            return JsonRpcResponse::error(id, -32603, "Failed to authorize task input");
+        }
+    };
+    match crate::domains::sessions::platform_chat_owner_matches_session(
+        &state.db, &caller, &session,
+    )
+    .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            let message = "forbidden: Only the Platform Chat session owner can answer questions";
+            let envelope = classify_mcp_execute_error(message);
+            return JsonRpcResponse::success(id, error_result_payload(message, Some(&envelope)));
+        }
+        Err(error) => {
+            tracing::error!(error = %error, "Failed to authorize task question input");
+            return JsonRpcResponse::error(id, -32603, "Failed to authorize task input");
+        }
+    }
     let pending =
         match form_elicitation::pending_questions_for_session(&caller, session_id, state).await {
             Ok(Some(pending)) => pending,
