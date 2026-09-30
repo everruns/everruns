@@ -81,8 +81,8 @@ use uuid::Uuid;
 
 use super::IngressEndpointRow;
 use super::agent_trigger_deliveries::AgentTriggerDeliveryRow;
-use super::mcp_event_subscriptions::*;
 use super::github_app_rows::GitHubAppRow;
+use super::mcp_event_subscriptions::*;
 use super::mcp_tool_cache::*;
 use super::models::*;
 use super::org_slack_connections::*;
