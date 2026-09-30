@@ -11,12 +11,29 @@ Everruns speaks the [Model Context Protocol](https://spec.modelcontextprotocol.i
 
 Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so external clients, Claude Desktop, Cursor, VS Code, or another agent, can discover and call your agents and tools over JSON-RPC. It is a standard product surface, with no deployment variable or organization feature toggle.
 
-- **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2025-06-18` and `2025-03-26` are supported.
-- **Methods**: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`.
+- **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2026-07-28`, `2025-06-18` and `2025-03-26` are supported.
+- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
 - **Entity cards**: under protocol `2025-06-18`, tools like `agent_get_card` return a sandboxed `text/html` MCP App resource at the `ui://` scheme alongside a text summary, so MCP-Apps-aware hosts render rich cards while others fall back to text.
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.
+
+### In ChatGPT and Codex
+
+`/mcp` is an [MCP App](https://github.com/modelcontextprotocol/ext-apps): hosts that
+render MCP Apps, including ChatGPT, Codex and Claude, show a live session view
+after `agent_run`, answer an agent's questions in a form, approve or decline a
+pending action, and open an Everruns panel from the sidebar. Hosts that do not
+render apps get the same tools as plain text.
+
+### Session events (experimental)
+
+With the **MCP Events** feature flag turned on for an organization, an MCP client
+can subscribe to webhooks for `session.completed`, `session.failed` and
+`session.input_required`, filtered by agent or session. Callbacks must be public
+HTTPS URLs and are verified before the first event. Deliveries are signed per
+[Standard Webhooks](https://www.standardwebhooks.com/) and carry identifiers and
+state, not message content: read the session with `session_get_status`.
 
 ## Everruns as an MCP client
 

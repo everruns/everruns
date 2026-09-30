@@ -22,6 +22,7 @@ mod files;
 mod harnesses;
 mod knowledge_bases;
 mod knowledge_indexes;
+mod mcp_event_subscriptions;
 mod mcp_servers;
 mod memory;
 mod notifications;

@@ -28,7 +28,9 @@
 mod apps;
 mod caching;
 mod cards;
+mod discovery;
 pub mod elicitation;
+mod events;
 mod form_elicitation;
 mod resources;
 mod tasks;
@@ -342,6 +344,8 @@ pub struct AppState {
     /// the same root `/mcp` is served under. `None` disables the tools that
     /// elicit, since an elicitation with no reachable URL is worse than no tool.
     pub elicitation_base_url: Option<String>,
+    /// Outbound MCP Events (EVE-1121). `None` leaves `events/*` undefined.
+    pub mcp_events: Option<Arc<crate::services::mcp_events::McpEventsService>>,
 }
 
 impl AppState {
@@ -402,6 +406,7 @@ impl AppState {
             resource_metadata_url: None,
             mcp_resource: None,
             elicitation_base_url: None,
+            mcp_events: None,
         }
     }
 
@@ -436,6 +441,14 @@ impl AppState {
     /// Public root that URL mode elicitation pages are built from.
     pub fn with_elicitation_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.elicitation_base_url = Some(base_url.into());
+        self
+    }
+
+    pub fn with_mcp_events(
+        mut self,
+        service: Arc<crate::services::mcp_events::McpEventsService>,
+    ) -> Self {
+        self.mcp_events = Some(service);
         self
     }
 
@@ -650,10 +663,12 @@ async fn handle_mcp(
     // paths. See `caching` for the TTL and scope rationale.
     let negotiated_version = protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK);
     let response = match req.method.as_str() {
-        "initialize" => handle_initialize(req.id, req.params),
-        // MCP 2026-07-28 replaces the `initialize` handshake with a stateless
-        // discovery call. ChatGPT reads extension capabilities from it.
-        "server/discover" => handle_server_discover(req.id),
+        "initialize" => discovery::handle_initialize(req.id, req.params),
+        // MCP 2026-07-28 replaces `initialize` with a stateless discovery call.
+        // ChatGPT reads extension and events capabilities from it.
+        "server/discover" => {
+            discovery::handle_server_discover(req.id, events::enabled(&org, &state))
+        }
         "tools/list" => {
             let mut response = handle_tools_list(req.id, negotiated_version);
             if let Some(result) = response.result.as_mut() {
@@ -734,6 +749,10 @@ async fn handle_mcp(
             )
             .await
         }
+        // MCP Events (draft): outbound session webhooks, org opt-in.
+        "events/list" | "events/subscribe" | "events/unsubscribe" => {
+            events::handle_method(&req.method, req.id, req.params, &org, &state).await
+        }
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),
     };
@@ -744,64 +763,6 @@ async fn handle_mcp(
 // ============================================================================
 // Protocol handlers
 // ============================================================================
-
-fn handle_initialize(id: Option<Value>, params: Value) -> JsonRpcResponse {
-    let params: InitializeParams = serde_json::from_value(params).unwrap_or_default();
-    let protocol_version = negotiate_protocol_version(params.protocol_version.as_deref());
-    let mut capabilities = json!({
-        "tools": {
-            "listChanged": false
-        },
-        "resources": {}
-    });
-    // Advertise the Tasks extension (SEP-2663) only under the negotiated
-    // 2026-07-28 protocol. 2025-* clients see the capabilities shape unchanged.
-    if let Some(extensions) = server_extensions(protocol_version) {
-        capabilities["extensions"] = extensions;
-    }
-    JsonRpcResponse::success(
-        id,
-        json!({
-            "protocolVersion": protocol_version,
-            "capabilities": capabilities,
-            "serverInfo": {
-                "name": MCP_SERVER_NAME,
-                "version": MCP_SERVER_VERSION
-            }
-        }),
-    )
-}
-
-/// Extensions advertised under the 2026-07-28 protocol: Tasks (SEP-2663) and
-/// MCP Apps (SEP-1865). `None` for 2025-* so their `initialize` shape is
-/// unchanged.
-fn server_extensions(protocol_version: &str) -> Option<Value> {
-    let mut extensions = tasks::initialize_extensions(protocol_version)?;
-    extensions[apps::UI_EXTENSION_KEY] = apps::server_extension();
-    Some(extensions)
-}
-
-/// `server/discover` (MCP 2026-07-28): versions, capabilities and server info
-/// in one stateless call, the replacement for `initialize`.
-fn handle_server_discover(id: Option<Value>) -> JsonRpcResponse {
-    let mut capabilities = json!({ "tools": { "listChanged": false }, "resources": {} });
-    if let Some(extensions) = server_extensions(MCP_PROTOCOL_VERSION_LATEST) {
-        capabilities["extensions"] = extensions;
-    }
-    JsonRpcResponse::success(
-        id,
-        json!({
-            "supportedVersions": SUPPORTED_PROTOCOL_VERSIONS,
-            "capabilities": capabilities,
-            "_meta": {
-                "io.modelcontextprotocol/serverInfo": {
-                    "name": MCP_SERVER_NAME,
-                    "version": MCP_SERVER_VERSION
-                }
-            }
-        }),
-    )
-}
 
 fn handle_tools_list(id: Option<Value>, protocol_version: &str) -> JsonRpcResponse {
     JsonRpcResponse::success(id, json!({ "tools": tool_definitions(protocol_version) }))

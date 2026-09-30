@@ -95,6 +95,58 @@ pub struct TestServer {
     pub seed_generic_harness_id: String,
     /// Public ID of the built-in `platform-chat` harness for the default org.
     pub seed_chat_harness_id: String,
+    /// Outbound MCP Events, wired to `webhooks` instead of the network.
+    pub mcp_events: Arc<services::mcp_events::McpEventsService>,
+    pub webhooks: Arc<WebhookReceiver>,
+}
+
+/// Stands in for MCP Events callback URLs: answers verification challenges
+/// (unless told not to) and records every request.
+#[derive(Default)]
+pub struct WebhookReceiver {
+    pub requests: parking_lot::Mutex<Vec<everruns_core::EgressRequest>>,
+    pub refuse_verification: std::sync::atomic::AtomicBool,
+    /// Statuses to answer event deliveries with, in order; then 200.
+    pub delivery_statuses: parking_lot::Mutex<std::collections::VecDeque<u16>>,
+}
+
+#[async_trait::async_trait]
+impl everruns_core::EgressService for WebhookReceiver {
+    async fn send(
+        &self,
+        request: everruns_core::EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+        let body: Value = serde_json::from_slice(&request.body).unwrap_or_default();
+        self.requests.lock().push(request);
+        let (status, body) = if body["type"] == "verification" {
+            let refuse = self
+                .refuse_verification
+                .load(std::sync::atomic::Ordering::SeqCst);
+            let echoed = if refuse {
+                "wrong"
+            } else {
+                body["challenge"].as_str().unwrap_or("")
+            };
+            (200, serde_json::json!({ "challenge": echoed }))
+        } else {
+            let status = self.delivery_statuses.lock().pop_front().unwrap_or(200);
+            (status, serde_json::json!({}))
+        };
+        Ok(everruns_core::EgressResponse {
+            status,
+            headers: Default::default(),
+            body: serde_json::to_vec(&body).unwrap_or_default(),
+        })
+    }
+
+    async fn send_stream(
+        &self,
+        _request: everruns_core::EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+        Err(everruns_core::EgressError::Transport(
+            "webhooks do not stream".into(),
+        ))
+    }
 }
 
 impl TestServer {
@@ -596,6 +648,22 @@ impl TestServer {
         // publish to the same broadcast backend that SSE subscribers listen on.
         let event_delivery = everruns_server::EventDelivery::in_memory();
 
+        let webhooks = Arc::new(WebhookReceiver::default());
+        let mcp_events = Arc::new(
+            services::mcp_events::McpEventsService::new(
+                db.clone(),
+                encryption.clone(),
+                webhooks.clone(),
+                everruns_platform::FeatureFlags {
+                    mcp_events: true,
+                    ..Default::default()
+                },
+            )
+            .with_ui_base(auth_config.frontend_url.clone())
+            .with_retry_delays(vec![std::time::Duration::ZERO; 2])
+            .with_permission_resolver(auth_state.permission_resolver.clone()),
+        );
+
         // Create event listeners (minimal for tests)
         let event_service = Arc::new(services::EventService::with_listeners(
             db.clone(),
@@ -617,6 +685,7 @@ impl TestServer {
         feature_flags.plugins = true;
         feature_flags.agent_delegation = true;
         feature_flags.environments = true;
+        feature_flags.mcp_events = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default
         // test org into the experimental flags whose runtime gates now consult
@@ -635,6 +704,7 @@ impl TestServer {
             "agent_delegation",
             "agent_versions",
             "app_budgets",
+            "mcp_events",
             // Platform-managed: the platform enrols an org rather than the org
             // opting itself in, and seeding the row here is that enrolment.
             "environments",
@@ -985,7 +1055,8 @@ impl TestServer {
         .with_virtual_registry(virtual_registry.clone())
         // URL mode elicitation pages hang off the same root `/mcp` is served
         // under, matching app_builder.
-        .with_elicitation_base_url(auth::builtin::root_url_from_api_base(&auth_config.base_url));
+        .with_elicitation_base_url(auth::builtin::root_url_from_api_base(&auth_config.base_url))
+        .with_mcp_events(mcp_events.clone());
         let mcp_elicitation_state = api::mcp_elicitation::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1126,6 +1197,8 @@ impl TestServer {
             seed_base_harness_id,
             seed_generic_harness_id,
             seed_chat_harness_id,
+            mcp_events,
+            webhooks,
         }
     }
 

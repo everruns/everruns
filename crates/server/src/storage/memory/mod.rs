@@ -27,6 +27,7 @@ mod files;
 mod harnesses;
 mod knowledge_bases;
 mod knowledge_indexes;
+mod mcp_event_subscriptions;
 mod mcp_servers;
 mod memories;
 mod notifications;
@@ -78,6 +79,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
 
 use super::IngressEndpointRow;
+use super::mcp_event_subscriptions::*;
 use super::mcp_tool_cache::*;
 use super::models::*;
 use super::org_slack_connections::*;
@@ -201,6 +203,7 @@ pub struct InMemoryDatabase {
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
     org_feature_flags: RwLock<HashMap<i64, HashMap<String, bool>>>,
     org_slack_connections: RwLock<HashMap<i64, OrgSlackConnectionRow>>,
+    mcp_event_subscriptions: RwLock<HashMap<String, McpEventSubscriptionRow>>,
     // Evals (user-facing behavioral tests)
     evals: RwLock<HashMap<Uuid, EvalRow>>,
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
@@ -361,6 +364,7 @@ impl Default for InMemoryDatabase {
             org_settings: RwLock::new(HashMap::new()),
             org_feature_flags: RwLock::new(HashMap::new()),
             org_slack_connections: RwLock::new(HashMap::new()),
+            mcp_event_subscriptions: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),
