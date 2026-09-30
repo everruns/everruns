@@ -4,6 +4,8 @@
 
 use everruns_core::{Permission, Policy, Rule};
 
+#[cfg(test)]
+mod agent_subject_tests;
 pub mod commands;
 pub mod queries;
 #[cfg(test)]

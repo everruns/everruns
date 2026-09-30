@@ -130,7 +130,7 @@ impl BudgetService {
 
         Ok(BudgetScope {
             session_subject_id: session_id.to_string(),
-            agent_subject_id: agent_id.map(ToOwned::to_owned),
+            agent_subject_id: self.agent_subject_id(org_id, agent_id, None).await,
             user_subject_id: None,
             org_subject_id: everruns_core::org_public_id_from_internal(org_id),
             app_subject_id: None,
@@ -144,6 +144,55 @@ impl BudgetService {
                 .map(|id| id.uuid()),
             harness_id: None,
         })
+    }
+
+    /// Resolve the `agent` budget subject to the agent's `public_id`.
+    ///
+    /// Design Decision: every budget subject is keyed by the identifier the API
+    /// exposes, because that is the only identifier a caller can put in a
+    /// budget (EVE-1136). For an agent that is `agents.public_id`. It is *not*
+    /// `agents.id`, which is what a typed `AgentId` taken off a session row or
+    /// passed as the worker's override renders — the two are independently
+    /// generated UUIDs, so rendering the internal one produced a subject no
+    /// stored budget could ever match and agent-scoped budgets silently never
+    /// bound. This mirrors the `agent_endpoint` branch, which has always gone
+    /// through `get_agent_endpoint_public_id`.
+    ///
+    /// The override is tried first and is looked up the same way, so both the
+    /// worker path and the session-derived path land on one identifier. An
+    /// override that is already a public id does not resolve as an internal id
+    /// and is kept as given.
+    async fn agent_subject_id(
+        &self,
+        org_id: i64,
+        agent_id_override: Option<&str>,
+        session_agent_id: Option<AgentId>,
+    ) -> Option<String> {
+        if let Some(raw) = agent_id_override {
+            let resolved = match AgentId::parse(raw) {
+                Ok(parsed) => self.lookup_agent_public_id(org_id, parsed).await,
+                Err(_) => None,
+            };
+            // Not an internal id — assume the caller already handed us a public
+            // one rather than dropping the agent level entirely.
+            return Some(resolved.unwrap_or_else(|| raw.to_string()));
+        }
+        self.lookup_agent_public_id(org_id, session_agent_id?).await
+    }
+
+    async fn lookup_agent_public_id(&self, org_id: i64, agent_id: AgentId) -> Option<String> {
+        match self.db.get_agent_public_id(org_id, agent_id).await {
+            Ok(public_id) => public_id,
+            Err(error) => {
+                error!(
+                    org_id,
+                    agent_id = %agent_id,
+                    error = %error,
+                    "Failed to resolve agent public id for budget scope"
+                );
+                None
+            }
+        }
     }
 
     async fn scope_from_session(
@@ -166,9 +215,9 @@ impl BudgetService {
             // Session-scoped budgets are owned by the root of a delegation
             // tree, so descendants debit and check the same shared pool.
             session_subject_id: root_session_id.to_string(),
-            agent_subject_id: agent_id_override
-                .map(ToOwned::to_owned)
-                .or_else(|| session.agent_id.map(|id| id.to_string())),
+            agent_subject_id: self
+                .agent_subject_id(session.org_id, agent_id_override, session.agent_id)
+                .await,
             user_subject_id: session.resolved_owner_user_id.map(|id| id.to_string()),
             org_subject_id: everruns_core::org_public_id_from_internal(session.org_id),
             app_subject_id,
