@@ -17,11 +17,15 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import type { SessionBinding } from "@/lib/api/types";
+
+/// One session per pull request, or a fresh one per event.
+export type GitHubSessionMode = Extract<SessionBinding, "per_thread" | "session_per_invocation">;
 
 export type GitHubTriggerFormState = {
   events: string[];
   repositories: string[];
-  session_mode: string;
+  session_mode: GitHubSessionMode;
   message: string;
   enabled: boolean;
 };
@@ -133,7 +137,9 @@ export function GitHubTriggerForm({
         <Label htmlFor={`${idPrefix}-session-mode`}>Session mode</Label>
         <Select
           value={value.session_mode}
-          onValueChange={(session_mode) => onChange({ ...value, session_mode })}
+          onValueChange={(session_mode) =>
+            onChange({ ...value, session_mode: session_mode as GitHubSessionMode })
+          }
         >
           <SelectTrigger id={`${idPrefix}-session-mode`} className="w-full">
             <SelectValue />

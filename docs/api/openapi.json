@@ -18192,7 +18192,8 @@
         "description": "The kind of event that fires an agent trigger.",
         "enum": [
           "schedule",
-          "webhook"
+          "webhook",
+          "github"
         ]
       },
       "AgentVersion": {
@@ -21285,6 +21286,16 @@
               }
             ]
           },
+          "github_events": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "GitHub only: subscribed events (`pull_request` or\n`pull_request.opened`). Defaults to pull request open/update events."
+          },
           "message": {
             "type": "string",
             "description": "Message content or `{{template}}` sent when the trigger fires.",
@@ -21298,6 +21309,16 @@
             "format": "int32",
             "description": "Optional per-ingress, per-IP webhook request limit.",
             "minimum": 0
+          },
+          "repositories": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "GitHub only: repositories (`owner/name`) to accept; empty accepts all."
           },
           "session_mode": {
             "$ref": "#/components/schemas/SessionBinding",
@@ -40700,6 +40721,16 @@
               }
             ]
           },
+          "github_events": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replacement GitHub event subscriptions."
+          },
           "message": {
             "type": [
               "string",
@@ -40715,6 +40746,16 @@
             "format": "int32",
             "description": "Replacement per-ingress, per-IP webhook request limit.",
             "minimum": 0
+          },
+          "repositories": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replacement GitHub repository scope. An empty list accepts all."
           },
           "session_mode": {
             "oneOf": [

@@ -28,6 +28,7 @@ import {
   GitHubTriggerForm,
   isGitHubFormValid,
   type GitHubTriggerFormState,
+  type GitHubSessionMode,
 } from "@/components/agents/github-trigger-form";
 import {
   PageContainer,
@@ -66,18 +67,17 @@ export default function AgentTriggerPage({
 
   const trigger = isNew ? undefined : triggers.find((candidate) => candidate.id === triggerId);
   const returnHref = `/agents/${agentId}?tab=integrations`;
-  // trigger_type is widened to string: the generated types predate "github".
   const isGithub = trigger
-    ? (trigger.trigger_type as string) === "github"
+    ? trigger.trigger_type === "github"
     : searchParams?.get("type") === "github";
 
   useEffect(() => {
     if (!trigger) return;
-    if ((trigger.trigger_type as string) === "github") {
+    if (trigger.trigger_type === "github") {
       const config = trigger.config as unknown as {
         events?: string[];
         repositories?: string[];
-        session_mode?: string;
+        session_mode?: GitHubSessionMode;
         message: string;
       };
       setGithubForm({

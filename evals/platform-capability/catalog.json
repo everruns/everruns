@@ -2002,7 +2002,8 @@
           "description": "The kind of event that fires an agent trigger.",
           "enum": [
             "schedule",
-            "webhook"
+            "webhook",
+            "github"
           ],
           "type": "string"
         },
@@ -2042,6 +2043,16 @@
                 }
               ]
             },
+            "github_events": {
+              "description": "GitHub only: subscribed events (`pull_request` or\n`pull_request.opened`). Defaults to pull request open/update events.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "message": {
               "description": "Message content or `{{template}}` sent when the trigger fires.",
               "example": "Run the daily digest",
@@ -2053,6 +2064,16 @@
               "minimum": 0,
               "type": [
                 "integer",
+                "null"
+              ]
+            },
+            "repositories": {
+              "description": "GitHub only: repositories (`owner/name`) to accept; empty accepts all.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
                 "null"
               ]
             },
@@ -16001,6 +16022,16 @@
                 }
               ]
             },
+            "github_events": {
+              "description": "Replacement GitHub event subscriptions.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "message": {
               "description": "Replacement message sent when the trigger fires.",
               "type": [
@@ -16014,6 +16045,16 @@
               "minimum": 0,
               "type": [
                 "integer",
+                "null"
+              ]
+            },
+            "repositories": {
+              "description": "Replacement GitHub repository scope. An empty list accepts all.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
                 "null"
               ]
             },

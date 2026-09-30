@@ -125,7 +125,7 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
           </div>
         ) : (
           triggers.map((trigger) => {
-            const isGithub = (trigger.trigger_type as string) === "github"; // generated types predate "github"
+            const isGithub = trigger.trigger_type === "github";
             const isSchedule = trigger.trigger_type === "schedule";
             const githubConfig = trigger.config as unknown as {
               events?: string[];
