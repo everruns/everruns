@@ -46,6 +46,11 @@ use everruns_provider::runtime_provider::Provider;
 use everruns_provider::tool_types::ToolDefinition;
 use serde_json::Value;
 
+/// How a driver retries `429` and transient `5xx` responses before the first
+/// stream event. Pass [`LlmRetryConfig::no_retry`] to a driver's
+/// `with_retry_config` when the application owns retries itself.
+pub use everruns_provider::llm_retry::LlmRetryConfig;
+
 /// The provider-facing message and role a direct model call carries.
 ///
 /// Re-exported here rather than at the crate root: the root's `MessageRole`

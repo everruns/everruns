@@ -132,6 +132,7 @@ pub mod slack_api;
 pub mod slack_api_error;
 pub mod slack_approvals;
 pub mod slack_delivery;
+pub mod slack_provisioning;
 pub mod slack_task_progress;
 
 // App builder for composable server configurations

@@ -38,8 +38,6 @@ allowlist_reason() {
   case "$1" in
     everruns-server:test_harness)
       echo "shared TestServer helper module, not a standalone test target" ;;
-    everruns-platform:capability_boundary)
-      echo "2 of its 5 tests fail against current code; parked pending triage, not silently skipped" ;;
     everruns-durable:agent_reliability_test)
       echo "end-to-end infrastructure-failure tests; needs PostgreSQL and a running worker" ;;
     everruns-llm-tests:tool_search_test)
@@ -141,6 +139,26 @@ while IFS= read -r manifest; do
   test_files+=("$tests_dir"/*/main.rs)
   shopt -u nullglob
   [ "${#test_files[@]}" -gt 0 ] || continue
+
+  # Directory-form targets compile sibling files only when main.rs declares
+  # them as modules. Inventory those sources too so a forgotten `mod` cannot
+  # leave a regression test invisible to both Cargo and this guard.
+  for main_path in "${test_files[@]}"; do
+    [ "$(basename "$main_path")" = "main.rs" ] || continue
+    module_dir="$(dirname "$main_path")"
+    declared_modules="$(sed -nE \
+      's/^[[:space:]]*(pub([[:space:]]*\([^)]*\))?[[:space:]]+)?mod[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*;.*/\3/p' \
+      "$main_path")"
+    shopt -s nullglob
+    module_files=("$module_dir"/*.rs)
+    shopt -u nullglob
+    for module_path in "${module_files[@]}"; do
+      [ "$module_path" != "$main_path" ] || continue
+      module_name="$(basename "$module_path" .rs)"
+      grep -Fxq -- "$module_name" <<<"$declared_modules" && continue
+      violations+=("${package}: ${module_path#"$PROJECT_ROOT"/} — not declared as a module in ${main_path#"$PROJECT_ROOT"/}")
+    done
+  done
 
   # A test file's target name is its stem, except a directory-form target
   # (tests/<name>/main.rs), whose target name is the directory name.

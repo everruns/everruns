@@ -213,6 +213,10 @@ export default defineConfig({
                   ],
                 },
                 {
+                  label: "Experimental",
+                  items: [{ label: "Serve", slug: "framework/serve" }],
+                },
+                {
                   label: "Examples",
                   items: [
                     { label: "Overview", slug: "framework/examples" },
@@ -304,6 +308,7 @@ export default defineConfig({
                       label: "Tools",
                       collapsed: true,
                       items: [
+                        { label: "OpenAI Server Tools", slug: "capabilities/openai-server-tools" },
                         { label: "OpenRouter Server Tools", slug: "capabilities/openrouter-server-tools" },
                       ],
                     },

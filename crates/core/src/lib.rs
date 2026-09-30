@@ -412,8 +412,9 @@ pub use capabilities::{
     parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
 pub use compaction_checkpoint::{
-    COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
-    CompactionCheckpointStore, ProactiveCompactionAttempt, ProactiveCompactionAttemptTracker,
+    ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION, COMPACTION_CHECKPOINT_FORMAT_VERSION,
+    CompactionCheckpoint, CompactionCheckpointPayload, CompactionCheckpointStore,
+    ProactiveCompactionAttempt, ProactiveCompactionAttemptTracker,
 };
 
 pub use execution_context::ExecutionContext;

@@ -101,6 +101,21 @@ test.describe('browser', () => { test('actual', async () => {}); });
             self.assertTrue(rows[0]['parameterized'])
             self.assertTrue(rows[2]['disabled'])
 
+    def test_playwright_hooks_are_not_enumerated_as_tests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'sample.spec.ts'
+            path.write_text('''
+test.describe('page', () => {
+ test.beforeEach(async ({ page }) => { await page.goto('/'); });
+ test.afterEach(async ({ page }) => { await page.close(); });
+ test.beforeAll(async () => {});
+ test.afterAll(async () => {});
+ test('renders', async ({ page }) => { await expect(page).toHaveTitle('x'); });
+});
+''')
+            rows = json.loads(subprocess.check_output(['node', str(ROOT/'scripts/test-quality/javascript.cjs')], input=json.dumps([str(path)]), text=True))
+            self.assertEqual([r['name'] for r in rows], ['page > renders'])
+
     def test_invalid_source_cannot_silently_shrink_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'broken.test.ts'

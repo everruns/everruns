@@ -1,0 +1,26 @@
+# The layout from the serve design: tools, a channel, a schedule, connections,
+# a subagent, a skill and evals, each in its own file. Runs offline.
+[package]
+name = "serve-example-revenue-analyst"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "revenue-analyst"
+path = "src/main.rs"
+
+[dependencies]
+everruns-serve.workspace = true
+rusqlite = { version = "0.39", features = ["bundled"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[build-dependencies]
+everruns-serve-build.workspace = true
+
+[lints]
+workspace = true

@@ -29,6 +29,7 @@
 //!   output.
 
 pub mod client;
+pub mod client_test_override;
 pub mod connection;
 mod naming;
 pub mod openapi_spec;

@@ -78,6 +78,14 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
             Ok(transition.plan)
         }
         "act" => {
+            let client_tool_calls: Vec<everruns_provider::tool_types::ToolCall> = output
+                .get("client_tool_calls")
+                .cloned()
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|error| AgentLoopError::Internal(error.into()))?
+                .unwrap_or_default();
+            let ask_user_calls = pending_ask_user_calls_from_slice(&client_tool_calls);
             let outcome = ActOutcome {
                 blocked: output
                     .get("blocked")
@@ -91,15 +99,7 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                     .get("waiting_for_url_elicitation")
                     .and_then(|value| value.as_bool())
                     .unwrap_or(false),
-                waiting_for_ask_user: output
-                    .get("client_tool_calls")
-                    .and_then(|v| v.as_array())
-                    .is_some_and(|calls| {
-                        calls.iter().any(|call| {
-                            call.get("name").and_then(|n| n.as_str())
-                                == Some(everruns_provider::ASK_USER_TOOL_NAME)
-                        })
-                    }),
+                waiting_for_ask_user: !ask_user_calls.is_empty(),
             };
 
             let hints = resolve_pause_hints(adapter, state.org_id, state.session_id, outcome).await;
@@ -111,6 +111,8 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                 HostFacts {
                     setup_connection_hint_enabled: hints.setup_connection,
                     url_elicitation_hint_enabled: hints.url_elicitation,
+                    ask_user_hint_enabled: hints.ask_user,
+                    ask_user_calls,
                     ..HostFacts::default()
                 },
             );
@@ -277,8 +279,13 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
 pub(crate) fn pending_ask_user_calls(
     act_result: &everruns_engine::ActResult,
 ) -> Vec<(String, serde_json::Value)> {
-    act_result
-        .client_tool_calls
+    pending_ask_user_calls_from_slice(&act_result.client_tool_calls)
+}
+
+fn pending_ask_user_calls_from_slice(
+    client_tool_calls: &[everruns_provider::tool_types::ToolCall],
+) -> Vec<(String, serde_json::Value)> {
+    client_tool_calls
         .iter()
         .filter(|call| call.name == everruns_provider::ASK_USER_TOOL_NAME)
         .map(|call| (call.id.clone(), call.arguments.clone()))
