@@ -9,19 +9,6 @@ use crate::openai_types::{
     OpenAiInputAudio, OpenAiMessage, OpenAiToolCall,
 };
 
-/// Convert one message for the wire, splitting a tool result that carries
-/// images into the `tool` message plus a following `user` message.
-///
-/// Chat-completions takes a `tool` message's `content` as a string. An
-/// image part on one is not rejected — it is dropped or ignored — so a
-/// screenshot answering a computer-use call never reaches the model and
-/// the agent reasons about a tool result it cannot see (EVE-1133). `user`
-/// is the role this API accepts image parts on, so the images follow the
-/// result there, labelled with the call they answer so the pairing
-/// survives.
-///
-/// The Responses protocol has a real `computer_call_output` for this and
-/// does not need the workaround.
 fn convert_role(role: &MessageRole) -> &'static str {
     match role {
         MessageRole::System => "system",
@@ -94,13 +81,52 @@ pub(crate) fn convert_message(msg: &Message) -> OpenAiMessage {
     }
 }
 
-pub(crate) fn convert_message_seq(msg: &Message) -> Vec<OpenAiMessage> {
+/// Convert a conversation for the wire, splitting a tool result that carries
+/// images into the `tool` message plus a `user` message carrying the images.
+///
+/// Chat-completions takes a `tool` message's `content` as a string. An
+/// image part on one is not rejected — it is dropped or ignored — so a
+/// screenshot answering a computer-use call never reaches the model and
+/// the agent reasons about a tool result it cannot see (EVE-1133). `user`
+/// is the role this API accepts image parts on, so the images follow the
+/// result there, labelled with the call they answer so the pairing
+/// survives.
+///
+/// The Responses protocol has a real `computer_call_output` for this and
+/// does not need the workaround.
+///
+/// The carrier is held back until the run of consecutive `tool` messages
+/// ends. Chat-completions requires every `tool_call_id` on an assistant
+/// message to be answered by `tool` messages that follow it with nothing
+/// in between; a carrier emitted straight after the first of several
+/// parallel tool results would split that run and the request is rejected
+/// outright. Deferring turns a silent drop into no regression at all.
+pub(crate) fn convert_messages(messages: &[Message]) -> Vec<OpenAiMessage> {
+    let mut out: Vec<OpenAiMessage> = Vec::with_capacity(messages.len());
+    let mut deferred: Vec<OpenAiMessage> = Vec::new();
+    for msg in messages {
+        if msg.role != MessageRole::Tool {
+            out.append(&mut deferred);
+        }
+        let (converted, carrier) = split_tool_result_images(msg);
+        out.push(converted);
+        if let Some(carrier) = carrier {
+            deferred.push(carrier);
+        }
+    }
+    out.append(&mut deferred);
+    out
+}
+
+/// The wire form of one message, plus the `user` message its images need if
+/// it is a tool result that carries any.
+fn split_tool_result_images(msg: &Message) -> (OpenAiMessage, Option<OpenAiMessage>) {
     let converted = convert_message(msg);
     if msg.role != MessageRole::Tool {
-        return vec![converted];
+        return (converted, None);
     }
     let MessageContent::Parts(parts) = &msg.content else {
-        return vec![converted];
+        return (converted, None);
     };
     let images: Vec<OpenAiContentPart> = parts
         .iter()
@@ -113,7 +139,7 @@ pub(crate) fn convert_message_seq(msg: &Message) -> Vec<OpenAiMessage> {
         })
         .collect();
     if images.is_empty() {
-        return vec![converted];
+        return (converted, None);
     }
 
     // The tool message keeps the text. Joining rather than dropping the
@@ -142,15 +168,15 @@ pub(crate) fn convert_message_seq(msg: &Message) -> Vec<OpenAiMessage> {
     });
     carrier.extend(images);
 
-    vec![
+    (
         tool_message,
-        OpenAiMessage {
+        Some(OpenAiMessage {
             role: "user".to_string(),
             content: Some(OpenAiContent::Parts(carrier)),
             tool_calls: None,
             tool_call_id: None,
-        },
-    ]
+        }),
+    )
 }
 
 #[cfg(test)]
@@ -178,7 +204,7 @@ mod tests {
             },
         ]);
 
-        let wire: Vec<_> = [tool].iter().flat_map(convert_message_seq).collect();
+        let wire = convert_messages(&[tool]);
 
         assert_eq!(
             serde_json::to_value(wire).unwrap(),
@@ -198,7 +224,7 @@ mod tests {
     fn text_only_tool_results_are_unchanged() {
         let mut tool = Message::text(MessageRole::Tool, "file content");
         tool.tool_call_id = Some("call".into());
-        let wire: Vec<_> = [tool].iter().flat_map(convert_message_seq).collect();
+        let wire = convert_messages(&[tool]);
         assert_eq!(
             serde_json::to_value(wire).unwrap(),
             json!([{"role":"tool","content":"file content","tool_call_id":"call"}])
@@ -214,12 +240,55 @@ mod tests {
         user.content = MessageContent::Parts(vec![LlmContentPart::Image {
             url: "data:image/png;base64,BBBB".into(),
         }]);
-        let wire: Vec<_> = [user].iter().flat_map(convert_message_seq).collect();
+        let wire = convert_messages(&[user]);
         assert_eq!(
             serde_json::to_value(wire).unwrap(),
             json!([{"role":"user","content":[
                 {"type":"image_url","image_url":{"url":"data:image/png;base64,BBBB"}}
             ]}])
+        );
+    }
+
+    /// Chat-completions rejects a request whose assistant `tool_calls` are not
+    /// each answered by a `tool` message following it with nothing in between.
+    /// With parallel tool calls the image carrier must therefore wait for the
+    /// whole run of tool results, not cut in after the first one.
+    #[test]
+    fn carriers_wait_for_the_end_of_a_parallel_tool_run() {
+        use crate::message::{LlmContentPart, MessageContent};
+        use crate::tool_types::ToolCall;
+
+        let mut assistant = Message::text(MessageRole::Assistant, "");
+        assistant.tool_calls = Some(vec![
+            ToolCall {
+                id: "a".into(),
+                name: "screenshot".into(),
+                arguments: json!({}),
+            },
+            ToolCall {
+                id: "b".into(),
+                name: "read".into(),
+                arguments: json!({}),
+            },
+        ]);
+
+        let mut shot = Message::text(MessageRole::Tool, "");
+        shot.tool_call_id = Some("a".into());
+        shot.content = MessageContent::Parts(vec![LlmContentPart::Image {
+            url: "data:image/png;base64,AAAA".into(),
+        }]);
+
+        let mut read = Message::text(MessageRole::Tool, "file content");
+        read.tool_call_id = Some("b".into());
+
+        let wire = convert_messages(&[assistant, shot, read]);
+        let roles: Vec<&str> = wire.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["assistant", "tool", "tool", "user"]);
+        assert_eq!(
+            wire.iter()
+                .filter_map(|m| m.tool_call_id.as_deref())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
         );
     }
 }

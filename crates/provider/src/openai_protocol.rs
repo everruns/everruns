@@ -28,7 +28,7 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
-use crate::openai_message_convert::convert_message_seq;
+use crate::openai_message_convert::convert_messages;
 use crate::openai_types::*;
 use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
@@ -425,8 +425,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
     ) -> Result<LlmResponse> {
         // Same request as the streaming path, but with streaming disabled so
         // the provider answers with one JSON body instead of SSE.
-        let openai_messages: Vec<OpenAiMessage> =
-            messages.iter().flat_map(convert_message_seq).collect();
+        let openai_messages: Vec<OpenAiMessage> = convert_messages(&messages);
         let tools = if config.tools.is_empty() {
             None
         } else {
@@ -579,8 +578,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
         let messages = drop_orphaned_tool_messages(&messages);
-        let openai_messages: Vec<OpenAiMessage> =
-            messages.iter().flat_map(convert_message_seq).collect();
+        let openai_messages: Vec<OpenAiMessage> = convert_messages(&messages);
 
         let tools = if config.tools.is_empty() {
             None
