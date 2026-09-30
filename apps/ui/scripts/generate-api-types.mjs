@@ -11,7 +11,11 @@ const repoRoot = resolve(uiRoot, "../..");
 const specPath = resolve(repoRoot, "docs/api/openapi.json");
 const outputPath = resolve(uiRoot, "src/lib/api/generated/openapi.ts");
 const schemaTypesPath = resolve(uiRoot, "src/lib/api/schema-types.ts");
-const legacyTypesPath = resolve(uiRoot, "src/lib/api/legacy-api-types.ts");
+// Hand-maintained type files. A schema they already export is not re-exported
+// from schema-types.ts, which would make `export *` in types.ts ambiguous.
+const legacyTypesPaths = ["legacy-api-types.ts", "mcp-server-types.ts"].map((file) =>
+  resolve(uiRoot, "src/lib/api", file),
+);
 const check = process.argv.includes("--check");
 
 const spec = JSON.parse(readFileSync(specPath, "utf8"));
@@ -38,10 +42,12 @@ const tempOutputPath = join(tempDir, "openapi.ts");
 const tempSchemaTypesPath = join(tempDir, "schema-types.ts");
 
 function exportedLegacyTypeNames() {
-  const source = readFileSync(legacyTypesPath, "utf8");
   const names = new Set(["EnqueueTaskRequest", "EnqueueTaskResponse"]);
-  for (const match of source.matchAll(/^export\s+(?:interface|type|enum)\s+(\w+)/gm)) {
-    names.add(match[1]);
+  for (const path of legacyTypesPaths) {
+    const source = readFileSync(path, "utf8");
+    for (const match of source.matchAll(/^export\s+(?:interface|type|enum)\s+(\w+)/gm)) {
+      names.add(match[1]);
+    }
   }
   return names;
 }
