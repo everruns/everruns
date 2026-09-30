@@ -5,7 +5,7 @@
 // request DTOs below are the flat shape callers send, which commands normalize.
 
 use chrono::{DateTime, Utc};
-use everruns_platform::{AgentTriggerType, SessionBinding};
+use everruns_platform::{AgentTriggerType, SessionBinding, TriggerEventFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
@@ -56,6 +56,16 @@ pub struct CreateAgentTriggerRequest {
     /// Optional per-ingress, per-IP webhook request limit.
     #[serde(default)]
     pub rate_limit_per_minute: Option<u32>,
+    /// Webhook only: template for the delivery idempotency key.
+    #[serde(default)]
+    pub event_id_template: Option<String>,
+    /// Webhook only: template for the event subject. Required for
+    /// `session_mode: per_thread`, which keeps one session per subject.
+    #[serde(default)]
+    pub subject_template: Option<String>,
+    /// Webhook only: conditions an event must meet to start a run.
+    #[serde(default)]
+    pub filter: Option<TriggerEventFilter>,
     /// Shared endpoint auth is not supported by webhook triggers.
     #[serde(default)]
     pub auth: Option<Value>,
@@ -86,6 +96,15 @@ pub struct UpdateAgentTriggerRequest {
     /// Replacement per-ingress, per-IP webhook request limit.
     #[serde(default)]
     pub rate_limit_per_minute: Option<u32>,
+    /// Replacement idempotency-key template. An empty string removes it.
+    #[serde(default)]
+    pub event_id_template: Option<String>,
+    /// Replacement subject template. An empty string removes it.
+    #[serde(default)]
+    pub subject_template: Option<String>,
+    /// Replacement filter. A filter with no conditions removes it.
+    #[serde(default)]
+    pub filter: Option<TriggerEventFilter>,
     /// Shared endpoint auth is not supported by webhook triggers.
     #[serde(default)]
     pub auth: Option<Value>,

@@ -10,6 +10,7 @@
 // - DbProviderStore: implements ProviderStore for LLM provider retrieval
 
 pub mod agent_store;
+pub mod agent_trigger_deliveries;
 pub mod backend;
 pub mod blob_store;
 pub mod compaction_checkpoint_store;

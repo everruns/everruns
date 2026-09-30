@@ -1,5 +1,6 @@
 // In-memory storage: Agent Trigger CRUD
 
+use super::super::agent_trigger_deliveries::*;
 use super::super::models::*;
 use super::InMemoryDatabase;
 use crate::kernel_imports::{
@@ -157,5 +158,104 @@ impl InMemoryDatabase {
         row.archived_at = Some(Self::now());
         row.updated_at = Self::now();
         Ok(true)
+    }
+
+    // ============================================
+    // Agent trigger deliveries
+    // ============================================
+
+    pub async fn record_agent_trigger_delivery(
+        &self,
+        input: CreateAgentTriggerDeliveryRow,
+    ) -> Result<Option<AgentTriggerDeliveryRow>> {
+        let mut rows = self.agent_trigger_deliveries.write();
+        let claims = |status: &str| status == "dispatched" || status == "filtered";
+        if claims(&input.status)
+            && let Some(event_id) = input.event_id.as_deref()
+            && rows.iter().any(|row| {
+                row.trigger_id == input.trigger_id
+                    && row.event_id.as_deref() == Some(event_id)
+                    && claims(&row.status)
+            })
+        {
+            return Ok(None);
+        }
+        let row = AgentTriggerDeliveryRow {
+            id: Uuid::now_v7(),
+            org_id: input.org_id,
+            trigger_id: input.trigger_id,
+            source: input.source,
+            event_id: input.event_id,
+            event_type: input.event_type,
+            subject: input.subject,
+            status: input.status,
+            reason: input.reason,
+            session_id: None,
+            created_at: Self::now(),
+        };
+        rows.push(row.clone());
+        Ok(Some(row))
+    }
+
+    pub async fn finish_agent_trigger_delivery(
+        &self,
+        id: Uuid,
+        status: &str,
+        reason: Option<&str>,
+        session_id: Option<Uuid>,
+    ) -> Result<()> {
+        if let Some(row) = self
+            .agent_trigger_deliveries
+            .write()
+            .iter_mut()
+            .find(|row| row.id == id)
+        {
+            row.status = status.to_string();
+            row.reason = reason.map(ToOwned::to_owned);
+            if session_id.is_some() {
+                row.session_id = session_id;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn list_agent_trigger_deliveries(
+        &self,
+        org_id: i64,
+        trigger_id: TriggerId,
+        limit: i64,
+    ) -> Result<Vec<AgentTriggerDeliveryRow>> {
+        let mut rows: Vec<_> = self
+            .agent_trigger_deliveries
+            .read()
+            .iter()
+            .filter(|row| row.org_id == org_id && row.trigger_id == trigger_id)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|row| std::cmp::Reverse((row.created_at, row.id)));
+        rows.truncate(usize::try_from(limit).unwrap_or(0));
+        Ok(rows)
+    }
+
+    pub async fn prune_agent_trigger_deliveries(
+        &self,
+        trigger_id: TriggerId,
+        keep: i64,
+    ) -> Result<u64> {
+        let mut rows = self.agent_trigger_deliveries.write();
+        let mut mine: Vec<_> = rows
+            .iter()
+            .filter(|row| row.trigger_id == trigger_id)
+            .map(|row| (row.created_at, row.id))
+            .collect();
+        mine.sort_by_key(|key| std::cmp::Reverse(*key));
+        let doomed: std::collections::HashSet<Uuid> = mine
+            .into_iter()
+            .skip(usize::try_from(keep).unwrap_or(0))
+            .map(|(_, id)| id)
+            .collect();
+        let before = rows.len();
+        rows.retain(|row| !doomed.contains(&row.id));
+        Ok((before - rows.len()) as u64)
     }
 }

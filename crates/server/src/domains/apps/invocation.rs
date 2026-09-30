@@ -170,7 +170,7 @@ pub fn hash_app_api_key(plaintext: &str) -> String {
     hex::encode(Sha256::digest(plaintext.as_bytes()))
 }
 
-fn template_lookup<'a>(context: &'a Value, path: &str) -> Option<&'a Value> {
+pub(crate) fn template_lookup<'a>(context: &'a Value, path: &str) -> Option<&'a Value> {
     let mut current = context;
     for segment in path.split('.') {
         current = match current {

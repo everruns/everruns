@@ -5,6 +5,7 @@
 // path. Webhook trigger secrets use the same encrypted configuration mechanism
 // as App channel secrets.
 
+use super::events;
 use super::queries as q;
 use super::types::{AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
 use super::webhook;
@@ -78,28 +79,6 @@ fn agent_trigger_max_per_org() -> i64 {
 // ============================================================================
 // Config validation / normalization
 // ============================================================================
-
-/// Validate a schedule config's message + cron, returning the normalized cron.
-/// A trigger fires into nothing that is listening, so only the invocation-keyed
-/// bindings mean anything on it.
-///
-/// Before EVE-1005 this was enforced by the type system alone — triggers used
-/// `InvocationSessionMode`, which simply had no `per_thread` to express. Now
-/// that one `SessionBinding` spans both worlds, the constraint has to be
-/// checked rather than merely unrepresentable.
-fn validate_trigger_binding(binding: SessionBinding) -> Result<(), CommandError> {
-    if binding.is_message_keyed() {
-        return Err(CommandError::bad_request(format!(
-            "session_mode {} is not valid for an agent trigger: a trigger has no thread, \
-             conversation or requester to key a session on. Use shared_session or \
-             session_per_invocation.",
-            serde_json::to_string(&binding)
-                .unwrap_or_default()
-                .trim_matches('"')
-        )));
-    }
-    Ok(())
-}
 
 fn validate_schedule_config(cron_expression: &str, message: &str) -> Result<String, CommandError> {
     if message.trim().is_empty() {
@@ -383,7 +362,7 @@ fn parse_agent_id(raw: &str) -> Result<AgentId, CommandError> {
 }
 
 /// Resolve a trigger and confirm it belongs to the named agent (org-scoped).
-async fn resolve_trigger_for_agent(
+pub(super) async fn resolve_trigger_for_agent(
     ctx: &Ctx,
     agent_id: &str,
     trigger_id: &str,
@@ -437,7 +416,12 @@ impl Command for CreateAgentTrigger {
 
         let req = self.req;
 
-        validate_trigger_binding(req.session_mode)?;
+        let has_subject = req.trigger_type == AgentTriggerType::Webhook
+            && req
+                .subject_template
+                .as_deref()
+                .is_some_and(|template| !template.trim().is_empty());
+        events::validate_trigger_binding(req.session_mode, has_subject)?;
         webhook::require_publication_permission(ctx, req.trigger_type, req.enabled)?;
         let trigger_id = TriggerId::new();
         let (ingress_id, config, config_encrypted) = match req.trigger_type {
@@ -473,6 +457,9 @@ impl Command for CreateAgentTrigger {
                     session_mode: req.session_mode,
                     message: req.message,
                     rate_limit_per_minute: req.rate_limit_per_minute,
+                    event_id_template: events::optional_template(req.event_id_template),
+                    subject_template: events::optional_template(req.subject_template),
+                    filter: events::optional_filter(req.filter)?,
                 };
                 let (config, encrypted) = prepare_trigger_config(ctx, &config)?;
                 (
@@ -720,9 +707,6 @@ impl Command for UpdateAgentTriggerCmd {
             parse_agent_id(&self.agent_id)?,
             ctx.encryption.as_ref(),
         );
-        if let Some(mode) = req.session_mode {
-            validate_trigger_binding(mode)?;
-        }
 
         let new_enabled = req.enabled.unwrap_or(existing.enabled);
         webhook::require_publication_permission(
@@ -751,6 +735,7 @@ impl Command for UpdateAgentTriggerCmd {
                     config.timezone = tz;
                 }
                 if let Some(mode) = req.session_mode {
+                    events::validate_trigger_binding(mode, false)?;
                     config.session_mode = mode;
                 }
                 if let Some(message) = req.message {
@@ -776,6 +761,19 @@ impl Command for UpdateAgentTriggerCmd {
                 if let Some(limit) = req.rate_limit_per_minute {
                     config.rate_limit_per_minute = Some(limit);
                 }
+                if let Some(template) = req.event_id_template {
+                    config.event_id_template = events::optional_template(Some(template));
+                }
+                if let Some(template) = req.subject_template {
+                    config.subject_template = events::optional_template(Some(template));
+                }
+                if let Some(filter) = req.filter {
+                    config.filter = events::optional_filter(Some(filter))?;
+                }
+                events::validate_trigger_binding(
+                    config.session_mode,
+                    config.subject_template.is_some(),
+                )?;
                 validate_webhook_config(&config.token, &config.message, req.auth.as_ref())?;
                 prepare_trigger_config(ctx, &config)?
             }
@@ -1020,7 +1018,7 @@ pub async fn invoke_agent_trigger(
         .schedule_config()
         .map_err(|_| CommandError::bad_request("Invalid schedule trigger configuration"))?;
 
-    let template_context = json!({
+    let context = json!({
         "agent": {
             "id": agent.public_id,
             "name": agent.name.clone(),
@@ -1034,59 +1032,36 @@ pub async fn invoke_agent_trigger(
             "triggered_at": Utc::now().to_rfc3339(),
         },
     });
-    let rendered_message = render_message_template(&config.message, &template_context);
-    if rendered_message.trim().is_empty() {
-        return Err(CommandError::bad_request(
-            "Rendered invocation message is empty",
-        ));
-    }
-
-    // Resolve who owns this trigger's session: migrated App schedules preserve
-    // their original App execution context, while native triggers are owned by
-    // the agent's own identity principal (lazily created on first fire).
-    let execution_context =
-        resolve_trigger_execution_context(db, org_id, &agent, &trigger_row).await?;
-
-    let (session_id, created_session) = find_or_create_trigger_session(
+    let outcome = events::dispatch_trigger_event(
         db,
         session_service,
-        org_id,
-        &agent,
-        &execution_context,
-        trigger_id,
-        config.session_mode,
-        everruns_platform::SessionSource::Schedule,
-        None,
-    )
-    .await?;
-
-    dispatch_trigger_message(
         message_service,
-        org_id,
-        &agent,
-        trigger_id,
-        session_id,
-        execution_context.harness_id,
-        execution_context.owner_principal_id,
-        rendered_message,
+        events::TriggerEventRoute {
+            trigger: &trigger_row,
+            agent: &agent,
+            message_template: &config.message,
+            session_mode: config.session_mode,
+            filter: None,
+            session_source: everruns_platform::SessionSource::Schedule,
+            webhook_compat: None,
+        },
+        events::TriggerEvent {
+            source: "schedule",
+            event_id: None,
+            event_type: None,
+            subject: None,
+            context,
+        },
         None,
     )
     .await?;
-
-    emit_agent_trigger_audit_event(
-        Arc::clone(db),
-        org_id,
-        &agent,
-        trigger_id,
-        session_id,
-        execution_context.owner_principal_id,
-        created_session,
-    );
-
-    Ok(AgentTriggerInvocationResult {
-        session_id,
-        created_session,
-    })
+    match outcome {
+        events::TriggerEventOutcome::Dispatched(result) => Ok(result),
+        // A schedule event has no filter and no event id, so neither can occur.
+        events::TriggerEventOutcome::Filtered | events::TriggerEventOutcome::Duplicate => Err(
+            CommandError::internal(anyhow::anyhow!("schedule event was not dispatched")),
+        ),
+    }
 }
 
 pub async fn invoke_webhook_agent_trigger(
@@ -1096,7 +1071,7 @@ pub async fn invoke_webhook_agent_trigger(
     message_service: &MessageService,
     req: WebhookTriggerInvocationRequest,
     request_id: Option<String>,
-) -> Result<AgentTriggerInvocationResult, CommandError> {
+) -> Result<events::TriggerEventOutcome, CommandError> {
     let trigger_row = db
         .get_agent_trigger_by_ingress_id_unscoped(&req.ingress_id)
         .await
@@ -1147,7 +1122,7 @@ pub async fn invoke_webhook_agent_trigger(
             })
         })
         .unwrap_or_else(|| json!({"id": "", "name": ""}));
-    let template_context = json!({
+    let context = json!({
         "agent": {
             "id": agent.public_id,
             "name": agent.name,
@@ -1179,57 +1154,41 @@ pub async fn invoke_webhook_agent_trigger(
             "headers": req.headers,
         },
     });
-    let rendered_message = render_message_template(&config.message, &template_context);
-    if rendered_message.trim().is_empty() {
-        return Err(CommandError::bad_request(
-            "Rendered invocation message is empty",
-        ));
-    }
-    let execution_context =
-        resolve_trigger_execution_context(db, trigger_row.org_id, &agent, &trigger_row).await?;
-    let (session_id, created_session) = find_or_create_trigger_session(
+    let render_optional = |template: &Option<String>| {
+        template
+            .as_deref()
+            .map(|template| render_message_template(template, &context))
+    };
+    let event = events::TriggerEvent {
+        source: "webhook",
+        event_id: render_optional(&config.event_id_template),
+        event_type: None,
+        subject: render_optional(&config.subject_template),
+        context: context.clone(),
+    };
+    events::dispatch_trigger_event(
         db,
         session_service,
-        trigger_row.org_id,
-        &agent,
-        &execution_context,
-        trigger.id,
-        config.session_mode,
-        everruns_platform::SessionSource::Webhook,
-        webhook_context.as_ref(),
-    )
-    .await?;
-    dispatch_trigger_message(
         message_service,
-        trigger_row.org_id,
-        &agent,
-        trigger.id,
-        session_id,
-        execution_context.harness_id,
-        execution_context.owner_principal_id,
-        rendered_message,
+        events::TriggerEventRoute {
+            trigger: &trigger_row,
+            agent: &agent,
+            message_template: &config.message,
+            session_mode: config.session_mode,
+            filter: config.filter.as_ref(),
+            session_source: everruns_platform::SessionSource::Webhook,
+            webhook_compat: webhook_context.as_ref(),
+        },
+        event,
         request_id,
     )
-    .await?;
-    emit_agent_trigger_audit_event(
-        Arc::clone(db),
-        trigger_row.org_id,
-        &agent,
-        trigger.id,
-        session_id,
-        execution_context.owner_principal_id,
-        created_session,
-    );
-    Ok(AgentTriggerInvocationResult {
-        session_id,
-        created_session,
-    })
+    .await
 }
 
 #[derive(Debug, Clone)]
-struct TriggerExecutionContext {
-    harness_id: everruns_provider::typed_id::HarnessId,
-    owner_principal_id: everruns_provider::typed_id::PrincipalId,
+pub(super) struct TriggerExecutionContext {
+    pub(super) harness_id: everruns_provider::typed_id::HarnessId,
+    pub(super) owner_principal_id: everruns_provider::typed_id::PrincipalId,
     resolved_owner_user_id: Option<Uuid>,
     agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
     app_id: Option<Uuid>,
@@ -1237,8 +1196,9 @@ struct TriggerExecutionContext {
     agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
 }
 
+/// Legacy App attribution for webhook triggers migrated from App channels.
 #[derive(Debug, Clone)]
-struct WebhookCompatibilityContext {
+pub struct WebhookCompatibilityContext {
     app_public_id: String,
     app_name: String,
     ingress_id: String,
@@ -1254,7 +1214,7 @@ struct WebhookCompatibilityContext {
 /// - Native Agent triggers have no persisted context: the session is owned by
 ///   the agent's own identity principal, lazily created on first fire (EVE-758),
 ///   so the agent acts as itself and the shared-session reuse key stays stable.
-async fn resolve_trigger_execution_context(
+pub(super) async fn resolve_trigger_execution_context(
     db: &Arc<StorageBackend>,
     org_id: i64,
     agent: &AgentRow,
@@ -1321,19 +1281,32 @@ fn trigger_session_tags(
     ]
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn find_or_create_trigger_session(
+pub(super) async fn find_or_create_trigger_session(
     db: &Arc<StorageBackend>,
     session_service: &SessionService,
     org_id: i64,
     agent: &AgentRow,
     execution_context: &TriggerExecutionContext,
-    trigger_id: TriggerId,
-    session_mode: SessionBinding,
-    source: everruns_platform::SessionSource,
-    webhook: Option<&WebhookCompatibilityContext>,
+    route: events::TriggerSessionRoute<'_>,
 ) -> Result<(SessionId, bool), CommandError> {
-    let shared_tags = trigger_session_tags(trigger_id, webhook);
+    let events::TriggerSessionRoute {
+        trigger_id,
+        session_mode,
+        subject,
+        source,
+        webhook,
+    } = route;
+    let mut shared_tags = trigger_session_tags(trigger_id, webhook);
+    // `per_thread` on a trigger means one session per event subject. An event
+    // without a subject cannot be keyed and gets a fresh session instead.
+    let session_mode = match (session_mode, subject) {
+        (SessionBinding::Thread, Some(subject)) => {
+            shared_tags.push(events::subject_session_tag(subject));
+            SessionBinding::Endpoint
+        }
+        (SessionBinding::Thread, None) => SessionBinding::Ephemeral,
+        (mode, _) => mode,
+    };
     if session_mode == SessionBinding::Endpoint {
         let existing = if let Some(app_id) = execution_context.app_id {
             db.find_app_session_by_tags_and_owner(
@@ -1374,7 +1347,10 @@ async fn find_or_create_trigger_session(
     } else {
         "agent_trigger"
     };
-    let title = if session_mode == SessionBinding::Endpoint {
+    let title = if let Some(subject) = subject.filter(|_| session_mode == SessionBinding::Endpoint)
+    {
+        format!("{title_subject} {subject}")
+    } else if session_mode == SessionBinding::Endpoint {
         format!("{title_subject} {title_source}")
     } else {
         format!("{title_subject} {title_source} {}", Utc::now().to_rfc3339())
@@ -1451,7 +1427,7 @@ async fn find_or_create_trigger_session(
 // principal) plus the rendered message into one durable send; grouping these
 // into a struct would not improve clarity over the explicit parameter list.
 #[allow(clippy::too_many_arguments)]
-async fn dispatch_trigger_message(
+pub(super) async fn dispatch_trigger_message(
     message_service: &MessageService,
     org_id: i64,
     agent: &AgentRow,
@@ -1513,7 +1489,7 @@ async fn dispatch_trigger_message(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn emit_agent_trigger_audit_event(
+pub(super) fn emit_agent_trigger_audit_event(
     db: Arc<StorageBackend>,
     org_id: i64,
     agent: &AgentRow,

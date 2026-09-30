@@ -19,6 +19,7 @@ use utoipa::ToSchema;
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
+use crate::domains::agent_triggers::events::TriggerEventOutcome;
 use crate::domains::agent_triggers::{
     WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger,
 };
@@ -78,10 +79,14 @@ impl AppWebhookState {
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct WebhookInvocationResponse {
     pub accepted: bool,
-    #[schema(value_type = String)]
-    /// Session's prefixed public identifier.
-    pub session_id: everruns_provider::typed_id::SessionId,
+    /// Session's prefixed public identifier. Absent when the event was
+    /// filtered out or was a duplicate delivery.
+    #[schema(value_type = Option<String>)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<everruns_provider::typed_id::SessionId>,
     pub created_session: bool,
+    /// What happened to the event: `dispatched`, `filtered` or `duplicate`.
+    pub delivery: String,
 }
 
 pub fn routes(state: AppWebhookState) -> Router {
@@ -296,8 +301,9 @@ async fn invoke_webhook(
         StatusCode::ACCEPTED,
         Json(WebhookInvocationResponse {
             accepted: true,
-            session_id: result.session_id,
+            session_id: Some(result.session_id),
             created_session: result.created_session,
+            delivery: "dispatched".to_string(),
         }),
     ))
 }
@@ -377,14 +383,29 @@ async fn invoke_trigger_webhook(
     )
     .await
     .map_err(command_error_response)?;
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(WebhookInvocationResponse {
+    let response = match result {
+        TriggerEventOutcome::Dispatched(result) => WebhookInvocationResponse {
             accepted: true,
-            session_id: result.session_id,
+            session_id: Some(result.session_id),
             created_session: result.created_session,
-        }),
-    ))
+            delivery: "dispatched".to_string(),
+        },
+        // Filtered and duplicate events are still accepted: the sender did
+        // nothing wrong, and a non-2xx would make it retry.
+        TriggerEventOutcome::Filtered => WebhookInvocationResponse {
+            accepted: true,
+            session_id: None,
+            created_session: false,
+            delivery: "filtered".to_string(),
+        },
+        TriggerEventOutcome::Duplicate => WebhookInvocationResponse {
+            accepted: true,
+            session_id: None,
+            created_session: false,
+            delivery: "duplicate".to_string(),
+        },
+    };
+    Ok((StatusCode::ACCEPTED, Json(response)))
 }
 
 fn extract_webhook_token(headers: &HeaderMap) -> Option<String> {

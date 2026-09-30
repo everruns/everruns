@@ -29,6 +29,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-LLM | LLM Integration | API key exposure, prompt injection |
 | TM-DURABLE | Durable Engine | Task hijack, gRPC security, queue abuse |
 | TM-SCHED | Scheduled Tasks | Schedule injection, catch-up explosion |
+| TM-TRIGGER | Trigger Events | Replayed deliveries, unbounded delivery history, event text in routing keys |
 | TM-OBS | Observability | Data leakage via traces/logs |
 | TM-WEB | Web Security | XSS, CSRF, CORS misconfiguration |
 | TM-AGENT | AI Agent | Prompt injection, jailbreak, capability abuse, cost runaway |
@@ -796,6 +797,17 @@ All `/v1/durable/*` HTTP endpoints require explicit platform-user auth. The auth
 | TM-SCHED-004 | Invalid cron expression DoS | Low | Cron parser validates expression at creation time; invalid expressions rejected | MITIGATED |
 | TM-SCHED-005 | Scheduler crash leaves tasks untriggered | Medium | Durable execution ensures tasks are created; if executor crashes, tasks auto-reclaimed via heartbeat | MITIGATED |
 | TM-SCHED-006 | Embedded schedule duplication, starvation, or stranding after runner failure | Medium | `everruns::local` claims due occurrences in an immediate SQLite transaction, scopes claims by org and the host's current routable-session snapshot before ordering/limiting, heartbeats claims during host delivery, and reclaims only stale leases. Successful delivery advances or disables the stored occurrence; failure remains durable and uses the claim timeout as retry cooldown. The external `send_message` boundary is at-least-once: a process crash after host acceptance but before completion commit can retry, so embedded hosts must tolerate duplicate scheduled prompts in that narrow window. Batch size and route-filter parameters are bounded by the configured batch size and the host's active routes. | MITIGATED |
+
+## 10b. Trigger Events (TM-TRIGGER)
+
+Every event that reaches an agent trigger (schedule fire, webhook request, and later GitHub and MCP events) passes through one pipeline: filter, deduplicate, route to a session, dispatch. See `crates/server/src/domains/agent_triggers/events.rs` and `knowledge/runtime-resources/agent-triggers.md`.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-TRIGGER-001 | A redelivered or replayed event starts a second run and spends budget twice | Medium | When the source supplies an event id (a webhook trigger's `event_id_template`, a GitHub delivery id), the delivery row claims it under a partial unique index on `(trigger_id, event_id)`; a later event with the same id is recorded as `duplicate` and starts nothing, including under concurrent requests. A failed delivery releases the claim so a source retry can still run. Sources without an id (schedules, webhooks without a template) are not deduplicated. | MITIGATED |
+| TM-TRIGGER-002 | A busy or hostile source grows the delivery history without bound | Medium | Every event, including filtered and duplicate ones, is recorded, so the pipeline prunes each trigger's history to its newest `DELIVERY_HISTORY_LIMIT` rows after each event. Stored event ids, subjects and reasons are truncated to 512 bytes. Webhook ingress still authenticates and rate-limits before any row is written. | MITIGATED |
+| TM-TRIGGER-003 | Attacker-controlled event text (a repository name, a title) becomes a session routing key | Low | `per_thread` sessions are keyed by a SHA-256 digest of the rendered subject, never the text itself, so event text cannot collide with or spoof reserved session tags; the subject is shown only as display text in the session title and delivery log. | MITIGATED |
+| TM-TRIGGER-004 | Events the agent should ignore still start runs | Low | Trigger filters are evaluated before a session is created or a message is dispatched; a miss is recorded as `filtered` with the failing condition and costs no model call. | MITIGATED |
 
 ## 11. Observability (TM-OBS)
 

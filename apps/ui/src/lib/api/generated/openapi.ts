@@ -499,6 +499,23 @@ export interface paths {
     patch: operations["update_agent_trigger"];
     trace?: never;
   };
+  "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed. */
+    get: operations["list_agent_trigger_deliveries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/triggers/{trigger_id}/runs": {
     parameters: {
       query?: never;
@@ -4819,6 +4836,30 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @description One recorded event delivery for an agent trigger. */
+    AgentTriggerDelivery: {
+      /**
+       * Format: date-time
+       * @description When the event was received.
+       */
+      created_at: string;
+      /** @description Source event identifier used for deduplication, when the source has one. */
+      event_id?: string | null;
+      /** @description Source event type, when the source has one. */
+      event_type?: string | null;
+      /** @description Delivery identifier. */
+      id: string;
+      /** @description Why the event was filtered or failed. */
+      reason?: string | null;
+      /** @description Session that handled the event. */
+      session_id?: string | null;
+      /** @description Where the event came from (`schedule`, `webhook`, ...). */
+      source: string;
+      /** @description Outcome. */
+      status: components["schemas"]["TriggerDeliveryStatus"];
+      /** @description Subject the event is about (for example `owner/repo#12`). */
+      subject?: string | null;
+    };
     /** @description One recent durable execution of an agent schedule trigger. */
     AgentTriggerRun: {
       /**
@@ -6562,6 +6603,9 @@ export interface components {
       cron_expression?: string | null;
       /** @description Whether the trigger is active on creation (default `true`). */
       enabled?: boolean;
+      /** @description Webhook only: template for the delivery idempotency key. */
+      event_id_template?: string | null;
+      filter?: components["schemas"]["TriggerEventFilter"] | null;
       /**
        * @description Message content or `{{template}}` sent when the trigger fires.
        * @example Run the daily digest
@@ -6574,6 +6618,11 @@ export interface components {
       rate_limit_per_minute?: number | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
+      /**
+       * @description Webhook only: template for the event subject. Required for
+       *     `session_mode: per_thread`, which keeps one session per subject.
+       */
+      subject_template?: string | null;
       /**
        * @description IANA timezone identifier for cron evaluation (default `UTC`).
        * @example UTC
@@ -17348,6 +17397,33 @@ export interface components {
       /** @description Session's prefixed public identifier. */
       session_id: components["schemas"]["sessionId"];
     };
+    /**
+     * @description What happened to one event delivered to a trigger.
+     * @enum {string}
+     */
+    TriggerDeliveryStatus: "dispatched" | "filtered" | "duplicate" | "failed";
+    /**
+     * @description Conditions an incoming event must satisfy before a trigger runs.
+     *
+     *     Every condition must hold. A condition reads one dotted path of the event's
+     *     template context (`payload.action`, `event.type`, ...) and passes when the
+     *     value there equals any of `any_of`. Events that do not match are recorded as
+     *     `filtered` deliveries and start no session.
+     */
+    TriggerEventFilter: {
+      /** @description Conditions that must all hold. */
+      conditions?: components["schemas"]["TriggerFilterCondition"][];
+    };
+    /** @description One filter condition: the value at `path` must equal one of `any_of`. */
+    TriggerFilterCondition: {
+      /**
+       * @description Accepted values. Strings compare exactly; other JSON values compare by
+       *     equality.
+       */
+      any_of: Record<string, unknown>[];
+      /** @description Dotted path into the event context, e.g. `payload.action`. */
+      path: string;
+    };
     /** @description Manual trigger response */
     TriggerResponse: {
       /**
@@ -17654,6 +17730,9 @@ export interface components {
       cron_expression?: string | null;
       /** @description Replacement enabled state. */
       enabled?: boolean | null;
+      /** @description Replacement idempotency-key template. An empty string removes it. */
+      event_id_template?: string | null;
+      filter?: components["schemas"]["TriggerEventFilter"] | null;
       /** @description Replacement message sent when the trigger fires. */
       message?: string | null;
       /**
@@ -17662,6 +17741,8 @@ export interface components {
        */
       rate_limit_per_minute?: number | null;
       session_mode?: components["schemas"]["SessionBinding"] | null;
+      /** @description Replacement subject template. An empty string removes it. */
+      subject_template?: string | null;
       /** @description Replacement IANA timezone identifier. */
       timezone?: string | null;
       /** @description Replacement webhook token. */
@@ -18640,8 +18721,13 @@ export interface components {
     WebhookInvocationResponse: {
       accepted: boolean;
       created_session: boolean;
-      /** @description Session's prefixed public identifier. */
-      session_id: string;
+      /** @description What happened to the event: `dispatched`, `filtered` or `duplicate`. */
+      delivery: string;
+      /**
+       * @description Session's prefixed public identifier. Absent when the event was
+       *     filtered out or was a duplicate delivery.
+       */
+      session_id?: string | null;
     };
     /**
      * @description Wrapper that adds API and UI links to a serialized resource.
@@ -21966,6 +22052,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Trigger not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_trigger_deliveries: {
+    parameters: {
+      query?: {
+        /** @description Maximum rows to return (1-200, default 50). */
+        limit?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Recent deliveries */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTriggerDelivery"][];
         };
       };
       /** @description Trigger not found */

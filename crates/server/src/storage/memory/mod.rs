@@ -79,6 +79,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
 
 use super::IngressEndpointRow;
+use super::agent_trigger_deliveries::AgentTriggerDeliveryRow;
 use super::mcp_event_subscriptions::*;
 use super::mcp_tool_cache::*;
 use super::models::*;
@@ -196,6 +197,7 @@ pub struct InMemoryDatabase {
     agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
     // Agent triggers (agent-owned invocation triggers)
     agent_triggers: RwLock<HashMap<TriggerId, AgentTriggerRow>>,
+    agent_trigger_deliveries: RwLock<Vec<AgentTriggerDeliveryRow>>,
     principals: RwLock<HashMap<PrincipalId, PrincipalRow>>,
     // Agent identity connections (identity-scoped external accounts)
     agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
@@ -359,6 +361,7 @@ impl Default for InMemoryDatabase {
             ingress_endpoints: RwLock::new(HashMap::new()),
             agent_identities: RwLock::new(HashMap::new()),
             agent_triggers: RwLock::new(HashMap::new()),
+            agent_trigger_deliveries: RwLock::new(Vec::new()),
             principals: RwLock::new(HashMap::new()),
             agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
