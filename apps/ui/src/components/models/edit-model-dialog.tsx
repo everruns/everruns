@@ -34,7 +34,7 @@ export function EditModelDialog({
   providers: Provider[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (modelId: string, data: UpdateModelRequest) => Promise<void>;
+  onSubmit: (modelId: string, data: UpdateModelRequest) => Promise<boolean>;
 }) {
   const [providerId, setProviderId] = useState(model.provider_id);
   const [modelId, setModelId] = useState(model.model_id);
@@ -59,13 +59,13 @@ export function EditModelDialog({
     e.preventDefault();
     setSaving(true);
     try {
-      await onSubmit(model.id, {
+      const succeeded = await onSubmit(model.id, {
         provider_id: providerId,
         model_id: modelId.trim(),
         display_name: displayName.trim(),
         enabled,
       });
-      onOpenChange(false);
+      if (succeeded) onOpenChange(false);
     } finally {
       setSaving(false);
     }

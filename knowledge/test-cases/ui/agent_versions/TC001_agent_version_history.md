@@ -32,10 +32,10 @@ Verifies that a user can save agent versions, compare changes, set a default ver
 ## Steps
 
 1. Open Agents and create `version-ui-agent` with the initial prompt.
-2. Open the agent detail page and select the Versions tab.
+2. Open the agent page and select **Version history** in the header overflow menu.
 3. Save a version with summary `Initial version`.
 4. Edit the agent prompt to the updated prompt.
-5. Return to Versions and save a patch version with summary `Prompt update`.
+5. Reopen Version history and save a patch version with summary `Prompt update`.
 6. Use Compare Versions to compare the first version to the second version.
 7. Set the second version as Default.
 8. Roll back to the first version and confirm the rollback dialog.
@@ -44,7 +44,7 @@ Verifies that a user can save agent versions, compare changes, set a default ver
 
 ## Expected Result
 
-- The Versions tab is visible only when the feature flag is enabled.
+- The Version history menu item is visible only when the feature flag is enabled.
 - Two saved versions appear with semantic labels and summaries.
 - The diff shows the system prompt changing from the initial prompt to the updated prompt.
 - The selected default version displays a Default badge.

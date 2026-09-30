@@ -134,7 +134,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
         };
 
-        let tools = if config.tools.is_empty() {
+        let mut tools = if config.tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
             if ts_config.enabled && supports_tool_search {
@@ -148,6 +148,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         } else {
             Some(Self::convert_tools(&config.tools))
         };
+        let hosted_tools = self.hosted_tools_for(config)?;
+        if !hosted_tools.is_empty() {
+            tools
+                .get_or_insert_with(Vec::new)
+                .extend(hosted_tools.into_iter().map(ResponsesTool::Hosted));
+        }
 
         // Build reasoning config if specified.
         // Skip when effort is "none" — sending reasoning params to models that
@@ -495,6 +501,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     | Some("response.done") => {
                                         // Response completed - extract usage
                                         let response_obj = json.get("response").unwrap_or(&json);
+                                        super::hosted_tools::record_hosted_tool_calls(response_obj);
 
                                         // Reconcile against the response's own output list before ending
                                         // the stream. Every incremental frame is best-effort: one that is

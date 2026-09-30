@@ -8,6 +8,7 @@ import type {
   Agent,
   AgUiChannelConfig,
   AppChannel,
+  FcpChannelConfig,
   PublicChatChannelConfig,
 } from "@/lib/api/types";
 
@@ -70,6 +71,11 @@ export function isAnonymousExposure(channel: AppChannel): boolean {
     const hasSignIn = !!auth && auth.mode !== "anonymous";
     const tokenProtected = !!config.token_configured || !!config.token;
     return !hasSignIn && !tokenProtected && config.anonymous !== false;
+  }
+  if (channel.channel_type === "fcp") {
+    const config = channel.channel_config as FcpChannelConfig;
+    const tokenProtected = !!config.token_configured || !!config.token;
+    return !tokenProtected && config.anonymous !== false;
   }
   // Every other transport authenticates by construction: Slack signs its
   // requests, webhook and api_endpoint carry a token or key, A2A carries an

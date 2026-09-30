@@ -8,6 +8,7 @@
 
 use everruns::{Session, SessionEventKind, Turn};
 
+use crate::safe_label;
 use crate::style::{BLUE, BOLD, CYAN, GREEN, MAGENTA, RED, WIDTH, YELLOW, clip, paint};
 
 pub use crate::style::{DIM, PLAIN};
@@ -117,7 +118,7 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
                     .as_str()
                     .map(str::to_string)
                     .unwrap_or_else(|| arguments.to_string());
-                section(&format!("❯ {tool_name}"));
+                section(&format!("❯ {}", safe_label(tool_name)));
                 body_capped(&script, BLUE, "", MAX_SCRIPT_LINES);
             }
             SessionEventKind::ToolCompleted {
@@ -144,7 +145,10 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
                 if *success {
                     shell_result(&text);
                 } else {
-                    println!("  {}", paint(RED, &format!("{tool_name} failed")));
+                    println!(
+                        "  {}",
+                        paint(RED, &format!("{} failed", safe_label(tool_name)))
+                    );
                     body_capped(&text, RED, "", MAX_OUTPUT_LINES);
                 }
             }

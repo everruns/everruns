@@ -60,8 +60,7 @@ pub async fn resolve_effective_harness(
                 org_id,
                 capabilities,
             )
-            .await
-            .unwrap_or_default();
+            .await?;
 
         cursor = row.parent_harness_id;
         chain.push(Harness {
@@ -108,4 +107,67 @@ pub async fn resolve_effective_harness(
     }
 
     Ok(Some(effective))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::models::{CreateDeclarativeCapabilityRow, CreateHarnessRow};
+
+    #[tokio::test]
+    async fn malformed_capability_stops_harness_resolution_instead_of_erasing_guardrails() {
+        let db = StorageBackend::in_memory();
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        db.create_declarative_capability(
+            org_id,
+            CreateDeclarativeCapabilityRow {
+                public_id: "cap_01933b5a000070008000000000000001".to_string(),
+                name: "broken".to_string(),
+                display_name: None,
+                description: "Broken stored definition".to_string(),
+                definition: serde_json::json!({ "name": "broken" }),
+            },
+        )
+        .await
+        .unwrap();
+        let harness = db
+            .create_harness(
+                org_id,
+                CreateHarnessRow {
+                    name: "secured".to_string(),
+                    display_name: None,
+                    icon: None,
+                    description: None,
+                    intro_markdown: None,
+                    short_description: None,
+                    starters: serde_json::json!([]),
+                    system_prompt: None,
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    embedder_metadata: serde_json::json!({}),
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+        db.set_harness_capabilities(
+            harness.id.uuid(),
+            vec![
+                ("guardrails".to_string(), 0, serde_json::json!({})),
+                ("declarative:broken".to_string(), 1, serde_json::json!({})),
+            ],
+        )
+        .await
+        .unwrap();
+
+        let error = resolve_effective_harness(&db, org_id, harness.id.uuid())
+            .await
+            .expect_err("a malformed capability must stop harness resolution");
+
+        assert!(error.to_string().contains("broken"));
+    }
 }
