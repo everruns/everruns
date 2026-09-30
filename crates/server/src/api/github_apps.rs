@@ -12,7 +12,11 @@
 //    install. We verify the installation with the App's own JWT and store it
 //    as the identity's `github` connection.
 //
-// The two GET routes are browser redirects from GitHub and carry none of our
+// The agent page drives the same flow through `/v1/agents/{agent_id}/github`
+// (status) and `/v1/agents/{agent_id}/github/connect`, which first gives the
+// agent its identity when it has none, so connecting needs no identity setup.
+//
+// The two GET callback routes are browser redirects from GitHub and carry none of our
 // auth. See `crate::github_apps` for why they are safe anyway, and
 // THREAT[TM-GHAPP-*] in `knowledge/security/threat-model.md`.
 
@@ -30,6 +34,8 @@ use uuid::Uuid;
 use super::common::{ErrorResponse, impl_auth_state};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::agent_identities::AGENT_IDENTITY_MANAGE;
+use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
+use crate::domains::agents::AGENT_VIEW;
 use crate::github_apps::{
     AppCredentials, GitHubAppApi, ManifestInput, SetupState, build_manifest, default_app_name,
     install_url, manifest_form_action,
@@ -85,6 +91,8 @@ pub fn routes(state: AppState) -> Router {
             "/v1/agent-identities/{identity_id}/connections/github/repositories",
             get(list_repositories),
         )
+        .route("/v1/agents/{agent_id}/github", get(agent_status))
+        .route("/v1/agents/{agent_id}/github/connect", post(agent_connect))
         .route("/v1/github/app-manifest/callback", get(manifest_callback))
         .route("/v1/github/apps/{app_row_id}/setup", get(setup_callback))
         .with_state(state)
@@ -114,6 +122,23 @@ pub enum BeginConnectResponse {
     CreateApp { action: String, manifest: String },
     /// The agent already has an App; open its installation page.
     Install { url: String, app_slug: String },
+}
+
+/// GitHub as seen from an agent's page.
+#[derive(Debug, Default, Serialize, PartialEq)]
+pub struct AgentGitHubStatus {
+    /// The agent's identity, once it has one; disconnect goes through it.
+    pub identity_id: Option<String>,
+    /// An installation is bound, so tools and triggers work.
+    pub connected: bool,
+    /// The App exists but is not installed (an abandoned or removed install).
+    pub app_created: bool,
+    pub app_slug: Option<String>,
+    pub app_url: Option<String>,
+    /// GitHub account the App is installed on.
+    pub account: Option<String>,
+    /// `all` or `selected`.
+    pub repository_selection: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -186,8 +211,20 @@ async fn begin_connect(
     body: Option<Json<BeginConnectRequest>>,
 ) -> Result<Json<BeginConnectResponse>, ApiError> {
     let (identity_id, identity_name) = resolve_identity(&state, &org, &identity_id).await?;
-    let encryption = encryption(&state)?;
     let request = body.map(|Json(body)| body).unwrap_or_default();
+    begin_for_identity(&state, &org, identity_id, &identity_name, request)
+        .await
+        .map(Json)
+}
+
+async fn begin_for_identity(
+    state: &AppState,
+    org: &ResolvedOrg,
+    identity_id: AgentIdentityId,
+    identity_name: &str,
+    request: BeginConnectRequest,
+) -> Result<BeginConnectResponse, ApiError> {
+    let encryption = encryption(state)?;
     let user_id = org
         .user_id
         .ok_or_else(|| error(StatusCode::FORBIDDEN, "A signed-in user is required"))?;
@@ -211,23 +248,105 @@ async fn begin_connect(
 
     let web_url = &state.github.endpoints().web_url;
     if let Some(app) = existing {
-        return Ok(Json(BeginConnectResponse::Install {
+        return Ok(BeginConnectResponse::Install {
             url: install_url(web_url, &app.slug, &setup_state),
             app_slug: app.slug,
-        }));
+        });
     }
 
-    let name = default_app_name(&identity_name);
+    let name = default_app_name(identity_name);
     let manifest = build_manifest(&ManifestInput {
         name: &name,
         api_base_url: state.api_base_url(),
         frontend_url: state.frontend_url(),
         app_row_id,
     });
-    Ok(Json(BeginConnectResponse::CreateApp {
+    Ok(BeginConnectResponse::CreateApp {
         action: manifest_form_action(web_url, request.owner_org.as_deref(), &setup_state),
         manifest: manifest.to_string(),
+    })
+}
+
+async fn load_agent(
+    state: &AppState,
+    org: &ResolvedOrg,
+    agent_id: &str,
+) -> Result<crate::storage::models::AgentRow, ApiError> {
+    state
+        .db
+        .get_agent_by_public_id(org.org_id, agent_id)
+        .await
+        .map_err(|e| internal("Failed to get agent", e))?
+        .filter(|agent| agent.status == "active")
+        .ok_or_else(|| error(StatusCode::NOT_FOUND, "Agent not found"))
+}
+
+/// GET /v1/agents/{agent_id}/github
+async fn agent_status(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<AgentGitHubStatus>, ApiError> {
+    AGENT_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(&org))
+        .map_err(|_| error(StatusCode::FORBIDDEN, "Permission denied"))?;
+    let agent = load_agent(&state, &org, &agent_id).await?;
+    let Some(identity_id) = agent.agent_identity_id else {
+        return Ok(Json(AgentGitHubStatus::default()));
+    };
+    let app = state
+        .db
+        .get_github_app_for_identity(org.org_id, identity_id)
+        .await
+        .map_err(|e| internal("Failed to look up GitHub App", e))?;
+    let connection = state
+        .db
+        .get_agent_identity_connection(identity_id, GITHUB_PROVIDER)
+        .await
+        .map_err(|e| internal("Failed to look up GitHub connection", e))?
+        .filter(|c| c.connection_type == GITHUB_APP_CONNECTION_TYPE);
+    let metadata = connection
+        .as_ref()
+        .and_then(|c| c.provider_metadata.clone());
+    Ok(Json(AgentGitHubStatus {
+        identity_id: Some(identity_id.to_string()),
+        connected: connection.is_some(),
+        app_created: app.is_some(),
+        app_slug: app.as_ref().map(|app| app.slug.clone()),
+        app_url: app.as_ref().map(|app| app.html_url.clone()),
+        account: connection.and_then(|c| c.provider_username),
+        repository_selection: metadata
+            .as_ref()
+            .and_then(|m| m.get("repository_selection"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
     }))
+}
+
+/// POST /v1/agents/{agent_id}/github/connect
+async fn agent_connect(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+    body: Option<Json<BeginConnectRequest>>,
+) -> Result<Json<BeginConnectResponse>, ApiError> {
+    AGENT_IDENTITY_MANAGE
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(&org))
+        .map_err(|_| error(StatusCode::FORBIDDEN, "Permission denied"))?;
+    let agent = load_agent(&state, &org, &agent_id).await?;
+    let (identity_id, _) = ensure_identity_for_agent(&state.db, org.org_id, &agent)
+        .await
+        .map_err(|e| internal("Failed to give the agent an identity", e))?;
+    let identity = state
+        .db
+        .get_agent_identity(org.org_id, identity_id)
+        .await
+        .map_err(|e| internal("Failed to get agent identity", e))?
+        .ok_or_else(|| error(StatusCode::NOT_FOUND, "Agent identity not found"))?;
+    let request = body.map(|Json(body)| body).unwrap_or_default();
+    begin_for_identity(&state, &org, identity_id, &identity.name, request)
+        .await
+        .map(Json)
 }
 
 /// DELETE /v1/agent-identities/{identity_id}/connections/github/app
@@ -860,5 +979,100 @@ mod tests {
                 .unwrap();
             assert_eq!(body, expected, "{verb} {uri}");
         }
+    }
+
+    async fn seed_agent(db: &Arc<StorageBackend>) -> String {
+        use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
+        let harness = db
+            .create_harness(
+                DEFAULT_ORG_ID,
+                CreateHarnessRow {
+                    name: "gh-harness".to_string(),
+                    display_name: None,
+                    icon: None,
+                    description: None,
+                    intro_markdown: None,
+                    short_description: None,
+                    starters: serde_json::json!([]),
+                    system_prompt: Some(String::new()),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    embedder_metadata: serde_json::json!({}),
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+        let public_id =
+            crate::kernel_imports::everruns_provider::typed_id::AgentId::new().to_string();
+        db.create_agent(
+            DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: public_id.clone(),
+                name: "pr-summarizer".to_string(),
+                display_name: Some("PR Summarizer".to_string()),
+                description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
+                system_prompt: String::new(),
+                default_model_id: None,
+                harness_id: harness.id,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                is_built_in: false,
+            },
+        )
+        .await
+        .unwrap();
+        public_id
+    }
+
+    fn owner() -> ResolvedOrg {
+        ResolvedOrg {
+            org_id: DEFAULT_ORG_ID,
+            public_id: crate::kernel_imports::DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default".to_string(),
+            user_id: Some(Uuid::now_v7()),
+            role: crate::kernel_imports::OrgRole::Owner,
+            is_platform_user: false,
+            feature_flags: Default::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_connect_gives_the_agent_an_identity_and_status_follows() {
+        let github = MockServer::start().await;
+        let (state, _) = state(&github).await;
+        let agent_id = seed_agent(&state.db).await;
+
+        let Json(before) = agent_status(owner(), State(state.clone()), Path(agent_id.clone()))
+            .await
+            .unwrap();
+        assert_eq!(before, AgentGitHubStatus::default());
+
+        let Json(response) =
+            agent_connect(owner(), State(state.clone()), Path(agent_id.clone()), None)
+                .await
+                .unwrap();
+        assert!(matches!(response, BeginConnectResponse::CreateApp { .. }));
+
+        let Json(after) = agent_status(owner(), State(state.clone()), Path(agent_id.clone()))
+            .await
+            .unwrap();
+        assert!(after.identity_id.is_some(), "connect creates the identity");
+        assert!(!after.connected && !after.app_created);
+
+        let missing = agent_status(owner(), State(state), Path("agent_missing".to_string())).await;
+        assert_eq!(missing.unwrap_err().0, StatusCode::NOT_FOUND);
     }
 }
