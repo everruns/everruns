@@ -43,12 +43,14 @@ use crate::user_facing_error::is_provider_quota_message;
 
 // Split out of one 6000-line file. Every item keeps its visibility, so the
 // module's public surface is unchanged.
+mod background;
 mod chat_driver;
 mod hosted_tools;
 mod input;
 mod streaming;
 mod wire;
 
+pub use background::OPENAI_BACKGROUND_OPTION;
 pub(crate) use input::*;
 pub(crate) use streaming::*;
 pub(crate) use wire::*;
@@ -152,6 +154,7 @@ pub struct OpenResponsesProtocolChatDriver {
     hosted_tool_search: bool,
     hosted_tools: bool,
     native_prompt_cache_options: bool,
+    background_mode: bool,
 }
 
 impl OpenResponsesProtocolChatDriver {
@@ -170,6 +173,7 @@ impl OpenResponsesProtocolChatDriver {
             hosted_tool_search: false,
             hosted_tools: false,
             native_prompt_cache_options: false,
+            background_mode: false,
         }
     }
 
@@ -185,6 +189,13 @@ impl OpenResponsesProtocolChatDriver {
     /// without them reject the option instead of dropping it.
     pub fn with_hosted_tools(mut self, enabled: bool) -> Self {
         self.hosted_tools = enabled;
+        self
+    }
+
+    /// Run long calls in OpenAI background mode, resumable after a dropped
+    /// connection (see `background.rs` for the policy).
+    pub fn with_background_mode(mut self, enabled: bool) -> Self {
+        self.background_mode = enabled;
         self
     }
 

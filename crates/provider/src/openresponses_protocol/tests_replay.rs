@@ -308,6 +308,7 @@ async fn openrouter_provider_does_not_send_hosted_tool_search() {
         capture_request: false,
         limits: Default::default(),
         reasoning_state: None,
+        response_format: None,
     };
 
     let messages = vec![Message::text(MessageRole::User, "hello")];
@@ -389,6 +390,7 @@ async fn openai_provider_omits_openrouter_routing_controls() {
         capture_request: false,
         limits: Default::default(),
         reasoning_state: None,
+        response_format: None,
     };
 
     let messages = vec![Message::text(MessageRole::User, "hello")];
@@ -544,6 +546,7 @@ async fn tool_call_contract_covers_request_wire_and_stream_parser() {
         capture_request: false,
         limits: Default::default(),
         reasoning_state: None,
+        response_format: None,
     };
 
     let stream = driver

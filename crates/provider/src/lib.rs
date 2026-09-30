@@ -31,6 +31,7 @@ pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;
 pub mod hosted_mcp;
+mod llm_call_config_builder;
 pub mod llm_error;
 pub mod llm_retry;
 pub mod message;
@@ -60,6 +61,7 @@ mod stream_error;
 pub mod stream_event;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
+pub mod structured_output;
 pub mod tool_schema_compat;
 pub mod tool_types;
 pub mod turn_collector;
@@ -122,7 +124,9 @@ pub use model_spec::{ModelSpec, UnknownProvider};
 pub use openai_protocol::OpenAIProtocolChatDriver;
 pub use openai_wire::OpenAiWireError;
 #[cfg(feature = "http")]
-pub use openresponses_protocol::{OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension};
+pub use openresponses_protocol::{
+    OPENAI_BACKGROUND_OPTION, OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension,
+};
 pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
 pub use reasoning::{ReasoningContentPart, ReasoningText};
 pub use runtime_provider::{

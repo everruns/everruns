@@ -357,6 +357,22 @@ The verbosity selector maps to OpenAI's `verbosity` request parameter (`low`, `m
 
 The two OpenAI drivers place the field differently: the Responses API nests it under `text.verbosity`, while the Chat Completions API takes it as a top-level `verbosity` field. Other drivers ignore it. Per-model availability lives in the model profile's `verbosity` config (currently the GPT-5.5, GPT-5.6, and GPT-6 Astra series).
 
+### Structured Output
+
+A call can require its answer to validate against a JSON Schema: `LlmCallConfig.response_format` carries a provider-neutral `ResponseFormat` (see `crates/provider/src/structured_output.rs`), and each driver maps it to its native control. The OpenAI Responses driver sends it as `text.format` (next to `text.verbosity`), the Chat Completions driver as the top-level `response_format`. Strict adherence is the default because a caller asking for a schema wants it enforced, not approximated; `non_strict()` opts out for schemas that cannot meet OpenAI's strict-mode rules.
+
+A driver declares support through `ChatDriver::supports_response_format`, which defaults to false and must be forwarded by wrapper drivers like the other capability hooks. The provider refuses a call carrying a format on a driver without support, with a configuration error, before any request is sent. Silently dropping the schema would return free text to a caller that believes it holds validated JSON. The simulator reports support, so offline tests and examples can exercise the path. Anthropic (`output_config.format`) and Gemini (`responseJsonSchema`) have native equivalents and are the next drivers to wire.
+
+Scope: single completions (Framework `Completion::response_format`, evals, utility-style calls). Agent turns do not set it; an agent's final message stays prose, and tools remain the way an agent returns structured data.
+
+### Background Mode (OpenAI Responses)
+
+A long `xhigh`/`max` reasoning call on the OpenAI driver runs with `background: true` and `store: true`, so the response lives at OpenAI rather than on one HTTP connection. The driver tracks the response id and each event's `sequence_number`; when the connection fails or closes before a terminal event, it re-attaches with `GET /responses/{id}?stream=true&starting_after=N` and the parser sees one gapless stream. The call is never posted twice, so a dropped connection no longer loses or re-bills minutes of reasoning. Dropping the stream before a terminal event (turn cancellation, the stall timeout, a worker shutdown) sends `POST /responses/{id}/cancel`, because a background response otherwise keeps generating and billing with nobody reading it.
+
+Policy lives in `crates/provider/src/openresponses_protocol/background.rs`: on for `xhigh`/`max`, forced on or off by the `openai/background` driver option, and limited to OpenAI and Azure hosts (OpenRouter and custom gateways have no resume API). Background mode requires stored responses, so it is not zero-data-retention compatible: a 400 naming the background fields retries once in the foreground, and ZDR deployments can set the option to `false`.
+
+Resume is in-process. A worker that dies mid-call is retried from scratch by the durable task reclaim, as before; re-attaching across a restart needs the response id persisted before the stream opens (the native-async checkpoint already models `response_in_flight`) and is future work.
+
 ### Completion Metadata
 
 `LlmCompletionMetadata` returned on stream completion. Token buckets are

@@ -37,6 +37,7 @@ fn bare_call_config() -> LlmCallConfig {
         capture_request: false,
         limits: Default::default(),
         reasoning_state: None,
+        response_format: None,
     }
 }
 

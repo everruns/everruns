@@ -353,11 +353,25 @@ impl RuntimeProvider {
         &self.endpoint
     }
 
+    /// A requested response format this driver cannot enforce is a
+    /// configuration error, never a silently unconstrained reply (EVE-1116).
+    fn check_response_format(&self, config: &crate::driver_registry::LlmCallConfig) -> Result<()> {
+        if config.response_format.is_some() && !self.driver.supports_response_format(&config.model)
+        {
+            return Err(crate::error::AgentLoopError::Configuration(format!(
+                "Structured output (response_format) is not supported by provider '{}' for model '{}'",
+                self.id, config.model
+            )));
+        }
+        Ok(())
+    }
+
     pub async fn chat_completion_stream(
         &self,
         messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponseStream> {
+        self.check_response_format(config)?;
         let id = self.id.to_string();
         let limits = config.limits;
         // Establishing the stream is itself a round trip that can hang, so it
@@ -389,6 +403,7 @@ impl RuntimeProvider {
         messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
+        self.check_response_format(config)?;
         self.driver
             .chat_completion(&self.endpoint, messages, config)
             .await
@@ -404,6 +419,7 @@ impl RuntimeProvider {
         messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
+        self.check_response_format(config)?;
         if !config.limits.is_unbounded() {
             // Native JSON responses cannot enforce a byte cap before buffering
             // the body. Route bounded calls through the streaming collector so
@@ -565,6 +581,10 @@ impl ChatDriver for ProviderBoundDriver {
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         self.0.driver.supports_parallel_tool_calls(model)
+    }
+
+    fn supports_response_format(&self, model: &str) -> bool {
+        self.0.driver.supports_response_format(model)
     }
 
     fn provider_managed_reduction_option(

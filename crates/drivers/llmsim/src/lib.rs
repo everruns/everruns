@@ -702,16 +702,14 @@ impl ChatDriver for LlmSimDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        // Record the per-call reasoning effort for tests (EVE-595). Captured
-        // before any error short-circuit so even error turns are observable.
+        // Record per-call effort (EVE-595) before any error, so error turns show.
         if let Some(capture) = &self.config.effort_capture
             && let Ok(mut efforts) = capture.lock()
         {
             efforts.push(config.reasoning_effort.map(|e| e.as_str().to_string()));
         }
 
-        // Record the provider-visible messages for tests. Captured before any
-        // error short-circuit so even error turns are observable.
+        // Record the provider-visible messages for tests, also before any error.
         if let Some(capture) = &self.config.message_capture
             && let Ok(mut calls) = capture.lock()
         {
@@ -726,10 +724,8 @@ impl ChatDriver for LlmSimDriver {
             return Err(AgentLoopError::model_not_available(config.model.clone()));
         }
 
-        // Apply response delay if configured or if model name contains "-ttft-{ms}".
-        // TTFT = Time To First Token. This simulates LLM "thinking" time.
-        // Used for testing cancellation scenarios where we need a predictable
-        // time window to cancel an active turn before the LLM completes.
+        // Response delay (config or "-ttft-{ms}" in the model name) simulates time to
+        // first token, giving cancellation tests a predictable window.
         let delay = self
             .config
             .response_delay
@@ -755,8 +751,7 @@ impl ChatDriver for LlmSimDriver {
             .sum();
         let completion_tokens = Self::estimate_tokens(&response_text);
 
-        // Use llmsim's TokenStreamBuilder for streaming with latency simulation.
-        // It handles TTFT and inter-token delays natively via LatencyProfile.
+        // TokenStreamBuilder handles TTFT and inter-token delays via LatencyProfile.
         let usage = Usage {
             prompt_tokens,
             completion_tokens,
@@ -846,6 +841,11 @@ impl ChatDriver for LlmSimDriver {
             .chain(event_stream)
             .chain(stream::iter(done_events));
         Ok(Box::pin(full_stream))
+    }
+
+    /// Scripted answers stand in for a schema-enforcing provider.
+    fn supports_response_format(&self, _model: &str) -> bool {
+        true
     }
 }
 

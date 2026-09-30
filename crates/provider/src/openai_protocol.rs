@@ -519,15 +519,11 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             tools,
             parallel_tool_calls: config
                 .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            // An explicit "no reasoning" omits the field: sending it to a
-            // non-thinking model is an API error.
-            reasoning_effort: config
-                .reasoning_effort
-                .filter(crate::model::ReasoningEffort::requests_reasoning)
-                .map(|effort| effort.as_str().to_string()),
+            reasoning_effort: OpenAiRequest::reasoning_effort_for(config),
             service_tier: config.speed.clone(),
             verbosity: config.verbosity.clone(),
             metadata,
+            response_format: OpenAiRequest::response_format_for(config),
         };
         let captured_request = capture_request_body(config, &request);
         let api_url = endpoint.url("chat/completions").ok_or_else(|| {
@@ -683,15 +679,11 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             tools,
             parallel_tool_calls: config
                 .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            // An explicit "no reasoning" omits the field: sending it to a
-            // non-thinking model is an API error.
-            reasoning_effort: config
-                .reasoning_effort
-                .filter(crate::model::ReasoningEffort::requests_reasoning)
-                .map(|effort| effort.as_str().to_string()),
+            reasoning_effort: OpenAiRequest::reasoning_effort_for(config),
             service_tier: config.speed.clone(),
             verbosity: config.verbosity.clone(),
             metadata,
+            response_format: OpenAiRequest::response_format_for(config),
         };
 
         // Establish the SSE stream, transparently reconnecting on a transport
@@ -947,6 +939,11 @@ impl ChatDriver for OpenAIProtocolChatDriver {
     /// `parallel_tool_calls` boolean, so the preference maps directly onto the
     /// wire for every model served through this protocol.
     fn supports_parallel_tool_calls(&self, _model: &str) -> bool {
+        true
+    }
+
+    /// Structured output goes out as `response_format: {type: "json_schema"}`.
+    fn supports_response_format(&self, _model: &str) -> bool {
         true
     }
 }
@@ -1367,6 +1364,7 @@ mod tests {
             service_tier: None,
             verbosity: None,
             metadata: None,
+            response_format: None,
         };
 
         let mut config = call_config();
@@ -1408,6 +1406,7 @@ mod tests {
             cache_diagnostics: None,
             capture_request: false,
             limits: Default::default(),
+            response_format: None,
         }
     }
     async fn mock_provider(sse: &str) -> (wiremock::MockServer, crate::Provider) {

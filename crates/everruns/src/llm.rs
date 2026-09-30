@@ -58,6 +58,9 @@ pub use everruns_provider::llm_retry::LlmRetryConfig;
 /// on. `use everruns::llm::{Message, MessageRole}` keeps both plain-named.
 pub use everruns_provider::driver_registry::{Message, MessageContent, MessageRole};
 
+/// A JSON Schema the model's reply must satisfy; see [`Completion::response_format`].
+pub use everruns_provider::structured_output::{JsonSchemaFormat, ResponseFormat};
+
 use crate::Model;
 
 /// Why a direct completion could not be made.
@@ -254,6 +257,41 @@ impl Completion {
     /// Unset by default, leaving the provider's own behavior.
     pub fn parallel_tool_calls(mut self, allowed: bool) -> Self {
         self.config.parallel_tool_calls = Some(allowed);
+        self
+    }
+
+    /// Constrain the answer to a JSON Schema, enforced by the provider.
+    ///
+    /// Supported on the OpenAI drivers (Responses `text.format`, Chat
+    /// Completions `response_format`). Any other provider fails the call with
+    /// a configuration error rather than silently returning free text.
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use everruns::Model;
+    /// use everruns::llm::ResponseFormat;
+    /// use serde_json::json;
+    ///
+    /// let schema = json!({
+    ///     "type": "object",
+    ///     "properties": { "sentiment": { "type": "string", "enum": ["positive", "negative"] } },
+    ///     "required": ["sentiment"],
+    ///     "additionalProperties": false
+    /// });
+    /// let answer = Model::simulated(r#"{"sentiment":"positive"}"#)
+    ///     .completion()
+    ///     .user("I love it")
+    ///     .response_format(ResponseFormat::json_schema("sentiment", schema))
+    ///     .text()
+    ///     .await?;
+    /// let parsed: serde_json::Value = serde_json::from_str(&answer)?;
+    /// assert_eq!(parsed["sentiment"], "positive");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn response_format(mut self, format: ResponseFormat) -> Self {
+        self.config.response_format = Some(format);
         self
     }
 

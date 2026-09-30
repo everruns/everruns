@@ -41,6 +41,32 @@ pub(crate) struct OpenAiRequest {
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) metadata: Option<std::collections::HashMap<String, String>>,
+    /// Structured output: `{type: "json_schema", json_schema: {name, schema, strict}}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) response_format: Option<Value>,
+}
+
+impl OpenAiRequest {
+    /// `reasoning_effort` for the call. An explicit "no reasoning" omits the
+    /// field: sending it to a non-thinking model is an API error.
+    pub(crate) fn reasoning_effort_for(
+        config: &crate::driver_registry::LlmCallConfig,
+    ) -> Option<String> {
+        let effort = config.reasoning_effort;
+        effort
+            .filter(crate::model::ReasoningEffort::requests_reasoning)
+            .map(|e| e.as_str().to_string())
+    }
+
+    /// `response_format` for the call, from the provider-neutral structured output.
+    pub(crate) fn response_format_for(
+        config: &crate::driver_registry::LlmCallConfig,
+    ) -> Option<Value> {
+        config
+            .response_format
+            .as_ref()
+            .map(|f| f.chat_completions_response_format())
+    }
 }
 
 #[derive(Debug, Serialize)]
