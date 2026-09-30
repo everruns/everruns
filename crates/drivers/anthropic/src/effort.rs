@@ -144,7 +144,7 @@ mod tests {
     /// matches the profile, so no effort is invented.
     #[test]
     fn other_families_get_none() {
-        for model in ["claude-opus-4-8", "claude-sonnet-5", "claude-sonnet-4-5"] {
+        for model in ["claude-opus-4-8", "claude-sonnet-5", "claude-opus-4-5"] {
             assert_eq!(effort_for(model), None, "{model}");
         }
     }

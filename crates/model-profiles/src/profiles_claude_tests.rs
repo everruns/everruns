@@ -110,7 +110,6 @@ fn threshold_server_compaction_is_explicitly_profile_gated() {
         "claude-sonnet-5-5",
         "claude-sonnet-5-5[1m]",
         "claude-haiku-4-5",
-        "claude-sonnet-4-5",
     ] {
         assert!(
             !get_model_profile("anthropic", id)

@@ -25,7 +25,7 @@ use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 const OPENAI_MODEL: &str = "gpt-5.6-terra";
-const ANTHROPIC_MODEL: &str = "claude-sonnet-4-5";
+const ANTHROPIC_MODEL: &str = "claude-sonnet-5-5";
 
 const INSTRUCTIONS: &str = "\
 You administer this deployment. Its operations are available in your shell as \

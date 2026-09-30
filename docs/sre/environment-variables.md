@@ -391,7 +391,7 @@ configured guardrail appears to do nothing.
 There is no separate provider variable: the utility LLM's backend is whichever
 key you supply. An OpenRouter model id is namespaced by its upstream provider,
 so override `UTILITY_LLM_MODEL` with an id that backend accepts
-(`anthropic/claude-sonnet-4.5`, not `claude-sonnet-4.5`).
+(`anthropic/claude-sonnet-5.5`, not `claude-sonnet-5.5`).
 
 ```bash
 # Control-plane and workers both read these.

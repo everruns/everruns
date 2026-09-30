@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn request_options_capture_sampling_and_streaming_intent() {
         let agent = RuntimeAgent {
-            model: "claude-sonnet-4-5".to_string(),
+            model: "claude-sonnet-4-6".to_string(),
             temperature: Some(0.2),
             max_tokens: Some(1024),
             ..RuntimeAgent::default()

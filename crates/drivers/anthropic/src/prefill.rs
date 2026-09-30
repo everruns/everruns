@@ -59,6 +59,6 @@ mod tests {
         let history = msgs(&[System, User, Assistant, User]);
         assert!(reject_trailing_assistant("claude-opus-5-5", &history).is_ok());
         // Budget-based models still accept prefill.
-        assert!(reject_trailing_assistant("claude-sonnet-4-5", &msgs(&[User, Assistant])).is_ok());
+        assert!(reject_trailing_assistant("claude-opus-4-5", &msgs(&[User, Assistant])).is_ok());
     }
 }

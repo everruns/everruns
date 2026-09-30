@@ -11533,7 +11533,7 @@ export interface components {
         created_at: string;
         /**
          * @description Human-readable display name.
-         * @example Claude Sonnet 4.5
+         * @example Claude Sonnet 5.5
          */
         display_name: string;
         /**
@@ -11560,7 +11560,7 @@ export interface components {
         is_favorite: boolean;
         /**
          * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
-         * @example claude-sonnet-4-5
+         * @example claude-sonnet-5-5
          */
         model_id: string;
         model_vendor?: components["schemas"]["ModelVendor"] | null;
@@ -12048,7 +12048,7 @@ export interface components {
       finish_reasons?: string[] | null;
       /**
        * @description Model identifier used for generation
-       * @example claude-sonnet-4-5
+       * @example claude-sonnet-4-6
        */
       model: string;
       /**
@@ -12067,8 +12067,8 @@ export interface components {
        * @description Model the provider reported actually serving the request.
        *
        *     `model` is what was *asked for*, which is routinely an alias that
-       *     resolves at request time — `claude-sonnet-4-5` served by
-       *     `claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one
+       *     resolves at request time — `claude-sonnet-4-6` served by
+       *     `claude-sonnet-4-6-20260217`, or an OpenRouter route landing on one
        *     upstream of several. Collapsing the two loses the only record of which
        *     weights produced the answer, which is what a regression in output
        *     quality has to be correlated against.
@@ -12076,7 +12076,7 @@ export interface components {
        *     `None` when the provider reported no model, which is the honest answer:
        *     consumers fall back to `model` rather than being told the alias was
        *     confirmed.
-       * @example claude-sonnet-4-5-20250929
+       * @example claude-sonnet-4-6-20260217
        */
       response_model?: string | null;
       retry?: components["schemas"]["LlmRetryInfo"] | null;
@@ -12973,7 +12973,7 @@ export interface components {
       created_at: string;
       /**
        * @description Human-readable display name.
-       * @example Claude Sonnet 4.5
+       * @example Claude Sonnet 5.5
        */
       display_name: string;
       /**
@@ -13000,7 +13000,7 @@ export interface components {
       is_favorite: boolean;
       /**
        * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
-       * @example claude-sonnet-4-5
+       * @example claude-sonnet-5-5
        */
       model_id: string;
       model_vendor?: components["schemas"]["ModelVendor"] | null;
@@ -19612,7 +19612,7 @@ export interface components {
       created_at: string;
       /**
        * @description Human-readable display name.
-       * @example Claude Sonnet 4.5
+       * @example Claude Sonnet 5.5
        */
       display_name: string;
       /**
@@ -19639,7 +19639,7 @@ export interface components {
       is_favorite: boolean;
       /**
        * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
-       * @example claude-sonnet-4-5
+       * @example claude-sonnet-5-5
        */
       model_id: string;
       model_vendor?: components["schemas"]["ModelVendor"] | null;

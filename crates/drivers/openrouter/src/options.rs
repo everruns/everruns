@@ -615,7 +615,7 @@ mod tests {
         let routing = OpenRouterRoutingConfig {
             models: vec![
                 "openai/gpt-5-mini".to_string(),
-                "anthropic/claude-sonnet-4.5".to_string(),
+                "anthropic/claude-sonnet-5.5".to_string(),
             ],
             route: Some(OpenRouterRoute::Fallback),
             provider: Some(OpenRouterProviderRouting {
@@ -647,7 +647,7 @@ mod tests {
             serde_json::json!({
                 "models": [
                     "openai/gpt-5-mini",
-                    "anthropic/claude-sonnet-4.5"
+                    "anthropic/claude-sonnet-5.5"
                 ],
                 "route": "fallback",
                 "provider": {

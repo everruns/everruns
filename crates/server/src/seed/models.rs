@@ -492,14 +492,6 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         is_favorite: true, // Favorite model
     },
     SeedModel {
-        id: seed_ids::CLAUDE_SONNET_4_5,
-        provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-sonnet-4-5",
-        display_name: "Claude Sonnet 4.5",
-        enabled: false,
-        is_favorite: true, // Favorite model
-    },
-    SeedModel {
         id: seed_ids::CLAUDE_HAIKU_4_5,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-haiku-4-5",

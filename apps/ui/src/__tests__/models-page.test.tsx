@@ -192,8 +192,8 @@ describe("ModelsPage", () => {
         ...mockModels,
         {
           id: "model-2",
-          model_id: "claude-sonnet-4-5",
-          display_name: "Claude Sonnet 4.5",
+          model_id: "claude-sonnet-5-5",
+          display_name: "Claude Sonnet 5.5",
           provider_id: "provider-2",
           provider_name: "Anthropic Dev",
           provider_type: "anthropic",
@@ -211,7 +211,7 @@ describe("ModelsPage", () => {
     render(<ModelsPage />, { wrapper });
 
     expect(screen.getByText("Manage the models available from Anthropic Dev.")).toBeInTheDocument();
-    expect(screen.getByText("Claude Sonnet 4.5")).toBeInTheDocument();
+    expect(screen.getByText("Claude Sonnet 5.5")).toBeInTheDocument();
     expect(screen.queryByText(/gpt-5\.2 - OpenAI Production/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Clear filter/i })).toHaveAttribute("href", "/models");
   });

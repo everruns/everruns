@@ -87,7 +87,7 @@ pub(crate) async fn cleanup_agent(
 /// (`GET /v1/models`) instead of editing each test.
 pub(crate) const LIVE_ANTHROPIC_FAST_MODEL: &str = "claude-haiku-4-5-20251001";
 /// Extended thinking requires a model that supports it; Haiku does not.
-pub(crate) const LIVE_ANTHROPIC_THINKING_MODEL: &str = "claude-sonnet-4-5-20250929";
+pub(crate) const LIVE_ANTHROPIC_THINKING_MODEL: &str = "claude-sonnet-4-6-20260217";
 
 /// Returns the error code when a turn was blocked by a live provider *account*
 /// condition — the account is out of credits, or a subscription usage limit was
