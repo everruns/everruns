@@ -1,4 +1,4 @@
-import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
+import { buildToolActivityGroups, hostedToolLabel } from "@/components/chat/tool-activity-groups";
 import type { Event } from "@/lib/api/types";
 
 function event(
@@ -294,5 +294,20 @@ describe("buildToolActivityGroups", () => {
       ?.rows[0];
     expect(row?.state).toBe("error");
     expect(row?.label).toBe("Пошук у вебі");
+  });
+
+  it("labels every OpenAI hosted tool from its detail", () => {
+    const label = (tool_name: string, summary?: string, locale = "en") =>
+      hostedToolLabel(
+        { turn_id: "t", call_id: "c", tool_name, status: "completed", summary },
+        locale,
+      );
+    expect(label("code_interpreter", "2**100")).toBe("Run code: 2**100");
+    expect(label("code_interpreter", undefined, "uk")).toBe("Виконати код");
+    expect(label("shell", "uname -s")).toBe("$ uname -s");
+    expect(label("shell")).toBe("Shell");
+    expect(label("file_search", "refund policy")).toBe("Find refund policy");
+    expect(label("file_search")).toBe("Search files");
+    expect(label("image_generation")).toBe("Image Generation");
   });
 });

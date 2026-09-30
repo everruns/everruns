@@ -34,6 +34,7 @@ fn web_search_config(model: &str) -> LlmCallConfig {
             search_context_size: Some(SearchContextSize::Low),
             ..Default::default()
         }),
+        ..Default::default()
     };
     let (key, value) = tools.to_driver_option().expect("web search selected");
     config.driver_options.insert(key, value);
