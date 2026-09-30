@@ -25,6 +25,7 @@ mod agent_trigger_invocation_integration_test;
 mod app_a2a_ask_user_test;
 mod app_a2a_integration_test;
 mod app_api_integration_test;
+mod app_budget_retirement_test;
 mod app_invocation_channels_integration_test;
 mod auth_integration_test;
 mod cli_auth_no_org_test;
