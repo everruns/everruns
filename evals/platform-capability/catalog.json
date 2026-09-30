@@ -2006,11 +2006,11 @@
             "filter": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/TriggerEventFilter",
                   "description": "Webhook only: conditions an event must meet to start a run."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -15860,11 +15860,11 @@
             "filter": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/TriggerEventFilter",
                   "description": "Replacement filter. A filter with no conditions removes it."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
