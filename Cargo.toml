@@ -58,6 +58,7 @@ members = [
     "integrations/e2b",
     "integrations/sprites",
     "integrations/typesafe",
+    "integrations/openai-decisions",
     "examples/support-agent",
     "examples/everruns-support-agent",
     "examples/coding-review-agent",
