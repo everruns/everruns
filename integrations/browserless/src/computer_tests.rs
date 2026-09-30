@@ -257,7 +257,19 @@ async fn fills_and_submits_a_form_on_a_real_browser() {
         eprintln!("skipping: no local Chromium found (set CHROMIUM_PATH to run)");
         return;
     };
-    let session = CdpSession::connect(&browser.ws_url).await.unwrap();
+    // Test builds use a 1s CDP connect timeout; a freshly started Chromium on
+    // a loaded CI runner can take longer to accept the socket, so retry.
+    let mut session = None;
+    for _ in 0..20 {
+        match CdpSession::connect(&browser.ws_url).await {
+            Ok(connected) => {
+                session = Some(connected);
+                break;
+            }
+            Err(_) => tokio::time::sleep(Duration::from_millis(250)).await,
+        }
+    }
+    let session = session.expect("connect to local Chromium over CDP");
     let size = DisplaySize {
         width: 800,
         height: 600,
