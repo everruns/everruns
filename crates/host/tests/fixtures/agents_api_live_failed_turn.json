@@ -1,0 +1,218 @@
+[
+  {
+    "type": "agent.session.created",
+    "event_id": "evt_5a94e640ca914e50a9d862d896c7df964e5892bbcb1241218f",
+    "session": {
+      "metadata": {},
+      "id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+      "object": "agent.session",
+      "created_at": 1790733719,
+      "last_active_at": 1790733719,
+      "status": "in_progress",
+      "required_actions": [],
+      "error": null,
+      "agent": {
+        "id": "agent_ae853e06d12a443eafe11ba5289f9d22f445b04a55bf49c4a8",
+        "name": null,
+        "model": "gpt-6-astra",
+        "reasoning": {
+          "effort": "medium",
+          "summary": null
+        },
+        "text": {
+          "format": {
+            "type": "text"
+          },
+          "verbosity": "medium"
+        },
+        "service_tier": "auto",
+        "instructions": "Answer briefly.",
+        "tools": [],
+        "multi_agent": {
+          "enabled": false,
+          "max_concurrent_subagents": null
+        }
+      },
+      "environment": {
+        "type": "none"
+      },
+      "vault_ids": [],
+      "usage": null
+    }
+  },
+  {
+    "type": "agent.session.turn.created",
+    "event_id": "evt_6ece31ea872948fd873f77ecd8bff94f1f72101d284d4d66a5",
+    "session_id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+    "turn_id": "turn_05b0873a2c9cea88006abc6d9b9654819e9a1c1e715525d76d",
+    "turn": {
+      "id": "turn_05b0873a2c9cea88006abc6d9b9654819e9a1c1e715525d76d",
+      "object": "agent.session.turn",
+      "session_id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+      "agent_id": "agent_ae853e06d12a443eafe11ba5289f9d22f445b04a55bf49c4a8",
+      "subagent_id": null,
+      "status": "queued",
+      "created_at": 1790733722,
+      "started_at": null,
+      "completed_at": null,
+      "error": null,
+      "usage": null
+    }
+  },
+  {
+    "type": "agent.session.turn.item.added",
+    "event_id": "evt_8d9ae8c351b248ea9d8c10109d039d9466f1bd4af7404d2bb8",
+    "session_id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+    "turn_id": "turn_05b0873a2c9cea88006abc6d9b9654819e9a1c1e715525d76d",
+    "output_index": null,
+    "item": {
+      "type": "message",
+      "id": "msg_a8572fbe7af967541394d6abccd5b2fb0cc5d44d60cdc763ef",
+      "turn_id": "turn_05b0873a2c9cea88006abc6d9b9654819e9a1c1e715525d76d",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Say hi in three words."
+        }
+      ],
+      "status": "completed",
+      "phase": null
+    }
+  },
+  {
+    "type": "agent.session.in_progress",
+    "event_id": "evt_18f441b76fef4351ac36625ec189f995dbbd7edf4644488399",
+    "session": {
+      "metadata": {},
+      "id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+      "object": "agent.session",
+      "created_at": 1790733719,
+      "last_active_at": 1790733719,
+      "status": "in_progress",
+      "required_actions": [],
+      "error": null,
+      "agent": {
+        "id": "agent_ae853e06d12a443eafe11ba5289f9d22f445b04a55bf49c4a8",
+        "name": null,
+        "model": "gpt-6-astra",
+        "reasoning": {
+          "effort": "medium",
+          "summary": null
+        },
+        "text": {
+          "format": {
+            "type": "text"
+          },
+          "verbosity": "medium"
+        },
+        "service_tier": "auto",
+        "instructions": "Answer briefly.",
+        "tools": [],
+        "multi_agent": {
+          "enabled": false,
+          "max_concurrent_subagents": null
+        }
+      },
+      "environment": {
+        "type": "none"
+      },
+      "vault_ids": [],
+      "usage": null
+    }
+  },
+  {
+    "type": "agent.session.turn.in_progress",
+    "event_id": "evt_de43f84c78b04b19bcb8936ef4c0438a7b1ac00f103b421fba",
+    "session_id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+    "turn_id": "turn_05b0873a2c9cea88006abc6d9b9654819e9a1c1e715525d76d",
+    "turn": {
+      "id": "turn_05b0873a2c9cea88006abc6d9b9654819e9a1c1e715525d76d",
+      "object": "agent.session.turn",
+      "session_id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+      "agent_id": "agent_ae853e06d12a443eafe11ba5289f9d22f445b04a55bf49c4a8",
+      "subagent_id": null,
+      "status": "in_progress",
+      "created_at": 1790733722,
+      "started_at": 1790733722,
+      "completed_at": null,
+      "error": null,
+      "usage": null
+    }
+  },
+  {
+    "type": "error",
+    "event_id": "evt_2e0a4dd457a1472ca95780b0a2f18550b5328dcaca2648debd",
+    "session_id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+    "error": {
+      "type": "insufficient_quota",
+      "code": "usage_limit_exceeded",
+      "message": "Your organization has reached a usage or billing limit. Review your plan, usage limits, and billing settings at https://platform.openai.com/settings/organization/billing/ before retrying.",
+      "param": null
+    }
+  },
+  {
+    "type": "agent.session.turn.failed",
+    "event_id": "evt_e79b63fa896b4037a819ddbd404d1bbc92deba8f360447749b",
+    "session_id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+    "turn_id": "turn_05b0873a2c9cea88006abc6d9b9654819e9a1c1e715525d76d",
+    "turn": {
+      "id": "turn_05b0873a2c9cea88006abc6d9b9654819e9a1c1e715525d76d",
+      "object": "agent.session.turn",
+      "session_id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+      "agent_id": "agent_ae853e06d12a443eafe11ba5289f9d22f445b04a55bf49c4a8",
+      "subagent_id": null,
+      "status": "failed",
+      "created_at": 1790733722,
+      "started_at": 1790733722,
+      "completed_at": 1790733724,
+      "error": {
+        "code": "usage_limit_exceeded",
+        "message": "Your organization has reached a usage or billing limit. Review your plan, usage limits, and billing settings at https://platform.openai.com/settings/organization/billing/ before retrying."
+      },
+      "usage": null
+    },
+    "usage": null
+  },
+  {
+    "type": "agent.session.idle",
+    "event_id": "evt_e09209e819a6488f8213c41c31a89be5cb04349f9bc9434391",
+    "session": {
+      "metadata": {},
+      "id": "sess_05b0873a2c9cea88006abc6d96346c819e9860bbf5e8d8ccf7",
+      "object": "agent.session",
+      "created_at": 1790733719,
+      "last_active_at": 1790733719,
+      "status": "idle",
+      "required_actions": [],
+      "error": null,
+      "agent": {
+        "id": "agent_ae853e06d12a443eafe11ba5289f9d22f445b04a55bf49c4a8",
+        "name": null,
+        "model": "gpt-6-astra",
+        "reasoning": {
+          "effort": "medium",
+          "summary": null
+        },
+        "text": {
+          "format": {
+            "type": "text"
+          },
+          "verbosity": "medium"
+        },
+        "service_tier": "auto",
+        "instructions": "Answer briefly.",
+        "tools": [],
+        "multi_agent": {
+          "enabled": false,
+          "max_concurrent_subagents": null
+        }
+      },
+      "environment": {
+        "type": "none"
+      },
+      "vault_ids": [],
+      "usage": null
+    }
+  }
+]
