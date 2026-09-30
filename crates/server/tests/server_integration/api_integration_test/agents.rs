@@ -1192,3 +1192,60 @@ async fn test_agent_catalog_mcp_attachment_round_trip() {
         created["mcpServers"]["project-tracker"]
     );
 }
+
+/// EVE-1127: a bad `mcpServers` block is client input, so the API must answer
+/// 400 with the reason. These all used to surface as a bare 500 "Internal
+/// server error" because the validators emitted untyped `anyhow!` strings.
+#[tokio::test]
+async fn test_invalid_scoped_mcp_config_is_rejected_with_400_and_a_reason() {
+    let server = TestServer::in_memory().await;
+
+    for (case, mcp_servers, expected_fragment) in [
+        (
+            "inline identity without a catalog preset",
+            json!({ "docs": { "url": "https://docs.example.com/mcp", "actsAs": "service" } }),
+            "requires a catalog preset",
+        ),
+        (
+            "stdio transport",
+            json!({ "fs": { "type": "stdio", "command": "mcp-server-filesystem" } }),
+            "unsupported transport",
+        ),
+        (
+            "catalog preset combined with an inline field",
+            json!({ "docs": { "use": "catalog:linear", "url": "https://docs.example.com/mcp" } }),
+            "cannot be combined with inline field",
+        ),
+        (
+            "missing catalog preset",
+            json!({ "docs": { "use": "catalog:does-not-exist" } }),
+            "references missing catalog preset",
+        ),
+        (
+            "names colliding after sanitization",
+            json!({
+                "docs-v2": { "url": "https://a.example.com/mcp" },
+                "docs.v2": { "url": "https://b.example.com/mcp" },
+            }),
+            "must be unique after sanitization",
+        ),
+    ] {
+        let response = server
+            .post(
+                "/v1/agents",
+                json!({
+                    "name": "scoped-mcp-validation",
+                    "system_prompt": "Use the attached tools",
+                    "mcpServers": mcp_servers,
+                }),
+            )
+            .await;
+
+        let body: Value = response.assert_status(StatusCode::BAD_REQUEST).json();
+        let detail = body["detail"].as_str().unwrap_or_default();
+        assert!(
+            detail.contains(expected_fragment),
+            "{case}: expected detail containing {expected_fragment:?}, got: {body}"
+        );
+    }
+}

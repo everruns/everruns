@@ -30,6 +30,7 @@ use crate::domains::mcp_servers::McpServerResolved;
 use crate::domains::mcp_servers::service::{
     McpServerService, fetch_mcp_tools, fetch_mcp_tools_with_cache_hints,
 };
+use crate::errors::BadRequestError;
 use crate::storage::{McpServiceToolCacheRow, StorageBackend, UpsertMcpServiceToolCache};
 
 const SCOPED_TOOL_CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -963,6 +964,15 @@ fn has_authorization_header(headers: &HashMap<String, String>) -> bool {
         .any(|header_name| header_name.eq_ignore_ascii_case("Authorization"))
 }
 
+// Design Decision: write-time validation below emits `BadRequestError`, not bare
+// `anyhow!` strings (EVE-1127). These rejections are all client input — an
+// unknown preset, an inline field on a preset reference, stdio transport, a
+// name that collides after sanitization — so they must reach the caller as 400
+// carrying their own message instead of falling through `classify_anyhow` into
+// a generic 500. The runtime resolution paths above (discovery token
+// resolution, preset lookup while resolving a live attachment) deliberately
+// stay `anyhow!`/internal: by then the config was already accepted, so a
+// failure there is our invariant, not the caller's mistake.
 pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
     validate_scoped_mcp_servers_inner(servers, false)
 }
@@ -975,41 +985,45 @@ fn validate_scoped_mcp_servers_inner(
 
     for (name, server) in servers {
         if name.trim().is_empty() {
-            return Err(anyhow!("Scoped MCP server name cannot be empty"));
+            return Err(BadRequestError::new("Scoped MCP server name cannot be empty").into());
         }
         if server.preset.is_some() {
             validate_catalog_reference_shape(name, server)?;
         } else {
             if server.acts_as != McpServerActsAs::None && !allow_inline_identity {
-                return Err(anyhow!(
+                return Err(BadRequestError::new(format!(
                     "Scoped MCP server '{name}' with actsAs '{}' requires a catalog preset for OAuth",
                     server.acts_as
-                ));
+                )).into());
             }
             // Local-process (stdio) transport is hard-off in the hosted product;
             // it is only available to single-tenant runtime/CLI hosts
             // (knowledge/integrations/runtime-mcp.md D2). Reject it here so it can never be
             // configured on an organization's harness/agent/session.
             if server.transport_type.is_local() {
-                return Err(anyhow!(
+                return Err(BadRequestError::new(format!(
                     "Scoped MCP server '{name}' uses an unsupported transport: \
                      stdio MCP servers are not allowed in this deployment"
-                ));
+                ))
+                .into());
             }
-            validate_safe_url(&server.url)
-                .map_err(|e| anyhow!("Invalid scoped MCP server URL for '{name}': {e}"))?;
+            validate_safe_url(&server.url).map_err(|e| {
+                BadRequestError::new(format!("Invalid scoped MCP server URL for '{name}': {e}"))
+            })?;
         }
         let prefix = sanitize_mcp_server_name(name);
         if !everruns_core::mcp_server::is_valid_mcp_server_name(name) {
-            return Err(anyhow!(
+            return Err(BadRequestError::new(format!(
                 "Scoped MCP server name '{name}' is invalid after sanitization: \
                  consecutive or trailing underscores are reserved for MCP tool prefix delimiters"
-            ));
+            ))
+            .into());
         }
         if !sanitized.insert(prefix) {
-            return Err(anyhow!(
-                "Scoped MCP server names must be unique after sanitization"
-            ));
+            return Err(BadRequestError::new(
+                "Scoped MCP server names must be unique after sanitization",
+            )
+            .into());
         }
     }
 
@@ -1027,15 +1041,17 @@ pub fn validate_effective_mcp_servers(servers: &ScopedMcpServers) -> Result<()> 
 
 fn validate_inline_identity_auth(name: &str, server: &ScopedMcpServer) -> Result<()> {
     if server.acts_as.is_none() && server.auth_mode == McpServerAuthMode::OAuth {
-        return Err(anyhow!(
+        return Err(BadRequestError::new(format!(
             "MCP server '{name}' with OAuth must act as service or user"
-        ));
+        ))
+        .into());
     }
     if !server.acts_as.is_none() && server.auth_mode != McpServerAuthMode::OAuth {
-        return Err(anyhow!(
+        return Err(BadRequestError::new(format!(
             "MCP server '{name}' with actsAs '{}' must use OAuth",
             server.acts_as
-        ));
+        ))
+        .into());
     }
     Ok(())
 }
@@ -1045,9 +1061,10 @@ pub fn validate_capability_mcp_servers(
 ) -> Result<()> {
     for (name, server) in servers {
         if server.preset.is_some() {
-            return Err(anyhow!(
+            return Err(BadRequestError::new(format!(
                 "Capability-contributed MCP server '{name}' cannot use a catalog preset"
-            ));
+            ))
+            .into());
         }
         validate_inline_identity_auth(name, server)?;
     }
@@ -1081,9 +1098,9 @@ fn validate_catalog_reference_shape(name: &str, server: &ScopedMcpServer) -> Res
         None
     };
     if let Some(field) = conflicting_field {
-        return Err(anyhow!(
+        return Err(BadRequestError::new(format!(
             "Scoped MCP server '{name}' catalog preset reference cannot be combined with inline field '{field}'"
-        ));
+        )).into());
     }
     Ok(())
 }
@@ -1102,23 +1119,23 @@ pub async fn validate_scoped_mcp_servers_for_org(
             .get_mcp_server_by_name(org_id, preset_name)
             .await?
             .ok_or_else(|| {
-                anyhow!(
+                BadRequestError::new(format!(
                     "Scoped MCP server '{name}' references missing catalog preset '{preset_name}'"
-                )
+                ))
             })?;
         if row.status != "active" {
-            return Err(anyhow!(
+            return Err(BadRequestError::new(format!(
                 "Scoped MCP server '{name}' references catalog preset '{preset_name}' with non-live status '{}'",
                 row.status
-            ));
+            )).into());
         }
         if server.acts_as != McpServerActsAs::None {
             let settings = McpServerService::settings_from_row(&row);
             if settings.auth_mode != McpServerAuthMode::OAuth || settings.oauth.is_none() {
-                return Err(anyhow!(
+                return Err(BadRequestError::new(format!(
                     "Scoped MCP server '{name}' with actsAs '{}' requires catalog preset '{preset_name}' to have OAuth configuration",
                     server.acts_as
-                ));
+                )).into());
             }
         }
     }

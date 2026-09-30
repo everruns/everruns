@@ -1056,3 +1056,176 @@ fn scoped_mcp_server_uuid_is_stable_and_namespaced_by_session() {
         scoped_mcp_server_uuid(session_b, "docs")
     );
 }
+
+// EVE-1127: every write-time scoped-MCP validation rejection is client input,
+// so it must reach the caller as 400 with its own message. These used to fall
+// through `classify_anyhow`'s typed-error checks and substring allowlist into
+// `CommandError::internal`, which reports a bare "Internal server error" and
+// burns the 5xx error budget on user typos. Assert the classification, not
+// just the message, because that is the step that was wrong.
+fn assert_bad_request(error: anyhow::Error, expected_fragment: &str) {
+    let rendered = error.to_string();
+    assert!(
+        rendered.contains(expected_fragment),
+        "expected message containing {expected_fragment:?}, got: {rendered}"
+    );
+    let classified = crate::domains::common::classify_anyhow(error);
+    assert!(
+        matches!(
+            classified.kind,
+            crate::domains::common::CommandErrorKind::BadRequest(_)
+        ),
+        "expected BadRequest for {rendered:?}, got: {:?}",
+        classified.kind
+    );
+    assert_eq!(
+        classified.status(),
+        axum::http::StatusCode::BAD_REQUEST,
+        "expected 400 for {rendered:?}"
+    );
+    assert!(
+        classified.kind.to_string().contains(expected_fragment),
+        "the actionable message must survive classification, got: {}",
+        classified.kind
+    );
+}
+
+#[test]
+fn scoped_mcp_validation_rejections_classify_as_bad_request() {
+    let stdio = ScopedMcpServers::from([(
+        "fs".into(),
+        ScopedMcpServer {
+            transport_type: everruns_core::McpServerTransportType::Stdio,
+            command: Some("mcp-server-filesystem".to_string()),
+            ..Default::default()
+        },
+    )]);
+    assert_bad_request(
+        validate_scoped_mcp_servers(&stdio).unwrap_err(),
+        "unsupported transport",
+    );
+
+    let inline_identity = ScopedMcpServers::from([(
+        "docs".into(),
+        ScopedMcpServer {
+            url: "https://docs.example.com/mcp".into(),
+            acts_as: McpServerActsAs::Service,
+            ..Default::default()
+        },
+    )]);
+    assert_bad_request(
+        validate_scoped_mcp_servers(&inline_identity).unwrap_err(),
+        "requires a catalog preset",
+    );
+
+    let preset_with_inline_field = ScopedMcpServers::from([(
+        "docs".into(),
+        ScopedMcpServer {
+            url: "https://docs.example.com/mcp".into(),
+            ..catalog_server("linear", McpServerActsAs::None)
+        },
+    )]);
+    assert_bad_request(
+        validate_scoped_mcp_servers(&preset_with_inline_field).unwrap_err(),
+        "cannot be combined with inline field 'url'",
+    );
+
+    let empty_name =
+        ScopedMcpServers::from([("   ".into(), scoped_server("https://a.example/mcp"))]);
+    assert_bad_request(
+        validate_scoped_mcp_servers(&empty_name).unwrap_err(),
+        "name cannot be empty",
+    );
+
+    let reserved_delimiter = ScopedMcpServers::from([(
+        "docs__v2".into(),
+        scoped_server("https://docs.example.com/mcp"),
+    )]);
+    assert_bad_request(
+        validate_scoped_mcp_servers(&reserved_delimiter).unwrap_err(),
+        "invalid after sanitization",
+    );
+
+    let duplicate_sanitized = ScopedMcpServers::from([
+        ("docs-v2".into(), scoped_server("https://a.example/mcp")),
+        ("docs.v2".into(), scoped_server("https://b.example/mcp")),
+    ]);
+    assert_bad_request(
+        validate_scoped_mcp_servers(&duplicate_sanitized).unwrap_err(),
+        "must be unique after sanitization",
+    );
+
+    let bad_url = ScopedMcpServers::from([("docs".into(), scoped_server("not-a-url"))]);
+    assert_bad_request(
+        validate_scoped_mcp_servers(&bad_url).unwrap_err(),
+        "Invalid scoped MCP server URL",
+    );
+
+    let oauth_without_identity = ScopedMcpServers::from([(
+        "docs".into(),
+        ScopedMcpServer {
+            url: "https://docs.example.com/mcp".into(),
+            auth_mode: McpServerAuthMode::OAuth,
+            ..Default::default()
+        },
+    )]);
+    assert_bad_request(
+        validate_effective_mcp_servers(&oauth_without_identity).unwrap_err(),
+        "must act as service or user",
+    );
+
+    let identity_without_oauth = ScopedMcpServers::from([(
+        "docs".into(),
+        ScopedMcpServer {
+            url: "https://docs.example.com/mcp".into(),
+            acts_as: McpServerActsAs::Service,
+            auth_mode: McpServerAuthMode::None,
+            ..Default::default()
+        },
+    )]);
+    assert_bad_request(
+        validate_effective_mcp_servers(&identity_without_oauth).unwrap_err(),
+        "must use OAuth",
+    );
+
+    let capability_with_preset = CapabilityMcpServers::from([(
+        "docs".into(),
+        CapabilityMcpServer::new(
+            catalog_server("linear", McpServerActsAs::None),
+            McpServerActsAs::Service,
+        ),
+    )]);
+    assert_bad_request(
+        validate_capability_mcp_servers(&capability_with_preset).unwrap_err(),
+        "cannot use a catalog preset",
+    );
+}
+
+#[tokio::test]
+async fn scoped_mcp_catalog_preset_rejections_classify_as_bad_request() {
+    let db = StorageBackend::in_memory();
+    let org_id = everruns_core::DEFAULT_ORG_ID;
+
+    let missing = ScopedMcpServers::from([(
+        "docs".into(),
+        catalog_server("missing", McpServerActsAs::None),
+    )]);
+    assert_bad_request(
+        validate_scoped_mcp_servers_for_org(&db, org_id, &missing)
+            .await
+            .unwrap_err(),
+        "references missing catalog preset",
+    );
+
+    seed_catalog_server(&db, "plain", false).await;
+    let needs_oauth = ScopedMcpServers::from([(
+        "docs".into(),
+        catalog_server("plain", McpServerActsAs::Service),
+    )]);
+    assert_bad_request(
+        validate_scoped_mcp_servers_for_org(&db, org_id, &needs_oauth)
+            .await
+            .unwrap_err(),
+        "to have OAuth configuration",
+    );
+}
