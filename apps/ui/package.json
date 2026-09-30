@@ -34,7 +34,7 @@
     "@openuidev/react-lang": "^0.2.15",
     "@openuidev/react-ui": "^0.13.10",
     "@rjsf/core": "^6.10.0",
-    "@rjsf/utils": "^6.10.0",
+    "@rjsf/utils": "^6.10.1",
     "@rjsf/validator-ajv8": "^6.10.0",
     "@streamdown/code": "^1.1.1",
     "@streamdown/mermaid": "^1.0.2",
