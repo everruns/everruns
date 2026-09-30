@@ -4432,7 +4432,7 @@ export interface components {
       agent_id?: string | null;
       /** @description Participant kind to add. */
       kind: components["schemas"]["SessionParticipantKind"];
-      role?: null | components["schemas"]["SessionParticipantRole"];
+      role?: components["schemas"]["SessionParticipantRole"] | null;
     };
     /**
      * @description Agent configuration for agentic loop.
@@ -4538,7 +4538,7 @@ export interface components {
        * @example customer-support
        */
       name: string;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *
@@ -4592,7 +4592,7 @@ export interface components {
        * @example 2026-05-20T14:00:00Z
        */
       updated_at: string;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /** @description Response from on-demand agent analysis (built-in rules + LLM checkers) */
     AgentAnalysisResponse: {
@@ -4699,7 +4699,7 @@ export interface components {
       connected_as?: string | null;
       /** @description OAuth provider key used to create or revoke the attachment connection. */
       connection_provider?: string | null;
-      contributor?: null | components["schemas"]["AgentMcpAttachmentContributor"];
+      contributor?: components["schemas"]["AgentMcpAttachmentContributor"] | null;
       /** @description Whether the attachment is defined directly on the agent and can be removed there. */
       editable: boolean;
       /** @description Header names configured for the endpoint; secret header values are omitted. */
@@ -5082,7 +5082,7 @@ export interface components {
       deleted_at?: string | null;
       /** @description Human-readable description of what the app does. */
       description?: string | null;
-      effective_owner?: null | components["schemas"]["PrincipalSummary"];
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * @description ID of the harness to use (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
@@ -5095,7 +5095,7 @@ export interface components {
       id: string;
       /** @description Display name of the app. */
       name: string;
-      owner?: null | components["schemas"]["PrincipalSummary"];
+      owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * @description Owning principal for this app.
        * @example principal_01933b5a000070008000000000000001
@@ -5124,7 +5124,7 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
-      auth?: null | components["schemas"]["AppEndpointAuthConfig"];
+      auth?: components["schemas"]["AppEndpointAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
       /** @description Channel type (e.g. slack). */
@@ -5168,7 +5168,7 @@ export interface components {
      */
     AppEndpointAuthConfig: {
       mode: components["schemas"]["AppEndpointAuthMode"];
-      provider?: null | components["schemas"]["AppEndpointAuthProviderConfig"];
+      provider?: components["schemas"]["AppEndpointAuthProviderConfig"] | null;
       requirements?: components["schemas"]["AppEndpointAuthRequirements"];
     };
     /**
@@ -5292,7 +5292,7 @@ export interface components {
          *     empty/ignored for stdio.
          */
         url?: string;
-        use?: null | components["schemas"]["McpServerPresetRef"];
+        use?: components["schemas"]["McpServerPresetRef"] | null;
       };
     };
     /** @description Structured progress reported by background tools. */
@@ -5341,7 +5341,7 @@ export interface components {
       /** @description Arbitrary metadata. */
       metadata?: unknown;
       organization_id: string;
-      period?: null | components["schemas"]["BudgetPeriod"];
+      period?: components["schemas"]["BudgetPeriod"] | null;
       /**
        * Format: date-time
        * @description When the current period started (used to detect period rollover for
@@ -6290,7 +6290,7 @@ export interface components {
        * @example model_01933b5a00007000800000000000001
        */
       model_id?: string | null;
-      reasoning?: null | components["schemas"]["ReasoningConfig"];
+      reasoning?: components["schemas"]["ReasoningConfig"] | null;
       /**
        * @description Speed (service tier) for this message turn: "flex", "default", or
        *     "priority". Only sent to providers whose model profile advertises a
@@ -6489,7 +6489,7 @@ export interface components {
        * @example customer-support
        */
       name: string;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598). `true` signals
        *     the provider that parallel tool calls are wanted; `false` requests at
@@ -6583,7 +6583,7 @@ export interface components {
     };
     /** @description Request body for the `create_agent_version` operation. */
     CreateAgentVersionRequest: {
-      change_kind?: null | components["schemas"]["AgentVersionChangeKind"];
+      change_kind?: components["schemas"]["AgentVersionChangeKind"] | null;
       /**
        * @description Free-text summary of what changed in this version. Shown in the version timeline.
        * @example Tightened the refund-window check and added a regression test.
@@ -6618,7 +6618,7 @@ export interface components {
       limit: number;
       /** @description Free-form metadata attached to this resource. */
       metadata?: unknown;
-      period?: null | components["schemas"]["BudgetPeriod"];
+      period?: components["schemas"]["BudgetPeriod"] | null;
       /**
        * Format: double
        * @description Optional threshold that triggers a warning or pause before exhaustion.
@@ -6724,7 +6724,7 @@ export interface components {
        * @example deep-research
        */
       name: string;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Optional parent harness to inherit from.
        * @example harness_01933b5a000070008000000000000602
@@ -6838,7 +6838,7 @@ export interface components {
        * @example mcp-api-key-redacted-1234567890abcdef
        */
       api_key?: string | null;
-      auth_mode?: null | components["schemas"]["McpServerAuthMode"];
+      auth_mode?: components["schemas"]["McpServerAuthMode"] | null;
       /**
        * @description A human-readable description of what the MCP server provides.
        * @example Atlassian MCP Server for Jira and Confluence
@@ -6858,7 +6858,7 @@ export interface components {
        * @example atlassian-mcp-server
        */
       name: string;
-      protocol_mode?: null | components["schemas"]["McpProtocolMode"];
+      protocol_mode?: components["schemas"]["McpProtocolMode"] | null;
       /**
        * @description Transport type. Currently only "http" is supported.
        *     Example shape is defined on `McpServerTransportType`.
@@ -6890,7 +6890,7 @@ export interface components {
        * @example design-docs
        */
       name: string;
-      source?: null | components["schemas"]["CreateMemorySourceRequest"];
+      source?: components["schemas"]["CreateMemorySourceRequest"] | null;
     };
     /**
      * @description Request body for the `create_memory_source` operation.
@@ -6918,8 +6918,8 @@ export interface components {
        * @example part_01933b5a00007000800000000000001
        */
       addressed_participant_id?: string | null;
-      controls?: null | components["schemas"]["Controls"];
-      external_actor?: null | components["schemas"]["ExternalActor"];
+      controls?: components["schemas"]["Controls"] | null;
+      external_actor?: components["schemas"]["ExternalActor"] | null;
       /** @description The message to create. Example shape is defined on `InputMessage`. */
       message: components["schemas"]["InputMessage"];
       /**
@@ -7152,8 +7152,8 @@ export interface components {
       name: string;
       /** @description The type of LLM provider (e.g., openai, anthropic). */
       provider_type: components["schemas"]["DriverId"];
-      request_options?: null | components["schemas"]["ProviderRequestOptions"];
-      trace?: null | components["schemas"]["ProviderTraceConfig"];
+      request_options?: components["schemas"]["ProviderRequestOptions"] | null;
+      trace?: components["schemas"]["ProviderTraceConfig"] | null;
     };
     /** @description Request body for creating a per-task push config. */
     CreatePushConfigBody: {
@@ -7172,7 +7172,7 @@ export interface components {
     };
     /** @description Request body for the `create_saved_report` operation. */
     CreateSavedReportRequest: {
-      dashboard?: null | components["schemas"]["SavedReportDashboardMetadata"];
+      dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
       /**
        * @description Human-readable description. Safe to render in user-facing messages.
        * @example Rolling 30-day count of agents with at least one session per day, grouped by org.
@@ -7345,7 +7345,7 @@ export interface components {
        * @example model_01933b5a00007000800000000000001
        */
       model_id?: string | null;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598). `true` signals
        *     the provider that parallel tool calls are wanted; `false` requests at
@@ -7790,7 +7790,7 @@ export interface components {
        *     Example for `session.run`: `{"session_id": "session_01933b5a00007000800000000000001"}`.
        */
       input: unknown;
-      options?: null | components["schemas"]["EnqueueTaskOptions"];
+      options?: components["schemas"]["EnqueueTaskOptions"] | null;
     };
     /** @description Response for enqueued task */
     EnqueueTaskResponse: {
@@ -8441,7 +8441,7 @@ export interface components {
       category: components["schemas"]["FindingCategory"];
       /** @description Proposed replacement text (phase 2+; always absent for builtin rules). */
       fix?: string | null;
-      location?: null | components["schemas"]["FindingLocation"];
+      location?: components["schemas"]["FindingLocation"] | null;
       /** @description Human-readable explanation. Safe to render in user-facing messages. */
       message: string;
       /** @description Stable rule identifier, e.g. `prompt.duplicate_paragraphs`. */
@@ -8608,7 +8608,7 @@ export interface components {
       metadata?: Record<string, unknown>;
       /** @description Sandbox provider (`daytona`, `e2b`, `docker`, etc.) when one is configured. */
       provider?: string | null;
-      session_status?: null | components["schemas"]["SessionSandboxStatusValue"];
+      session_status?: components["schemas"]["SessionSandboxStatusValue"] | null;
       /** @description Timestamp when this sandbox record was last updated (RFC 3339). */
       updated_at?: string | null;
       /** @description Absolute path of the sandbox workspace root (used to scope file operations). */
@@ -8988,7 +8988,7 @@ export interface components {
        * @example generic
        */
       name: string;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *
@@ -9130,7 +9130,7 @@ export interface components {
       /** @description Per-case results (present once the run has produced any). */
       results?: components["schemas"]["HealthCheckCaseResult"][] | null;
       status: components["schemas"]["HealthCheckStatus"];
-      summary?: null | components["schemas"]["HealthCheckSummary"];
+      summary?: components["schemas"]["HealthCheckSummary"] | null;
     };
     /** @enum {string} */
     HealthCheckStatus: "pending" | "running" | "completed" | "failed";
@@ -9613,7 +9613,7 @@ export interface components {
        *     config than the agent currently has (UI shows a re-run hint).
        */
       config_changed: boolean;
-      run?: null | components["schemas"]["HealthCheckRun"];
+      run?: components["schemas"]["HealthCheckRun"] | null;
     };
     /** @description A lifecycle-managed external resource owned by a session-capable workflow. */
     LeasedResource: {
@@ -9930,7 +9930,7 @@ export interface components {
          * @example customer-support
          */
         name: string;
-        network_access?: null | components["schemas"]["NetworkAccessList"];
+        network_access?: components["schemas"]["NetworkAccessList"] | null;
         /**
          * @description Request-level parallel tool calling preference (EVE-598).
          *
@@ -9984,7 +9984,7 @@ export interface components {
          * @example 2026-05-20T14:00:00Z
          */
         updated_at: string;
-        usage?: null | components["schemas"]["TokenUsage"];
+        usage?: components["schemas"]["TokenUsage"] | null;
       }[];
     };
     /**
@@ -10405,7 +10405,7 @@ export interface components {
          * @example generic
          */
         name: string;
-        network_access?: null | components["schemas"]["NetworkAccessList"];
+        network_access?: components["schemas"]["NetworkAccessList"] | null;
         /**
          * @description Request-level parallel tool calling preference (EVE-598).
          *
@@ -10884,13 +10884,13 @@ export interface components {
          *     payloads) stripped.
          */
         content: components["schemas"]["ContentPart"][];
-        controls?: null | components["schemas"]["Controls"];
+        controls?: components["schemas"]["Controls"] | null;
         /**
          * Format: date-time
          * @description Timestamp when this resource was created (RFC 3339).
          */
         created_at: string;
-        external_actor?: null | components["schemas"]["ExternalActor"];
+        external_actor?: components["schemas"]["ExternalActor"] | null;
         /**
          * @description Unique message ID (format: message_{32-hex})
          * @example message_01933b5a00007000800000000000001
@@ -10900,8 +10900,8 @@ export interface components {
         metadata?: {
           [key: string]: unknown;
         } | null;
-        phase?: null | components["schemas"]["ExecutionPhase"];
-        phase_source?: null | components["schemas"]["PhaseSource"];
+        phase?: components["schemas"]["ExecutionPhase"] | null;
+        phase_source?: components["schemas"]["PhaseSource"] | null;
         role: components["schemas"]["MessageRole"];
         /** Format: int32 */
         sequence: number;
@@ -10979,7 +10979,7 @@ export interface components {
          * @description Timestamp when this resource was created (RFC 3339).
          */
         created_at: string;
-        dashboard?: null | components["schemas"]["SavedReportDashboardMetadata"];
+        dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
         /** @description Human-readable description. Safe to render in user-facing messages. */
         description?: string | null;
         /**
@@ -11167,7 +11167,7 @@ export interface components {
         deleted_at?: string | null;
         /** @description Human-readable description of what the app does. */
         description?: string | null;
-        effective_owner?: null | components["schemas"]["PrincipalSummary"];
+        effective_owner?: components["schemas"]["PrincipalSummary"] | null;
         /**
          * @description ID of the harness to use (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
@@ -11180,7 +11180,7 @@ export interface components {
         id: string;
         /** @description Display name of the app. */
         name: string;
-        owner?: null | components["schemas"]["PrincipalSummary"];
+        owner?: components["schemas"]["PrincipalSummary"] | null;
         /**
          * @description Owning principal for this app.
          * @example principal_01933b5a000070008000000000000001
@@ -11496,8 +11496,8 @@ export interface components {
          * @example claude-sonnet-4-5
          */
         model_id: string;
-        model_vendor?: null | components["schemas"]["ModelVendor"];
-        profile?: null | components["schemas"]["ModelProfile"];
+        model_vendor?: components["schemas"]["ModelVendor"] | null;
+        profile?: components["schemas"]["ModelProfile"] | null;
         /**
          * @description Owning provider's prefixed public identifier.
          * @example provider_01933b5a00007000800000000000001
@@ -11570,10 +11570,10 @@ export interface components {
         name: string;
         /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
         provider_type: components["schemas"]["DriverId"];
-        request_options?: null | components["schemas"]["ProviderRequestOptions"];
+        request_options?: components["schemas"]["ProviderRequestOptions"] | null;
         /** @description Current lifecycle status of this provider. */
         status: components["schemas"]["ProviderStatus"];
-        trace?: null | components["schemas"]["ProviderTraceConfig"];
+        trace?: components["schemas"]["ProviderTraceConfig"] | null;
         /**
          * Format: date-time
          * @description Timestamp when this provider was last updated (RFC 3339).
@@ -11685,7 +11685,7 @@ export interface components {
          * @example generic
          */
         name: string;
-        network_access?: null | components["schemas"]["NetworkAccessList"];
+        network_access?: components["schemas"]["NetworkAccessList"] | null;
         /**
          * @description Request-level parallel tool calling preference (EVE-598).
          *
@@ -11959,7 +11959,7 @@ export interface components {
     };
     /** @description Metadata about an LLM generation */
     LlmGenerationMetadata: {
-      compaction?: null | components["schemas"]["LlmCompactionInfo"];
+      compaction?: components["schemas"]["LlmCompactionInfo"] | null;
       /**
        * Format: int64
        * @description Duration of the generation in milliseconds
@@ -11989,7 +11989,7 @@ export interface components {
        * @example anthropic
        */
       provider?: string | null;
-      request_options?: null | components["schemas"]["LlmRequestOptions"];
+      request_options?: components["schemas"]["LlmRequestOptions"] | null;
       /**
        * @description Unique response identifier from the LLM provider
        *     Required for gen-ai semantic conventions
@@ -12012,7 +12012,7 @@ export interface components {
        * @example claude-sonnet-4-5-20250929
        */
       response_model?: string | null;
-      retry?: null | components["schemas"]["LlmRetryInfo"];
+      retry?: components["schemas"]["LlmRetryInfo"] | null;
       /**
        * @description Whether the generation was successful
        * @example true
@@ -12024,7 +12024,7 @@ export interface components {
        * @example 312
        */
       time_to_first_token_ms?: number | null;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /** @description LLM generation output */
     LlmGenerationOutput: {
@@ -12061,7 +12061,7 @@ export interface components {
       metadata?: {
         [key: string]: string;
       };
-      prompt_cache?: null | components["schemas"]["LlmPromptCacheInfo"];
+      prompt_cache?: components["schemas"]["LlmPromptCacheInfo"] | null;
       /** @description Provider-specific request options that do not warrant dedicated fields. */
       provider_options?: {
         [key: string]: unknown;
@@ -12078,7 +12078,7 @@ export interface components {
        * @description Sampling temperature sent with the request, when set.
        */
       temperature?: number | null;
-      tool_search?: null | components["schemas"]["LlmToolSearchInfo"];
+      tool_search?: components["schemas"]["LlmToolSearchInfo"] | null;
     };
     /** @description Information about rate limit retries during LLM generation */
     LlmRetryInfo: {
@@ -12132,7 +12132,7 @@ export interface components {
       external_id?: string | null;
       /** @description Sandbox provider (`daytona`, `e2b`, `docker`, etc.). */
       provider?: string | null;
-      session_status?: null | components["schemas"]["SessionSandboxStatusValue"];
+      session_status?: components["schemas"]["SessionSandboxStatusValue"] | null;
       /** @description Absolute path of the sandbox workspace root. */
       workspace_path?: string | null;
     };
@@ -12529,13 +12529,13 @@ export interface components {
        *     payloads) stripped.
        */
       content: components["schemas"]["ContentPart"][];
-      controls?: null | components["schemas"]["Controls"];
+      controls?: components["schemas"]["Controls"] | null;
       /**
        * Format: date-time
        * @description Timestamp when this resource was created (RFC 3339).
        */
       created_at: string;
-      external_actor?: null | components["schemas"]["ExternalActor"];
+      external_actor?: components["schemas"]["ExternalActor"] | null;
       /**
        * @description Unique message ID (format: message_{32-hex})
        * @example message_01933b5a00007000800000000000001
@@ -12545,8 +12545,8 @@ export interface components {
       metadata?: {
         [key: string]: unknown;
       } | null;
-      phase?: null | components["schemas"]["ExecutionPhase"];
-      phase_source?: null | components["schemas"]["PhaseSource"];
+      phase?: components["schemas"]["ExecutionPhase"] | null;
+      phase_source?: components["schemas"]["PhaseSource"] | null;
       role: components["schemas"]["MessageRole"];
       /** Format: int32 */
       sequence: number;
@@ -12795,7 +12795,7 @@ export interface components {
     ModelProfile: {
       /** @description Whether the model supports file/image attachments */
       attachment: boolean;
-      cost?: null | components["schemas"]["ModelCost"];
+      cost?: components["schemas"]["ModelCost"] | null;
       /** @description Short human-readable description of the model's strengths and intended use */
       description?: string | null;
       /** @description Model family (e.g., "gpt-5.6-sol", "claude-sonnet-5") */
@@ -12804,18 +12804,18 @@ export interface components {
       knowledge?: string | null;
       /** @description Last updated date (YYYY-MM-DD format) */
       last_updated?: string | null;
-      limits?: null | components["schemas"]["ModelLimits"];
-      modalities?: null | components["schemas"]["ModelModalities"];
+      limits?: components["schemas"]["ModelLimits"] | null;
+      modalities?: components["schemas"]["ModelModalities"] | null;
       /** @description Display name of the model */
       name: string;
       /** @description Whether the model has open weights */
       open_weights: boolean;
       /** @description Whether the model has reasoning/chain-of-thought capabilities */
       reasoning: boolean;
-      reasoning_effort?: null | components["schemas"]["ReasoningEffortConfig"];
+      reasoning_effort?: components["schemas"]["ReasoningEffortConfig"] | null;
       /** @description Release date (YYYY-MM-DD format) */
       release_date?: string | null;
-      speed?: null | components["schemas"]["SpeedConfig"];
+      speed?: components["schemas"]["SpeedConfig"] | null;
       /** @description Whether the model supports structured output (JSON mode) */
       structured_output: boolean;
       /** @description Provider-advertised request parameters supported by this model. */
@@ -12843,7 +12843,7 @@ export interface components {
        *     token usage for large tool sets. Currently supported by GPT-5.4 and newer.
        */
       tool_search?: boolean;
-      verbosity?: null | components["schemas"]["VerbosityConfig"];
+      verbosity?: components["schemas"]["VerbosityConfig"] | null;
     };
     /**
      * @description How the model was added to the system
@@ -12919,8 +12919,8 @@ export interface components {
        * @example claude-sonnet-4-5
        */
       model_id: string;
-      model_vendor?: null | components["schemas"]["ModelVendor"];
-      profile?: null | components["schemas"]["ModelProfile"];
+      model_vendor?: components["schemas"]["ModelVendor"] | null;
+      profile?: components["schemas"]["ModelProfile"] | null;
       /**
        * @description Owning provider's prefixed public identifier.
        * @example provider_01933b5a00007000800000000000001
@@ -13137,8 +13137,8 @@ export interface components {
       error_fields?: Record<string, unknown> | null;
       /** @description The agent message */
       message: components["schemas"]["RuntimeMessage"];
-      metadata?: null | components["schemas"]["ModelMetadata"];
-      usage?: null | components["schemas"]["TokenUsage"];
+      metadata?: components["schemas"]["ModelMetadata"] | null;
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /**
      * @description Data for output.message.delta event
@@ -13157,7 +13157,7 @@ export interface components {
        * @example message_550e8400e29b41d4a716446655440000
        */
       message_id: string;
-      phase?: null | components["schemas"]["ExecutionPhase"];
+      phase?: components["schemas"]["ExecutionPhase"] | null;
       /**
        * @description Turn ID this delta belongs to
        * @example turn_01933b5a00007000800000000000001
@@ -13220,8 +13220,8 @@ export interface components {
       message_id: string;
       /** @description Optional model name being used */
       model?: string | null;
-      phase?: null | components["schemas"]["ExecutionPhase"];
-      reasoning_state?: null | components["schemas"]["ReasoningState"];
+      phase?: components["schemas"]["ExecutionPhase"] | null;
+      reasoning_state?: components["schemas"]["ReasoningState"] | null;
       /**
        * @description Turn ID this output belongs to
        * @example turn_01933b5a00007000800000000000001
@@ -13297,7 +13297,7 @@ export interface components {
          * @example 2026-05-25T10:00:00Z
          */
         created_at: string;
-        effective_owner?: null | components["schemas"]["PrincipalSummary"];
+        effective_owner?: components["schemas"]["PrincipalSummary"] | null;
         /**
          * Format: int32
          * @description Total events recorded for this session (EVE-868). Read from the
@@ -13399,7 +13399,7 @@ export interface components {
          * @example model_01933b5a00007000800000000000001
          */
         model_id?: string | null;
-        network_access?: null | components["schemas"]["NetworkAccessList"];
+        network_access?: components["schemas"]["NetworkAccessList"] | null;
         /**
          * @description Organization this session belongs to (format: org_{32-hex}).
          * @example org_00000000000000000000000000000001
@@ -13410,7 +13410,7 @@ export interface components {
          * @example Here is a Q3 plan covering the three pillars we discussed...
          */
         output_preview?: string | null;
-        owner?: null | components["schemas"]["PrincipalSummary"];
+        owner?: components["schemas"]["PrincipalSummary"] | null;
         /**
          * @description Owning principal for this session.
          * @example principal_01933b5a000070008000000000000001
@@ -13496,7 +13496,7 @@ export interface components {
          * @example 2026-05-25T10:14:32Z
          */
         updated_at: string;
-        usage?: null | components["schemas"]["TokenUsage"];
+        usage?: components["schemas"]["TokenUsage"] | null;
         /**
          * @description Workspace this session is attached to (format: wsp_{32-hex}). Owns the
          *     session's virtual filesystem. For the default 1:1 case this mirrors the
@@ -13809,7 +13809,7 @@ export interface components {
          * @example 2026-05-25T10:00:00Z
          */
         created_at: string;
-        effective_owner?: null | components["schemas"]["PrincipalSummary"];
+        effective_owner?: components["schemas"]["PrincipalSummary"] | null;
         /**
          * Format: int32
          * @description Total events recorded for this session (EVE-868). Read from the
@@ -13911,7 +13911,7 @@ export interface components {
          * @example model_01933b5a00007000800000000000001
          */
         model_id?: string | null;
-        network_access?: null | components["schemas"]["NetworkAccessList"];
+        network_access?: components["schemas"]["NetworkAccessList"] | null;
         /**
          * @description Organization this session belongs to (format: org_{32-hex}).
          * @example org_00000000000000000000000000000001
@@ -13922,7 +13922,7 @@ export interface components {
          * @example Here is a Q3 plan covering the three pillars we discussed...
          */
         output_preview?: string | null;
-        owner?: null | components["schemas"]["PrincipalSummary"];
+        owner?: components["schemas"]["PrincipalSummary"] | null;
         /**
          * @description Owning principal for this session.
          * @example principal_01933b5a000070008000000000000001
@@ -14008,7 +14008,7 @@ export interface components {
          * @example 2026-05-25T10:14:32Z
          */
         updated_at: string;
-        usage?: null | components["schemas"]["TokenUsage"];
+        usage?: components["schemas"]["TokenUsage"] | null;
         /**
          * @description Workspace this session is attached to (format: wsp_{32-hex}). Owns the
          *     session's virtual filesystem. For the default 1:1 case this mirrors the
@@ -14145,8 +14145,8 @@ export interface components {
        * @example org_01933b5a000070008000000000000001
        */
       organization_id: string;
-      payment_account_id?: null | components["schemas"]["payacctId"];
-      rail?: null | components["schemas"]["PaymentRail"];
+      payment_account_id?: components["schemas"]["payacctId"] | null;
+      rail?: components["schemas"]["PaymentRail"] | null;
       /** @description Rail-specific receipt payload (transaction id, block reference, signature, etc.). */
       receipt: unknown;
       /**
@@ -14448,10 +14448,10 @@ export interface components {
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
       provider_type: components["schemas"]["DriverId"];
-      request_options?: null | components["schemas"]["ProviderRequestOptions"];
+      request_options?: components["schemas"]["ProviderRequestOptions"] | null;
       /** @description Current lifecycle status of this provider. */
       status: components["schemas"]["ProviderStatus"];
-      trace?: null | components["schemas"]["ProviderTraceConfig"];
+      trace?: components["schemas"]["ProviderTraceConfig"] | null;
       /**
        * Format: date-time
        * @description Timestamp when this provider was last updated (RFC 3339).
@@ -14612,7 +14612,7 @@ export interface components {
        * @description Number of tool calls requested
        */
       tool_call_count: number;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /**
      * @description Data for `reason.item` event.
@@ -14668,10 +14668,10 @@ export interface components {
     };
     /** @description Data for reason.started event */
     ReasonStartedData: {
-      agent_id?: null | components["schemas"]["agentId"];
+      agent_id?: components["schemas"]["agentId"] | null;
       /** @description Harness ID being used */
       harness_id: components["schemas"]["harnessId"];
-      metadata?: null | components["schemas"]["ModelMetadata"];
+      metadata?: components["schemas"]["ModelMetadata"] | null;
     };
     /**
      * @description Data for reason.thinking.completed event
@@ -14724,7 +14724,7 @@ export interface components {
     };
     /** @description Reasoning configuration for the model */
     ReasoningConfig: {
-      effort?: null | components["schemas"]["ReasoningEffort"];
+      effort?: components["schemas"]["ReasoningEffort"] | null;
     };
     /**
      * @description One provider-issued reasoning artifact, ordered in `Message.content`
@@ -14765,7 +14765,7 @@ export interface components {
        *     signature, Gemini `thoughtSignature`). Opaque.
        */
       signature?: string | null;
-      text?: null | components["schemas"]["ReasoningText"];
+      text?: components["schemas"]["ReasoningText"] | null;
       /**
        * Format: int32
        * @description Reasoning tokens attributed to this artifact, when reported.
@@ -14793,8 +14793,8 @@ export interface components {
     };
     /** @description Persisted with assistant messages and native compaction checkpoints. */
     ReasoningState: {
-      baseline?: null | components["schemas"]["ReasoningEffort"];
-      effective?: null | components["schemas"]["ReasoningEffort"];
+      baseline?: components["schemas"]["ReasoningEffort"] | null;
+      effective?: components["schemas"]["ReasoningEffort"] | null;
       /**
        * @description A new epoch starts when switching model/provider or entering this mode.
        * @example 01933b5a-0000-7000-8000-000000000001
@@ -15282,13 +15282,13 @@ export interface components {
     RuntimeMessage: {
       /** @description Message content as array of content parts (text, images, tool calls, tool results) */
       content: components["schemas"]["ContentPart"][];
-      controls?: null | components["schemas"]["Controls"];
+      controls?: components["schemas"]["Controls"] | null;
       /**
        * Format: date-time
        * @description Timestamp when the message was created
        */
       created_at: string;
-      external_actor?: null | components["schemas"]["ExternalActor"];
+      external_actor?: components["schemas"]["ExternalActor"] | null;
       /**
        * @description Unique message ID (format: message_{32-hex})
        * @example message_01933b5a00007000800000000000001
@@ -15296,8 +15296,8 @@ export interface components {
       id: string;
       /** @description Message-level metadata */
       metadata?: Record<string, unknown> | null;
-      phase?: null | components["schemas"]["ExecutionPhase"];
-      phase_source?: null | components["schemas"]["PhaseSource"];
+      phase?: components["schemas"]["ExecutionPhase"] | null;
+      phase_source?: components["schemas"]["PhaseSource"] | null;
       /** @description Message role */
       role: components["schemas"]["RuntimeMessageRole"];
     };
@@ -15316,7 +15316,7 @@ export interface components {
        * @description Timestamp when this resource was created (RFC 3339).
        */
       created_at: string;
-      dashboard?: null | components["schemas"]["SavedReportDashboardMetadata"];
+      dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
       /** @description Human-readable description. Safe to render in user-facing messages. */
       description?: string | null;
       /**
@@ -15721,7 +15721,7 @@ export interface components {
        * @example 2026-05-25T10:00:00Z
        */
       created_at: string;
-      effective_owner?: null | components["schemas"]["PrincipalSummary"];
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * Format: int32
        * @description Total events recorded for this session (EVE-868). Read from the
@@ -15823,7 +15823,7 @@ export interface components {
        * @example model_01933b5a00007000800000000000001
        */
       model_id?: string | null;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Organization this session belongs to (format: org_{32-hex}).
        * @example org_00000000000000000000000000000001
@@ -15834,7 +15834,7 @@ export interface components {
        * @example Here is a Q3 plan covering the three pillars we discussed...
        */
       output_preview?: string | null;
-      owner?: null | components["schemas"]["PrincipalSummary"];
+      owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * @description Owning principal for this session.
        * @example principal_01933b5a000070008000000000000001
@@ -15920,7 +15920,7 @@ export interface components {
        * @example 2026-05-25T10:14:32Z
        */
       updated_at: string;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
       /**
        * @description Workspace this session is attached to (format: wsp_{32-hex}). Owns the
        *     session's virtual filesystem. For the default 1:1 case this mirrors the
@@ -15992,7 +15992,7 @@ export interface components {
       context_window_tokens?: number | null;
       /** @description Per-source token contributions (per-tool, per-capability, per-message) for attribution. */
       contributions: components["schemas"]["ContextReportContribution"][];
-      cumulative_usage?: null | components["schemas"]["TokenUsage"];
+      cumulative_usage?: components["schemas"]["TokenUsage"] | null;
       /**
        * Format: int32
        * @description Estimated number of input tokens consumed by the next generation given the current context.
@@ -16022,7 +16022,7 @@ export interface components {
       resolved_from: string;
       /** @description Capability that supplied the compute, for operators tracing a surprise. */
       source_capability?: string | null;
-      target?: null | components["schemas"]["EnvironmentTarget"];
+      target?: components["schemas"]["EnvironmentTarget"] | null;
     };
     /** @description One bucket of a sessions facet dimension. */
     SessionFacetCount: {
@@ -16133,7 +16133,7 @@ export interface components {
        * @example turn_01933b5a00007000800000000000001
        */
       turn_id: string;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /**
      * @description Data for `session.model.changed`.
@@ -16342,18 +16342,18 @@ export interface components {
       created_at: string;
       /** @description Human-readable label. */
       display_name: string;
-      error?: null | components["schemas"]["TaskError"];
+      error?: components["schemas"]["TaskError"] | null;
       /** Format: date-time */
       finished_at?: string | null;
       /** Format: date-time */
       heartbeat_at?: string | null;
       /** @description `task_*` public ID. */
       id: string;
-      input_request?: null | components["schemas"]["TaskInputRequest"];
+      input_request?: components["schemas"]["TaskInputRequest"] | null;
       /** @description Task kind: "subagent", "external_agent", "background_tool", "monitor", … */
       kind: string;
       links?: components["schemas"]["TaskLinks"];
-      progress?: null | components["schemas"]["BackgroundProgress"];
+      progress?: components["schemas"]["BackgroundProgress"] | null;
       /** @description Machine result in the session VFS: `/.tasks/{task_id}/result.json`. */
       result_path?: string | null;
       /**
@@ -16887,7 +16887,7 @@ export interface components {
        * @example 0
        */
       start: number;
-      verified?: null | components["schemas"]["VerificationVerdict"];
+      verified?: components["schemas"]["VerificationVerdict"] | null;
     };
     /** @description Text content part */
     TextContentPart: {
@@ -16992,7 +16992,7 @@ export interface components {
       arguments: unknown;
       id: string;
       name: string;
-      native?: null | components["schemas"]["NativeToolCall"];
+      native?: components["schemas"]["NativeToolCall"] | null;
     };
     /**
      * @description Data for the `tool.call_repaired` event (EVE-600).
@@ -17204,7 +17204,7 @@ export interface components {
        *     authentication failures.
        */
       requires_secrets?: boolean | null;
-      side_effect_class?: null | components["schemas"]["SideEffectClass"];
+      side_effect_class?: components["schemas"]["SideEffectClass"] | null;
       /**
        * @description Tool supports detached background execution via `spawn_background`.
        *     When true, the tool may be executed asynchronously outside the current
@@ -17331,7 +17331,7 @@ export interface components {
        * @example turn_01933b5a00007000800000000000001
        */
       turn_id: string;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /** @description Data for turn.completed event */
     TurnCompletedData: {
@@ -17376,7 +17376,7 @@ export interface components {
        * @example turn_01933b5a00007000800000000000001
        */
       turn_id: string;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /** @description Data for turn.failed event */
     TurnFailedData: {
@@ -17424,7 +17424,7 @@ export interface components {
        * @example turn_01933b5a00007000800000000000001
        */
       turn_id: string;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /** @description Data for turn.started event */
     TurnStartedData: {
@@ -17546,13 +17546,13 @@ export interface components {
        * @example 20
        */
       max_iterations?: number | null;
-      mcpServers?: null | components["schemas"]["BTreeMap"];
+      mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
        * @description Name, unique per org. Lowercase alphanumeric and hyphens.
        * @example updated-support
        */
       name?: string | null;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598). `true` signals
        *     the provider that parallel tool calls are wanted; `false` requests at
@@ -17572,7 +17572,7 @@ export interface components {
        *     `icon` reuses the harness icon name set.
        */
       starters?: components["schemas"]["ConversationStarter"][] | null;
-      status?: null | components["schemas"]["AgentStatus"];
+      status?: components["schemas"]["AgentStatus"] | null;
       /**
        * @description The system prompt that defines the agent's behavior and capabilities.
        * @example You are an updated helpful assistant.
@@ -17627,7 +17627,7 @@ export interface components {
        * @description Replacement per-ingress, per-IP webhook request limit.
        */
       rate_limit_per_minute?: number | null;
-      session_mode?: null | components["schemas"]["SessionBinding"];
+      session_mode?: components["schemas"]["SessionBinding"] | null;
       /** @description Replacement IANA timezone identifier. */
       timezone?: string | null;
       /** @description Replacement webhook token. */
@@ -17742,13 +17742,13 @@ export interface components {
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
-      mcpServers?: null | components["schemas"]["BTreeMap"];
+      mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
        * @description Name, unique per org.
        * @example updated-research
        */
       name?: string | null;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /** @description New parent harness for inheritance. Outer `None` leaves unchanged; inner `None` removes inheritance (becomes a root harness). */
       parent_harness_id?: string | null;
       /**
@@ -17762,7 +17762,7 @@ export interface components {
        *     `icon` reuses the harness icon name set.
        */
       starters?: components["schemas"]["ConversationStarter"][] | null;
-      status?: null | components["schemas"]["HarnessStatus"];
+      status?: components["schemas"]["HarnessStatus"] | null;
       /**
        * @description New system prompt the harness contributes to sessions; omit to leave unchanged.
        * @example You are a research assistant. Cite sources verbatim.
@@ -17852,7 +17852,7 @@ export interface components {
        * @example mcp-api-key-redacted-1234567890abcdef
        */
       api_key?: string | null;
-      auth_mode?: null | components["schemas"]["McpServerAuthMode"];
+      auth_mode?: components["schemas"]["McpServerAuthMode"] | null;
       /**
        * @description A human-readable description of what the MCP server provides.
        * @example Updated description
@@ -17872,9 +17872,9 @@ export interface components {
        * @example updated-mcp-server
        */
       name?: string | null;
-      protocol_mode?: null | components["schemas"]["McpProtocolMode"];
-      status?: null | components["schemas"]["McpServerStatus"];
-      transport_type?: null | components["schemas"]["McpServerTransportType"];
+      protocol_mode?: components["schemas"]["McpProtocolMode"] | null;
+      status?: components["schemas"]["McpServerStatus"] | null;
+      transport_type?: components["schemas"]["McpServerTransportType"] | null;
       /**
        * @description The URL of the MCP server endpoint.
        * @example https://mcp.example.com/v1/mcp
@@ -17894,7 +17894,7 @@ export interface components {
        * @example design-docs
        */
       name?: string | null;
-      source?: null | components["schemas"]["CreateMemorySourceRequest"];
+      source?: components["schemas"]["CreateMemorySourceRequest"] | null;
     };
     /** @description Request to update an LLM model. Only provided fields will be updated. */
     UpdateModelRequest: {
@@ -18105,14 +18105,14 @@ export interface components {
        * @example OpenAI Development
        */
       name?: string | null;
-      provider_type?: null | components["schemas"]["DriverId"];
-      request_options?: null | components["schemas"]["ProviderRequestOptions"];
-      status?: null | components["schemas"]["ProviderStatus"];
-      trace?: null | components["schemas"]["ProviderTraceConfig"];
+      provider_type?: components["schemas"]["DriverId"] | null;
+      request_options?: components["schemas"]["ProviderRequestOptions"] | null;
+      status?: components["schemas"]["ProviderStatus"] | null;
+      trace?: components["schemas"]["ProviderTraceConfig"] | null;
     };
     /** @description Request body for the `update_saved_report` operation. */
     UpdateSavedReportRequest: {
-      dashboard?: null | components["schemas"]["SavedReportDashboardMetadata"];
+      dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
       /**
        * @description Human-readable description. Safe to render in user-facing messages.
        * @example Rolling 60-day window; widened from 30d after the Q3 product launch.
@@ -18168,7 +18168,7 @@ export interface components {
        *     Example: `{"max_attempts": 3, "initial_backoff_secs": 30, "backoff_multiplier": 2.0}`.
        */
       retry_policy?: unknown;
-      target?: null | components["schemas"]["ScheduleTarget"];
+      target?: components["schemas"]["ScheduleTarget"] | null;
       /**
        * @description New timezone (IANA name).
        * @example America/New_York
@@ -18209,7 +18209,7 @@ export interface components {
     UpdateSkillRequest: {
       /** @description Updated SKILL.md content (re-parses frontmatter) */
       skill_md?: string | null;
-      status?: null | components["schemas"]["SkillStatus"];
+      status?: components["schemas"]["SkillStatus"] | null;
     };
     /** @description Request body for updating a task webhook. */
     UpdateTaskWebhookRequest: {
@@ -18717,7 +18717,7 @@ export interface components {
        * @example customer-support
        */
       name: string;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *
@@ -18771,7 +18771,7 @@ export interface components {
        * @example 2026-05-20T14:00:00Z
        */
       updated_at: string;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
     } & {
       /**
        * @description State-aware hypermedia actions the caller can take on this resource
@@ -18863,7 +18863,7 @@ export interface components {
       deleted_at?: string | null;
       /** @description Human-readable description of what the app does. */
       description?: string | null;
-      effective_owner?: null | components["schemas"]["PrincipalSummary"];
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * @description ID of the harness to use (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
@@ -18876,7 +18876,7 @@ export interface components {
       id: string;
       /** @description Display name of the app. */
       name: string;
-      owner?: null | components["schemas"]["PrincipalSummary"];
+      owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * @description Owning principal for this app.
        * @example principal_01933b5a000070008000000000000001
@@ -19237,7 +19237,7 @@ export interface components {
        * @example generic
        */
       name: string;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *
@@ -19505,8 +19505,8 @@ export interface components {
        * @example claude-sonnet-4-5
        */
       model_id: string;
-      model_vendor?: null | components["schemas"]["ModelVendor"];
-      profile?: null | components["schemas"]["ModelProfile"];
+      model_vendor?: components["schemas"]["ModelVendor"] | null;
+      profile?: components["schemas"]["ModelProfile"] | null;
       /**
        * @description Owning provider's prefixed public identifier.
        * @example provider_01933b5a00007000800000000000001
@@ -19581,10 +19581,10 @@ export interface components {
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
       provider_type: components["schemas"]["DriverId"];
-      request_options?: null | components["schemas"]["ProviderRequestOptions"];
+      request_options?: components["schemas"]["ProviderRequestOptions"] | null;
       /** @description Current lifecycle status of this provider. */
       status: components["schemas"]["ProviderStatus"];
-      trace?: null | components["schemas"]["ProviderTraceConfig"];
+      trace?: components["schemas"]["ProviderTraceConfig"] | null;
       /**
        * Format: date-time
        * @description Timestamp when this provider was last updated (RFC 3339).
@@ -19698,7 +19698,7 @@ export interface components {
        * @example generic
        */
       name: string;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Request-level parallel tool calling preference (EVE-598).
        *
@@ -19846,7 +19846,7 @@ export interface components {
        * @example 2026-05-25T10:00:00Z
        */
       created_at: string;
-      effective_owner?: null | components["schemas"]["PrincipalSummary"];
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * Format: int32
        * @description Total events recorded for this session (EVE-868). Read from the
@@ -19948,7 +19948,7 @@ export interface components {
        * @example model_01933b5a00007000800000000000001
        */
       model_id?: string | null;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
       /**
        * @description Organization this session belongs to (format: org_{32-hex}).
        * @example org_00000000000000000000000000000001
@@ -19959,7 +19959,7 @@ export interface components {
        * @example Here is a Q3 plan covering the three pillars we discussed...
        */
       output_preview?: string | null;
-      owner?: null | components["schemas"]["PrincipalSummary"];
+      owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * @description Owning principal for this session.
        * @example principal_01933b5a000070008000000000000001
@@ -20045,7 +20045,7 @@ export interface components {
        * @example 2026-05-25T10:14:32Z
        */
       updated_at: string;
-      usage?: null | components["schemas"]["TokenUsage"];
+      usage?: components["schemas"]["TokenUsage"] | null;
       /**
        * @description Workspace this session is attached to (format: wsp_{32-hex}). Owns the
        *     session's virtual filesystem. For the default 1:1 case this mirrors the
@@ -27648,7 +27648,7 @@ export interface operations {
     parameters: {
       query?: {
         /** @description Filter by model source (manual, discovered, predefined) */
-        source?: null | components["schemas"]["ModelSource"];
+        source?: components["schemas"]["ModelSource"] | null;
         /** @description Include models that are stale (not seen in recent sync). Default: true */
         include_stale?: boolean;
         /** @description Only return favorite models. Default: false */
@@ -30762,7 +30762,7 @@ export interface operations {
     parameters: {
       query?: {
         /** @description Filter events with ID greater than this event ID (prefixed format: event_{32-hex}) */
-        since_id?: null | components["schemas"]["eventId"];
+        since_id?: components["schemas"]["eventId"] | null;
         /** @description Positive type filter (repeat key). Empty = all types. */
         types?: string[];
         /** @description Event types to exclude (repeat key); applied after `types`. */
@@ -30780,7 +30780,7 @@ export interface operations {
          * @description Anchor event id: returns up to `window` events on each side (default 50, max 500).
          *     Mutually exclusive with `since_id`, `after_sequence`, and `before_sequence` — 400 if combined.
          */
-        around?: null | components["schemas"]["eventId"];
+        around?: components["schemas"]["eventId"] | null;
         /** @description Window size for `around` (events on each side). Defaults to 50, max 500. */
         window?: number | null;
         /** @description Lower bound on `created_at` (RFC 3339, e.g. `2025-05-07T00:00:00Z`). */
@@ -31853,7 +31853,7 @@ export interface operations {
     parameters: {
       query?: {
         /** @description Filter events with ID greater than this event ID (prefixed format: event_{32-hex}) */
-        since_id?: null | components["schemas"]["eventId"];
+        since_id?: components["schemas"]["eventId"] | null;
         /**
          * @description Forward cursor: replay durable events with `sequence` greater than this
          *     value before switching to live streaming. `after_sequence=0` replays the

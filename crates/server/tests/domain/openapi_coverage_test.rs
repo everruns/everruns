@@ -160,7 +160,18 @@ fn endpoint_scoped_ingress_paths_are_documented_with_channel_parameters() {
             .as_ref()
             .into_iter()
             .flatten()
-            .map(|parameter| parameter.name.as_str())
+            // utoipa 6 types operation parameters as `RefOr<Parameter>`. A
+            // `$ref` would carry no name here, and silently skipping it would
+            // let the `app_id` assertion below pass for the wrong reason.
+            .map(|parameter| match parameter {
+                utoipa::openapi::RefOr::T(parameter) => parameter.name.as_str(),
+                utoipa::openapi::RefOr::Ref(reference) => {
+                    panic!(
+                        "{path}: unexpected $ref parameter {}",
+                        reference.ref_location
+                    )
+                }
+            })
             .collect();
         assert!(parameter_names.contains("channel_id"), "{path}");
         assert!(!parameter_names.contains("app_id"), "{path}");

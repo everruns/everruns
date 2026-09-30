@@ -9315,10 +9315,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/ModelSource"
                 },
                 {
-                  "$ref": "#/components/schemas/ModelSource"
+                  "type": "null"
                 }
               ]
             }
@@ -13165,10 +13165,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/eventId"
                 },
                 {
-                  "$ref": "#/components/schemas/eventId"
+                  "type": "null"
                 }
               ]
             }
@@ -13250,10 +13250,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/eventId"
                 },
                 {
-                  "$ref": "#/components/schemas/eventId"
+                  "type": "null"
                 }
               ]
             }
@@ -14528,10 +14528,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/eventId"
                 },
                 {
-                  "$ref": "#/components/schemas/eventId"
+                  "type": "null"
                 }
               ]
             }
@@ -17296,11 +17296,11 @@
           "role": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SessionParticipantRole",
                 "description": "Participant role. Omit for ordinary members. Host assignment is managed by session creation."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -17452,11 +17452,11 @@
           "network_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NetworkAccessList",
                 "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17527,11 +17527,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Cumulative token usage across all sessions for this agent."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -17749,11 +17749,11 @@
           "contributor": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AgentMcpAttachmentContributor",
                 "description": "Capability that contributed the attachment, when the winning source is a capability."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18430,11 +18430,11 @@
           "effective_owner": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PrincipalSummary",
                 "description": "Effective human owner summary."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18455,11 +18455,11 @@
           "owner": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PrincipalSummary",
                 "description": "Owning principal summary."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18508,11 +18508,11 @@
           "auth": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AppEndpointAuthConfig",
                 "description": "Authentication policy for this endpoint."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -18561,10 +18561,10 @@
           "provider": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AppEndpointAuthProviderConfig"
               },
               {
-                "$ref": "#/components/schemas/AppEndpointAuthProviderConfig"
+                "type": "null"
               }
             ]
           },
@@ -18892,11 +18892,11 @@
             "use": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/components/schemas/McpServerPresetRef",
                   "description": "Organization catalog preset that supplies transport and authentication policy."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -19020,11 +19020,11 @@
           "period": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/BudgetPeriod",
                 "description": "Optional period for recurring budgets."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -20748,11 +20748,11 @@
           "reasoning": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ReasoningConfig",
                 "description": "Reasoning configuration"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21036,11 +21036,11 @@
           "network_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NetworkAccessList",
                 "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nIf set, merged with harness and session layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21175,11 +21175,11 @@
           "change_kind": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AgentVersionChangeKind",
                 "description": "Reason this version was created. See `AgentVersionChangeKind` for the allowed values.\nDefaults to `manual` when omitted."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21240,11 +21240,11 @@
           "period": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/BudgetPeriod",
                 "description": "Optional recurring reset period for the budget balance."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21419,11 +21419,11 @@
           "network_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NetworkAccessList",
                 "description": "Network access list controlling which hosts/URLs sessions can reach."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21607,11 +21607,11 @@
           "auth_mode": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/McpServerAuthMode",
                 "description": "Authentication mode. Defaults to `api_key` when `api_key` is provided, otherwise `none`.\nExample shape is defined on `McpServerAuthMode`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21647,11 +21647,11 @@
           "protocol_mode": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/McpProtocolMode",
                 "description": "Protocol-era policy. Defaults to `auto` (negotiates every protocol era)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -21715,11 +21715,11 @@
           "source": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CreateMemorySourceRequest",
                 "description": "Source configuration. Example shape is defined on `CreateMemorySourceRequest`."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -21796,22 +21796,22 @@
           "controls": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Controls",
                 "description": "Runtime controls (model, reasoning, etc.)"
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "external_actor": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ExternalActor",
                 "description": "External actor identity (for messages from external channels like Slack)"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -22139,22 +22139,22 @@
           "request_options": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProviderRequestOptions",
                 "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. Omit to configure none."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "trace": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProviderTraceConfig",
                 "description": "Trace/observability link configuration. Stored as a per-provider override\nof the driver's default templates; omit to keep driver defaults."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -22203,11 +22203,11 @@
           "dashboard": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SavedReportDashboardMetadata",
                 "description": "Optional dashboard placement metadata. Omit to create a library-only\nreport that isn't pinned to any dashboard layout."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -22432,11 +22432,11 @@
           "network_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NetworkAccessList",
                 "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -23169,11 +23169,11 @@
           "options": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/EnqueueTaskOptions",
                 "description": "Retry policy options"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -24297,10 +24297,10 @@
           "location": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/FindingLocation"
               },
               {
-                "$ref": "#/components/schemas/FindingLocation"
+                "type": "null"
               }
             ]
           },
@@ -24623,11 +24623,11 @@
           "session_status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SessionSandboxStatusValue",
                 "description": "Current sandbox lifecycle status (`starting`, `ready`, `error`, `released`)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -25325,11 +25325,11 @@
           "network_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NetworkAccessList",
                 "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -25623,10 +25623,10 @@
           "summary": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/HealthCheckSummary"
               },
               {
-                "$ref": "#/components/schemas/HealthCheckSummary"
+                "type": "null"
               }
             ]
           }
@@ -26558,11 +26558,11 @@
           "run": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/HealthCheckRun",
                 "description": "The latest run, or `None` if the agent has never been health-checked."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -27046,11 +27046,11 @@
                 "network_access": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/NetworkAccessList",
                       "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -27121,11 +27121,11 @@
                 "usage": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/TokenUsage",
                       "description": "Cumulative token usage across all sessions for this agent."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 }
@@ -27769,11 +27769,11 @@
                 "network_access": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/NetworkAccessList",
                       "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -28616,11 +28616,11 @@
                 "controls": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/Controls",
                       "description": "Runtime controls (model, reasoning, etc.)"
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -28632,11 +28632,11 @@
                 "external_actor": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/ExternalActor",
                       "description": "External actor identity (for messages from external channels like Slack)"
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -28659,22 +28659,22 @@
                 "phase": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/ExecutionPhase",
                       "description": "Execution phase for agent messages: whether this is intermediate\n`commentary` or the turn's `final_answer`. Absent on user messages.\n\nWithout this a client cannot tell an intermediate message from the\nanswer, which is the single question most consumers of a session need\nanswered."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
                 "phase_source": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/PhaseSource",
                       "description": "Whether `phase` was reported by the provider or inferred by the runtime\nfrom tool-call presence.\n\n`derived` is a weak signal: it means only \"this message called tools\",\nso a text-only preamble is reported as `final_answer`. Clients needing a\ndependable classification should treat `derived` accordingly."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -28839,11 +28839,11 @@
                 "dashboard": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/SavedReportDashboardMetadata",
                       "description": "Optional dashboard placement metadata. `None` means the report is\n\"library-only\" and not pinned to a dashboard layout."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -29234,11 +29234,11 @@
                     "effective_owner": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/PrincipalSummary",
                           "description": "Effective human owner summary."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -29259,11 +29259,11 @@
                     "owner": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/PrincipalSummary",
                           "description": "Owning principal summary."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -29812,22 +29812,22 @@
                     "model_vendor": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/ModelVendor",
                           "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
                     "profile": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/ModelProfile",
                           "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -29962,11 +29962,11 @@
                     "request_options": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/ProviderRequestOptions",
                           "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. `None` when the org configured nothing."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -29977,11 +29977,11 @@
                     "trace": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/ProviderTraceConfig",
                           "description": "Resolved trace/observability link configuration: the driver's default\ntemplates overlaid with this provider's stored overrides. `None` when the\ndriver exposes no dashboard and the org configured nothing."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -30166,11 +30166,11 @@
                         "network_access": {
                           "oneOf": [
                             {
-                              "type": "null"
-                            },
-                            {
                               "$ref": "#/components/schemas/NetworkAccessList",
                               "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
+                            },
+                            {
+                              "type": "null"
                             }
                           ]
                         },
@@ -30676,11 +30676,11 @@
           "compaction": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LlmCompactionInfo",
                 "description": "Compaction information if context was compressed before generation\nOccurs when the conversation context exceeded the model's limit"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -30731,11 +30731,11 @@
           "request_options": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LlmRequestOptions",
                 "description": "Request-side driver options that were enabled for this generation."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -30758,11 +30758,11 @@
           "retry": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LlmRetryInfo",
                 "description": "Retry information if rate limit retries occurred\nContains number of retries and total wait time"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -30784,11 +30784,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Token usage statistics"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -30865,11 +30865,11 @@
           "prompt_cache": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LlmPromptCacheInfo",
                 "description": "Prompt caching configuration for this request."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -30906,11 +30906,11 @@
           "tool_search": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/LlmToolSearchInfo",
                 "description": "Deferred tool-loading configuration for this request."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -31038,11 +31038,11 @@
           "session_status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SessionSandboxStatusValue",
                 "description": "Current sandbox lifecycle status after the action."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -31725,11 +31725,11 @@
           "controls": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Controls",
                 "description": "Runtime controls (model, reasoning, etc.)"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -31741,11 +31741,11 @@
           "external_actor": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ExternalActor",
                 "description": "External actor identity (for messages from external channels like Slack)"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -31768,22 +31768,22 @@
           "phase": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ExecutionPhase",
                 "description": "Execution phase for agent messages: whether this is intermediate\n`commentary` or the turn's `final_answer`. Absent on user messages.\n\nWithout this a client cannot tell an intermediate message from the\nanswer, which is the single question most consumers of a session need\nanswered."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "phase_source": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PhaseSource",
                 "description": "Whether `phase` was reported by the provider or inferred by the runtime\nfrom tool-call presence.\n\n`derived` is a weak signal: it means only \"this message called tools\",\nso a text-only preamble is reported as `final_answer`. Clients needing a\ndependable classification should treat `derived` accordingly."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -32190,11 +32190,11 @@
           "cost": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModelCost",
                 "description": "Cost per million tokens"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -32226,22 +32226,22 @@
           "limits": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModelLimits",
                 "description": "Token limits"
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "modalities": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModelModalities",
                 "description": "Supported modalities"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -32260,11 +32260,11 @@
           "reasoning_effort": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ReasoningEffortConfig",
                 "description": "Reasoning effort configuration (for reasoning models)"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -32278,11 +32278,11 @@
           "speed": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SpeedConfig",
                 "description": "Speed (service tier) configuration, for models served with\nselectable latency/price tiers (OpenAI `service_tier`)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -32320,11 +32320,11 @@
           "verbosity": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/VerbosityConfig",
                 "description": "Verbosity configuration, for models that expose output-length\ncontrol (OpenAI `verbosity`)."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -32428,22 +32428,22 @@
           "model_vendor": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModelVendor",
                 "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "profile": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModelProfile",
                 "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -32845,22 +32845,22 @@
           "metadata": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModelMetadata",
                 "description": "Metadata about the model used"
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Token usage"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -32892,11 +32892,11 @@
           "phase": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ExecutionPhase",
                 "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". Refinement is monotonic: once a stream reveals a native\nphase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the\nmessage — it never flip-flops and never reverts to `None`\n(see `ExecutionPhase::refine_streamed_hint`). Providers without native\nmid-stream phase (Anthropic, Gemini, …) leave this `None` until\ncompletion. The authoritative classification remains the completed\n`RuntimeMessage.phase`. See `knowledge/execution/events.md`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -32979,22 +32979,22 @@
           "phase": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ExecutionPhase",
                 "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". A missing/unknown phase must fall back to the\nassistant-text channel, never the reasoning channel. Only populated when\nthe provider stream reveals a native phase before this event is emitted;\ntoday `output.message.started` is emitted before the LLM call, so this is\ngenerally `None` at start. The authoritative classification remains the\ncompleted `RuntimeMessage.phase`. See `knowledge/execution/events.md`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "reasoning_state": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ReasoningState",
                 "description": "Prepared Astra effort state, persisted before the provider call so an\ninterrupted worker can resume without changing the request baseline."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -33109,11 +33109,11 @@
                 "effective_owner": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/PrincipalSummary",
                       "description": "Effective human owner summary."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -33249,11 +33249,11 @@
                 "network_access": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/NetworkAccessList",
                       "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union)."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -33273,11 +33273,11 @@
                 "owner": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/PrincipalSummary",
                       "description": "Owning principal summary."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -33396,11 +33396,11 @@
                 "usage": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/components/schemas/TokenUsage",
                       "description": "Cumulative token usage for all LLM calls in this session."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -33914,11 +33914,11 @@
                     "effective_owner": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/PrincipalSummary",
                           "description": "Effective human owner summary."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -34054,11 +34054,11 @@
                     "network_access": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/NetworkAccessList",
                           "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union)."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -34078,11 +34078,11 @@
                     "owner": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/PrincipalSummary",
                           "description": "Owning principal summary."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -34201,11 +34201,11 @@
                     "usage": {
                       "oneOf": [
                         {
-                          "type": "null"
-                        },
-                        {
                           "$ref": "#/components/schemas/TokenUsage",
                           "description": "Cumulative token usage for all LLM calls in this session."
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     },
@@ -34424,22 +34424,22 @@
           "payment_account_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/payacctId",
                 "description": "Payment account that settled (or attempted to settle) this attempt. `None` if no account could be resolved."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "rail": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PaymentRail",
                 "description": "Settlement rail actually used. `None` if the attempt failed before rail selection."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -34925,11 +34925,11 @@
           "request_options": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProviderRequestOptions",
                 "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. `None` when the org configured nothing."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -34940,11 +34940,11 @@
           "trace": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProviderTraceConfig",
                 "description": "Resolved trace/observability link configuration: the driver's default\ntemplates overlaid with this provider's stored overrides. `None` when the\ndriver exposes no dashboard and the org configured nothing."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -35179,11 +35179,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Token usage from the LLM call"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -35271,11 +35271,11 @@
           "agent_id": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/agentId",
                 "description": "Agent ID being used (optional)"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -35286,11 +35286,11 @@
           "metadata": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ModelMetadata",
                 "description": "Metadata about the model being used"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -35367,11 +35367,11 @@
           "effort": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ReasoningEffort",
                 "description": "Effort level for reasoning.\n\nTyped rather than free-form: the effort taxonomy is closed, and each\ndriver previously re-parsed the string with its own case handling, which\nlet `minimal` silently mean \"no reasoning\" on budget-based models."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -35419,11 +35419,11 @@
           "text": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ReasoningText",
                 "description": "Readable reasoning, when the provider exposes any."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -35500,22 +35500,22 @@
           "baseline": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ReasoningEffort",
                 "description": "Original request-level effort preserved throughout this epoch."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "effective": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ReasoningEffort",
                 "description": "Effort currently active after ordered configuration updates."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -36243,11 +36243,11 @@
           "controls": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/Controls",
                 "description": "Runtime controls (model, reasoning, etc.)"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -36259,11 +36259,11 @@
           "external_actor": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ExternalActor",
                 "description": "External actor identity (for messages from external channels like Slack)"
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -36282,22 +36282,22 @@
           "phase": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ExecutionPhase",
                 "description": "Execution phase for this message.\n\nHelps LLMs distinguish between intermediate working commentary and completed\nanswers in multi-step tool-calling flows. Only set on agent (assistant) messages.\nProviders with native phase support (OpenAI GPT-5.x) send this value in the API\nrequest; others derive it from state but don't send it to the provider."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "phase_source": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PhaseSource",
                 "description": "Whether [`Self::phase`] was reported by the provider or inferred from\ntool-call presence. A derived phase carries no information beyond\n\"this message called tools\", so consumers that need a real\nclassification must be able to tell the two apart."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -36336,11 +36336,11 @@
           "dashboard": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SavedReportDashboardMetadata",
                 "description": "Optional dashboard placement metadata. `None` means the report is\n\"library-only\" and not pinned to a dashboard layout."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -36947,11 +36947,11 @@
           "effective_owner": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PrincipalSummary",
                 "description": "Effective human owner summary."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -37087,11 +37087,11 @@
           "network_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NetworkAccessList",
                 "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -37111,11 +37111,11 @@
           "owner": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PrincipalSummary",
                 "description": "Owning principal summary."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -37234,11 +37234,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Cumulative token usage for all LLM calls in this session."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -37322,11 +37322,11 @@
           "cumulative_usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Cumulative LLM usage observed across the session so far (token + cost rollup)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -37387,11 +37387,11 @@
           "target": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/EnvironmentTarget",
                 "description": "Target, absent when the session has no compute at all and only reads and\nwrites files. That is a real configuration, not a misconfiguration."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -37577,11 +37577,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Cumulative token usage for the session at this point"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -37968,10 +37968,10 @@
           "error": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/TaskError"
               },
               {
-                "$ref": "#/components/schemas/TaskError"
+                "type": "null"
               }
             ]
           },
@@ -37996,11 +37996,11 @@
           "input_request": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TaskInputRequest",
                 "description": "Pending ask while `awaiting_input`; cleared when answered."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -38014,10 +38014,10 @@
           "progress": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/BackgroundProgress"
               },
               {
-                "$ref": "#/components/schemas/BackgroundProgress"
+                "type": "null"
               }
             ]
           },
@@ -39101,11 +39101,11 @@
           "verified": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/VerificationVerdict",
                 "description": "Verification verdict, filled by the `citation_verification` capability.\nAbsent means unverified (not \"unsupported\")."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -39236,11 +39236,11 @@
           "native": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NativeToolCall",
                 "description": "Original native call, including raw custom input and async metadata."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -39636,11 +39636,11 @@
           "side_effect_class": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SideEffectClass",
                 "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -39897,11 +39897,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Token usage before cancellation (if available)"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -39994,11 +39994,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Aggregated token usage for all LLM calls in this turn"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -40080,11 +40080,11 @@
           "usage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/TokenUsage",
                 "description": "Aggregated token usage before sealing, if available."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -40299,11 +40299,11 @@
           "mcpServers": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/BTreeMap",
                 "description": "Remote MCP servers scoped to this agent."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -40318,11 +40318,11 @@
           "network_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NetworkAccessList",
                 "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nSend `{}` (empty object) to clear restrictions. Omit to leave unchanged.\nExample shape is defined on `NetworkAccessList`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -40355,11 +40355,11 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/AgentStatus",
                 "description": "The status of the agent. Set to \"archived\" to soft-delete."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -40454,11 +40454,11 @@
           "session_mode": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SessionBinding",
                 "description": "Replacement session reuse strategy."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -40661,11 +40661,11 @@
           "mcpServers": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/BTreeMap",
                 "description": "Replace the scoped MCP server set entirely; omit to leave unchanged."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -40680,11 +40680,11 @@
           "network_access": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/NetworkAccessList",
                 "description": "Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged.\nExample shape is defined on `NetworkAccessList`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -40716,11 +40716,11 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/HarnessStatus",
                 "description": "Current lifecycle status. Example shape is defined on `HarnessStatus`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -40900,11 +40900,11 @@
           "auth_mode": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/McpServerAuthMode",
                 "description": "Authentication mode."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -40943,33 +40943,33 @@
           "protocol_mode": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/McpProtocolMode",
                 "description": "Protocol-era policy (`auto`, `legacy`, `stable`, `rc`)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/McpServerStatus",
                 "description": "The status of the MCP server. Set to \"disabled\" to disable."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "transport_type": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/McpServerTransportType",
                 "description": "Transport type."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -41022,11 +41022,11 @@
           "source": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/CreateMemorySourceRequest",
                 "description": "Source configuration. Example shape is defined on `CreateMemorySourceRequest`."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -41377,44 +41377,44 @@
           "provider_type": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/DriverId",
                 "description": "The type of LLM provider (e.g., openai, anthropic)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "request_options": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProviderRequestOptions",
                 "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. Replaces the stored options wholesale; omit to leave them\nunchanged."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProviderStatus",
                 "description": "The status of the provider. Set to \"inactive\" to disable."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "trace": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProviderTraceConfig",
                 "description": "Trace/observability link configuration override. Merged into the\nprovider's stored settings, preserving other settings keys."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -41427,11 +41427,11 @@
           "dashboard": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SavedReportDashboardMetadata",
                 "description": "Replace dashboard placement metadata. Omit to keep current placement;\nsend `null` to detach the report from its dashboard; send an object\nto overwrite the placement."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -41519,11 +41519,11 @@
           "target": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ScheduleTarget",
                 "description": "New target. Variant shape is defined on `ScheduleTarget`."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -41602,11 +41602,11 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/SkillStatus",
                 "description": "Update status"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -42529,11 +42529,11 @@
               "network_access": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/NetworkAccessList",
                     "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -42604,11 +42604,11 @@
               "usage": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/TokenUsage",
                     "description": "Cumulative token usage across all sessions for this agent."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -42800,11 +42800,11 @@
               "effective_owner": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/PrincipalSummary",
                     "description": "Effective human owner summary."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -42825,11 +42825,11 @@
               "owner": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/PrincipalSummary",
                     "description": "Owning principal summary."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -43341,11 +43341,11 @@
               "network_access": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/NetworkAccessList",
                     "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -43751,22 +43751,22 @@
               "model_vendor": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/ModelVendor",
                     "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
               "profile": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/ModelProfile",
                     "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -43888,11 +43888,11 @@
               "request_options": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/ProviderRequestOptions",
                     "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. `None` when the org configured nothing."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -43903,11 +43903,11 @@
               "trace": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/ProviderTraceConfig",
                     "description": "Resolved trace/observability link configuration: the driver's default\ntemplates overlaid with this provider's stored overrides. `None` when the\ndriver exposes no dashboard and the org configured nothing."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -44079,11 +44079,11 @@
                   "network_access": {
                     "oneOf": [
                       {
-                        "type": "null"
-                      },
-                      {
                         "$ref": "#/components/schemas/NetworkAccessList",
                         "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -44299,11 +44299,11 @@
               "effective_owner": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/PrincipalSummary",
                     "description": "Effective human owner summary."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -44439,11 +44439,11 @@
               "network_access": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/NetworkAccessList",
                     "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union)."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -44463,11 +44463,11 @@
               "owner": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/PrincipalSummary",
                     "description": "Owning principal summary."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -44586,11 +44586,11 @@
               "usage": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/components/schemas/TokenUsage",
                     "description": "Cumulative token usage for all LLM calls in this session."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
