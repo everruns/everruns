@@ -41,8 +41,8 @@ pub enum AgentsApiError {
     MissingModel,
     #[error("Agents API configuration is missing agent.instructions")]
     MissingInstructions,
-    #[error("MCP server '{0}' is not an HTTP server with a URL")]
-    UnsupportedMcpServer(String),
+    #[error("Everruns policy cannot be enforced on this Agents API configuration: {0}")]
+    PolicyViolation(String),
     #[error("Agents API event is missing type")]
     MissingEventType,
     #[error("Agents API terminal event '{0}' is not supported")]
@@ -209,13 +209,30 @@ pub enum AgentsApiTool {
     Unsupported,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentsApiMcpTransport {
     #[serde(rename = "type")]
     pub transport_type: String,
     pub server_url: String,
+    /// Only ever read from an imported configuration. Everruns never sends
+    /// MCP credentials to the provider: [`AgentsApiSessionConfig::with_direct_mcp`]
+    /// takes none, and [`AgentsApiSessionConfig::validate_direct_mcp`] refuses
+    /// a configuration that carries any.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub headers: HashMap<String, String>,
+}
+
+// THREAT[TM-LLM-043]: MCP credentials never reach logs through Debug.
+impl std::fmt::Debug for AgentsApiMcpTransport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut header_names: Vec<&str> = self.headers.keys().map(String::as_str).collect();
+        header_names.sort_unstable();
+        f.debug_struct("AgentsApiMcpTransport")
+            .field("transport_type", &self.transport_type)
+            .field("server_url", &self.server_url)
+            .field("headers", &format_args!("<redacted {header_names:?}>"))
+            .finish()
+    }
 }
 
 fn is_false(value: &bool) -> bool {
@@ -223,20 +240,111 @@ fn is_false(value: &bool) -> bool {
 }
 
 impl AgentsApiSessionConfig {
-    /// Restrict a direct MCP server to the named tools.
-    pub fn allow_mcp_tools(mut self, server_label: &str, tools: &[&str]) -> Self {
-        for tool in &mut self.agent.tools {
-            if let AgentsApiTool::Mcp {
-                server_label: label,
+    /// Add a direct MCP server the provider calls itself, restricted to an
+    /// explicit, non-empty tool allowlist.
+    ///
+    /// Direct MCP runs outside Everruns' tool pipeline (no approval gate, no
+    /// pre-tool guardrails, no network policy), so the production backend
+    /// never uses it; it exists for custom hosts and the live conformance
+    /// test. It takes no credentials: an authenticated server stays behind
+    /// Everruns' session-scoped MCP client and reaches the provider only as
+    /// client functions.
+    pub fn with_direct_mcp(
+        mut self,
+        server_label: &str,
+        server_url: &str,
+        allowed_tools: &[&str],
+    ) -> Result<Self, AgentsApiError> {
+        self.agent.tools.push(AgentsApiTool::Mcp {
+            server_label: server_label.to_string(),
+            transport: AgentsApiMcpTransport {
+                transport_type: "http".to_string(),
+                server_url: server_url.to_string(),
+                headers: HashMap::new(),
+            },
+            connection_origin: "service".to_string(),
+            required: true,
+            allowed_tools: Some(allowed_tools.iter().map(|tool| tool.to_string()).collect()),
+        });
+        self.validate_direct_mcp()?;
+        Ok(self)
+    }
+
+    /// Protocol-level invariants on direct MCP servers, checked before every
+    /// session create: HTTPS only, an explicit non-empty tool allowlist, and
+    /// no credentials.
+    // THREAT[TM-LLM-043]: a provider-run MCP server can never carry Everruns
+    // credentials or call tools nobody listed.
+    pub fn validate_direct_mcp(&self) -> Result<(), AgentsApiError> {
+        for tool in &self.agent.tools {
+            let AgentsApiTool::Mcp {
+                server_label,
+                transport,
                 allowed_tools,
                 ..
             } = tool
-                && label == server_label
+            else {
+                continue;
+            };
+            if transport.transport_type != "http"
+                || !transport
+                    .server_url
+                    .to_ascii_lowercase()
+                    .starts_with("https://")
             {
-                *allowed_tools = Some(tools.iter().map(|tool| tool.to_string()).collect());
+                return Err(AgentsApiError::PolicyViolation(format!(
+                    "direct MCP server '{server_label}' must use an HTTPS URL"
+                )));
+            }
+            if !transport.headers.is_empty() {
+                return Err(AgentsApiError::PolicyViolation(format!(
+                    "direct MCP server '{server_label}' carries credentials; authenticated MCP servers run through Everruns' session-scoped MCP client"
+                )));
+            }
+            if allowed_tools
+                .as_ref()
+                .is_none_or(|tools| tools.is_empty() || tools.iter().any(|t| t.trim().is_empty()))
+            {
+                return Err(AgentsApiError::PolicyViolation(format!(
+                    "direct MCP server '{server_label}' needs an explicit allowed-tool set"
+                )));
             }
         }
-        self
+        Ok(())
+    }
+
+    /// The production backend's boundary: every tool is a client function
+    /// that crosses Everruns' tool pipeline. OpenAI built-ins, direct MCP,
+    /// multi-agent delegation, and hosted environments run tools or models
+    /// where Everruns cannot apply approval, guardrail, budget, or network
+    /// policy, so a configuration that asks for any of them is refused.
+    pub fn ensure_enforceable(&self) -> Result<(), AgentsApiError> {
+        for tool in &self.agent.tools {
+            match tool {
+                AgentsApiTool::Function { .. } => {}
+                AgentsApiTool::Mcp { server_label, .. } => {
+                    return Err(AgentsApiError::PolicyViolation(format!(
+                        "direct MCP server '{server_label}' would run tools outside Everruns' tool pipeline"
+                    )));
+                }
+                AgentsApiTool::Unsupported => {
+                    return Err(AgentsApiError::PolicyViolation(
+                        "OpenAI built-in tools run outside Everruns' tool pipeline".to_string(),
+                    ));
+                }
+            }
+        }
+        if self.agent.multi_agent.is_some() {
+            return Err(AgentsApiError::PolicyViolation(
+                "provider-managed subagents bypass Everruns delegation policy".to_string(),
+            ));
+        }
+        if !matches!(self.environment, AgentsApiEnvironment::None) {
+            return Err(AgentsApiError::PolicyViolation(
+                "a provider environment runs commands outside Everruns' tool pipeline".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     /// Stable digest of the agent definition. A provider session keeps the
@@ -253,17 +361,16 @@ impl AgentsApiSessionConfig {
 
 /// Convert the resolved Everruns runtime configuration to an Agents API session request.
 ///
-/// Every Everruns tool becomes a client function, so its execution crosses
-/// Everruns' tool pipeline. `mcp_servers` adds direct MCP servers that the
-/// provider calls itself, outside Everruns enforcement; the durable backend
-/// passes none.
+/// Every Everruns tool, including scoped MCP tools, becomes a client
+/// function, so its execution crosses Everruns' tool pipeline and MCP
+/// credentials stay with Everruns' session-scoped MCP client. Direct MCP is
+/// opt-in through [`AgentsApiSessionConfig::with_direct_mcp`].
 pub fn build_session_config(
     runtime_agent: &RuntimeAgent,
-    mcp_servers: &ScopedMcpServers,
     input: impl Into<String>,
     max_concurrent_subagents: Option<u32>,
 ) -> Result<AgentsApiSessionConfig, AgentsApiError> {
-    let mut tools = runtime_agent
+    let tools = runtime_agent
         .tools
         .iter()
         .map(|tool| AgentsApiTool::Function {
@@ -273,23 +380,6 @@ pub fn build_session_config(
             defer_loading: false,
         })
         .collect::<Vec<_>>();
-
-    for (name, server) in mcp_servers {
-        if server.transport_type != McpServerTransportType::Http || server.url.trim().is_empty() {
-            return Err(AgentsApiError::UnsupportedMcpServer(name.clone()));
-        }
-        tools.push(AgentsApiTool::Mcp {
-            server_label: name.clone(),
-            transport: AgentsApiMcpTransport {
-                transport_type: "http".to_string(),
-                server_url: server.url.clone(),
-                headers: server.headers.clone(),
-            },
-            connection_origin: "service".to_string(),
-            required: true,
-            allowed_tools: None,
-        });
-    }
 
     Ok(AgentsApiSessionConfig {
         agent: AgentsApiAgentConfig {
@@ -355,12 +445,18 @@ pub fn import_session_config(
                         "MCP server '{server_label}' tool allowlist is not imported"
                     ));
                 }
+                // Credentials are never copied into an agent definition; the
+                // server is reconnected through a session-scoped connection.
+                if !transport.headers.is_empty() {
+                    warnings.push(format!(
+                        "MCP server '{server_label}' credentials are not imported; connect it again"
+                    ));
+                }
                 mcp_servers.insert(
                     server_label,
                     ScopedMcpServer {
                         transport_type: McpServerTransportType::Http,
                         url: transport.server_url,
-                        headers: transport.headers,
                         ..ScopedMcpServer::default()
                     },
                 );
@@ -790,19 +886,19 @@ mod tests {
                     "additionalProperties": false
                 }),
             )));
-        let servers = ScopedMcpServers::from([(
-            "docs".to_string(),
-            ScopedMcpServer {
-                url: "https://developers.openai.com/mcp".to_string(),
-                ..ScopedMcpServer::default()
-            },
-        )]);
-        build_session_config(&agent, &servers, "Use the function and MCP tools.", Some(2)).unwrap()
+        build_session_config(&agent, "Use the function and MCP tools.", Some(2))
+            .unwrap()
+            .with_direct_mcp(
+                "docs",
+                "https://developers.openai.com/mcp",
+                &["search_openai_docs"],
+            )
+            .unwrap()
     }
 
     #[test]
     fn session_config_maps_one_function_and_one_allowed_mcp_tool() {
-        let config = prototype_config().allow_mcp_tools("docs", &["search_openai_docs"]);
+        let config = prototype_config();
         assert_eq!(config.agent.model, "gpt-6-astra");
         assert_eq!(
             serde_json::to_value(&config.agent.tools).unwrap(),
@@ -906,24 +1002,88 @@ mod tests {
             imported.mcp_servers["docs"].url,
             "https://developers.openai.com/mcp"
         );
-        assert_eq!(imported.warnings.len(), 3);
+        // Built-in, allowlist, multi-agent, and environment warnings.
+        assert_eq!(imported.warnings.len(), 4);
     }
 
     #[test]
-    fn unsupported_mcp_transport_fails_closed() {
-        let agent = RuntimeAgent::new("Test.", "gpt-6-astra");
-        let servers = ScopedMcpServers::from([(
-            "local".to_string(),
-            ScopedMcpServer {
-                transport_type: McpServerTransportType::Stdio,
-                command: Some("mcp-server".to_string()),
-                ..ScopedMcpServer::default()
-            },
-        )]);
+    fn imported_mcp_credentials_are_dropped_and_never_debug_printed() {
+        let mut config = prototype_config();
+        if let AgentsApiTool::Mcp { transport, .. } = &mut config.agent.tools[1] {
+            transport
+                .headers
+                .insert("Authorization".into(), "Bearer sk-mcp-secret".into());
+        }
+        assert!(
+            !format!("{config:?}").contains("sk-mcp-secret"),
+            "Debug output redacts MCP credentials"
+        );
         assert!(matches!(
-            build_session_config(&agent, &servers, "test", None),
-            Err(AgentsApiError::UnsupportedMcpServer(name)) if name == "local"
+            config.validate_direct_mcp(),
+            Err(AgentsApiError::PolicyViolation(_))
         ));
+        let imported = import_session_config(config).unwrap();
+        assert!(imported.mcp_servers["docs"].headers.is_empty());
+        assert!(
+            imported
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("credentials are not imported"))
+        );
+    }
+
+    #[test]
+    fn direct_mcp_needs_https_and_an_explicit_allowlist() {
+        let base =
+            build_session_config(&RuntimeAgent::new("Test.", "gpt-6-astra"), "", None).unwrap();
+        for (url, tools) in [
+            ("http://example.com/mcp", vec!["search"]),
+            ("https://example.com/mcp", vec![]),
+            ("https://example.com/mcp", vec![" "]),
+        ] {
+            assert!(
+                matches!(
+                    base.clone().with_direct_mcp("x", url, &tools),
+                    Err(AgentsApiError::PolicyViolation(_))
+                ),
+                "{url} {tools:?}"
+            );
+        }
+        let mut no_allowlist = base
+            .clone()
+            .with_direct_mcp("x", "https://example.com/mcp", &["search"])
+            .unwrap();
+        if let AgentsApiTool::Mcp { allowed_tools, .. } = &mut no_allowlist.agent.tools[0] {
+            *allowed_tools = None;
+        }
+        assert!(no_allowlist.validate_direct_mcp().is_err());
+    }
+
+    #[test]
+    fn the_production_boundary_refuses_tools_it_cannot_police() {
+        let agent = RuntimeAgent::new("Test.", "gpt-6-astra");
+        let functions_only = build_session_config(&agent, "", None).unwrap();
+        assert!(functions_only.ensure_enforceable().is_ok());
+        let refused = [
+            prototype_config(),
+            {
+                let mut config = functions_only.clone();
+                config.agent.tools.push(AgentsApiTool::Unsupported);
+                config
+            },
+            build_session_config(&agent, "", Some(2)).unwrap(),
+            {
+                let mut config = functions_only.clone();
+                config.environment = AgentsApiEnvironment::OpenaiHosted;
+                config
+            },
+        ];
+        for config in refused {
+            assert!(matches!(
+                config.ensure_enforceable(),
+                Err(AgentsApiError::PolicyViolation(_))
+            ));
+        }
     }
 
     #[test]

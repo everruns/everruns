@@ -2,6 +2,15 @@
 
 ## 2026-10-01
 
+* **The OpenAI Agents API backend enforces Everruns policy at its tool and
+  output boundaries (EVE-1124).** A call the tool pipeline parks (an approval,
+  a client-side tool, a connection setup) parks the Everruns turn while the
+  provider's required action stays open; only a recorded approval runs it
+  again, and a rejection or expiry submits a failure. Budgets stop the turn
+  before more tools run, output guardrails judge every remote message, and
+  configurations with provider-run tools or MCP credentials are refused.
+  TM-LLM-043 is mitigated. See [OpenAI Agents API Runtime
+  Backend](execution/openai-agents-api-runtime.md#policy-at-the-tool-and-output-boundaries).
 * **The OpenAI Agents API backend is durable and opt-in (EVE-1123).** A session
   selects it with the `openai_agents_api_runtime` capability, which the
   `openai_agents_api` org flag gates. One encrypted, lease-fenced checkpoint per

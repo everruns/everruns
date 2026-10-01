@@ -65,6 +65,7 @@ pub(crate) mod tool_call_integrity {
     };
 }
 
+pub use execution::capability_usage_records;
 pub use execution::{
     ActAtom, ActInput, ActResult, ClientSideToolHook, ConnectionSetupHook, ExecutionContext,
     InputAtom, InputAtomInput, InputAtomResult, NativeExecutionCounts, OutputHardLimitHook,
@@ -75,6 +76,6 @@ pub use machine::{Execution, ExecutionTransition, TurnExecution};
 pub use phase_effects::{PhaseEffect, PhaseEffectSink};
 pub use turn::{
     ActOutcome, ActPlan, ActSchedulingFacts, ActivityOutcome, HostFacts, TurnLifecycleEffect,
-    TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,
-    plan_next_turn, reason_schedules_act,
+    TurnPlan, TurnState, act_pauses_turn, plan_after_act, plan_after_process_input,
+    plan_after_reason, plan_next_turn, reason_schedules_act,
 };

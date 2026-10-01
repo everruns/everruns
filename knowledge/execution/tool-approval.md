@@ -80,6 +80,11 @@ and resuming a turn into a tool execution the model did not just request is not
 something the durable turn loop does; the same retry shape already carries URL
 and form elicitation answers. The binding below is what keeps the retry safe.
 
+The OpenAI Agents API backend is the exception: its provider is still waiting on
+the original call, so the backend holds that call open, and on an approval runs
+it again itself under a fresh local id, through the same gate and binding. See
+[OpenAI Agents API runtime](openai-agents-api-runtime.md#policy-at-the-tool-and-output-boundaries).
+
 ## Decisions
 
 The vocabulary is the capability's `ApprovalDecision`. A person answers one

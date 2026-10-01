@@ -24,6 +24,18 @@
 //!   event cannot lose a message.
 //! - **Terminal.** The outcome is saved before the activity returns, so a
 //!   replayed activity returns it without calling the provider again.
+//!
+//! Everruns policy applies at the tool and output boundaries (EVE-1124):
+//!
+//! - **Pauses.** A call the tool pipeline parks (an approval, a client-side
+//!   tool, a connection setup) is saved as parked and the activity returns
+//!   [`AgentsApiTurnOutcome::Paused`]. The provider's required action stays
+//!   open; nothing is submitted. The resumed turn (a later reason iteration)
+//!   resolves it: an approval runs the call again under a fresh local id, a
+//!   denial or expiry submits a failed result, a client answer is submitted.
+//! - **Stops.** An output guardrail that trips on a remote message, a budget,
+//!   or a blocked dependency saves a [`PolicyStop`] before its effects,
+//!   cancels the provider turn, and ends the Everruns turn.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -32,12 +44,14 @@ use std::time::Duration;
 use async_trait::async_trait;
 use everruns_core::agents_api_store::{
     AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, AgentsApiTurnCheckpoint, InputOutbox,
-    ItemCorrelation, ItemKind, ItemState, OutboxState, ToolResultOutbox, ToolResultState,
+    ItemCorrelation, ItemKind, ItemState, OutboxState, ParkReason, PolicyStop, ReplacedMessage,
+    ToolResultState,
 };
 use everruns_core::events::{
     EventContext, EventRequest, ModelMetadata, OutputMessageCompletedData, OutputMessageDeltaData,
     OutputMessageStartedData, TokenUsage, ToolCompletedData, ToolStartedData,
 };
+use everruns_core::output_guardrail::TrippedGuardrail;
 use everruns_core::{ContentPart, RuntimeMessage, mcp_tool_name};
 use everruns_provider::execution_phase::ExecutionPhase;
 use everruns_provider::tool_types::ToolCall;
@@ -46,6 +60,8 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
+
+mod policy;
 
 use super::{
     AgentsApiClient, AgentsApiError, AgentsApiEventStream, AgentsApiSessionConfig,
@@ -58,6 +74,14 @@ use super::{
 pub const METADATA_SESSION_KEY: &str = "everruns_session_id";
 pub const METADATA_ATTEMPT_KEY: &str = "everruns_create_attempt";
 
+/// Local attempts of one provider call before a call that keeps asking for a
+/// user action is answered with a failure instead of another pause.
+pub const MAX_CALL_ATTEMPTS: u32 = 3;
+/// Policy-stop code of an output guardrail that replaced a remote message.
+pub const OUTPUT_GUARDRAIL_STOP: &str = "output_guardrail";
+/// Failure code when the provider turn ended while a call was parked.
+pub const PARKED_CALL_EXPIRED: &str = "tool_action_expired";
+
 /// One Everruns turn to drive through the provider.
 #[derive(Clone, Debug)]
 pub struct AgentsApiTurnRequest {
@@ -65,6 +89,10 @@ pub struct AgentsApiTurnRequest {
     pub session_id: SessionId,
     pub turn_id: TurnId,
     pub input_message_id: MessageId,
+    /// Reason iteration of this activity. A parked call resolves only in a
+    /// later iteration (the turn resumed), never in a replay of the one that
+    /// parked it.
+    pub iteration: u32,
     /// The turn's user input.
     pub input_text: String,
     /// Agent definition for a new provider session; `input` and `metadata`
@@ -88,8 +116,15 @@ pub enum AgentsApiTurnOutcome {
     Failed {
         code: Option<String>,
         message: String,
+        /// Everruns authored the failure (a policy stop, an expired pause), so
+        /// `message` is user-facing as is.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        policy: bool,
     },
     Cancelled,
+    /// A call is parked on a user action; the turn resumes later. Never saved
+    /// as an outcome: the resumed turn continues the same provider turn.
+    Paused,
 }
 
 /// The Everruns event log as the driver sees it.
@@ -111,14 +146,51 @@ pub trait AgentsApiLedger: Send + Sync {
     ) -> Result<Option<Result<String, String>>, AgentsApiError>;
 }
 
-/// Runs a client function through Everruns' tool pipeline and records its
-/// result in the event log. The provider waits for the returned output.
+/// How one client function call left the tool pipeline.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FunctionOutcome {
+    /// A result to submit: the output, or the error text of a failed or
+    /// denied call.
+    Done(Result<String, String>),
+    /// The call paused the turn; the provider's required action stays open.
+    Parked(ParkReason),
+}
+
+/// The result of one batch through the tool pipeline.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FunctionBatch {
+    /// One outcome per call, in order.
+    Outcomes(Vec<FunctionOutcome>),
+    /// Policy forbids running any more tools in this turn (an exhausted
+    /// budget, an archived agent). The turn stops with `message`.
+    Halt { code: String, message: String },
+}
+
+/// Runs client functions through Everruns' tool pipeline and records their
+/// results in the event log. The provider waits for the returned outputs.
+///
+/// Calls carry local ids: the provider call id for a first attempt, a fresh
+/// one for a call run again after a pause.
 #[async_trait]
 pub trait AgentsApiFunctionExecutor: Send + Sync {
-    async fn execute(
+    async fn execute(&self, calls: &[ToolCall]) -> Result<FunctionBatch, AgentsApiError>;
+}
+
+/// Everruns output guardrails over the remote loop's assistant messages.
+#[async_trait]
+pub trait AgentsApiOutputPolicy: Send + Sync {
+    /// Whether live text must be withheld until the completed message passes
+    /// (an end-of-message guardrail is configured).
+    fn withholds_deltas(&self) -> bool;
+    /// Streaming guardrails over one message's accumulated live text.
+    fn check_delta(
         &self,
-        call: &FunctionCallAction,
-    ) -> Result<Result<String, String>, AgentsApiError>;
+        item_id: &str,
+        accumulated: &str,
+        delta: &str,
+    ) -> Option<TrippedGuardrail>;
+    /// Every guardrail over a completed message's full text.
+    async fn check_message(&self, item_id: &str, text: &str) -> Option<TrippedGuardrail>;
 }
 
 /// Drives turns through the provider with durable, idempotent orchestration.
@@ -127,6 +199,7 @@ pub struct AgentsApiTurnDriver {
     store: Arc<dyn AgentsApiStore>,
     ledger: Arc<dyn AgentsApiLedger>,
     executor: Arc<dyn AgentsApiFunctionExecutor>,
+    output_policy: Option<Arc<dyn AgentsApiOutputPolicy>>,
     cancellation: Option<tokio::sync::watch::Receiver<bool>>,
     /// Consecutive stream reconnects without progress before giving up.
     max_idle_reconnects: u32,
@@ -146,6 +219,7 @@ impl AgentsApiTurnDriver {
             store,
             ledger,
             executor,
+            output_policy: None,
             cancellation: None,
             max_idle_reconnects: 5,
             reconnect_backoff: Duration::from_millis(250),
@@ -156,6 +230,12 @@ impl AgentsApiTurnDriver {
     /// Stop the turn when the durable task is cancelled or loses ownership.
     pub fn with_cancellation(mut self, receiver: tokio::sync::watch::Receiver<bool>) -> Self {
         self.cancellation = Some(receiver);
+        self
+    }
+
+    /// Run output guardrails on the remote loop's assistant messages.
+    pub fn with_output_policy(mut self, policy: Arc<dyn AgentsApiOutputPolicy>) -> Self {
+        self.output_policy = Some(policy);
         self
     }
 
@@ -184,8 +264,10 @@ impl AgentsApiTurnDriver {
             lease,
             checkpoint,
             deltas: HashMap::new(),
+            stream_trips: HashMap::new(),
             last_error: None,
             terminal: false,
+            paused: false,
         };
         let outcome = {
             let execution = run.execute();
@@ -241,8 +323,13 @@ struct Run<'a> {
     checkpoint: AgentsApiCheckpoint,
     /// Live text per provider message item, for delta events only.
     deltas: HashMap<String, String>,
+    /// Streaming guardrail trips per provider message item; the completed
+    /// message is replaced.
+    stream_trips: HashMap<String, TrippedGuardrail>,
     last_error: Option<(Option<String>, String)>,
     terminal: bool,
+    /// A call of this turn is parked on a user action.
+    paused: bool,
 }
 
 impl Run<'_> {
@@ -273,7 +360,13 @@ impl Run<'_> {
             .ok_or_else(|| AgentsApiError::Reconcile("no provider session".into()))
     }
 
+    /// A parked call or a policy stop ends the event loop early.
+    fn halted(&self) -> bool {
+        self.paused || self.turn().policy_stop.is_some()
+    }
+
     async fn execute(&mut self) -> Result<AgentsApiTurnOutcome, AgentsApiError> {
+        self.cancel_abandoned_turn().await;
         self.turn_mut();
         if let Some(outcome) = self.turn().outcome.clone() {
             // Terminal recovery: the activity is replaying a finished turn.
@@ -281,9 +374,12 @@ impl Run<'_> {
             self.release().await?;
             return Ok(outcome);
         }
+        if self.turn().policy_stop.is_some() {
+            return self.finish_policy_stop().await;
+        }
         let mut stream = self.start().await?;
         let mut idle_reconnects = 0;
-        while !self.terminal {
+        while !self.terminal && !self.halted() {
             match stream.next().await {
                 Some(Ok(event)) => {
                     idle_reconnects = 0;
@@ -296,6 +392,15 @@ impl Run<'_> {
                 Some(Err(error)) => return Err(error),
                 None => stream = self.reconnect(&mut idle_reconnects).await?,
             }
+        }
+        if self.turn().policy_stop.is_some() {
+            return self.finish_policy_stop().await;
+        }
+        if self.paused {
+            // The provider keeps the required action open. Nothing terminal
+            // is saved: the resumed turn picks the parked call up again.
+            self.release().await?;
+            return Ok(AgentsApiTurnOutcome::Paused);
         }
         self.finalize().await
     }
@@ -374,6 +479,8 @@ impl Run<'_> {
         &mut self,
         fingerprint: String,
     ) -> Result<AgentsApiEventStream, AgentsApiError> {
+        // Refused before anything is saved or sent.
+        self.request.config.validate_direct_mcp()?;
         let attempt = Uuid::new_v4().to_string();
         self.checkpoint.create_attempt = Some(attempt.clone());
         self.checkpoint.agent_fingerprint = Some(fingerprint);
@@ -497,6 +604,9 @@ impl Run<'_> {
             .list_turn_items(&session_id, &turn_id)
             .await?
         {
+            if self.turn().policy_stop.is_some() {
+                return Ok(());
+            }
             self.apply_item(&item).await?;
         }
         self.handle_actions(FunctionCallAction::from_required_actions(&session))
@@ -735,9 +845,23 @@ impl Run<'_> {
             return Ok(());
         }
         let message_id = parse_message_id(&item.local_id)?;
+        if self.stream_trips.contains_key(item_id) {
+            return Ok(());
+        }
         let accumulated = self.deltas.entry(item_id.to_string()).or_default();
         accumulated.push_str(delta);
         let accumulated = accumulated.clone();
+        if let Some(policy) = &self.driver.output_policy {
+            if let Some(trip) = policy.check_delta(item_id, &accumulated, delta) {
+                // Nothing more of this message reaches the client; the
+                // completed item is replaced.
+                self.stream_trips.insert(item_id.to_string(), trip);
+                return Ok(());
+            }
+            if policy.withholds_deltas() {
+                return Ok(());
+            }
+        }
         let event = self.event(
             Some(item_id),
             OutputMessageDeltaData {
@@ -812,6 +936,9 @@ impl Run<'_> {
         status: Option<&str>,
     ) -> Result<(), AgentsApiError> {
         let key = format!("msg:{item_id}");
+        if self.turn().items.get(&key).map(|item| item.state) == Some(ItemState::Completed) {
+            return Ok(());
+        }
         let phase = match item.get("phase").and_then(Value::as_str) {
             Some("commentary") => Some(ExecutionPhase::Commentary),
             Some("final_answer") => Some(ExecutionPhase::FinalAnswer),
@@ -848,6 +975,39 @@ impl Run<'_> {
         let mut text = message_item_text(item);
         if text.is_empty() {
             text = self.deltas.get(item_id).cloned().unwrap_or_default();
+        }
+        // THREAT[TM-LLM-043]: Everruns output guardrails run on every remote
+        // assistant message before it is recorded.
+        let trip = match self.stream_trips.remove(item_id) {
+            Some(trip) => Some(trip),
+            None => match &self.driver.output_policy {
+                Some(policy) => policy.check_message(item_id, &text).await,
+                None => None,
+            },
+        };
+        if let Some(trip) = trip {
+            tracing::info!(
+                session_id = %self.request.session_id,
+                guardrail_capability_id = %trip.capability_id,
+                guardrail_id = %trip.guardrail_id,
+                "Agents API: output guardrail tripped on a remote message"
+            );
+            // Saved before any effect, so a replay finishes the stop instead
+            // of re-judging the message.
+            self.set_item_state(&key, ItemKind::Message, &local_id, ItemState::Completing);
+            self.turn_mut().policy_stop = Some(PolicyStop {
+                code: OUTPUT_GUARDRAIL_STOP.to_string(),
+                message: trip.block.replacement,
+                replaced: Some(ReplacedMessage {
+                    item_key: key,
+                    provider_item_id: item_id.to_string(),
+                    message_id,
+                    guardrail_capability_id: trip.capability_id,
+                    guardrail_id: trip.guardrail_id,
+                    reason_code: trip.block.reason_code,
+                }),
+            });
+            return self.save().await;
         }
         let mut message = RuntimeMessage::assistant(text).with_id(message_id);
         if let Some(phase) = phase {
@@ -1008,118 +1168,6 @@ impl Run<'_> {
         .await
     }
 
-    /// Answer pending client function calls of this turn through the
-    /// tool-result outbox.
-    async fn handle_actions(
-        &mut self,
-        actions: Vec<FunctionCallAction>,
-    ) -> Result<(), AgentsApiError> {
-        let Some(own_turn) = self.turn().provider_turn_id.clone() else {
-            return Ok(());
-        };
-        for action in actions
-            .into_iter()
-            .filter(|action| action.turn_id == own_turn)
-        {
-            self.record_function_call(&action.call_id, &action.name, &action.arguments)
-                .await?;
-            let state = self
-                .turn()
-                .tool_results
-                .get(&action.call_id)
-                .map(|entry| entry.state.clone());
-            let (success, output) = match state {
-                Some(ToolResultState::Submitted { .. }) => continue,
-                Some(ToolResultState::Ready { success, output }) => (success, output),
-                Some(ToolResultState::Executing) => {
-                    // A previous owner claimed the call. Reuse its recorded
-                    // result; only an unrecorded call re-enters the pipeline,
-                    // whose durable claim decides whether it may run again.
-                    let recorded = self
-                        .driver
-                        .ledger
-                        .tool_result(self.request.session_id, &action.call_id)
-                        .await?;
-                    let result = match recorded {
-                        Some(result) => result,
-                        None => self.driver.executor.execute(&action).await?,
-                    };
-                    self.ready(&action.call_id, result).await?
-                }
-                None => {
-                    self.turn_mut().tool_results.insert(
-                        action.call_id.clone(),
-                        ToolResultOutbox {
-                            provider_turn_id: own_turn.clone(),
-                            call_id: action.call_id.clone(),
-                            name: action.name.clone(),
-                            arguments: action.arguments.clone(),
-                            state: ToolResultState::Executing,
-                        },
-                    );
-                    self.save().await?;
-                    let result = self.driver.executor.execute(&action).await?;
-                    self.ready(&action.call_id, result).await?
-                }
-            };
-            let session_id = self.provider_session()?;
-            let result = if success {
-                Ok(output.as_str())
-            } else {
-                Err(output.as_str())
-            };
-            let key = format!(
-                "everruns-tool-result-{}-{}",
-                self.request.session_id, action.call_id
-            );
-            match self
-                .driver
-                .client
-                .send_events(
-                    &session_id,
-                    vec![build_tool_result_input(&own_turn, &action.call_id, result)],
-                    Some(&key),
-                )
-                .await
-            {
-                Ok(()) => {}
-                // The provider no longer accepts a result for this call: it
-                // already has one or the turn ended. Saved items tell which.
-                Err(error) if error.is_conflict() => {
-                    tracing::info!(call_id = %action.call_id, %error, "Agents API refused a repeated tool result");
-                }
-                Err(error) => return Err(error),
-            }
-            if let Some(entry) = self.turn_mut().tool_results.get_mut(&action.call_id) {
-                entry.state = ToolResultState::Submitted {
-                    success,
-                    output: output.clone(),
-                };
-            }
-            self.save().await?;
-        }
-        Ok(())
-    }
-
-    async fn ready(
-        &mut self,
-        call_id: &str,
-        result: Result<String, String>,
-    ) -> Result<(bool, String), AgentsApiError> {
-        let (success, output) = match result {
-            Ok(output) => (true, output),
-            Err(error) => (false, error),
-        };
-        if let Some(entry) = self.turn_mut().tool_results.get_mut(call_id) {
-            entry.state = ToolResultState::Ready {
-                success,
-                output: output.clone(),
-            };
-        }
-        self.save().await?;
-        Ok((success, output))
-    }
-
     /// Reconcile once more, then save and return the outcome.
     async fn finalize(&mut self) -> Result<AgentsApiTurnOutcome, AgentsApiError> {
         let outcome = match self.turn().provider_turn_id.clone() {
@@ -1146,13 +1194,26 @@ impl Run<'_> {
                     None,
                     "OpenAI Agents API session failed before the turn started".to_string(),
                 ));
-                AgentsApiTurnOutcome::Failed { code, message }
+                AgentsApiTurnOutcome::Failed {
+                    code,
+                    message,
+                    policy: false,
+                }
             }
         };
         self.turn_mut().outcome = Some(serde_json::to_value(&outcome).map_err(store_error)?);
         self.save().await?;
         self.release().await?;
         Ok(outcome)
+    }
+
+    /// Calls still parked when the provider turn ended.
+    fn parked_calls(&self) -> usize {
+        self.turn()
+            .tool_results
+            .values()
+            .filter(|entry| matches!(entry.state, ToolResultState::Parked { .. }))
+            .count()
     }
 
     fn outcome_from(
@@ -1172,17 +1233,28 @@ impl Run<'_> {
                     .and_then(|id| self.turn().items.get(&format!("msg:{id}")))
                     .map(|item| parse_message_id(&item.local_id))
                     .transpose()?;
-                let tool_calls = self
-                    .turn()
-                    .items
-                    .keys()
-                    .filter(|key| key.starts_with("call:") || key.starts_with("mcp:"))
-                    .count();
                 Ok(AgentsApiTurnOutcome::Completed {
                     final_message_id,
                     final_text: final_item.map(message_item_text).unwrap_or_default(),
                     usage: usage_from(turn),
-                    tool_calls: u32::try_from(tool_calls).unwrap_or(u32::MAX),
+                    tool_calls: self.tool_call_count(),
+                })
+            }
+            // The provider gave up on the turn while Everruns held a call
+            // open for a person (its own timeout, or a cancel elsewhere).
+            Some("failed" | "cancelled") if self.parked_calls() > 0 => {
+                let cause = turn
+                    .pointer("/error/message")
+                    .and_then(Value::as_str)
+                    .map(|message| format!(" Provider: {message}"))
+                    .unwrap_or_default();
+                Ok(AgentsApiTurnOutcome::Failed {
+                    code: Some(PARKED_CALL_EXPIRED.to_string()),
+                    message: format!(
+                        "The OpenAI Agents API turn ended while waiting for an answer to {} tool call(s); start a new turn to continue.{cause}",
+                        self.parked_calls()
+                    ),
+                    policy: true,
                 })
             }
             Some("failed") => {
@@ -1196,6 +1268,7 @@ impl Run<'_> {
                         .and_then(|e| e.get("message")?.as_str().map(str::to_string))
                         .or_else(|| fallback.map(|(_, message)| message))
                         .unwrap_or_else(|| "OpenAI Agents API turn failed".to_string()),
+                    policy: false,
                 })
             }
             Some("cancelled") => Ok(AgentsApiTurnOutcome::Cancelled),

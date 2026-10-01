@@ -64,6 +64,7 @@ fn reason_result() -> ReasonResult {
         locale: None,
         network_access: None,
         parallel_tool_calls: None,
+        waiting_for_tool_results: false,
     }
 }
 
@@ -292,6 +293,41 @@ fn reason_at_max_iterations_surfaces_max_turn_requests() {
     ));
     // Terminal: completion + idle + turn-end-hook effects.
     assert_eq!(effects.len(), 3);
+}
+
+/// A remote tool loop that paused on a tool call (EVE-1124) parks the turn,
+/// even at the iteration cap and with a steering message queued: the provider
+/// still holds the call open, so only the pause's answer may advance it.
+#[test]
+fn reason_waiting_for_tool_results_parks_the_turn() {
+    let state = turn_state();
+    let result = ReasonResult {
+        waiting_for_tool_results: true,
+        max_iterations: 1,
+        ..reason_result()
+    };
+    assert!(!reason_schedules_act(&state, &result));
+    let (plan, effects) = plan_after_reason(&state, result, 1, fixed_now(), None);
+    match plan {
+        TurnPlan::WaitForToolResults { resume } => {
+            assert_eq!(resume.iteration, state.iteration + 1);
+        }
+        other => panic!("expected WaitForToolResults, got {other:?}"),
+    }
+    assert!(matches!(
+        effects.as_slice(),
+        [TurnLifecycleEffect::WaitingForToolResults]
+    ));
+
+    // A failed reason never parks.
+    let failed = ReasonResult {
+        success: false,
+        waiting_for_tool_results: true,
+        error: Some("boom".into()),
+        ..reason_result()
+    };
+    let (plan, _) = plan_after_reason(&state, failed, 0, fixed_now(), None);
+    assert!(matches!(plan, TurnPlan::Complete { .. }));
 }
 
 /// An act awaiting tool results pauses only when the setup_connection hint is

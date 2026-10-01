@@ -1445,12 +1445,13 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     input: &DurableTurnInput,
     output: &serde_json::Value,
 ) -> Result<()> {
-    // A reason that produced a final answer (no tool calls) is winding the turn
-    // down; a reason that emitted tool calls is not.
+    // A reason that produced a final answer (no tool calls, no pause) is winding
+    // the turn down; a reason that emitted tool calls or paused is not.
     let reason_final_answer = if completed_activity == "reason" {
         let reason_result: ReasonResult = serde_json::from_value(output.clone())
             .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
-        reason_result.success && !reason_result.has_tool_calls
+        let continues = reason_result.has_tool_calls || reason_result.waiting_for_tool_results;
+        reason_result.success && !continues
     } else {
         false
     };
@@ -1804,9 +1805,7 @@ mod tests {
             time_to_first_token_ms: None,
             response_id: Some("response-after".into()),
             finish_reason: Some("tool_calls".into()),
-            locale: None,
-            network_access: None,
-            parallel_tool_calls: None,
+            ..ReasonResult::default()
         };
         let (TurnPlan::ScheduleAct(plan), _) = plan_after_reason(
             &state,
