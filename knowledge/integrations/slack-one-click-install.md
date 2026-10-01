@@ -81,17 +81,32 @@ behalf", "Create and manage the configuration of Slack apps on your behalf", and
 "Install managed child apps on workspaces". The first two are locked; **the
 third is a checkbox the user can untick.**
 
-`managed_apps:install` is the one that matters: it lets a manager app install the
-child apps it creates, so the customer consents once and never again. It is not
-in Slack's published scope reference; the live consent screen is the evidence.
+`managed_apps:install` is the one that matters. Its scope reference says it
+*"lets a manager app request the installation of managed apps for a user
+automatically, without that user going through the OAuth flow for each one."*
+The customer consents once and never again.
 
-The scopes are gated. From the `apps.manifest.create` reference, error
-`invalid_manager_app`: *"The calling app is not enrolled as a manager app.
-Ensure the app has `app_configurations:write` in its configured scopes and its
-home team has manager app support enabled."* An unenrolled workspace cannot even
-declare them — Slack's manifest editor rejects them outright, and they are absent
-from the User Token Scopes picker. Enrollment is granted by Slack and is not
-self-serve.
+It is **reserved for Slack partners**: *"This scope is reserved for Slack
+partners that use the Add to Slack feature to create Slack apps on behalf of
+their users."* That is a business relationship, not a setting support can flip.
+It is consistent with the observed competitor apps both carrying the "App is
+approved by Slack" badge. From our side the gate shows up as `invalid_manager_app`
+on `apps.manifest.create` (*"its home team has manager app support enabled"*),
+as Slack's manifest editor rejecting the scopes outright, and as their absence
+from the User Token Scopes picker.
+
+Two further properties from the same reference, both relevant once the gate
+lifts:
+
+- **Admin approval is not bypassed.** *"Install attempts do not bypass your admin
+  approved apps settings."* In a workspace with app approval on, every child app
+  needs admin sign-off. `admin.apps.approve` can create a rule that pre-approves
+  future child installs from a given manager app; nothing here builds that yet.
+- **The manager app itself still needs public distribution**, since it is
+  installed into customers' workspaces. That part is self-serve — complete the
+  checklist and click Activate Public Distribution. Slack calls the result an
+  *unlisted distributed app*. A Marketplace listing is a separate, optional step
+  and is **not** required to distribute.
 
 Also on that page: `managed_app_limit_reached`. A quota exists on apps created
 per manager app. Whether it counts per manager app or per customer workspace is
@@ -136,9 +151,20 @@ but unable to provision. The capability therefore reports `supported`,
 `connected` and `reconnect_required` separately rather than one boolean, and the
 form renders the reconnect case as its own state with its own recovery.
 
-**Per-endpoint app identity is kept.** Each endpoint gets its own Slack app,
-which is what puts a distinctly named and avatared agent in Slack's Agents menu.
-Nothing here trades that away.
+**One Everruns agent is one Slack agent. This is a product requirement, not a
+preference.** Each endpoint gets its own Slack app, which is what puts a
+distinctly named and avatared agent in Slack's Agents menu.
+
+That rules out the cheapest true one-click: a single publicly distributed
+Everruns app behind a standard "Add to Slack" button. It is self-serve and needs
+neither a Marketplace listing nor partner status, but one app is one bot, so
+every agent would speak as the same identity and share one Agents-menu entry.
+Rejected for that reason alone. Do not reopen it as a shortcut to one-click;
+the trade it makes is the one this product exists not to make.
+
+The consequence is that per-agent one-click goes through the partner-reserved
+manager app or not at all, and the customer-supplied token path is the design
+until then.
 
 **One-click is an OSS capability, not a SaaS feature.** A self-hosted deployment
 has a workspace and can generate a config token, so it gets the same path. Only
@@ -157,11 +183,12 @@ the PoC's own conclusions, corrected.
   publish before app creation. The API does not verify it. Whether Slack
   *delivers* events to an unverified URL is a separate question the PoC did not
   answer, so the existing ordering should not be relaxed on this basis alone.
-- **That no Marketplace listing is required.** Stated here previously. True only
-  within a single workspace, which is all the PoC exercised. Reaching a
-  customer's workspace needs either manager enrollment (which the observed
-  competitor apps pair with a Marketplace listing) or a token the customer
-  supplies. Neither is "nothing".
+- **That nothing stands between us and one-click.** Stated here previously as
+  "no Marketplace listing is required". The listing part turned out to be true —
+  distribution is self-serve — but the conclusion drawn from it was not. The PoC
+  ran in a single workspace and never met the real gate: per-agent apps in a
+  customer's workspace need either partner status (for the manager app) or a
+  token the customer supplies. Neither is nothing.
 - **That the config token is an Everruns-the-company secret, and self-hosted
   keeps the copy-paste flow.** Both wrong, and the second followed from the
   first. The token belongs to the workspace the apps are created in — the
@@ -180,17 +207,21 @@ omission was invisible because the copy-paste flow never runs OAuth. See
 
 ## Open questions
 
-All concern enrollment, and none block the customer-supplied token path.
+All concern partner status, and none block the customer-supplied token path.
+Whether a managed app needs its own consent, and whether a Marketplace listing is
+needed to distribute, were open here previously; both are answered above from
+Slack's documentation.
 
-- What manager app enrollment requires, and whether a Marketplace listing is a
-  precondition or a separate track.
+- What Slack partner status requires, and its timeline.
 - Whether `managed_app_limit_reached` counts per manager app or per customer
   workspace. Per manager app would cap agents across all customers.
-- What a manager app can do when the user declines `managed_apps:install`.
-- Whether Slack will enable manager app support on a development workspace, which
-  would convert a hard block into a parallel track.
+- What a manager app can do when the user unticks `managed_apps:install`.
+- Whether Slack will enable manager app support on a development workspace while
+  a partner application is assessed, which would let the build proceed in
+  parallel.
 
-Asking Slack is cheaper than further reverse-engineering.
+These are questions for a Slack partnership conversation, not for further
+reverse-engineering.
 
 ## Files
 
