@@ -267,6 +267,8 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 pub struct WorkerRuntimeHost<A: WorkerAdapters> {
     adapters: A,
     cancellation: Option<tokio::sync::watch::Receiver<bool>>,
+    /// Explicit turn cancel only; `cancellation` also fires on ownership loss.
+    cancel_requested: Option<tokio::sync::watch::Receiver<bool>>,
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
@@ -274,14 +276,17 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
     pub fn with_turn_cancellation(
         mut self,
         cancellation: tokio::sync::watch::Receiver<bool>,
+        cancel_requested: tokio::sync::watch::Receiver<bool>,
     ) -> Self {
         self.cancellation = Some(cancellation);
+        self.cancel_requested = Some(cancel_requested);
         self
     }
     pub fn new(adapters: A) -> Self {
         Self {
             adapters,
             cancellation: None,
+            cancel_requested: None,
             event_metadata: None,
         }
     }
@@ -293,6 +298,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         Self {
             adapters,
             cancellation: None,
+            cancel_requested: None,
             event_metadata: metadata,
         }
     }
@@ -302,6 +308,9 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
 impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn turn_cancellation(&self) -> Option<tokio::sync::watch::Receiver<bool>> {
         self.cancellation.clone()
+    }
+    fn turn_cancel_requested(&self) -> Option<tokio::sync::watch::Receiver<bool>> {
+        self.cancel_requested.clone()
     }
     async fn set_session_status(
         &self,

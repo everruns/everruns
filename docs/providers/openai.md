@@ -28,9 +28,9 @@ endpoint** through a custom base URL. For Azure deployments, use the dedicated
   a JSON Schema, enforced by OpenAI (`text.format` on the Responses API,
   `response_format` on Chat Completions).
 - **Background mode** for `xhigh` and `max` reasoning on OpenAI and Azure: the
-  response keeps running at OpenAI if the connection drops, and Everruns picks
-  the stream back up instead of paying for the call twice. A cancelled turn
-  cancels the response. Background mode stores the response, so organizations
+  response keeps running at OpenAI if the connection drops or the worker
+  running the turn restarts, and Everruns picks the stream back up instead of
+  paying for the call twice. A cancelled turn cancels the response. Background mode stores the response, so organizations
   with zero data retention fall back to a normal streaming call.
 
 ## Configure in Everruns

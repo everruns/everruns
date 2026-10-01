@@ -545,6 +545,8 @@ pub struct LlmCallConfig {
     /// Schema the reply must satisfy, enforced by the provider. A driver that
     /// cannot enforce it fails the call (see [`ChatDriver::supports_response_format`]).
     pub response_format: Option<crate::structured_output::ResponseFormat>,
+    /// Durable journal and turn-cancel signal for background responses.
+    pub background_call: crate::background_call::BackgroundCallContext,
 }
 
 impl LlmCallConfig {
@@ -556,22 +558,7 @@ impl LlmCallConfig {
         }
     }
 
-    /// Resolve the effective wire value for `parallel_tool_calls`, gated by
-    /// whether the driver/model can express it on the request.
-    ///
-    /// Returns `None` (omit the field, keep the provider default) when the
-    /// preference is unset or `supported` is `false`. Drivers call this with
-    /// `self.supports_parallel_tool_calls(&config.model)` so the preference is
-    /// only serialized where the provider has a control for it. The local tool
-    /// scheduler honors the preference independently, so `Some(false)` still
-    /// serializes execution even when this returns `None`.
-    pub fn resolved_parallel_tool_calls(&self, supported: bool) -> Option<bool> {
-        if supported {
-            self.parallel_tool_calls
-        } else {
-            None
-        }
-    }
+    // `resolved_parallel_tool_calls` lives in `llm_call_config_builder.rs`.
 }
 
 // The `From<&RuntimeAgent>` adapter for LlmCallConfig lives in

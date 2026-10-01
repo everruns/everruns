@@ -260,6 +260,10 @@ Workers heartbeat every 5s. `WORKER_HEARTBEAT_TIMEOUT_SECS` (60s, in `crates/dur
 
 **Decision**: Verify ownership on task completion. Prevents duplicate activity scheduling when a worker's heartbeat times out and task is reclaimed. Late-finishing worker gets `TaskNotOwned` error.
 
+### Task Heartbeat Cancellation
+
+**Decision**: The task heartbeat tells two stop reasons apart (EVE-1134). A rejected heartbeat (`accepted = false`) is ownership loss: the task was reclaimed or finished elsewhere. An accepted heartbeat with `should_cancel` means this worker still owns the task but its workflow was cancelled, which is how an explicit turn cancel reaches a running activity. The worker fires its task cancellation for both, and a separate turn-cancel signal only for the second. Provider work that a new owner could resume (an OpenAI background response, see [LLM drivers](../foundations/llm-drivers.md#background-mode-openai-responses)) stops only on the turn cancel, never on ownership loss or a failed heartbeat.
+
 ### Worker Communication
 
 **Decision**: Workers communicate via gRPC only, no direct database access. Clear separation between control-plane (owns state) and workers (stateless executors).

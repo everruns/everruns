@@ -37,6 +37,7 @@ use crate::durable_runner::DurableTurnInput;
 use crate::grpc_durable_store::GrpcDurableStore;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::{is_non_retryable_task_error, summarize_task_failure, user_facing_failure};
+use crate::task_heartbeat::{CancelSignals, spawn_task_heartbeat};
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledAppChannelInput,
@@ -1256,48 +1257,6 @@ async fn terminalize_failed_turn<A: WorkerAdapters + Clone>(
     Ok(())
 }
 
-fn spawn_task_heartbeat<S: TaskStore>(
-    store: Arc<S>,
-    task_id: Uuid,
-    worker_id: String,
-    heartbeat_interval: Duration,
-) -> (
-    tokio::sync::oneshot::Sender<()>,
-    tokio::task::JoinHandle<()>,
-    tokio::sync::watch::Receiver<bool>,
-) {
-    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    let (task_cancel_tx, task_cancel_rx) = tokio::sync::watch::channel(false);
-    let handle = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(heartbeat_interval);
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    match store.heartbeat_task(task_id, &worker_id, None).await {
-                        Ok(response) => {
-                            if response.should_cancel {
-                                let _ = task_cancel_tx.send(true);
-                                warn!(task_id = %task_id, "Task cancellation requested via heartbeat");
-                                break;
-                            }
-                            debug!(task_id = %task_id, "Task heartbeat sent");
-                        }
-                        Err(error) => {
-                            let _ = task_cancel_tx.send(true);
-                            warn!(task_id = %task_id, error = %error, "Failed to send task heartbeat");
-                        }
-                    }
-                }
-                _ = &mut cancel_rx => {
-                    debug!(task_id = %task_id, "Task heartbeat loop cancelled");
-                    break;
-                }
-            }
-        }
-    });
-    (cancel_tx, handle, task_cancel_rx)
-}
-
 fn parse_resume_state(input: &serde_json::Value) -> Result<Option<DurableTurnInput>> {
     match input.get("resume_state") {
         Some(value) if value.is_null() => Ok(None),
@@ -1358,7 +1317,7 @@ async fn execute_input_activity<A: WorkerAdapters>(
 async fn execute_reason_activity<A: WorkerAdapters>(
     adapters: &A,
     input: &DurableTurnInput,
-    cancellation: tokio::sync::watch::Receiver<bool>,
+    (cancellation, cancel_requested): CancelSignals,
 ) -> Result<serde_json::Value> {
     debug!(
         session_id = %input.session_id,
@@ -1398,7 +1357,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     });
     let result = runtime_execute_reason_activity(
         &WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata)
-            .with_turn_cancellation(cancellation),
+            .with_turn_cancellation(cancellation, cancel_requested),
         input.org_id,
         reason_input,
     )

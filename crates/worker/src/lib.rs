@@ -21,6 +21,9 @@ pub mod session_task_reaper;
 mod stream_heartbeater;
 mod system_decisions;
 pub mod task_error;
+mod task_heartbeat;
+#[cfg(test)]
+mod task_heartbeat_tests;
 pub mod unified_worker;
 #[cfg(test)]
 mod unified_worker_test_adapters;

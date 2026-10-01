@@ -68,6 +68,7 @@ use crate::{
 };
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 
+mod background_call;
 mod compaction;
 mod error_policy;
 mod facts;
@@ -267,6 +268,8 @@ pub struct ReasonAtom {
     schedule_store: Option<Arc<dyn crate::session_services::SessionScheduleStore>>,
     /// Optional durable store for replacement context checkpoints.
     compaction_checkpoint_store: Option<Arc<dyn crate::CompactionCheckpointStore>>,
+    /// Durable re-attach journal and turn-cancel signal for background calls.
+    background_call: everruns_provider::background_call::BackgroundCallContext,
 }
 
 impl ReasonAtom {
@@ -303,6 +306,7 @@ impl ReasonAtom {
             decisions: None,
             schedule_store: None,
             compaction_checkpoint_store: None,
+            background_call: Default::default(),
         }
     }
 
@@ -322,28 +326,6 @@ impl ReasonAtom {
     ) -> Self {
         self.compaction_checkpoint_store = Some(store);
         self
-    }
-
-    /// Collect the [`LlmErrorHook`]s contributed by the active capabilities,
-    /// paired with each capability's per-agent config. Hooks are invoked
-    /// generically on the terminal-error path; the reason atom has no knowledge
-    /// of any specific capability's behavior. Capabilities that contribute no
-    /// hook — the common case — are skipped at zero allocation cost.
-    fn collect_llm_error_hooks(
-        &self,
-        resolved_capability_configs: &[crate::CapabilityRef],
-    ) -> Vec<(
-        Arc<dyn crate::llm_error_hook::LlmErrorHook>,
-        serde_json::Value,
-    )> {
-        resolved_capability_configs
-            .iter()
-            .filter_map(|cfg| {
-                let cap = self.capability_registry.get(cfg.capability_id())?;
-                let hook = cap.llm_error_hook()?;
-                Some((hook, cfg.config_value().clone()))
-            })
-            .collect()
     }
 
     /// Set the image resolver for resolving image_file content parts
@@ -1152,6 +1134,7 @@ impl ReasonAtom {
             .previous_response_id(previous_response_id.clone())
             .volatile_suffix_len(volatile_suffix_len)
             .build();
+        llm_config.background_call = self.background_call.clone();
         if let Some(replay) = &reasoning_replay {
             llm_config.reasoning_effort = replay.state.baseline;
             llm_config.reasoning_state = Some(replay.state.clone());
