@@ -160,6 +160,10 @@ pub struct ActOutcome {
     /// The pause is an `ask_user` question set, which only a client that
     /// declared `ask_user` can answer (EVE-1057).
     pub waiting_for_ask_user: bool,
+    /// The pause includes a hard tool-approval request (EVE-1140). Held
+    /// whatever the client declared: the gated call already failed closed, and
+    /// a person can answer it through the API even when no card is drawn.
+    pub waiting_for_tool_approval: bool,
 }
 
 /// Session facts the host pre-resolves for the reason→act scheduling case.
@@ -519,8 +523,15 @@ pub fn plan_after_act(
     // nobody can render is not worth holding a turn for (EVE-1057). It does not
     // ride `setup_connection`, because a client can be able to finish a
     // connection setup and still have no way to draw a question.
+    //
+    // A hard tool-approval request is the exception that pauses regardless of
+    // hints (EVE-1140). Continuing would not let the gated call through — it
+    // already failed closed — but it would throw away the only chance a person
+    // has to approve it, and an API caller can answer without any card.
     let should_pause_for_tool_results = outcome.waiting_for_tool_results
-        && if outcome.waiting_for_ask_user {
+        && if outcome.waiting_for_tool_approval {
+            true
+        } else if outcome.waiting_for_ask_user {
             ask_user_hint_enabled
         } else {
             setup_connection_hint_enabled
@@ -544,6 +555,7 @@ pub fn plan_after_act(
             session_id = %state.session_id,
             waiting_for_url_elicitation = outcome.waiting_for_url_elicitation,
             waiting_for_ask_user = outcome.waiting_for_ask_user,
+            waiting_for_tool_approval = outcome.waiting_for_tool_approval,
             "no hint declares this client can answer the pause, continuing turn instead"
         );
     }

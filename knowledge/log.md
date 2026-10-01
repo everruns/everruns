@@ -1,5 +1,15 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-01
+
+* **Hosted sessions have a hard tool-approval gate (EVE-1140).** [Tool Approval](execution/tool-approval.md)
+  records how `tool_approval` works where a turn cannot block on a human: the
+  gate defers an undecided call, the turn parks on an `approve_tool_call`
+  request, a person answers through `POST /v1/sessions/{id}/tool-approvals`, and
+  the retried call finds the decision in session storage on whichever worker
+  runs it. One-off approvals bind to the exact arguments; unanswered requests
+  expire as not approved. TM-TOOL-008 is mitigated.
+
 ## 2026-09-30
 
 * **Virtual users now own runtime profiles, preferences, and connections.** [Virtual Users and Everruns Users](runtime-resources/virtual-users.md) separates organization-scoped agent consumers and service accounts from management users. Chats and personal connection settings use the console default runtime account. Per-input authority replaces historical-owner credential resolution; ambiguous global grants require an explicit destination.

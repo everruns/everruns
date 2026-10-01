@@ -62,7 +62,9 @@ pub fn spawn_tool_result_timeout_sweep(
     })
 }
 
-async fn sweep_timed_out_sessions(
+/// One pass of the sweep. Public so contract tests can drive a pass without
+/// waiting on the background interval.
+pub async fn sweep_timed_out_sessions(
     db: &Arc<StorageBackend>,
     runner: &Arc<dyn AgentRunner>,
     event_service: &EventService,
@@ -86,6 +88,15 @@ async fn sweep_timed_out_sessions(
                 "Failed to resolve an expired ask_user call"
             );
         }
+        if let Err(e) =
+            resolve_expired_approvals(db, event_service, runner, session_id, org_id).await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "Failed to resolve an expired tool approval request"
+            );
+        }
     }
 
     let timed_out = db
@@ -107,6 +118,15 @@ async fn sweep_timed_out_sessions(
         // client went away when in fact nobody answered a question.
         if let Ok(Some(pending)) = pending_ask_user(db, session_id).await
             && pending.expires_at.is_some()
+        {
+            continue;
+        }
+        // Same for a hard tool-approval request (EVE-1140): its own deadline,
+        // resolved by the pass above as not approved, never as a client that
+        // went away.
+        if let Ok(pending) =
+            crate::api::tool_approvals::pending_tool_approvals(db, session_id).await
+            && pending.iter().any(|approval| approval.expires_at.is_some())
         {
             continue;
         }
@@ -217,6 +237,60 @@ async fn resolve_expired_question(
             crate::api::question_answers::ResolveError::AlreadyResolved
             | crate::api::question_answers::ResolveError::NoPendingQuestions
             | crate::api::question_answers::ResolveError::WrongPendingCall,
+        ) => Ok(()),
+        Err(error) => Err(anyhow::anyhow!("{error:?}")),
+    }
+}
+
+/// Resolve a parked tool-approval batch once its deadline has passed.
+///
+/// Fails closed: an unanswered request is not approved and nothing is recorded,
+/// so a retried call asks again rather than inheriting a decision nobody made.
+/// Goes through the shared resolution operation, so a person answering at the
+/// same instant and this sweep race on one claim and the first writer wins.
+async fn resolve_expired_approvals(
+    db: &Arc<StorageBackend>,
+    event_service: &EventService,
+    runner: &Arc<dyn AgentRunner>,
+    session_id: SessionId,
+    org_id: i64,
+) -> anyhow::Result<()> {
+    let pending = crate::api::tool_approvals::pending_tool_approvals(db, session_id).await?;
+    let now = Utc::now();
+    // The batch shares one deadline in practice; resolve once the earliest
+    // passes, since one resume settles all of it.
+    let Some(earliest) = pending
+        .iter()
+        .filter_map(|approval| approval.expires_at)
+        .min()
+    else {
+        return Ok(());
+    };
+    if now < earliest {
+        return Ok(());
+    }
+    use crate::api::tool_approvals::{
+        ApprovalOutcome, ApprovalResolveError, resolve_tool_approvals,
+    };
+    match resolve_tool_approvals(
+        db,
+        event_service,
+        runner,
+        org_id,
+        session_id,
+        &pending,
+        &std::collections::HashMap::new(),
+        ApprovalOutcome::Expired,
+        "tool_approval_timeout",
+    )
+    .await
+    {
+        Ok(_) => Ok(()),
+        // A person got there first, or the turn moved on.
+        Err(
+            ApprovalResolveError::AlreadyResolved
+            | ApprovalResolveError::NotWaiting(_)
+            | ApprovalResolveError::NotFound(_),
         ) => Ok(()),
         Err(error) => Err(anyhow::anyhow!("{error:?}")),
     }

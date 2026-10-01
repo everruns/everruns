@@ -663,6 +663,10 @@ impl InMemoryAgenticLoop {
                                     .client_tool_calls
                                     .iter()
                                     .any(|call| call.name == everruns_provider::ASK_USER_TOOL_NAME),
+                                waiting_for_tool_approval:
+                                    everruns_engine::has_pending_tool_approval(
+                                        &act_result.client_tool_calls,
+                                    ),
                             }),
                             0,
                             Utc::now(),

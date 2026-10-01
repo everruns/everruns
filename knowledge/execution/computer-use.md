@@ -79,8 +79,10 @@ prompt-injection path. Layers, weakest to strongest:
    per-tool one. Clicks are not gated: gating every click makes the capability
    unusable, and a dangerous click is covered by layers 1 and 2.
 
-Hosted sessions have no hard per-call gate yet (TM-TOOL-008), which is why the
-capability is experimental. Egress follows the session's network access list;
+Hosted sessions can enforce the per-call gate ([tool approval](tool-approval.md),
+TM-TOOL-008), but it is opt-in per agent and nothing yet requires it for
+computer use or gates per action, which is why the capability is still
+experimental. Egress follows the session's network access list;
 see TM-TOOL-048 to TM-TOOL-050 in the [threat model](../security/threat-model.md).
 
 ### Browserless backend
@@ -97,7 +99,7 @@ Chromium, filling and submitting a form end to end.
 |---|---|---|
 | 1 | Contract, `computer` function tool, Browserless browser backend | Done |
 | 2 | Native adapters: OpenAI `computer` tool (`computer_call` / `computer_call_output`) and Anthropic `computer_toolset_20260801`, selected by model profile | Next, builds on EVE-1115's hosted tool support |
-| 3 | Desktop backend on a sandbox image (Xvfb plus a screenshot bridge) for non-browser apps; per-action hard approval once hosted approvals exist | Planned |
+| 3 | Desktop backend on a sandbox image (Xvfb plus a screenshot bridge) for non-browser apps; per-action hard approval on top of the hosted [tool approval](tool-approval.md) gate | Planned |
 
 ## Rejected options
 

@@ -100,6 +100,9 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                     .and_then(|value| value.as_bool())
                     .unwrap_or(false),
                 waiting_for_ask_user: !ask_user_calls.is_empty(),
+                waiting_for_tool_approval: everruns_engine::has_pending_tool_approval(
+                    &client_tool_calls,
+                ),
             };
 
             let hints = resolve_pause_hints(adapter, state.org_id, state.session_id, outcome).await;
@@ -308,5 +311,8 @@ pub(crate) fn act_outcome(act_result: &everruns_engine::ActResult) -> ActOutcome
         waiting_for_tool_results: act_result.waiting_for_tool_results,
         waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
         waiting_for_ask_user: has_pending_ask_user(act_result),
+        waiting_for_tool_approval: everruns_engine::has_pending_tool_approval(
+            &act_result.client_tool_calls,
+        ),
     }
 }

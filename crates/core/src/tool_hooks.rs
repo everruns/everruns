@@ -18,6 +18,18 @@ pub enum PreToolUseDecision {
         /// Optional message for a user-facing runtime.
         user_message: Option<String>,
     },
+    /// Do not run this call yet; record `result` as its outcome instead.
+    ///
+    /// For gates that park the turn on a durable request rather than answer
+    /// in-process (hosted tool approval): `result` carries a structured payload
+    /// that a post-act hook turns into a pause, and its `error` is what the
+    /// model reads. Like `Block`, the tool is never invoked and the chain stops.
+    Defer {
+        /// Call that was deferred.
+        tool_call: ToolCall,
+        /// Outcome recorded for the call in place of running it.
+        result: ToolResult,
+    },
 }
 
 /// Capability hook invoked before each individual tool execution.

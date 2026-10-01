@@ -316,13 +316,14 @@ where
         self
     }
 
-    /// Default hooks, in order. FormElicitation appends synthetic `ask_user` calls, so it must
-    /// precede ClientSideTool, which emits `tool.call_requested` for client-side calls.
+    /// Default hooks, in order. FormElicitation and ToolApprovalPause append synthetic calls, so
+    /// they must precede ClientSideTool, which emits `tool.call_requested` for client-side calls.
     fn default_hooks() -> Vec<Box<dyn PostActHook>> {
         vec![
             Box::new(act_hooks::ConnectionSetupHook),
             Box::new(act_hooks::UrlElicitationHook),
             Box::new(act_hooks::FormElicitationHook),
+            Box::new(act_hooks::ToolApprovalPauseHook),
             Box::new(act_hooks::ClientSideToolHook),
         ]
     }
@@ -1580,27 +1581,45 @@ where
         // the tool call or block execution entirely. First Block wins; the
         // tool is not invoked, and the synthetic error result flows through
         // the same completion/event path as a tool failure.
-        let (execution_tool_call, pre_block_reason) = if self.pre_tool_hooks.is_empty() {
-            (execution_tool_call, None)
-        } else {
-            match act_hooks::run_pre_tool_use_hooks(
-                &self.pre_tool_hooks,
-                execution_tool_call.clone(),
-                tool_def,
-                &tool_context,
-            )
-            .await
-            {
-                act_hooks::PreToolUseDecision::Continue(updated) => (updated, None),
-                act_hooks::PreToolUseDecision::Block {
-                    tool_call: blocked,
-                    reason,
-                    ..
-                } => (blocked, Some(reason)),
-            }
-        };
+        let (execution_tool_call, pre_block_reason, deferred_result) =
+            if self.pre_tool_hooks.is_empty() {
+                (execution_tool_call, None, None)
+            } else {
+                match act_hooks::run_pre_tool_use_hooks(
+                    &self.pre_tool_hooks,
+                    execution_tool_call.clone(),
+                    tool_def,
+                    &tool_context,
+                )
+                .await
+                {
+                    act_hooks::PreToolUseDecision::Continue(updated) => (updated, None, None),
+                    act_hooks::PreToolUseDecision::Block {
+                        tool_call: blocked,
+                        reason,
+                        ..
+                    } => (blocked, Some(reason), None),
+                    act_hooks::PreToolUseDecision::Defer {
+                        tool_call: deferred,
+                        result,
+                    } => (deferred, None, Some(result)),
+                }
+            };
 
-        let result = if let Some(reason) = pre_block_reason {
+        let result = if let Some(mut deferred) = deferred_result {
+            // A gate parked this call on a durable request (hosted tool
+            // approval). The tool never runs; the structured result flows
+            // through the ordinary completion path so post-act hooks can turn it
+            // into a pause and a replayed act settles to the same outcome.
+            tracing::info!(
+                session_id = %context.session_id,
+                tool_call_id = %execution_tool_call.id,
+                tool_name = %execution_tool_call.name,
+                "ActAtom: pre_tool_use hook deferred execution"
+            );
+            deferred.tool_call_id = execution_tool_call.id.clone();
+            Ok(deferred)
+        } else if let Some(reason) = pre_block_reason {
             tracing::warn!(
                 session_id = %context.session_id,
                 tool_call_id = %execution_tool_call.id,

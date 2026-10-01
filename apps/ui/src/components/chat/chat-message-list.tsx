@@ -50,6 +50,10 @@ import {
   McpApprovalToolCall,
   type McpApprovalArguments,
 } from "@/components/chat/mcp-approval-tool-call";
+import {
+  TOOL_APPROVAL_TOOL,
+  ToolApprovalRequests,
+} from "@/components/chat/tool-approval-tool-call";
 import { AskUserToolCall, isAskUserArguments } from "@/components/chat/ask-user-tool-call";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
 import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
@@ -412,6 +416,8 @@ export const ChatMessageList = memo(function ChatMessageList({
         requested?.tool_calls.filter((toolCall) => toolCall.name === "ask_user") ?? [];
       const approvalCalls =
         requested?.tool_calls.filter((toolCall) => toolCall.name === MCP_APPROVAL_TOOL) ?? [];
+      const toolApprovalCalls =
+        requested?.tool_calls.filter((toolCall) => toolCall.name === TOOL_APPROVAL_TOOL) ?? [];
       return (
         <div key={event.id} className="space-y-1">
           <ToolActivityTimelineGroup
@@ -448,6 +454,13 @@ export const ChatMessageList = memo(function ChatMessageList({
               toolResultsMap={toolResultsMap}
             />
           ))}
+          {toolApprovalCalls.length > 0 && (
+            <ToolApprovalRequests
+              sessionId={sessionId}
+              requests={toolApprovalCalls}
+              toolResultsMap={toolResultsMap}
+            />
+          )}
           {askUserCalls.map((toolCall) =>
             isAskUserArguments(toolCall.arguments) ? (
               <AskUserToolCall
@@ -481,6 +494,9 @@ export const ChatMessageList = memo(function ChatMessageList({
     const approvalCalls = reqData.tool_calls.filter(
       (toolCall) => toolCall.name === MCP_APPROVAL_TOOL,
     );
+    const toolApprovalCalls = reqData.tool_calls.filter(
+      (toolCall) => toolCall.name === TOOL_APPROVAL_TOOL,
+    );
 
     return (
       <div key={event.id} className="space-y-1">
@@ -513,6 +529,13 @@ export const ChatMessageList = memo(function ChatMessageList({
             toolResultsMap={toolResultsMap}
           />
         ))}
+        {toolApprovalCalls.length > 0 && (
+          <ToolApprovalRequests
+            sessionId={sessionId}
+            requests={toolApprovalCalls}
+            toolResultsMap={toolResultsMap}
+          />
+        )}
         {askUserCalls.map((toolCall) =>
           isAskUserArguments(toolCall.arguments) ? (
             <AskUserToolCall

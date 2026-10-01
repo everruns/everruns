@@ -81,6 +81,7 @@ pub mod slack_events;
 pub mod slack_install;
 pub mod sse;
 pub mod task_webhooks;
+pub mod tool_approvals;
 pub mod tool_results;
 pub mod turnstile;
 pub mod user_connections;

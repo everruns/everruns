@@ -105,6 +105,7 @@ pub fn routes(state: AppState) -> Router {
         )
         .merge(super::mcp_url_consent::routes())
         .merge(super::question_answers::routes())
+        .merge(super::tool_approvals::routes())
         .with_state(state)
 }
 

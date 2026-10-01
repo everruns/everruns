@@ -3886,6 +3886,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/tool-approvals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * POST /v1/sessions/{session_id}/tool-approvals
+     * @description Records a person's decisions about tool calls an agent's `tool_approval`
+     *     gate held back, and resumes the paused turn.
+     */
+    post: operations["submit_tool_approvals"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/tool-results": {
     parameters: {
       query?: never;
@@ -17217,6 +17238,25 @@ export interface components {
     StatRequest: {
       path: string;
     };
+    /** @description Request to answer pending tool-approval requests. */
+    SubmitToolApprovalsRequest: {
+      /**
+       * @description Decisions for the pending requests. A pending request in the same batch
+       *     that is left out is resolved as not approved: the turn resumes once, so
+       *     every request in it is settled now, and silence never approves.
+       */
+      decisions: components["schemas"]["ToolApprovalAnswer"][];
+    };
+    /** @description Result of answering tool-approval requests. */
+    SubmitToolApprovalsResponse: {
+      /** @description How every pending request in the batch was settled. */
+      resolved: components["schemas"]["ToolApprovalResolution"][];
+      /**
+       * @description Session status after the decision.
+       * @example active
+       */
+      status: string;
+    };
     /** @description Request to submit client-side tool results */
     SubmitToolResultsRequest: {
       /**
@@ -17625,6 +17665,34 @@ export interface components {
        * @description Number of output/completion tokens
        */
       output_tokens: number;
+    };
+    /** @description One decision in a submission. */
+    ToolApprovalAnswer: {
+      /** @description The person's decision. */
+      decision: components["schemas"]["ToolApprovalDecision"];
+      /**
+       * @description The `approve_tool_call` call being answered.
+       * @example tool_approval_toolu_01933b5a00007000800000000000001
+       */
+      tool_call_id: string;
+    };
+    /**
+     * @description What a person decided about one gated call.
+     * @enum {string}
+     */
+    ToolApprovalDecision: "allow" | "allow_always" | "reject" | "reject_always";
+    /** @description How one pending request was settled. */
+    ToolApprovalResolution: {
+      /**
+       * @description `allow`, `allow_always`, `reject`, `reject_always`, `not_approved`
+       *     (left out of the submission) or `expired`.
+       * @example allow
+       */
+      outcome: string;
+      /** @description The gated tool. */
+      tool: string;
+      /** @description The `approve_tool_call` call that was answered. */
+      tool_call_id: string;
     };
     /** @description Tool call from LLM response */
     ToolCall: {
@@ -33198,6 +33266,68 @@ export interface operations {
       };
       /** @description Session, task, or push config not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  submit_tool_approvals: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
+      };
+    };
+    responses: {
+      /** @description Decisions recorded and workflow resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
+        };
+      };
+      /** @description Invalid session ID or decisions */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller may not manage this session */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or pending approval request not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session is not waiting, the request expired, or it was already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
         headers: {
           [name: string]: unknown;
         };

@@ -491,3 +491,33 @@ export async function submitElicitationConsent(
   );
   return response.data;
 }
+
+// ============================================
+// Tool Approvals (EVE-1140)
+// ============================================
+
+import type {
+  SubmitToolApprovalsResponse,
+  ToolApprovalAnswer,
+  ToolApprovalDecision,
+} from "./schema-types";
+
+export type { ToolApprovalDecision };
+
+/**
+ * Answer the tool calls an agent's `tool_approval` gate held back.
+ *
+ * Only the decisions travel: which tool and which exact call they apply to
+ * come from the `approve_tool_call` requests the backend itself emitted. A
+ * request in the same batch that is left out is resolved as not approved.
+ */
+export async function submitToolApprovals(
+  sessionId: string,
+  decisions: ToolApprovalAnswer[],
+): Promise<SubmitToolApprovalsResponse> {
+  const response = await api.post<SubmitToolApprovalsResponse>(
+    `/v1/sessions/${sessionId}/tool-approvals`,
+    { decisions },
+  );
+  return response.data;
+}

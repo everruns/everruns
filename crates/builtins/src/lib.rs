@@ -192,8 +192,10 @@ pub use stateless_todo_list::{
 };
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use tool_approval::{
-    ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
-    ToolApprovalPolicy, ToolApprover,
+    ApprovalDecision, ApprovalMode, DEFAULT_APPROVAL_TIMEOUT_SECONDS, DurableToolApprover,
+    ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, TOOL_APPROVAL_CAPABILITY_ID,
+    TOOL_APPROVAL_KV_PREFIX, ToolApprovalCapability, ToolApprovalPolicy, ToolApprover,
+    always_decision_storage_key, approval_fingerprint, one_off_decision_storage_key,
 };
 pub use tool_call_repair::{
     DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,

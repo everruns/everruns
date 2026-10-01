@@ -68,7 +68,8 @@ pub(crate) mod tool_call_integrity {
 pub use execution::{
     ActAtom, ActInput, ActResult, ClientSideToolHook, ConnectionSetupHook, ExecutionContext,
     InputAtom, InputAtomInput, InputAtomResult, NativeExecutionCounts, OutputHardLimitHook,
-    PostActAction, PostActHook, ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
+    PostActAction, PostActHook, ReasonAtom, ReasonInput, ReasonResult, ToolApprovalPauseHook,
+    ToolCallResult, has_pending_tool_approval,
 };
 pub use machine::{Execution, ExecutionTransition, TurnExecution};
 pub use phase_effects::{PhaseEffect, PhaseEffectSink};

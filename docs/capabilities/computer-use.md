@@ -70,7 +70,9 @@ Screenshots are billed as image tokens. A smaller display, or turning off
   the agent. The capability tells the model to treat screen contents as
   untrusted and to stop and ask before typing credentials, making purchases,
   sending messages, or confirming irreversible actions. Add the
-  `soft_approval` capability when you want those confirmations recorded.
+  `soft_approval` capability when you want those confirmations recorded, and
+  the [`tool_approval`](/capabilities/tool-approval/) capability when a person
+  must approve every `computer` call before it runs.
 - **Keep credentials out of reach.** Do not give a computer-use agent a browser
   that is signed in to accounts it should not use.
 - **Egress.** `navigate` refuses private and internal addresses and follows the

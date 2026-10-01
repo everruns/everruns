@@ -103,6 +103,10 @@ pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
 /// session-storage internal-prefix reservation (a TM-TOOL/TM-AGENT mitigation
 /// against forged attachments) holds even when the `a2a` feature is compiled out.
 pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
+/// KV key prefix for durable tool-approval decisions (EVE-1140). Owned by the
+/// `tool_approval` capability in `everruns-builtins`; defined here so the
+/// session-storage internal-prefix reservation holds without that crate.
+pub const TOOL_APPROVAL_KV_PREFIX: &str = "tool_approval/";
 /// Shared concurrency class for every provider of the model-visible
 /// `spawn_agent` tool. Implementations live in host/integration crates, while
 /// collection keeps the merged tool serialized through this neutral key.
