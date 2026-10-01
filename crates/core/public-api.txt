@@ -342,6 +342,9 @@ everruns_core::computer_use::ComputerAction::TripleClick	variant
 everruns_core::computer_use::ComputerAction::Type	variant
 everruns_core::computer_use::ComputerAction::Wait	variant
 everruns_core::computer_use::ComputerBackend	trait
+everruns_core::computer_use::ComputerCall	enum
+everruns_core::computer_use::ComputerCall::Batch	variant
+everruns_core::computer_use::ComputerCall::Single	variant
 everruns_core::computer_use::ComputerSession	trait
 everruns_core::computer_use::ComputerTool	struct
 everruns_core::computer_use::ComputerUseConfig	struct
@@ -350,6 +353,7 @@ everruns_core::computer_use::DEFAULT_DISPLAY_WIDTH	constant
 everruns_core::computer_use::DEFAULT_MAX_ACTIONS_PER_SESSION	constant
 everruns_core::computer_use::DisplaySize	struct
 everruns_core::computer_use::KeyCombo	struct
+everruns_core::computer_use::MAX_BATCH_ACTIONS	constant
 everruns_core::computer_use::MAX_DISPLAY_HEIGHT	constant
 everruns_core::computer_use::MAX_DISPLAY_WIDTH	constant
 everruns_core::computer_use::MAX_KEY_REPEAT	constant
@@ -373,6 +377,7 @@ everruns_core::computer_use::ScrollDirection::Left	variant
 everruns_core::computer_use::ScrollDirection::Right	variant
 everruns_core::computer_use::ScrollDirection::Up	variant
 everruns_core::computer_use::action_requires_approval	function
+everruns_core::computer_use::computer_call_requires_approval	function
 everruns_core::computer_use::parse_key_combo	function
 everruns_core::computer_use::parse_modifiers	function
 everruns_core::config	module

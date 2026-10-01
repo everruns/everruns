@@ -31,9 +31,14 @@ impl OpenResponsesProtocolChatDriver {
             OpenAiHostedTools::from_driver_options(&config.driver_options).map_err(|error| {
                 AgentLoopError::Configuration(format!("invalid OpenAI hosted tools: {error}"))
             })?;
-        let Some(requested) = requested else {
+        // The native computer tool rides on the same `tools` rendering, but is
+        // requested through the provider-neutral option and is client-executed.
+        let native_computer = self.native_computer_for(config);
+        let Some(mut requested) = requested.or_else(|| native_computer.map(|_| Default::default()))
+        else {
             return Ok(Vec::new());
         };
+        requested.computer = native_computer;
         if !self.hosted_tools {
             return Err(AgentLoopError::Configuration(
                 "OpenAI hosted tools need the OpenAI or Azure OpenAI Responses API; \

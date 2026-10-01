@@ -6,6 +6,10 @@
 // binds a one-off answer to the exact call that was shown.
 // Spec: knowledge/execution/tool-approval.md.
 
+use std::collections::VecDeque;
+use std::sync::{LazyLock, Mutex, PoisonError};
+use std::time::{Duration, Instant};
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -29,6 +33,52 @@ pub use everruns_core::capabilities::TOOL_APPROVAL_KV_PREFIX;
 /// in the turn that resumes; one left lying around should not quietly let an
 /// identical call through much later.
 pub const ONE_OFF_DECISION_TTL_SECONDS: i64 = 3_600;
+
+/// How long a consumed one-off approval keeps answering for the same call.
+const CONSUMED_ONE_OFF_TTL: Duration = Duration::from_secs(60);
+
+/// Most consumed one-off approvals remembered per process.
+const CONSUMED_ONE_OFF_CAPACITY: usize = 512;
+
+/// One-off approvals this process consumed, by (session, call id, fingerprint).
+///
+/// Decision: one call can pass two durable gates (the agent's `tool_approval`
+/// and a capability's own hard gate, such as computer use's). Each takes the
+/// one-off answer with a destructive read, so without this the second gate
+/// would find nothing, defer, and every answer would be spent by whichever
+/// gate ran first: the call could never run. The gates for one call run back
+/// to back in one process, so a short, bounded in-process memo is enough; a
+/// different call (a new id) or a later retry still needs its own answer.
+static CONSUMED_ONE_OFF: LazyLock<Mutex<VecDeque<ConsumedOneOff>>> =
+    LazyLock::new(|| Mutex::new(VecDeque::new()));
+
+/// (session, call id, fingerprint, when it was consumed).
+type ConsumedOneOff = (SessionId, String, String, Instant);
+
+fn consumed_one_off(session_id: SessionId, call_id: &str, fingerprint: &str) -> bool {
+    let mut consumed = CONSUMED_ONE_OFF
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    consumed.retain(|(.., at)| at.elapsed() < CONSUMED_ONE_OFF_TTL);
+    consumed
+        .iter()
+        .any(|(session, id, fp, _)| *session == session_id && id == call_id && fp == fingerprint)
+}
+
+fn record_consumed_one_off(session_id: SessionId, call_id: &str, fingerprint: &str) {
+    let mut consumed = CONSUMED_ONE_OFF
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if consumed.len() >= CONSUMED_ONE_OFF_CAPACITY {
+        consumed.pop_front();
+    }
+    consumed.push_back((
+        session_id,
+        call_id.to_string(),
+        fingerprint.to_string(),
+        Instant::now(),
+    ));
+}
 
 /// Arguments preview budget for the approval card, in serialized bytes.
 pub(crate) const ARGUMENTS_PREVIEW_BYTES: usize = 8 * 1024;
@@ -194,6 +244,9 @@ impl DurableToolApprover {
         }
 
         let fingerprint = approval_fingerprint(tool_call);
+        if consumed_one_off(session_id, &tool_call.id, &fingerprint) {
+            return Ok(ApprovalDecision::Allow);
+        }
         // THREAT[TM-TOOL-008]: destructive read, so one approval lets exactly
         // one call through even when retries race.
         if let Some(raw) = store
@@ -205,11 +258,11 @@ impl DurableToolApprover {
             && record.fingerprint.as_deref() == Some(fingerprint.as_str())
             && record.expires_at.is_none_or(|expires| Utc::now() < expires)
         {
-            return Ok(if record.allow {
-                ApprovalDecision::Allow
-            } else {
-                ApprovalDecision::Reject
-            });
+            if !record.allow {
+                return Ok(ApprovalDecision::Reject);
+            }
+            record_consumed_one_off(session_id, &tool_call.id, &fingerprint);
+            return Ok(ApprovalDecision::Allow);
         }
 
         Ok(ApprovalDecision::Deferred)
@@ -468,11 +521,64 @@ mod tests {
                 .await;
             assert!(matches!(decision, PreToolUseDecision::Continue(_)));
 
-            // Consumed: the same call again needs a fresh approval.
+            // Consumed: the model's next identical call (a new call id, the
+            // same arguments) needs a fresh approval.
+            let again = ToolCall {
+                id: "call_a_again".to_string(),
+                ..send("a")
+            };
             let decision = resumed
-                .before_exec(send("a"), &open_world_tool(), &context(session, &store))
+                .before_exec(again, &open_world_tool(), &context(session, &store))
                 .await;
             deferred_request(decision);
+        }
+
+        #[tokio::test]
+        async fn one_answer_lets_a_call_through_two_durable_gates() {
+            // The agent's `tool_approval` and a capability's own hard gate
+            // (computer use) both gate the call. One one-off answer must
+            // carry it through both, in either order, or it could never run.
+            let store = Arc::new(MemoryStore::default());
+            let session = SessionId::new_random();
+            let general = fresh_hook(ApprovalMode::Normal);
+            let hard = ToolApprovalCapability::new(Arc::new(DurableToolApprover))
+                .with_policy(Arc::new(|_: &ToolCall, _: &ToolDefinition| true))
+                .hook(ApprovalMode::Off);
+            let call = send("both");
+            let request = deferred_request(
+                general
+                    .before_exec(call.clone(), &open_world_tool(), &context(session, &store))
+                    .await,
+            );
+            store.put(
+                one_off_decision_storage_key(&request.fingerprint),
+                &StoredToolApproval::one_off("t", &request.fingerprint, true, Utc::now()),
+            );
+
+            for gate in [&general, &hard] {
+                let decision = gate
+                    .before_exec(call.clone(), &open_world_tool(), &context(session, &store))
+                    .await;
+                assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+            }
+
+            // It does not leak to another call, or another session.
+            let other_call = ToolCall {
+                id: "call_both_retry".to_string(),
+                ..send("both")
+            };
+            deferred_request(
+                hard.before_exec(other_call, &open_world_tool(), &context(session, &store))
+                    .await,
+            );
+            deferred_request(
+                hard.before_exec(
+                    call,
+                    &open_world_tool(),
+                    &context(SessionId::new_random(), &store),
+                )
+                .await,
+            );
         }
 
         #[tokio::test]

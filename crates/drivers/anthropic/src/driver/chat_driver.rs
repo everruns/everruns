@@ -61,6 +61,11 @@ impl ChatDriver for AnthropicChatDriver {
                 AgentLoopError::llm(format!("failed to serialize Anthropic message: {error}"))
             })?);
         }
+        // Native computer toolset (EVE-1133): member calls replace `computer`.
+        let computer_toolset = crate::computer_toolset::active(config, wire_model);
+        if computer_toolset {
+            crate::computer_toolset::rewrite_messages(&mut prefix_messages);
+        }
         let anthropic_messages = prefix_messages;
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
@@ -79,7 +84,7 @@ impl ChatDriver for AnthropicChatDriver {
         // `claude_tool_search` / `auto_tool_search` capability — and reaches here
         // on `config.tool_search`.
         let supports_tool_search = profile.as_ref().is_some_and(|p| p.tool_search);
-        let tools = if config.tools.is_empty() {
+        let mut tools = if config.tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
             if ts_config.enabled && supports_tool_search {
@@ -94,6 +99,21 @@ impl ChatDriver for AnthropicChatDriver {
         } else {
             Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
         };
+
+        if computer_toolset && let Some(entries) = tools.as_mut() {
+            // The toolset stands in for the `computer` function tool, keeping
+            // its prompt-cache breakpoint when it carried one.
+            let position = entries.iter().position(|entry| {
+                matches!(entry, AnthropicToolEntry::Function(tool)
+                    if tool.name == everruns_provider::native_computer::COMPUTER_TOOL_NAME)
+            });
+            if let Some(position) = position {
+                let cached = matches!(&entries[position],
+                    AnthropicToolEntry::Function(tool) if tool.cache_control.is_some());
+                entries[position] =
+                    AnthropicToolEntry::Raw(crate::computer_toolset::toolset_entry(cached));
+            }
+        }
 
         // Sampling parameters are removed on Fable 5.x and Opus 5.5/5/4.8/4.7 —
         // sending `temperature` returns 400 ("`temperature` is deprecated for
@@ -299,6 +319,7 @@ impl ChatDriver for AnthropicChatDriver {
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
+        let current_is_member = Arc::new(Mutex::new(false));
         let current_thinking = Arc::new(Mutex::new(Option::<OpenThinkingBlock>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let response_content = Arc::new(Mutex::new(BTreeMap::<u32, Value>::new()));
@@ -322,6 +343,7 @@ impl ChatDriver for AnthropicChatDriver {
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
             let current_tool_call = Arc::clone(&current_tool_call);
+            let current_is_member = Arc::clone(&current_is_member);
             let current_thinking = Arc::clone(&current_thinking);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
             let response_content = Arc::clone(&response_content);
@@ -380,6 +402,9 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .insert(data.index, data.content_block.clone());
+                                    let member = crate::computer_toolset::is_member_block(
+                                        &data.content_block,
+                                    );
                                     let Ok(content_block) =
                                         serde_json::from_value(data.content_block)
                                     else {
@@ -387,6 +412,7 @@ impl ChatDriver for AnthropicChatDriver {
                                     };
                                     match content_block {
                                         AnthropicContentBlockDelta::ToolUse { id, name } => {
+                                            *current_is_member.lock().unwrap() = member;
                                             let mut current = current_tool_call.lock().unwrap();
                                             *current = Some(ToolCall {
                                                 id,
@@ -529,6 +555,9 @@ impl ChatDriver for AnthropicChatDriver {
                                     if let Some(mut tc) = current.take() {
                                         // EVE-636: parse the accumulated JSON string exactly once.
                                         finalize_tool_arguments(&mut tc);
+                                        if std::mem::take(&mut *current_is_member.lock().unwrap()) {
+                                            crate::computer_toolset::into_computer_call(&mut tc);
+                                        }
                                         accumulated_tool_calls.lock().unwrap().push(tc);
                                     }
                                 }

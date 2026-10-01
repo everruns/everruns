@@ -11,12 +11,12 @@ tags:
 
 # Computer Use
 
-Status: phase 1 implemented, behind experimental mode. Capability
+Status: phases 1 and 2 implemented, behind experimental mode. Capability
 `computer_use`, contract in
 [`crates/core/src/computer_use.rs`](../../crates/core/src/computer_use.rs), first
 backend in
 [`integrations/browserless/src/computer.rs`](../../integrations/browserless/src/computer.rs).
-Tracked as EVE-1119.
+Tracked as EVE-1119 (phase 1) and EVE-1133 (phase 2).
 
 ## Why
 
@@ -54,6 +54,42 @@ vendor's hosted variant.
 - **Every action returns a screenshot** by default, so the model acts on the
   frame it just produced. `screenshot_after_action: false` returns text for
   actions and images only for `screenshot`.
+- **Batches.** A call may carry `actions: [...]` (at most 16) instead of one
+  `action`; this is how OpenAI's multi-action `computer_call` arrives. A batch
+  is validated and budgeted whole, runs in order, stops at its first failed
+  action, and always answers with one frame.
+
+### Native adapters
+
+The capability contributes a provider-neutral driver option,
+`everruns/computer_use` with the display size
+([`crates/provider/src/native_computer.rs`](../../crates/provider/src/native_computer.rs)),
+unless `native_tools: false`. A driver swaps the `computer` function tool for
+its native tool only when the option is set, the call offers `computer`, and
+the model has the native tool; every other driver ignores the option and the
+function tool keeps working. Execution never changes: a native call becomes a
+call of the `computer` tool, so the budget, the approval gate and the backend
+are the same on every path.
+
+- **OpenAI** (Responses API with hosted tools, GPT-5.4 and later, GPT-6):
+  `{"type": "computer"}`. A `computer_call` becomes a batched `computer` call;
+  the result goes back as `computer_call_output` with a `computer_screenshot`.
+  It is client-executed, so it is never a hosted-call event and never priced
+  as one. Provider safety checks travel in the arguments, gate the call, and
+  are acknowledged on replay only when the call ran. Wire details the GA docs
+  do not pin down are isolated in
+  [`crates/provider/src/openai_computer.rs`](../../crates/provider/src/openai_computer.rs).
+- **Anthropic** (`computer_toolset_20260801`, the models in
+  `anthropic_has_computer_toolset`): member calls (`left_click`, `type`, ...)
+  carry `toolset_name: "computer"` and become `computer` calls with the member
+  as `action`; replay reverses it and tags every result with `toolset_name`.
+  Members with no neutral action (`zoom`, raw button down/up,
+  `cursor_position`, `hold_key`) are sent disabled. See
+  [`crates/drivers/anthropic/src/computer_toolset.rs`](../../crates/drivers/anthropic/src/computer_toolset.rs).
+
+Model support is a model-id rule next to each adapter rather than a model
+profile flag: the native tools landed on a handful of current models, and the
+option is safe to send everywhere.
 
 ### Budget
 
@@ -75,17 +111,24 @@ prompt-injection path. Layers, weakest to strongest:
    [soft approval](soft-approval.md) for a recorded yes.
 2. The tool declares `open_world`, so the interactive
    [`tool_approval`](capabilities.md) gate asks before every call at the
-   `normal` level.
-3. `action_requires_approval` names the actions that commit input (typing,
-   Enter, navigation) for hosts that want a per-action gate instead of a
-   per-tool one. Clicks are not gated: gating every click makes the capability
-   unusable, and a dangerous click is covered by layers 1 and 2.
+   `normal` level when the agent enables it.
+3. **Hard per-call approval, always on in hosted sessions.** The capability
+   contributes its own durable [tool approval](tool-approval.md) gate
+   (TM-TOOL-008) with a policy: a call that commits input
+   (`action_requires_approval`: typing, Enter, navigation, anywhere in a
+   batch) or carries provider safety checks parks the turn until a person
+   approves that exact call. Clicks, moves, scrolls and screenshots run
+   freely: gating every click makes the capability unusable, and a dangerous
+   click is covered by layer 1. One one-off answer carries a call through both
+   this gate and an agent-level `tool_approval`. An "always allow" answer for
+   `computer` is honored: a person who chose it turned the prompt off for the
+   session knowingly. See
+   [`crates/builtins/src/computer_use_approval.rs`](../../crates/builtins/src/computer_use_approval.rs).
 
-Hosted sessions can enforce the per-call gate ([tool approval](tool-approval.md),
-TM-TOOL-008), but it is opt-in per agent and nothing yet requires it for
-computer use or gates per action, which is why the capability is still
-experimental. Egress follows the session's network access list;
-see TM-TOOL-048 to TM-TOOL-050 in the [threat model](../security/threat-model.md).
+Egress follows the session's network access list; see TM-TOOL-048 to
+TM-TOOL-050 in the [threat model](../security/threat-model.md). The session UI
+shows each result's screenshot as a thumbnail on the tool row, so a reviewer
+sees what the agent acted on.
 
 ### Browserless backend
 
@@ -100,8 +143,14 @@ Chromium, filling and submitting a form end to end.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Contract, `computer` function tool, Browserless browser backend | Done |
-| 2 | Native adapters: OpenAI `computer` tool (`computer_call` / `computer_call_output`) and Anthropic `computer_toolset_20260801`, selected by model profile | Next, builds on EVE-1115's hosted tool support |
-| 3 | Desktop backend on a sandbox image (Xvfb plus a screenshot bridge) for non-browser apps; per-action hard approval on top of the hosted [tool approval](tool-approval.md) gate | Planned |
+| 2 | Native adapters (OpenAI `computer`, Anthropic `computer_toolset_20260801`), batched calls, hard per-call approval on the hosted [tool approval](tool-approval.md) gate, screenshot thumbnails in the session UI | Done (EVE-1133) |
+| 3 | Desktop backend on a sandbox image (Xvfb plus a screenshot bridge) for non-browser apps | Planned |
+
+Open before the capability leaves experimental mode: verify the native OpenAI
+path against the live API (the GA reference leaves some action fields
+unconfirmed), add a `zoom` action so Claude can read small text, and stop an
+Anthropic member batch at its first failed action (member calls run as
+separate tool calls today).
 
 ## Rejected options
 
