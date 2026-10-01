@@ -145,6 +145,12 @@ impl ToolCallStream {
                 self.observe_approval(&id, &arguments);
                 continue;
             }
+            if let Some((call_id, arguments)) =
+                crate::openai_computer::computer_call_arguments(item)
+            {
+                self.observe_computer_call(&call_id, &arguments);
+                continue;
+            }
             if item.get("type").and_then(|t| t.as_str()) != Some("function_call") {
                 continue;
             }
@@ -167,6 +173,14 @@ impl ToolCallStream {
         let name = crate::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL;
         self.observe_item(id, id, name, arguments);
         self.mark_complete(id, id);
+    }
+
+    /// Fold in a finished `computer_call` as a call of the `computer` tool
+    /// (EVE-1133). The client runs it; see `openresponses_protocol::computer`.
+    pub(crate) fn observe_computer_call(&mut self, call_id: &str, arguments: &Value) {
+        let name = crate::native_computer::COMPUTER_TOOL_NAME;
+        self.observe_item(call_id, call_id, name, &arguments.to_string());
+        self.mark_complete(call_id, call_id);
     }
 
     pub(crate) fn mark_complete(&mut self, id: &str, call_id: &str) {

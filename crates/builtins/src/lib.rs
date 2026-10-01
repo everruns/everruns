@@ -39,6 +39,7 @@ pub mod budgeting;
 pub mod channel_context;
 pub mod claude_tool_search;
 pub mod compaction;
+pub mod computer_use_approval;
 pub mod current_time;
 pub mod error_disclosure;
 mod framework_config;

@@ -141,6 +141,9 @@ pub fn hosted_tools_from_config(config: &Value) -> OpenAiHostedTools {
         } else {
             Vec::new()
         },
+        // Native computer use is requested by the computer_use capability,
+        // not configured here.
+        computer: None,
     }
 }
 

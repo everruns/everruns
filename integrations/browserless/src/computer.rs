@@ -39,6 +39,7 @@ use everruns_core::computer_use::{
     Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
 };
 use everruns_core::tool_context::ToolContext;
+use everruns_core::tool_hooks::PreToolUseHook;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use tracing::warn;
 
@@ -593,6 +594,22 @@ impl everruns_core::capabilities::Capability for BrowserlessComputerUseCapabilit
 
     fn validate_config(&self, config: &Value) -> Result<(), String> {
         ComputerUseConfig::from_value(config).map(|_| ())
+    }
+
+    fn driver_options(&self, config: &Value) -> Vec<(String, Value)> {
+        // Native OpenAI / Anthropic computer tools where the model has one;
+        // every other driver ignores the option and keeps the function tool.
+        ComputerUseConfig::from_value_or_default(config).driver_options()
+    }
+
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn PreToolUseHook>> {
+        self.pre_tool_use_hooks_with_config(&Value::Null)
+    }
+
+    fn pre_tool_use_hooks_with_config(&self, _config: &Value) -> Vec<Arc<dyn PreToolUseHook>> {
+        // THREAT[TM-TOOL-008]: typing, Enter, navigation and provider safety
+        // checks wait for a person's approval of that exact call.
+        vec![everruns_builtins::computer_use_approval::computer_use_approval_hook()]
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
