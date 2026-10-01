@@ -1,4 +1,5 @@
-//! Durable OpenAI Agents API backend (EVE-1123).
+//! Durable OpenAI Agents API backend (EVE-1123) and its policy boundary
+//! (EVE-1124).
 //!
 //! A stateful fake of the Agents API drives the turn driver through every
 //! restart boundary: session create, follow-up input, function result, stream
@@ -7,11 +8,16 @@
 //! A crash is a dependency failing mid-run: the in-memory driver state is
 //! dropped, the lease expires, and a new driver resumes from the checkpoint.
 //!
+//! The policy tests hold the provider's required action open across an
+//! approval, a denial, an expiry, a client-side answer, and a provider
+//! timeout; stop the remote loop on an output guardrail or a budget; and keep
+//! MCP credentials out of everything sent to the provider.
+//!
 //! The live conformance test talks to OpenAI only when `OPENAI_API_KEY` is set
 //! and the test is run with `--ignored`.
 #![cfg(feature = "openai-agents-api")]
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -19,18 +25,19 @@ use std::time::Duration;
 use async_trait::async_trait;
 use everruns_core::agents_api_store::{
     AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, InMemoryAgentsApiStore, OutboxState,
-    ToolResultState,
+    ParkReason, ToolResultState,
 };
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
-use everruns_core::{ContentPart, RuntimeAgent, ScopedMcpServer, ScopedMcpServers};
+use everruns_core::output_guardrail::{GuardrailBlock, TrippedGuardrail};
+use everruns_core::{ContentPart, RuntimeAgent};
+use everruns_host::openai_agents_api::build_session_config;
 use everruns_host::openai_agents_api::durable::{
-    AgentsApiFunctionExecutor, AgentsApiLedger, AgentsApiTurnDriver, AgentsApiTurnOutcome,
-    AgentsApiTurnRequest,
+    AgentsApiFunctionExecutor, AgentsApiLedger, AgentsApiOutputPolicy, AgentsApiTurnDriver,
+    AgentsApiTurnOutcome, AgentsApiTurnRequest, FunctionBatch, FunctionOutcome,
+    PARKED_CALL_EXPIRED,
 };
-use everruns_host::openai_agents_api::{
-    AgentsApiClient, AgentsApiError, FunctionCallAction, build_session_config,
-};
-use everruns_provider::tool_types::{ClientSideTool, ToolDefinition};
+use everruns_host::openai_agents_api::{AgentsApiClient, AgentsApiError};
+use everruns_provider::tool_types::{ClientSideTool, ToolCall, ToolDefinition};
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use serde_json::{Value, json};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate, matchers::any};
@@ -67,7 +74,12 @@ struct FakeState {
     creates: usize,
     input_posts: usize,
     tool_result_posts: usize,
+    cancel_posts: usize,
     requests: usize,
+    /// Every session-create body, as the provider received it.
+    create_bodies: Vec<Value>,
+    /// Every submitted tool result event.
+    tool_results: Vec<Value>,
     /// Drop stream events of these types (missing provider events).
     drop: Vec<&'static str>,
     /// Send every stream event twice (duplicate provider events).
@@ -312,6 +324,24 @@ impl FakeState {
         session.pending.extend(events);
     }
 
+    /// The provider gives up on the turn while a required action is open
+    /// (its own timeout), as Everruns waits for a person.
+    fn expire_turn(&mut self, session_index: usize) {
+        let session = &mut self.sessions[session_index];
+        session.required_actions.clear();
+        let sid = session.id.clone();
+        let turn = session.turns.last_mut().unwrap();
+        let error = json!({"code": "turn_timeout", "message": "The turn timed out waiting for tool results."});
+        turn.status = "failed".into();
+        turn.error = error.clone();
+        let tid = turn.id.clone();
+        session.pending.push(
+            json!({"type": "agent.session.turn.failed", "event_id": "evt_expired",
+            "session_id": sid, "turn_id": tid,
+            "turn": {"id": tid, "subagent_id": null, "status": "failed", "error": error}}),
+        );
+    }
+
     fn drain(&mut self, session_index: usize) -> Vec<Value> {
         let events = std::mem::take(&mut self.sessions[session_index].pending);
         let mut out = Vec::new();
@@ -342,6 +372,7 @@ impl Respond for FakeAgentsApi {
         match (method, segments.as_slice()) {
             ("POST", ["agents", "sessions"]) => {
                 state.creates += 1;
+                state.create_bodies.push(body.clone());
                 let id = format!("sess_{}", state.creates);
                 state.sessions.push(FakeSession {
                     id: id.clone(),
@@ -431,7 +462,11 @@ impl Respond for FakeAgentsApi {
                 let event = body["events"][0].clone();
                 match event["type"].as_str() {
                     Some("agent.session.input.message") => state.input_posts += 1,
-                    Some("agent.session.input.tool_result") => state.tool_result_posts += 1,
+                    Some("agent.session.input.tool_result") => {
+                        state.tool_result_posts += 1;
+                        state.tool_results.push(event.clone());
+                    }
+                    Some("agent.session.input.cancel") => state.cancel_posts += 1,
                     _ => {}
                 }
                 if let Some(key) = &key
@@ -464,7 +499,11 @@ impl Respond for FakeAgentsApi {
                         state.finish_turn(index, &output);
                     }
                     Some("agent.session.input.cancel") => {
-                        if let Some(turn) = state.sessions[index].turns.last_mut() {
+                        let session = &mut state.sessions[index];
+                        session.required_actions.clear();
+                        if let Some(turn) = session.turns.last_mut()
+                            && turn.status == "in_progress"
+                        {
                             turn.status = "cancelled".into();
                         }
                     }
@@ -600,10 +639,27 @@ impl AgentsApiLedger for TestLedger {
     }
 }
 
+/// What the emulated tool pipeline does with the next batch.
+enum Script {
+    /// Run every call and record its result.
+    Run,
+    /// The pipeline parks every call: an approval gate records its
+    /// `tool_approval_required` failure; a client-side call records nothing.
+    Park(ParkReason),
+    /// Policy refuses to run more tools in this turn.
+    Halt(&'static str, &'static str),
+}
+
 /// Emulates the Act pipeline: records `tool.completed`, then returns.
 struct TestExecutor {
     ledger: Arc<TestLedger>,
+    /// Calls that actually ran.
     calls: AtomicUsize,
+    /// Batches the pipeline received.
+    batches: AtomicUsize,
+    /// Local ids of the calls that ran.
+    ran: Mutex<Vec<String>>,
+    script: Mutex<VecDeque<Script>>,
     /// Crash after the tool ran and its result was recorded.
     crash_after_record: AtomicBool,
 }
@@ -613,35 +669,99 @@ impl TestExecutor {
         Arc::new(Self {
             ledger,
             calls: AtomicUsize::new(0),
+            batches: AtomicUsize::new(0),
+            ran: Mutex::default(),
+            script: Mutex::default(),
             crash_after_record: AtomicBool::new(false),
         })
+    }
+
+    fn then(&self, script: Script) {
+        self.script.lock().unwrap().push_back(script);
+    }
+
+    async fn record(
+        &self,
+        call: &ToolCall,
+        result: Result<String, String>,
+    ) -> Result<(), AgentsApiError> {
+        let data = match result {
+            Ok(output) => ToolCompletedData::success(
+                call.id.clone(),
+                call.name.clone(),
+                vec![ContentPart::text(output)],
+                None,
+            ),
+            Err(error) => ToolCompletedData::failure(
+                call.id.clone(),
+                call.name.clone(),
+                "error".to_string(),
+                error,
+                None,
+            ),
+        };
+        self.ledger
+            .emit(EventRequest::new(
+                SessionId::from_seed(1),
+                EventContext::empty(),
+                data,
+            ))
+            .await
     }
 }
 
 #[async_trait]
 impl AgentsApiFunctionExecutor for TestExecutor {
-    async fn execute(
-        &self,
-        call: &FunctionCallAction,
-    ) -> Result<Result<String, String>, AgentsApiError> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        let output = r#"{"name":"Ada"}"#.to_string();
-        self.ledger
-            .emit(EventRequest::new(
-                SessionId::from_seed(1),
-                EventContext::empty(),
-                ToolCompletedData::success(
-                    call.call_id.clone(),
-                    call.name.clone(),
-                    vec![ContentPart::text(output.clone())],
-                    None,
-                ),
-            ))
-            .await?;
-        if self.crash_after_record.swap(false, Ordering::SeqCst) {
-            return Err(AgentsApiError::Store("worker crashed".into()));
+    async fn execute(&self, calls: &[ToolCall]) -> Result<FunctionBatch, AgentsApiError> {
+        self.batches.fetch_add(1, Ordering::SeqCst);
+        let script = self
+            .script
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(Script::Run);
+        match script {
+            Script::Halt(code, message) => {
+                for call in calls {
+                    self.record(call, Err(message.to_string())).await?;
+                }
+                Ok(FunctionBatch::Halt {
+                    code: code.to_string(),
+                    message: message.to_string(),
+                })
+            }
+            Script::Park(reason) => {
+                if matches!(reason, ParkReason::Approval { .. }) {
+                    for call in calls {
+                        self.record(call, Err("tool_approval_required".to_string()))
+                            .await?;
+                    }
+                }
+                Ok(FunctionBatch::Outcomes(
+                    calls
+                        .iter()
+                        .map(|_| FunctionOutcome::Parked(reason.clone()))
+                        .collect(),
+                ))
+            }
+            Script::Run => {
+                let output = r#"{"name":"Ada"}"#.to_string();
+                for call in calls {
+                    self.calls.fetch_add(1, Ordering::SeqCst);
+                    self.ran.lock().unwrap().push(call.id.clone());
+                    self.record(call, Ok(output.clone())).await?;
+                }
+                if self.crash_after_record.swap(false, Ordering::SeqCst) {
+                    return Err(AgentsApiError::Store("worker crashed".into()));
+                }
+                Ok(FunctionBatch::Outcomes(
+                    calls
+                        .iter()
+                        .map(|_| FunctionOutcome::Done(Ok(output.clone())))
+                        .collect(),
+                ))
+            }
         }
-        Ok(Ok(output))
     }
 }
 
@@ -735,8 +855,9 @@ fn request(turn: u128, text: &str) -> AgentsApiTurnRequest {
         session_id: SessionId::from_seed(1),
         turn_id,
         input_message_id,
+        iteration: 1,
         input_text: text.to_string(),
-        config: build_session_config(&agent(), &ScopedMcpServers::default(), "", None).unwrap(),
+        config: build_session_config(&agent(), "", None).unwrap(),
         event_context: EventContext::turn(turn_id, input_message_id),
     }
 }
@@ -747,6 +868,7 @@ struct Harness {
     store: Arc<CrashingStore>,
     ledger: Arc<TestLedger>,
     executor: Arc<TestExecutor>,
+    policy: Mutex<Option<Arc<dyn AgentsApiOutputPolicy>>>,
 }
 
 impl Harness {
@@ -759,17 +881,22 @@ impl Harness {
             store: CrashingStore::new(),
             executor: TestExecutor::new(ledger.clone()),
             ledger,
+            policy: Mutex::new(None),
         }
     }
 
     fn driver(&self) -> AgentsApiTurnDriver {
-        AgentsApiTurnDriver::new(
+        let driver = AgentsApiTurnDriver::new(
             AgentsApiClient::new("test-key").with_base_url(self.server.uri()),
             self.store.clone(),
             self.ledger.clone(),
             self.executor.clone(),
         )
-        .with_reconnect_policy(4, Duration::from_millis(1))
+        .with_reconnect_policy(4, Duration::from_millis(1));
+        match self.policy.lock().unwrap().clone() {
+            Some(policy) => driver.with_output_policy(policy),
+            None => driver,
+        }
     }
 
     /// Run until the driver returns; on a crash, expire the lease and resume
@@ -1028,7 +1155,7 @@ async fn failed_provider_turn_reports_the_cause() {
     h.fake.with(|s| s.fail_turns = true);
     let (outcome, _) = h.run(&request(1, "Who is customer 123?")).await;
     match outcome {
-        AgentsApiTurnOutcome::Failed { code, message } => {
+        AgentsApiTurnOutcome::Failed { code, message, .. } => {
             assert_eq!(code.as_deref(), Some("usage_limit_exceeded"));
             assert!(message.contains("billing limit"));
         }
@@ -1082,6 +1209,500 @@ async fn http_errors_surface_status_and_body() {
         "Bearer test-key"
     );
     assert_eq!(auth.headers.get("openai-beta").unwrap(), "agents=v1");
+}
+
+// ---------------------------------------------------------------------------
+// Policy at the tool and output boundaries (EVE-1124)
+// ---------------------------------------------------------------------------
+
+const APPROVAL_REQUEST: &str = "tool_approval_call_1";
+
+fn approval_park() -> Script {
+    Script::Park(ParkReason::Approval {
+        request_call_id: APPROVAL_REQUEST.to_string(),
+    })
+}
+
+/// The answer surface completes the engine-authored request, as
+/// `POST /v1/sessions/{id}/tool-approvals` or the deadline sweep does.
+async fn answer_approval(ledger: &TestLedger, approved: bool, outcome: &str) {
+    let summary = json!({"outcome": outcome, "approved": approved,
+        "tool": "lookup_customer", "tool_call_id": "call_1"});
+    ledger
+        .emit(EventRequest::new(
+            SessionId::from_seed(1),
+            EventContext::empty(),
+            ToolCompletedData::success(
+                APPROVAL_REQUEST.to_string(),
+                "approve_tool_call".to_string(),
+                vec![ContentPart::text(summary.to_string())],
+                None,
+            ),
+        ))
+        .await
+        .unwrap();
+}
+
+/// The same Everruns turn, resumed after its pause was answered.
+fn resumed(request: &AgentsApiTurnRequest) -> AgentsApiTurnRequest {
+    AgentsApiTurnRequest {
+        iteration: request.iteration + 1,
+        ..request.clone()
+    }
+}
+
+fn parked_reason(h: &Harness) -> Option<ParkReason> {
+    match &h.checkpoint().turn?.tool_results.get("call_1")?.state {
+        ToolResultState::Parked { reason, .. } => Some(reason.clone()),
+        _ => None,
+    }
+}
+
+/// Park turn 1 on an approval and check that nothing reached the provider.
+async fn park_on_approval(h: &Harness) -> AgentsApiTurnRequest {
+    h.executor.then(approval_park());
+    let request = request(1, "Who is customer 123?");
+    let (outcome, _) = h.run(&request).await;
+    assert!(
+        matches!(outcome, AgentsApiTurnOutcome::Paused),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        h.fake.with(|s| s.tool_result_posts),
+        0,
+        "nothing is submitted while a person decides"
+    );
+    assert_eq!(
+        h.fake.with(|s| s.sessions[0].required_actions.len()),
+        1,
+        "the provider's required action stays open"
+    );
+    assert_eq!(
+        h.executor.calls.load(Ordering::SeqCst),
+        0,
+        "the gated call did not run"
+    );
+    assert!(matches!(
+        parked_reason(h),
+        Some(ParkReason::Approval { .. })
+    ));
+    request
+}
+
+#[tokio::test]
+async fn an_approval_holds_the_required_action_open_and_runs_the_call_once_approved() {
+    let h = Harness::new().await;
+    let request = park_on_approval(&h).await;
+
+    // A replay of the activity that parked stays parked and runs nothing.
+    let (replayed, _) = h.run(&request).await;
+    assert!(matches!(replayed, AgentsApiTurnOutcome::Paused));
+    assert_eq!(h.executor.batches.load(Ordering::SeqCst), 1);
+    assert_eq!(h.fake.with(|s| s.tool_result_posts), 0);
+
+    answer_approval(&h.ledger, true, "approved_once").await;
+    let (outcome, _) = h.run(&resumed(&request)).await;
+    assert_completed_with(&outcome, 3);
+    // The approved call ran once, as a fresh local attempt the gate checks again.
+    assert_eq!(
+        *h.executor.ran.lock().unwrap(),
+        vec!["call_1-retry1".to_string()]
+    );
+    let submitted = h.fake.with(|s| s.tool_results.clone());
+    assert_eq!(submitted.len(), 1);
+    assert_eq!(submitted[0]["call_id"], "call_1");
+    assert_eq!(submitted[0]["success"], true);
+    h.ledger.assert_each_record_once();
+    // The retry is a new assistant tool call, as when a native model retries.
+    let retry_calls = h
+        .ledger
+        .of_type("output.message.completed")
+        .into_iter()
+        .filter(|m| m["message"]["content"][0]["id"] == "call_1-retry1")
+        .count();
+    assert_eq!(retry_calls, 1);
+}
+
+#[tokio::test]
+async fn a_denied_approval_submits_a_failed_result_without_running_the_call() {
+    let h = Harness::new().await;
+    let request = park_on_approval(&h).await;
+    answer_approval(&h.ledger, false, "rejected_once").await;
+    let (outcome, _) = h.run(&resumed(&request)).await;
+    assert!(
+        matches!(outcome, AgentsApiTurnOutcome::Completed { .. }),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        h.executor.calls.load(Ordering::SeqCst),
+        0,
+        "a denial never runs the call"
+    );
+    assert_eq!(h.executor.batches.load(Ordering::SeqCst), 1);
+    let submitted = h.fake.with(|s| s.tool_results.clone());
+    assert_eq!(submitted.len(), 1);
+    assert_eq!(submitted[0]["success"], false);
+    assert!(
+        submitted[0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("not approved (rejected_once)"),
+        "{submitted:?}"
+    );
+    h.ledger.assert_each_record_once();
+}
+
+#[tokio::test]
+async fn an_expired_approval_is_not_an_approval() {
+    let h = Harness::new().await;
+    let request = park_on_approval(&h).await;
+    // The deadline sweep resolves the request as not approved.
+    answer_approval(&h.ledger, false, "expired").await;
+    let (_, _) = h.run(&resumed(&request)).await;
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    let submitted = h.fake.with(|s| s.tool_results.clone());
+    assert!(submitted[0]["error"].as_str().unwrap().contains("expired"));
+}
+
+#[tokio::test]
+async fn a_resume_without_a_recorded_decision_fails_closed() {
+    let h = Harness::new().await;
+    let request = park_on_approval(&h).await;
+    let (_, _) = h.run(&resumed(&request)).await;
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    let submitted = h.fake.with(|s| s.tool_results.clone());
+    assert_eq!(submitted[0]["success"], false);
+}
+
+#[tokio::test]
+async fn a_provider_timeout_during_the_pause_fails_the_turn_canonically() {
+    let h = Harness::new().await;
+    let request = park_on_approval(&h).await;
+    h.fake.with(|s| s.expire_turn(0));
+    answer_approval(&h.ledger, true, "approved_once").await;
+    let (outcome, _) = h.run(&resumed(&request)).await;
+    match outcome {
+        AgentsApiTurnOutcome::Failed {
+            code,
+            message,
+            policy,
+        } => {
+            assert_eq!(code.as_deref(), Some(PARKED_CALL_EXPIRED));
+            assert!(policy, "Everruns-authored, user-facing as is");
+            assert!(message.contains("timed out"), "{message}");
+        }
+        other => panic!("expected a failed turn, got {other:?}"),
+    }
+    assert_eq!(
+        h.executor.calls.load(Ordering::SeqCst),
+        0,
+        "nothing runs for a turn the provider abandoned"
+    );
+    assert_eq!(h.fake.with(|s| s.tool_result_posts), 0);
+}
+
+#[tokio::test]
+async fn a_crash_while_resuming_does_not_run_the_approved_call_twice() {
+    let h = Harness::new().await;
+    let request = park_on_approval(&h).await;
+    answer_approval(&h.ledger, true, "approved_once").await;
+    h.executor.crash_after_record.store(true, Ordering::SeqCst);
+    let (outcome, crashes) = h.run(&resumed(&request)).await;
+    assert_eq!(crashes, 1);
+    assert_completed_with(&outcome, 3);
+    assert_eq!(
+        h.executor.calls.load(Ordering::SeqCst),
+        1,
+        "recovery reused the recorded result of the approved run"
+    );
+    assert_eq!(h.fake.with(|s| s.tool_result_posts), 1);
+    h.ledger.assert_each_record_once();
+}
+
+#[tokio::test]
+async fn a_client_side_call_submits_the_clients_answer() {
+    let h = Harness::new().await;
+    h.executor.then(Script::Park(ParkReason::ClientResult));
+    let request = request(1, "Who is customer 123?");
+    let (outcome, _) = h.run(&request).await;
+    assert!(matches!(outcome, AgentsApiTurnOutcome::Paused));
+    // The client answers through the tool-results API.
+    h.ledger
+        .emit(EventRequest::new(
+            SessionId::from_seed(1),
+            EventContext::empty(),
+            ToolCompletedData::success(
+                "call_1".to_string(),
+                "lookup_customer".to_string(),
+                vec![ContentPart::text("client says Ada")],
+                None,
+            ),
+        ))
+        .await
+        .unwrap();
+    let (outcome, _) = h.run(&resumed(&request)).await;
+    assert!(matches!(outcome, AgentsApiTurnOutcome::Completed { .. }));
+    let submitted = h.fake.with(|s| s.tool_results.clone());
+    assert_eq!(submitted.len(), 1);
+    assert_eq!(submitted[0]["output"], "client says Ada");
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn a_new_message_cancels_the_abandoned_parked_provider_turn() {
+    let h = Harness::new().await;
+    park_on_approval(&h).await;
+    // The person sends a new message instead of answering.
+    let (outcome, _) = h.run(&request(2, "Never mind, who is 456?")).await;
+    assert_completed_with(&outcome, 2);
+    assert_eq!(h.fake.with(|s| s.cancel_posts), 1);
+    assert_eq!(
+        h.fake.with(|s| s.sessions[0].turns[0].status.clone()),
+        "cancelled"
+    );
+}
+
+#[tokio::test]
+async fn a_budget_halt_stops_the_remote_turn_before_more_tools_run() {
+    let h = Harness::new().await;
+    h.executor.then(Script::Halt(
+        "budget_exhausted",
+        "Budget exhausted. Increase the budget to continue.",
+    ));
+    let (outcome, _) = h.run(&request(1, "Who is customer 123?")).await;
+    match outcome {
+        AgentsApiTurnOutcome::Failed {
+            code,
+            message,
+            policy,
+        } => {
+            assert_eq!(code.as_deref(), Some("budget_exhausted"));
+            assert!(policy);
+            assert!(message.starts_with("Budget exhausted."));
+        }
+        other => panic!("expected a failed turn, got {other:?}"),
+    }
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        h.fake.with(|s| (s.tool_result_posts, s.cancel_posts)),
+        (0, 1)
+    );
+    // The denied call has a canonical failed result.
+    let results = h.ledger.of_type("tool.completed");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["tool_call_id"], "call_1");
+    assert!(
+        results[0]["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("Budget exhausted.")
+    );
+}
+
+/// Blocks any message containing `needle`.
+struct BlockingPolicy {
+    needle: &'static str,
+    withhold: bool,
+    message_checks: AtomicUsize,
+}
+
+impl BlockingPolicy {
+    fn new(needle: &'static str, withhold: bool) -> Arc<Self> {
+        Arc::new(Self {
+            needle,
+            withhold,
+            message_checks: AtomicUsize::new(0),
+        })
+    }
+
+    fn trip(&self) -> TrippedGuardrail {
+        TrippedGuardrail {
+            capability_id: "guardrails".into(),
+            guardrail_id: "blocklist".into(),
+            block: GuardrailBlock {
+                reason_code: "blocked_term".into(),
+                replacement: "[withheld by policy]".into(),
+            },
+        }
+    }
+}
+
+#[async_trait]
+impl AgentsApiOutputPolicy for BlockingPolicy {
+    fn withholds_deltas(&self) -> bool {
+        self.withhold
+    }
+
+    fn check_delta(&self, _: &str, accumulated: &str, _: &str) -> Option<TrippedGuardrail> {
+        accumulated.contains(self.needle).then(|| self.trip())
+    }
+
+    async fn check_message(&self, _: &str, text: &str) -> Option<TrippedGuardrail> {
+        self.message_checks.fetch_add(1, Ordering::SeqCst);
+        text.contains(self.needle).then(|| self.trip())
+    }
+}
+
+fn leaked(ledger: &TestLedger, needle: &str) -> bool {
+    ledger
+        .data()
+        .iter()
+        .filter(|(kind, _)| kind.starts_with("output.message"))
+        .any(|(_, data)| data.to_string().contains(needle))
+}
+
+#[tokio::test]
+async fn an_output_guardrail_replaces_a_remote_final_answer_and_stops_the_turn() {
+    let h = Harness::new().await;
+    *h.policy.lock().unwrap() = Some(BlockingPolicy::new("sessions are durable", false));
+    let (outcome, _) = h.run(&request(1, "Who is customer 123?")).await;
+    match &outcome {
+        AgentsApiTurnOutcome::Completed {
+            final_text,
+            final_message_id,
+            ..
+        } => {
+            assert_eq!(final_text, "[withheld by policy]");
+            assert!(final_message_id.is_some());
+        }
+        other => panic!("expected a completed turn, got {other:?}"),
+    }
+    assert!(
+        !leaked(&h.ledger, "sessions are durable"),
+        "{:#?}",
+        h.ledger.data()
+    );
+    let replaced = h.ledger.of_type("output.message.replaced");
+    assert_eq!(replaced.len(), 1);
+    assert_eq!(replaced[0]["guardrail_id"], "blocklist");
+    assert_eq!(replaced[0]["reason_code"], "blocked_term");
+    assert_eq!(h.fake.with(|s| s.cancel_posts), 1);
+    h.ledger.assert_each_record_once();
+}
+
+#[tokio::test]
+async fn a_tripped_commentary_stops_the_turn_before_any_tool_runs() {
+    let h = Harness::new().await;
+    let policy = BlockingPolicy::new("Looking the customer", false);
+    *h.policy.lock().unwrap() = Some(policy.clone());
+    let (outcome, _) = h.run(&request(1, "Who is customer 123?")).await;
+    assert!(
+        matches!(outcome, AgentsApiTurnOutcome::Completed { .. }),
+        "{outcome:?}"
+    );
+    // The live stream tripped first; the completed item reused that verdict.
+    assert_eq!(policy.message_checks.load(Ordering::SeqCst), 0);
+    assert_eq!(h.executor.batches.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        h.fake.with(|s| (s.tool_result_posts, s.cancel_posts)),
+        (0, 1)
+    );
+    assert!(!leaked(&h.ledger, "Looking the customer"));
+}
+
+#[tokio::test]
+async fn an_end_of_message_guardrail_withholds_live_text() {
+    let h = Harness::new().await;
+    *h.policy.lock().unwrap() = Some(BlockingPolicy::new("nothing matches this", true));
+    let (outcome, _) = h.run(&request(1, "Who is customer 123?")).await;
+    assert_completed(&outcome);
+    assert!(h.ledger.of_type("output.message.delta").is_empty());
+    assert_turn_record(&h.ledger, 1);
+}
+
+#[tokio::test]
+async fn a_restart_after_a_guardrail_trip_finishes_the_stop_without_rejudging() {
+    let h = Harness::new().await;
+    let policy = BlockingPolicy::new("sessions are durable", false);
+    *h.policy.lock().unwrap() = Some(policy.clone());
+    // Dies after the replacement was recorded, before the outcome was saved.
+    h.store
+        .crash_when(|cp| cp.turn.as_ref().is_some_and(|turn| turn.outcome.is_some()));
+    let (outcome, crashes) = h.run(&request(1, "Who is customer 123?")).await;
+    assert_eq!(crashes, 1);
+    assert!(matches!(outcome, AgentsApiTurnOutcome::Completed { .. }));
+    assert_eq!(h.ledger.of_type("output.message.replaced").len(), 1);
+    assert_eq!(
+        policy.message_checks.load(Ordering::SeqCst),
+        2,
+        "the commentary and the final answer are each judged once; the saved stop is finished, not judged again"
+    );
+    h.ledger.assert_each_record_once();
+    assert!(!leaked(&h.ledger, "sessions are durable"));
+}
+
+#[tokio::test]
+async fn mcp_credentials_never_reach_the_provider() {
+    let h = Harness::new().await;
+    // A scoped MCP tool reaches the provider as a client function; its server
+    // and credentials stay with Everruns' session-scoped MCP client.
+    let mut agent = agent();
+    agent.tools.push(ToolDefinition::function(
+        "mcp_crm__lookup",
+        "Look up a CRM record",
+        json!({"type": "object", "properties": {}}),
+    ));
+    let mut request = request(1, "Who is customer 123?");
+    request.config = build_session_config(&agent, "", None).unwrap();
+    request.config.ensure_enforceable().unwrap();
+    let (outcome, _) = h.run(&request).await;
+    assert_completed(&outcome);
+    let body = h.fake.with(|s| s.create_bodies[0].clone());
+    assert!(
+        body["agent"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|tool| tool["type"] == "function"),
+        "{body}"
+    );
+    let text = body.to_string();
+    assert!(
+        !text.contains("headers") && !text.contains("Authorization"),
+        "{text}"
+    );
+
+    // A configuration that would hand a server's credentials to the provider
+    // is refused before anything is saved or sent.
+    let h = Harness::new().await;
+    let request = request_with_mcp_credentials();
+    request.config.validate_direct_mcp().unwrap_err();
+    let error = h.driver().run(&request).await.unwrap_err();
+    assert!(
+        matches!(error, AgentsApiError::PolicyViolation(_)),
+        "{error}"
+    );
+    assert!(!format!("{error} {error:?} {request:?}").contains("sk-mcp-secret"));
+    assert_eq!(h.fake.with(|s| s.requests), 0);
+}
+
+fn request_with_mcp_credentials() -> AgentsApiTurnRequest {
+    use everruns_host::openai_agents_api::AgentsApiTool;
+    let mut request = request(1, "hi");
+    request.config = build_session_config(&agent(), "", None)
+        .unwrap()
+        .with_direct_mcp("crm", "https://crm.example.com/mcp", &["lookup"])
+        .unwrap();
+    if let Some(AgentsApiTool::Mcp { transport, .. }) = request.config.agent.tools.last_mut() {
+        transport
+            .headers
+            .insert("Authorization".into(), "Bearer sk-mcp-secret".into());
+    }
+    request
+}
+
+fn assert_completed_with(outcome: &AgentsApiTurnOutcome, tool_calls: u32) {
+    match outcome {
+        AgentsApiTurnOutcome::Completed {
+            final_text,
+            tool_calls: count,
+            ..
+        } => {
+            assert_eq!(final_text, "Customer 123 is Ada; sessions are durable.");
+            assert_eq!(*count, tool_calls);
+        }
+        other => panic!("expected a completed turn, got {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1282,26 +1903,30 @@ struct LiveExecutor {
 
 #[async_trait]
 impl AgentsApiFunctionExecutor for LiveExecutor {
-    async fn execute(
-        &self,
-        call: &FunctionCallAction,
-    ) -> Result<Result<String, String>, AgentsApiError> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        assert_eq!(call.name, "lookup_customer");
+    async fn execute(&self, calls: &[ToolCall]) -> Result<FunctionBatch, AgentsApiError> {
         let output = r#"{"customer_id":"123","name":"Ada Lovelace"}"#.to_string();
-        self.ledger
-            .emit(EventRequest::new(
-                SessionId::from_seed(1),
-                EventContext::empty(),
-                ToolCompletedData::success(
-                    call.call_id.clone(),
-                    call.name.clone(),
-                    vec![ContentPart::text(output.clone())],
-                    None,
-                ),
-            ))
-            .await?;
-        Ok(Ok(output))
+        for call in calls {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(call.name, "lookup_customer");
+            self.ledger
+                .emit(EventRequest::new(
+                    SessionId::from_seed(1),
+                    EventContext::empty(),
+                    ToolCompletedData::success(
+                        call.id.clone(),
+                        call.name.clone(),
+                        vec![ContentPart::text(output.clone())],
+                        None,
+                    ),
+                ))
+                .await?;
+        }
+        Ok(FunctionBatch::Outcomes(
+            calls
+                .iter()
+                .map(|_| FunctionOutcome::Done(Ok(output.clone())))
+                .collect(),
+        ))
     }
 }
 
@@ -1322,16 +1947,14 @@ async fn live_conformance_one_client_function_and_one_allowed_mcp_tool() {
         "Look up customer 123, then search the OpenAI docs for 'Agents API sessions'. Answer in one sentence.",
     );
     req.session_id = SessionId::new();
-    let servers = ScopedMcpServers::from([(
-        "docs".to_string(),
-        ScopedMcpServer {
-            url: "https://developers.openai.com/mcp".to_string(),
-            ..ScopedMcpServer::default()
-        },
-    )]);
-    req.config = build_session_config(&agent(), &servers, "", None)
+    req.config = build_session_config(&agent(), "", None)
         .unwrap()
-        .allow_mcp_tools("docs", &["search_openai_docs"]);
+        .with_direct_mcp(
+            "docs",
+            "https://developers.openai.com/mcp",
+            &["search_openai_docs"],
+        )
+        .unwrap();
     let ledger = Arc::new(TestLedger::default());
     let executor = Arc::new(LiveExecutor {
         ledger: ledger.clone(),

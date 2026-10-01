@@ -88,6 +88,21 @@ use compaction::{
 use error_policy::{filter_response_text, is_error_placeholder_message};
 #[cfg(test)]
 use observability::capability_usage_snapshot_records;
+
+/// The `capability.usage` records a reason emits for the turn's resolved
+/// capabilities and the tools they expose: the capability attribution every
+/// reason backend reports, whichever loop runs the model.
+pub fn capability_usage_records(
+    registry: &crate::capabilities::CapabilityRegistry,
+    resolved_capability_configs: &[crate::CapabilityRef],
+    tool_definitions: &[ToolDefinition],
+) -> Vec<crate::events::CapabilityUsageRecord> {
+    observability::capability_usage_snapshot_records(
+        registry,
+        resolved_capability_configs,
+        tool_definitions,
+    )
+}
 use observability::{build_request_options, emit_capability_usage_snapshot};
 use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
@@ -200,6 +215,17 @@ pub struct ReasonResult {
     /// `Some(false)` (force serialize). `None` preserves the default schedule.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+    /// The reason ran tools itself and one of them paused the turn (an
+    /// approval, a client-side tool, a connection setup). Set only by a
+    /// backend that hosts the tool loop remotely (the OpenAI Agents API
+    /// backend); the native loop pauses from the act phase instead. The
+    /// planner parks the turn, and the resumed turn runs reason again.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub waiting_for_tool_results: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 fn default_max_iterations() -> usize {
@@ -759,6 +785,7 @@ impl ReasonAtom {
                     locale: None,
                     network_access: None,
                     parallel_tool_calls: None,
+                    waiting_for_tool_results: false,
                 }
             }
         };
@@ -2558,6 +2585,7 @@ impl ReasonAtom {
             locale: resolved_locale,
             network_access: runtime_agent.network_access.clone(),
             parallel_tool_calls: runtime_agent.parallel_tool_calls,
+            waiting_for_tool_results: false,
         };
         if let Some(coordinator) = &self.native_async {
             coordinator
@@ -2736,6 +2764,7 @@ impl ReasonAtom {
             network_access: None,
             // Finalize path has no tool calls, so the preference is irrelevant.
             parallel_tool_calls: None,
+            waiting_for_tool_results: false,
         })
     }
 

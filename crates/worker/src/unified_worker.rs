@@ -1450,7 +1450,10 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     let reason_final_answer = if completed_activity == "reason" {
         let reason_result: ReasonResult = serde_json::from_value(output.clone())
             .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
-        reason_result.success && !reason_result.has_tool_calls
+        // A remote tool loop that paused on a tool call is not winding down.
+        reason_result.success
+            && !reason_result.has_tool_calls
+            && !reason_result.waiting_for_tool_results
     } else {
         false
     };
@@ -1807,6 +1810,7 @@ mod tests {
             locale: None,
             network_access: None,
             parallel_tool_calls: None,
+            waiting_for_tool_results: false,
         };
         let (TurnPlan::ScheduleAct(plan), _) = plan_after_reason(
             &state,

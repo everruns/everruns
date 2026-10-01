@@ -31,13 +31,14 @@ The host's Reason activity checks the selection before the native path ([backend
 |---|---|---|
 | Resolved model name | `agent.model` | Direct for supported OpenAI models only |
 | Composed system prompt and capability instructions | `agent.instructions` | Direct; provider owns later compaction |
-| Capability, MCP, and client tools | Function tools in `agent.tools` | Direct; every call crosses Everruns' tool pipeline |
-| HTTP MCP attachments as direct MCP | MCP tools with `server_label`, HTTP `server_url`, `allowed_tools` | Not sent by the backend; supported by the protocol layer for custom hosts and the conformance test |
-| Sub-agent delegation | `multi_agent.enabled` and `max_concurrent_subagents` | Not sent; Everruns task identity, policy, and per-child configuration do not map |
-| Tool approvals | Pause on function `required_actions` before returning a result | Act pipeline runs; pausing approvals fail the call until EVE-1124 |
-| Agent and session files | OpenAI-hosted or self-hosted environment | Not sent (`environment: none`); text input only, attachments fail closed |
+| Capability, MCP, and client tools | Function tools in `agent.tools` | Direct; every call crosses Everruns' tool pipeline, and MCP credentials stay with Everruns' session-scoped MCP client |
+| HTTP MCP attachments as direct MCP | MCP tools with `server_label`, HTTPS `server_url`, `allowed_tools` | Refused by the backend; the protocol layer allows it for custom hosts and the conformance test only with an explicit non-empty allowlist and no credentials |
+| OpenAI-hosted tools (`openai_server_tools`, hosted MCP) | Built-in tools | Refused: the turn fails with a policy error instead of dropping or forwarding them |
+| Sub-agent delegation | `multi_agent.enabled` and `max_concurrent_subagents` | Refused; Everruns task identity, policy, and per-child configuration do not map |
+| Tool approvals and client-side tools | Function `required_actions` held open until a result is submitted | The Everruns turn parks; the provider's required action stays open until the pause is answered |
+| Agent and session files | OpenAI-hosted or self-hosted environment | Refused (`environment: none`); text input only, attachments fail closed |
 
-The backend sends Everruns tools only as client functions, so OpenAI built-ins and direct MCP never run a tool outside Everruns' pipeline. Everruns cannot promise its hard approval gate or `jev` pre-execution guardrails for web search, command execution, patching, computer use, direct MCP execution, or future built-ins; enabling any of them for policy-bound agents needs an interception contract with equivalent guarantees.
+The backend sends Everruns tools only as client functions. Anything else that would run a tool or a model outside Everruns' pipeline (OpenAI built-ins, direct MCP, provider subagents, a hosted environment) is refused before the provider is called ([`ensure_enforceable`](../../crates/host/src/openai_agents_api.rs), [`ensure_runtime_policy`](../../crates/host/src/openai_agents_api/backend.rs)). Everruns cannot promise its hard approval gate, pre-tool guardrails, or network policy for provider-run tools; enabling any of them for policy-bound agents needs an interception contract with equivalent guarantees.
 
 A provider session keeps the agent it was created with. The checkpoint records a digest of the agent definition; a changed definition starts a new provider session on the next turn, and the provider loses the earlier conversation context (the Everruns record keeps it).
 
@@ -74,11 +75,27 @@ One encrypted, lease-fenced checkpoint per Everruns session ([contract](../../cr
 
 Forking into the native runtime starts from the Everruns record; it cannot claim byte-identical hidden context or provider compaction state.
 
-## Approvals and guardrails
+## Policy at the tool and output boundaries
 
-Client functions run through `execute_act_activity`: permission checks, hooks, scoping, the durable per-call claim, and the canonical `tool.completed`. Act results that pause the native loop (an approval gate, a client-side tool, a connection prompt) cannot pause the remote loop yet, so the call fails visibly with a `blocked` result instead of running unapproved. Holding the provider's required action open across an Everruns approval, plus `jev` guardrails at the boundary, is EVE-1124.
+The remote loop crosses Everruns policy at two boundaries: every function call the provider requests, and every assistant message it produces (EVE-1124). The [backend](../../crates/host/src/openai_agents_api/backend.rs) supplies the policy; the [durable driver](../../crates/host/src/openai_agents_api/durable.rs) makes each decision durable.
 
-Output guardrails and other Reason-loop output hooks do not run on the remote loop's messages yet; EVE-1124 should apply them before `output.message.completed` is emitted. Even then they cannot undo an external side effect the managed harness already performed.
+**Function calls.** The calls of one required-action snapshot run as one batch through `execute_act_activity`: permission checks, the `tool_approval` gate, pre- and post-tool hooks (including `guardrails` checks with the `jev` engine), network access, the outbound rate limit, the durable per-call claim, tool narration, and the canonical `tool.started` and `tool.completed`. Before each batch the backend checks the session's budgets; a paused or exhausted budget fails the calls and stops the turn with the canonical budget message. An archived agent or harness stops it the same way.
+
+**Pauses.** The backend decides a pause exactly as the native planner does (`act_pauses_turn`, with the session's client hints). A paused call is saved as parked, the Reason activity returns `waiting_for_tool_results`, and the planner parks the Everruns turn. The provider's required action stays open: nothing is submitted. When the pause is answered, the turn resumes with a later Reason iteration, which resolves each parked call:
+
+| Pause | Resolution on resume |
+|---|---|
+| Approval gate | The engine-authored `approve_tool_call` result is read back. An approval runs the call again under a fresh local id, recorded as a new assistant tool call, so the gate finds the decision bound to the exact arguments. A rejection, an expiry, or no recorded decision submits a failed result; the call never runs. |
+| Client-side tool | The client's recorded result is submitted. |
+| Connection setup, URL or form elicitation | The call runs again under a fresh local id. |
+
+A replay of the activity that parked (the same iteration) stays parked. A call that keeps asking for a user action fails after three attempts. If the provider ends the turn while a call is parked (its own timeout or a cancel), the Everruns turn fails with `tool_action_expired`. A new message that abandons a parked turn cancels the provider turn before its input is sent.
+
+Unlike the native loop, the approved call runs without a model retry: the provider is still waiting on the original call, so the gated call's `tool_approval_required` placeholder never reaches it.
+
+**Assistant messages.** Streaming output guardrails run on each message's live text; once one trips, no more of that message reaches the client. End-of-message guardrails (moderation, LLM judges, `jev`) withhold live text and judge the completed message. Every completed message is judged again on its saved text, so a missed stream cannot skip the check. A trip saves a policy stop before any effect, emits `output.message.replaced` and the replacement as the canonical message, cancels the provider turn, and completes the Everruns turn with the replacement, as the native loop ends a turn whose output was replaced. The provider still holds the original text in its own session; a guardrail cannot undo an external side effect the harness already performed.
+
+**Attribution and metering.** Each Reason emits `capability.usage` for the resolved capabilities and their tools, as the native reason does, and a completed turn emits one `llm.generation` with the turn's usage so budget metering and usage tracking debit the remote spend. Null provider usage debits nothing.
 
 ## Observability and cost
 
@@ -106,11 +123,10 @@ The credentialed conformance test (`live_conformance_one_client_function_and_one
 
 ## Go / no-go
 
-Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a default or as a replacement for the native runtime. Durable orchestration is in place. Policy at tool boundaries (EVE-1124) should land before the flag is enabled for any org whose agents use approval-gated tools.
+Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a default or as a replacement for the native runtime. Durable orchestration and policy at the tool and output boundaries are in place. Whether the provider keeps a required action open for as long as an approval may take (15 minutes by default) is unverified against the live API; a provider timeout fails the turn with `tool_action_expired`.
 
 ## Follow-up issues
 
-* EVE-1124, policy at tool boundaries: hold required actions open across approvals, run `jev` guardrails at the function boundary, and decide whether read-only direct MCP may be enabled.
 * EVE-1125, observability and cost: spans from projected events, subagent usage, delayed usage upserts, container and tool charges.
 * EVE-1126, lifecycle and portability: guarded import to a native agent, fork from the Everruns record, remote session deletion and retention.
 

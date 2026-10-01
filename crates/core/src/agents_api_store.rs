@@ -108,6 +108,11 @@ pub struct AgentsApiTurnCheckpoint {
     /// another provider call.
     #[serde(default)]
     pub outcome: Option<Value>,
+    /// Everruns policy stopped the remote loop (an output guardrail, a budget,
+    /// a blocked dependency). Saved before its local effects, so a replayed
+    /// activity finishes the stop instead of letting the provider continue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_stop: Option<PolicyStop>,
 }
 
 impl AgentsApiTurnCheckpoint {
@@ -123,6 +128,7 @@ impl AgentsApiTurnCheckpoint {
             items: BTreeMap::new(),
             tool_results: BTreeMap::new(),
             outcome: None,
+            policy_stop: None,
         }
     }
 }
@@ -194,8 +200,30 @@ pub struct ToolResultOutbox {
     pub name: String,
     /// Function arguments as the provider sent them.
     pub arguments: Value,
+    /// Local execution attempt. Attempt 0 runs under the provider call id; a
+    /// call held open across a pause (an approval, a connection setup) runs
+    /// again under a fresh local id, because the first attempt already has a
+    /// result in the event log and in the durable per-call claim.
+    #[serde(default)]
+    pub attempt: u32,
     /// Execution and delivery state.
     pub state: ToolResultState,
+}
+
+impl ToolResultOutbox {
+    /// Local tool call id of the current attempt.
+    pub fn local_call_id(&self) -> String {
+        local_call_id(&self.call_id, self.attempt)
+    }
+}
+
+/// Local tool call id of `attempt` for a provider function call.
+pub fn local_call_id(call_id: &str, attempt: u32) -> String {
+    if attempt == 0 {
+        call_id.to_string()
+    } else {
+        format!("{call_id}-retry{attempt}")
+    }
 }
 
 /// Execution and delivery state of one client function call.
@@ -220,6 +248,63 @@ pub enum ToolResultState {
         /// Output, or the error text when it failed.
         output: String,
     },
+    /// Everruns paused the turn on this call (an approval, a client-side
+    /// tool, a connection setup). The provider's required action stays open:
+    /// nothing is submitted until the turn resumes.
+    Parked {
+        /// What answers the pause.
+        reason: ParkReason,
+        /// Reason iteration that parked. A replay of that activity stays
+        /// parked; only a later iteration (the resumed turn) resolves it.
+        iteration: u32,
+    },
+}
+
+/// What a parked function call waits for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ParkReason {
+    /// A client answers the call itself; its recorded result is submitted.
+    ClientResult,
+    /// A hard approval gate deferred the call. The decision is the result of
+    /// the engine-authored request call; only an approval runs the call again.
+    Approval {
+        /// Id of the synthetic `approve_tool_call` request.
+        request_call_id: String,
+    },
+    /// The call needs a user action first (connection setup, MCP
+    /// elicitation); it runs again once the turn resumes.
+    Retry,
+}
+
+/// Why Everruns stopped a remote turn.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PolicyStop {
+    /// Stable reason code (`output_guardrail`, `budget_exhausted`, ...).
+    pub code: String,
+    /// User-facing text: the guardrail replacement, or the failure message.
+    pub message: String,
+    /// The assistant message an output guardrail replaced. `None` for stops
+    /// that fail the turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaced: Option<ReplacedMessage>,
+}
+
+/// An assistant message withheld by an output guardrail.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReplacedMessage {
+    /// Correlation key of the provider item.
+    pub item_key: String,
+    /// Provider item id.
+    pub provider_item_id: String,
+    /// Local message id that carries the replacement.
+    pub message_id: MessageId,
+    /// Capability that contributed the guardrail.
+    pub guardrail_capability_id: String,
+    /// Guardrail that tripped.
+    pub guardrail_id: String,
+    /// Stable reason code of the trip.
+    pub reason_code: String,
 }
 
 /// Durable, tenant-scoped storage with exclusive expiring ownership.

@@ -285,7 +285,7 @@ pub(crate) fn pending_ask_user_calls(
     pending_ask_user_calls_from_slice(&act_result.client_tool_calls)
 }
 
-fn pending_ask_user_calls_from_slice(
+pub(crate) fn pending_ask_user_calls_from_slice(
     client_tool_calls: &[everruns_provider::tool_types::ToolCall],
 ) -> Vec<(String, serde_json::Value)> {
     client_tool_calls

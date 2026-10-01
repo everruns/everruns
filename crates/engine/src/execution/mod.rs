@@ -15,4 +15,6 @@ pub use act_hooks::{
 };
 pub use everruns_core::execution_context::ExecutionContext;
 pub use input::{InputAtom, InputAtomInput, InputAtomResult};
-pub use reason::{NativeExecutionCounts, ReasonAtom, ReasonInput, ReasonResult};
+pub use reason::{
+    NativeExecutionCounts, ReasonAtom, ReasonInput, ReasonResult, capability_usage_records,
+};

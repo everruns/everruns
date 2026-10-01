@@ -374,6 +374,21 @@ pub fn plan_after_reason(
     let summarized_state = state.with_reason_summary(&reason_result);
     let max_turn_requests_reached = state.iteration >= reason_result.max_iterations as u32;
 
+    // A remote tool loop paused on a tool call (EVE-1124). Checked before
+    // anything else: the provider still holds that call open, so neither a
+    // steering message nor the iteration cap may end or advance the turn.
+    if reason_result.success && reason_result.waiting_for_tool_results {
+        let next = TurnState {
+            previous_response_id: response_id,
+            iteration: state.iteration.saturating_add(1),
+            ..summarized_state
+        };
+        return (
+            TurnPlan::WaitForToolResults { resume: next },
+            vec![TurnLifecycleEffect::WaitingForToolResults],
+        );
+    }
+
     if reason_schedules_act(state, &reason_result) {
         let facts = act_scheduling.unwrap_or_default();
         let plan = ActPlan {
@@ -490,6 +505,28 @@ pub fn plan_after_reason(
     )
 }
 
+/// Whether an act outcome parks the turn, given the session's pause hints.
+///
+/// One definition shared by [`plan_after_act`] and hosts that run tools
+/// inside a remote reason loop (the OpenAI Agents API backend), so both pause
+/// on exactly the same conditions.
+pub fn act_pauses_turn(
+    outcome: ActOutcome,
+    setup_connection_hint_enabled: bool,
+    url_elicitation_hint_enabled: bool,
+    ask_user_hint_enabled: bool,
+) -> bool {
+    outcome.waiting_for_tool_results
+        && if outcome.waiting_for_tool_approval {
+            true
+        } else if outcome.waiting_for_ask_user {
+            ask_user_hint_enabled
+        } else {
+            setup_connection_hint_enabled
+                || (outcome.waiting_for_url_elicitation && url_elicitation_hint_enabled)
+        }
+}
+
 /// Plan the next step after an `act` activity finishes.
 ///
 /// `setup_connection_hint_enabled` and `url_elicitation_hint_enabled` are the
@@ -528,15 +565,12 @@ pub fn plan_after_act(
     // hints (EVE-1140). Continuing would not let the gated call through — it
     // already failed closed — but it would throw away the only chance a person
     // has to approve it, and an API caller can answer without any card.
-    let should_pause_for_tool_results = outcome.waiting_for_tool_results
-        && if outcome.waiting_for_tool_approval {
-            true
-        } else if outcome.waiting_for_ask_user {
-            ask_user_hint_enabled
-        } else {
-            setup_connection_hint_enabled
-                || (outcome.waiting_for_url_elicitation && url_elicitation_hint_enabled)
-        };
+    let should_pause_for_tool_results = act_pauses_turn(
+        outcome,
+        setup_connection_hint_enabled,
+        url_elicitation_hint_enabled,
+        ask_user_hint_enabled,
+    );
 
     let next = TurnState {
         iteration: state.iteration.saturating_add(1),
