@@ -49,7 +49,7 @@ impl EventListener for UsageTrackingListener {
                 // nothing to track.
                 if let Err(e) = super::agents_api_usage::record_pending(&self.db, event, data).await
                 {
-                    error!("Failed to record pending Agents API usage: {}", e);
+                    error!(error = %e, "Failed to record pending Agents API usage");
                 }
                 return;
             }
