@@ -2,6 +2,17 @@
 
 ## 2026-10-01
 
+* **The OpenAI Agents API backend is durable and opt-in (EVE-1123).** A session
+  selects it with the `openai_agents_api_runtime` capability, which the
+  `openai_agents_api` org flag gates. One encrypted, lease-fenced checkpoint per
+  session holds the provider session id, stream cursor, item correlations, and
+  input and tool-result outboxes, written ahead of every provider call and local
+  effect. Recovery adopts an uncertain create by session metadata (creates are
+  not idempotent at OpenAI), retries input under its idempotency key (which
+  OpenAI honors), and reconciles from saved items after a disconnect. Tools run
+  only as client functions through the Act pipeline. Threat-model entries
+  TM-TOOL-051 and TM-LLM-043. See [OpenAI Agents API Runtime
+  Backend](execution/openai-agents-api-runtime.md).
 * **Hosted sessions have a hard tool-approval gate (EVE-1140).** [Tool Approval](execution/tool-approval.md)
   records how `tool_approval` works where a turn cannot block on a human: the
   gate defers an undecided call, the turn parks on an `approve_tool_call`

@@ -330,6 +330,10 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
+        None
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {

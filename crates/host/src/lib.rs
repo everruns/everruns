@@ -64,11 +64,12 @@ mod mcp;
 mod mcp_cache;
 #[cfg(any(feature = "otel", feature = "braintrust"))]
 pub mod observability;
-#[cfg(feature = "openai-agents-api-prototype")]
+#[cfg(feature = "openai-agents-api")]
 pub mod openai_agents_api;
 #[cfg(feature = "process")]
 mod process_command;
 mod real_disk;
+mod reason_backend;
 mod runtime;
 mod runtime_context;
 mod session_file_system_factory;

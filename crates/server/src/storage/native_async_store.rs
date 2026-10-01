@@ -22,6 +22,13 @@ impl PgNativeAsyncStore {
     pub fn new(pool: PgPool, encryption: Arc<EncryptionService>) -> Self {
         Self { pool, encryption }
     }
+    /// The store over a PostgreSQL backend, when encryption is configured.
+    pub fn shared(
+        db: &super::StorageBackend,
+        encryption: Option<&Arc<EncryptionService>>,
+    ) -> Option<Arc<dyn NativeAsyncStore>> {
+        Some(Arc::new(Self::new(db.pool()?.clone(), encryption?.clone())))
+    }
     fn encode(&self, checkpoint: &NativeAsyncCheckpoint) -> Result<Vec<u8>> {
         let bytes = serde_json::to_vec(checkpoint).map_err(store_error)?;
         if bytes.len() > MAX_NATIVE_ASYNC_CHECKPOINT_BYTES {

@@ -500,6 +500,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(Arc::new(GrpcAdapter::new(self.client.clone())))
     }
 
+    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
+        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {

@@ -41,6 +41,7 @@ service WorkerService {
     rpc InstallCompactionCheckpoint(InstallCompactionCheckpointRequest) returns (InstallCompactionCheckpointResponse);
 
     rpc NativeAsyncJournal(NativeAsyncJournalRequest) returns (NativeAsyncJournalResponse);
+    rpc AgentsApiJournal(AgentsApiJournalRequest) returns (AgentsApiJournalResponse);
 
     // Event operations
     rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
@@ -2182,3 +2183,14 @@ message NativeAsyncJournalRequest {
     bytes checkpoint_json = 6;
 }
 message NativeAsyncJournalResponse { bytes checkpoint_json = 1; }
+
+// Lease-fenced orchestration state for the OpenAI Agents API backend (EVE-1123).
+message AgentsApiJournalRequest {
+    enum Operation { ACQUIRE = 0; RENEW = 1; SAVE = 2; RELEASE = 3; }
+    Operation operation = 1;
+    int64 org_id = 2;
+    Uuid session_id = 3;
+    Uuid owner = 4;
+    bytes checkpoint_json = 5;
+}
+message AgentsApiJournalResponse { bytes checkpoint_json = 1; }

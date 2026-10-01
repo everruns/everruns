@@ -22,15 +22,17 @@ use everruns_core::{
     org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use everruns_core::{
+    CompactionCheckpointStore, agents_api_store::AgentsApiStore,
     connection_services::ProviderCredentialStore, connection_services::UserConnectionResolver,
-    delegation_services::SessionCreationAuthority, event_emitter::EventEmitter,
-    execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, file_services::FileResolver,
+    delegation_services::SessionCreationAuthority, durability::DurableToolResultStore,
+    durability::PartialStreamStore, event_emitter::EventEmitter, execution_loading::AgentStore,
+    execution_loading::HarnessStore, execution_loading::SessionStore, file_services::FileResolver,
     image_services::ImageArtifactStore, image_services::ImageResolver,
-    provider_resolution::ProviderStore, session_files::SessionFileSystem,
-    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
-    session_services::SessionScheduleStore, session_services::SessionStorageStore,
-    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
+    native_async_store::NativeAsyncStore, provider_resolution::ProviderStore,
+    session_files::SessionFileSystem, session_services::LeasedResourceStore,
+    session_services::SessionResourceRegistry, session_services::SessionScheduleStore,
+    session_services::SessionStorageStore, tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
 };
 use everruns_engine::{
     ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
@@ -154,15 +156,16 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     fn message_store(&self) -> Arc<dyn MessageRetriever>;
 
-    fn native_async_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+    fn native_async_store(&self) -> Option<Arc<dyn NativeAsyncStore>> {
         None
     }
 
-    fn compaction_checkpoint_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+    /// Durable state for the opt-in OpenAI Agents API backend (EVE-1123).
+    fn agents_api_store(&self) -> Option<Arc<dyn AgentsApiStore>> {
+        None
+    }
+
+    fn compaction_checkpoint_store(&self) -> Option<Arc<dyn CompactionCheckpointStore>> {
         None
     }
 
@@ -287,9 +290,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     /// Per-turn durable tool result store for act-activity idempotency (EVE-530).
     /// Default: `None` (no durable claim/settle — every execution runs tools fresh).
-    fn durable_tool_result_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
+    fn durable_tool_result_store(&self) -> Option<Arc<dyn DurableToolResultStore>> {
         None
     }
 
@@ -309,9 +310,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     /// Partial-stream store for ContinuePartial recovery (EVE-532).
     /// Default: `None` (no recovery; in-memory and dev hosts use this default).
-    fn partial_stream_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::durability::PartialStreamStore>> {
+    fn partial_stream_store(&self) -> Option<Arc<dyn PartialStreamStore>> {
         None
     }
 
@@ -1323,7 +1322,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         emit_model_change_if_switched(adapter, org_id, &input, &assembled).await;
     }
 
-    crate::native_async::execute_reason(adapter, org_id, input, assembled, atom).await
+    crate::reason_backend::execute_reason(adapter, org_id, input, assembled, atom).await
 }
 
 /// Emit `session.model.changed` when this turn's input selects a model
