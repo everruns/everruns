@@ -37,7 +37,6 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use everruns_core::event_listeners::EventListener;
-use everruns_core::events::correlation::provider_correlation;
 use everruns_core::events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, LLM_GENERATION,
     LlmGenerationData, REASON_COMPLETED, REASON_STARTED, REASON_THINKING_COMPLETED,
@@ -89,11 +88,6 @@ mod everruns_attr {
     pub const LLM_RETRY_ATTEMPTS: &str = "everruns.llm.retry.attempts";
     pub const LLM_RETRY_WAIT_MS: &str = "everruns.llm.retry.total_wait_ms";
     pub const USAGE_COST_USD: &str = "everruns.usage.cost_usd";
-    /// Billable components of a generation whose amount is unknown.
-    pub const USAGE_COST_UNKNOWN_COMPONENTS: &str = "everruns.usage.cost_unknown_components";
-    /// Prefix of provider correlation ids (`everruns.provider_session_id`,
-    /// ...), recorded beside the local ids, never instead of them.
-    pub const PROVIDER_PREFIX: &str = "everruns.";
     /// Set on a span the listener had to close because its turn ended first.
     pub const SPAN_UNTERMINATED: &str = "everruns.span.unterminated";
     /// Set on a span reconstructed from a terminal event whose start was
@@ -300,12 +294,7 @@ impl OtelEventListener {
                 id.to_string(),
             ));
         }
-        for (key, value) in provider_correlation(event.metadata.as_ref()) {
-            attrs.push(KeyValue::new(
-                format!("{}{key}", everruns_attr::PROVIDER_PREFIX),
-                value,
-            ));
-        }
+        attrs.extend(super::provider_attrs::otel_provider_attributes(event));
         attrs
     }
 
@@ -1126,18 +1115,7 @@ impl OtelEventListener {
         if let Some(cost) = meta.usage.as_ref().and_then(cost_usd) {
             attrs.push(KeyValue::new(everruns_attr::USAGE_COST_USD, cost));
         }
-        // Billable components nobody could price stay visible as unknown
-        // rather than folding into the cost as zero (EVE-1125).
-        let unpriced: Vec<StringValue> = meta
-            .unpriced_cost_components()
-            .map(|component| format!("{}:{}", component.kind, component.name).into())
-            .collect();
-        if !unpriced.is_empty() {
-            attrs.push(KeyValue::new(
-                everruns_attr::USAGE_COST_UNKNOWN_COMPONENTS,
-                Value::Array(unpriced.into()),
-            ));
-        }
+        attrs.extend(super::provider_attrs::otel_unknown_cost_attributes(meta));
         attrs
     }
 

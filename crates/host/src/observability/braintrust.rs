@@ -746,13 +746,7 @@ impl BraintrustListener {
         metadata["session_id"] = serde_json::json!(event.session_id.to_string());
         metadata["deployment_grade"] =
             serde_json::json!(self.state.config.deployment_grade.to_string());
-        // Provider ids sit beside the local ids, never instead of them.
-        for (key, value) in
-            everruns_core::events::correlation::provider_correlation(event.metadata.as_ref())
-        {
-            metadata[key] = serde_json::json!(value);
-        }
-
+        super::provider_attrs::annotate_braintrust(event, metadata);
         if let Some(sequence) = event.sequence {
             metadata["session_event_sequence"] = serde_json::json!(sequence);
         }
@@ -1369,10 +1363,6 @@ impl BraintrustListener {
         }
         if let Some(compaction) = &data.metadata.compaction {
             metadata["compaction"] = serde_json::json!(compaction);
-        }
-        if !data.metadata.cost_components.is_empty() {
-            // `cost_usd: null` marks an amount nobody could price.
-            metadata["cost_components"] = serde_json::json!(data.metadata.cost_components);
         }
         self.annotate_metadata(
             event,
