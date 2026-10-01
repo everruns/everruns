@@ -142,6 +142,7 @@ pub(crate) fn auth_test_config() -> LlmCallConfig {
         limits: Default::default(),
         reasoning_state: None,
         response_format: None,
+        background_call: Default::default(),
     }
 }
 

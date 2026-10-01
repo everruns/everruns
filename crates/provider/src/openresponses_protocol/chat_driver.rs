@@ -248,25 +248,48 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             extension.decorate_headers(&mut extension_headers, config)?;
         }
 
+        // The call's identity is the request as first built, so a durable
+        // retry recognises the response an earlier attempt left running.
+        let background_responses = background.then(|| {
+            super::background::BackgroundResponses::new(
+                self.client(),
+                endpoint,
+                &api_url,
+                &extension_headers,
+                config,
+                &request_body,
+            )
+        });
+        let reattached = match &background_responses {
+            Some(responses) => responses.reattach().await,
+            None => None,
+        };
+        let attached_id = reattached.as_ref().map(|(_, id)| id.clone());
+
         // Establish the SSE stream, transparently reconnecting on a transport
         // failure that lands before the first event is decoded (the "error
         // decoding response body" flake). Header-phase retries (429/5xx and
         // transient send failures) are handled inside the per-attempt send.
-        let first_connect = connect_sse_with_reconnect(
-            &self.retry_config,
-            "OpenResponsesProtocolDriver",
-            |attempts| {
-                self.send_responses_request(
-                    endpoint,
-                    &api_url,
-                    &request_body,
-                    &extension_headers,
-                    config,
-                    attempts,
+        let first_connect = match reattached {
+            Some((stream, _)) => Ok((stream, RetryMetadata::default())),
+            None => {
+                connect_sse_with_reconnect(
+                    &self.retry_config,
+                    "OpenResponsesProtocolDriver",
+                    |attempts| {
+                        self.send_responses_request(
+                            endpoint,
+                            &api_url,
+                            &request_body,
+                            &extension_headers,
+                            config,
+                            attempts,
+                        )
+                    },
                 )
-            },
-        )
-        .await;
+                .await
+            }
+        };
         let first_connect = match first_connect {
             Err(error) if background && super::background::is_rejection(&error) => {
                 tracing::warn!(model = %request.model, %error, "background mode rejected; retrying in foreground");
@@ -349,29 +372,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
             Err(error) => return Err(error),
         };
-        let event_stream = if background {
-            let mut headers = extension_headers.clone();
-            for (name, value) in
-                crate::driver_helpers::merge_request_headers(Vec::new(), &config.extra_headers)
-            {
-                if let (Ok(name), Ok(value)) = (
-                    reqwest::header::HeaderName::from_bytes(name.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(&value),
-                ) {
-                    headers.insert(name, value);
-                }
-            }
-            super::background::resumable(
-                event_stream,
-                super::background::BackgroundResponses {
-                    client: self.client(),
-                    endpoint: endpoint.clone(),
-                    api_url: api_url.clone(),
-                    headers,
-                },
-            )
-        } else {
-            event_stream
+        let event_stream = match background_responses.filter(|_| background) {
+            Some(responses) => super::background::resumable(event_stream, responses, attached_id),
+            None => event_stream,
         };
 
         let model = config.model.clone();

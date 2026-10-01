@@ -104,3 +104,28 @@ fn is_dynamic_error_placeholder(text: &str) -> bool {
         || (text.starts_with("Soft limit reached.") && text.ends_with("soft limit."))
         || (text.starts_with("The model `") && text.ends_with("Please select a different model."))
 }
+
+// Moved out of `reason.rs` (size ratchet).
+impl super::ReasonAtom {
+    /// Collect the [`LlmErrorHook`]s contributed by the active capabilities,
+    /// paired with each capability's per-agent config. Hooks are invoked
+    /// generically on the terminal-error path; the reason atom has no knowledge
+    /// of any specific capability's behavior. Capabilities that contribute no
+    /// hook — the common case — are skipped at zero allocation cost.
+    pub(super) fn collect_llm_error_hooks(
+        &self,
+        resolved_capability_configs: &[crate::CapabilityRef],
+    ) -> Vec<(
+        std::sync::Arc<dyn crate::llm_error_hook::LlmErrorHook>,
+        serde_json::Value,
+    )> {
+        resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap = self.capability_registry.get(cfg.capability_id())?;
+                let hook = cap.llm_error_hook()?;
+                Some((hook, cfg.config_value().clone()))
+            })
+            .collect()
+    }
+}

@@ -135,6 +135,10 @@ pub struct NativeAsyncCheckpoint {
     /// Persist before HTTP submission. Recovery requires an explicit receipt if
     /// the process died between the provider accepting outputs and saving its ID.
     pub delivery: Option<Delivery>,
+    /// In-flight background response of the turn's current provider call, so
+    /// a durable retry re-attaches instead of posting it again (EVE-1134).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_response: Option<crate::background_call::BackgroundResponseRecord>,
 }
 
 impl NativeAsyncCheckpoint {

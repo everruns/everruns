@@ -22,6 +22,7 @@
 //! assert_eq!(model.model, "assistant-v2");
 //! ```
 
+pub mod background_call;
 pub mod compact;
 pub mod credential_provider;
 pub mod credential_schema;

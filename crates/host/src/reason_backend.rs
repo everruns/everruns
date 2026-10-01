@@ -16,5 +16,13 @@ pub(crate) async fn execute_reason<A: crate::RuntimeHostAdapter>(
     {
         return Ok(result);
     }
+    // Background provider calls re-attach after a restart and stop on an
+    // explicit turn cancel (EVE-1134).
+    let atom = atom.with_background_call(crate::background_call::context(
+        adapter,
+        org_id,
+        input.context.session_id,
+        input.context.turn_id,
+    ));
     crate::native_async::execute_reason(adapter, org_id, input, assembled, atom).await
 }

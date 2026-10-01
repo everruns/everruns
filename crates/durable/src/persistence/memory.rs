@@ -598,13 +598,13 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         _details: Option<serde_json::Value>,
     ) -> Result<HeartbeatResponse, StoreError> {
         let tasks = self.tasks.read();
-        if !tasks.contains_key(&task_id) {
-            return Err(StoreError::TaskNotFound(task_id));
-        }
-
+        let missing = StoreError::TaskNotFound(task_id);
+        let workflow_id = tasks.get(&task_id).ok_or(missing)?.definition.workflow_id;
+        drop(tasks); // one lock at a time
+        let status = workflow_id.and_then(|id| self.workflows.read().get(&id).map(|w| w.status));
         Ok(HeartbeatResponse {
             accepted: true,
-            should_cancel: false,
+            should_cancel: status == Some(WorkflowStatus::Cancelled),
         })
     }
 

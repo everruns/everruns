@@ -1369,7 +1369,7 @@ jobs:
 
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
-        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
+        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --features postgres-tests -- --test-threads=1
 
       # `agent_reliability_test` was audited for EVE-349 but still fails on a
       # clean PostgreSQL-backed run; keep it out of required CI until its
