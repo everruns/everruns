@@ -63,16 +63,3 @@ updates:
       # openapi-typescript supports it.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
-      # @ag-ui/core 1.0 is an AG-UI protocol major, not a package refactor: the
-      # zod schemas moved to the `@ag-ui/core/schemas` subpath export, and the
-      # reasoning channel was renamed `THINKING_*` -> `REASONING_*`. The server
-      # emits AG-UI from the Rust `ag-ui-core` 0.1.0 crate
-      # (crates/server/src/api/ag_ui.rs), which still speaks `THINKING_*`, and
-      # the npm package is also a transitive runtime dep of
-      # @openuidev/react-headless — so taking the npm major alone desynchronizes
-      # the two ends of the wire. The pnpm override in apps/ui/pnpm-workspace.yaml
-      # pins 0.0.59, so a bump to the devDependency range on its own is a no-op
-      # that only makes package.json disagree with the override. Drop this once
-      # EVE-1135 migrates both ends together.
-      - dependency-name: "@ag-ui/core"
-        update-types: ["version-update:semver-major"]

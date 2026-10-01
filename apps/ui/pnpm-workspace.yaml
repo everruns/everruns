@@ -1,12 +1,12 @@
 packages: []
 overrides:
-  # Held on 0.0.x deliberately: @ag-ui/core 1.0 is an AG-UI protocol major
-  # (THINKING_* -> REASONING_*, zod schemas moved to the /schemas subpath),
-  # and the server still emits the pre-1.0 vocabulary from the Rust
-  # ag-ui-core 0.1.0 crate. This override also wins over the
-  # devDependencies range in package.json, so bumping that range alone is a
-  # no-op — move both, plus the Rust side, together. See EVE-1135.
-  '@ag-ui/core': 0.0.59
+  # AG-UI 1.0 (EVE-1135), matching the server's REASONING_* emitter.
+  # @openuidev/react-headless still declares @ag-ui/core ^0.0.53 but only
+  # reads `EventType` members unchanged in 1.0 (TEXT_MESSAGE_*, TOOL_CALL_*,
+  # STEP_*, CUSTOM, RUN_ERROR). `$@ag-ui/core` follows the devDependencies
+  # range in package.json, so one bump there moves both copies together and
+  # the contract test (src/__tests__/ag-ui-contract.test.ts) checks it.
+  '@ag-ui/core': $@ag-ui/core
   '@babel/core': 7.29.6
   brace-expansion@1: 1.1.18
   brace-expansion@2: 2.1.4

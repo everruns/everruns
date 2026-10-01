@@ -86,6 +86,16 @@ Each public endpoint defines a thin adapter that converts `PublicError` into the
 
 When adding a new public endpoint, define one adapter and use it from every error-emitting site, including stream-end / disconnect / cancellation paths. Property tests live alongside `PublicError` in `crates/server/src/api/public.rs` and must continue to pass.
 
+### AG-UI wire protocol
+
+AG-UI and Public Chat speak AG-UI 1.0 only and announce it on `RUN_STARTED.protocolVersion` (EVE-1135). There is no version negotiation: the 1.0 move was a deliberate breaking change for pre-1.0 stream consumers, since `THINKING_*` became `REASONING_*`. Pre-1.0 request bodies still parse, because 1.0 only relaxed `RunAgentInput`. Everruns still requires UUID `threadId` and `runId`, because they key session routing tags.
+
+- **Wire types come from [`everruns-ag-ui`](../../crates/ag-ui)**, our crate, tested against the pinned upstream 1.0 schema and fixtures. The only community Rust crate, `ag-ui-core`, still speaks pre-1.0. On the browser side, [`ag-ui-contract.test.ts`](../../apps/ui/src/__tests__/ag-ui-contract.test.ts) validates fixtures shaped like the server's output against npm `@ag-ui/core/schemas`. [`wire_tests.rs`](../../crates/server/src/api/ag_ui/wire_tests.rs) pins what the server actually emits. Move `@ag-ui/core` and the crate's pinned schema to a new protocol version together.
+- **The stream must be well formed.** 1.0 clients verify it: every content or end event must name an open id, and `RUN_FINISHED` is rejected while a reasoning span, reasoning message, or text message is open. [`ag_ui/reasoning.rs`](../../crates/server/src/api/ag_ui/reasoning.rs) owns the reasoning ids and closes them before `RUN_FINISHED`. Optional fields are omitted, never `null`, because 1.0 schemas reject `null`.
+- **The reasoning channel is shared.** Provider thinking, `reason.item` summaries, and the channel-configured tool-activity text all render as `REASONING_*`. Tool activity stays there rather than moving to `ACTIVITY_*`, so existing integrations keep displaying the same thing. Encrypted reasoning is never emitted (no `REASONING_ENCRYPTED_VALUE`).
+- **No `SUBAGENT_*` yet.** Delegated work is Session Tasks, whose names are agent-authored, and this channel never names tools or agents. Projecting tasks needs its own exposure policy first.
+- **Client-echoed `reasoning` and `activity` messages** are accepted and dropped. They never reach the model, which keeps TM-LLM-020's role gate intact.
+
 ## Threat Model
 
 Public endpoints are the unauthenticated entrypoint for the platform. Relevant categories from `knowledge/security/threat-model.md`:

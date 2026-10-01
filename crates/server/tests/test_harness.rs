@@ -1308,11 +1308,28 @@ impl TestServer {
         max_bytes: usize,
         idle: std::time::Duration,
     ) -> String {
+        self.request_stream_prefix(Method::GET, uri, vec![], Vec::new(), max_bytes, idle)
+            .await
+    }
+
+    /// Like [`Self::get_stream_prefix`] for any method, headers, and body —
+    /// e.g. an AG-UI run, which is a POST answered with SSE.
+    pub async fn request_stream_prefix(
+        &self,
+        method: Method,
+        uri: &str,
+        headers: Vec<(&str, &str)>,
+        body: Vec<u8>,
+        max_bytes: usize,
+        idle: std::time::Duration,
+    ) -> String {
         let normalized_uri = Self::normalize_uri(uri);
-        let request = Request::builder()
-            .method(Method::GET)
-            .uri(&normalized_uri)
-            .body(Body::empty())
+        let mut builder = Request::builder().method(method).uri(&normalized_uri);
+        for (key, value) in headers {
+            builder = builder.header(key, value);
+        }
+        let request = builder
+            .body(Body::from(body))
             .expect("Failed to build request");
 
         let response = self

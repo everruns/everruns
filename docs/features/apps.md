@@ -27,6 +27,24 @@ New integrations use endpoint-scoped canonical paths:
 /v1/e/{endpoint_id}/fcp
 ```
 
+## AG-UI Protocol Version
+
+AG-UI endpoints speak AG-UI 1.0 and announce it as `protocolVersion: "1.0"` on `RUN_STARTED`. Use an AG-UI 1.0 client, such as `@ag-ui/core` and `@ag-ui/client` 1.x.
+
+AG-UI 1.0 renamed the reasoning events, so this is a breaking change for clients still on 0.0.x:
+
+| Before 1.0 | AG-UI 1.0 |
+|---|---|
+| `THINKING_START` | `REASONING_START` |
+| `THINKING_TEXT_MESSAGE_START` | `REASONING_MESSAGE_START` |
+| `THINKING_TEXT_MESSAGE_CONTENT` | `REASONING_MESSAGE_CONTENT` |
+| `THINKING_TEXT_MESSAGE_END` | `REASONING_MESSAGE_END` |
+| `THINKING_END` | `REASONING_END` |
+
+The reasoning channel carries provider reasoning summaries when the endpoint shows them, and tool-activity text when tool visibility is `generic` or `narrated`. Each reasoning event now carries a `messageId`, and every reasoning message and text message is closed before `RUN_FINISHED`.
+
+Requests are unchanged. Pre-1.0 request bodies are still accepted. A 1.0 request may omit `state`, `tools`, `context`, and `forwardedProps`, send user content as a list of text parts, and echo back the `reasoning` and `activity` messages its client recorded. Echoed reasoning and activity messages are never sent to the model. Send images through the image upload route and `forwardedProps.imageIds`, not as image content parts.
+
 ## Endpoint Lifecycle
 
 Each endpoint has its own lifecycle:

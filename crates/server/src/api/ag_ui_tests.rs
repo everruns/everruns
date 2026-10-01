@@ -7,7 +7,6 @@ use crate::kernel_imports::{
     Event, EventContext, MessageId, OutputMessageCompletedData, OutputMessageDeltaData,
     RuntimeMessage, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
 };
-use ag_ui_core::event::EventType as AgUiEventType;
 use chrono::Duration as ChronoDuration;
 use everruns_core::events::TurnFailedData;
 use everruns_provider::execution_phase::ExecutionPhase;
@@ -40,7 +39,7 @@ fn test_expired_age_seconds_clock_skew() {
     assert_eq!(expired_age_seconds(created, 60, now), None);
 }
 
-async fn test_stream_state() -> AgUiStreamState {
+pub(super) async fn test_stream_state() -> AgUiStreamState {
     let session_id = SessionId::new();
     let delivery = crate::event_delivery::EventDelivery::in_memory();
     let subscription = delivery.subscribe(session_id.uuid()).await.unwrap();
@@ -48,20 +47,17 @@ async fn test_stream_state() -> AgUiStreamState {
         subscription: Box::new(subscription),
         session_id: session_id.uuid(),
         input_message_id: MessageId::new().to_string(),
-        thread_id: AgUiThreadId::random(),
-        run_id: AgUiRunId::random(),
+        thread_id: Uuid::new_v4(),
+        run_id: Uuid::new_v4(),
         queue: VecDeque::new(),
         assistant_message_id: None,
         assistant_content_started: false,
         assistant_emitted_delta: false,
-        thinking_started: false,
-        thinking_text_started: false,
+        reasoning: ReasoningState::default(),
         tool_visibility: PublicToolVisibility::Generic,
         generic_tool_text: "Working...".to_string(),
         reasoning_summary_visible: false,
         active_tool_activity_count: 0,
-        public_tool_activity_started: false,
-        public_tool_activity_opened_thinking: false,
         finished: false,
     }
 }
@@ -128,21 +124,20 @@ async fn test_translate_output_completion_to_ag_ui_run_finished() {
 
     translate_event(&mut state, &event);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     assert_eq!(
         event_types,
         vec![
-            AgUiEventType::TextMessageStart,
-            AgUiEventType::TextMessageContent,
-            AgUiEventType::TextMessageEnd,
-            AgUiEventType::RunFinished,
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED",
         ]
     );
     match &state.queue[0] {
-        AgUiEvent::TextMessageStart(event) => assert_eq!(
-            event.message_id,
-            AgUiMessageId::from(output_message_id.uuid())
-        ),
+        AgUiEvent::TextMessageStart(event) => {
+            assert_eq!(event.message_id, output_message_id.uuid().to_string())
+        }
         _ => panic!("expected text start event"),
     }
     assert!(state.finished);
@@ -179,14 +174,14 @@ async fn test_translate_streaming_delta_does_not_duplicate_final_content() {
     );
     translate_event(&mut state, &completed_event);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     assert_eq!(
         event_types,
         vec![
-            AgUiEventType::TextMessageStart,
-            AgUiEventType::TextMessageContent,
-            AgUiEventType::TextMessageEnd,
-            AgUiEventType::RunFinished,
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED",
         ]
     );
     let content_events: Vec<&AgUiEvent> = state
@@ -243,13 +238,13 @@ async fn test_commentary_delta_tool_completion_does_not_hide_final_answer() {
     );
     translate_event(&mut state, &commentary_completed);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     assert_eq!(
         event_types,
         vec![
-            AgUiEventType::TextMessageStart,
-            AgUiEventType::TextMessageContent,
-            AgUiEventType::TextMessageEnd,
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
         ]
     );
     assert!(!state.finished);
@@ -265,17 +260,17 @@ async fn test_commentary_delta_tool_completion_does_not_hide_final_answer() {
     );
     translate_event(&mut state, &final_completed);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     assert_eq!(
         event_types,
         vec![
-            AgUiEventType::TextMessageStart,
-            AgUiEventType::TextMessageContent,
-            AgUiEventType::TextMessageEnd,
-            AgUiEventType::TextMessageStart,
-            AgUiEventType::TextMessageContent,
-            AgUiEventType::TextMessageEnd,
-            AgUiEventType::RunFinished,
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED",
         ]
     );
     let content_events: Vec<&AgUiTextMessageContentEvent> = state
@@ -296,7 +291,7 @@ async fn test_commentary_delta_tool_completion_does_not_hide_final_answer() {
 
     // EVE-773: AG-UI projects the canonical streamed message ids, preserving
     // the commentary/final boundary without exposing the turn uuid.
-    let start_ids: Vec<&AgUiMessageId> = state
+    let start_ids: Vec<&String> = state
         .queue
         .iter()
         .filter_map(|event| match event {
@@ -309,12 +304,9 @@ async fn test_commentary_delta_tool_completion_does_not_hide_final_answer() {
         start_ids[0], start_ids[1],
         "commentary and final answer must have distinct messageIds"
     );
-    assert_eq!(
-        *start_ids[0],
-        AgUiMessageId::from(commentary_message_id.uuid())
-    );
-    assert_eq!(*start_ids[1], AgUiMessageId::from(final_message_id.uuid()));
-    let turn_message_id = AgUiMessageId::from(turn_id.uuid());
+    assert_eq!(*start_ids[0], commentary_message_id.uuid().to_string());
+    assert_eq!(*start_ids[1], final_message_id.uuid().to_string());
+    let turn_message_id = turn_id.uuid().to_string();
     assert_ne!(*start_ids[0], turn_message_id);
     assert_ne!(*start_ids[1], turn_message_id);
 }
@@ -387,12 +379,11 @@ async fn test_thinking_stream_hidden_by_default() {
     );
 
     assert!(state.queue.is_empty());
-    assert!(!state.thinking_started);
-    assert!(!state.thinking_text_started);
+    assert!(state.reasoning.is_idle());
 }
 
 // EVE-775: a provider `reason.item` summary is a reasoning artifact and must
-// project onto the AG-UI reasoning channel (THINKING_*), never the
+// project onto the AG-UI reasoning channel (REASONING_*), never the
 // assistant-text channel, and never leak opaque reasoning content.
 #[tokio::test]
 async fn test_reason_item_summary_projects_to_reasoning_channel_when_enabled() {
@@ -415,15 +406,15 @@ async fn test_reason_item_summary_projects_to_reasoning_channel_when_enabled() {
 
     translate_event(&mut state, &event);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     assert_eq!(
         event_types,
         vec![
-            AgUiEventType::ThinkingStart,
-            AgUiEventType::ThinkingTextMessageStart,
-            AgUiEventType::ThinkingTextMessageContent,
-            AgUiEventType::ThinkingTextMessageEnd,
-            AgUiEventType::ThinkingEnd,
+            "REASONING_START",
+            "REASONING_MESSAGE_START",
+            "REASONING_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_END",
+            "REASONING_END",
         ]
     );
     // The reasoning summary must never appear on the assistant-text channel.
@@ -434,7 +425,7 @@ async fn test_reason_item_summary_projects_to_reasoning_channel_when_enabled() {
             | AgUiEvent::TextMessageEnd(_)
     )));
     match &state.queue[2] {
-        AgUiEvent::ThinkingTextMessageContent(event) => {
+        AgUiEvent::ReasoningMessageContent(event) => {
             assert_eq!(event.delta, "Considered the file layout.");
         }
         other => panic!("expected thinking content, got {other:?}"),
@@ -530,7 +521,7 @@ async fn test_reason_summary_and_commentary_use_separate_channels() {
         .queue
         .iter()
         .filter_map(|event| match event {
-            AgUiEvent::ThinkingTextMessageContent(event) => Some(event.delta.as_str()),
+            AgUiEvent::ReasoningMessageContent(event) => Some(event.delta.as_str()),
             _ => None,
         })
         .collect();
@@ -580,12 +571,12 @@ async fn test_reason_item_summary_appends_to_active_thinking_block() {
     );
     translate_event(&mut state, &reason_item);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     // The summary appends into the open reasoning block — no duplicate start.
     assert_eq!(
         event_types
             .iter()
-            .filter(|event_type| **event_type == AgUiEventType::ThinkingStart)
+            .filter(|event_type| **event_type == "REASONING_START")
             .count(),
         1
     );
@@ -596,7 +587,7 @@ async fn test_reason_item_summary_appends_to_active_thinking_block() {
             .any(|event| matches!(event, AgUiEvent::TextMessageContent(_)))
     );
     match state.queue.back().unwrap() {
-        AgUiEvent::ThinkingTextMessageContent(event) => {
+        AgUiEvent::ReasoningMessageContent(event) => {
             assert_eq!(event.delta, "\nSummary tail.");
         }
         other => panic!("expected appended thinking content, got {other:?}"),
@@ -678,23 +669,23 @@ async fn test_tool_call_completion_does_not_finish_before_final_answer() {
     );
     translate_event(&mut state, &final_completed);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     assert_eq!(
         event_types,
         vec![
-            AgUiEventType::ThinkingStart,
-            AgUiEventType::ThinkingTextMessageStart,
-            AgUiEventType::ThinkingTextMessageContent,
-            AgUiEventType::ThinkingTextMessageEnd,
-            AgUiEventType::ThinkingEnd,
-            AgUiEventType::TextMessageStart,
-            AgUiEventType::TextMessageContent,
-            AgUiEventType::TextMessageEnd,
-            AgUiEventType::RunFinished,
+            "REASONING_START",
+            "REASONING_MESSAGE_START",
+            "REASONING_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_END",
+            "REASONING_END",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED",
         ]
     );
     match &state.queue[2] {
-        AgUiEvent::ThinkingTextMessageContent(event) => {
+        AgUiEvent::ReasoningMessageContent(event) => {
             assert_eq!(event.delta, "Working...");
             assert!(!event.delta.contains("list_skills"));
             assert!(!event.delta.contains("internal"));
@@ -760,19 +751,19 @@ async fn test_generic_tool_activity_hides_public_tool_details() {
     );
     translate_event(&mut state, &tool_completed);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     assert_eq!(
         event_types,
         vec![
-            AgUiEventType::ThinkingStart,
-            AgUiEventType::ThinkingTextMessageStart,
-            AgUiEventType::ThinkingTextMessageContent,
-            AgUiEventType::ThinkingTextMessageEnd,
-            AgUiEventType::ThinkingEnd,
+            "REASONING_START",
+            "REASONING_MESSAGE_START",
+            "REASONING_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_END",
+            "REASONING_END",
         ]
     );
     match &state.queue[2] {
-        AgUiEvent::ThinkingTextMessageContent(event) => {
+        AgUiEvent::ReasoningMessageContent(event) => {
             assert_eq!(event.delta, "Checking now");
             assert!(!event.delta.contains("web_search"));
             assert!(!event.delta.contains("hello"));
@@ -789,7 +780,7 @@ async fn test_generic_tool_activity_hides_public_tool_details() {
     translate_event(&mut state, &output_completed);
 
     // The public messageId is message-scoped and must never be the raw turn uuid.
-    let turn_message_id = AgUiMessageId::from(turn_id.uuid());
+    let turn_message_id = turn_id.uuid().to_string();
     match &state.queue[5] {
         AgUiEvent::TextMessageStart(event) => {
             assert_ne!(event.message_id, turn_message_id);
@@ -875,34 +866,34 @@ async fn test_tool_activity_reuses_active_reason_thinking_block() {
     );
     translate_event(&mut state, &thinking_completed);
 
-    let event_types: Vec<AgUiEventType> = state.queue.iter().map(AgUiEvent::event_type).collect();
+    let event_types: Vec<&str> = state.queue.iter().map(AgUiEvent::event_type).collect();
     assert_eq!(
         event_types,
         vec![
-            AgUiEventType::ThinkingStart,
-            AgUiEventType::ThinkingTextMessageStart,
-            AgUiEventType::ThinkingTextMessageContent,
-            AgUiEventType::ThinkingTextMessageContent,
-            AgUiEventType::ThinkingTextMessageEnd,
-            AgUiEventType::ThinkingEnd,
+            "REASONING_START",
+            "REASONING_MESSAGE_START",
+            "REASONING_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_CONTENT",
+            "REASONING_MESSAGE_END",
+            "REASONING_END",
         ]
     );
     assert_eq!(
         event_types
             .iter()
-            .filter(|event_type| **event_type == AgUiEventType::ThinkingStart)
+            .filter(|event_type| **event_type == "REASONING_START")
             .count(),
         1
     );
     assert_eq!(
         event_types
             .iter()
-            .filter(|event_type| **event_type == AgUiEventType::ThinkingEnd)
+            .filter(|event_type| **event_type == "REASONING_END")
             .count(),
         1
     );
     match &state.queue[3] {
-        AgUiEvent::ThinkingTextMessageContent(event) => {
+        AgUiEvent::ReasoningMessageContent(event) => {
             assert_eq!(event.delta, "\nWorking...");
             assert!(!event.delta.contains("web_search"));
             assert!(!event.delta.contains("private query"));
@@ -987,7 +978,7 @@ async fn test_narrated_tool_visibility_falls_back_to_generic_text() {
     translate_event(&mut state, &tool_started);
 
     match &state.queue[2] {
-        AgUiEvent::ThinkingTextMessageContent(event) => {
+        AgUiEvent::ReasoningMessageContent(event) => {
             assert_eq!(event.delta, "Working...");
             assert!(!event.delta.contains("web_search"));
             assert!(!event.delta.contains("private query"));
@@ -1030,7 +1021,7 @@ async fn test_public_tool_text_falls_back_when_configured_value_is_empty() {
             translate_event(&mut state, &tool_started);
 
             match &state.queue[2] {
-                AgUiEvent::ThinkingTextMessageContent(event) => {
+                AgUiEvent::ReasoningMessageContent(event) => {
                     assert_eq!(
                         event.delta, "Working...",
                         "visibility={visibility:?} configured={configured:?}"

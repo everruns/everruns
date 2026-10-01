@@ -707,3 +707,76 @@ async fn test_ag_ui_rejects_duplicate_message_ids() {
     let body: Value = resp.json();
     assert_eq!(body["detail"], "invalid_request");
 }
+
+// EVE-1135: an AG-UI 1.0 client sends only the required `threadId`, `runId`,
+// and `messages`, echoes back reasoning messages it materialised from
+// `REASONING_*`, and may send text as content parts. The stream must open
+// with RUN_STARTED announcing protocol version 1.0.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_accepts_1_0_run_input_and_announces_protocol_version() {
+    let server = TestServer::in_memory().await;
+    let endpoint_id = create_published_native_ag_ui_endpoint(&server).await;
+    let thread_id = raw_uuid();
+    let payload = json!({
+        "threadId": thread_id,
+        "runId": raw_uuid(),
+        "protocolVersion": "1.0",
+        "messages": [
+            { "id": raw_uuid(), "role": "user", "content": "Earlier question" },
+            { "id": raw_uuid(), "role": "reasoning", "content": "Earlier reasoning" },
+            { "id": raw_uuid(), "role": "assistant", "content": "Earlier answer" },
+            {
+                "id": raw_uuid(),
+                "role": "user",
+                "content": [{ "type": "text", "text": "Hello from a 1.0 client" }]
+            }
+        ]
+    });
+
+    let stream = server
+        .request_stream_prefix(
+            Method::POST,
+            &format!("/v1/e/{endpoint_id}/ag-ui"),
+            vec![
+                ("content-type", "application/json"),
+                ("accept", "text/event-stream"),
+            ],
+            serde_json::to_vec(&payload).unwrap(),
+            4096,
+            std::time::Duration::from_millis(500),
+        )
+        .await;
+    let first: Value = serde_json::from_str(
+        stream
+            .lines()
+            .find_map(|line| line.strip_prefix("data: "))
+            .expect("SSE data line"),
+    )
+    .unwrap();
+    assert_eq!(first["type"], "RUN_STARTED");
+    assert_eq!(first["threadId"], thread_id);
+    assert_eq!(first["protocolVersion"], "1.0");
+    assert!(!stream.contains("THINKING_"), "{stream}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_rejects_media_content_parts() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_ag_ui_app(&server).await;
+    let payload = json!({
+        "threadId": raw_uuid(),
+        "runId": raw_uuid(),
+        "messages": [{
+            "id": raw_uuid(),
+            "role": "user",
+            "content": [
+                { "type": "text", "text": "What is this?" },
+                { "type": "image", "source": { "type": "url", "value": "https://example.com/a.png" } }
+            ]
+        }]
+    });
+
+    send_ag_ui_run(&server, &app.public_id, &payload)
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}

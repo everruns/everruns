@@ -2,6 +2,14 @@
 
 ## 2026-10-01
 
+* **AG-UI moved to the 1.0 protocol on both ends (EVE-1135).** The server
+  emits `REASONING_*` instead of `THINKING_*`, announces `protocolVersion` on
+  `RUN_STARTED`, closes open reasoning and text before `RUN_FINISHED`, and
+  accepts 1.0 run requests. The server takes its wire types from the
+  `everruns-ag-ui` crate. The UI contract test validates against
+  `@ag-ui/core/schemas`.
+  There is no version negotiation, and no `SUBAGENT_*` projection yet. See
+  [Public Endpoints](execution/public-endpoints.md#ag-ui-wire-protocol).
 * **The OpenAI Agents API backend enforces Everruns policy at its tool and
   output boundaries (EVE-1124).** A call the tool pipeline parks (an approval,
   a client-side tool, a connection setup) parks the Everruns turn while the

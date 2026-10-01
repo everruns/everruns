@@ -20,24 +20,6 @@ use std::time::Instant;
 use crate::kernel_imports::{
     Caller, ContentPart, ExternalActor, RuntimeMessageRole, everruns_provider::typed_id::MessageId,
 };
-use ag_ui_core::event::{
-    BaseEvent as AgUiBaseEvent, Event as AgUiEvent,
-    MessagesSnapshotEvent as AgUiMessagesSnapshotEvent, RunErrorEvent as AgUiRunErrorEvent,
-    RunFinishedEvent as AgUiRunFinishedEvent, RunStartedEvent as AgUiRunStartedEvent,
-    TextMessageContentEvent as AgUiTextMessageContentEvent,
-    TextMessageEndEvent as AgUiTextMessageEndEvent,
-    TextMessageStartEvent as AgUiTextMessageStartEvent, ThinkingEndEvent as AgUiThinkingEndEvent,
-    ThinkingStartEvent as AgUiThinkingStartEvent,
-    ThinkingTextMessageContentEvent as AgUiThinkingTextMessageContentEvent,
-    ThinkingTextMessageEndEvent as AgUiThinkingTextMessageEndEvent,
-    ThinkingTextMessageStartEvent as AgUiThinkingTextMessageStartEvent,
-};
-use ag_ui_core::types::{
-    ids::{MessageId as AgUiMessageId, RunId as AgUiRunId, ThreadId as AgUiThreadId},
-    input::RunAgentInput as AgUiRunAgentInput,
-    message::{Message as AgUiMessage, Role as AgUiRole},
-    tool::ToolCall as AgUiToolCall,
-};
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Path, Request, State},
@@ -65,6 +47,28 @@ use futures::{
     StreamExt,
     stream::{self, Stream},
 };
+// Design Decision (EVE-1135): the endpoint speaks only AG-UI 1.0 (the
+// `everruns-ag-ui` crate) and announces it on `RUN_STARTED.protocolVersion`.
+// There is no version negotiation: dropping `THINKING_*` is a breaking change
+// for pre-1.0 stream consumers, while pre-1.0 request bodies still parse.
+//
+// Design Decision (EVE-1135): no `SUBAGENT_*` or `ACTIVITY_*` events yet.
+// Delegated work is Session Tasks (`task.*`, which replaced `subagent.*` in
+// EVE-585), whose names and descriptions are agent-authored, and this public
+// channel never names tools or agents: tool work surfaces only as the
+// channel-configured generic text on the reasoning channel. Projecting tasks
+// onto `SUBAGENT_*` needs its own channel exposure policy first.
+use everruns_ag_ui::{
+    AssistantMessage as AgUiAssistantMessage, Content as AgUiMessageContent, Event as AgUiEvent,
+    Message as AgUiMessage, MessagesSnapshotEvent as AgUiMessagesSnapshotEvent,
+    RunAgentInput as AgUiRunAgentInput, RunErrorEvent as AgUiRunErrorEvent,
+    RunFinishedEvent as AgUiRunFinishedEvent, RunStartedEvent as AgUiRunStartedEvent,
+    TextMessageContentEvent as AgUiTextMessageContentEvent,
+    TextMessageEndEvent as AgUiTextMessageEndEvent,
+    TextMessageStartEvent as AgUiTextMessageStartEvent, ToolCall as AgUiToolCall,
+    UserMessage as AgUiUserMessage,
+};
+use reasoning::ReasoningState;
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
@@ -419,17 +423,20 @@ pub(crate) async fn run_app_agent_stream(
     // `invalid_request` so we don't echo the offending role back.
     validate_input_messages(&req.messages).map_err(|err| *err)?;
 
+    // Everruns requires UUID thread and run ids (1.0 allows any string): they
+    // key durable session routing tags, and a UUID bounds their length.
+    let thread_id = parse_ag_ui_uuid(&req.thread_id, "threadId")?;
+    let run_id = parse_ag_ui_uuid(&req.run_id, "runId")?;
+
     let trigger_message = req
         .messages
         .last()
         .ok_or_else(|| bad_request("messages must contain at least one user message"))?;
     let (trigger_content, trigger_name) = match trigger_message {
-        AgUiMessage::User { content, name, .. } => (content.clone(), name.clone()),
+        AgUiMessage::User(message) => (user_text(&message.content)?, message.name.clone()),
         _ => return Err(bad_request("the final AG-UI message must have role=user")),
     };
 
-    let thread_id = req.thread_id.clone();
-    let run_id = req.run_id.clone();
     let thread_tag = thread_id.to_string();
     let run_tag = run_id.to_string();
 
@@ -508,9 +515,13 @@ pub(crate) async fn run_app_agent_stream(
         .await
         .map_err(internal_error)?;
 
-    let trigger_image_parts = ag_ui_image_content_parts(&state, &app, &req.forwarded_props)
-        .await
-        .map_err(|err| *err)?;
+    let trigger_image_parts = ag_ui_image_content_parts(
+        &state,
+        &app,
+        req.forwarded_props.as_ref().unwrap_or(&Value::Null),
+    )
+    .await
+    .map_err(|err| *err)?;
     let mut trigger_parts = vec![InputContentPart::text(trigger_content)];
     trigger_parts.extend(trigger_image_parts);
 
@@ -576,17 +587,16 @@ pub(crate) async fn run_app_agent_stream(
     );
 
     let initial_events = vec![
-        AgUiEvent::RunStarted(AgUiRunStartedEvent {
-            base: agui_base_event(),
-            thread_id: req.thread_id.clone(),
-            run_id: req.run_id.clone(),
-        }),
+        AgUiEvent::RunStarted(
+            AgUiRunStartedEvent::new(thread_id.to_string(), run_id.to_string())
+                .with_protocol_version(),
+        ),
         AgUiEvent::MessagesSnapshot(AgUiMessagesSnapshotEvent {
-            base: agui_base_event(),
             messages: snapshot_messages
                 .iter()
                 .filter_map(to_ag_ui_message)
                 .collect::<Vec<_>>(),
+            ..AgUiMessagesSnapshotEvent::default()
         }),
     ];
 
@@ -600,14 +610,11 @@ pub(crate) async fn run_app_agent_stream(
         assistant_message_id: None,
         assistant_content_started: false,
         assistant_emitted_delta: false,
-        thinking_started: false,
-        thinking_text_started: false,
+        reasoning: ReasoningState::default(),
         tool_visibility: channel_config.tool_visibility,
         generic_tool_text: channel_config.generic_tool_text.clone(),
         reasoning_summary_visible: channel_config.reasoning_summary_visible,
         active_tool_activity_count: 0,
-        public_tool_activity_started: false,
-        public_tool_activity_opened_thinking: false,
         finished: false,
     };
 
@@ -918,43 +925,46 @@ async fn seed_history(
 
 fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage> {
     let (role, content, name) = match message {
-        AgUiMessage::User { content, name, .. } => {
-            (RuntimeMessageRole::User, content.clone(), name.clone())
-        }
-        AgUiMessage::Assistant {
-            content,
-            name,
-            tool_calls,
-            ..
-        } => (
+        // `validate_input_messages` already rejected media parts.
+        AgUiMessage::User(message) => (
+            RuntimeMessageRole::User,
+            message.content.to_text(),
+            message.name.clone(),
+        ),
+        AgUiMessage::Assistant(message) => (
             RuntimeMessageRole::Agent,
-            content
+            message
+                .content
                 .clone()
                 .or_else(|| {
-                    tool_calls
+                    message
+                        .tool_calls
                         .as_ref()
                         .map(|calls| format_agui_tool_calls(calls))
                 })
                 .unwrap_or_default(),
-            name.clone(),
+            message.name.clone(),
         ),
-        AgUiMessage::Tool {
-            content,
-            error,
-            tool_call_id,
-            ..
-        } => (
+        AgUiMessage::Tool(message) => (
             RuntimeMessageRole::Agent,
-            match error {
-                Some(error) => format!("[Tool {} error: {}]\n{}", &**tool_call_id, error, content),
-                None => format!("[Tool {} result]\n{}", &**tool_call_id, content),
+            {
+                let content = message.content.to_text();
+                let tool_call_id = &message.tool_call_id;
+                match &message.error {
+                    Some(error) => format!("[Tool {tool_call_id} error: {error}]\n{content}"),
+                    None => format!("[Tool {tool_call_id} result]\n{content}"),
+                }
             },
             None,
         ),
-        AgUiMessage::System { content, name, .. }
-        | AgUiMessage::Developer { content, name, .. } => {
-            (RuntimeMessageRole::System, content.clone(), name.clone())
-        }
+        AgUiMessage::System(message) | AgUiMessage::Developer(message) => (
+            RuntimeMessageRole::System,
+            message.content.clone(),
+            message.name.clone(),
+        ),
+        // Client-materialised UI state that 1.0 clients echo back; never
+        // model input.
+        AgUiMessage::Activity(_) | AgUiMessage::Reasoning(_) => return None,
     };
 
     let mut stored = StoredInputMessage {
@@ -984,15 +994,18 @@ fn build_external_actor(name: Option<&String>) -> Option<ExternalActor> {
 }
 
 fn to_ag_ui_message(message: &crate::api::messages::Message) -> Option<AgUiMessage> {
-    let id = AgUiMessageId::from(message.id.uuid());
+    let id = message.id.uuid().to_string();
     let content = public_content_parts_to_string(&message.content);
 
     Some(match message.role {
-        ApiMessageRole::User => AgUiMessage::User {
+        ApiMessageRole::User => AgUiMessage::User(AgUiUserMessage {
             id,
-            content,
+            content: AgUiMessageContent::Text(content),
             name: None,
-        },
+            encrypted_value: None,
+            metadata: None,
+            subagent_run_id: None,
+        }),
         ApiMessageRole::Agent => {
             // Replay must agree with the live stream. Live translation drops
             // commentary from the assistant-text channel; emitting it here
@@ -1001,12 +1014,11 @@ fn to_ag_ui_message(message: &crate::api::messages::Message) -> Option<AgUiMessa
             if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
                 return None;
             }
-            AgUiMessage::Assistant {
+            AgUiMessage::Assistant(AgUiAssistantMessage {
                 id,
                 content: (!content.is_empty()).then_some(content),
-                name: None,
-                tool_calls: None,
-            }
+                ..AgUiAssistantMessage::default()
+            })
         }
     })
 }
@@ -1073,8 +1085,8 @@ fn is_terminal_public_output_message(
 fn ensure_assistant_message_id(
     state: &mut AgUiStreamState,
     streamed_message_id: MessageId,
-) -> AgUiMessageId {
-    let projected = AgUiMessageId::from(streamed_message_id.uuid());
+) -> String {
+    let projected = streamed_message_id.uuid().to_string();
     if state.assistant_message_id.as_ref() != Some(&projected) {
         close_assistant_text_without_finishing(state);
         state.assistant_message_id = Some(projected.clone());
@@ -1091,10 +1103,9 @@ fn close_assistant_text_without_finishing(state: &mut AgUiStreamState) {
     {
         state
             .queue
-            .push_back(AgUiEvent::TextMessageEnd(AgUiTextMessageEndEvent {
-                base: agui_base_event(),
+            .push_back(AgUiEvent::TextMessageEnd(AgUiTextMessageEndEvent::new(
                 message_id,
-            }));
+            )));
     }
     state.assistant_message_id = None;
     state.assistant_content_started = false;
@@ -1105,20 +1116,17 @@ struct AgUiStreamState {
     subscription: Box<crate::event_delivery::EventSubscription>,
     session_id: Uuid,
     input_message_id: String,
-    thread_id: AgUiThreadId,
-    run_id: AgUiRunId,
+    thread_id: Uuid,
+    run_id: Uuid,
     queue: VecDeque<AgUiEvent>,
-    assistant_message_id: Option<AgUiMessageId>,
+    assistant_message_id: Option<String>,
     assistant_content_started: bool,
     assistant_emitted_delta: bool,
-    thinking_started: bool,
-    thinking_text_started: bool,
+    reasoning: ReasoningState,
     tool_visibility: PublicToolVisibility,
     generic_tool_text: String,
     reasoning_summary_visible: bool,
     active_tool_activity_count: usize,
-    public_tool_activity_started: bool,
-    public_tool_activity_opened_thinking: bool,
     finished: bool,
 }
 
@@ -1130,128 +1138,24 @@ impl AgUiStreamState {
     }
 }
 
-fn push_public_tool_activity_start(state: &mut AgUiStreamState, text: String) {
-    if !state.public_tool_activity_started {
-        if !state.thinking_started {
-            state
-                .queue
-                .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
-                    base: agui_base_event(),
-                    title: None,
-                }));
-            state.public_tool_activity_opened_thinking = true;
-        }
-        state.public_tool_activity_started = true;
-    }
-    if state.thinking_started && state.thinking_text_started {
-        state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
-            AgUiThinkingTextMessageContentEvent {
-                base: agui_base_event(),
-                delta: format!("\n{text}"),
-            },
-        ));
-        return;
-    }
-    state.queue.push_back(AgUiEvent::ThinkingTextMessageStart(
-        AgUiThinkingTextMessageStartEvent {
-            base: agui_base_event(),
-        },
-    ));
-    state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
-        AgUiThinkingTextMessageContentEvent {
-            base: agui_base_event(),
-            delta: text,
-        },
-    ));
-    state.queue.push_back(AgUiEvent::ThinkingTextMessageEnd(
-        AgUiThinkingTextMessageEndEvent {
-            base: agui_base_event(),
-        },
+fn push_text_message_start(state: &mut AgUiStreamState, message_id: String) {
+    state.queue.push_back(AgUiEvent::TextMessageStart(
+        AgUiTextMessageStartEvent::assistant(message_id),
     ));
 }
 
-fn push_public_tool_activity_end(state: &mut AgUiStreamState) {
-    if state.public_tool_activity_started && state.active_tool_activity_count == 0 {
-        if state.public_tool_activity_opened_thinking && !state.thinking_started {
-            state
-                .queue
-                .push_back(AgUiEvent::ThinkingEnd(AgUiThinkingEndEvent {
-                    base: agui_base_event(),
-                }));
-        }
-        state.public_tool_activity_started = false;
-        state.public_tool_activity_opened_thinking = false;
-    }
-}
-
-/// Project a provider `reason.item` summary onto the AG-UI reasoning (thinking)
-/// channel. Per the EVE-768 design note the provider-authored summary is a
-/// reasoning artifact: it must render on the reasoning channel and is never
-/// relabeled as an assistant answer. Only the curated `summary` segments are
-/// surfaced here — opaque/encrypted reasoning content is never emitted.
-///
-/// If a reasoning block is already open (an active `reason.thinking` stream),
-/// the summary is appended within it rather than opening a nested block;
-/// otherwise a self-contained `THINKING_*` block is emitted for the summary.
-fn push_reasoning_summary(state: &mut AgUiStreamState, summary: &[String]) {
-    let text = summary
-        .iter()
-        .map(|segment| segment.trim())
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-    if text.is_empty() {
-        return;
-    }
-
-    // Append to an already-open reasoning text message so the summary joins the
-    // active thinking stream instead of opening a nested/duplicate block.
-    if state.thinking_started && state.thinking_text_started {
-        state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
-            AgUiThinkingTextMessageContentEvent {
-                base: agui_base_event(),
-                delta: format!("\n{text}"),
-            },
-        ));
-        return;
-    }
-
-    // Otherwise emit a self-contained reasoning block. Only open a fresh
-    // `ThinkingStart` when no reasoning block (thinking or tool-activity) is
-    // currently open, and close only what we opened.
-    let thinking_block_open = state.thinking_started || state.public_tool_activity_opened_thinking;
-    let opened_thinking = !thinking_block_open;
-    if opened_thinking {
-        state
-            .queue
-            .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
-                base: agui_base_event(),
-                title: None,
-            }));
-    }
-    state.queue.push_back(AgUiEvent::ThinkingTextMessageStart(
-        AgUiThinkingTextMessageStartEvent {
-            base: agui_base_event(),
-        },
-    ));
-    state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
-        AgUiThinkingTextMessageContentEvent {
-            base: agui_base_event(),
-            delta: text,
-        },
-    ));
-    state.queue.push_back(AgUiEvent::ThinkingTextMessageEnd(
-        AgUiThinkingTextMessageEndEvent {
-            base: agui_base_event(),
-        },
-    ));
-    if opened_thinking {
-        state
-            .queue
-            .push_back(AgUiEvent::ThinkingEnd(AgUiThinkingEndEvent {
-                base: agui_base_event(),
-            }));
-    }
+/// Emit `RUN_FINISHED` and end the stream. 1.0 clients reject `RUN_FINISHED`
+/// while a text or reasoning message is still open, so close those first.
+fn finish_run(state: &mut AgUiStreamState) {
+    close_assistant_text_without_finishing(state);
+    reasoning::close_open_reasoning(state);
+    state
+        .queue
+        .push_back(AgUiEvent::RunFinished(AgUiRunFinishedEvent::new(
+            state.thread_id.to_string(),
+            state.run_id.to_string(),
+        )));
+    state.finished = true;
 }
 
 fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
@@ -1260,17 +1164,11 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             if let Ok(data) = parse_event_data::<OutputMessageDeltaData>(event) {
                 let message_id = ensure_assistant_message_id(state, data.message_id);
                 if !state.assistant_content_started {
-                    state
-                        .queue
-                        .push_back(AgUiEvent::TextMessageStart(AgUiTextMessageStartEvent {
-                            base: agui_base_event(),
-                            message_id: message_id.clone(),
-                            role: AgUiRole::Assistant,
-                        }));
+                    push_text_message_start(state, message_id.clone());
                     state.assistant_content_started = true;
                 }
                 state.queue.push_back(AgUiEvent::TextMessageContent(
-                    AgUiTextMessageContentEvent::new(message_id, data.delta).unwrap(),
+                    AgUiTextMessageContentEvent::new(message_id, data.delta),
                 ));
                 state.assistant_emitted_delta = true;
             }
@@ -1285,105 +1183,52 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                 }
                 let message_id = ensure_assistant_message_id(state, data.message.id);
                 if !state.assistant_content_started {
-                    state
-                        .queue
-                        .push_back(AgUiEvent::TextMessageStart(AgUiTextMessageStartEvent {
-                            base: agui_base_event(),
-                            message_id: message_id.clone(),
-                            role: AgUiRole::Assistant,
-                        }));
+                    push_text_message_start(state, message_id.clone());
                 }
                 if !state.assistant_emitted_delta && !public_text.is_empty() {
                     state.queue.push_back(AgUiEvent::TextMessageContent(
-                        AgUiTextMessageContentEvent::new(message_id.clone(), public_text).unwrap(),
+                        AgUiTextMessageContentEvent::new(message_id.clone(), public_text),
                     ));
                 }
                 state
                     .queue
-                    .push_back(AgUiEvent::TextMessageEnd(AgUiTextMessageEndEvent {
-                        base: agui_base_event(),
-                        message_id: message_id.clone(),
-                    }));
-                state
-                    .queue
-                    .push_back(AgUiEvent::RunFinished(AgUiRunFinishedEvent {
-                        base: agui_base_event(),
-                        thread_id: state.thread_id.clone(),
-                        run_id: state.run_id.clone(),
-                        result: None,
-                    }));
-                state.assistant_message_id = Some(message_id);
+                    .push_back(AgUiEvent::TextMessageEnd(AgUiTextMessageEndEvent::new(
+                        message_id.clone(),
+                    )));
                 state.assistant_content_started = false;
                 state.assistant_emitted_delta = false;
-                state.finished = true;
+                finish_run(state);
+                state.assistant_message_id = Some(message_id);
             }
         }
         "reason.thinking.started"
             if state.reasoning_summary_visible
                 && parse_event_data::<ReasonThinkingStartedData>(event).is_ok() =>
         {
-            if !state.public_tool_activity_opened_thinking {
-                state
-                    .queue
-                    .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
-                        base: agui_base_event(),
-                        title: None,
-                    }));
-            }
-            state.thinking_started = true;
-            state.thinking_text_started = false;
+            reasoning::thinking_started(state);
         }
         "reason.thinking.delta" => {
             if state.reasoning_summary_visible
                 && let Ok(data) = parse_event_data::<ReasonThinkingDeltaData>(event)
             {
-                if !state.thinking_text_started {
-                    state.queue.push_back(AgUiEvent::ThinkingTextMessageStart(
-                        AgUiThinkingTextMessageStartEvent {
-                            base: agui_base_event(),
-                        },
-                    ));
-                    state.thinking_text_started = true;
-                }
-                state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
-                    AgUiThinkingTextMessageContentEvent {
-                        base: agui_base_event(),
-                        delta: data.delta,
-                    },
-                ));
+                reasoning::thinking_delta(state, data.delta);
             }
         }
         "reason.thinking.completed"
             if state.reasoning_summary_visible
                 && parse_event_data::<ReasonThinkingCompletedData>(event).is_ok() =>
         {
-            if state.thinking_text_started {
-                state.queue.push_back(AgUiEvent::ThinkingTextMessageEnd(
-                    AgUiThinkingTextMessageEndEvent {
-                        base: agui_base_event(),
-                    },
-                ));
-            }
-            if state.thinking_started {
-                state
-                    .queue
-                    .push_back(AgUiEvent::ThinkingEnd(AgUiThinkingEndEvent {
-                        base: agui_base_event(),
-                    }));
-            }
-            state.thinking_started = false;
-            state.thinking_text_started = false;
-            state.public_tool_activity_opened_thinking = false;
+            reasoning::thinking_completed(state);
         }
         // EVE-775: a provider `reason.item` summary is a *reasoning artifact*
         // (EVE-768 design note), so when channel policy opts in it renders on
-        // the AG-UI reasoning channel (`THINKING_*` / `REASONING_*`) — never on
-        // the assistant-text channel. Opaque `encrypted_content` is never emitted.
+        // the AG-UI reasoning channel (`REASONING_*`) — never on the
+        // assistant-text channel. Opaque `encrypted_content` is never emitted.
         "reason.item" => {
             if state.reasoning_summary_visible
                 && let Ok(data) = parse_event_data::<ReasonItemData>(event)
             {
-                push_reasoning_summary(state, &data.summary);
+                reasoning::push_reasoning_summary(state, &data.summary);
             }
         }
         "tool.started" if parse_event_data::<ToolStartedData>(event).is_ok() => {
@@ -1394,38 +1239,19 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             // `everruns_platform::exposure::public_tool_activity_text`.
             if let Some(text) = state.public_tool_activity_text() {
                 let text = text.to_string();
-                push_public_tool_activity_start(state, text);
+                reasoning::push_tool_activity_start(state, text);
             }
         }
         "tool.completed" if parse_event_data::<ToolCompletedData>(event).is_ok() => {
             state.active_tool_activity_count = state.active_tool_activity_count.saturating_sub(1);
-            push_public_tool_activity_end(state);
+            reasoning::push_tool_activity_end(state);
         }
-        "turn.completed" | "session.idled" if !state.finished => {
-            state
-                .queue
-                .push_back(AgUiEvent::RunFinished(AgUiRunFinishedEvent {
-                    base: agui_base_event(),
-                    thread_id: state.thread_id.clone(),
-                    run_id: state.run_id.clone(),
-                    result: None,
-                }));
-            state.finished = true;
-        }
-        // Cancellation is a deliberate terminal state (typically client-initiated),
-        // not a server fault. Emit RUN_FINISHED so AG-UI clients see a clean end
-        // rather than a misleading internal_error. The cancellation reason lives
-        // in the internal session events for operators.
-        "turn.cancelled" if !state.finished => {
-            state
-                .queue
-                .push_back(AgUiEvent::RunFinished(AgUiRunFinishedEvent {
-                    base: agui_base_event(),
-                    thread_id: state.thread_id.clone(),
-                    run_id: state.run_id.clone(),
-                    result: None,
-                }));
-            state.finished = true;
+        // Cancellation (`turn.cancelled`) is a deliberate terminal state
+        // (typically client-initiated), not a server fault. Emit RUN_FINISHED so
+        // AG-UI clients see a clean end rather than a misleading internal_error.
+        // The cancellation reason lives in the internal session events.
+        "turn.completed" | "session.idled" | "turn.cancelled" if !state.finished => {
+            finish_run(state);
         }
         "turn.failed" => {
             // AG-UI is a public channel — see knowledge/execution/public-endpoints.md.
@@ -1459,22 +1285,13 @@ fn expired_age_seconds(
     (age > max_seconds as i64).then_some(age)
 }
 
-fn agui_base_event() -> AgUiBaseEvent {
-    AgUiBaseEvent {
-        timestamp: None,
-        raw_event: None,
-    }
-}
-
 /// Adapt a sanitized `PublicError` into an AG-UI `RunError` event. All public
 /// error emission on this endpoint must go through here so the contract from
 /// `knowledge/execution/public-endpoints.md` is enforced in one place.
 fn public_run_error_event(error: PublicError) -> AgUiEvent {
-    AgUiEvent::RunError(AgUiRunErrorEvent {
-        base: agui_base_event(),
-        message: error.message.to_string(),
-        code: Some(error.code.as_str().to_string()),
-    })
+    AgUiEvent::RunError(
+        AgUiRunErrorEvent::new(error.message.to_string()).with_code(error.code.as_str()),
+    )
 }
 
 fn agui_sse(event: &AgUiEvent) -> SseEvent {
@@ -1517,22 +1334,25 @@ fn extract_ag_ui_token(headers: &HeaderMap) -> Option<&str> {
 }
 
 /// Reject AG-UI request bodies that smuggle non-{user,assistant} message
-/// roles or reuse the same message id for multiple entries.
+/// roles, carry non-text user content parts, or reuse a message id.
 ///
-/// `Message` deserialises every variant the upstream protocol defines, so
-/// without this gate a public AG-UI client could populate `system`,
-/// `developer`, or `tool` messages and have them flow into the LLM context
-/// alongside the agent's real system prompt. We refuse such requests with a
-/// generic 400 `invalid_request` and never echo the offending role.
+/// `Message` deserialises every role the 1.0 protocol defines, so without this
+/// gate a public AG-UI client could populate `system`, `developer`, or `tool`
+/// messages and have them flow into the LLM context alongside the agent's real
+/// system prompt. We refuse such requests with a generic 400 `invalid_request`
+/// and never echo the offending role. `reasoning` and `activity` messages are
+/// client-materialised UI state that 1.0 clients echo back; they are accepted
+/// and dropped, never forwarded to the model.
 fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>> {
     use std::collections::HashSet;
-    let mut seen_ids: HashSet<&AgUiMessageId> = HashSet::with_capacity(messages.len());
+    let mut seen_ids: HashSet<&str> = HashSet::with_capacity(messages.len());
     for message in messages {
         match message {
-            AgUiMessage::User { .. } | AgUiMessage::Assistant { .. } => {}
-            AgUiMessage::System { .. }
-            | AgUiMessage::Developer { .. }
-            | AgUiMessage::Tool { .. } => {
+            AgUiMessage::User(message) => {
+                user_text(&message.content).map_err(Box::new)?;
+            }
+            AgUiMessage::Assistant(_) | AgUiMessage::Activity(_) | AgUiMessage::Reasoning(_) => {}
+            AgUiMessage::System(_) | AgUiMessage::Developer(_) | AgUiMessage::Tool(_) => {
                 tracing::warn!("AG-UI request rejected: disallowed message role");
                 return Err(Box::new(bad_request("invalid_request")));
             }
@@ -1543,6 +1363,22 @@ fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>
         }
     }
     Ok(())
+}
+
+/// User message text. 1.0 allows media content parts; this endpoint takes
+/// images through the image-upload route plus `forwardedProps.imageIds`.
+/// Silently dropping media would change what the user asked, so it is refused.
+fn user_text(content: &AgUiMessageContent) -> Result<String, Response> {
+    if content.has_media() {
+        return Err(bad_request(
+            "unsupported content part; upload images and pass forwardedProps.imageIds",
+        ));
+    }
+    Ok(content.to_text())
+}
+
+fn parse_ag_ui_uuid(value: &str, field: &str) -> Result<Uuid, Response> {
+    Uuid::parse_str(value).map_err(|_| bad_request(&format!("{field} must be a UUID")))
 }
 
 fn bad_request(message: &str) -> Response {
@@ -1603,3 +1439,6 @@ mod tests;
 mod runtime_identity;
 use runtime_identity::authorize_ag_ui_request;
 pub(crate) use runtime_identity::{resolve_ingress_identity, runtime_endpoint_account};
+mod reasoning;
+#[cfg(test)]
+mod wire_tests;

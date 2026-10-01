@@ -198,7 +198,8 @@ function dispatchEvent(rawEvent: string, callbacks: RunCallbacks): void {
       callbacks.onFinish?.();
       break;
     default:
-      // Thinking / tool-activity events are ignored on the public surface.
+      // Reasoning (`REASONING_*`, which also carries tool activity) is ignored
+      // on the public surface.
       break;
   }
 }

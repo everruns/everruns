@@ -130,18 +130,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ag-ui-core"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cfd1ace43da05cf4dc0ffeb6d55dc16003df69b9c6959f1ac1262611137c2e2"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "uuid",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3348,7 +3336,6 @@ dependencies = [
  "a2a-client-lf",
  "a2a-lf",
  "aes-gcm",
- "ag-ui-core",
  "anyhow",
  "argon2",
  "async-nats",
@@ -3361,6 +3348,7 @@ dependencies = [
  "clap",
  "cron",
  "dotenvy",
+ "everruns-ag-ui",
  "everruns-builtins",
  "everruns-capability",
  "everruns-cli-contract",
