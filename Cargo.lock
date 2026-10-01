@@ -2672,6 +2672,7 @@ dependencies = [
  "async-trait",
  "base64 0.23.1",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "everruns-platform",
  "everruns-provider",

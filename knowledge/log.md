@@ -2,6 +2,14 @@
 
 ## 2026-10-01
 
+* **Computer use phase 2 (EVE-1133).** [Computer use](execution/computer-use.md)
+  now swaps the `computer` function tool for OpenAI's native `computer` tool
+  and Anthropic's `computer_toolset_20260801` on models that have them,
+  through a provider-neutral driver option, with execution unchanged. Calls
+  that type, press Enter, navigate, or carry provider safety checks pass a
+  hard per-call approval gate in hosted sessions, built on the
+  [tool approval](execution/tool-approval.md) gate; one answer carries a call
+  through both gates. The session UI shows result screenshots as thumbnails.
 * **The OpenAI Agents API backend enforces Everruns policy at its tool and
   output boundaries (EVE-1124).** A call the tool pipeline parks (an approval,
   a client-side tool, a connection setup) parks the Everruns turn while the

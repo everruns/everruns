@@ -78,6 +78,10 @@ pub const MAX_KEY_REPEAT: u32 = 100;
 pub const MAX_SCROLL_AMOUNT: u32 = 50;
 /// Longest text one `type` action may enter.
 pub const MAX_TYPE_CHARS: usize = 4096;
+/// Most actions one batched `computer` call may carry. OpenAI's native tool
+/// sends several actions per call; a model-written batch is held to the same
+/// bound so one call cannot spend the session budget in one go.
+pub const MAX_BATCH_ACTIONS: usize = 16;
 
 /// System prompt guidance contributed by every computer-use capability.
 pub const COMPUTER_USE_SYSTEM_PROMPT: &str = "You can operate a computer display with the `computer` tool. \
@@ -488,6 +492,63 @@ pub fn action_requires_approval(action: &ComputerAction) -> bool {
     }
 }
 
+/// The parsed arguments of one `computer` call: a single action (the
+/// function tool and Anthropic's toolset) or an ordered batch (OpenAI's
+/// native `computer_call`, which carries `actions: [...]`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ComputerCall {
+    /// `{"action": ...}`.
+    Single(ComputerAction),
+    /// `{"actions": [{"action": ...}, ...]}`, run in order.
+    Batch(Vec<ComputerAction>),
+}
+
+impl ComputerCall {
+    /// Parse the `computer` tool's arguments, single or batched.
+    pub fn from_arguments(arguments: &Value) -> Result<Self, String> {
+        let Some(actions) = arguments.get("actions") else {
+            return ComputerAction::from_arguments(arguments).map(Self::Single);
+        };
+        let actions = actions
+            .as_array()
+            .ok_or_else(|| "`actions` must be an array of computer actions".to_string())?;
+        if actions.is_empty() || actions.len() > MAX_BATCH_ACTIONS {
+            return Err(format!(
+                "`actions` must hold between 1 and {MAX_BATCH_ACTIONS} actions"
+            ));
+        }
+        actions
+            .iter()
+            .map(ComputerAction::from_arguments)
+            .collect::<Result<Vec<_>, _>>()
+            .map(Self::Batch)
+    }
+
+    /// The actions, in order.
+    pub fn actions(&self) -> &[ComputerAction] {
+        match self {
+            Self::Single(action) => std::slice::from_ref(action),
+            Self::Batch(actions) => actions,
+        }
+    }
+}
+
+/// Whether a `computer` call must pass the hard per-call approval gate
+/// (TM-TOOL-008): any of its actions commits input
+/// ([`action_requires_approval`]), or the provider attached safety checks
+/// (OpenAI's `pending_safety_checks`) that a person has to acknowledge.
+/// Arguments that do not parse are not gated: the tool rejects them without
+/// touching the display.
+pub fn computer_call_requires_approval(arguments: &Value) -> bool {
+    let flagged_checks = arguments
+        .get(everruns_provider::openai_computer::PENDING_SAFETY_CHECKS_KEY)
+        .and_then(Value::as_array)
+        .is_some_and(|checks| !checks.is_empty());
+    flagged_checks
+        || ComputerCall::from_arguments(arguments)
+            .is_ok_and(|call| call.actions().iter().any(action_requires_approval))
+}
+
 /// A captured frame.
 #[derive(Debug, Clone)]
 pub struct Screenshot {
@@ -545,6 +606,10 @@ pub struct ComputerUseConfig {
     pub screenshot_after_action: bool,
     /// Hard cap on actions in one session; screenshots count.
     pub max_actions_per_session: u32,
+    /// Use the provider's native computer tool when the model has one
+    /// (OpenAI's `computer`, Anthropic's `computer_toolset_20260801`). Off:
+    /// every model gets the `computer` function tool.
+    pub native_tools: bool,
 }
 
 impl Default for ComputerUseConfig {
@@ -554,6 +619,7 @@ impl Default for ComputerUseConfig {
             display_height: DEFAULT_DISPLAY_HEIGHT,
             screenshot_after_action: true,
             max_actions_per_session: DEFAULT_MAX_ACTIONS_PER_SESSION,
+            native_tools: true,
         }
     }
 }
@@ -601,6 +667,22 @@ impl ComputerUseConfig {
         }
     }
 
+    /// Driver options this config contributes: the provider-neutral request
+    /// for a native computer tool, which drivers without one ignore. See
+    /// [`everruns_provider::native_computer`].
+    pub fn driver_options(&self) -> Vec<(String, Value)> {
+        if !self.native_tools {
+            return Vec::new();
+        }
+        vec![
+            everruns_provider::native_computer::NativeComputerUse {
+                display_width: self.display_width,
+                display_height: self.display_height,
+            }
+            .to_driver_option(),
+        ]
+    }
+
     /// JSON schema for the capability config.
     pub fn json_schema() -> Value {
         json!({
@@ -630,6 +712,11 @@ impl ComputerUseConfig {
                     "minimum": 1,
                     "default": DEFAULT_MAX_ACTIONS_PER_SESSION,
                     "description": "Hard cap on computer actions in one session, screenshots included."
+                },
+                "native_tools": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Use the provider's native computer tool when the model has one. Off: the portable computer function tool on every model."
                 }
             },
             "additionalProperties": false
@@ -661,10 +748,15 @@ impl ComputerTool {
         }
     }
 
-    /// Count this action against the session budget. Returns an error result
-    /// once the cap is reached. Without session storage the cap is not
-    /// enforced (embedded hosts without storage own their own limits).
-    async fn charge_action(&self, context: &ToolContext) -> Result<u32, ToolExecutionResult> {
+    /// Count `count` actions against the session budget. Returns an error
+    /// result when they do not fit under the cap; a batch is charged whole or
+    /// not at all. Without session storage the cap is not enforced (embedded
+    /// hosts without storage own their own limits).
+    async fn charge_actions(
+        &self,
+        context: &ToolContext,
+        count: u32,
+    ) -> Result<u32, ToolExecutionResult> {
         let Some(storage) = context.storage_store.as_ref() else {
             return Ok(0);
         };
@@ -675,14 +767,14 @@ impl ComputerTool {
             .flatten()
             .and_then(|value| value.parse::<u32>().ok())
             .unwrap_or(0);
-        if used >= self.config.max_actions_per_session {
+        if used.saturating_add(count) > self.config.max_actions_per_session {
             return Err(ToolExecutionResult::tool_error(format!(
-                "Computer action budget exhausted: this session already used {used} of {} actions. \
-                 Stop using the computer and report what you have.",
+                "Computer action budget exhausted: this session already used {used} of {} actions \
+                 and this call needs {count}. Stop using the computer and report what you have.",
                 self.config.max_actions_per_session
             )));
         }
-        let next = used + 1;
+        let next = used + count;
         if let Err(e) = storage
             .set_value(
                 context.session_id,
@@ -695,6 +787,19 @@ impl ComputerTool {
         }
         Ok(next)
     }
+}
+
+/// The first validation error across `actions`, naming its position in a batch.
+fn validate_all(actions: &[ComputerAction], display: DisplaySize) -> Option<String> {
+    actions.iter().enumerate().find_map(|(index, action)| {
+        action.validate(display).err().map(|e| {
+            if actions.len() == 1 {
+                e
+            } else {
+                format!("action {} of {}: {e}", index + 1, actions.len())
+            }
+        })
+    })
 }
 
 fn tool_description(display: DisplaySize, navigation: bool) -> String {
@@ -758,10 +863,30 @@ fn tool_schema(navigation: bool) -> Value {
         properties["url"] =
             json!({ "type": "string", "description": "URL to load (navigate only)" });
     }
+    let single = json!({
+        "type": "object",
+        "properties": properties.clone(),
+        "required": ["action"],
+        "additionalProperties": false
+    });
+    // A batch (`actions`) is how native adapters deliver OpenAI's multi-action
+    // `computer_call`; arguments are validated against this schema before the
+    // tool runs, so it has to admit one. `action` is therefore not required at
+    // the top level: the tool itself rejects a call with neither.
+    properties["actions"] = json!({
+        "type": "array",
+        "minItems": 1,
+        "maxItems": MAX_BATCH_ACTIONS,
+        "items": single,
+        "description": "Several actions run in order instead of `action`"
+    });
+    properties[everruns_provider::openai_computer::PENDING_SAFETY_CHECKS_KEY] = json!({
+        "type": "array",
+        "description": "Provider safety checks a person must acknowledge (set by native adapters)"
+    });
     json!({
         "type": "object",
         "properties": properties,
-        "required": ["action"],
         "additionalProperties": false
     })
 }
@@ -801,11 +926,15 @@ impl Tool for ComputerTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let action = match ComputerAction::from_arguments(&arguments) {
-            Ok(action) => action,
+        let call = match ComputerCall::from_arguments(&arguments) {
+            Ok(call) => call,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
-        if matches!(action, ComputerAction::Navigate { .. }) && !self.backend.supports_navigation()
+        let actions = call.actions();
+        if !self.backend.supports_navigation()
+            && actions
+                .iter()
+                .any(|action| matches!(action, ComputerAction::Navigate { .. }))
         {
             return ToolExecutionResult::tool_error(
                 "navigate is not available on this display; use the pointer and keyboard instead",
@@ -813,10 +942,10 @@ impl Tool for ComputerTool {
         }
         // Validate against the configured size before spending budget or
         // acquiring a display.
-        if let Err(e) = action.validate(self.config.display()) {
+        if let Some(e) = validate_all(actions, self.config.display()) {
             return ToolExecutionResult::tool_error(e);
         }
-        let used = match self.charge_action(context).await {
+        let used = match self.charge_actions(context, actions.len() as u32).await {
             Ok(used) => used,
             Err(result) => return result,
         };
@@ -826,28 +955,49 @@ impl Tool for ComputerTool {
             Err(result) => return result,
         };
         let display = session.display();
-        if let Err(e) = action.validate(display) {
+        if let Some(e) = validate_all(actions, display) {
             session.release().await;
             return ToolExecutionResult::tool_error(e);
         }
 
-        if !matches!(action, ComputerAction::Screenshot)
-            && let Err(e) = session.perform(&action).await
-        {
-            session.release().await;
-            return ToolExecutionResult::tool_error(format!("{} failed: {e}", action.name()));
+        // A batch stops at its first failed action: later actions assumed the
+        // screen the failed one would have produced.
+        for (index, action) in actions.iter().enumerate() {
+            if matches!(action, ComputerAction::Screenshot) {
+                continue;
+            }
+            if let Err(e) = session.perform(action).await {
+                session.release().await;
+                let message = match &call {
+                    ComputerCall::Single(_) => format!("{} failed: {e}", action.name()),
+                    ComputerCall::Batch(_) => format!(
+                        "action {} of {} ({}) failed: {e}; the actions before it ran, the rest did not",
+                        index + 1,
+                        actions.len(),
+                        action.name()
+                    ),
+                };
+                return ToolExecutionResult::tool_error(message);
+            }
         }
 
-        let wants_image =
-            self.config.screenshot_after_action || matches!(action, ComputerAction::Screenshot);
-        let result = json!({
+        // A batch always answers with a frame: OpenAI's `computer_call_output`
+        // is a screenshot.
+        let wants_image = self.config.screenshot_after_action
+            || matches!(call, ComputerCall::Batch(_))
+            || matches!(call, ComputerCall::Single(ComputerAction::Screenshot));
+        let names: Vec<&str> = actions.iter().map(ComputerAction::name).collect();
+        let mut result = json!({
             "status": "ok",
-            "action": action.name(),
             "backend": self.backend.id(),
             "display": { "width": display.width, "height": display.height },
             "actions_used": used,
             "actions_limit": self.config.max_actions_per_session,
         });
+        match &call {
+            ComputerCall::Single(action) => result["action"] = json!(action.name()),
+            ComputerCall::Batch(_) => result["actions"] = json!(names),
+        }
         if !wants_image {
             session.release().await;
             return ToolExecutionResult::Success(result);
@@ -864,7 +1014,7 @@ impl Tool for ComputerTool {
             ),
             Err(e) => ToolExecutionResult::tool_error(format!(
                 "{} ran, but the screenshot failed: {e}",
-                action.name()
+                names.join(", ")
             )),
         }
     }

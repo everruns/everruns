@@ -13,12 +13,13 @@ import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { basename } from "@/lib/path-utils";
 import { formatFileSize } from "@/lib/formatting";
-import { getFullText, type ToolCallContent } from "./tool-call-utils";
+import { buildImageSrc, getFullText, isImagePart, type ToolCallContent } from "./tool-call-utils";
 import { formatImageCount } from "@/lib/i18n";
 import { useLocale } from "@/providers/locale-provider";
 
 // Re-export from centralized registry for backward-compatible imports.
 export { isReadFileTool } from "@/lib/tool-registry";
+export { buildImageSrc } from "./tool-call-utils";
 
 interface ReadFileToolCallCardProps {
   toolCall: ToolCallContent;
@@ -49,69 +50,6 @@ interface ParsedReadFileResult {
 function getPathFromArguments(toolCall: ToolCallContent): string | undefined {
   const path = toolCall.arguments.path;
   return typeof path === "string" && path.trim().length > 0 ? path : undefined;
-}
-
-function isImagePart(
-  part: ContentPart,
-): part is { type: "image"; url?: string; base64?: string; media_type?: string } {
-  return part.type === "image";
-}
-
-// Raster-only allowlist. SVG is intentionally excluded: script/event-handler
-// payloads in SVG are an XSS risk when rendered via <img>.
-const ALLOWED_IMAGE_MIME_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/bmp",
-  "image/avif",
-  "image/tiff",
-  "image/ico",
-  "image/x-icon",
-  "image/vnd.microsoft.icon",
-]);
-
-function isAllowedImageMimeType(mediaType: string): boolean {
-  return ALLOWED_IMAGE_MIME_TYPES.has(mediaType.toLowerCase().split(";")[0].trim());
-}
-
-// Exported for unit tests.
-export function buildImageSrc(part: {
-  url?: string;
-  base64?: string;
-  media_type?: string;
-}): string | null {
-  if (typeof part.url === "string" && part.url.length > 0) {
-    // Only allow http(s) schemes. Use URL parsing so the check is
-    // case-insensitive and handles any leading/trailing whitespace.
-    try {
-      const { protocol } = new URL(part.url);
-      if (protocol !== "https:" && protocol !== "http:") return null;
-    } catch {
-      return null;
-    }
-    // If media_type is declared, enforce the allowlist to block SVG URLs.
-    if (
-      typeof part.media_type === "string" &&
-      part.media_type.length > 0 &&
-      !isAllowedImageMimeType(part.media_type)
-    ) {
-      return null;
-    }
-    return part.url;
-  }
-  if (typeof part.base64 === "string" && part.base64.length > 0) {
-    const mediaType =
-      typeof part.media_type === "string" && part.media_type.length > 0
-        ? part.media_type
-        : "image/png";
-    if (!isAllowedImageMimeType(mediaType)) {
-      return null;
-    }
-    return `data:${mediaType};base64,${part.base64}`;
-  }
-  return null;
 }
 
 function parseReadFilePayload(text: string): ReadFilePayload | null {

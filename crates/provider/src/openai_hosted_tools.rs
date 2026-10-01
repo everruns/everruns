@@ -12,6 +12,12 @@
 //! with. Web search, code interpreter, hosted shell, file search and remote
 //! MCP are supported (EVE-1115).
 //!
+//! The native `computer` tool (EVE-1133) is rendered from here too, but it is
+//! not provider-executed: every `computer_call` is answered by the client. The
+//! driver sets [`OpenAiHostedTools::computer`] itself from the provider-neutral
+//! [`crate::native_computer`] request, never from this option, and its calls
+//! are neither hosted-call events nor priced here.
+//!
 //! Remote MCP approvals are the one hosted interaction that needs a person:
 //! OpenAI stops the response at an `mcp_approval_request` and continues only
 //! when the next request carries an `mcp_approval_response`. The driver
@@ -24,6 +30,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
+
+use crate::native_computer::NativeComputerUse;
 
 /// Synthetic tool call name for a remote MCP approval request. Never offered
 /// to the model; only the driver produces it.
@@ -51,6 +59,11 @@ pub struct OpenAiHostedTools {
     /// Remote MCP servers OpenAI calls on the model's behalf.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_servers: Vec<McpServerTool>,
+    /// The native `computer` tool. Client-executed: see the module docs.
+    /// Never read from or written to the hosted-tools option, so it cannot
+    /// make a call look provider-executed.
+    #[serde(skip)]
+    pub computer: Option<NativeComputerUse>,
 }
 
 impl OpenAiHostedTools {
@@ -60,6 +73,7 @@ impl OpenAiHostedTools {
             && self.shell.is_none()
             && self.file_search.is_none()
             && self.mcp_servers.is_empty()
+            && self.computer.is_none()
     }
 
     /// Read the option from a call's `driver_options`. A malformed payload is
@@ -94,6 +108,7 @@ impl OpenAiHostedTools {
         }));
         tools.extend(self.file_search.as_ref().map(FileSearchTool::wire));
         tools.extend(self.mcp_servers.iter().map(McpServerTool::wire));
+        tools.extend(self.computer.map(|_| crate::openai_computer::wire_tool()));
         tools
     }
 }
@@ -407,6 +422,22 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(tools.wire_tools(), vec![json!({ "type": "web_search" })]);
+    }
+
+    #[test]
+    fn computer_renders_the_native_tool_and_is_never_a_hosted_call() {
+        let tools = OpenAiHostedTools {
+            computer: Some(NativeComputerUse {
+                display_width: 1280,
+                display_height: 800,
+            }),
+            ..Default::default()
+        };
+        assert!(!tools.is_empty());
+        assert_eq!(tools.wire_tools(), vec![json!({ "type": "computer" })]);
+        assert_eq!(hosted_call_tool("computer_call"), None);
+        let output = vec![json!({ "type": "computer_call", "call_id": "c" })];
+        assert!(count_hosted_tool_calls(&output).is_empty());
     }
 
     #[test]

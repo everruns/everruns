@@ -1445,15 +1445,15 @@ enum AnthropicDocumentSource {
     Url { url: String },
 }
 
-/// A tools-array entry: either a regular function tool or the hosted
-/// `tool_search_tool_*_20251119` server tool. Untagged so each variant
-/// serializes to its own object shape (the server tool has only `type`/`name`,
-/// no `input_schema`).
+/// A tools-array entry: a function tool, the hosted `tool_search_tool_*` server
+/// tool, or a raw entry (the computer toolset). Untagged so each variant
+/// serializes to its own object shape (no `input_schema` on the server tools).
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 enum AnthropicToolEntry {
     Search(AnthropicToolSearchTool),
     Function(AnthropicTool),
+    Raw(Value),
 }
 
 /// The hosted tool-search server tool, e.g.

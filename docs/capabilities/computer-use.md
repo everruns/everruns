@@ -19,7 +19,11 @@ handle, such as canvas apps, heavy single-page apps, and custom widgets.
 
 The capability is provider-neutral. It is a regular function tool that returns
 images, so it works with OpenAI, Anthropic, Gemini, and any other model that
-accepts images in tool results.
+accepts images in tool results. On models with a native computer tool (OpenAI
+GPT-5.4 and later through the Responses API, and recent Claude models with
+`computer_toolset_20260801`), the agent uses the provider's own tool instead,
+which those models are trained on. The display, the actions, and the limits
+are the same either way.
 
 The display is a Chromium page on a [Browserless](/capabilities/browserless/)
 browser. Connect Browserless in **Settings > Connections > Browserless** first.
@@ -60,6 +64,7 @@ Example call:
 | `display_height` | `800` | Display height in pixels (320 to 1200) |
 | `screenshot_after_action` | `true` | Return a screenshot after every action. When off, only `screenshot` returns an image. |
 | `max_actions_per_session` | `300` | Hard cap on actions in one session, screenshots included |
+| `native_tools` | `true` | Use the provider's native computer tool on models that have one. When off, every model uses the `computer` function tool. |
 
 Screenshots are billed as image tokens. A smaller display, or turning off
 `screenshot_after_action`, lowers the cost per step.
@@ -73,6 +78,11 @@ Screenshots are billed as image tokens. A smaller display, or turning off
   `soft_approval` capability when you want those confirmations recorded, and
   the [`tool_approval`](/capabilities/tool-approval/) capability when a person
   must approve every `computer` call before it runs.
+- **Approval before committing input.** In hosted sessions, a `computer` call
+  that types text, presses Enter, or navigates waits for a person to approve
+  that exact call, and so does a call the provider flags with a safety check.
+  The request appears in the session like any other tool approval. Clicks,
+  scrolling, and screenshots run without asking.
 - **Keep credentials out of reach.** Do not give a computer-use agent a browser
   that is signed in to accounts it should not use.
 - **Egress.** `navigate` refuses private and internal addresses and follows the
@@ -80,5 +90,5 @@ Screenshots are billed as image tokens. A smaller display, or turning off
   own, the page is reset to a blank page and the action reports an error.
 - **Budget.** `max_actions_per_session` stops runaway loops.
 
-Native OpenAI and Anthropic computer tools, and desktop displays on sandboxes,
-are planned.
+Each screenshot shows as a thumbnail on the tool call in the session view;
+click it for the full frame. Desktop displays on sandboxes are planned.

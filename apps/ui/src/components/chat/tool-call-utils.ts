@@ -134,6 +134,85 @@ export function formatResult(result: unknown): string {
   return typeof result === "string" ? result : JSON.stringify(result, null, 2);
 }
 
+export function isImagePart(
+  part: ContentPart,
+): part is { type: "image"; url?: string; base64?: string; media_type?: string } {
+  return part.type === "image";
+}
+
+// Raster-only allowlist. SVG is intentionally excluded: script/event-handler
+// payloads in SVG are an XSS risk when rendered via <img>.
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "image/avif",
+  "image/tiff",
+  "image/ico",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+]);
+
+function isAllowedImageMimeType(mediaType: string): boolean {
+  return ALLOWED_IMAGE_MIME_TYPES.has(mediaType.toLowerCase().split(";")[0].trim());
+}
+
+export function buildImageSrc(part: {
+  url?: string;
+  base64?: string;
+  media_type?: string;
+}): string | null {
+  if (typeof part.url === "string" && part.url.length > 0) {
+    // Only allow http(s) schemes. Use URL parsing so the check is
+    // case-insensitive and handles any leading/trailing whitespace.
+    try {
+      const { protocol } = new URL(part.url);
+      if (protocol !== "https:" && protocol !== "http:") return null;
+    } catch {
+      return null;
+    }
+    // If media_type is declared, enforce the allowlist to block SVG URLs.
+    if (
+      typeof part.media_type === "string" &&
+      part.media_type.length > 0 &&
+      !isAllowedImageMimeType(part.media_type)
+    ) {
+      return null;
+    }
+    return part.url;
+  }
+  if (typeof part.base64 === "string" && part.base64.length > 0) {
+    const mediaType =
+      typeof part.media_type === "string" && part.media_type.length > 0
+        ? part.media_type
+        : "image/png";
+    if (!isAllowedImageMimeType(mediaType)) {
+      return null;
+    }
+    return `data:${mediaType};base64,${part.base64}`;
+  }
+  return null;
+}
+
+// A screenshot strip, not a gallery: computer use returns one frame per call,
+// and anything past this is better read in the full result.
+const MAX_RESULT_IMAGES = 4;
+
+/**
+ * Image sources from a tool result's native image parts (computer-use
+ * screenshots, rendered pages), safe to put in an `<img src>`: raster
+ * `data:` URLs or http(s) URLs only, per {@link buildImageSrc}.
+ */
+export function extractResultImages(result: ContentPart[] | undefined): string[] {
+  if (!result || result.length === 0) return [];
+  return result
+    .filter(isImagePart)
+    .flatMap((part) => buildImageSrc(part) ?? [])
+    .slice(0, MAX_RESULT_IMAGES);
+}
+
 /**
  * toolName must be a first-party `<entity>_get_card` or `mcp_everruns__<entity>_get_card`.
  * Callers that cannot supply a tool name pass undefined, which rejects all cards.

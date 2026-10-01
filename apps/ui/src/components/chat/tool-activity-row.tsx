@@ -2,6 +2,8 @@
  * Decisions:
  * - Row state derives from tool result presence; no duplicate status enum needed.
  * - Expanded output reuses the same formatter as previews to keep masking rules aligned.
+ * - Result images (computer-use screenshots) render as thumbnails outside the
+ *   collapsible details, so the frame an action produced is visible at a glance.
  */
 "use client";
 
@@ -10,13 +12,14 @@ import { AlertCircle, CalendarClock, Check, Loader2, MonitorSmartphone } from "l
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { McpAppResourceList } from "./mcp-app-resource-list";
+import { ToolResultThumbnails } from "./tool-result-thumbnails";
 import type { ToolCallContent } from "./tool-call-utils";
 import {
   formatResultDetails,
   getToolActivitySummaryChip,
   getToolLabel,
 } from "./tool-activity-utils";
-import { extractMcpAppResources, getFullText } from "./tool-call-utils";
+import { extractMcpAppResources, extractResultImages, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 
 export function ToolActivityRow({
@@ -37,6 +40,7 @@ export function ToolActivityRow({
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
   const mcpAppResources = extractMcpAppResources(toolResult?.result, toolCall.name);
+  const resultImages = extractResultImages(toolResult?.result);
   const detailsId = `tool-activity-details-${toolCall.id}`;
   const hasOutput = fullText.length > 0;
   const hasToolError = Boolean(toolResult?.error);
@@ -105,6 +109,8 @@ export function ToolActivityRow({
           {hasToolError && <div className="mt-1 text-xs text-destructive">{toolResult?.error}</div>}
 
           <McpAppResourceList resources={mcpAppResources} />
+
+          <ToolResultThumbnails images={resultImages} />
 
           <div
             id={detailsId}
