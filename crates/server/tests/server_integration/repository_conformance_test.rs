@@ -1412,6 +1412,7 @@ async fn postgres_agents_api_lease_recovery_and_tenant_fencing() {
             call_id: "call_1".into(),
             name: "lookup_customer".into(),
             arguments: serde_json::json!({"customer_id": "private-argument"}),
+            attempt: 1,
             state: ToolResultState::Ready {
                 success: true,
                 output: "private-result".into(),

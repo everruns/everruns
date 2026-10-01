@@ -88,21 +88,7 @@ use compaction::{
 use error_policy::{filter_response_text, is_error_placeholder_message};
 #[cfg(test)]
 use observability::capability_usage_snapshot_records;
-
-/// The `capability.usage` records a reason emits for the turn's resolved
-/// capabilities and the tools they expose: the capability attribution every
-/// reason backend reports, whichever loop runs the model.
-pub fn capability_usage_records(
-    registry: &crate::capabilities::CapabilityRegistry,
-    resolved_capability_configs: &[crate::CapabilityRef],
-    tool_definitions: &[ToolDefinition],
-) -> Vec<crate::events::CapabilityUsageRecord> {
-    observability::capability_usage_snapshot_records(
-        registry,
-        resolved_capability_configs,
-        tool_definitions,
-    )
-}
+pub use observability::capability_usage_snapshot_records as capability_usage_records;
 use observability::{build_request_options, emit_capability_usage_snapshot};
 use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
@@ -215,17 +201,9 @@ pub struct ReasonResult {
     /// `Some(false)` (force serialize). `None` preserves the default schedule.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
-    /// The reason ran tools itself and one of them paused the turn (an
-    /// approval, a client-side tool, a connection setup). Set only by a
-    /// backend that hosts the tool loop remotely (the OpenAI Agents API
-    /// backend); the native loop pauses from the act phase instead. The
-    /// planner parks the turn, and the resumed turn runs reason again.
-    #[serde(default, skip_serializing_if = "is_false")]
+    /// A remote tool loop (OpenAI Agents API) paused on a tool call; the turn parks (EVE-1124).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub waiting_for_tool_results: bool,
-}
-
-fn is_false(value: &bool) -> bool {
-    !*value
 }
 
 fn default_max_iterations() -> usize {
@@ -782,10 +760,7 @@ impl ReasonAtom {
                         .to_ascii_lowercase()
                         .contains("model refused")
                         .then(|| "refusal".to_string()),
-                    locale: None,
-                    network_access: None,
-                    parallel_tool_calls: None,
-                    waiting_for_tool_results: false,
+                    ..ReasonResult::default()
                 }
             }
         };
@@ -2574,9 +2549,6 @@ impl ReasonAtom {
             has_tool_calls,
             tool_definitions: runtime_agent.tools.clone(),
             max_iterations: runtime_agent.max_iterations,
-            error: None,
-            user_facing_error: None,
-            error_disclosure: None,
             usage,
             output_message_id: Some(output_message_id),
             time_to_first_token_ms,
@@ -2585,7 +2557,7 @@ impl ReasonAtom {
             locale: resolved_locale,
             network_access: runtime_agent.network_access.clone(),
             parallel_tool_calls: runtime_agent.parallel_tool_calls,
-            waiting_for_tool_results: false,
+            ..ReasonResult::default()
         };
         if let Some(coordinator) = &self.native_async {
             coordinator
@@ -2760,11 +2732,8 @@ impl ReasonAtom {
             time_to_first_token_ms: None,
             response_id: None,
             finish_reason: Some("stop".to_string()),
-            locale: None,
-            network_access: None,
-            // Finalize path has no tool calls, so the preference is irrelevant.
-            parallel_tool_calls: None,
-            waiting_for_tool_results: false,
+            // No locale, network list, or parallel-call preference on finalize.
+            ..ReasonResult::default()
         })
     }
 

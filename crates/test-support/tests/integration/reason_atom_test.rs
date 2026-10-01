@@ -2897,9 +2897,8 @@ async fn test_previous_response_id_round_trips_through_serde() {
         locale: None,
         response_id: Some("resp_out_456".to_string()),
         finish_reason: Some("stop".to_string()),
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     };
     let result_json = serde_json::to_value(&result).unwrap();
     assert_eq!(result_json["response_id"], "resp_out_456");

@@ -1802,9 +1802,8 @@ async fn execution_schedules_act_after_reason_tool_calls() {
         response_id: Some("resp_123".into()),
         finish_reason: Some("tool_calls".into()),
         locale: Some("en-US".into()),
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     })
     .unwrap();
 
@@ -1863,9 +1862,8 @@ async fn execution_surfaces_max_turn_requests_before_another_act() {
         response_id: Some("resp_limit".into()),
         finish_reason: Some("tool_calls".into()),
         locale: None,
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     })
     .unwrap();
 
@@ -1921,9 +1919,8 @@ async fn execution_threads_parallel_tool_calls_into_act() {
             response_id: Some("resp_123".into()),
             finish_reason: Some("tool_calls".into()),
             locale: None,
-            network_access: None,
             parallel_tool_calls: preference,
-            waiting_for_tool_results: false,
+            ..ReasonResult::default()
         })
         .unwrap();
 
@@ -1982,9 +1979,8 @@ async fn execution_schedules_act_with_session_blueprint_id() {
         response_id: Some("resp_blueprint".into()),
         finish_reason: Some("tool_calls".into()),
         locale: Some("en-US".into()),
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     })
     .unwrap();
 
@@ -2035,9 +2031,8 @@ async fn execution_continues_reason_when_steering_messages_are_pending() {
         response_id: Some("resp_steer".into()),
         finish_reason: Some("stop".into()),
         locale: None,
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     })
     .unwrap();
 
@@ -2094,9 +2089,8 @@ async fn execution_emits_turn_completed_summary_fields() {
         response_id: Some("resp_done".into()),
         finish_reason: Some("length".into()),
         locale: None,
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     })
     .unwrap();
 
@@ -2168,9 +2162,8 @@ async fn execution_preserves_reason_failure_message() {
         response_id: None,
         finish_reason: None,
         locale: None,
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     })
     .unwrap();
 
@@ -2238,9 +2231,8 @@ async fn execution_classifies_missing_api_key_as_provider_misconfigured() {
         response_id: None,
         finish_reason: None,
         locale: None,
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     })
     .unwrap();
 
@@ -2304,9 +2296,8 @@ async fn execution_prefers_disclosed_user_facing_error_from_reason() {
         response_id: None,
         finish_reason: None,
         locale: None,
-        network_access: None,
         parallel_tool_calls: None,
-        waiting_for_tool_results: false,
+        ..ReasonResult::default()
     })
     .unwrap();
 
