@@ -14,8 +14,8 @@
 use crate::events::{EventContext, EventRequest, ToolCallRequestedData};
 use crate::tool_types::{
     ASK_USER_TOOL_NAME, CONFIRM_URL_ELICITATION_TOOL, FORM_ELICITATION_CALL_ID_PREFIX,
-    FormElicitationRequired, MCP_ELICITATION_ARGUMENT, ToolCall, ToolDefinition, ToolResult,
-    UrlElicitationRequired,
+    FormElicitationRequired, MCP_ELICITATION_ARGUMENT, ToolApprovalRequired, ToolCall,
+    ToolDefinition, ToolResult, UrlElicitationRequired,
 };
 use crate::{event_emitter::EventEmitter, tool_context::ToolContext};
 use async_trait::async_trait;
@@ -28,7 +28,7 @@ use super::ExecutionContext;
 use super::act::ActResult;
 
 /// Run every registered `PreToolUseHook` against `tool_call`. Hooks chain
-/// sequentially; the first `Block` aborts the chain and is returned. If
+/// sequentially; the first `Block` or `Defer` aborts the chain and is returned. If
 /// every hook returns `Continue`, the final (potentially mutated)
 /// `ToolCall` is returned.
 pub(super) async fn run_pre_tool_use_hooks(
@@ -42,10 +42,66 @@ pub(super) async fn run_pre_tool_use_hooks(
             PreToolUseDecision::Continue(updated) => {
                 tool_call = updated;
             }
-            block @ PreToolUseDecision::Block { .. } => return block,
+            stop @ (PreToolUseDecision::Block { .. } | PreToolUseDecision::Defer { .. }) => {
+                return stop;
+            }
         }
     }
     PreToolUseDecision::Continue(tool_call)
+}
+
+/// Run the pre-tool-use chain and turn its decision into what ActAtom needs:
+/// the (possibly transformed) call, plus the result to record instead of
+/// running it when a hook blocked or deferred the call.
+///
+/// A deferral (hosted tool approval, EVE-1140) carries its own structured
+/// result, so post-act hooks can turn it into a pause and a replayed act
+/// settles to the same outcome.
+pub(super) async fn pre_tool_use_outcome(
+    hooks: &[Arc<dyn PreToolUseHook>],
+    tool_call: ToolCall,
+    tool_def: &ToolDefinition,
+    context: &ToolContext,
+) -> (ToolCall, Option<ToolResult>) {
+    if hooks.is_empty() {
+        return (tool_call, None);
+    }
+    match run_pre_tool_use_hooks(hooks, tool_call, tool_def, context).await {
+        PreToolUseDecision::Continue(updated) => (updated, None),
+        PreToolUseDecision::Block {
+            tool_call, reason, ..
+        } => {
+            tracing::warn!(
+                session_id = %context.session_id,
+                tool_call_id = %tool_call.id,
+                tool_name = %tool_call.name,
+                reason = %reason,
+                "ActAtom: pre_tool_use hook blocked execution"
+            );
+            let result = ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                result: None,
+                images: None,
+                error: Some(format!("blocked by pre_tool_use hook: {reason}")),
+                connection_required: None,
+                raw_output: None,
+            };
+            (tool_call, Some(result))
+        }
+        PreToolUseDecision::Defer {
+            tool_call,
+            mut result,
+        } => {
+            tracing::info!(
+                session_id = %context.session_id,
+                tool_call_id = %tool_call.id,
+                tool_name = %tool_call.name,
+                "ActAtom: pre_tool_use hook deferred execution"
+            );
+            result.tool_call_id = tool_call.id.clone();
+            (tool_call, Some(result))
+        }
+    }
 }
 
 /// Execute post-tool-exec hooks on a single tool result.
@@ -440,6 +496,57 @@ impl PostActHook for FormElicitationHook {
         }
         vec![]
     }
+}
+
+// ============================================================================
+// ToolApprovalPauseHook
+// ============================================================================
+
+/// Hook that parks the turn when a hard approval gate deferred a call.
+///
+/// Spec: knowledge/execution/tool-approval.md.
+///
+/// The `tool_approval` capability answers a gated call it has no decision for
+/// with a structured `tool_approval_required` result instead of running it.
+/// This hook turns each one into a synthetic `approve_tool_call` call a person
+/// answers through `POST /v1/sessions/{id}/tool-approvals`.
+///
+/// Decision: like `FormElicitationHook`, the call is appended to
+/// `client_tool_calls` rather than emitted here, so every pause in one act
+/// lands in a single `tool.call_requested` event and the answer surfaces read
+/// one batch. Must run before `ClientSideToolHook`. The planner holds the pause
+/// unconditionally (see `plan_after_act`): the gated call already failed
+/// closed, so a client with no card only delays the answer, it never lets the
+/// call through.
+pub struct ToolApprovalPauseHook;
+
+impl PostActHook for ToolApprovalPauseHook {
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        _tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction> {
+        let pending: Vec<ToolCall> = result
+            .results
+            .iter()
+            .filter_map(|r| ToolApprovalRequired::from_tool_result(&r.result))
+            .map(|request| request.request_call())
+            .collect();
+        for call in pending {
+            // A replayed act re-derives the same id; never queue it twice.
+            if !result.client_tool_calls.iter().any(|c| c.id == call.id) {
+                result.client_tool_calls.push(call);
+            }
+        }
+        vec![]
+    }
+}
+
+/// True when an act left a hard approval request pending.
+pub fn has_pending_tool_approval(client_tool_calls: &[ToolCall]) -> bool {
+    client_tool_calls
+        .iter()
+        .any(|call| call.name == crate::tool_types::APPROVE_TOOL_CALL_TOOL)
 }
 
 // ============================================================================

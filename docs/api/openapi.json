@@ -15266,6 +15266,64 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/tool-approvals": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/tool-approvals",
+        "description": "Records a person's decisions about tool calls an agent's `tool_approval`\ngate held back, and resumes the paused turn.",
+        "operationId": "submit_tool_approvals",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitToolApprovalsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Decisions recorded and workflow resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitToolApprovalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or decisions"
+          },
+          "403": {
+            "description": "Caller may not manage this session"
+          },
+          "404": {
+            "description": "Session or pending approval request not found"
+          },
+          "409": {
+            "description": "Session is not waiting, the request expired, or it was already answered"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/tool-results": {
       "post": {
         "tags": [
@@ -40126,6 +40184,44 @@
           }
         }
       },
+      "SubmitToolApprovalsRequest": {
+        "type": "object",
+        "description": "Request to answer pending tool-approval requests.",
+        "required": [
+          "decisions"
+        ],
+        "properties": {
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolApprovalAnswer"
+            },
+            "description": "Decisions for the pending requests. A pending request in the same batch\nthat is left out is resolved as not approved: the turn resumes once, so\nevery request in it is settled now, and silence never approves."
+          }
+        }
+      },
+      "SubmitToolApprovalsResponse": {
+        "type": "object",
+        "description": "Result of answering tool-approval requests.",
+        "required": [
+          "resolved",
+          "status"
+        ],
+        "properties": {
+          "resolved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolApprovalResolution"
+            },
+            "description": "How every pending request in the batch was settled."
+          },
+          "status": {
+            "type": "string",
+            "description": "Session status after the decision.",
+            "example": "active"
+          }
+        }
+      },
       "SubmitToolResultsRequest": {
         "type": "object",
         "description": "Request to submit client-side tool results",
@@ -40856,6 +40952,59 @@
             "format": "int32",
             "description": "Number of output/completion tokens",
             "minimum": 0
+          }
+        }
+      },
+      "ToolApprovalAnswer": {
+        "type": "object",
+        "description": "One decision in a submission.",
+        "required": [
+          "tool_call_id",
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/ToolApprovalDecision",
+            "description": "The person's decision."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The `approve_tool_call` call being answered.",
+            "example": "tool_approval_toolu_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "ToolApprovalDecision": {
+        "type": "string",
+        "description": "What a person decided about one gated call.",
+        "enum": [
+          "allow",
+          "allow_always",
+          "reject",
+          "reject_always"
+        ]
+      },
+      "ToolApprovalResolution": {
+        "type": "object",
+        "description": "How one pending request was settled.",
+        "required": [
+          "tool_call_id",
+          "tool",
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "`allow`, `allow_always`, `reject`, `reject_always`, `not_approved`\n(left out of the submission) or `expired`.",
+            "example": "allow"
+          },
+          "tool": {
+            "type": "string",
+            "description": "The gated tool."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The `approve_tool_call` call that was answered."
           }
         }
       },

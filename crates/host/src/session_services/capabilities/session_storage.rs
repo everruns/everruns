@@ -28,6 +28,9 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     // reach the model as context, so a session/tool actor forging them would
     // be writing its own prompt.
     everruns_core::channel::THREAD_CONTEXT_KV_KEY,
+    // Durable tool-approval decisions (EVE-1140). THREAT[TM-TOOL-008]: a
+    // session/tool actor that could write here would approve its own calls.
+    everruns_core::capabilities::TOOL_APPROVAL_KV_PREFIX,
 ];
 const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:", "mcp_oauth:"];
 // Exact reserved secret names. Unlike the prefixes above, this one cannot
@@ -651,6 +654,10 @@ mod tests {
     #[test]
     fn test_internal_kv_key_filtering() {
         assert!(is_internal_session_kv_key("agent_run:abc"));
+        assert!(is_internal_session_kv_key(
+            "tool_approval/always/send_email"
+        ));
+        assert!(is_internal_session_kv_key("tool_approval/once/sha256_ab"));
         assert!(!is_internal_session_kv_key("user:agent_run:abc"));
     }
 

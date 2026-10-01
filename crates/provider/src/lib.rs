@@ -65,6 +65,7 @@ pub mod stream_event;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
 pub mod structured_output;
+pub mod tool_approval_types;
 pub mod tool_schema_compat;
 pub mod tool_types;
 pub mod turn_collector;
@@ -136,6 +137,10 @@ pub use runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
     ProviderRegistry, ResolvedProviderRequest, RuntimeProvider, RuntimeProviderRegistry,
     StaticHeaderAuth,
+};
+pub use tool_approval_types::{
+    APPROVE_TOOL_CALL_TOOL, TOOL_APPROVAL_CALL_ID_PREFIX, TOOL_APPROVAL_REQUIRED_CODE,
+    ToolApprovalRequired,
 };
 pub use tool_types::{
     ASK_USER_TOOL_NAME, BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool,

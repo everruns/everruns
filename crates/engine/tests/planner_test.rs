@@ -250,6 +250,7 @@ fn act_blocked_completes_end_turn() {
             waiting_for_tool_results: false,
             waiting_for_url_elicitation: false,
             waiting_for_ask_user: false,
+            waiting_for_tool_approval: false,
         },
         false,
         false,
@@ -305,6 +306,7 @@ fn act_waiting_pauses_when_hint_enabled() {
             waiting_for_tool_results: true,
             waiting_for_url_elicitation: false,
             waiting_for_ask_user: false,
+            waiting_for_tool_approval: false,
         },
         true,
         false,
@@ -336,6 +338,7 @@ fn act_waiting_continues_when_hint_absent() {
             waiting_for_tool_results: true,
             waiting_for_url_elicitation: false,
             waiting_for_ask_user: false,
+            waiting_for_tool_approval: false,
         },
         false,
         false,
@@ -407,6 +410,7 @@ fn act_waiting_on_a_url_elicitation_pauses_only_on_its_own_hint() {
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: true,
         waiting_for_ask_user: false,
+        waiting_for_tool_approval: false,
     };
 
     let (plan, effects) = plan_after_act(&state, outcome, false, true, false, Vec::new());
@@ -434,6 +438,7 @@ fn an_ask_user_pause_without_the_hint_continues_the_turn() {
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: false,
         waiting_for_ask_user: true,
+        waiting_for_tool_approval: false,
     };
     let calls = vec![(
         "toolu_ask_1".to_string(),
@@ -471,6 +476,7 @@ fn an_ask_user_pause_with_the_hint_parks_as_usual() {
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: false,
         waiting_for_ask_user: true,
+        waiting_for_tool_approval: false,
     };
     let calls = vec![(
         "toolu_ask_1".to_string(),
@@ -502,6 +508,7 @@ fn the_ask_user_hint_does_not_speak_for_a_url_elicitation() {
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: true,
         waiting_for_ask_user: false,
+        waiting_for_tool_approval: false,
     };
     let (plan, effects) = plan_after_act(&state, outcome, false, false, true, Vec::new());
     match plan {
@@ -512,4 +519,38 @@ fn the_ask_user_hint_does_not_speak_for_a_url_elicitation() {
         effects.is_empty(),
         "no defaults for a URL card: {effects:?}"
     );
+}
+
+/// EVE-1140: a hard tool-approval request parks the turn whatever the client
+/// declared. The gated call already failed closed; continuing would only throw
+/// away the chance for a person to approve it through the API.
+#[test]
+fn a_tool_approval_pause_holds_without_any_hint() {
+    let state = turn_state();
+    let outcome = ActOutcome {
+        blocked: false,
+        waiting_for_tool_results: true,
+        waiting_for_url_elicitation: false,
+        waiting_for_ask_user: false,
+        waiting_for_tool_approval: true,
+    };
+    let (plan, effects) = plan_after_act(&state, outcome, false, false, false, Vec::new());
+    assert!(matches!(plan, TurnPlan::WaitForToolResults { .. }));
+    assert!(matches!(
+        effects.as_slice(),
+        [TurnLifecycleEffect::WaitingForToolResults]
+    ));
+
+    // An `ask_user` call in the same batch rides the same pause rather than
+    // being answered unattended underneath a pending approval.
+    let outcome = ActOutcome {
+        waiting_for_ask_user: true,
+        ..outcome
+    };
+    let calls = vec![(
+        "toolu_ask_1".to_string(),
+        serde_json::json!({"questions": []}),
+    )];
+    let (plan, _) = plan_after_act(&state, outcome, false, false, false, calls);
+    assert!(matches!(plan, TurnPlan::WaitForToolResults { .. }));
 }

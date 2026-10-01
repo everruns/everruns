@@ -7,7 +7,7 @@ use everruns_core::{Capability, DisabledUtilityLlmService, Tool, ToolExecutionRe
 use everruns_provider::{BuiltinTool, ClientSideTool};
 use serde_json::json;
 
-struct ArgumentEchoTool;
+pub(super) struct ArgumentEchoTool;
 
 struct NarratingGrepTool;
 
