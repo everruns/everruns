@@ -247,6 +247,8 @@ async fn test_anthropic_extended_thinking() {
         }
     }
 
+    let first_turn_failure = turn_failure(&all_events);
+
     // Print event summary
     println!("\nFirst turn results:");
     println!("  Response complete: {}", response_complete);
@@ -357,6 +359,9 @@ async fn test_anthropic_extended_thinking() {
 
     // Assertions
     assert!(response_complete, "First turn should complete");
+    if let Some(failure) = first_turn_failure {
+        panic!("First turn failed before any thinking could be checked: {failure}");
+    }
     assert!(
         thinking_started_found,
         "Should have reason.thinking.started event when reasoning_effort is set"
@@ -569,6 +574,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         }
     }
 
+    let mut first_turn_failure = None;
     // Fetch all events
     let events_response = client
         .get(format!(
@@ -582,6 +588,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     if events_response.status() == 200 {
         let events_data: Value = events_response.json().await.unwrap_or_default();
         if let Some(events) = events_data["data"].as_array() {
+            first_turn_failure = turn_failure(events);
             println!("\n  Event summary ({} events):", events.len());
             for event in events {
                 let event_type = event["type"].as_str().unwrap_or("");
@@ -733,13 +740,18 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Assertions
     // Note: With interleaved thinking, the model may hit max iterations (tool loop).
     // The key test is that thinking + tools work together without API errors.
+    // A failed first turn is therefore not fatal on its own, but when the
+    // checks below miss, its error is the actual cause and must be named.
+    let failure_note = first_turn_failure
+        .map(|failure| format!(" (first turn failed: {failure})"))
+        .unwrap_or_default();
     assert!(
         thinking_found,
-        "Should have thinking events when reasoning_effort is set"
+        "Should have thinking events when reasoning_effort is set{failure_note}"
     );
     assert!(
         tool_call_found,
-        "Should have tool.started event - model should use current_time when asked for time"
+        "Should have tool.started event - model should use current_time when asked for time{failure_note}"
     );
     assert!(tool_completed_found, "Should have tool.completed event");
     assert!(

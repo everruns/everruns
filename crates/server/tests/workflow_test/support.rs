@@ -80,14 +80,16 @@ pub(crate) async fn cleanup_agent(
 /// Live Anthropic model ids used by the tests in this file that talk to the
 /// real provider.
 ///
-/// Pinned to explicit dated ids rather than `-latest` aliases so a failure
-/// names the model it actually asked for. Anthropic retires models, and a
-/// retired id comes back as `model_unavailable` rather than a test-logic
-/// failure — when that happens, re-point these two constants at current ids
-/// (`GET /v1/models`) instead of editing each test.
+/// Pinned to explicit ids rather than `-latest` aliases so a failure names the
+/// model it actually asked for. Use ids exactly as `GET /v1/models` lists them:
+/// Claude 4.6+ models are served only under their undated id (a dated form such
+/// as `claude-sonnet-4-6-20260217` is a 404 `not_found_error`), while older
+/// families keep their dated ids. Anthropic retires models, and a retired or
+/// unknown id fails the turn rather than a test assertion — when that happens,
+/// re-point these two constants at current ids instead of editing each test.
 pub(crate) const LIVE_ANTHROPIC_FAST_MODEL: &str = "claude-haiku-4-5-20251001";
 /// Extended thinking requires a model that supports it; Haiku does not.
-pub(crate) const LIVE_ANTHROPIC_THINKING_MODEL: &str = "claude-sonnet-4-6-20260217";
+pub(crate) const LIVE_ANTHROPIC_THINKING_MODEL: &str = "claude-sonnet-4-6";
 
 /// Returns the error code when a turn was blocked by a live provider *account*
 /// condition — the account is out of credits, or a subscription usage limit was
@@ -322,6 +324,46 @@ pub(crate) fn append_skip_to_report_accumulates_and_never_panics() {
     );
 
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Returns the first `turn.failed` event's code and message, if any.
+///
+/// A live turn that fails before reaching the model (an unknown model id, a bad
+/// request shape) emits no thinking or tool events, so asserting on those first
+/// reports a thinking or tool regression that does not exist. Main went red
+/// this way when the thinking model was pinned to an id Anthropic does not
+/// serve. Live tests assert on this before their feature checks.
+pub(crate) fn turn_failure(events: &[Value]) -> Option<String> {
+    let failed = events
+        .iter()
+        .find(|event| event["type"] == everruns_core::events::TURN_FAILED)?;
+    let data = &failed["data"];
+    let code = data["error_code"].as_str().unwrap_or("unknown");
+    let error = data["error"].as_str().unwrap_or("");
+    Some(format!("{code}: {error}"))
+}
+
+#[test]
+pub(crate) fn turn_failure_reports_the_failed_turn() {
+    let events = vec![
+        json!({"type": "turn.started", "data": {}}),
+        json!({"type": "reason.thinking.started", "data": {}}),
+        json!({"type": "turn.failed", "data": {
+            "error": "model not found",
+            "error_code": "model_unavailable"
+        }}),
+    ];
+    assert_eq!(
+        turn_failure(&events).as_deref(),
+        Some("model_unavailable: model not found")
+    );
+
+    let healthy = vec![
+        json!({"type": "turn.started", "data": {}}),
+        json!({"type": "turn.completed", "data": {}}),
+    ];
+    assert_eq!(turn_failure(&healthy), None);
+    assert_eq!(turn_failure(&[]), None);
 }
 
 /// Returns the same preview the live tests print, so the truncation is covered
