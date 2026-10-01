@@ -25,7 +25,7 @@
 // with `everruns-core`'s own data types. One state machine then serves the
 // server endpoint, `serve`, and the framework.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 
 use everruns_core::events::{
@@ -37,9 +37,10 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::{
-    Event, ReasoningMessageContentEvent, ReasoningMessageEndEvent, ReasoningMessageStartEvent,
-    ReasoningSpanEvent, RunErrorEvent, RunFinishedEvent, RunFinishedOutcome,
-    TextMessageContentEvent, TextMessageEndEvent, TextMessageStartEvent,
+    Event, Interrupt, ReasoningMessageContentEvent, ReasoningMessageEndEvent,
+    ReasoningMessageStartEvent, ReasoningSpanEvent, RunErrorEvent, RunFinishedEvent,
+    RunFinishedOutcome, TextMessageContentEvent, TextMessageEndEvent, TextMessageStartEvent,
+    TokenUsage,
 };
 
 /// A failed turn, as handed to [`ProjectionPolicy::error`].
@@ -63,6 +64,9 @@ pub struct ProjectionPolicy {
     /// Text shown on the reasoning channel while server-side tools run, or
     /// `None` to show nothing. Never derived from tool names or arguments.
     pub tool_activity_text: Option<String>,
+    /// Report the run's token usage on its terminal event, summed per
+    /// provider and model from `llm.generation`.
+    pub usage_visible: bool,
     /// Maps a failed turn to its `RUN_ERROR`. Public channels sanitize here.
     pub error: ErrorProjection,
 }
@@ -74,6 +78,7 @@ impl Default for ProjectionPolicy {
         Self {
             reasoning_visible: true,
             tool_activity_text: None,
+            usage_visible: true,
             error: Arc::new(|failure: &TurnFailure| RunErrorEvent {
                 code: failure.code.clone(),
                 ..RunErrorEvent::new(failure.message.clone())
@@ -87,6 +92,7 @@ impl std::fmt::Debug for ProjectionPolicy {
         f.debug_struct("ProjectionPolicy")
             .field("reasoning_visible", &self.reasoning_visible)
             .field("tool_activity_text", &self.tool_activity_text)
+            .field("usage_visible", &self.usage_visible)
             .finish_non_exhaustive()
     }
 }
@@ -112,6 +118,8 @@ pub struct Projector {
     active_tools: usize,
     tool_activity_shown: bool,
     next_reasoning_id: usize,
+    /// Usage per (provider, model), ordered by that key so output is stable.
+    usage: BTreeMap<(Option<String>, Option<String>), TokenUsage>,
     finished: bool,
 }
 
@@ -136,6 +144,7 @@ impl Projector {
             active_tools: 0,
             tool_activity_shown: false,
             next_reasoning_id: 0,
+            usage: BTreeMap::new(),
             finished: false,
         }
     }
@@ -163,8 +172,23 @@ impl Projector {
             return;
         }
         self.close_all();
+        let mut error = error;
+        if error.usage.is_none() {
+            error.usage = self.usage_entries();
+        }
         self.queue.push_back(Event::RunError(error));
         self.finished = true;
+    }
+
+    /// Ends the run with the interrupt outcome: it stopped to ask for
+    /// something, such as an answer or an approval, and the run that resumes
+    /// it carries the answers. An empty list does nothing, because an
+    /// interrupt outcome with nothing to answer is invalid.
+    pub fn interrupt(&mut self, interrupts: Vec<Interrupt>) {
+        if self.finished || interrupts.is_empty() {
+            return;
+        }
+        self.finish(Some(RunFinishedOutcome::Interrupt { interrupts }));
     }
 
     /// Projects one runtime event, given its dotted type and JSON `data`.
@@ -241,6 +265,7 @@ impl Projector {
                     self.span_opened_by_tools = false;
                 }
             }
+            "llm.generation" => self.record_usage(data),
             "turn.completed" | "session.idled" => self.finish(None),
             // Cancellation is a deliberate terminal state, typically client
             // initiated, not a fault: 1.0 names it with the cancelled outcome.
@@ -263,9 +288,60 @@ impl Projector {
         self.close_all();
         self.queue.push_back(Event::RunFinished(RunFinishedEvent {
             outcome,
+            usage: self.usage_entries(),
             ..RunFinishedEvent::new(self.thread_id.clone(), self.run_id.clone())
         }));
         self.finished = true;
+    }
+
+    /// Adds one generation's usage to its provider and model's entry.
+    ///
+    /// Everruns counts prompt buckets disjointly (non-cached input, cache
+    /// reads, cache writes); AG-UI's `inputTokens` is their sum, with the
+    /// cache counts as parts of it.
+    fn record_usage(&mut self, data: &Value) {
+        let metadata = &data["metadata"];
+        let Some(usage) = metadata.get("usage").filter(|usage| usage.is_object()) else {
+            return;
+        };
+        let count = |key: &str| usage.get(key).and_then(Value::as_u64);
+        let text = |key: &str| {
+            metadata
+                .get(key)
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        };
+        let model = text("response_model").or_else(|| text("model"));
+        let entry = self
+            .usage
+            .entry((text("provider"), model.clone()))
+            .or_insert_with(|| TokenUsage {
+                provider: text("provider"),
+                model,
+                ..TokenUsage::default()
+            });
+        let cache_read = count("cache_read_tokens");
+        let cache_write = count("cache_creation_tokens");
+        let input = count("input_tokens")
+            .map(|input| input + cache_read.unwrap_or_default() + cache_write.unwrap_or_default());
+        let add = |total: &mut Option<u64>, value: Option<u64>| {
+            if let Some(value) = value {
+                *total = Some(total.unwrap_or_default().saturating_add(value));
+            }
+        };
+        add(&mut entry.input_tokens, input);
+        add(&mut entry.output_tokens, count("output_tokens"));
+        add(&mut entry.cached_input_tokens, cache_read);
+        add(&mut entry.cache_write_input_tokens, cache_write);
+        entry.total_tokens = match (entry.input_tokens, entry.output_tokens) {
+            (Some(input), Some(output)) => Some(input.saturating_add(output)),
+            _ => None,
+        };
+    }
+
+    fn usage_entries(&self) -> Option<Vec<TokenUsage>> {
+        (self.policy.usage_visible && !self.usage.is_empty())
+            .then(|| self.usage.values().cloned().collect())
     }
 
     fn output_completed(&mut self, message: &RuntimeMessage) {

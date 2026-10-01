@@ -154,3 +154,109 @@ fn hidden_reasoning_and_tools_emit_only_the_answer() {
     let events: Vec<Event> = projector.drain().collect();
     assert_eq!(types(&events), ["RUN_FINISHED"]);
 }
+
+fn generation(provider: &str, model: &str, input: u64, output: u64, cache_read: u64) -> Value {
+    json!({
+        "messages": [],
+        "output": { "text": "", "tool_calls": [] },
+        "metadata": {
+            "model": format!("{model}-alias"),
+            "response_model": model,
+            "provider": provider,
+            "usage": {
+                "input_tokens": input,
+                "output_tokens": output,
+                "cache_read_tokens": cache_read,
+            },
+        },
+    })
+}
+
+#[test]
+fn usage_is_summed_per_provider_and_model_in_ag_ui_accounting() {
+    let mut projector = Projector::new("t", "r", policy());
+    projector.project(
+        "llm.generation",
+        &generation("openai", "gpt-a", 100, 10, 40),
+    );
+    projector.project("llm.generation", &generation("openai", "gpt-a", 50, 5, 0));
+    projector.project(
+        "llm.generation",
+        &generation("anthropic", "claude-b", 7, 3, 0),
+    );
+    // A generation without usage reports nothing rather than zeros.
+    projector.project("llm.generation", &json!({ "metadata": { "model": "x" } }));
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    let Some(Event::RunFinished(finished)) = events.last() else {
+        panic!("expected RUN_FINISHED");
+    };
+    let usage = finished.usage.as_ref().expect("usage reported");
+    assert_eq!(usage.len(), 2);
+    let gpt = usage
+        .iter()
+        .find(|u| u.model.as_deref() == Some("gpt-a"))
+        .unwrap();
+    // Cache reads are disjoint in Everruns and part of the input total in AG-UI.
+    assert_eq!(gpt.input_tokens, Some(190));
+    assert_eq!(gpt.cached_input_tokens, Some(40));
+    assert_eq!(gpt.output_tokens, Some(15));
+    assert_eq!(gpt.total_tokens, Some(205));
+    assert_eq!(gpt.provider.as_deref(), Some("openai"));
+    assert_eq!(gpt.reasoning_tokens, None);
+}
+
+#[test]
+fn usage_is_withheld_when_the_policy_hides_it() {
+    let mut projector = Projector::new(
+        "t",
+        "r",
+        ProjectionPolicy {
+            usage_visible: false,
+            ..ProjectionPolicy::default()
+        },
+    );
+    projector.project("llm.generation", &generation("openai", "gpt-a", 1, 1, 0));
+    projector.project(
+        "turn.failed",
+        &json!({ "turn_id": TurnId::new(), "error": "x" }),
+    );
+    let events: Vec<Event> = projector.drain().collect();
+    let Some(Event::RunError(error)) = events.last() else {
+        panic!("expected RUN_ERROR");
+    };
+    assert_eq!(error.usage, None);
+}
+
+#[test]
+fn interrupt_closes_open_messages_and_ends_the_run() {
+    let mut projector = Projector::new("t", "r", policy());
+    projector.project("reason.thinking.delta", &json!({ "delta": "I should ask" }));
+    projector.project(
+        "output.message.delta",
+        &delta(MessageId::new(), "One question:"),
+    );
+    projector.project("tool.started", &json!({}));
+    projector.project("llm.generation", &generation("openai", "gpt-a", 3, 2, 0));
+    // Nothing to answer is not an interrupt.
+    projector.interrupt(Vec::new());
+    assert!(!projector.is_finished());
+    projector.interrupt(vec![everruns_ag_ui::Interrupt::new(
+        "call_1",
+        "everruns.ask_user",
+    )]);
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    let Some(Event::RunFinished(finished)) = events.last() else {
+        panic!("expected RUN_FINISHED");
+    };
+    let Some(RunFinishedOutcome::Interrupt { interrupts }) = &finished.outcome else {
+        panic!("expected the interrupt outcome, got {:?}", finished.outcome);
+    };
+    assert_eq!(interrupts[0].id, "call_1");
+    assert!(
+        finished.usage.is_some(),
+        "an interrupted run reports its usage"
+    );
+}

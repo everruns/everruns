@@ -50,6 +50,7 @@ use futures::{
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::api::ag_ui_interrupts::{ResumeError, ResumeOutcome};
 use crate::api::app_endpoint_auth::{
     AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
 };
@@ -405,13 +406,20 @@ pub(crate) async fn run_app_agent_stream(
         return Err(bad_request("invalid_request"));
     }
 
-    let trigger_message = req
-        .messages
-        .last()
-        .ok_or_else(|| bad_request("messages must contain at least one user message"))?;
-    let (trigger_content, trigger_name) = match trigger_message {
-        AgUiMessage::User(message) => (message.content.to_text(), message.name.clone()),
-        _ => return Err(bad_request("the final AG-UI message must have role=user")),
+    // A resuming run (AG-UI 1.0) answers the interrupts that ended the last
+    // one and starts no new turn, so it needs no trailing user message.
+    let resuming = !req.resume.is_empty();
+    let trigger = if resuming {
+        None
+    } else {
+        let trigger_message = req
+            .messages
+            .last()
+            .ok_or_else(|| bad_request("messages must contain at least one user message"))?;
+        match trigger_message {
+            AgUiMessage::User(message) => Some((message.content.to_text(), message.name.clone())),
+            _ => return Err(bad_request("the final AG-UI message must have role=user")),
+        }
     };
 
     let thread_id = req.thread_id.clone();
@@ -476,7 +484,7 @@ pub(crate) async fn run_app_agent_stream(
 
     // Seed prior history only on first use of the thread so a new AG-UI client can
     // carry conversation context into the durable session without triggering old runs.
-    if session.is_new {
+    if session.is_new && !resuming {
         seed_history(
             &state,
             session.session.id.uuid(),
@@ -494,43 +502,70 @@ pub(crate) async fn run_app_agent_stream(
         .await
         .map_err(internal_error)?;
 
-    let trigger_image_parts = ag_ui_image_content_parts(&state, &app, req.forwarded_props.as_ref())
-        .await
-        .map_err(|err| *err)?;
-    let mut trigger_parts = vec![InputContentPart::text(trigger_content)];
-    trigger_parts.extend(trigger_image_parts);
+    let (input_message_id, resume_outcome) = if let Some((trigger_content, trigger_name)) = trigger
+    {
+        let trigger_image_parts =
+            ag_ui_image_content_parts(&state, &app, req.forwarded_props.as_ref())
+                .await
+                .map_err(|err| *err)?;
+        let mut trigger_parts = vec![InputContentPart::text(trigger_content)];
+        trigger_parts.extend(trigger_image_parts);
 
-    let message = state
-        .message_service
-        .create(
-            CreateMessageContext {
-                runtime_subject_principal_id: runtime_principal,
-                org_id: app.org_id,
-                user_id: None,
-                harness_id: app.harness_id.uuid(),
-                agent_id: Some(app.agent_internal_id),
-                session_id: session.session.id.uuid(),
-                event_metadata: Some(execution_metadata::app_message_metadata(
-                    app.public_id,
-                    app.owner_principal_id,
-                    app.virtual_user_id,
-                )),
-                request_id,
-            },
-            CreateMessageRequest {
-                message: InputMessage {
-                    role: ApiMessageRole::User,
-                    content: trigger_parts,
+        let message = state
+            .message_service
+            .create(
+                CreateMessageContext {
+                    runtime_subject_principal_id: runtime_principal,
+                    org_id: app.org_id,
+                    user_id: None,
+                    harness_id: app.harness_id.uuid(),
+                    agent_id: Some(app.agent_internal_id),
+                    session_id: session.session.id.uuid(),
+                    event_metadata: Some(execution_metadata::app_message_metadata(
+                        app.public_id,
+                        app.owner_principal_id,
+                        app.virtual_user_id,
+                    )),
+                    request_id,
                 },
-                addressed_participant_id: None,
-                controls: None,
-                metadata: Some(ag_ui_message_metadata(&app, thread_tag, run_tag)),
-                tags: None,
-                external_actor: build_external_actor(trigger_name.as_ref()),
-            },
+                CreateMessageRequest {
+                    message: InputMessage {
+                        role: ApiMessageRole::User,
+                        content: trigger_parts,
+                    },
+                    addressed_participant_id: None,
+                    controls: None,
+                    metadata: Some(ag_ui_message_metadata(&app, thread_tag, run_tag)),
+                    tags: None,
+                    external_actor: build_external_actor(trigger_name.as_ref()),
+                },
+            )
+            .await
+            .map_err(internal_error)?;
+        (Some(message.id.to_string()), None)
+    } else {
+        // Subscribed above, so the resumed turn's events cannot be missed.
+        let services = crate::api::ag_ui_interrupts::ResumeServices {
+            db: &state.db,
+            session_service: state.session_service.as_ref(),
+            event_service: state.event_service.as_ref(),
+            runner: state.message_service.runner().clone(),
+        };
+        let outcome = crate::api::ag_ui_interrupts::resume(
+            &services,
+            app.org_id,
+            &session.session,
+            &channel_config,
+            &req.resume,
         )
         .await
-        .map_err(internal_error)?;
+        .map_err(resume_error_response)?;
+        let input_message_id = match &outcome {
+            ResumeOutcome::Resumed { input_message_id } => input_message_id.clone(),
+            ResumeOutcome::NothingParked | ResumeOutcome::StillOpen(_) => None,
+        };
+        (input_message_id, Some(outcome))
+    };
 
     let snapshot_messages = state
         .message_service
@@ -554,7 +589,8 @@ pub(crate) async fn run_app_agent_stream(
         phase = "ag_ui.ingress_complete",
         app_id = %app.public_id,
         session_id = %session.session.id,
-        message_id = %message.id,
+        message_id = input_message_id.as_deref().unwrap_or_default(),
+        resuming,
         is_new_session = session.is_new,
         session_resolved_ms = session_resolved_ms as u64,
         ag_ui_handler_ms = ag_ui_handler_ms as u64,
@@ -578,11 +614,24 @@ pub(crate) async fn run_app_agent_stream(
         }),
     ];
 
+    let mut projector =
+        Projector::new(thread_id, run_id, public_projection_policy(&channel_config));
+    match resume_outcome {
+        // The entries answered nothing and no turn runs: an empty run.
+        Some(ResumeOutcome::NothingParked) => {
+            projector.project("turn.completed", &Value::Null);
+        }
+        // An interrupt without an entry is not abandoned (AG-UI 1.0): it stays
+        // open and the run ends asking again.
+        Some(ResumeOutcome::StillOpen(interrupts)) => projector.interrupt(interrupts),
+        Some(ResumeOutcome::Resumed { .. }) | None => {}
+    }
     let stream_state = AgUiStreamState {
         subscription: Box::new(subscription),
         session_id: session.session.id.uuid(),
-        input_message_id: message.id.to_string(),
-        projector: Projector::new(thread_id, run_id, public_projection_policy(&channel_config)),
+        input_message_id,
+        projector,
+        config: channel_config,
     };
 
     let initial_stream = stream::iter(initial_events.into_iter().map(|event| Ok(agui_sse(&event))));
@@ -607,18 +656,19 @@ pub(crate) async fn run_app_agent_stream(
                 continue;
             }
 
-            if event
-                .context
-                .input_message_id
-                .as_ref()
-                .map(|id| id.to_string())
-                .as_deref()
-                != Some(state.input_message_id.as_str())
+            if let Some(wanted) = &state.input_message_id
+                && event
+                    .context
+                    .input_message_id
+                    .as_ref()
+                    .map(|id| id.to_string())
+                    .as_deref()
+                    != Some(wanted.as_str())
             {
                 continue;
             }
 
-            translate_event(&mut state.projector, &event);
+            translate_event(&mut state.projector, &state.config, &event);
         }
     });
 
@@ -977,8 +1027,11 @@ fn to_ag_ui_message(message: &crate::api::messages::Message) -> Option<AgUiMessa
 struct AgUiStreamState {
     subscription: Box<crate::event_delivery::EventSubscription>,
     session_id: Uuid,
-    input_message_id: String,
+    /// Events of other turns are skipped. `None` follows the whole session,
+    /// for a resumed turn whose parked event recorded no input message.
+    input_message_id: Option<String>,
     projector: Projector,
+    config: AgUiChannelConfig,
 }
 
 /// The public channel's projection: reasoning only when the channel opts in,
@@ -994,13 +1047,26 @@ fn public_projection_policy(config: &AgUiChannelConfig) -> ProjectionPolicy {
             &config.generic_tool_text,
         )
         .map(str::to_string),
+        usage_visible: config.usage_visible,
         error: std::sync::Arc::new(|failure: &TurnFailure| {
             public_run_error(PublicError::from_internal_code(failure.code.as_deref()))
         }),
     }
 }
 
-fn translate_event(projector: &mut Projector, event: &everruns_core::Event) {
+fn translate_event(
+    projector: &mut Projector,
+    config: &AgUiChannelConfig,
+    event: &everruns_core::Event,
+) {
+    // A turn that parks on a question or an approval ends the run with the
+    // interrupt outcome (AG-UI 1.0); the resuming run answers it.
+    if let everruns_core::events::EventData::ToolCallRequested(requested) = &event.data {
+        projector.interrupt(
+            crate::api::ag_ui_interrupts::ParkedCalls::from_request(requested).interrupts(config),
+        );
+        return;
+    }
     match serde_json::to_value(&event.data) {
         Ok(data) => projector.project(&event.event_type, &data),
         Err(err) => tracing::warn!(error = %err, "AG-UI: unserializable event data"),
@@ -1048,6 +1114,14 @@ fn format_agui_tool_calls(tool_calls: &[AgUiToolCall]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn resume_error_response(error: ResumeError) -> Response {
+    match error {
+        ResumeError::Invalid(detail) => bad_request(&detail),
+        ResumeError::Conflict(detail) => conflict(&detail),
+        ResumeError::Internal(err) => internal_error(err),
+    }
 }
 
 fn internal_error(err: anyhow::Error) -> Response {

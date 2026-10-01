@@ -5,6 +5,7 @@
 
 pub mod a2a_signing;
 pub mod ag_ui;
+pub(crate) mod ag_ui_interrupts;
 pub mod agent_credentials;
 pub mod agent_discovery;
 pub mod agent_endpoints;

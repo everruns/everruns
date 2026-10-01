@@ -57,6 +57,7 @@ fn test_config() -> AgUiChannelConfig {
 /// accumulates everything the projector emits, in order.
 struct TestRun {
     projector: Projector,
+    config: AgUiChannelConfig,
     session_id: SessionId,
     input_message_id: MessageId,
     turn_id: TurnId,
@@ -71,6 +72,7 @@ impl TestRun {
     fn with_config(config: &AgUiChannelConfig) -> Self {
         Self {
             projector: Projector::new("thread", "run", public_projection_policy(config)),
+            config: config.clone(),
             session_id: SessionId::new(),
             input_message_id: MessageId::new(),
             turn_id: TurnId::new(),
@@ -84,7 +86,7 @@ impl TestRun {
 
     fn send(&mut self, data: impl Into<everruns_core::EventData>) {
         let event = Event::new(self.session_id, self.context(), data);
-        translate_event(&mut self.projector, &event);
+        translate_event(&mut self.projector, &self.config, &event);
         self.events.extend(self.projector.drain());
     }
 
@@ -918,4 +920,101 @@ fn stream_closed_falls_back_to_internal_error() {
         "leaked subscription detail: {}",
         event.message
     );
+}
+
+#[test]
+fn parked_ask_user_ends_the_run_with_an_interrupt() {
+    let mut run = TestRun::new();
+    run.send(OutputMessageDeltaData {
+        turn_id: run.turn_id,
+        message_id: MessageId::new(),
+        delta: "One question first.".into(),
+        accumulated: "One question first.".into(),
+        phase: None,
+    });
+    run.send(everruns_core::events::ToolCallRequestedData {
+        tool_calls: vec![ToolCall {
+            id: "call_ask_1".into(),
+            name: everruns_builtins::ask_user::ASK_USER_TOOL_NAME.into(),
+            arguments: serde_json::json!({
+                "questions": [{
+                    "kind": "text", "id": "name", "header": "Name",
+                    "question": "What should I call it?",
+                    "multi_select": false, "allow_other": false, "options": [],
+                }],
+            }),
+        }],
+        tool_summaries: Vec::new(),
+        headline: None,
+        completed_headline: None,
+    });
+    assert_eq!(
+        run.types(),
+        [
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED"
+        ]
+    );
+    let Some(AgUiEvent::RunFinished(finished)) = run.events.last() else {
+        panic!("expected RUN_FINISHED");
+    };
+    let Some(everruns_ag_ui::RunFinishedOutcome::Interrupt { interrupts }) = &finished.outcome
+    else {
+        panic!("expected an interrupt, got {:?}", finished.outcome);
+    };
+    assert_eq!(interrupts[0].id, "call_ask_1");
+    assert_eq!(interrupts[0].reason, "everruns.ask_user");
+    assert!(interrupts[0].response_schema.is_some());
+    // Usage stays off unless the endpoint turns it on.
+    assert_eq!(finished.usage, None);
+}
+
+#[test]
+fn a_parked_secret_question_is_never_offered_as_a_form() {
+    let mut run = TestRun::new();
+    run.send(everruns_core::events::ToolCallRequestedData {
+        tool_calls: vec![ToolCall {
+            id: "call_ask_2".into(),
+            name: everruns_builtins::ask_user::ASK_USER_TOOL_NAME.into(),
+            arguments: serde_json::json!({
+                "questions": [{
+                    "kind": "secret", "id": "key", "header": "Key",
+                    "question": "Which API key?", "multi_select": false,
+                    "allow_other": false, "options": [], "secret_name": "API_KEY",
+                }],
+            }),
+        }],
+        tool_summaries: Vec::new(),
+        headline: None,
+        completed_headline: None,
+    });
+    let Some(AgUiEvent::RunFinished(finished)) = run.events.last() else {
+        panic!("expected RUN_FINISHED");
+    };
+    let Some(everruns_ag_ui::RunFinishedOutcome::Interrupt { interrupts }) = &finished.outcome
+    else {
+        panic!("expected an interrupt");
+    };
+    assert_eq!(interrupts[0].reason, "everruns.secret_required");
+    assert!(interrupts[0].response_schema.is_none());
+    assert!(interrupts[0].metadata.is_none());
+}
+
+#[test]
+fn a_client_side_tool_call_alone_raises_no_interrupt() {
+    let mut run = TestRun::new();
+    run.send(everruns_core::events::ToolCallRequestedData {
+        tool_calls: vec![ToolCall {
+            id: "call_x".into(),
+            name: "set_theme".into(),
+            arguments: serde_json::json!({}),
+        }],
+        tool_summaries: Vec::new(),
+        headline: None,
+        completed_headline: None,
+    });
+    assert!(run.events.is_empty());
+    assert!(!run.projector.is_finished());
 }
