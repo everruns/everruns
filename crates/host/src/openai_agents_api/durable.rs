@@ -36,6 +36,12 @@
 //! - **Stops.** An output guardrail that trips on a remote message, a budget,
 //!   or a blocked dependency saves a [`PolicyStop`] before its effects,
 //!   cancels the provider turn, and ends the Everruns turn.
+//!
+//! Observability and cost (EVE-1125) live in `observe`: subagent turns,
+//! provider-run tools, reasoning summaries, and managed compaction become
+//! canonical events, and every provider turn that ends (completed, failed,
+//! cancelled, or stopped by policy) is accounted once as an `llm.generation`
+//! whose cost components name any amount nobody could price.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -47,9 +53,13 @@ use everruns_core::agents_api_store::{
     ItemCorrelation, ItemKind, ItemState, OutboxState, ParkReason, PolicyStop, ReplacedMessage,
     ToolResultState,
 };
+use everruns_core::events::correlation::{
+    PROVIDER_ITEM_ID, PROVIDER_SESSION_ID, PROVIDER_TRACE_URL, PROVIDER_TURN_ID, RUNTIME_BACKEND,
+};
 use everruns_core::events::{
     EventContext, EventRequest, ModelMetadata, OutputMessageCompletedData, OutputMessageDeltaData,
-    OutputMessageStartedData, TokenUsage, ToolCompletedData, ToolStartedData,
+    OutputMessageStartedData, TokenUsage, ToolCompletedData, ToolDefinitionSummary,
+    ToolStartedData,
 };
 use everruns_core::output_guardrail::TrippedGuardrail;
 use everruns_core::{ContentPart, RuntimeMessage, mcp_tool_name};
@@ -61,6 +71,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+mod observe;
 mod policy;
 
 use super::{
@@ -100,6 +111,10 @@ pub struct AgentsApiTurnRequest {
     pub config: AgentsApiSessionConfig,
     /// Correlation context for every emitted event.
     pub event_context: EventContext,
+    /// Provider type recorded on the turn's `llm.generation` (`openai`).
+    pub provider: Option<String>,
+    /// Tools the remote loop was offered, recorded on `llm.generation`.
+    pub tools: Vec<ToolDefinitionSummary>,
 }
 
 /// How the root provider turn ended.
@@ -205,6 +220,10 @@ pub struct AgentsApiTurnDriver {
     max_idle_reconnects: u32,
     reconnect_backoff: Duration,
     heartbeat: Duration,
+    /// Reads of a terminal turn whose usage is still null before it is
+    /// reported as unknown (the provider fills usage late).
+    usage_reads: u32,
+    usage_backoff: Duration,
 }
 
 impl AgentsApiTurnDriver {
@@ -224,6 +243,8 @@ impl AgentsApiTurnDriver {
             max_idle_reconnects: 5,
             reconnect_backoff: Duration::from_millis(250),
             heartbeat: Duration::from_secs(10),
+            usage_reads: 4,
+            usage_backoff: Duration::from_millis(500),
         }
     }
 
@@ -243,6 +264,14 @@ impl AgentsApiTurnDriver {
     pub fn with_reconnect_policy(mut self, max_idle_reconnects: u32, backoff: Duration) -> Self {
         self.max_idle_reconnects = max_idle_reconnects;
         self.reconnect_backoff = backoff;
+        self
+    }
+
+    /// How often a terminal turn with null usage is read again before its
+    /// usage is reported as unknown (tests shorten it).
+    pub fn with_usage_poll(mut self, reads: u32, backoff: Duration) -> Self {
+        self.usage_reads = reads.max(1);
+        self.usage_backoff = backoff;
         self
     }
 
@@ -267,6 +296,7 @@ impl AgentsApiTurnDriver {
             stream_trips: HashMap::new(),
             last_error: None,
             terminal: false,
+            session_failed: false,
             paused: false,
         };
         let outcome = {
@@ -314,6 +344,10 @@ fn store_error(error: impl std::fmt::Display) -> AgentsApiError {
 enum Recorded {
     Message(MessageId),
     ToolResult(String),
+    /// An event the log cannot be searched for (accounting, hosted calls,
+    /// reasoning summaries, compaction). After a crash between the save and
+    /// the emit it counts as recorded: a lost record beats a doubled debit.
+    Unverifiable,
 }
 
 struct Run<'a> {
@@ -328,6 +362,9 @@ struct Run<'a> {
     stream_trips: HashMap<String, TrippedGuardrail>,
     last_error: Option<(Option<String>, String)>,
     terminal: bool,
+    /// The provider session (or its environment) failed: the turn ends even
+    /// if the provider never marks the root turn terminal.
+    session_failed: bool,
     /// A call of this turn is parked on a user action.
     paused: bool,
 }
@@ -645,7 +682,9 @@ impl Run<'_> {
             self.save().await?;
         }
         if is_subagent_event(event) {
-            return Ok(());
+            // A subagent's own events never end, or write into, the root
+            // turn; only its lifecycle is recorded.
+            return self.apply_subagent_event(event_type, event).await;
         }
         let event_turn = event
             .get("turn_id")
@@ -664,6 +703,15 @@ impl Run<'_> {
         }
         let own_turn = self.turn().provider_turn_id.as_deref();
         if event_turn.is_some() && (own_turn.is_none() || event_turn != own_turn) {
+            return Ok(());
+        }
+        if is_turn_terminal_event(event_type) && event_turn.is_none() {
+            // A turn terminal that names no turn cannot be attributed to this
+            // one; the turn resource decides when reconciliation reads it.
+            tracing::warn!(
+                event_type,
+                "Agents API: ignoring a turn terminal event without a turn id"
+            );
             return Ok(());
         }
         if let Some(id) = event.get("event_id").and_then(Value::as_str) {
@@ -704,7 +752,26 @@ impl Run<'_> {
                 self.terminal = true;
             }
             "agent.session.failed" | "agent.session.environment.failed" => {
-                self.record_failure(event.pointer("/session/error"));
+                self.record_failure(
+                    event
+                        .pointer("/session/error")
+                        .filter(|error| !error.is_null())
+                        .or_else(|| event.get("error")),
+                );
+                if self.last_error.is_none() {
+                    self.last_error = Some(if event_type == "agent.session.environment.failed" {
+                        (
+                            Some("environment_failed".to_string()),
+                            "The OpenAI Agents API environment failed".to_string(),
+                        )
+                    } else {
+                        (
+                            Some("session_failed".to_string()),
+                            "The OpenAI Agents API session failed".to_string(),
+                        )
+                    });
+                }
+                self.session_failed = true;
                 self.terminal = true;
             }
             other if other.ends_with(".failed") || other.ends_with(".cancelled") => {
@@ -732,12 +799,16 @@ impl Run<'_> {
         self.last_error = Some((code.or_else(|| self.last_error.clone()?.0), message));
     }
 
+    /// Provider correlation beside the local ids (see
+    /// `everruns_core::events::correlation`).
     fn metadata(&self, item_id: Option<&str>) -> Value {
+        let session = self.checkpoint.provider_session_id.as_deref();
         json!({
-            "runtime_backend": "openai_agents_api",
-            "provider_session_id": self.checkpoint.provider_session_id,
-            "provider_turn_id": self.turn().provider_turn_id,
-            "provider_item_id": item_id,
+            RUNTIME_BACKEND: "openai_agents_api",
+            PROVIDER_SESSION_ID: session,
+            PROVIDER_TURN_ID: self.turn().provider_turn_id,
+            PROVIDER_ITEM_ID: item_id,
+            PROVIDER_TRACE_URL: session.and_then(|id| self.driver.client.trace_url(id)),
         })
     }
 
@@ -833,6 +904,7 @@ impl Run<'_> {
                 .tool_result(session_id, call_id)
                 .await?
                 .is_some()),
+            Recorded::Unverifiable => Ok(true),
         }
     }
 
@@ -925,6 +997,12 @@ impl Run<'_> {
                 Ok(())
             }
             Some("mcp_call") => self.apply_mcp_call(item_id, item, status).await,
+            Some("reasoning") => self.apply_reasoning(item_id, item, status).await,
+            Some("compaction") => self.apply_compaction(item_id, item, status).await,
+            Some(kind) if observe::is_hosted_call(kind) => {
+                self.apply_hosted_call(item_id, kind, item, status).await
+            }
+            // Unknown item kinds (and user input echoes) are not projected.
             _ => Ok(()),
         }
     }
@@ -1186,7 +1264,19 @@ impl Run<'_> {
                     .client
                     .retrieve_turn(&session_id, &turn_id)
                     .await?;
-                self.outcome_from(&turn, &items)?
+                let mut outcome = self.outcome_from(&turn, &items)?;
+                let final_text = match &outcome {
+                    AgentsApiTurnOutcome::Completed { final_text, .. } => Some(final_text.clone()),
+                    _ => None,
+                };
+                let usage = self.account(Some(turn), final_text, true).await?;
+                if let AgentsApiTurnOutcome::Completed {
+                    usage: reported, ..
+                } = &mut outcome
+                {
+                    *reported = usage;
+                }
+                outcome
             }
             // The session failed before a root turn started.
             None => {
@@ -1272,6 +1362,19 @@ impl Run<'_> {
                 })
             }
             Some("cancelled") => Ok(AgentsApiTurnOutcome::Cancelled),
+            // The session or its environment failed under a turn the
+            // provider never closed.
+            _ if self.session_failed => {
+                let (code, message) = self
+                    .last_error
+                    .clone()
+                    .unwrap_or((None, "OpenAI Agents API session failed".to_string()));
+                Ok(AgentsApiTurnOutcome::Failed {
+                    code,
+                    message,
+                    policy: false,
+                })
+            }
             other => Err(AgentsApiError::Reconcile(format!(
                 "root turn is not terminal (status {other:?})"
             ))),
@@ -1302,6 +1405,17 @@ impl Run<'_> {
         {
             tracing::warn!(%error, "Agents API cancel failed");
         }
+        // Whatever the cancelled turn spent is still billed; usage the
+        // provider has not reported yet is recorded as an unknown amount.
+        if self
+            .checkpoint
+            .turn
+            .as_ref()
+            .is_some_and(|turn| turn.turn_id == self.request.turn_id)
+            && let Err(error) = self.account(None, None, false).await
+        {
+            tracing::warn!(%error, "Agents API: accounting a cancelled turn failed");
+        }
         if let Ok(outcome) = serde_json::to_value(AgentsApiTurnOutcome::Cancelled) {
             self.turn_mut().outcome = Some(outcome);
         }
@@ -1320,6 +1434,15 @@ fn is_terminal_status(resource: &Value) -> bool {
     matches!(
         resource.get("status").and_then(Value::as_str),
         Some("completed" | "failed" | "cancelled")
+    )
+}
+
+fn is_turn_terminal_event(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "agent.session.turn.completed"
+            | "agent.session.turn.failed"
+            | "agent.session.turn.cancelled"
     )
 }
 

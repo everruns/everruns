@@ -12446,6 +12446,32 @@ export interface components {
        */
       input_tokens_before?: number | null;
     };
+    /** @description One billable component of a generation. */
+    LlmCostComponent: {
+      /**
+       * Format: double
+       * @description USD amount. `None` is an explicit unknown amount, not zero.
+       * @example 0.02
+       */
+      cost_usd?: number | null;
+      /**
+       * @description What is billed: `model_tokens`, `hosted_tool`, or `container`.
+       * @example hosted_tool
+       */
+      kind: string;
+      /**
+       * @description Which one, e.g. the model or the provider item type
+       *     (`web_search_call`).
+       * @example web_search_call
+       */
+      name: string;
+      /**
+       * Format: int64
+       * @description Billed units (tokens, calls), when known.
+       * @example 2
+       */
+      quantity?: number | null;
+    };
     /**
      * @description Data for llm.generation event
      *
@@ -12465,6 +12491,15 @@ export interface components {
     /** @description Metadata about an LLM generation */
     LlmGenerationMetadata: {
       compaction?: components["schemas"]["LlmCompactionInfo"] | null;
+      /**
+       * @description Billable components of this generation and what each cost, when the
+       *     generation bills more than its tokens (provider-run tools, hosted
+       *     containers, a managed harness). A component whose `cost_usd` is `None`
+       *     is an explicit unknown amount, never a zero: budgets debit the priced
+       *     components and record the unknown ones (EVE-1125). Empty for an
+       *     ordinary token-billed generation.
+       */
+      cost_components?: components["schemas"]["LlmCostComponent"][];
       /**
        * Format: int64
        * @description Duration of the generation in milliseconds

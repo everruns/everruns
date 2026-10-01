@@ -294,6 +294,7 @@ impl OtelEventListener {
                 id.to_string(),
             ));
         }
+        attrs.extend(super::provider_attrs::otel_provider_attributes(event));
         attrs
     }
 
@@ -1114,6 +1115,7 @@ impl OtelEventListener {
         if let Some(cost) = meta.usage.as_ref().and_then(cost_usd) {
             attrs.push(KeyValue::new(everruns_attr::USAGE_COST_USD, cost));
         }
+        attrs.extend(super::provider_attrs::otel_unknown_cost_attributes(meta));
         attrs
     }
 

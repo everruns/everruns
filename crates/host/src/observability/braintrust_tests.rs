@@ -28,6 +28,7 @@ fn bare_generation_metadata(model: &str) -> LlmGenerationMetadata {
         retry: None,
         compaction: None,
         request_options: None,
+        cost_components: Vec::new(),
     }
 }
 use everruns_provider::tool_types::ToolCall;

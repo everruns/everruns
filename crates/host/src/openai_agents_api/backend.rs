@@ -15,6 +15,10 @@
 //! pause parks the Everruns turn while the provider holds its required action
 //! open, output guardrails judge every remote assistant message, and a
 //! configuration with provider-run tools is refused.
+//!
+//! Accounting (EVE-1125) belongs to the durable driver: every provider turn
+//! that ends is billed once as an `llm.generation`, so a replayed activity
+//! cannot bill it twice.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -23,8 +27,8 @@ use async_trait::async_trait;
 use everruns_core::agents_api_store::ParkReason;
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::events::{
-    CapabilityUsageData, EventContext, EventRequest, LlmGenerationData, ReasonCompletedData,
-    ReasonStartedData, ToolCompletedData,
+    CapabilityUsageData, EventContext, EventRequest, ReasonCompletedData, ReasonStartedData,
+    ToolCompletedData,
 };
 use everruns_core::output_guardrail::{
     ArmedGuardrail, OutputGuardrail, OutputGuardrailContext, PostGenerationOutputContext,
@@ -257,38 +261,6 @@ pub(crate) async fn try_execute_reason<A: crate::RuntimeHostAdapter>(
         }
         Err(error) => return Err(to_loop_error(error)),
     };
-    if result.success && !result.waiting_for_tool_results {
-        // One generation for the whole remote turn, so budget metering and
-        // usage tracking (which read `llm.generation`) see what the managed
-        // harness spent. Provider usage can be null; then nothing is debited
-        // and the gap is visible as an unknown, not a zero.
-        let tools = assembled
-            .runtime_agent
-            .tools
-            .iter()
-            .map(Into::into)
-            .collect();
-        emit_best_effort(
-            &emitter,
-            EventRequest::new(
-                input.context.session_id,
-                event_context.clone(),
-                LlmGenerationData::success(
-                    Vec::new(),
-                    tools,
-                    Some(result.text.clone()).filter(|text| !text.is_empty()),
-                    Vec::new(),
-                    assembled.runtime_agent.model.clone(),
-                    Some(assembled.model.provider_type.to_string()),
-                    result.usage.clone(),
-                    duration_ms,
-                    None,
-                ),
-            ),
-            "llm.generation",
-        )
-        .await;
-    }
     let completed = if result.success {
         ReasonCompletedData::success(
             &result.text,
@@ -336,6 +308,13 @@ fn prepare_request(
         input_text,
         config,
         event_context,
+        provider: Some(assembled.model.provider_type.to_string()),
+        tools: assembled
+            .runtime_agent
+            .tools
+            .iter()
+            .map(Into::into)
+            .collect(),
     })
 }
 

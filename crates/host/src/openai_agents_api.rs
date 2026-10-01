@@ -744,6 +744,15 @@ impl AgentsApiClient {
         Ok(())
     }
 
+    /// Where the provider's own trace of a session can be exported
+    /// (`GET /agents/sessions/{id}/traces`, OTLP JSON). Recorded as a link on
+    /// projected events; the driver never fetches or imports it.
+    pub fn trace_url(&self, session_id: &str) -> Option<String> {
+        let segment = path_segment(session_id).ok()?;
+        self.endpoint
+            .url(&format!("agents/sessions/{segment}/traces"))
+    }
+
     /// `GET /agents/sessions/{id}`: status and pending required actions.
     pub async fn retrieve_session(&self, session_id: &str) -> Result<Value, AgentsApiError> {
         self.get_json(&format!("agents/sessions/{}", path_segment(session_id)?))

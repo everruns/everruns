@@ -40,6 +40,10 @@ pub struct FakeTurn {
     pub error: Value,
     pub items: Vec<Value>,
     pub created_at: u64,
+    /// A provider subagent turn (not root work) when set.
+    pub subagent_id: Option<String>,
+    /// Usage the turn reports; `None` uses the default for its status.
+    pub usage: Option<Value>,
 }
 
 #[derive(Default)]
@@ -72,7 +76,26 @@ pub struct FakeState {
     pub duplicate: bool,
     /// Fail every turn with a billing error, as the live API did.
     pub fail_turns: bool,
+    /// The managed harness also delegates to a subagent, runs a hosted web
+    /// search, reasons, and compacts its context before the final answer.
+    pub managed_extras: bool,
+    /// Usage stays null on every turn (the provider never reports it).
+    pub null_usage: bool,
+    /// A cancelled or failed root turn still reports what it spent.
+    pub usage_on_failure: bool,
+    /// The hosted environment fails right after the turn starts; the
+    /// provider never closes the root turn.
+    pub environment_failure: bool,
 }
+
+/// Ends one stream response; the events after it wait for the next stream.
+pub const STREAM_BREAK: &str = "__stream_break__";
+
+/// Subagent the managed-extras harness delegates to.
+pub const SUBAGENT_ID: &str = "subagent_researcher";
+/// Hidden reasoning and compacted context that must never reach the record.
+pub const HIDDEN_REASONING: &str = "HIDDEN-CHAIN-OF-THOUGHT";
+pub const ENCRYPTED_CONTEXT: &str = "gAAAA-ENCRYPTED-CONTEXT";
 
 #[derive(Clone, Default)]
 pub struct FakeAgentsApi(pub Arc<Mutex<FakeState>>);
@@ -105,8 +128,8 @@ impl FakeState {
     pub fn session_json(session: &FakeSession) -> Value {
         let busy = session
             .turns
-            .last()
-            .is_some_and(|turn| turn.status == "in_progress");
+            .iter()
+            .any(|turn| turn.subagent_id.is_none() && turn.status == "in_progress");
         let status = if !session.required_actions.is_empty() {
             "requires_action"
         } else if busy {
@@ -123,17 +146,31 @@ impl FakeState {
         })
     }
 
-    pub fn turn_json(session_id: &str, turn: &FakeTurn) -> Value {
-        let usage = if turn.status == "completed" {
-            json!({"input_tokens": 120, "input_tokens_details": {"cached_tokens": 20}, "output_tokens": 30})
-        } else {
-            Value::Null
+    pub fn turn_json(&self, session_id: &str, turn: &FakeTurn) -> Value {
+        let default = json!({"input_tokens": 120, "input_tokens_details": {"cached_tokens": 20}, "output_tokens": 30});
+        let usage = match &turn.usage {
+            _ if self.null_usage => Value::Null,
+            Some(usage) => usage.clone(),
+            None if turn.status == "completed" => default,
+            None if turn.status != "in_progress" && self.usage_on_failure => default,
+            None => Value::Null,
         };
         json!({
             "id": turn.id, "object": "agent.session.turn", "session_id": session_id,
-            "subagent_id": null, "status": turn.status, "created_at": turn.created_at,
+            "subagent_id": turn.subagent_id, "status": turn.status, "created_at": turn.created_at,
+            "started_at": 1_790_000_000u64, "completed_at": 1_790_000_002u64,
             "error": turn.error, "usage": usage,
         })
+    }
+
+    /// The session's latest root turn.
+    pub fn root_turn(session: &mut FakeSession) -> &mut FakeTurn {
+        session
+            .turns
+            .iter_mut()
+            .rev()
+            .find(|turn| turn.subagent_id.is_none())
+            .unwrap()
     }
 
     /// The model's first step: a commentary message, then a function call.
@@ -142,6 +179,7 @@ impl FakeState {
         self.clock += 1;
         let n = self.turn_counter;
         let fail = self.fail_turns;
+        let environment_failure = self.environment_failure;
         let session = &mut self.sessions[session_index];
         let sid = session.id.clone();
         let tid = format!("turn_{n}");
@@ -154,6 +192,7 @@ impl FakeState {
             error: Value::Null,
             items: vec![user.clone()],
             created_at: self.clock,
+            ..FakeTurn::default()
         };
         let ev = |kind: &str, extra: Value| {
             let mut event = json!({"type": kind, "event_id": format!("evt_{}", uuid::Uuid::new_v4().simple()),
@@ -171,6 +210,15 @@ impl FakeState {
             ),
             ev("agent.session.turn.item.added", json!({"item": user})),
         ];
+        if environment_failure {
+            events.push(
+                json!({"type": "agent.session.environment.failed", "event_id": "evt_env",
+                "session": {"id": sid, "status": "failed", "error": null}}),
+            );
+            session.turns.push(turn);
+            session.pending.extend(events);
+            return;
+        }
         if fail {
             let error = json!({"code": "usage_limit_exceeded", "message": "Your organization has reached a usage or billing limit."});
             turn.status = "failed".into();
@@ -229,10 +277,11 @@ impl FakeState {
 
     /// The model's second step: an MCP call, then the final answer.
     pub fn finish_turn(&mut self, session_index: usize, output: &str) {
+        let extras = self.managed_extras;
         let session = &mut self.sessions[session_index];
         let sid = session.id.clone();
         session.required_actions.clear();
-        let turn = session.turns.last_mut().unwrap();
+        let turn = FakeState::root_turn(session);
         let (n, tid) = (turn.n, turn.id.clone());
         let ev = |kind: &str, extra: Value| {
             let mut event = json!({"type": kind, "event_id": format!("evt_{}", uuid::Uuid::new_v4().simple()),
@@ -261,7 +310,7 @@ impl FakeState {
             "role": "assistant", "phase": "final_answer", "status": status,
             "content": [{"type": "output_text", "text": text}]})
         };
-        let events = vec![
+        let mut events = vec![
             ev(
                 "agent.session.turn.item.added",
                 json!({"item": output_item}),
@@ -275,6 +324,81 @@ impl FakeState {
                 "agent.session.turn.item.done",
                 json!({"item": mcp("completed")}),
             ),
+        ];
+        let mut extra_items = Vec::new();
+        let mut subagent_turn = None;
+        if extras {
+            let sub_tid = format!("turn_sub_{n}");
+            let sub_ev = |kind: &str, status: &str| {
+                json!({"type": kind, "event_id": format!("evt_{}", uuid::Uuid::new_v4().simple()),
+                    "session_id": sid, "turn_id": sub_tid, "subagent_id": SUBAGENT_ID,
+                    "turn": {"id": sub_tid, "subagent_id": SUBAGENT_ID, "status": status}})
+            };
+            let reasoning = json!({"type": "reasoning", "id": format!("rs_{n}"), "turn_id": tid,
+                "status": "completed",
+                "summary": [{"type": "summary_text", "text": "Checked the customer record first."}],
+                "content": [{"type": "reasoning_text", "text": HIDDEN_REASONING}],
+                "encrypted_content": ENCRYPTED_CONTEXT});
+            let search = |status: &str| {
+                json!({"type": "web_search_call", "id": format!("ws_{n}"), "turn_id": tid,
+                "status": status, "action": {"type": "search", "query": "agents api sessions"}})
+            };
+            let compaction = json!({"type": "compaction", "id": format!("cmp_{n}"), "turn_id": tid,
+                "encrypted_content": ENCRYPTED_CONTEXT});
+            let sub_item = json!({"type": "message", "id": format!("msg_sub_{n}"), "turn_id": sub_tid,
+                "role": "assistant", "phase": "final_answer", "status": "completed",
+                "content": [{"type": "output_text", "text": "Subagent notes."}]});
+            events.extend([
+                sub_ev("agent.session.turn.created", "queued"),
+                {
+                    let mut item = sub_ev("agent.session.turn.item.done", "in_progress");
+                    item["item"] = sub_item;
+                    item
+                },
+                // The subagent ends first: this must not end the root turn.
+                sub_ev("agent.session.turn.completed", "completed"),
+                // A turn terminal that names no turn cannot end this one.
+                json!({"type": "agent.session.turn.completed", "event_id": "evt_anonymous",
+                    "session_id": sid, "turn": {"status": "completed"}}),
+                // The stream drops here, while the root turn is still running.
+                json!({"type": STREAM_BREAK}),
+                // Unknown provider events and items are ignored.
+                ev("agent.session.turn.future_progress", json!({"detail": "x"})),
+                ev(
+                    "agent.session.turn.item.done",
+                    json!({"item": {"type": "future_item",
+                    "id": format!("fut_{n}"), "turn_id": tid, "status": "completed"}}),
+                ),
+                ev(
+                    "agent.session.turn.item.added",
+                    json!({"item": search("in_progress")}),
+                ),
+                ev(
+                    "agent.session.turn.item.done",
+                    json!({"item": search("completed")}),
+                ),
+                ev(
+                    "agent.session.turn.item.done",
+                    json!({"item": reasoning.clone()}),
+                ),
+                ev(
+                    "agent.session.turn.item.done",
+                    json!({"item": compaction.clone()}),
+                ),
+            ]);
+            extra_items = vec![search("completed"), reasoning, compaction];
+            subagent_turn = Some(FakeTurn {
+                id: sub_tid,
+                n,
+                status: "completed".into(),
+                error: Value::Null,
+                items: vec![],
+                created_at: turn.created_at,
+                subagent_id: Some(SUBAGENT_ID.into()),
+                usage: Some(json!({"input_tokens": 40, "output_tokens": 8})),
+            });
+        }
+        events.extend([
             ev(
                 "agent.session.turn.item.added",
                 json!({"item": final_msg("in_progress", "")}),
@@ -296,7 +420,7 @@ impl FakeState {
                 json!({"turn": {"id": tid, "subagent_id": null, "status": "completed", "usage": null}}),
             ),
             json!({"type": "agent.session.idle", "event_id": format!("evt_idle_{n}"), "session": {"id": sid, "status": "idle"}}),
-        ];
+        ]);
         let call_index = turn
             .items
             .iter()
@@ -305,8 +429,12 @@ impl FakeState {
         turn.items[call_index] = call_done;
         turn.items.push(output_item);
         turn.items.push(mcp("completed"));
+        turn.items.extend(extra_items);
         turn.items.push(final_msg("completed", final_text));
-        turn.status = "completed".into();
+        // With extras the root turn ends only when its terminal event goes
+        // out, so a wrongly attributed terminal is caught mid-turn.
+        turn.status = if extras { "in_progress" } else { "completed" }.into();
+        session.turns.extend(subagent_turn);
         session.pending.extend(events);
     }
 
@@ -316,7 +444,7 @@ impl FakeState {
         let session = &mut self.sessions[session_index];
         session.required_actions.clear();
         let sid = session.id.clone();
-        let turn = session.turns.last_mut().unwrap();
+        let turn = FakeState::root_turn(session);
         let error = json!({"code": "turn_timeout", "message": "The turn timed out waiting for tool results."});
         turn.status = "failed".into();
         turn.error = error.clone();
@@ -329,10 +457,25 @@ impl FakeState {
     }
 
     pub fn drain(&mut self, session_index: usize) -> Vec<Value> {
-        let events = std::mem::take(&mut self.sessions[session_index].pending);
+        let mut events: VecDeque<Value> =
+            std::mem::take(&mut self.sessions[session_index].pending).into();
         let mut out = Vec::new();
-        for event in events {
+        while let Some(event) = events.pop_front() {
             let kind = event["type"].as_str().unwrap_or_default();
+            if kind == STREAM_BREAK {
+                self.sessions[session_index].pending = events.into();
+                break;
+            }
+            if kind == "agent.session.turn.completed" && event["subagent_id"].is_null() {
+                let turn_id = event["turn_id"].as_str().unwrap_or_default().to_string();
+                if let Some(turn) = self.sessions[session_index]
+                    .turns
+                    .iter_mut()
+                    .find(|turn| turn.id == turn_id && turn.subagent_id.is_none())
+                {
+                    turn.status = "completed".into();
+                }
+            }
             if self.drop.contains(&kind) {
                 continue;
             }
@@ -402,10 +545,12 @@ impl Respond for FakeAgentsApi {
                     return ResponseTemplate::new(404);
                 };
                 let sid = session.id.clone();
+                let session =
+                    &state.sessions[state.sessions.iter().position(|s| s.id == sid).unwrap()];
                 let data: Vec<Value> = session
                     .turns
                     .iter()
-                    .map(|t| FakeState::turn_json(&sid, t))
+                    .map(|t| state.turn_json(&sid, t))
                     .collect();
                 ResponseTemplate::new(200)
                     .set_body_json(json!({"object": "list", "data": data, "has_more": false}))
@@ -415,9 +560,11 @@ impl Respond for FakeAgentsApi {
                     return ResponseTemplate::new(404);
                 };
                 let sid = session.id.clone();
+                let session =
+                    &state.sessions[state.sessions.iter().position(|s| s.id == sid).unwrap()];
                 match session.turns.iter().find(|t| t.id == *turn_id) {
                     Some(turn) => {
-                        ResponseTemplate::new(200).set_body_json(FakeState::turn_json(&sid, turn))
+                        ResponseTemplate::new(200).set_body_json(state.turn_json(&sid, turn))
                     }
                     None => ResponseTemplate::new(404),
                 }
@@ -487,7 +634,11 @@ impl Respond for FakeAgentsApi {
                     Some("agent.session.input.cancel") => {
                         let session = &mut state.sessions[index];
                         session.required_actions.clear();
-                        if let Some(turn) = session.turns.last_mut()
+                        if let Some(turn) = session
+                            .turns
+                            .iter_mut()
+                            .rev()
+                            .find(|turn| turn.subagent_id.is_none())
                             && turn.status == "in_progress"
                         {
                             turn.status = "cancelled".into();
@@ -845,6 +996,8 @@ pub fn request(turn: u128, text: &str) -> AgentsApiTurnRequest {
         input_text: text.to_string(),
         config: build_session_config(&agent(), "", None).unwrap(),
         event_context: EventContext::turn(turn_id, input_message_id),
+        provider: Some("openai".to_string()),
+        tools: agent().tools.iter().map(Into::into).collect(),
     }
 }
 
@@ -878,7 +1031,8 @@ impl Harness {
             self.ledger.clone(),
             self.executor.clone(),
         )
-        .with_reconnect_policy(4, Duration::from_millis(1));
+        .with_reconnect_policy(4, Duration::from_millis(1))
+        .with_usage_poll(2, Duration::from_millis(1));
         match self.policy.lock().unwrap().clone() {
             Some(policy) => driver.with_output_policy(policy),
             None => driver,

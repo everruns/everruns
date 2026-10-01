@@ -32065,6 +32065,45 @@
           }
         }
       },
+      "LlmCostComponent": {
+        "type": "object",
+        "description": "One billable component of a generation.",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "USD amount. `None` is an explicit unknown amount, not zero.",
+            "example": 0.02
+          },
+          "kind": {
+            "type": "string",
+            "description": "What is billed: `model_tokens`, `hosted_tool`, or `container`.",
+            "example": "hosted_tool"
+          },
+          "name": {
+            "type": "string",
+            "description": "Which one, e.g. the model or the provider item type\n(`web_search_call`).",
+            "example": "web_search_call"
+          },
+          "quantity": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Billed units (tokens, calls), when known.",
+            "example": 2,
+            "minimum": 0
+          }
+        }
+      },
       "LlmGenerationData": {
         "type": "object",
         "description": "Data for llm.generation event\n\nEmitted after each LLM API call to provide full visibility into\nthe messages sent to the model and the response received.",
@@ -32116,6 +32155,13 @@
                 "type": "null"
               }
             ]
+          },
+          "cost_components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmCostComponent"
+            },
+            "description": "Billable components of this generation and what each cost, when the\ngeneration bills more than its tokens (provider-run tools, hosted\ncontainers, a managed harness). A component whose `cost_usd` is `None`\nis an explicit unknown amount, never a zero: budgets debit the priced\ncomponents and record the unknown ones (EVE-1125). Empty for an\nordinary token-billed generation."
           },
           "duration_ms": {
             "type": [

@@ -174,6 +174,18 @@ pub enum ItemKind {
     FunctionCall,
     /// Remote MCP call, executed by the provider.
     McpCall,
+    /// OpenAI-hosted tool call (web search, code interpreter, ...), executed
+    /// by the provider and recorded as `tool.hosted_call`.
+    HostedCall,
+    /// Reasoning item, recorded as `reason.item` with its safe summary only.
+    Reasoning,
+    /// Provider-managed context compaction, recorded as `context.compacted`.
+    Compaction,
+    /// Provider subagent turn under this root turn, recorded as
+    /// `tool.hosted_call` and billed as its own generation.
+    Subagent,
+    /// The turn's accounting: one `llm.generation` per provider turn.
+    Usage,
 }
 
 /// Write-ahead state of an item's local record.

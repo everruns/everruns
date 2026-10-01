@@ -52,9 +52,16 @@ The [durable driver](../../crates/host/src/openai_agents_api/durable.rs) project
 | `function_call` / function entry in `required_actions` | Assistant tool-call message, then the Act pipeline's `tool.started` and `tool.completed` |
 | `function_call_output` | Nothing new; marks the tool-result outbox delivered |
 | `mcp_call` | Assistant tool-call message and `tool.started`, then `tool.completed` (a `failed` status carries the cause in `output`) |
+| OpenAI-hosted call (any other `*_call`, e.g. `web_search_call`) | `tool.hosted_call` once in progress and once at its end |
+| `reasoning` | `reason.item` with the provider-curated summary only |
+| `compaction` | `context.compacted` with strategy `provider_managed` and unknown (zero) message counts |
+| Subagent turn (non-null `subagent_id`) | `tool.hosted_call` named `subagent`, opened at `turn.created` and closed at its terminal event |
 | Root `turn.completed` / `failed` / `cancelled` | Ends the Reason activity; the engine emits `turn.completed` or `turn.failed` from the returned result |
+| `agent.session.failed`, `agent.session.environment.failed` | Fails the turn (`session_failed`, `environment_failed` when the provider names no code), even if the root turn stays open |
 
-Function and MCP calls are recorded as assistant tool-call messages followed by results, the same transcript shape the native runtime writes, so the record stays replayable and forkable. The backend emits `reason.started` and `reason.completed` around the remote loop. Subagent events (non-null `subagent_id`) are ignored. Unknown progress events are ignored; an unknown `*.failed` or `*.cancelled` event fails closed.
+Function and MCP calls are recorded as assistant tool-call messages followed by results, the same transcript shape the native runtime writes, so the record stays replayable and forkable. The backend emits `reason.started` and `reason.completed` around the remote loop. Every projected event is a type existing SSE, UI, and exporter consumers already render; there is no provider-specific event.
+
+Terminal attribution is strict. A turn terminal event ends the Everruns turn only when it names the root provider turn this Everruns turn adopted: a subagent's terminal closes only its `subagent` record, and a turn terminal that names no turn is ignored until reconciliation reads the turn resource. A subagent's own messages and calls never enter the root transcript, and its required actions are not answered; lifting the subagent refusal needs that mapping and its policy contract too. Unknown progress events and item kinds are ignored; an unknown `*.failed` or `*.cancelled` event fails closed.
 
 OpenAI's `input_tokens` includes cached tokens. Everruns keeps disjoint buckets, so the adapter subtracts `input_tokens_details.cached_tokens`. Usage is read from the turn resource after completion, because it is still null on `turn.completed`; null usage stays unknown, never zero.
 
@@ -95,11 +102,19 @@ Unlike the native loop, the approved call runs without a model retry: the provid
 
 **Assistant messages.** Streaming output guardrails run on each message's live text; once one trips, no more of that message reaches the client. End-of-message guardrails (moderation, LLM judges, `jev`) withhold live text and judge the completed message. Every completed message is judged again on its saved text, so a missed stream cannot skip the check. A trip saves a policy stop before any effect, emits `output.message.replaced` and the replacement as the canonical message, cancels the provider turn, and completes the Everruns turn with the replacement, as the native loop ends a turn whose output was replaced. The provider still holds the original text in its own session; a guardrail cannot undo an external side effect the harness already performed.
 
-**Attribution and metering.** Each Reason emits `capability.usage` for the resolved capabilities and their tools, as the native reason does, and a completed turn emits one `llm.generation` with the turn's usage so budget metering and usage tracking debit the remote spend. Null provider usage debits nothing.
+**Attribution and metering.** Each Reason emits `capability.usage` for the resolved capabilities and their tools, as the native reason does. Accounting is described under [Observability and cost](#observability-and-cost).
 
 ## Observability and cost
 
-Not yet built (EVE-1125). Emit normal Everruns spans from projected turn, generation, tool, and message events, with provider ids as span attributes; projected events already carry `provider_session_id`, `provider_turn_id`, and `provider_item_id` metadata. OpenAI also exposes delayed OTLP trace export; import it only as a linked provider trace. Record root and sub-agent usage separately, upsert late usage, and capture OpenAI tool and container charges, which the `TokenUsage` envelope cannot hold. Native per-call controls inside the Reason loop (provider retry budgets, compaction) do not apply to the provider's internal model calls; the turn reports one generation with the turn's total usage.
+The [projection](../../crates/host/src/openai_agents_api/durable/observe.rs) keeps Everruns ids as each event's identity and records the provider's beside them in event `metadata` ([correlation keys](../../crates/core/src/events/correlation.rs)): runtime backend, provider session, turn, item, subagent, and the session's trace export URL (`GET /agents/sessions/{id}/traces`, OTLP JSON). The OpenTelemetry listener copies them onto every span as `everruns.provider_*` attributes and the Braintrust listener into span metadata, so spans are built from the canonical events by the existing exporters. The provider trace is linked, never fetched or imported.
+
+**Accounting.** Every provider turn that ends (completed, failed, cancelled by Everruns or the provider, or stopped by policy) is billed once, by the durable driver, as one `llm.generation` keyed to the provider turn by `response_id`: the root turn, and each subagent turn under it separately. A turn that did not complete is a failed generation that still carries what it spent. Usage is read from the turn resource and re-read a few times while it is still null, because the provider fills it late. The generation's `cost_components` ([`LlmCostComponent`](../../crates/core/src/events/llm_data.rs)) list tokens priced from the model profile, OpenAI-hosted calls priced per call where a price exists, and a hosted container whenever the turn used one. An amount nobody can price is a component with no `cost_usd`, never a zero; budgets debit the priced components and journal the unknown ones (`cost_unknown_components`, see [budgeting](../security/budgeting.md)). The turn reports root and subagent usage summed, or unknown when any part is.
+
+The accounting record is written ahead like the transcript, but the event log cannot be searched for it, so a crash between the save and the emit loses that one record rather than billing it twice. Replays, duplicate or missing stream events, reconnects, and restarts bill each provider turn once ([contract tests](../../crates/host/tests/openai_agents_api_observability.rs)).
+
+Hidden reasoning stays with the provider: a `reasoning` item's `content` and `encrypted_content`, and a `compaction` item's encrypted context, are never read (TM-LLM-034). Native per-call controls inside the Reason loop (provider retry budgets, compaction) do not apply to the provider's internal model calls.
+
+Version-sensitive: the Agents API documents a turn's `subagent_id` but no parent turn field; the driver attributes a subagent turn to the root turn it saw it under, or to a root named by `parent_turn_id`/`root_turn_id` when the provider sends one. It assumes root and subagent usage are reported separately, and the `compaction` and hosted-call item shapes follow the Responses API.
 
 ## Import to a native agent
 
@@ -123,11 +138,11 @@ The credentialed conformance test (`live_conformance_one_client_function_and_one
 
 ## Go / no-go
 
-Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a default or as a replacement for the native runtime. Durable orchestration and policy at the tool and output boundaries are in place. Whether the provider keeps a required action open for as long as an approval may take (15 minutes by default) is unverified against the live API; a provider timeout fails the turn with `tool_action_expired`.
+Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a default or as a replacement for the native runtime. Durable orchestration, policy at the tool and output boundaries, and the event, usage, and cost projection are in place. Whether the provider keeps a required action open for as long as an approval may take (15 minutes by default) is unverified against the live API; a provider timeout fails the turn with `tool_action_expired`.
 
 ## Follow-up issues
 
-* EVE-1125, observability and cost: spans from projected events, subagent usage, delayed usage upserts, container and tool charges.
+* EVE-1145, late usage: usage the provider fills after the bounded re-read stays unknown on the record until a later upsert (the generation reconciler, as for OpenRouter) is built.
 * EVE-1126, lifecycle and portability: guarded import to a native agent, fork from the Everruns record, remote session deletion and retention.
 
 ## References

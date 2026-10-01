@@ -14,7 +14,7 @@ use everruns_provider::typed_id::{AgentId, PrincipalId};
 use std::sync::Arc;
 use uuid::Uuid;
 
-fn make_db() -> Arc<StorageBackend> {
+pub(super) fn make_db() -> Arc<StorageBackend> {
     Arc::new(StorageBackend::in_memory())
 }
 
@@ -24,7 +24,7 @@ fn make_service() -> (BudgetService, Arc<StorageBackend>) {
     (svc, db)
 }
 
-async fn create_session_with_owner(
+pub(super) async fn create_session_with_owner(
     db: &Arc<StorageBackend>,
     org_id: i64,
     agent_id: Option<AgentId>,

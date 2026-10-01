@@ -97,6 +97,18 @@ impl Run<'_> {
             "Agents API: Everruns policy stopped the remote turn"
         );
         self.send_cancel().await;
+        // The stopped provider turn still spent tokens; bill them (or record
+        // the amount as unknown) once.
+        let final_text =
+            matches!(outcome, AgentsApiTurnOutcome::Completed { .. }).then(|| stop.message.clone());
+        let usage = self.account(None, final_text, true).await?;
+        let mut outcome = outcome;
+        if let AgentsApiTurnOutcome::Completed {
+            usage: reported, ..
+        } = &mut outcome
+        {
+            *reported = usage;
+        }
         self.turn_mut().outcome = Some(serde_json::to_value(&outcome).map_err(store_error)?);
         self.save().await?;
         self.release().await?;
@@ -141,7 +153,9 @@ impl Run<'_> {
             .turn()
             .items
             .keys()
-            .filter(|key| key.starts_with("call:") || key.starts_with("mcp:"))
+            .filter(|key| {
+                key.starts_with("call:") || key.starts_with("mcp:") || key.starts_with("hosted:")
+            })
             .count();
         u32::try_from(count).unwrap_or(u32::MAX)
     }

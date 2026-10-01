@@ -18,6 +18,8 @@ pub mod openinference;
 pub mod otel;
 #[cfg(feature = "otel")]
 mod otel_config;
+#[cfg(any(feature = "otel", feature = "braintrust"))]
+mod provider_attrs;
 #[cfg(feature = "otel")]
 pub mod telemetry;
 #[cfg(feature = "braintrust")]
