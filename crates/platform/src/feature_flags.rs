@@ -96,8 +96,9 @@ pub struct FeatureFlags {
     /// Deployment-controlled and off by default on every grade because spend is
     /// irreversible. Unlike experimental flags, this is not org-configurable.
     pub machine_payments: bool,
-    /// OpenAI Agents API runtime-backend prototype. Platform-managed and off by
-    /// default because it sends the agent loop and session data to OpenAI.
+    /// OpenAI Agents API runtime backend (EVE-1123). Platform-managed and off by
+    /// default because it sends the agent loop and session data to OpenAI. It
+    /// gates the `openai_agents_api_runtime` capability that selects the backend.
     #[serde(default)]
     pub openai_agents_api: bool,
 }
@@ -309,7 +310,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "openai_agents_api",
         label: "OpenAI Agents API runtime",
-        description: "Allows selected OpenAI-only sessions to use the feature-gated Agents API prototype instead of the native Everruns loop.",
+        description: "Allows agents with the OpenAI Agents API runtime capability to run their loop through OpenAI's Agents API instead of the native Everruns loop.",
         experimental: true,
         platform_managed: true,
     },
@@ -464,6 +465,7 @@ impl FeatureFlags {
             "memory" => Some("memory"),
             "knowledge_index" | "knowledge_base" => Some("knowledge"),
             "a2a_agent_delegation" | "agent_handoff" => Some("agent_delegation"),
+            everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
             _ => None,
@@ -935,5 +937,22 @@ mod tests {
         let enrolled = std::collections::HashMap::from([("openai_agents_api".to_string(), true)]);
         assert!(FeatureFlags::for_org(&system, &enrolled).openai_agents_api);
         restore_env("FEATURE_OPENAI_AGENTS_API", previous);
+    }
+
+    #[test]
+    fn agents_api_runtime_capability_requires_the_org_flag() {
+        // The server strips gated capabilities from the worker snapshot, so a
+        // session can select the backend only while the org is enrolled.
+        assert_eq!(
+            FeatureFlags::required_for_capability("openai_agents_api_runtime"),
+            Some("openai_agents_api")
+        );
+        let off = FeatureFlags::default();
+        assert!(!off.is_capability_enabled("openai_agents_api_runtime"));
+        let on = FeatureFlags {
+            openai_agents_api: true,
+            ..FeatureFlags::default()
+        };
+        assert!(on.is_capability_enabled("openai_agents_api_runtime"));
     }
 }

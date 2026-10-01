@@ -1375,10 +1375,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn native_async_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
-        Some(Arc::new(crate::storage::PgNativeAsyncStore::new(
-            self.db.pool()?.clone(),
-            self.encryption.clone()?,
-        )))
+        crate::storage::PgNativeAsyncStore::shared(&self.db, self.encryption.as_ref())
+    }
+    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
+        crate::storage::PgAgentsApiStore::shared(&self.db, self.encryption.as_ref())
     }
 
     fn compaction_checkpoint_store(

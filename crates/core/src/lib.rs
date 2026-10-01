@@ -188,6 +188,8 @@ pub mod resource_names;
 // See knowledge/integrations/plugins.md
 pub mod plugins;
 
+/// Durable orchestration state for the opt-in OpenAI Agents API backend.
+pub mod agents_api_store;
 pub mod capabilities;
 pub mod command;
 pub mod command_host;

@@ -1354,3 +1354,105 @@ async fn postgres_native_async_lease_recovery_and_tenant_fencing() {
         NativeAsyncCheckpoint::default()
     );
 }
+
+#[tokio::test]
+async fn postgres_agents_api_lease_recovery_and_tenant_fencing() {
+    use everruns_core::agents_api_store::{
+        AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, ToolResultOutbox, ToolResultState,
+    };
+    use everruns_provider::typed_id::{MessageId, TurnId};
+    use everruns_server::storage::{EncryptionService, PgAgentsApiStore};
+    use std::sync::Arc;
+    let pool = PgPool::connect(&get_database_url())
+        .await
+        .expect("connect PostgreSQL");
+    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let principal = create_test_principal(&backend, "agents-api").await;
+    let session = backend
+        .create_session(session_input(principal, "agents-api"))
+        .await
+        .unwrap();
+    let encryption = Arc::new(
+        EncryptionService::new("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap(),
+    );
+    let store = PgAgentsApiStore::new(pool.clone(), encryption);
+    let lease = AgentsApiLease {
+        org_id: DEFAULT_ORG_ID,
+        session_id: session.id,
+        owner: Uuid::new_v4(),
+    };
+    let other = AgentsApiLease {
+        owner: Uuid::new_v4(),
+        ..lease
+    };
+    let wrong_org = AgentsApiLease {
+        org_id: DEFAULT_ORG_ID + 999_999,
+        ..other
+    };
+    assert!(store.acquire(wrong_org).await.is_err());
+    assert_eq!(
+        store.acquire(lease).await.unwrap(),
+        AgentsApiCheckpoint::default()
+    );
+    assert!(
+        store.acquire(other).await.is_err(),
+        "live lease is exclusive"
+    );
+
+    let mut state = AgentsApiCheckpoint {
+        provider_session_id: Some("sess_provider".into()),
+        ..AgentsApiCheckpoint::default()
+    };
+    let turn = state.turn_mut(TurnId::new(), MessageId::new());
+    turn.provider_turn_id = Some("turn_provider".into());
+    turn.tool_results.insert(
+        "call_1".into(),
+        ToolResultOutbox {
+            provider_turn_id: "turn_provider".into(),
+            call_id: "call_1".into(),
+            name: "lookup_customer".into(),
+            arguments: serde_json::json!({"customer_id": "private-argument"}),
+            state: ToolResultState::Ready {
+                success: true,
+                output: "private-result".into(),
+            },
+        },
+    );
+    store.save(lease, &state).await.unwrap();
+    assert!(store.save(wrong_org, &state).await.is_err());
+    assert!(store.save(other, &state).await.is_err());
+    let (bytes, provider_session): (Vec<u8>, Option<String>) = sqlx::query_as(
+        "SELECT payload_encrypted, provider_session_id FROM agents_api_sessions WHERE session_id=$1",
+    )
+    .bind(session.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let plaintext = String::from_utf8_lossy(&bytes);
+    assert!(!plaintext.contains("private-argument") && !plaintext.contains("private-result"));
+    assert_eq!(provider_session.as_deref(), Some("sess_provider"));
+
+    // Expire using the database clock; no time-based test sleeps.
+    sqlx::query(
+        "UPDATE agents_api_sessions SET lease_until=clock_timestamp()-interval '1 second' WHERE session_id=$1",
+    )
+    .bind(session.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(store.renew(lease).await.is_err());
+    assert!(store.save(lease, &state).await.is_err());
+    assert_eq!(
+        store.acquire(other).await.unwrap(),
+        state,
+        "checkpoint survives the owner"
+    );
+    assert!(store.release(lease).await.is_err());
+    store.release(other).await.unwrap();
+
+    let column = everruns_server::storage::ENCRYPTED_COLUMNS
+        .iter()
+        .find(|column| column.table == "agents_api_sessions")
+        .expect("agents api checkpoint participates in secret rotation");
+    assert_eq!(column.column, "payload_encrypted");
+}

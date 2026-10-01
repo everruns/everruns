@@ -472,6 +472,62 @@ impl WorkerServiceImpl {
         }))
     }
 
+    pub(crate) async fn handle_agents_api_journal(
+        &self,
+        request: Request<proto::AgentsApiJournalRequest>,
+    ) -> Result<Response<proto::AgentsApiJournalResponse>, Status> {
+        use everruns_core::agents_api_store::{
+            AgentsApiLease, AgentsApiStore, MAX_AGENTS_API_CHECKPOINT_BYTES,
+        };
+        use proto::agents_api_journal_request::Operation;
+        let req = request.into_inner();
+        let operation = Operation::try_from(req.operation)
+            .map_err(|_| Status::invalid_argument("invalid journal operation"))?;
+        if req.checkpoint_json.len() > MAX_AGENTS_API_CHECKPOINT_BYTES {
+            return Err(Status::resource_exhausted(
+                "agents api checkpoint exceeds 8 MiB",
+            ));
+        }
+        let lease = AgentsApiLease {
+            org_id: req.org_id,
+            session_id: parse_uuid(req.session_id.as_ref())?.into(),
+            owner: parse_uuid(req.owner.as_ref())?,
+        };
+        let pool = self.db.pool().ok_or_else(|| {
+            Status::failed_precondition("agents api backend requires shared durable storage")
+        })?;
+        let encryption = self.encryption.clone().ok_or_else(|| {
+            Status::failed_precondition("checkpoint encryption is not configured")
+        })?;
+        let store = crate::storage::PgAgentsApiStore::new(pool.clone(), encryption);
+        let fenced = |_| Status::failed_precondition("agents api journal unavailable or fenced");
+        let checkpoint = match operation {
+            Operation::Acquire => Some(store.acquire(lease).await.map_err(fenced)?),
+            Operation::Renew => {
+                store.renew(lease).await.map_err(fenced)?;
+                None
+            }
+            Operation::Save => {
+                let checkpoint = serde_json::from_slice(&req.checkpoint_json)
+                    .map_err(|_| Status::invalid_argument("invalid agents api checkpoint"))?;
+                store.save(lease, &checkpoint).await.map_err(fenced)?;
+                None
+            }
+            Operation::Release => {
+                store.release(lease).await.map_err(fenced)?;
+                None
+            }
+        };
+        let checkpoint_json = checkpoint
+            .map(|checkpoint| serde_json::to_vec(&checkpoint))
+            .transpose()
+            .map_err(|_| Status::internal("cannot encode agents api checkpoint"))?
+            .unwrap_or_default();
+        Ok(Response::new(proto::AgentsApiJournalResponse {
+            checkpoint_json,
+        }))
+    }
+
     pub(crate) async fn handle_get_compaction_checkpoint(
         &self,
         request: Request<proto::GetCompactionCheckpointRequest>,

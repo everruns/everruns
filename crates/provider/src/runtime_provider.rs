@@ -144,6 +144,15 @@ pub struct ProviderEndpoint {
 }
 
 impl ProviderEndpoint {
+    /// Endpoint for a protocol client outside a provider assembly.
+    pub fn from_parts(base_url: impl Into<String>, auth: impl ProviderAuth + 'static) -> Self {
+        Self {
+            base_url: Some(base_url.into().trim_end_matches('/').to_string()),
+            headers: Vec::new(),
+            auth: Some(Arc::new(auth)),
+        }
+    }
+
     pub fn base_url(&self) -> Option<&str> {
         self.base_url.as_deref()
     }

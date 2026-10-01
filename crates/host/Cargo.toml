@@ -67,7 +67,9 @@ libc = "0.2"
 
 [features]
 default = []
-openai-agents-api-prototype = ["direct-egress", "dep:eventsource-stream"]
+# Opt-in OpenAI Agents API runtime backend (EVE-1123). Selected per agent by
+# the `openai_agents_api_runtime` capability behind the `openai_agents_api` flag.
+openai-agents-api = ["direct-egress", "dep:eventsource-stream"]
 direct-egress = ["dep:reqwest"]
 builtins = ["dep:everruns-builtins"]
 mcp = ["dep:everruns-mcp", "direct-egress"]

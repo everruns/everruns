@@ -40,6 +40,13 @@ impl WorkerService for WorkerServiceImpl {
         self.handle_native_async_journal(request).await
     }
 
+    async fn agents_api_journal(
+        &self,
+        request: Request<proto::AgentsApiJournalRequest>,
+    ) -> Result<Response<proto::AgentsApiJournalResponse>, Status> {
+        self.handle_agents_api_journal(request).await
+    }
+
     async fn get_compaction_checkpoint(
         &self,
         request: Request<proto::GetCompactionCheckpointRequest>,
