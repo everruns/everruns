@@ -198,6 +198,7 @@ export default defineConfig({
                     { label: "Canonical Events", slug: "framework/canonical-events" },
                     { label: "Lifecycle Hooks", slug: "framework/lifecycle-hooks" },
                     { label: "Answer Agent Questions", slug: "framework/ask-user" },
+                    { label: "Serve AG-UI", slug: "framework/ag-ui" },
                     { label: "Persistence", slug: "framework/persistence" },
                   ],
                 },
