@@ -1,4 +1,4 @@
-// App api_endpoint ingress — native session routes authenticated by a
+// Agent endpoint `api_endpoint` transport ingress — native session routes authenticated by a
 // channel-scoped, execution-only API key (`evr_app_...`).
 //
 // Design Decision: api_endpoint channels use `/v1/e/{channel_id}/sessions/...`
@@ -46,7 +46,7 @@ use crate::storage::models::EventRow;
 use crate::storage::{EncryptionService, StorageBackend};
 
 #[derive(Clone)]
-pub struct AppApiState {
+pub struct EndpointApiState {
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub session_service: Arc<SessionService>,
@@ -55,7 +55,7 @@ pub struct AppApiState {
     pub auth_verifier: AppEndpointAuthVerifier,
 }
 
-impl AppApiState {
+impl EndpointApiState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
@@ -80,7 +80,7 @@ impl AppApiState {
     }
 }
 
-pub fn routes(state: AppApiState) -> Router {
+pub fn routes(state: EndpointApiState) -> Router {
     Router::new()
         .route(
             "/v1/apps/{app_id}/api/{channel_id}/sessions",
@@ -115,7 +115,7 @@ pub fn routes(state: AppApiState) -> Router {
 }
 
 async fn endpoint_app_id(
-    state: &AppApiState,
+    state: &EndpointApiState,
     channel_id: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
@@ -141,7 +141,7 @@ async fn endpoint_app_id(
     tag = "apps"
 )]
 pub async fn create_session_endpoint(
-    State(state): State<AppApiState>,
+    State(state): State<EndpointApiState>,
     Path(channel_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -182,7 +182,7 @@ pub async fn create_session_endpoint(
     tag = "apps"
 )]
 pub async fn post_message_endpoint(
-    State(state): State<AppApiState>,
+    State(state): State<EndpointApiState>,
     Path((channel_id, session_id)): Path<(String, String)>,
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -222,7 +222,7 @@ pub async fn post_message_endpoint(
     tag = "apps"
 )]
 pub async fn get_session_endpoint(
-    State(state): State<AppApiState>,
+    State(state): State<EndpointApiState>,
     Path((channel_id, session_id)): Path<(String, String)>,
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -258,7 +258,7 @@ pub async fn get_session_endpoint(
     tag = "apps"
 )]
 pub async fn cancel_session_endpoint(
-    State(state): State<AppApiState>,
+    State(state): State<EndpointApiState>,
     Path((channel_id, session_id)): Path<(String, String)>,
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -332,7 +332,7 @@ struct AuthorizedApi {
     tag = "apps"
 )]
 pub async fn create_session(
-    State(state): State<AppApiState>,
+    State(state): State<EndpointApiState>,
     Path((app_id, channel_id)): Path<(String, String)>,
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -394,7 +394,7 @@ pub async fn create_session(
     tag = "apps"
 )]
 pub async fn post_message(
-    State(state): State<AppApiState>,
+    State(state): State<EndpointApiState>,
     Path((app_id, channel_id, session_id)): Path<(String, String, String)>,
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -457,7 +457,7 @@ pub async fn post_message(
     tag = "apps"
 )]
 pub async fn get_session(
-    State(state): State<AppApiState>,
+    State(state): State<EndpointApiState>,
     Path((app_id, channel_id, session_id)): Path<(String, String, String)>,
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -516,7 +516,7 @@ pub async fn get_session(
     tag = "apps"
 )]
 pub async fn cancel_session(
-    State(state): State<AppApiState>,
+    State(state): State<EndpointApiState>,
     Path((app_id, channel_id, session_id)): Path<(String, String, String)>,
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -556,7 +556,7 @@ pub async fn cancel_session(
 }
 
 async fn authenticate_request(
-    state: &AppApiState,
+    state: &EndpointApiState,
     app_id: &str,
     channel_id: &str,
     headers: &HeaderMap,
@@ -576,7 +576,7 @@ async fn authenticate_request(
         .ok_or_else(|| bad_request("Invalid api_endpoint channel configuration"))?;
 
     if let Some(auth) = channel.auth.as_ref() {
-        if auth.mode == everruns_platform::AppEndpointAuthMode::ApiKey {
+        if auth.mode == everruns_platform::EndpointAuthMode::ApiKey {
             verify_api_key(headers, &config.api_key_hash)?;
         } else {
             state
@@ -765,7 +765,7 @@ pub(crate) async fn cancel_session_turn_for(
 }
 
 async fn cancel_session_turn(
-    state: &AppApiState,
+    state: &EndpointApiState,
     session_id: everruns_provider::typed_id::SessionId,
 ) -> anyhow::Result<()> {
     cancel_session_turn_for(

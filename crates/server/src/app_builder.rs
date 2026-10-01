@@ -1226,7 +1226,7 @@ impl ServerAppBuilder {
             a2a_replay_store,
             auth_config.frontend_url.clone(),
         );
-        let app_api_state = api::app_api::AppApiState::new(
+        let endpoint_api_state = api::endpoint_api::EndpointApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1598,7 +1598,7 @@ impl ServerAppBuilder {
             ))
             .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::app_a2a::routes(app_a2a_state))
-            .merge(api::app_api::routes(app_api_state))
+            .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))

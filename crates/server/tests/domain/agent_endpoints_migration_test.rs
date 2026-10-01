@@ -666,7 +666,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         api::a2a_signing::A2aReplayStore::in_memory(),
         "https://app.everruns.test".to_string(),
     );
-    let api_state = api::app_api::AppApiState::new(
+    let api_state = api::endpoint_api::EndpointApiState::new(
         db,
         None,
         runner,
@@ -682,7 +682,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         .merge(api::slack_events::routes(slack_state))
         .merge(api::app_webhooks::routes(webhook_state))
         .merge(api::app_a2a::routes(a2a_state))
-        .merge(api::app_api::routes(api_state))
+        .merge(api::endpoint_api::routes(api_state))
 }
 
 async fn assert_route_status(

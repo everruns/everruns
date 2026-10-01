@@ -1655,7 +1655,7 @@ This section reuses the existing TM-API, TM-TOOL, TM-AGENT, and TM-DOS categorie
 
 ## 28. Legacy App API Keys / api_endpoint Channel (TM-APIKEY)
 
-Frozen execution-only API keys (`evr_app_...`) authenticate endpoint-owned native session routes. Canonical routes use `/v1/e/{endpoint_id}/sessions`; `/v1/apps/{legacy_app_id}/api/{endpoint_id}/...` remains a permanent alias. The key has no path to a management API. Mitigations live in `crates/server/src/api/app_api.rs`, `crates/server/src/domains/agent_endpoints/`, and the frozen invocation compatibility runtime. See `knowledge/integrations/app-api-keys.md`.
+Frozen execution-only API keys (`evr_app_...`) authenticate endpoint-owned native session routes. Canonical routes use `/v1/e/{endpoint_id}/sessions`; `/v1/apps/{legacy_app_id}/api/{endpoint_id}/...` remains a permanent alias. The key has no path to a management API. Mitigations live in `crates/server/src/api/endpoint_api.rs`, `crates/server/src/domains/agent_endpoints/`, and the frozen invocation compatibility runtime. See `knowledge/integrations/app-api-keys.md`.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|

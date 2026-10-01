@@ -1004,7 +1004,7 @@ impl TestServer {
             api::a2a_signing::A2aReplayStore::in_memory(),
             "https://app.everruns.test".to_string(),
         );
-        let app_api_state = api::app_api::AppApiState::new(
+        let endpoint_api_state = api::endpoint_api::EndpointApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1119,7 +1119,7 @@ impl TestServer {
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::app_a2a::routes(app_a2a_state))
-            .merge(api::app_api::routes(app_api_state))
+            .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
                 auth::cli_auth::CliAuthState {
