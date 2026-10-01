@@ -82,7 +82,7 @@ Public endpoints adapt `PublicError` into their transport-specific shape (e.g. A
 
 Each public endpoint defines a thin adapter that converts `PublicError` into the transport-specific event:
 
-- AG-UI: `public_run_error_event(error: PublicError) -> AgUiEvent::RunError(...)` in `crates/server/src/api/ag_ui.rs`
+- AG-UI: `public_run_error_event(error: PublicError) -> RunErrorEvent` in `crates/server/src/api/ag_ui.rs`, installed as the projector's error policy
 
 When adding a new public endpoint, define one adapter and use it from every error-emitting site, including stream-end / disconnect / cancellation paths. Property tests live alongside `PublicError` in `crates/server/src/api/public.rs` and must continue to pass.
 

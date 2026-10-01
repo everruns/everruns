@@ -23,12 +23,23 @@ categories = ["api-bindings", "web-programming"]
 # it is embedded.
 exclude = ["spec/1.0/fixtures", "tests"]
 
+[features]
+default = []
+# `projection`: map Everruns runtime events onto an AG-UI run.
+core = ["dep:everruns-core", "dep:everruns-provider"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+everruns-core = { workspace = true, optional = true }
+everruns-provider = { workspace = true, optional = true }
 
 [dev-dependencies]
 jsonschema = { version = "0.58.1", default-features = false }
+
+[[test]]
+name = "projection"
+required-features = ["core"]
 
 [lints]
 workspace = true

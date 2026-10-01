@@ -44,7 +44,6 @@ crates/platform/src/session_sandbox.rs
 crates/provider/src/driver_registry.rs
 crates/provider/src/openai_protocol.rs
 crates/provider/src/openresponses_types.rs
-crates/server/src/api/ag_ui.rs
 crates/server/src/api/agents.rs
 crates/server/src/api/common.rs
 crates/server/src/api/durable.rs
