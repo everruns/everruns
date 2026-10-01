@@ -190,27 +190,60 @@ pub type ActivityHandler = Arc<
 
 /// Worker pool for executing activities
 ///
+/// The pool polls the store for its activity types, runs handlers with
+/// bounded concurrency, heartbeats its tasks, reclaims stale work and stops
+/// claiming under backpressure. It completes or fails tasks in the store; it
+/// does not advance workflows, so a workflow-driven deployment reports
+/// completions to [`WorkflowExecutor`](crate::WorkflowExecutor) separately.
+///
 /// # Example
 ///
-/// ```ignore
-/// use everruns_durable::worker::{WorkerPool, WorkerPoolConfig};
+/// ```
+/// use std::sync::Arc;
+/// use std::time::Duration;
+/// use everruns_durable::{
+///     ActivityOptions, InMemoryWorkflowEventStore, TaskDefinition, TaskStatus, WorkerPool,
+///     WorkerPoolConfig, WorkflowEventStore,
+/// };
+/// use serde_json::json;
 ///
-/// let config = WorkerPoolConfig::new(vec!["my_activity".to_string()])
-///     .with_max_concurrency(10);
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let store = Arc::new(InMemoryWorkflowEventStore::new());
+/// let config = WorkerPoolConfig::new(vec!["resize_image".to_string()])
+///     .with_worker_id("images-1")
+///     .with_max_concurrency(8);
+/// let pool = WorkerPool::new(store.clone(), config);
 ///
-/// let pool = WorkerPool::new(store, config);
-///
-/// // Register activity handlers
-/// pool.register_handler("my_activity", |task| async move {
-///     // Execute activity
-///     Ok(json!({"result": "success"}))
+/// // A handler gets the claimed task and returns the JSON output, or an
+/// // error string that fails the attempt under the task's retry policy.
+/// pool.register_handler("resize_image", |task| async move {
+///     let width = task.input["width"].as_u64().ok_or("missing width")?;
+///     Ok(json!({ "width": width / 2 }))
 /// });
-///
-/// // Start the worker pool
 /// pool.start().await?;
 ///
-/// // ... later, graceful shutdown
+/// // A standalone task: no workflow, just the queue.
+/// let task_id = store
+///     .enqueue_task(TaskDefinition {
+///         workflow_id: None,
+///         activity_id: "img-1".into(),
+///         activity_type: "resize_image".into(),
+///         input: json!({ "width": 1024 }),
+///         options: ActivityOptions::default(),
+///     })
+///     .await?;
+///
+/// tokio::time::timeout(Duration::from_secs(5), async {
+///     while store.get_task(task_id).await.unwrap().status != TaskStatus::Completed {
+///         tokio::time::sleep(Duration::from_millis(10)).await;
+///     }
+/// })
+/// .await?;
+///
+/// // Drains in-flight tasks before returning.
 /// pool.shutdown().await?;
+/// # Ok(()) }
 /// ```
 pub struct WorkerPool {
     store: Arc<dyn WorkflowEventStore>,
@@ -473,10 +506,22 @@ impl WorkerPool {
                             let handler = match handlers.get(&task.activity_type) {
                                 Some(h) => Arc::clone(h),
                                 None => {
+                                    // The task is already claimed. Leaving it would park it
+                                    // until stale reclamation hands it back to this same
+                                    // pool, over and over; fail it visibly instead.
                                     warn!(
                                         activity_type = %task.activity_type,
                                         "No handler registered"
                                     );
+                                    let error = format!(
+                                        "no handler registered for activity type '{}'",
+                                        task.activity_type
+                                    );
+                                    if let Err(e) =
+                                        store.fail_task_with_retry(task.id, &error, false).await
+                                    {
+                                        error!(task_id = %task.id, "Failed to fail task: {}", e);
+                                    }
                                     continue;
                                 }
                             };
@@ -500,7 +545,15 @@ impl WorkerPool {
 
                             tokio::spawn(async move {
                                 let task_id = task.id;
-                                let result = handler(task).await;
+                                // Run the handler in its own task so a panic fails the
+                                // attempt instead of skipping the report and leaking the
+                                // backpressure slot.
+                                let result = match tokio::spawn(handler(task)).await {
+                                    Ok(result) => result,
+                                    Err(join_error) => {
+                                        Err(format!("activity handler panicked: {join_error}"))
+                                    }
+                                };
 
                                 // Report result
                                 match result {
@@ -848,6 +901,141 @@ mod tests {
     fn test_fair_share_minimum_one() {
         // Even with tiny share, always claim at least 1
         assert_eq!(fair_share_claim_limit(1, 100, 10), 1);
+    }
+
+    use crate::persistence::{InMemoryWorkflowEventStore, TaskDefinition, TaskStatus};
+    use crate::reliability::RetryPolicy;
+    use crate::workflow::ActivityOptions;
+
+    fn fast_config(activity_types: &[&str]) -> WorkerPoolConfig {
+        WorkerPoolConfig::new(activity_types.iter().map(|t| t.to_string()).collect())
+            .with_worker_id("pool-test")
+            .with_poller(PollerConfig {
+                min_interval: Duration::from_millis(5),
+                max_interval: Duration::from_millis(20),
+                ..PollerConfig::default()
+            })
+            .with_shutdown_timeout(Duration::from_secs(5))
+    }
+
+    async fn enqueue(store: &InMemoryWorkflowEventStore, activity_type: &str) -> Uuid {
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id: None,
+                activity_id: format!("{activity_type}-1"),
+                activity_type: activity_type.to_string(),
+                input: serde_json::json!({ "n": 2 }),
+                options: ActivityOptions::default().with_retry(RetryPolicy::no_retry()),
+            })
+            .await
+            .unwrap()
+    }
+
+    async fn wait_for_status(
+        store: &InMemoryWorkflowEventStore,
+        task_id: Uuid,
+        status: TaskStatus,
+    ) -> crate::persistence::TaskInfo {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let info = store.get_task(task_id).await.unwrap();
+                if info.status == status {
+                    return info;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("task {task_id} never reached {status:?}"))
+    }
+
+    #[tokio::test]
+    async fn test_pool_runs_handler_and_completes_task() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let pool = WorkerPool::new(store.clone(), fast_config(&["double"]));
+        pool.register_handler("double", |task| async move {
+            Ok(serde_json::json!(task.input["n"].as_i64().unwrap() * 2))
+        });
+
+        assert_eq!(pool.status(), WorkerPoolStatus::Stopped);
+        pool.start().await.unwrap();
+        assert_eq!(pool.status(), WorkerPoolStatus::Running);
+        assert!(pool.is_accepting());
+        assert!(matches!(
+            pool.start().await,
+            Err(WorkerPoolError::AlreadyRunning)
+        ));
+
+        let task_id = enqueue(&store, "double").await;
+        let info = wait_for_status(&store, task_id, TaskStatus::Completed).await;
+        assert_eq!(info.claimed_by.as_deref(), Some("pool-test"));
+
+        pool.shutdown().await.unwrap();
+        assert_eq!(pool.status(), WorkerPoolStatus::Stopped);
+        assert!(!pool.is_accepting());
+        // Shutting down a stopped pool is a no-op.
+        pool.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pool_handler_error_fails_task() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let pool = WorkerPool::new(store.clone(), fast_config(&["flaky"]));
+        pool.register_handler(
+            "flaky",
+            |_task| async move { Err("upstream 503".to_string()) },
+        );
+        pool.start().await.unwrap();
+
+        let task_id = enqueue(&store, "flaky").await;
+        let info = wait_for_status(&store, task_id, TaskStatus::Dead).await;
+        assert_eq!(info.last_error.as_deref(), Some("upstream 503"));
+
+        pool.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pool_handler_panic_fails_task_and_frees_slot() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let pool = WorkerPool::new(store.clone(), fast_config(&["boom"]));
+        pool.register_handler("boom", |_task| async move {
+            if true {
+                panic!("handler bug");
+            }
+            Ok(serde_json::json!(null))
+        });
+        pool.start().await.unwrap();
+
+        let task_id = enqueue(&store, "boom").await;
+        let info = wait_for_status(&store, task_id, TaskStatus::Dead).await;
+        assert!(
+            info.last_error.as_deref().unwrap().contains("panicked"),
+            "unexpected error: {:?}",
+            info.last_error
+        );
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while pool.current_load() != 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("panicked task should release its slot");
+
+        pool.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pool_fails_task_without_handler() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let pool = WorkerPool::new(store.clone(), fast_config(&["known", "unknown"]));
+        pool.register_handler("known", |_task| async move { Ok(serde_json::json!(null)) });
+        pool.start().await.unwrap();
+
+        let task_id = enqueue(&store, "unknown").await;
+        let info = wait_for_status(&store, task_id, TaskStatus::Dead).await;
+        assert!(info.last_error.unwrap().contains("no handler registered"));
+
+        pool.shutdown().await.unwrap();
     }
 
     #[test]
