@@ -7,7 +7,10 @@
 use crate::session_row_fixture::base_session_row;
 use crate::test_harness::get_database_url;
 
-use everruns_server::storage::models::CreateUsageJournalRow;
+use everruns_provider::typed_id::PrincipalId;
+use everruns_server::storage::models::{
+    CreatePrincipalRow, CreateSessionRow, CreateUsageJournalRow,
+};
 use everruns_server::storage::{
     CreatePendingUsageGeneration, Database, LateGenerationUsage, StorageBackend,
 };
@@ -24,8 +27,24 @@ async fn backend() -> StorageBackend {
 }
 
 async fn pending(backend: &StorageBackend) -> (Uuid, Uuid) {
+    let owner_principal_id = backend
+        .create_principal(CreatePrincipalRow {
+            id: PrincipalId::new(),
+            org_id: TEST_ORG_ID,
+            kind: "system".to_string(),
+            subject_id: Some(Uuid::now_v7()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: serde_json::json!({ "source": "late_generation_usage_test" }),
+        })
+        .await
+        .unwrap()
+        .id;
     let session = backend
-        .create_session(base_session_row(TEST_ORG_ID))
+        .create_session(CreateSessionRow {
+            owner_principal_id,
+            ..base_session_row(TEST_ORG_ID)
+        })
         .await
         .unwrap();
     let id = backend
