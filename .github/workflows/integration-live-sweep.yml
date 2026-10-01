@@ -50,8 +50,9 @@ jobs:
           # See EVE-946.
           - name: Cursor Live API Tests
             command: cargo test -p everruns-integrations-cursor --features cursor-live-tests --test live_api_test -- --test-threads=1
-          - name: Sprites Live API Tests
-            command: cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1
+          # Sprites Live API Tests are out of the sweep: Sprites is experimental
+          # and its live job runs only on manual dispatch of
+          # sprites-integration.yml.
           - name: Brave Search API Tests
             command: cargo test -p everruns-integrations-brave-search --features integration
           - name: TypeSafe System One API Tests
