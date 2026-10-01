@@ -1356,7 +1356,7 @@ async fn test_agents_api_session_fork_is_refused_and_delete_queues_the_provider_
         .post(
             "/v1/agents",
             json!({
-                "name": "agents-api-lifecycle-agent",
+                "name": format!("agents-api-lifecycle-{}", uuid::Uuid::new_v4().simple()),
                 "display_name": "Agents API Lifecycle Agent",
                 "system_prompt": "Test"
             }),

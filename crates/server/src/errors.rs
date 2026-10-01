@@ -117,6 +117,15 @@ impl ConflictError {
     pub fn code(&self) -> Option<&'static str> {
         self.code
     }
+
+    /// The `409` command error, carrying the code when one is attached.
+    pub fn to_command_error(&self) -> crate::domains::common::CommandError {
+        let error = crate::domains::common::CommandError::conflict(self.message.clone());
+        match self.code {
+            Some(code) => error.with_code(code),
+            None => error,
+        }
+    }
 }
 
 /// Stable code of a refused fork of a session that ran on the OpenAI Agents

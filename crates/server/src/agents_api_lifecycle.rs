@@ -263,8 +263,30 @@ pub async fn drain_deletions(
     Ok(deleted)
 }
 
-/// Spawn the lifecycle task. `None` when the deployment has no PostgreSQL
-/// pool or no encryption key, the two things the backend itself requires.
+/// Start the lifecycle task under the server's supervisor. Both runtime modes
+/// can drive the backend, so both run it; a deployment without PostgreSQL or
+/// an encryption key cannot run the backend and gets no task.
+pub(crate) fn track(
+    supervisor: &mut crate::supervised_task::TaskSupervisor,
+    ctx: &crate::app_builder::ServerContext,
+) {
+    let (Some(pool), Some(encryption)) = (ctx.db.background_pool(), ctx.encryption.as_ref()) else {
+        return;
+    };
+    let resolver = ProviderResolverService::new(ctx.db.clone(), ctx.encryption.clone())
+        .with_driver_registry((*ctx.driver_registry).clone());
+    supervisor.track_optional(
+        "agents_api_lifecycle",
+        spawn_agents_api_lifecycle_task(
+            pool.clone(),
+            PgAgentsApiStore::new(pool.clone(), encryption.clone()),
+            Arc::new(ResolvingDeleter::new(Arc::new(resolver))),
+            AgentsApiLifecycleConfig::from_env(),
+        ),
+    );
+}
+
+/// Spawn the lifecycle task.
 pub fn spawn_agents_api_lifecycle_task(
     pool: PgPool,
     store: PgAgentsApiStore,
