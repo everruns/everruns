@@ -51,6 +51,22 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
         created_at: "2026-07-17T00:00:00Z",
         updated_at: "2026-07-17T00:00:00Z",
       } as unknown as AgentTrigger,
+      {
+        id: "trg_mcp",
+        agent_id: "agent_123",
+        trigger_type: "mcp_event",
+        ingress_id: "appchan_mcp",
+        config: {
+          server: "tracker",
+          event: "issue.created",
+          arguments: { team: "eng" },
+          session_mode: "shared_session",
+          message: "Triage the issue",
+        },
+        enabled: true,
+        created_at: "2026-07-17T00:00:00Z",
+        updated_at: "2026-07-17T00:00:00Z",
+      } as unknown as AgentTrigger,
     ],
     isLoading: false,
   }),
@@ -73,6 +89,14 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
 
 describe("AgentTriggersPanel", () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it("labels MCP event triggers without webhook setup guidance", () => {
+    render(<AgentTriggersPanel agentId="agent_123" />);
+
+    expect(screen.getByText("MCP event issue.created on tracker")).toBeInTheDocument();
+    expect(screen.getByText("Triage the issue")).toBeInTheDocument();
+    expect(screen.queryByText(/appchan_mcp/)).not.toBeInTheDocument();
+  });
 
   it("shows schedule details, recent outcomes, and trigger actions", () => {
     render(<AgentTriggersPanel agentId="agent_123" />);

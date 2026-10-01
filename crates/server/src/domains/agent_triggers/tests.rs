@@ -158,6 +158,9 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
         filter: None,
         github_events: None,
         repositories: None,
+        mcp_server: None,
+        mcp_event: None,
+        mcp_event_arguments: None,
         auth: None,
         enabled,
     }
@@ -232,6 +235,9 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
         filter: None,
         github_events: None,
         repositories: None,
+        mcp_server: None,
+        mcp_event: None,
+        mcp_event_arguments: None,
         auth: None,
         enabled,
     }

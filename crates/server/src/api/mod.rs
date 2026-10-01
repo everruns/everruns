@@ -44,6 +44,7 @@ pub mod knowledge_bases;
 pub mod knowledge_indexes;
 pub mod mcp_elicitation;
 pub mod mcp_endpoint;
+pub mod mcp_event_webhooks;
 pub mod mcp_servers;
 pub mod mcp_url_consent;
 pub mod memory;

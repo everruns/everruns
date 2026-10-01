@@ -59,11 +59,11 @@ pub struct CreateAgentTriggerRequest {
     /// Webhook only: template for the delivery idempotency key.
     #[serde(default)]
     pub event_id_template: Option<String>,
-    /// Webhook only: template for the event subject. Required for
+    /// Webhook and MCP event: template for the event subject. Required for
     /// `session_mode: per_thread`, which keeps one session per subject.
     #[serde(default)]
     pub subject_template: Option<String>,
-    /// Webhook only: conditions an event must meet to start a run.
+    /// Webhook, GitHub and MCP event: conditions an event must meet to start a run.
     #[serde(default)]
     pub filter: Option<TriggerEventFilter>,
     /// GitHub only: subscribed events (`pull_request` or
@@ -73,6 +73,16 @@ pub struct CreateAgentTriggerRequest {
     /// GitHub only: repositories (`owner/name`) to accept; empty accepts all.
     #[serde(default)]
     pub repositories: Option<Vec<String>>,
+    /// MCP event only: name of the agent's MCP server attachment to subscribe to.
+    #[serde(default)]
+    pub mcp_server: Option<String>,
+    /// MCP event only: event name from the server's `events/list`.
+    #[serde(default)]
+    pub mcp_event: Option<String>,
+    /// MCP event only: subscription arguments object (the event's `inputSchema`).
+    #[serde(default)]
+    #[schema(value_type = Option<Object>)]
+    pub mcp_event_arguments: Option<Value>,
     /// Shared endpoint auth is not supported by webhook triggers.
     #[serde(default)]
     pub auth: Option<Value>,
@@ -118,6 +128,16 @@ pub struct UpdateAgentTriggerRequest {
     /// Replacement GitHub repository scope. An empty list accepts all.
     #[serde(default)]
     pub repositories: Option<Vec<String>>,
+    /// Replacement MCP server attachment name.
+    #[serde(default)]
+    pub mcp_server: Option<String>,
+    /// Replacement MCP event name.
+    #[serde(default)]
+    pub mcp_event: Option<String>,
+    /// Replacement MCP event subscription arguments.
+    #[serde(default)]
+    #[schema(value_type = Option<Object>)]
+    pub mcp_event_arguments: Option<Value>,
     /// Shared endpoint auth is not supported by webhook triggers.
     #[serde(default)]
     pub auth: Option<Value>,

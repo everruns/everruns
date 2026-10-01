@@ -31,6 +31,10 @@ pub enum AgentTriggerType {
     Webhook,
     /// GitHub events delivered to the agent identity's GitHub App.
     GitHub,
+    /// MCP Events from one of the agent's MCP servers, delivered to a signed
+    /// webhook subscription Everruns holds on the agent's behalf.
+    #[serde(rename = "mcp_event")]
+    McpEvent,
 }
 
 impl std::fmt::Display for AgentTriggerType {
@@ -39,6 +43,7 @@ impl std::fmt::Display for AgentTriggerType {
             AgentTriggerType::Schedule => write!(f, "schedule"),
             AgentTriggerType::Webhook => write!(f, "webhook"),
             AgentTriggerType::GitHub => write!(f, "github"),
+            AgentTriggerType::McpEvent => write!(f, "mcp_event"),
         }
     }
 }
@@ -48,6 +53,7 @@ impl From<&str> for AgentTriggerType {
         match value {
             "webhook" => Self::Webhook,
             "github" => Self::GitHub,
+            "mcp_event" => Self::McpEvent,
             _ => Self::Schedule,
         }
     }
@@ -132,6 +138,43 @@ pub struct GitHubTriggerConfig {
 
 fn default_github_binding() -> SessionBinding {
     SessionBinding::Thread
+}
+
+/// Typed configuration for an `McpEvent` trigger.
+///
+/// Everruns subscribes, as the agent, to `event` on the agent's MCP server
+/// `server` (an attachment name from the agent's or its harness's MCP
+/// configuration) through `events/subscribe`, and the server POSTs signed
+/// events to the trigger's callback. The event context carries `mcp.*` fields
+/// (`server`, `event`, `event_id`, `timestamp`, `subscription_id`) and the
+/// event's `data` as `payload`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct McpEventTriggerConfig {
+    /// Name of the agent's MCP server attachment that publishes the event.
+    pub server: String,
+    /// Event name from the server's `events/list`.
+    pub event: String,
+    /// Subscription arguments (the event's `inputSchema`), sent with
+    /// `events/subscribe`.
+    #[serde(default = "empty_object")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub arguments: serde_json::Value,
+    /// Session strategy. `per_thread` needs a `subject_template`.
+    #[serde(default = "default_invocation_binding")]
+    pub session_mode: SessionBinding,
+    /// Message template rendered with the event context.
+    pub message: String,
+    /// Optional template for the event's subject, e.g. `{{payload.issue_id}}`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_template: Option<String>,
+    /// Optional conditions an event must meet to start a run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<TriggerEventFilter>,
+}
+
+fn empty_object() -> serde_json::Value {
+    serde_json::Value::Object(Default::default())
 }
 
 /// Conditions an incoming event must satisfy before a trigger runs.
@@ -283,6 +326,14 @@ impl AgentTrigger {
     pub fn github_config(&self) -> anyhow::Result<GitHubTriggerConfig> {
         if self.trigger_type != AgentTriggerType::GitHub {
             anyhow::bail!("agent trigger {} is not a GitHub trigger", self.id);
+        }
+        Ok(serde_json::from_value(self.config.clone())?)
+    }
+
+    /// Parse `config` as [`McpEventTriggerConfig`].
+    pub fn mcp_event_config(&self) -> anyhow::Result<McpEventTriggerConfig> {
+        if self.trigger_type != AgentTriggerType::McpEvent {
+            anyhow::bail!("agent trigger {} is not an MCP event trigger", self.id);
         }
         Ok(serde_json::from_value(self.config.clone())?)
     }

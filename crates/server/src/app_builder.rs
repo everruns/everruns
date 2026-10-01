@@ -411,17 +411,11 @@ impl ServerAppBuilder {
         self
     }
 
-    /// Register a pre-create policy for organization creation (EVE-607).
-    ///
-    /// The policy runs inside the OSS `POST /v1/orgs` handler before any org or
-    /// membership row is written, with access to the authenticated user and the
-    /// requested org name. Returning a rejection fails creation closed with a
-    /// UI-facing status/body and persists nothing.
-    ///
-    /// This lets wrappers (e.g. SaaS) gate creation on product policy — verified
-    /// email, account/resource limits — without forking the create-org handler or
-    /// mounting a parallel `/v1/saas/orgs` route. When not set, default OSS
-    /// behavior is unchanged. See `knowledge/foundations/embedding.md`.
+    /// Register a pre-create policy for organization creation (EVE-607). It runs in the
+    /// OSS `POST /v1/orgs` handler before any row is written, sees the user and requested
+    /// name, and a rejection fails creation closed with a UI-facing status/body. Lets
+    /// wrappers (e.g. SaaS) gate creation on product policy (verified email, limits)
+    /// without forking the handler. Unset keeps OSS behavior; see foundations/embedding.md.
     pub fn org_create_policy(
         mut self,
         policy: Arc<dyn api::organizations::OrgCreatePolicy>,
@@ -430,20 +424,12 @@ impl ServerAppBuilder {
         self
     }
 
-    /// Register a post-create organization initializer (EVE-811).
-    ///
-    /// The initializer runs inside the OSS `POST /v1/orgs` handler after the new
-    /// org's built-in harnesses and default marketplace are provisioned, with
-    /// access to the storage backend, the new org id, and the creating user. It
-    /// lets a wrapper provision per-org resources — a managed provider, a default
-    /// budget, an external tenant record — as part of org creation rather than via
-    /// a follow-up reconciler, closing the window where a new org has no working
-    /// provider.
-    ///
-    /// May be called multiple times; initializers run in registration order. A
-    /// required initializer that fails aborts creation (the org is rolled back);
-    /// an optional one only logs. When none are registered, default OSS behavior
-    /// is unchanged. See `knowledge/foundations/embedding.md`.
+    /// Register a post-create organization initializer (EVE-811). It runs in the OSS
+    /// `POST /v1/orgs` handler after built-in harnesses and the default marketplace are
+    /// provisioned, so a wrapper provisions per-org resources (managed provider, budget,
+    /// tenant record) in creation rather than via a reconciler. Initializers run in
+    /// registration order; a required one that fails rolls the org back, an optional one
+    /// only logs. None registered keeps OSS behavior; see `knowledge/foundations/embedding.md`.
     pub fn org_initializer(mut self, initializer: Arc<dyn org_init::OrgInitializer>) -> Self {
         self.org_initializers.push(initializer);
         self
@@ -650,6 +636,12 @@ impl ServerAppBuilder {
             Arc::new(services::ApprovalAuditListener::new(db.clone()));
         let mcp_events =
             services::McpEventsService::shared(&db, &encryption, &host_composition, &auth_state);
+        let mcp_event_triggers = crate::domains::agent_triggers::McpEventTriggers::shared(
+            &db,
+            &encryption,
+            &host_composition,
+            &auth_state,
+        );
         let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![
             Arc::new(OtelEventListener::new()),
             Arc::new(services::UsageTrackingListener::new(db.clone())),
@@ -1179,7 +1171,8 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
             webhook_rate_limiter,
-        );
+        )
+        .with_mcp_event_triggers(mcp_event_triggers.clone());
         let ag_ui_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
                 api::channel_rate_limit::ChannelRateLimiter::with_valkey("agui", client)
@@ -1346,7 +1339,8 @@ impl ServerAppBuilder {
             auth_state.clone(),
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
-        );
+        )
+        .with_mcp_event_triggers(mcp_event_triggers.clone());
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -2414,6 +2408,11 @@ impl ServerAppBuilder {
             tracing::info!("Durable task scheduler started");
         }
 
+        // MCP event trigger subscriptions are renewed before their refreshBefore.
+        supervisor.track(
+            "mcp_event_trigger_refresher",
+            mcp_event_triggers.spawn_refresher(),
+        );
         // -- Tool result timeout sweep (both prod and dev) --
         supervisor.track(
             "tool_result_timeout_sweep",

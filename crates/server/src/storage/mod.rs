@@ -11,6 +11,7 @@
 
 pub mod agent_store;
 pub mod agent_trigger_deliveries;
+pub mod agent_trigger_mcp_subscriptions;
 pub mod agents_api_store;
 pub mod backend;
 pub mod blob_store;

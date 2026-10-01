@@ -38,6 +38,14 @@ use crate::oauth_client::{
 };
 
 const OAUTH_REFRESH_SKEW: Duration = Duration::seconds(60);
+
+/// Which org an identity grant's OAuth client is looked up in: the session's,
+/// or an explicit org for session-less callers.
+#[derive(Clone, Copy)]
+enum OAuthScope {
+    Session(SessionId),
+    Org(i64),
+}
 const REFRESH_LOCK_MAX_CAPACITY: u64 = 10_000;
 const REFRESH_LOCK_IDLE_TTL: StdDuration = StdDuration::from_secs(10 * 60);
 
@@ -253,6 +261,48 @@ impl DbConnectionResolver {
         }
         self.service_connection(session, provider).await
     }
+    /// The token an agent's own service identity holds for an MCP catalog
+    /// server (`provider` = `mcp_oauth_{server_id}`), resolved without a
+    /// session: an `mcp_event` trigger subscribes as the agent before any
+    /// session exists. Applies `service_connection`'s checks (active agent,
+    /// active service identity) and refreshes a grant near expiry.
+    pub async fn agent_service_mcp_token(
+        &self,
+        org_id: i64,
+        agent_id: everruns_provider::typed_id::AgentId,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        let Some(server) = Self::parse_mcp_oauth_provider(provider) else {
+            return Ok(None);
+        };
+        let store = |e: anyhow::Error| AgentLoopError::store(e.to_string());
+        let Some(agent) = self.db.get_agent(org_id, agent_id).await.map_err(store)? else {
+            return Ok(None);
+        };
+        let Some(identity_id) = agent.virtual_user_id.filter(|_| agent.status == "active") else {
+            return Ok(None);
+        };
+        let identity = self
+            .db
+            .get_virtual_user(org_id, identity_id)
+            .await
+            .map_err(store)?
+            .filter(|v| v.status == "active" && v.usage == "service");
+        if identity.is_none() {
+            return Ok(None);
+        }
+        let Some(row) = self
+            .db
+            .get_virtual_user_connection(identity_id, provider)
+            .await
+            .map_err(store)?
+        else {
+            return Ok(None);
+        };
+        self.resolve_identity_oauth_token(OAuthScope::Org(org_id), server, row)
+            .await
+    }
+
     fn parse_mcp_oauth_provider(provider: &str) -> Option<Uuid> {
         provider.strip_prefix("mcp_oauth_")?.parse().ok()
     }
@@ -289,9 +339,18 @@ impl DbConnectionResolver {
         let Some(session) = session else {
             return Ok(None);
         };
+        self.oauth_client_config_in_org(session.org_id, server_id)
+            .await
+    }
+
+    async fn oauth_client_config_in_org(
+        &self,
+        org_id: i64,
+        server_id: Uuid,
+    ) -> Result<Option<OAuthClientConfig>> {
         let row = self
             .db
-            .get_mcp_server(session.org_id, server_id)
+            .get_mcp_server(org_id, server_id)
             .await
             .map_err(|e| AgentLoopError::store(format!("Failed to resolve OAuth server: {e}")))?;
         let Some(row) = row else {
@@ -466,7 +525,7 @@ impl DbConnectionResolver {
 
     async fn resolve_identity_oauth_token(
         &self,
-        session_id: SessionId,
+        scope: OAuthScope,
         server_id: Uuid,
         row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
@@ -511,7 +570,13 @@ impl DbConnectionResolver {
             return Ok(None);
         };
         let refresh_token = self.decrypt(refresh_token_encrypted, "OAuth refresh token")?;
-        let Some(config) = self.oauth_client_config(session_id, server_id).await? else {
+        let config = match scope {
+            OAuthScope::Session(session_id) => {
+                self.oauth_client_config(session_id, server_id).await?
+            }
+            OAuthScope::Org(org_id) => self.oauth_client_config_in_org(org_id, server_id).await?,
+        };
+        let Some(config) = config else {
             return Ok(None);
         };
         let token = match self.exchange_refresh(config, refresh_token.clone()).await {
@@ -634,7 +699,7 @@ impl UserConnectionResolver for DbConnectionResolver {
         }
         if let Some(server) = Self::parse_mcp_oauth_provider(provider) {
             return self
-                .resolve_identity_oauth_token(session, server, row)
+                .resolve_identity_oauth_token(OAuthScope::Session(session), server, row)
                 .await;
         }
         row.access_token_encrypted
@@ -679,7 +744,7 @@ impl UserConnectionResolver for DbConnectionResolver {
         };
         match row {
             Some(row) => {
-                self.resolve_identity_oauth_token(session, server, row)
+                self.resolve_identity_oauth_token(OAuthScope::Session(session), server, row)
                     .await
             }
             None => Ok(None),

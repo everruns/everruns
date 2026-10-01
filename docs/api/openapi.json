@@ -19252,7 +19252,8 @@
         "enum": [
           "schedule",
           "webhook",
-          "github"
+          "github",
+          "mcp_event"
         ]
       },
       "AgentVersion": {
@@ -22369,7 +22370,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/TriggerEventFilter",
-                "description": "Webhook only: conditions an event must meet to start a run."
+                "description": "Webhook, GitHub and MCP event: conditions an event must meet to start a run."
               },
               {
                 "type": "null"
@@ -22385,6 +22386,27 @@
               "type": "string"
             },
             "description": "GitHub only: subscribed events (`pull_request` or\n`pull_request.opened`). Defaults to pull request open/update events."
+          },
+          "mcp_event": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MCP event only: event name from the server's `events/list`."
+          },
+          "mcp_event_arguments": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "MCP event only: subscription arguments object (the event's `inputSchema`)."
+          },
+          "mcp_server": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MCP event only: name of the agent's MCP server attachment to subscribe to."
           },
           "message": {
             "type": "string",
@@ -22419,7 +22441,7 @@
               "string",
               "null"
             ],
-            "description": "Webhook only: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject."
+            "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject."
           },
           "timezone": {
             "type": "string",
@@ -42372,6 +42394,27 @@
               "type": "string"
             },
             "description": "Replacement GitHub event subscriptions."
+          },
+          "mcp_event": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement MCP event name."
+          },
+          "mcp_event_arguments": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Replacement MCP event subscription arguments."
+          },
+          "mcp_server": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement MCP server attachment name."
           },
           "message": {
             "type": [
