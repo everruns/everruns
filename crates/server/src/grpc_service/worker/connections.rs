@@ -12,8 +12,20 @@ impl WorkerServiceImpl {
         request: Request<GetConnectionTokenRequest>,
     ) -> Result<Response<GetConnectionTokenResponse>, Status> {
         let req = request.into_inner();
+        if req.provider.starts_with("mcp_oauth_") {
+            return Err(Status::permission_denied(
+                "MCP credentials require attachment-scoped resolution",
+            ));
+        }
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let resolver = self.connection_resolver()?;
+        let base = self.connection_resolver()?;
+        let bound = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?
+            .and_then(|id| base.for_execution(id));
+        let resolver = bound.as_ref().unwrap_or(base);
 
         let token = resolver
             .get_connection_token(session_id.into(), &req.provider)
@@ -32,7 +44,22 @@ impl WorkerServiceImpl {
     ) -> Result<Response<GetConnectionTokenResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let resolver = self.connection_resolver()?;
+        self.validate_mcp_operation(
+            session_id,
+            req.input_message_id.as_ref(),
+            req.server_prefix.as_deref(),
+            &req.provider,
+            &req.acts_as,
+        )
+        .await?;
+        let base = self.connection_resolver()?;
+        let bound = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?
+            .and_then(|id| base.for_execution(id));
+        let resolver = bound.as_ref().unwrap_or(base);
         let token =
             resolve_mcp_connection_token(resolver, session_id.into(), &req.provider, &req.acts_as)
                 .await?;
@@ -46,7 +73,14 @@ impl WorkerServiceImpl {
     ) -> Result<Response<GetConnectionUserResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let resolver = self.connection_resolver()?;
+        let base = self.connection_resolver()?;
+        let bound = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?
+            .and_then(|id| base.for_execution(id));
+        let resolver = bound.as_ref().unwrap_or(base);
 
         let user_id = resolver
             .get_connection_user(session_id.into(), &req.provider)
@@ -69,7 +103,22 @@ impl WorkerServiceImpl {
     ) -> Result<Response<InvalidateMcpConnectionResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let resolver = self.connection_resolver()?;
+        self.validate_mcp_operation(
+            session_id,
+            req.input_message_id.as_ref(),
+            req.server_prefix.as_deref(),
+            &req.provider,
+            &req.acts_as,
+        )
+        .await?;
+        let base = self.connection_resolver()?;
+        let bound = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?
+            .and_then(|id| base.for_execution(id));
+        let resolver = bound.as_ref().unwrap_or(base);
         let acts_as = match req.acts_as.as_str() {
             value @ ("none" | "service" | "user") => everruns_core::McpServerActsAs::from(value),
             _ => return Err(Status::invalid_argument("Invalid MCP acts_as value")),
@@ -89,6 +138,50 @@ impl WorkerServiceImpl {
             })?;
 
         Ok(Response::new(InvalidateMcpConnectionResponse {}))
+    }
+
+    // THREAT[TM-TOOL-041]: a worker-supplied actsAs value cannot select a different credential owner.
+    async fn validate_mcp_operation(
+        &self,
+        session: uuid::Uuid,
+        input: Option<&proto::Uuid>,
+        prefix: Option<&str>,
+        provider: &str,
+        acts_as: &str,
+    ) -> Result<(), Status> {
+        let Some(input) = input else {
+            return Err(Status::permission_denied(
+                "MCP operation requires an invocation",
+            ));
+        };
+        let prefix =
+            prefix.ok_or_else(|| Status::permission_denied("MCP attachment scope required"))?;
+        let row = self
+            .db
+            .get_session_unscoped(session.into())
+            .await
+            .map_err(|_| Status::internal("Session unavailable"))?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+        let response = self
+            .handle_get_mcp_server_by_prefix(Request::new(proto::GetMcpServerByPrefixRequest {
+                org_id: row.org_id,
+                session_id: Some(proto::Uuid {
+                    value: session.to_string(),
+                }),
+                input_message_id: Some(input.clone()),
+                server_prefix: prefix.into(),
+            }))
+            .await?;
+        let server = response
+            .into_inner()
+            .server
+            .ok_or_else(|| Status::permission_denied("MCP attachment unavailable"))?;
+        if server.oauth_provider_id.as_deref() != Some(provider) || server.acts_as != acts_as {
+            return Err(Status::permission_denied(
+                "MCP operation does not match the configured attachment",
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) async fn handle_get_connection_token_for_user(

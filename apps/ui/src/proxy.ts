@@ -59,7 +59,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/",
-    "/agent-identities/:path*",
+    "/virtual-users/:path*",
     "/agents/:path*",
     "/capabilities/:path*",
     "/chat/:path*",

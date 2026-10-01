@@ -9,8 +9,6 @@
 
 mod agent_check_rules;
 mod agent_health_checks;
-mod agent_identities;
-mod agent_identity_connections;
 mod agent_mcp_secret_bindings;
 mod agent_triggers;
 mod agents;
@@ -54,6 +52,9 @@ pub mod subagent_spawn_handles;
 mod user_connections;
 mod user_preferences;
 mod users;
+mod virtual_user_connections;
+mod virtual_user_preferences;
+mod virtual_users;
 mod workspaces;
 
 #[cfg(test)]
@@ -61,16 +62,16 @@ mod tests;
 
 use crate::kernel_imports::{
     DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, everruns_provider::typed_id::AgentId,
-    everruns_provider::typed_id::AgentIdentityId, everruns_provider::typed_id::AgentVersionId,
-    everruns_provider::typed_id::EventId, everruns_provider::typed_id::FileId,
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::ImageId,
-    everruns_provider::typed_id::LeasedResourceId, everruns_provider::typed_id::McpServerId,
-    everruns_provider::typed_id::MessageId, everruns_provider::typed_id::ModelId,
-    everruns_provider::typed_id::NotificationId, everruns_provider::typed_id::PluginMarketplaceId,
-    everruns_provider::typed_id::PrincipalId, everruns_provider::typed_id::ProviderId,
-    everruns_provider::typed_id::ScheduleId, everruns_provider::typed_id::SessionId,
-    everruns_provider::typed_id::SessionParticipantId, everruns_provider::typed_id::SkillId,
-    everruns_provider::typed_id::TriggerId,
+    everruns_provider::typed_id::AgentVersionId, everruns_provider::typed_id::EventId,
+    everruns_provider::typed_id::FileId, everruns_provider::typed_id::HarnessId,
+    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
+    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
+    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
+    everruns_provider::typed_id::PluginMarketplaceId, everruns_provider::typed_id::PrincipalId,
+    everruns_provider::typed_id::ProviderId, everruns_provider::typed_id::ScheduleId,
+    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
+    everruns_provider::typed_id::SkillId, everruns_provider::typed_id::TriggerId,
+    everruns_provider::typed_id::VirtualUserId,
 };
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
@@ -78,6 +79,15 @@ use std::collections::HashMap;
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
+
+type RuntimeInvocationAuthority = (
+    i64,
+    SessionId,
+    Option<VirtualUserId>,
+    Option<Uuid>,
+    Option<Uuid>,
+);
+type ConnectionSetupState = (String, Vec<u8>, DateTime<Utc>);
 
 use super::IngressEndpointRow;
 use super::agent_trigger_deliveries::AgentTriggerDeliveryRow;
@@ -138,12 +148,12 @@ pub struct InMemoryDatabase {
     personal_access_tokens: RwLock<HashMap<Uuid, PersonalAccessTokenRow>>,
     cli_auth_sessions: RwLock<HashMap<Uuid, CliAuthSessionRow>>,
     refresh_tokens: RwLock<HashMap<Uuid, RefreshTokenRow>>,
-    agents: RwLock<HashMap<AgentId, AgentRow>>,
+    pub(super) agents: RwLock<HashMap<AgentId, AgentRow>>,
     agent_mcp_secret_bindings: RwLock<HashMap<Uuid, AgentMcpSecretBindingRow>>,
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
-    sessions: RwLock<HashMap<SessionId, SessionRow>>,
+    pub(super) sessions: RwLock<HashMap<SessionId, SessionRow>>,
     waiting_turn_resolutions: RwLock<HashMap<SessionId, WaitingTurnResolutionState>>,
-    session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
+    pub(super) session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
     waiting_turn_resolution_events: RwLock<HashMap<(Uuid, i32), EventId>>,
     compaction_checkpoints:
@@ -169,10 +179,10 @@ pub struct InMemoryDatabase {
     event_sequences: RwLock<HashMap<SessionId, i32>>,
     // Session storage
     session_key_values: RwLock<HashMap<(SessionId, String), SessionKeyValueRow>>,
-    session_secrets: RwLock<HashMap<(SessionId, String), SessionSecretRow>>,
+    pub(super) session_secrets: RwLock<HashMap<(SessionId, String), SessionSecretRow>>,
     // User connections (external service accounts)
-    user_connections: RwLock<HashMap<Uuid, UserConnectionRow>>,
     // User preferences: (user_id, key) -> row
+    virtual_user_preferences: RwLock<HashMap<(VirtualUserId, String), VirtualUserPreferenceRow>>,
     user_preferences: RwLock<HashMap<(Uuid, String), UserPreferenceRow>>,
     // Pinned sessions: (user_id, session_id) -> (org_id, pinned_at)
     pinned_sessions: RwLock<HashMap<(Uuid, SessionId), PinnedSessionData>>,
@@ -182,7 +192,7 @@ pub struct InMemoryDatabase {
     // Session schedules
     session_schedules: RwLock<HashMap<ScheduleId, SessionScheduleRow>>,
     // Generic leased resources that require eventual cleanup.
-    leased_resources: RwLock<HashMap<LeasedResourceId, LeasedResourceRow>>,
+    pub(super) leased_resources: RwLock<HashMap<LeasedResourceId, LeasedResourceRow>>,
     // Session resource registry (generic active-resource tracking).
     session_resources: RwLock<HashMap<(SessionId, String), SessionResourceRow>>,
     // Session tasks (background work owned by a session), keyed by task id.
@@ -195,15 +205,20 @@ pub struct InMemoryDatabase {
     // App channels (distribution channels per app)
     app_channels: RwLock<HashMap<Uuid, AppChannelRow>>,
     ingress_endpoints: RwLock<HashMap<Uuid, IngressEndpointRow>>,
-    // Agent identities (virtual principals)
-    agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
+    // Organization-scoped runtime accounts
+    pub(super) virtual_users: RwLock<HashMap<VirtualUserId, VirtualUserRow>>,
+    pub(super) virtual_user_bindings:
+        RwLock<HashMap<String, super::runtime_identity::VirtualUserBindingRow>>,
+    pub(super) runtime_invocations: RwLock<HashMap<Uuid, RuntimeInvocationAuthority>>,
     // Agent triggers (agent-owned invocation triggers)
     agent_triggers: RwLock<HashMap<TriggerId, AgentTriggerRow>>,
     agent_trigger_deliveries: RwLock<Vec<AgentTriggerDeliveryRow>>,
-    principals: RwLock<HashMap<PrincipalId, PrincipalRow>>,
-    // Agent identity connections (identity-scoped external accounts)
-    agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
     github_apps: RwLock<HashMap<Uuid, GitHubAppRow>>,
+    pub(super) principals: RwLock<HashMap<PrincipalId, PrincipalRow>>,
+    // Runtime-account connections and one-time provider setup
+    pub(super) connection_setup_states: RwLock<HashMap<String, ConnectionSetupState>>,
+    pub(super) pending_user_connections: RwLock<HashMap<Uuid, UserConnectionRow>>,
+    pub(super) virtual_user_connections: RwLock<HashMap<Uuid, VirtualUserConnectionRow>>,
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
     org_feature_flags: RwLock<HashMap<i64, HashMap<String, bool>>>,
@@ -348,7 +363,7 @@ impl Default for InMemoryDatabase {
             event_sequences: RwLock::new(HashMap::new()),
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),
-            user_connections: RwLock::new(HashMap::new()),
+            virtual_user_preferences: RwLock::new(HashMap::new()),
             user_preferences: RwLock::new(HashMap::new()),
             pinned_sessions: RwLock::new(HashMap::new()),
             notifications: RwLock::new(HashMap::new()),
@@ -362,12 +377,16 @@ impl Default for InMemoryDatabase {
             apps: RwLock::new(HashMap::new()),
             app_channels: RwLock::new(HashMap::new()),
             ingress_endpoints: RwLock::new(HashMap::new()),
-            agent_identities: RwLock::new(HashMap::new()),
+            virtual_users: RwLock::new(HashMap::new()),
+            virtual_user_bindings: RwLock::new(HashMap::new()),
+            runtime_invocations: RwLock::new(HashMap::new()),
             agent_triggers: RwLock::new(HashMap::new()),
             agent_trigger_deliveries: RwLock::new(Vec::new()),
             principals: RwLock::new(HashMap::new()),
-            agent_identity_connections: RwLock::new(HashMap::new()),
             github_apps: RwLock::new(HashMap::new()),
+            connection_setup_states: RwLock::new(HashMap::new()),
+            pending_user_connections: RwLock::new(HashMap::new()),
+            virtual_user_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
             org_feature_flags: RwLock::new(HashMap::new()),
             org_slack_connections: RwLock::new(HashMap::new()),

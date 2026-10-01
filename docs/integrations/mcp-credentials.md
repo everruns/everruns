@@ -25,3 +25,11 @@ Session Storage has a separate encrypted secret lifecycle for session-local
 workflows. Those secrets do not follow per-invocation sessions, and a model can
 read them with `secret_store get`, so they are not a substitute for an MCP
 credential binding.
+
+## OAuth connections
+
+For an MCP attachment that acts as a user, connect the provider from **Settings → Connections**. The grant belongs to your current organization's virtual user and is used only for turns you initiate. Scheduled execution does not borrow the last speaker's grant.
+
+For an attachment that acts as a service, select the responding agent's service virtual user and connect the provider on that account's **Connections** tab. Agent behavior and service credentials remain separate.
+
+External integrations can exchange verified endpoint authentication at `POST /v1/e/{endpoint_id}/runtime-auth` for a short-lived runtime bearer token. The token allows virtual-user self-service and authenticated ingress for that endpoint. It cannot administer organizations, agents, or other users. Use `GET /v1/virtual-users/me` to discover the account, and the canonical `/v1/virtual-users/{id}/connections` routes for its grants. To start browser OAuth with bearer authentication, POST to the provider's `authorize` subresource and navigate to the returned `authorization_url` while retaining its setup cookie. Setup captures the account and revalidates authority at callback.

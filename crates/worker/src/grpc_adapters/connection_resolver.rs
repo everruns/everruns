@@ -9,6 +9,21 @@ use super::{GrpcAdapter, grpc_status_to_error, proto_uuid_to_uuid, uuid_to_proto
 
 #[async_trait]
 impl UserConnectionResolver for GrpcAdapter {
+    fn for_mcp_operation(
+        &self,
+        server_prefix: &str,
+    ) -> Option<std::sync::Arc<dyn UserConnectionResolver>> {
+        let mut bound = self.clone();
+        bound.mcp_server_prefix = Some(server_prefix.into());
+        Some(std::sync::Arc::new(bound))
+    }
+
+    fn for_execution(&self, id: Uuid) -> Option<std::sync::Arc<dyn UserConnectionResolver>> {
+        let mut bound = self.clone();
+        bound.input_message_id = Some(id);
+        Some(std::sync::Arc::new(bound))
+    }
+
     async fn get_connection_token(
         &self,
         session_id: SessionId,
@@ -17,6 +32,7 @@ impl UserConnectionResolver for GrpcAdapter {
         let mut client = self.client.inner.lock().await;
         let response = client
             .get_connection_token(proto::GetConnectionTokenRequest {
+                input_message_id: self.input_message_id.map(uuid_to_proto),
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 provider: provider.to_string(),
             })
@@ -34,6 +50,8 @@ impl UserConnectionResolver for GrpcAdapter {
         let mut client = self.client.inner.lock().await;
         let response = client
             .get_mcp_connection_token(proto::GetMcpConnectionTokenRequest {
+                server_prefix: self.mcp_server_prefix.clone(),
+                input_message_id: self.input_message_id.map(uuid_to_proto),
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 provider: provider.to_string(),
                 acts_as: acts_as.to_string(),
@@ -51,6 +69,7 @@ impl UserConnectionResolver for GrpcAdapter {
         let mut client = self.client.inner.lock().await;
         let response = client
             .get_connection_user(proto::GetConnectionUserRequest {
+                input_message_id: self.input_message_id.map(uuid_to_proto),
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 provider: provider.to_string(),
             })
@@ -73,6 +92,8 @@ impl UserConnectionResolver for GrpcAdapter {
         let mut client = self.client.inner.lock().await;
         client
             .invalidate_mcp_connection(proto::InvalidateMcpConnectionRequest {
+                server_prefix: self.mcp_server_prefix.clone(),
+                input_message_id: self.input_message_id.map(uuid_to_proto),
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 provider: provider.to_string(),
                 acts_as: acts_as.to_string(),

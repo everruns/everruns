@@ -334,7 +334,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Reports")).toBeInTheDocument();
     expect(screen.getByText("Harnesses")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("Identities")).toBeInTheDocument();
+    expect(screen.getByText("Virtual Users")).toBeInTheDocument();
     expect(screen.getByText("Knowledge indexes")).toBeInTheDocument();
     expect(screen.getByText("Memory")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Apps" })).not.toBeInTheDocument();
@@ -380,13 +380,13 @@ describe("Sidebar", () => {
     const memoryLink = screen.getByRole("link", { name: "Memory" });
     const modelsLink = screen.getByRole("link", { name: "Models" });
     const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
-    const identitiesLink = screen.getByRole("link", { name: "Identities" });
+    const identitiesLink = screen.getByRole("link", { name: "Virtual Users" });
     const knowledgeLink = screen.getByRole("link", { name: "Knowledge indexes" });
     const mcpServersLink = screen.getByRole("link", { name: "MCP" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(chatsLink).toHaveAttribute("href", "/chats");
-    expect(identitiesLink).toHaveAttribute("href", "/agent-identities");
+    expect(identitiesLink).toHaveAttribute("href", "/virtual-users");
     expect(knowledgeLink).toHaveAttribute("href", "/knowledge-indexes");
     expect(mcpServersLink).toHaveAttribute("href", "/mcp-servers");
     expect(harnessesLink).toHaveAttribute("href", "/harnesses");

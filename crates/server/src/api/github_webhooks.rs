@@ -167,7 +167,7 @@ async fn forget_installation(
     let installation_id = payload.pointer("/installation/id").and_then(|v| v.as_i64());
     let Ok(Some(connection)) = state
         .db
-        .get_agent_identity_connection(app.agent_identity_id, "github")
+        .get_virtual_user_connection(app.virtual_user_id, "github")
         .await
     else {
         return;
@@ -176,7 +176,7 @@ async fn forget_installation(
         && connection.installation_id == installation_id
         && let Err(e) = state
             .db
-            .delete_agent_identity_connection(app.agent_identity_id, "github")
+            .delete_virtual_user_connection(app.virtual_user_id, "github")
             .await
     {
         tracing::warn!(error = %e, "Failed to drop uninstalled GitHub connection");

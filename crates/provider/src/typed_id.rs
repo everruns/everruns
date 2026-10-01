@@ -341,10 +341,10 @@ impl IdMarker for HarnessIdMarker {
     const PREFIX: &'static str = "harness";
 }
 
-/// Marker for agent identity IDs
+/// Marker for virtual user IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AgentIdentityIdMarker;
-impl IdMarker for AgentIdentityIdMarker {
+pub struct VirtualUserIdMarker;
+impl IdMarker for VirtualUserIdMarker {
     const PREFIX: &'static str = "identity";
 }
 
@@ -672,7 +672,7 @@ pub type AgentVersionId = TypedId<AgentVersionIdMarker>;
 /// Harness ID
 pub type HarnessId = TypedId<HarnessIdMarker>;
 /// Agent identity ID
-pub type AgentIdentityId = TypedId<AgentIdentityIdMarker>;
+pub type VirtualUserId = TypedId<VirtualUserIdMarker>;
 /// Agent trigger ID
 pub type TriggerId = TypedId<TriggerIdMarker>;
 /// Principal ID

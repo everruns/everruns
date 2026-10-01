@@ -245,10 +245,6 @@ impl InMemoryDatabase {
             self.organization_members
                 .write()
                 .retain(|&(_, uid), _| uid != user_id);
-            // Cascade: remove user connections
-            self.user_connections
-                .write()
-                .retain(|_, c| c.user_id != user_id);
             // Cascade: remove pinned sessions
             self.pinned_sessions
                 .write()

@@ -14,7 +14,7 @@ use everruns_platform::{
 };
 use everruns_provider::typed_id::AppId;
 use everruns_provider::typed_id::{
-    AgentId, AgentIdentityId, AgentVersionId, AppChannelId, HarnessId,
+    AgentId, AgentVersionId, AppChannelId, HarnessId, VirtualUserId,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -381,7 +381,7 @@ pub async fn row_to_app(
         agent_id,
         agent_version_policy: AgentVersionPolicy::from(row.agent_version_policy.as_str()),
         agent_version_id: row.agent_version_id.map(AgentVersionId::from_uuid),
-        agent_identity_id: row.agent_identity_id.map(AgentIdentityId::from_uuid),
+        virtual_user_id: row.virtual_user_id.map(VirtualUserId::from_uuid),
         owner_principal_id: row.owner_principal_id,
         resolved_owner_user_id: row.resolved_owner_user_id,
         owner,
@@ -491,17 +491,16 @@ pub async fn ensure_no_app_references_to_harness(
     Ok(())
 }
 
-pub async fn ensure_no_app_references_to_agent_identity(
+pub async fn ensure_no_app_references_to_virtual_user(
     db: &StorageBackend,
     org_id: i64,
     identity_id: Uuid,
 ) -> Result<(), CommandError> {
     let apps = db.list_apps(org_id, None, false).await?;
-    if let Some(names) =
-        referenced_app_names(&apps, |app| app.agent_identity_id == Some(identity_id))
+    if let Some(names) = referenced_app_names(&apps, |app| app.virtual_user_id == Some(identity_id))
     {
         return Err(CommandError::conflict(format!(
-            "Cannot archive or delete agent identity while apps still reference it: {names}"
+            "Cannot archive or delete virtual user while apps still reference it: {names}"
         )));
     }
     Ok(())

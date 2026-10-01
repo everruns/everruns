@@ -30,6 +30,23 @@ pub trait ProviderCredentialStore: Send + Sync {
 /// resolver when they need a token. If the user hasn't connected, returns None.
 #[async_trait]
 pub trait UserConnectionResolver: Send + Sync {
+    /// Bind credential resolution to a stored input-message invocation. Implementations
+    /// without this capability remain service-only and fail closed for consumer grants.
+    fn for_execution(
+        &self,
+        _input_message_id: Uuid,
+    ) -> Option<std::sync::Arc<dyn UserConnectionResolver>> {
+        None
+    }
+
+    /// Bind a configured MCP attachment at a remote execution boundary.
+    fn for_mcp_operation(
+        &self,
+        _server_prefix: &str,
+    ) -> Option<std::sync::Arc<dyn UserConnectionResolver>> {
+        None
+    }
+
     /// Get a decrypted connection token for the given provider.
     /// Returns None if the user has no connection for this provider.
     async fn get_connection_token(
@@ -41,17 +58,10 @@ pub trait UserConnectionResolver: Send + Sync {
     /// Resolve a decrypted MCP connection token as a pure function of the
     /// attachment's `actsAs`.
     ///
-    /// This is deliberately *not* `get_connection_token`: that one prefers an
-    /// agent identity grant and falls back to the session owner's user grant,
-    /// so the remote account a write lands under can change because session
-    /// wiring changed. For MCP the acting identity is configuration, so each
-    /// `actsAs` reads exactly one store and nothing else (EVE-1029, D2 of
-    /// `knowledge/integrations/agent-mcp-attachments.md`):
-    ///
-    /// - [`crate::mcp_server::McpServerActsAs::None`] reads no connection store at all.
-    /// - [`crate::mcp_server::McpServerActsAs::Service`] reads only the agent identity's grant.
-    /// - [`crate::mcp_server::McpServerActsAs::User`] reads only the invoking user's grant, and
-    ///   only when a human actually initiated the session.
+    /// Acting identity is explicit configuration over one credential store:
+    /// none reads no grant; service reads the responding agent's service virtual
+    /// user; user reads the current invocation's end user. Neither identity
+    /// falls back to the other, and session ownership never selects a grant.
     ///
     /// `Ok(None)` means "no credential", which callers surface as
     /// `connection_required` rather than an unauthenticated request.

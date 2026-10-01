@@ -33,7 +33,7 @@ use utoipa::ToSchema;
 #[serde(rename_all = "snake_case")]
 pub enum PaymentOwnerType {
     User,
-    AgentIdentity,
+    VirtualUser,
     Organization,
 }
 
@@ -41,7 +41,7 @@ impl PaymentOwnerType {
     pub fn as_wire(&self) -> &'static str {
         match self {
             PaymentOwnerType::User => "user",
-            PaymentOwnerType::AgentIdentity => "agent_identity",
+            PaymentOwnerType::VirtualUser => "virtual_user",
             PaymentOwnerType::Organization => "organization",
         }
     }
@@ -56,7 +56,7 @@ impl std::fmt::Display for PaymentOwnerType {
 impl From<&str> for PaymentOwnerType {
     fn from(value: &str) -> Self {
         match value {
-            "agent_identity" => PaymentOwnerType::AgentIdentity,
+            "virtual_user" => PaymentOwnerType::VirtualUser,
             "organization" => PaymentOwnerType::Organization,
             _ => PaymentOwnerType::User,
         }
@@ -111,7 +111,7 @@ impl From<&str> for PaymentStatus {
 }
 
 /// A payment account — the org-scoped source of funds for paid agent calls.
-/// Each account binds an owning principal (user, agent identity, or org)
+/// Each account binds an owning principal (user, virtual user, or org)
 /// to one settlement rail and tracks its provisioning lifecycle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -124,7 +124,7 @@ pub struct PaymentAccount {
         schema(example = "org_01933b5a000070008000000000000001")
     )]
     pub organization_id: String,
-    /// Principal class that owns this account (user, agent identity, or organization).
+    /// Principal class that owns this account (user, virtual user, or organization).
     pub owner_type: PaymentOwnerType,
     /// Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).
     #[cfg_attr(
@@ -157,7 +157,7 @@ pub struct PaymentAccount {
 }
 
 /// A payment policy — the binding between a paying account and a subject
-/// (agent identity, session) that controls which paid calls are
+/// (virtual user, session) that controls which paid calls are
 /// authorized and at what spend caps.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -172,8 +172,8 @@ pub struct PaymentPolicy {
     pub organization_id: String,
     /// Payment account this policy authorizes spending from.
     pub payment_account_id: PaymentAccountId,
-    /// Class of subject this policy binds to (e.g. `agent_identity`, `session`).
-    #[cfg_attr(feature = "openapi", schema(example = "agent_identity"))]
+    /// Class of subject this policy binds to (e.g. `virtual_user`, `session`).
+    #[cfg_attr(feature = "openapi", schema(example = "virtual_user"))]
     pub subject_type: String,
     /// Prefixed identifier of the bound subject.
     #[cfg_attr(

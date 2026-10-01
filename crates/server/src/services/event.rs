@@ -275,11 +275,11 @@ impl EventService {
             return Ok(());
         }
         let identity_id = session
-            .agent_identity_id
-            .context("service MCP event session has no agent identity")?;
+            .virtual_user_id
+            .context("service MCP event session has no virtual user")?;
         let acting = self
             .db
-            .get_principal_by_subject(session.org_id, "agent_identity", identity_id.uuid())
+            .get_principal_by_subject(session.org_id, "virtual_user", identity_id.uuid())
             .await
             .context("failed to load acting principal for service MCP event")?
             .context("acting principal missing for service MCP event")?;
@@ -693,7 +693,7 @@ mod tests {
     };
     use everruns_core::{DEFAULT_ORG_ID, RuntimeMessage};
     use everruns_platform::SessionParticipantRole;
-    use everruns_provider::typed_id::{AgentId, AgentIdentityId, HarnessId, PrincipalId};
+    use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId, VirtualUserId};
     use std::sync::Arc;
 
     fn sample_metadata() -> AgentVersionEventMetadata {
@@ -748,7 +748,7 @@ mod tests {
             agent_id: Some(agent_id),
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: None,
@@ -770,11 +770,11 @@ mod tests {
             budget_root_session_id: None,
         }
     }
-    fn service_session_input(identity_id: Option<AgentIdentityId>) -> CreateSessionRow {
+    fn service_session_input(identity_id: Option<VirtualUserId>) -> CreateSessionRow {
         let mut input = test_session_input(AgentId::new());
         input.agent_id = None;
         input.harness_id = None;
-        input.agent_identity_id = identity_id;
+        input.virtual_user_id = identity_id;
         input.mcp_servers = serde_json::json!({
             "linear": {
                 "use": "catalog:linear",
@@ -878,11 +878,11 @@ mod tests {
     async fn service_mcp_event_preserves_initiator_and_overrides_acting_principal() {
         let db = Arc::new(StorageBackend::in_memory());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
-        let identity_id = AgentIdentityId::new();
+        let identity_id = VirtualUserId::new();
         db.create_principal(CreatePrincipalRow {
             id: PrincipalId::new(),
             org_id: DEFAULT_ORG_ID,
-            kind: "agent_identity".to_string(),
+            kind: "virtual_user".to_string(),
             subject_id: Some(identity_id.uuid()),
             parent_principal_id: None,
             resolved_user_id: None,
@@ -929,7 +929,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_ne!(acting_principal_id, wrong_actor);
-        assert_eq!(acting.kind, "agent_identity");
+        assert_eq!(acting.kind, "virtual_user");
         assert_eq!(acting.subject_id, Some(identity_id.uuid()));
     }
 
@@ -938,7 +938,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
         let session = db
-            .create_session(service_session_input(Some(AgentIdentityId::new())))
+            .create_session(service_session_input(Some(VirtualUserId::new())))
             .await
             .unwrap();
         db.force_storage_failure("get_session_unscoped");
@@ -959,7 +959,7 @@ mod tests {
     async fn service_mcp_event_rejects_principal_lookup_failure() {
         let db = Arc::new(StorageBackend::in_memory());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
-        let identity_id = AgentIdentityId::new();
+        let identity_id = VirtualUserId::new();
         let session = db
             .create_session(service_session_input(Some(identity_id)))
             .await
@@ -983,7 +983,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
         let session = db
-            .create_session(service_session_input(Some(AgentIdentityId::new())))
+            .create_session(service_session_input(Some(VirtualUserId::new())))
             .await
             .unwrap();
 

@@ -26,7 +26,7 @@ use everruns_server::storage::{
     CreateDeclarativeCapabilityRow, CreateEvalRow, CreateEventRow, CreateHarnessRow,
     CreateImageRow, CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreatePrincipalRow,
     CreateProviderRow, CreateSessionFileRow, CreateSessionRow, CreateSessionScheduleRow,
-    CreateUserConnectionRow, CreateUserRow, Database, SessionListFilters, StorageBackend,
+    CreateUserRow, CreateVirtualUserConnectionRow, Database, SessionListFilters, StorageBackend,
     UpdateAgent, UpdateAgentHealthCheckRunRow, UpdateDeclarativeCapability, UpdateEvalRow,
     UpdateMcpServer, UpdateModel, UpdateOrganization, UpdateOrganizationSettings, UpdateProvider,
     UpdateSession, UpdateSessionFile, UpdateSessionScheduleRow,
@@ -566,157 +566,8 @@ async fn test_agent_get_by_name() {
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
-#[tokio::test]
-async fn test_session_connection_resolution_uses_resolved_owner_user() {
-    let backend = create_test_backend().await;
-
-    let owner = create_test_user(&backend, "owner").await;
-    let other = create_test_user(&backend, "other").await;
-
-    backend
-        .add_organization_member(TEST_ORG_ID, owner.id, "member")
-        .await
-        .expect("Failed to add owner to org");
-    backend
-        .add_organization_member(TEST_ORG_ID, other.id, "member")
-        .await
-        .expect("Failed to add other user to org");
-
-    let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
-    let session = backend
-        .create_session(CreateSessionRow {
-            owner_principal_id,
-            resolved_owner_user_id: Some(owner.id),
-            title: Some(format!("connection-owner-scope-{}", Uuid::now_v7())),
-            ..base_session_row(TEST_ORG_ID)
-        })
-        .await
-        .expect("Failed to create session");
-
-    backend
-        .upsert_user_connection(CreateUserConnectionRow {
-            user_id: other.id,
-            provider: "gitlab".to_string(),
-            connection_type: "oauth".to_string(),
-            provider_user_id: Some("other-gitlab".to_string()),
-            provider_username: Some("other".to_string()),
-            access_token_encrypted: Some(b"other-token".to_vec()),
-            refresh_token_encrypted: None,
-            scopes: Some("api".to_string()),
-            expires_at: None,
-            installation_id: None,
-            provider_metadata: Some(serde_json::json!({ "user": "other" })),
-        })
-        .await
-        .expect("Failed to insert other user's OAuth connection");
-    backend
-        .upsert_user_connection(CreateUserConnectionRow {
-            user_id: other.id,
-            provider: "github".to_string(),
-            connection_type: "oauth".to_string(),
-            provider_user_id: Some("other-github".to_string()),
-            provider_username: Some("other".to_string()),
-            access_token_encrypted: None,
-            refresh_token_encrypted: None,
-            scopes: Some("contents:read".to_string()),
-            expires_at: None,
-            installation_id: Some(222),
-            provider_metadata: None,
-        })
-        .await
-        .expect("Failed to insert other user's GitHub installation");
-
-    assert_eq!(
-        backend
-            .get_connection_token_for_session(session.id, "gitlab")
-            .await
-            .expect("Failed to resolve connection token"),
-        None
-    );
-    assert_eq!(
-        backend
-            .get_connection_metadata_for_session(session.id, "gitlab")
-            .await
-            .expect("Failed to resolve connection metadata"),
-        None
-    );
-    assert_eq!(
-        backend
-            .get_connection_user_for_session(session.id, "gitlab")
-            .await
-            .expect("Failed to resolve connection owner"),
-        None
-    );
-    assert_eq!(
-        backend
-            .get_installation_id_for_session(session.id, "github")
-            .await
-            .expect("Failed to resolve GitHub installation"),
-        None
-    );
-
-    backend
-        .upsert_user_connection(CreateUserConnectionRow {
-            user_id: owner.id,
-            provider: "gitlab".to_string(),
-            connection_type: "oauth".to_string(),
-            provider_user_id: Some("owner-gitlab".to_string()),
-            provider_username: Some("owner".to_string()),
-            access_token_encrypted: Some(b"owner-token".to_vec()),
-            refresh_token_encrypted: None,
-            scopes: Some("api".to_string()),
-            expires_at: None,
-            installation_id: None,
-            provider_metadata: Some(serde_json::json!({ "user": "owner" })),
-        })
-        .await
-        .expect("Failed to insert owner OAuth connection");
-    backend
-        .upsert_user_connection(CreateUserConnectionRow {
-            user_id: owner.id,
-            provider: "github".to_string(),
-            connection_type: "oauth".to_string(),
-            provider_user_id: Some("owner-github".to_string()),
-            provider_username: Some("owner".to_string()),
-            access_token_encrypted: None,
-            refresh_token_encrypted: None,
-            scopes: Some("contents:read".to_string()),
-            expires_at: None,
-            installation_id: Some(111),
-            provider_metadata: None,
-        })
-        .await
-        .expect("Failed to insert owner GitHub installation");
-
-    assert_eq!(
-        backend
-            .get_connection_token_for_session(session.id, "gitlab")
-            .await
-            .expect("Failed to resolve owner connection token"),
-        Some(b"owner-token".to_vec())
-    );
-    assert_eq!(
-        backend
-            .get_connection_metadata_for_session(session.id, "gitlab")
-            .await
-            .expect("Failed to resolve owner connection metadata"),
-        Some(serde_json::json!({ "user": "owner" }))
-    );
-    assert_eq!(
-        backend
-            .get_connection_user_for_session(session.id, "gitlab")
-            .await
-            .expect("Failed to resolve owner connection user"),
-        Some(owner.id)
-    );
-    assert_eq!(
-        backend
-            .get_installation_id_for_session(session.id, "github")
-            .await
-            .expect("Failed to resolve owner GitHub installation"),
-        Some(111)
-    );
-}
+#[path = "repository_integration_test/runtime_connections.rs"]
+mod runtime_connections;
 
 #[tokio::test]
 async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {
@@ -830,7 +681,7 @@ async fn test_session_crud() {
                 agent_id: None,
                 agent_version_policy: "default".to_string(),
                 agent_version_id: None,
-                agent_identity_id: None,
+                virtual_user_id: None,
                 owner_principal_id,
                 resolved_owner_user_id: None,
                 channel_type: Some("webhook".to_string()),

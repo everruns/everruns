@@ -10,6 +10,30 @@ use crate::storage::{
 use everruns_core::capabilities::Capability;
 
 pub(crate) async fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
+    let ids = [caller.user_id, Some(everruns_platform::ANONYMOUS_USER_ID)];
+    for id in ids.into_iter().flatten() {
+        if db.get_user(id).await.unwrap().is_none() {
+            db.create_user_with_id(
+                id,
+                crate::storage::models::CreateUserRow {
+                    email: format!("{id}@example.com"),
+                    name: "User".into(),
+                    avatar_url: None,
+                    roles: vec![],
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        db.add_organization_member(caller.org_id, id, "owner")
+            .await
+            .unwrap();
+    }
     crate::org_init::initialize_org_harnesses(&db, caller.org_id)
         .await
         .expect("initialize built-in harnesses for session service tests");
@@ -47,7 +71,7 @@ pub(crate) fn build_create_request(
         harness_name: None,
         agent_id,
         agent_name: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         title: Some("Test Session".to_string()),
         goal: None,
         locale: None,

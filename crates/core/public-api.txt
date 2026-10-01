@@ -3,12 +3,6 @@
 everruns_core	module
 everruns_core::agent_definition	module
 everruns_core::agent_definition::AgentDefinition	struct
-everruns_core::agent_identity	module
-everruns_core::agent_identity::AgentIdentity	struct
-everruns_core::agent_identity::AgentIdentityStatus	enum
-everruns_core::agent_identity::AgentIdentityStatus::Active	variant
-everruns_core::agent_identity::AgentIdentityStatus::Archived	variant
-everruns_core::agent_identity::AgentIdentityStatus::Deleted	variant
 everruns_core::annotation_hook	module
 everruns_core::annotation_hook::AnnotationContext	struct
 everruns_core::annotation_hook::AnnotationProvider	struct
@@ -1107,8 +1101,6 @@ everruns_core::permissions	module
 everruns_core::permissions::Caller	struct
 everruns_core::permissions::DefaultPermissionResolver	struct
 everruns_core::permissions::Permission	enum
-everruns_core::permissions::Permission::OrgAgentIdentitiesManage	variant
-everruns_core::permissions::Permission::OrgAgentIdentitiesView	variant
 everruns_core::permissions::Permission::OrgAgentsDangerous	variant
 everruns_core::permissions::Permission::OrgAgentsManage	variant
 everruns_core::permissions::Permission::OrgApiKeysManage	variant
@@ -1139,6 +1131,8 @@ everruns_core::permissions::Permission::OrgSettingsView	variant
 everruns_core::permissions::Permission::OrgSkillsDangerous	variant
 everruns_core::permissions::Permission::OrgSkillsManage	variant
 everruns_core::permissions::Permission::OrgSkillsView	variant
+everruns_core::permissions::Permission::OrgVirtualUsersManage	variant
+everruns_core::permissions::Permission::OrgVirtualUsersView	variant
 everruns_core::permissions::PermissionResolver	trait
 everruns_core::permissions::Policy	struct
 everruns_core::permissions::PolicyConfigResponse	type_alias
@@ -1188,9 +1182,9 @@ everruns_core::plugins::manifest::StringOrArray::Single	variant
 everruns_core::plugins::manifest::parse_agent_plugins_v1_manifest	function
 everruns_core::principal	module
 everruns_core::principal::PrincipalKind	enum
-everruns_core::principal::PrincipalKind::AgentIdentity	variant
 everruns_core::principal::PrincipalKind::System	variant
 everruns_core::principal::PrincipalKind::User	variant
+everruns_core::principal::PrincipalKind::VirtualUser	variant
 everruns_core::principal::PrincipalSummary	struct
 everruns_core::progress_reporting	module
 everruns_core::progress_reporting::CHANNEL_REPLY_MODE_TAG_PREFIX	constant
@@ -1523,6 +1517,8 @@ everruns_core::tool_call_integrity::retain_complete_llm_tool_exchanges	function
 everruns_core::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request	function
 everruns_core::tool_call_integrity::retain_complete_message_tool_exchanges	function
 everruns_core::tool_context	module
+everruns_core::tool_context::ExecutionServices	trait
+everruns_core::tool_context::ExecutionServicesExt	struct
 everruns_core::tool_context::ReasoningEffortHandle	struct
 everruns_core::tool_context::ReasoningEffortHandle::set	function
 everruns_core::tool_context::ToolContext	struct
@@ -1756,6 +1752,15 @@ everruns_core::utility_llm::UtilityLlmReasoningEffort::Low	variant
 everruns_core::utility_llm::UtilityLlmReasoningEffort::Medium	variant
 everruns_core::utility_llm::UtilityLlmRequest	struct
 everruns_core::utility_llm::UtilityLlmService	trait
+everruns_core::virtual_user	module
+everruns_core::virtual_user::VirtualUser	struct
+everruns_core::virtual_user::VirtualUserStatus	enum
+everruns_core::virtual_user::VirtualUserStatus::Active	variant
+everruns_core::virtual_user::VirtualUserStatus::Archived	variant
+everruns_core::virtual_user::VirtualUserStatus::Deleted	variant
+everruns_core::virtual_user::VirtualUserUsage	enum
+everruns_core::virtual_user::VirtualUserUsage::EndUser	variant
+everruns_core::virtual_user::VirtualUserUsage::Service	variant
 everruns_core::wake_queue	module
 everruns_core::wake_queue::PendingWake	struct
 everruns_core::wake_queue::SessionWakeQueue	struct

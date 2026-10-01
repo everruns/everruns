@@ -71,7 +71,7 @@ impl SessionService {
             harness_name: None,
             agent_id: agent_public_id,
             agent_name: None,
-            agent_identity_id: parent.agent_identity_id,
+            virtual_user_id: parent.virtual_user_id,
             title,
             goal,
             locale: overrides.locale.or(parent.locale),

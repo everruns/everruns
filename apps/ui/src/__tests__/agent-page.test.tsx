@@ -7,6 +7,8 @@ let mockSearchParams = new URLSearchParams();
 const push = jest.fn();
 const replace = jest.fn();
 
+jest.mock("@/hooks/use-virtual-users", () => ({ useVirtualUsers: () => ({ data: [] }) }));
+
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent-1",
   useRouter: () => ({ push, replace, back: jest.fn() }),

@@ -131,9 +131,9 @@ pub mod budget;
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent_definition;
-pub mod agent_identity;
 pub mod ard_attachment;
 pub mod capability_dto;
+pub mod virtual_user;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
 // enums) moved to the `everruns-platform` crate — they are product
@@ -437,7 +437,7 @@ pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 // the `everruns-platform` crate. Core keeps only the portable authored
 // execution configuration consumed during a turn.
 pub use agent_definition::AgentDefinition;
-pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
+pub use virtual_user::{VirtualUser, VirtualUserStatus, VirtualUserUsage};
 // EVE-841: the app and agent-trigger control-plane records moved to the
 // `everruns-platform` crate. They are hosted orchestration records not consumed
 // during a turn, so core no longer defines or re-exports them.
@@ -529,7 +529,7 @@ pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, 
 // EVE-837/EVE-845: `Principal` and the `PrincipalStatus` lifecycle enum moved to
 // the `everruns-platform` crate. `PrincipalSummary` and the `PrincipalKind` that
 // backs it stay here — they are embedded by `Session`/`SessionSchedule`/
-// `AgentIdentity`.
+// `VirtualUser`.
 pub use principal::{PrincipalKind, PrincipalSummary};
 pub(crate) use runtime_provider::ProviderKey;
 // EVE-882: the persisted `Session` aggregate and its product lifecycle enums

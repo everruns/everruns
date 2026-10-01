@@ -29,6 +29,11 @@ use std::sync::Arc;
 /// stays host-agnostic.
 #[async_trait]
 pub trait McpToolInvoker: Send + Sync {
+    /// Bind invocation credential selection to the current persisted input.
+    fn for_execution(&self, _input_message_id: uuid::Uuid) -> Option<Arc<dyn McpToolInvoker>> {
+        None
+    }
+
     /// Execute a single MCP tool call (its `name` is the prefixed `mcp_*` name)
     /// and return the raw tool result.
     async fn invoke(&self, tool_call: &ToolCall) -> Result<crate::tool_types::ToolResult>;
@@ -67,6 +72,15 @@ impl ScopedMcpToolInvoker {
 
 #[async_trait]
 impl McpToolInvoker for ScopedMcpToolInvoker {
+    fn for_execution(&self, input_message_id: uuid::Uuid) -> Option<Arc<dyn McpToolInvoker>> {
+        self.inner.for_execution(input_message_id).map(|inner| {
+            Arc::new(Self {
+                inner,
+                allowed_tool_names: self.allowed_tool_names.clone(),
+            }) as Arc<dyn McpToolInvoker>
+        })
+    }
+
     async fn invoke(&self, tool_call: &ToolCall) -> Result<crate::tool_types::ToolResult> {
         if !self.allowed_tool_names.contains(&tool_call.name) {
             return Err(crate::AgentLoopError::tool(format!(
@@ -155,6 +169,18 @@ impl Tool for McpProxyTool {
         context: &ToolContext,
     ) -> ToolExecutionResult {
         let tool_call_id = context.tool_call_id.clone().unwrap_or_default();
+        if let Some(id) = context
+            .event_context
+            .as_ref()
+            .and_then(|c| c.input_message_id)
+            && let Some(invoker) = self.invoker.for_execution(id.uuid())
+        {
+            let scoped = Self {
+                definition: self.definition.clone(),
+                invoker,
+            };
+            return scoped.invoke(tool_call_id, arguments).await;
+        }
         self.invoke(tool_call_id, arguments).await
     }
 }

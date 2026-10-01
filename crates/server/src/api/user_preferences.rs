@@ -25,7 +25,7 @@ use crate::storage::models::UserPreferenceRow;
 const MAX_PREFERENCES_PER_USER: usize = 100;
 const MAX_PREFERENCE_VALUE_BYTES: usize = 4 * 1024;
 
-fn validate_preference(key: &str, value: &str) -> Result<(), StatusCode> {
+pub(crate) fn validate_preference(key: &str, value: &str) -> Result<(), StatusCode> {
     if key.is_empty() || key.len() > 255 {
         return Err(StatusCode::BAD_REQUEST);
     }

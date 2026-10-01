@@ -130,7 +130,7 @@ impl WorkerServiceImpl {
                 crate::api::sessions::UpdateSessionRequest {
                     title: Some(req.title),
                     goal: None,
-                    agent_identity_id: everruns_durable::UpdateField::Unchanged,
+                    virtual_user_id: everruns_durable::UpdateField::Unchanged,
                     locale: None,
                     tags: None,
                 },

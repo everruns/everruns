@@ -4,13 +4,13 @@ use utoipa::{IntoParams, ToSchema};
 /// Request body for the `create_payment_account` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentAccountRequest {
-    /// Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.
-    /// The prefix on `owner_id` must match this: `user` → `user_…`, `agent_identity` → `identity_…`,
+    /// Principal class that owns the account. One of: `user`, `virtual_user`, `organization`.
+    /// The prefix on `owner_id` must match this: `user` → `user_…`, `virtual_user` → `identity_…`,
     /// `organization` → `org_…`.
-    #[schema(example = "agent_identity")]
+    #[schema(example = "virtual_user")]
     pub owner_type: String,
     /// Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`
-    /// (see above). Example below pairs with `owner_type = "agent_identity"`.
+    /// (see above). Example below pairs with `owner_type = "virtual_user"`.
     #[schema(example = "identity_01933b5a00007000800000000000001")]
     pub owner_id: String,
     /// Settlement rail this account operates on. One of: `mpp_tempo`, `x402_base`.
@@ -56,7 +56,7 @@ pub struct UpdatePaymentAccountRequest {
 
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListPaymentAccountsQuery {
-    /// Filter to a single owner class (user, agent identity, or organization).
+    /// Filter to a single owner class (user, virtual user, or organization).
     pub owner_type: Option<String>,
     /// Filter to a specific owner principal id.
     pub owner_id: Option<String>,
@@ -69,17 +69,17 @@ pub struct CreatePaymentPolicyRequest {
     /// identifier or a bare UUID.
     #[schema(example = "payacct_01933b5a00007000800000000000001")]
     pub payment_account_id: String,
-    /// Class of subject this policy binds to. One of: `user`, `agent_identity`,
+    /// Class of subject this policy binds to. One of: `user`, `virtual_user`,
     /// `agent`, `agent_endpoint`, `session`, `org`.
-    /// The prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,
+    /// The prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,
     /// `agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the
     /// identifier it carried as an App channel), `session`→`session_…`,
     /// `org`→`org_…`. The identifier must be the API-facing one — an internal
     /// uuid will be stored and then never match (EVE-1130).
-    #[schema(example = "agent_identity")]
+    #[schema(example = "virtual_user")]
     pub subject_type: String,
     /// Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`
-    /// (see above). Example below pairs with `subject_type = "agent_identity"`.
+    /// (see above). Example below pairs with `subject_type = "virtual_user"`.
     #[schema(example = "identity_01933b5a00007000800000000000001")]
     pub subject_id: String,
     /// Capability IDs this policy permits paid calls for. Empty list means no capability gating.

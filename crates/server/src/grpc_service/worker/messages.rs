@@ -27,6 +27,38 @@ impl WorkerServiceImpl {
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
+        let input_message = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?;
+        if let Some(message) = input_message {
+            if !self
+                .db
+                .runtime_invocation_exists(session.id, message)
+                .await
+                .map_err(|_| Status::internal("Invocation unavailable"))?
+            {
+                return Err(Status::permission_denied("Unknown invocation"));
+            }
+            let responder = self
+                .db
+                .runtime_invocation_responder(session.id, message)
+                .await
+                .map_err(|_| Status::internal("Invocation unavailable"))?
+                .map(everruns_provider::typed_id::AgentId::from_uuid);
+
+            if session.agent_id != responder {
+                session.agent_version_id = None;
+            }
+
+            session.agent_id = responder;
+        }
+        let bound_resolver = input_message.and_then(|id| {
+            self.connection_resolver
+                .as_ref()
+                .and_then(|resolver| resolver.for_execution(id))
+        });
         // Fold any runtime ARD attachments (knowledge/integrations/integrations.md, resource_discovery)
         // into the session config layer before scoped MCP servers / capabilities
         // are resolved, so attached MCP servers and A2A agents become usable on
@@ -215,7 +247,7 @@ impl WorkerServiceImpl {
                     req.org_id,
                     &effective,
                     Some(session.id),
-                    self.connection_resolver.as_ref(),
+                    bound_resolver.as_ref().or(self.connection_resolver.as_ref()),
                     self.mcp_server_service.egress_service().as_ref(),
                 )
                 .await

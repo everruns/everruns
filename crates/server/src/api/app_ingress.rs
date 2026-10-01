@@ -7,7 +7,7 @@ use everruns_platform::{
     SlackChannelConfig,
 };
 use everruns_provider::typed_id::{
-    AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId,
+    AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId, VirtualUserId,
 };
 use uuid::Uuid;
 
@@ -57,7 +57,7 @@ pub struct IngressContext {
     pub harness_id: HarnessId,
     pub agent_id: Option<AgentId>,
     pub agent_internal_id: Uuid,
-    pub agent_identity_id: Option<AgentIdentityId>,
+    pub virtual_user_id: Option<VirtualUserId>,
     pub agent_version_policy: AgentVersionPolicy,
     pub agent_version_id: Option<AgentVersionId>,
     pub owner_principal_id: PrincipalId,
@@ -86,7 +86,7 @@ impl IngressContext {
             harness_id: HarnessId::from_seed(2),
             agent_id: Some(AgentId::from_seed(4)),
             agent_internal_id: Uuid::nil(),
-            agent_identity_id: None,
+            virtual_user_id: None,
             agent_version_policy: AgentVersionPolicy::Default,
             agent_version_id: None,
             owner_principal_id: PrincipalId::from_seed(3),
@@ -237,7 +237,7 @@ pub(crate) fn row_to_ingress(
         harness_id: HarnessId::from_uuid(row.harness_id),
         agent_id: Some(row.agent_public_id.parse()?),
         agent_internal_id: row.agent_id,
-        agent_identity_id: row.agent_identity_id.map(AgentIdentityId::from_uuid),
+        virtual_user_id: row.virtual_user_id.map(VirtualUserId::from_uuid),
         agent_version_policy: AgentVersionPolicy::from(row.agent_version_policy.as_str()),
         agent_version_id: row.agent_version_id.map(AgentVersionId::from_uuid),
         owner_principal_id: PrincipalId::from_uuid(row.owner_principal_id),

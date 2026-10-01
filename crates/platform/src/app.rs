@@ -18,7 +18,7 @@ use crate::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
 pub use everruns_core::channel::SessionBinding;
 use everruns_core::principal::PrincipalSummary;
 use everruns_provider::typed_id::{
-    AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId,
+    AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId, VirtualUserId,
 };
 
 #[cfg(feature = "openapi")]
@@ -278,7 +278,7 @@ pub struct App {
     /// Optional virtual identity that represents the app in unattended/channel execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
-    pub agent_identity_id: Option<AgentIdentityId>,
+    pub virtual_user_id: Option<VirtualUserId>,
     /// Owning principal for this app.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "principal_01933b5a000070008000000000000001"))]
     pub owner_principal_id: PrincipalId,
@@ -1283,7 +1283,7 @@ mod tests {
             agent_id: Some(AgentId::from_uuid(Uuid::nil())),
             agent_version_policy: AgentVersionPolicy::Default,
             agent_version_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             owner: None,

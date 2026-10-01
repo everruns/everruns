@@ -306,7 +306,7 @@ async fn execute_case_inner(
                 harness_name: None,
                 agent_id: None,
                 agent_name: None,
-                agent_identity_id: None,
+                virtual_user_id: None,
                 title: Some(format!("Eval: {}", case_row.name)),
                 goal: None,
                 locale: None,
@@ -517,6 +517,7 @@ async fn send_message_and_wait(
 
     // Send message
     let msg_ctx = CreateMessageContext {
+        runtime_subject_principal_id: None,
         org_id: sctx.org_id,
         user_id: None,
         harness_id: sctx.harness_id,

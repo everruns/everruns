@@ -22,7 +22,7 @@ import { Search, CornerDownLeft, ArrowUp, ArrowDown } from "lucide-react";
 const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
   navigation: "Pages",
   agent: "Agents",
-  agent_identity: "Agent Identities",
+  virtual_user: "Virtual Users",
   session: "Sessions",
   harness: "Harnesses",
   skill: "Skills",
@@ -43,7 +43,7 @@ const CATEGORY_ORDER: SearchResultCategory[] = [
   "navigation",
   "organization",
   "agent",
-  "agent_identity",
+  "virtual_user",
   "session",
   "harness",
   "skill",

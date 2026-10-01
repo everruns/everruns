@@ -30,7 +30,7 @@ use everruns_platform::{
     Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
 };
 use everruns_provider::typed_id::{
-    AgentId, AgentIdentityId, HarnessId, ModelId, SessionId, WorkspaceId,
+    AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
 };
 use everruns_worker::AgentRunner;
 
@@ -77,10 +77,10 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(example = "support")]
     pub agent_name: Option<String>,
-    /// Optional resident agent identity used for unattended/background execution.
+    /// Optional resident virtual user used for unattended/background execution.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
-    pub agent_identity_id: Option<AgentIdentityId>,
+    pub virtual_user_id: Option<VirtualUserId>,
     /// Human-readable title for the session.
     #[serde(default)]
     #[schema(example = "Debug login issue")]
@@ -337,14 +337,14 @@ pub struct UpdateSessionRequest {
     #[serde(default)]
     #[schema(example = "Summarize the incident and list remediations")]
     pub goal: Option<String>,
-    /// Optional resident agent identity used for unattended/background execution.
+    /// Optional resident virtual user used for unattended/background execution.
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(
         value_type = Option<String>,
         example = "identity_01933b5a00007000800000000000001",
         nullable = true
     )]
-    pub agent_identity_id: UpdateField<AgentIdentityId>,
+    pub virtual_user_id: UpdateField<VirtualUserId>,
     /// Session locale (BCP 47, e.g. `uk-UA`).
     #[serde(default)]
     #[schema(example = "uk-UA")]
@@ -1433,23 +1433,23 @@ mod tests {
         let json = r#"{}"#;
         let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.title, None);
-        assert_eq!(req.agent_identity_id, UpdateField::Unchanged);
+        assert_eq!(req.virtual_user_id, UpdateField::Unchanged);
         assert_eq!(req.locale, None);
         assert_eq!(req.tags, None);
     }
 
     #[test]
-    fn test_update_session_request_clears_agent_identity_when_null() {
-        let json = r#"{"agent_identity_id":null}"#;
+    fn test_update_session_request_clears_virtual_user_when_null() {
+        let json = r#"{"virtual_user_id":null}"#;
         let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.agent_identity_id, UpdateField::Clear);
+        assert_eq!(req.virtual_user_id, UpdateField::Clear);
     }
 
     #[test]
-    fn test_update_session_request_sets_agent_identity_when_present() {
-        let json = r#"{"agent_identity_id":"identity_550e8400e29b41d4a716446655440000"}"#;
+    fn test_update_session_request_sets_virtual_user_when_present() {
+        let json = r#"{"virtual_user_id":"identity_550e8400e29b41d4a716446655440000"}"#;
         let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
-        assert!(matches!(req.agent_identity_id, UpdateField::Set(_)));
+        assert!(matches!(req.virtual_user_id, UpdateField::Set(_)));
     }
 
     #[test]

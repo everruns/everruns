@@ -222,6 +222,10 @@ async fn run_public_chat(
 ) -> Result<Response, Response> {
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
+    let runtime_endpoint = match &target {
+        PublicChatTarget::Endpoint(id) => Some(id.clone()),
+        _ => None,
+    };
     let (app, endpoint_internal_id, config) = resolve_published_channel(&state, target).await?;
 
     // 1. Authentication. A channel with a real inline `auth` provider requires
@@ -234,36 +238,72 @@ async fn run_public_chat(
         .auth
         .as_ref()
         .filter(|auth| auth.mode != AppEndpointAuthMode::Anonymous);
-    let (authenticated, visitor_binding, set_visitor_cookie) = if let Some(auth) = real_auth {
-        let principal = state
-            .auth_verifier
-            .verify_principal(
-                auth,
-                &headers,
-                LegacyEndpointAuth {
-                    shared_secret: config.token.as_deref(),
-                    api_key: None,
-                },
-            )
-            .await
-            .map_err(auth_error_response)?;
-        let principal = principal.ok_or_else(unauthorized)?;
-        (true, signed_in_visitor_tag(&principal), None)
+    let runtime_account = if let Some(endpoint) = runtime_endpoint {
+        super::ag_ui::runtime_endpoint_account(&state, &endpoint, &headers).await?
     } else {
-        if !config.anonymous {
-            return Err(forbidden("Anonymous access is disabled for this chat"));
-        }
-        if let Some(expected) = config.token.as_deref()
-            && !expected.is_empty()
-        {
-            let provided = extract_token(&headers).ok_or_else(unauthorized)?;
-            if !constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
-                return Err(unauthorized());
-            }
-        }
-        let (visitor_id, set_cookie) = anonymous_visitor_id(&headers);
-        (false, anonymous_visitor_tag(&visitor_id), set_cookie)
+        None
     };
+    let (authenticated, visitor_binding, set_visitor_cookie, runtime_identity) =
+        if let Some((account, binding)) = runtime_account {
+            (
+                true,
+                signed_in_visitor_tag(&AppEndpointAuthPrincipal {
+                    issuer: binding.realm.clone(),
+                    subject: binding.subject.clone(),
+                }),
+                None,
+                Some((
+                    binding.provider,
+                    binding.realm,
+                    binding.subject,
+                    Some(account.id),
+                )),
+            )
+        } else if let Some(auth) = real_auth {
+            let principal = state
+                .auth_verifier
+                .verify_principal(
+                    auth,
+                    &headers,
+                    LegacyEndpointAuth {
+                        shared_secret: config.token.as_deref(),
+                        api_key: None,
+                    },
+                )
+                .await
+                .map_err(auth_error_response)?;
+            let principal = principal.ok_or_else(unauthorized)?;
+            (
+                true,
+                signed_in_visitor_tag(&principal),
+                None,
+                Some(("oidc".into(), principal.issuer, principal.subject, None)),
+            )
+        } else {
+            if !config.anonymous {
+                return Err(forbidden("Anonymous access is disabled for this chat"));
+            }
+            if let Some(expected) = config.token.as_deref()
+                && !expected.is_empty()
+            {
+                let provided = extract_token(&headers).ok_or_else(unauthorized)?;
+                if !constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
+                    return Err(unauthorized());
+                }
+            }
+            let (visitor_id, set_cookie) = anonymous_visitor_id(&headers);
+            (
+                false,
+                anonymous_visitor_tag(&visitor_id),
+                set_cookie,
+                Some((
+                    "anonymous".into(),
+                    endpoint_internal_id.to_string(),
+                    visitor_id,
+                    None,
+                )),
+            )
+        };
 
     // 2. Bot mitigation. Enforced only for anonymous (not-signed-in) visitors
     //    when a captcha is configured and enabled.
@@ -286,6 +326,19 @@ async fn run_public_chat(
         }
     }
 
+    let runtime_user = if let Some((provider, realm, subject, known)) = runtime_identity {
+        Some(match known {
+            Some(id) => id,
+            None => {
+                super::ag_ui::resolve_ingress_identity(
+                    &state, app.org_id, &provider, &realm, &subject,
+                )
+                .await?
+            }
+        })
+    } else {
+        None
+    };
     // 4. Delegate to the shared AG-UI streaming core with a public_chat-scoped
     //    routing-tag prefix so sessions stay isolated from other channels.
     let sse = run_app_agent_stream(
@@ -295,6 +348,7 @@ async fn run_public_chat(
         config.ag_ui_stream_config(),
         ROUTING_TAG_PREFIX,
         vec![visitor_binding],
+        runtime_user,
         request,
         request_id,
     )

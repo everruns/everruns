@@ -398,7 +398,7 @@ async fn post_decision_message(
     let mut event_metadata = crate::execution_metadata::app_message_metadata(
         app.public_id,
         app.owner_principal_id,
-        app.agent_identity_id,
+        app.virtual_user_id,
     );
     if let Some(map) = event_metadata.as_object_mut() {
         map.insert(
@@ -411,6 +411,7 @@ async fn post_decision_message(
         .message_service
         .create(
             crate::domains::messages::CreateMessageContext {
+                runtime_subject_principal_id: Some(participant.principal_id),
                 org_id,
                 user_id: None,
                 harness_id: app.harness_id.uuid(),

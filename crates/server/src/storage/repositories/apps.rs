@@ -15,9 +15,9 @@ impl Database {
     pub async fn create_app(&self, org_id: i64, input: CreateAppRow) -> Result<AppRow> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            INSERT INTO apps (org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status)
+            INSERT INTO apps (org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft')
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -28,7 +28,7 @@ impl Database {
         .bind(input.agent_id)
         .bind(&input.agent_version_policy)
         .bind(input.agent_version_id)
-        .bind(input.agent_identity_id)
+        .bind(input.virtual_user_id)
         .bind(input.owner_principal_id)
         .bind(input.resolved_owner_user_id)
         .bind(&input.channel_type)
@@ -47,7 +47,7 @@ impl Database {
     ) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE org_id = $1 AND public_id = $2
             "#,
@@ -63,7 +63,7 @@ impl Database {
     pub async fn get_app_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE org_id = $1 AND id = $2
             "#,
@@ -91,7 +91,7 @@ impl Database {
     pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE public_id = $1
             "#,
@@ -110,7 +110,7 @@ impl Database {
     ) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT a.id, a.org_id, a.public_id, a.name, a.description, a.harness_id, a.agent_id, a.agent_version_policy, a.agent_version_id, a.agent_identity_id, a.owner_principal_id, a.resolved_owner_user_id, a.channel_type, a.channel_config, a.channel_config_encrypted, a.status, a.published_at, a.created_at, a.updated_at, a.archived_at, a.deleted_at
+            SELECT a.id, a.org_id, a.public_id, a.name, a.description, a.harness_id, a.agent_id, a.agent_version_policy, a.agent_version_id, a.virtual_user_id, a.owner_principal_id, a.resolved_owner_user_id, a.channel_type, a.channel_config, a.channel_config_encrypted, a.status, a.published_at, a.created_at, a.updated_at, a.archived_at, a.deleted_at
             FROM apps a
             JOIN agent_endpoints ac ON ac.app_id = a.id
             WHERE ac.public_id = $1
@@ -137,7 +137,7 @@ impl Database {
             " AND status NOT IN ('archived', 'deleted')"
         };
         let sql = format!(
-            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
                 FROM apps
                 WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
@@ -209,7 +209,7 @@ impl Database {
                 agent_id = COALESCE($6, agent_id),
                 agent_version_policy = COALESCE($7, agent_version_policy),
                 agent_version_id = CASE WHEN $8 THEN $9 ELSE agent_version_id END,
-                agent_identity_id = CASE WHEN $10 THEN $11 ELSE agent_identity_id END,
+                virtual_user_id = CASE WHEN $10 THEN $11 ELSE virtual_user_id END,
                 owner_principal_id = COALESCE($12, owner_principal_id),
                 resolved_owner_user_id = CASE WHEN $13 THEN $14 ELSE resolved_owner_user_id END,
                 channel_type = COALESCE($15, channel_type),
@@ -219,7 +219,7 @@ impl Database {
                 published_at = CASE WHEN $19 THEN $20 ELSE published_at END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -231,8 +231,8 @@ impl Database {
         .bind(&input.agent_version_policy)
         .bind(input.agent_version_id.is_changed())
         .bind(input.agent_version_id.into_value())
-        .bind(input.agent_identity_id.is_changed())
-        .bind(input.agent_identity_id.into_value())
+        .bind(input.virtual_user_id.is_changed())
+        .bind(input.virtual_user_id.into_value())
         .bind(input.owner_principal_id)
         .bind(input.resolved_owner_user_id.is_changed())
         .bind(input.resolved_owner_user_id.into_value())

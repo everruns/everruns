@@ -1,7 +1,7 @@
 // "Connect GitHub" for agent identities: per-agent GitHub Apps.
 //
 // Flow (all clicks, no copied credentials):
-// 1. `POST /v1/agent-identities/{id}/connections/github/app` (authenticated)
+// 1. `POST /v1/virtual-users/{id}/connections/github/app` (authenticated)
 //    returns either a manifest form for the browser to post to GitHub (first
 //    connect) or the App's install URL (the App already exists).
 // 2. GitHub creates the App and redirects the browser to
@@ -33,16 +33,16 @@ use uuid::Uuid;
 
 use super::common::{ErrorResponse, impl_auth_state};
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::agent_identities::AGENT_IDENTITY_MANAGE;
-use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
 use crate::domains::agents::AGENT_VIEW;
+use crate::domains::virtual_users::VIRTUAL_USER_MANAGE;
+use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::github_apps::{
     AppCredentials, GitHubAppApi, ManifestInput, SetupState, build_manifest, default_app_name,
     install_url, manifest_form_action,
 };
-use crate::kernel_imports::{Caller, everruns_provider::typed_id::AgentIdentityId};
+use crate::kernel_imports::{Caller, everruns_provider::typed_id::VirtualUserId};
 use crate::storage::github_app_rows::{CreateGitHubAppRow, GitHubAppRow};
-use crate::storage::models::CreateAgentIdentityConnectionRow;
+use crate::storage::models::CreateVirtualUserConnectionRow;
 use crate::storage::{EncryptionService, StorageBackend};
 
 pub const GITHUB_PROVIDER: &str = "github";
@@ -59,7 +59,7 @@ pub struct AppState {
 impl AppState {
     /// Shares the identity-connections state: "Connect GitHub" is one more way
     /// to create an identity connection.
-    pub fn from_connections(state: &super::agent_identity_connections::AppState) -> Self {
+    pub fn from_connections(state: &super::virtual_user_connections::AppState) -> Self {
         Self {
             db: state.db.clone(),
             encryption: state.encryption.clone(),
@@ -84,11 +84,11 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agent-identities/{identity_id}/connections/github/app",
+            "/v1/virtual-users/{identity_id}/connections/github/app",
             post(begin_connect).delete(disconnect),
         )
         .route(
-            "/v1/agent-identities/{identity_id}/connections/github/repositories",
+            "/v1/virtual-users/{identity_id}/connections/github/repositories",
             get(list_repositories),
         )
         .route("/v1/agents/{agent_id}/github", get(agent_status))
@@ -179,20 +179,27 @@ async fn resolve_identity(
     state: &AppState,
     org: &ResolvedOrg,
     raw_id: &str,
-) -> Result<(AgentIdentityId, String), ApiError> {
-    let identity_id: AgentIdentityId = raw_id
-        .parse()
-        .map_err(|_| error(StatusCode::BAD_REQUEST, "Invalid identity ID"))?;
-    let caller = Caller::from(org);
-    AGENT_IDENTITY_MANAGE
-        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
-        .map_err(|_| error(StatusCode::FORBIDDEN, "Permission denied"))?;
+) -> Result<(VirtualUserId, String), ApiError> {
+    let identity_id = crate::domains::virtual_users::connection_target(
+        &state.db,
+        state.auth.permission_resolver.as_ref(),
+        &Caller::from(org),
+        raw_id,
+    )
+    .await
+    .map_err(ApiError::from)?;
     let identity = state
         .db
-        .get_agent_identity(org.org_id, identity_id)
+        .get_virtual_user(org.org_id, identity_id)
         .await
         .map_err(|e| internal("Failed to get agent identity", e))?
-        .ok_or_else(|| error(StatusCode::NOT_FOUND, "Agent identity not found"))?;
+        .ok_or_else(|| error(StatusCode::NOT_FOUND, "Virtual user not found"))?;
+    if identity.usage != "service" {
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            "Agent GitHub Apps require a service virtual user",
+        ));
+    }
     Ok((identity_id, identity.name))
 }
 
@@ -203,7 +210,7 @@ fn encryption(state: &AppState) -> Result<&EncryptionService, ApiError> {
         .ok_or_else(|| error(StatusCode::SERVICE_UNAVAILABLE, "Encryption not configured"))
 }
 
-/// POST /v1/agent-identities/{identity_id}/connections/github/app
+/// POST /v1/virtual-users/{identity_id}/connections/github/app
 async fn begin_connect(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -220,7 +227,7 @@ async fn begin_connect(
 async fn begin_for_identity(
     state: &AppState,
     org: &ResolvedOrg,
-    identity_id: AgentIdentityId,
+    identity_id: VirtualUserId,
     identity_name: &str,
     request: BeginConnectRequest,
 ) -> Result<BeginConnectResponse, ApiError> {
@@ -291,7 +298,7 @@ async fn agent_status(
         .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(&org))
         .map_err(|_| error(StatusCode::FORBIDDEN, "Permission denied"))?;
     let agent = load_agent(&state, &org, &agent_id).await?;
-    let Some(identity_id) = agent.agent_identity_id else {
+    let Some(identity_id) = agent.virtual_user_id else {
         return Ok(Json(AgentGitHubStatus::default()));
     };
     let app = state
@@ -301,7 +308,7 @@ async fn agent_status(
         .map_err(|e| internal("Failed to look up GitHub App", e))?;
     let connection = state
         .db
-        .get_agent_identity_connection(identity_id, GITHUB_PROVIDER)
+        .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
         .await
         .map_err(|e| internal("Failed to look up GitHub connection", e))?
         .filter(|c| c.connection_type == GITHUB_APP_CONNECTION_TYPE);
@@ -330,7 +337,7 @@ async fn agent_connect(
     Path(agent_id): Path<String>,
     body: Option<Json<BeginConnectRequest>>,
 ) -> Result<Json<BeginConnectResponse>, ApiError> {
-    AGENT_IDENTITY_MANAGE
+    VIRTUAL_USER_MANAGE
         .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(&org))
         .map_err(|_| error(StatusCode::FORBIDDEN, "Permission denied"))?;
     let agent = load_agent(&state, &org, &agent_id).await?;
@@ -339,17 +346,17 @@ async fn agent_connect(
         .map_err(|e| internal("Failed to give the agent an identity", e))?;
     let identity = state
         .db
-        .get_agent_identity(org.org_id, identity_id)
+        .get_virtual_user(org.org_id, identity_id)
         .await
         .map_err(|e| internal("Failed to get agent identity", e))?
-        .ok_or_else(|| error(StatusCode::NOT_FOUND, "Agent identity not found"))?;
+        .ok_or_else(|| error(StatusCode::NOT_FOUND, "Virtual user not found"))?;
     let request = body.map(|Json(body)| body).unwrap_or_default();
     begin_for_identity(&state, &org, identity_id, &identity.name, request)
         .await
         .map(Json)
 }
 
-/// DELETE /v1/agent-identities/{identity_id}/connections/github/app
+/// DELETE /v1/virtual-users/{identity_id}/connections/github/app
 ///
 /// Uninstalls the App (best effort) and removes the identity's `github`
 /// connection. The App itself stays so a reconnect reuses it; GitHub offers no
@@ -362,7 +369,7 @@ async fn disconnect(
     let (identity_id, _) = resolve_identity(&state, &org, &identity_id).await?;
     let connection = state
         .db
-        .get_agent_identity_connection(identity_id, GITHUB_PROVIDER)
+        .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
         .await
         .map_err(|e| internal("Failed to look up GitHub connection", e))?;
     let app = state
@@ -394,13 +401,13 @@ async fn disconnect(
     }
     state
         .db
-        .delete_agent_identity_connection(identity_id, GITHUB_PROVIDER)
+        .delete_virtual_user_connection(identity_id, GITHUB_PROVIDER)
         .await
         .map_err(|e| internal("Failed to delete GitHub connection", e))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// GET /v1/agent-identities/{identity_id}/connections/github/repositories
+/// GET /v1/virtual-users/{identity_id}/connections/github/repositories
 ///
 /// Repositories the agent's installation can reach, for repo pickers.
 async fn list_repositories(
@@ -417,7 +424,7 @@ async fn list_repositories(
         .ok_or_else(|| error(StatusCode::NOT_FOUND, "GitHub is not connected"))?;
     let installation_id = state
         .db
-        .get_agent_identity_connection(identity_id, GITHUB_PROVIDER)
+        .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
         .await
         .map_err(|e| internal("Failed to look up GitHub connection", e))?
         .and_then(|c| c.installation_id)
@@ -526,18 +533,31 @@ async fn finish_manifest(
     setup: &SetupState,
     code: Option<&str>,
 ) -> Result<String, &'static str> {
-    let identity_id = AgentIdentityId::from_uuid(setup.agent_identity_id);
+    let identity_id = VirtualUserId::from_uuid(setup.virtual_user_id);
     // The identity may have been deleted, or have finished another connect
     // flow, since the state was minted.
     if state
         .db
-        .get_agent_identity(setup.org_id, identity_id)
+        .get_virtual_user(setup.org_id, identity_id)
         .await
         .map_err(|_| "identity lookup failed")?
-        .is_none()
+        .is_none_or(|user| user.status != "active" || user.usage != "service")
     {
         return Err("identity no longer exists");
     }
+    // Recheck the captured management actor after the browser round trip.
+    let caller =
+        crate::auth::caller_resolution::caller_for_user(&state.db, setup.org_id, setup.user_id)
+            .await
+            .map_err(|_| "setup actor no longer authorized")?;
+    crate::domains::virtual_users::connection_target(
+        &state.db,
+        state.auth.permission_resolver.as_ref(),
+        &caller,
+        &identity_id.to_string(),
+    )
+    .await
+    .map_err(|_| "setup actor no longer authorized")?;
     if let Some(existing) = state
         .db
         .get_github_app_for_identity(setup.org_id, identity_id)
@@ -568,7 +588,7 @@ async fn finish_manifest(
     let row = CreateGitHubAppRow {
         id: setup.app_row_id,
         org_id: setup.org_id,
-        agent_identity_id: identity_id,
+        virtual_user_id: identity_id,
         app_id: app.id,
         slug: app.slug.clone(),
         name: app.name,
@@ -628,6 +648,15 @@ async fn finish_setup(
         .await
         .map_err(|_| "app lookup failed")?
         .ok_or("unknown app")?;
+    let user = state
+        .db
+        .get_virtual_user(app.org_id, app.virtual_user_id)
+        .await
+        .map_err(|_| "identity lookup failed")?
+        .ok_or("identity no longer exists")?;
+    if user.status != "active" || user.usage != "service" {
+        return Err("identity no longer active");
+    }
     let credentials = app_credentials(state, &app).map_err(|_| "app key unavailable")?;
     let installation = state
         .github
@@ -653,8 +682,8 @@ async fn finish_setup(
 
     state
         .db
-        .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-            agent_identity_id: app.agent_identity_id,
+        .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: app.virtual_user_id,
             provider: GITHUB_PROVIDER.to_string(),
             connection_type: GITHUB_APP_CONNECTION_TYPE.to_string(),
             provider_user_id: Some(installation.account.id.to_string()),
@@ -680,7 +709,7 @@ async fn finish_setup(
 mod tests {
     use super::*;
     use crate::kernel_imports::DEFAULT_ORG_ID;
-    use crate::storage::models::CreateAgentIdentityRow;
+    use crate::storage::models::CreateVirtualUserRow;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -692,12 +721,34 @@ mod tests {
         .unwrap()
     }
 
-    async fn state(github: &MockServer) -> (AppState, AgentIdentityId) {
+    async fn state(github: &MockServer) -> (AppState, VirtualUserId) {
         let db = Arc::new(StorageBackend::in_memory());
-        let identity_id = AgentIdentityId::from_seed(21);
-        db.create_agent_identity(CreateAgentIdentityRow {
+        let identity_id = VirtualUserId::from_seed(21);
+        let actor_id = Uuid::from_u128(22);
+        db.create_user_with_id(
+            actor_id,
+            crate::storage::models::CreateUserRow {
+                email: "github-app-manager@example.com".into(),
+                name: "Manager".into(),
+                avatar_url: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        db.add_organization_member(DEFAULT_ORG_ID, actor_id, "owner")
+            .await
+            .unwrap();
+
+        db.create_virtual_user(CreateVirtualUserRow {
             org_id: DEFAULT_ORG_ID,
             id: identity_id,
+            usage: "service".to_string(),
             name: "PR Summarizer".to_string(),
             description: None,
             avatar_url: None,
@@ -724,11 +775,11 @@ mod tests {
         (state, identity_id)
     }
 
-    fn setup_for(identity_id: AgentIdentityId, app_row_id: Uuid) -> SetupState {
+    fn setup_for(identity_id: VirtualUserId, app_row_id: Uuid) -> SetupState {
         SetupState::new(
             DEFAULT_ORG_ID,
             identity_id.uuid(),
-            Uuid::now_v7(),
+            Uuid::from_u128(22),
             app_row_id,
             Some("/agents/x".to_string()),
         )
@@ -773,7 +824,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(app.app_id, 555);
-        assert_eq!(app.agent_identity_id, identity_id);
+        assert_eq!(app.virtual_user_id, identity_id);
         assert_eq!(app.owner_login.as_deref(), Some("acme"));
         // Secrets never land in plaintext.
         assert!(!String::from_utf8_lossy(&app.private_key_encrypted).contains("PRIVATE KEY"));
@@ -814,11 +865,34 @@ mod tests {
                 .is_err()
         );
 
-        let stranger = setup_for(AgentIdentityId::from_seed(99), Uuid::now_v7());
+        let stranger = setup_for(VirtualUserId::from_seed(99), Uuid::now_v7());
         assert_eq!(
             finish_manifest(&state, &encryption, &stranger, Some("abc123")).await,
             Err("identity no longer exists")
         );
+    }
+
+    #[tokio::test]
+    async fn manifest_rejects_a_revoked_management_actor_before_exchange() {
+        let github = MockServer::start().await;
+        let (state, id) = state(&github).await;
+        let setup = setup_for(id, Uuid::new_v4());
+        state
+            .db
+            .remove_organization_member(DEFAULT_ORG_ID, setup.user_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            finish_manifest(
+                &state,
+                state.encryption.as_deref().unwrap(),
+                &setup,
+                Some("code")
+            )
+            .await,
+            Err("setup actor no longer authorized")
+        );
+        assert!(github.received_requests().await.unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -861,7 +935,7 @@ mod tests {
         assert!(
             state
                 .db
-                .get_agent_identity_connection(identity_id, GITHUB_PROVIDER)
+                .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
                 .await
                 .unwrap()
                 .is_none()
@@ -870,7 +944,7 @@ mod tests {
         finish_setup(&state, row_id, Some(4242)).await.unwrap();
         let connection = state
             .db
-            .get_agent_identity_connection(identity_id, GITHUB_PROVIDER)
+            .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
             .await
             .unwrap()
             .unwrap();
@@ -912,53 +986,45 @@ mod tests {
         use tower::ServiceExt;
         let app: Router = Router::new()
             .route(
-                "/v1/agent-identities/{identity_id}/connections/{provider}",
+                "/v1/virtual-users/{identity_id}/connections/{provider}",
                 post(|| async { "generic" }).delete(|| async { "generic-delete" }),
             )
             .route(
-                "/v1/agent-identities/{identity_id}/connections/{provider}/verify",
+                "/v1/virtual-users/{identity_id}/connections/{provider}/verify",
                 post(|| async { "verify" }),
             )
             .merge(
                 Router::new()
                     .route(
-                        "/v1/agent-identities/{identity_id}/connections/github/app",
+                        "/v1/virtual-users/{identity_id}/connections/github/app",
                         post(|| async { "app" }),
                     )
                     .route(
-                        "/v1/agent-identities/{identity_id}/connections/github/repositories",
+                        "/v1/virtual-users/{identity_id}/connections/github/repositories",
                         get(|| async { "repos" }),
                     ),
             );
         for (verb, uri, expected) in [
-            (
-                "POST",
-                "/v1/agent-identities/i/connections/github",
-                "generic",
-            ),
+            ("POST", "/v1/virtual-users/i/connections/github", "generic"),
             (
                 "DELETE",
-                "/v1/agent-identities/i/connections/github",
+                "/v1/virtual-users/i/connections/github",
                 "generic-delete",
             ),
             (
                 "POST",
-                "/v1/agent-identities/i/connections/github/verify",
+                "/v1/virtual-users/i/connections/github/verify",
                 "verify",
             ),
             (
                 "POST",
-                "/v1/agent-identities/i/connections/linear/verify",
+                "/v1/virtual-users/i/connections/linear/verify",
                 "verify",
             ),
-            (
-                "POST",
-                "/v1/agent-identities/i/connections/github/app",
-                "app",
-            ),
+            ("POST", "/v1/virtual-users/i/connections/github/app", "app"),
             (
                 "GET",
-                "/v1/agent-identities/i/connections/github/repositories",
+                "/v1/virtual-users/i/connections/github/repositories",
                 "repos",
             ),
         ] {

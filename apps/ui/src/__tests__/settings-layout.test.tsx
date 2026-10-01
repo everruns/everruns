@@ -85,9 +85,9 @@ describe("SettingsLayout", () => {
     expect(screen.queryByText("General")).not.toBeInTheDocument();
     expect(screen.getAllByText("Organization")).toHaveLength(2);
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
-    expect(screen.getByText("Members")).toBeInTheDocument();
+    expect(screen.getByText("Team members")).toBeInTheDocument();
     expect(screen.getByText("Payments")).toBeInTheDocument();
-    expect(screen.getByText("Profile")).toBeInTheDocument();
+    expect(screen.getByText("Account")).toBeInTheDocument();
     expect(screen.getByText("Connections")).toBeInTheDocument();
     expect(screen.getByText("Personal access tokens")).toBeInTheDocument();
   });
@@ -114,9 +114,9 @@ describe("SettingsLayout", () => {
 
     const organizationLink = screen.getByRole("link", { name: /Organization/i });
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
-    const membersLink = screen.getByRole("link", { name: /Members/i });
+    const membersLink = screen.getByRole("link", { name: /Team members/i });
     const paymentsLink = screen.getByRole("link", { name: /Payments/i });
-    const profileLink = screen.getByRole("link", { name: /Profile/i });
+    const profileLink = screen.getByRole("link", { name: /Account/i });
     const connectionsLink = screen.getByRole("link", { name: /Connections/i });
     const apiKeysLink = screen.getByRole("link", { name: /Personal access tokens/i });
 
@@ -136,7 +136,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(8);
+    expect(screen.getAllByRole("link")).toHaveLength(9);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }
@@ -145,9 +145,9 @@ describe("SettingsLayout", () => {
   it.each([
     ["/settings/providers", "LLM Providers"],
     ["/settings/personal-access-tokens", "Personal access tokens"],
-    ["/settings/members", "Members"],
+    ["/settings/members", "Team members"],
     ["/settings/organization", "Organization"],
-    ["/settings/profile", "Profile"],
+    ["/settings/profile", "Account"],
     ["/settings/connections", "Connections"],
   ])("highlights the active navigation item for %s", (pathname, linkName) => {
     mockPathname.mockReturnValue(pathname);
@@ -190,7 +190,7 @@ describe("SettingsLayout", () => {
     expect(orgSection).not.toHaveTextContent("General");
     expect(orgSection).toHaveTextContent("Organization");
     expect(orgSection).toHaveTextContent("LLM Providers");
-    expect(orgSection).toHaveTextContent("Members");
+    expect(orgSection).toHaveTextContent("Team members");
     expect(orgSection).toHaveTextContent("Features");
     expect(orgSection).toHaveTextContent("Payments");
     expect(orgSection).not.toHaveTextContent("Connections");
@@ -198,11 +198,11 @@ describe("SettingsLayout", () => {
 
     // Personal section contains its items
     const personalSection = personalLabel.closest("div[class]")!.parentElement!;
-    expect(personalSection).toHaveTextContent("Profile");
+    expect(personalSection).toHaveTextContent("Account");
     expect(personalSection).toHaveTextContent("Connections");
     expect(personalSection).toHaveTextContent("Personal access tokens");
     expect(personalSection).not.toHaveTextContent("Organization");
-    expect(personalSection).not.toHaveTextContent("Members");
+    expect(personalSection).not.toHaveTextContent("Team members");
   });
 
   it("applies inactive styles to non-active items", () => {
@@ -214,7 +214,7 @@ describe("SettingsLayout", () => {
     );
 
     const organizationLink = screen.getByRole("link", { name: /Organization/i });
-    const membersLink = screen.getByRole("link", { name: /Members/i });
+    const membersLink = screen.getByRole("link", { name: /Team members/i });
     const apiKeysLink = screen.getByRole("link", { name: /Personal access tokens/i });
 
     expect(organizationLink).toHaveClass("border-transparent");

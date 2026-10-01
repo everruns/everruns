@@ -486,7 +486,7 @@ fn create_session_request() -> CreateSessionRequest {
         harness_name: None,
         agent_id: None,
         agent_name: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         title: Some("Policy Test Session".to_string()),
         goal: None,
         locale: None,

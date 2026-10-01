@@ -30,6 +30,9 @@ async fn mcp_lookup_uses_a_distinct_rpc_and_old_servers_fail_closed() {
     let mut client = WorkerServiceClient::new(service);
     let mcp = client
         .get_mcp_connection_token(proto::GetMcpConnectionTokenRequest {
+            server_prefix: None,
+            input_message_id: None,
+
             session_id: Some(proto::Uuid {
                 value: uuid::Uuid::new_v4().to_string(),
             }),

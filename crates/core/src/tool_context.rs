@@ -252,6 +252,18 @@ impl std::fmt::Debug for ToolContextExtensions {
     }
 }
 
+/// Supplies tool services scoped to a persisted input invocation.
+pub trait ExecutionServices: Send + Sync {
+    /// Replace the context's services with the authority of this input.
+    fn bind(&self, context: &mut ToolContext, input_message_id: uuid::Uuid);
+}
+/// Tool-context extension carrying the invocation service binder.
+#[derive(Clone)]
+pub struct ExecutionServicesExt(
+    /// Host-provided invocation service binder.
+    pub Arc<dyn ExecutionServices>,
+);
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:

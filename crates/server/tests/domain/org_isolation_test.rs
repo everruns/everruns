@@ -951,7 +951,7 @@ async fn create_session_in_org(
             agent_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Test Session".to_string()),

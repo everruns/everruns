@@ -79,7 +79,7 @@ export const defaultOperationalNavigation: NavigationItem[] = [
 export const defaultBuildingNavigation: NavigationItem[] = [
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Harnesses", href: "/harnesses", icon: Shield },
-  { name: "Identities", href: "/agent-identities", icon: UserRound },
+  { name: "Virtual Users", href: "/virtual-users", icon: UserRound },
   {
     name: "Knowledge indexes",
     href: "/knowledge-indexes",
@@ -152,7 +152,7 @@ function isUnder(pathname: string, href: string): boolean {
  * so their pages take no group prefix.
  *
  * Matching is longest-href-first so `/agents/all` resolves through `/agents`
- * without `/agent-identities` colliding with it, and `/durable/workers` picks
+ * without `/virtual-users` colliding with it, and `/durable/workers` picks
  * its own entry over `/durable`.
  *
  * This is the only place a page's group is decided: adding a route to a section

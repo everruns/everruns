@@ -27,8 +27,8 @@ use uuid::Uuid;
 use super::backend::StorageBackend;
 use super::encryption::EncryptionService;
 use super::models::{
-    AgentIdentityConnectionRow, McpOAuthSessionCredentialsRow, UpdateOAuthConnectionTokens,
-    UpsertMcpOAuthSessionCredentials, UserConnectionRow,
+    McpOAuthSessionCredentialsRow, UpdateOAuthConnectionTokens, UpsertMcpOAuthSessionCredentials,
+    VirtualUserConnectionRow,
 };
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService};
@@ -43,15 +43,13 @@ const REFRESH_LOCK_IDLE_TTL: StdDuration = StdDuration::from_secs(10 * 60);
 
 /// Resolves connection tokens for tool execution.
 ///
-/// Session-based lookup priority:
-/// 1. If the session has an `agent_identity_id`, resolves from `agent_identity_connections`.
-/// 2. Falls back to `user_connections` for the session's resolved owner user.
-///
-/// Leased-resource cleanup additionally uses explicit owner-user lookups so
-/// the same provider identity that created a resource can delete it later.
+/// The verified speaker of the current input owns user grants. Autonomous inputs
+/// use the actual responding agent's active service account. Session owners and
+/// earlier speakers never provide authority. Resource cleanup uses its captured owner.
 #[derive(Clone)]
 pub struct DbConnectionResolver {
     db: StorageBackend,
+    input_message_id: Option<Uuid>,
     encryption: EncryptionService,
     /// GitHub App service for minting installation tokens (None = legacy OAuth only)
     github_app: Option<GitHubAppTokenMinter>,
@@ -129,6 +127,7 @@ impl DbConnectionResolver {
     ) -> Self {
         Self {
             db,
+            input_message_id: None,
             encryption,
             github_app,
             github_apps: crate::github_apps::GitHubAppApi::new(
@@ -149,6 +148,111 @@ impl DbConnectionResolver {
         self
     }
 
+    pub fn bound_to_input_message(&self, id: Uuid) -> Self {
+        let mut bound = self.clone();
+        bound.input_message_id = Some(id);
+        bound
+    }
+    async fn runtime_subject(
+        &self,
+        session: SessionId,
+    ) -> Result<Option<everruns_provider::typed_id::VirtualUserId>> {
+        match self.input_message_id {
+            Some(id) => self
+                .db
+                .runtime_invocation_subject(session, id)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string())),
+            None => Ok(None),
+        }
+    }
+    async fn service_connection(
+        &self,
+        session: SessionId,
+        provider: &str,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        if let Some(message) = self.input_message_id
+            && !self
+                .db
+                .runtime_invocation_exists(session, message)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+        {
+            return Ok(None);
+        }
+        let Some(s) = self
+            .db
+            .get_session_unscoped(session)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let responder = match self.input_message_id {
+            Some(id) => self
+                .db
+                .runtime_invocation_responder(session, id)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+                .map(everruns_provider::typed_id::AgentId::from_uuid),
+            None => s.agent_id,
+        };
+        let Some(agent_id) = responder else {
+            return Ok(None);
+        };
+        let Some(agent) = self
+            .db
+            .get_agent(s.org_id, agent_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if agent.status != "active" {
+            return Ok(None);
+        };
+        let Some(id) = agent.virtual_user_id else {
+            return Ok(None);
+        };
+        let Some(v) = self
+            .db
+            .get_virtual_user(s.org_id, id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if v.status != "active" || v.usage != "service" {
+            return Ok(None);
+        };
+        self.db
+            .get_virtual_user_connection(id, provider)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))
+    }
+    async fn selected_connection(
+        &self,
+        session: SessionId,
+        provider: &str,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        if let Some(id) = self.runtime_subject(session).await? {
+            return self
+                .db
+                .get_virtual_user_connection(id, provider)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()));
+        }
+        if let Some(message) = self.input_message_id
+            && self
+                .db
+                .runtime_invocation_has_subject(session, message)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+        {
+            return Ok(None);
+        }
+        self.service_connection(session, provider).await
+    }
     fn parse_mcp_oauth_provider(provider: &str) -> Option<Uuid> {
         provider.strip_prefix("mcp_oauth_")?.parse().ok()
     }
@@ -168,11 +272,6 @@ impl DbConnectionResolver {
             .map_err(|e| AgentLoopError::store(format!("Invalid OAuth token expiry: {e}")))?
             .with_timezone(&Utc);
         Ok(expires_at <= Utc::now() + OAUTH_REFRESH_SKEW)
-    }
-
-    fn user_connection_needs_refresh(&self, row: &UserConnectionRow) -> bool {
-        row.expires_at
-            .is_some_and(|expires_at| expires_at <= Utc::now() + OAUTH_REFRESH_SKEW)
     }
 
     async fn oauth_client_config(
@@ -274,6 +373,9 @@ impl DbConnectionResolver {
         server_id: Uuid,
         credentials: McpOAuthSessionCredentialsRow,
     ) -> Result<Option<String>> {
+        if self.runtime_subject(session_id).await? != credentials.virtual_user_id {
+            return Ok(None);
+        }
         if !self.needs_refresh(credentials.expires_at_encrypted.as_deref())? {
             return self
                 .decrypt(&credentials.access_token_encrypted, "OAuth access token")
@@ -295,96 +397,15 @@ impl DbConnectionResolver {
         else {
             return Ok(None);
         };
+        if self.runtime_subject(session_id).await? != credentials.virtual_user_id {
+            return Ok(None);
+        }
         if !self.needs_refresh(credentials.expires_at_encrypted.as_deref())? {
             return self
                 .decrypt(&credentials.access_token_encrypted, "OAuth access token")
                 .map(Some);
         }
-        let Some(refresh_token_encrypted) = credentials.refresh_token_encrypted else {
-            return Ok(None);
-        };
-        let refresh_token = self.decrypt(&refresh_token_encrypted, "OAuth refresh token")?;
-        let Some(config) = self.oauth_client_config(session_id, server_id).await? else {
-            return Ok(None);
-        };
-        let Ok(token) = self.exchange_refresh(config, refresh_token.clone()).await else {
-            return Ok(None);
-        };
-        let rotated_refresh = token.refresh_token.as_deref().unwrap_or(&refresh_token);
-        let expires_at = Self::expiry_from_response(&token);
-        // THREAT[TM-TOOL-025]: replace the complete rotated grant in one
-        // storage transaction before exposing the new access token.
-        self.db
-            .upsert_mcp_oauth_session_credentials(UpsertMcpOAuthSessionCredentials {
-                session_id,
-                server_id,
-                access_token_encrypted: self
-                    .encryption
-                    .encrypt_string(&token.access_token)
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to encrypt OAuth access token: {e}"))
-                    })?,
-                refresh_token_encrypted: Some(
-                    self.encryption
-                        .encrypt_string(rotated_refresh)
-                        .map_err(|e| {
-                            AgentLoopError::store(format!(
-                                "Failed to encrypt OAuth refresh token: {e}"
-                            ))
-                        })?,
-                ),
-                expires_at_encrypted: expires_at
-                    .map(|value| self.encryption.encrypt_string(&value.to_rfc3339()))
-                    .transpose()
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to encrypt OAuth token expiry: {e}"))
-                    })?,
-            })
-            .await
-            .map_err(|e| {
-                AgentLoopError::store(format!("Failed to persist refreshed OAuth grant: {e}"))
-            })?;
-        Ok(Some(token.access_token))
-    }
-
-    async fn resolve_user_oauth_token(
-        &self,
-        session_id: SessionId,
-        server_id: Uuid,
-        user_id: Uuid,
-        row: UserConnectionRow,
-    ) -> Result<Option<String>> {
-        let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
-            return Ok(None);
-        };
-        if row.connection_type != "oauth" || !self.user_connection_needs_refresh(&row) {
-            return self
-                .decrypt(access_token_encrypted, "OAuth access token")
-                .map(Some);
-        }
-
-        let key = format!("user-connection:{}", row.id);
-        let lock = self
-            .refresh_locks
-            .get_with(key, || Arc::new(Mutex::new(())));
-        let _guard = lock.lock().await;
-        let Some(row) = self
-            .db
-            .get_user_connection(user_id, &row.provider)
-            .await
-            .map_err(|e| AgentLoopError::store(format!("Failed to resolve OAuth grant: {e}")))?
-        else {
-            return Ok(None);
-        };
-        let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
-            return Ok(None);
-        };
-        if !self.user_connection_needs_refresh(&row) {
-            return self
-                .decrypt(access_token_encrypted, "OAuth access token")
-                .map(Some);
-        }
-        let Some(refresh_token_encrypted) = row.refresh_token_encrypted.as_deref() else {
+        let Some(refresh_token_encrypted) = credentials.refresh_token_encrypted.as_deref() else {
             return Ok(None);
         };
         let refresh_token = self.decrypt(refresh_token_encrypted, "OAuth refresh token")?;
@@ -395,42 +416,59 @@ impl DbConnectionResolver {
             return Ok(None);
         };
         let rotated_refresh = token.refresh_token.as_deref().unwrap_or(&refresh_token);
-        let fresh_access_token = token.access_token.clone();
-        // THREAT[TM-TOOL-025]: replace the complete rotated grant atomically
-        // before exposing the new access token.
-        let updated = self
+        let expires_at = Self::expiry_from_response(&token);
+        // THREAT[TM-TOOL-025]: replace the complete rotated grant in one
+        // storage transaction before exposing the new access token.
+        let persisted = self
             .db
-            .update_user_connection_oauth_tokens(UpdateOAuthConnectionTokens {
-                connection_id: row.id,
-                access_token_encrypted: self
-                    .encryption
-                    .encrypt_string(&fresh_access_token)
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to encrypt OAuth access token: {e}"))
-                    })?,
-                refresh_token_encrypted: self.encryption.encrypt_string(rotated_refresh).map_err(
-                    |e| {
-                        AgentLoopError::store(format!("Failed to encrypt OAuth refresh token: {e}"))
-                    },
-                )?,
-                expires_at: Self::expiry_from_response(&token),
-                scopes: token.scope,
-            })
+            .rotate_runtime_session_grant(
+                &credentials,
+                UpsertMcpOAuthSessionCredentials {
+                    virtual_user_id: credentials.virtual_user_id,
+                    session_id,
+                    server_id,
+                    access_token_encrypted: self
+                        .encryption
+                        .encrypt_string(&token.access_token)
+                        .map_err(|e| {
+                            AgentLoopError::store(format!(
+                                "Failed to encrypt OAuth access token: {e}"
+                            ))
+                        })?,
+                    refresh_token_encrypted: Some(
+                        self.encryption
+                            .encrypt_string(rotated_refresh)
+                            .map_err(|e| {
+                                AgentLoopError::store(format!(
+                                    "Failed to encrypt OAuth refresh token: {e}"
+                                ))
+                            })?,
+                    ),
+                    expires_at_encrypted: expires_at
+                        .map(|value| self.encryption.encrypt_string(&value.to_rfc3339()))
+                        .transpose()
+                        .map_err(|e| {
+                            AgentLoopError::store(format!(
+                                "Failed to encrypt OAuth token expiry: {e}"
+                            ))
+                        })?,
+                },
+            )
             .await
             .map_err(|e| {
                 AgentLoopError::store(format!("Failed to persist refreshed OAuth grant: {e}"))
             })?;
-        if updated.is_none() {
+        if !persisted {
             return Ok(None);
         }
-        Ok(Some(fresh_access_token))
+        Ok(Some(token.access_token))
     }
 
     async fn resolve_identity_oauth_token(
         &self,
         session_id: SessionId,
         server_id: Uuid,
-        row: AgentIdentityConnectionRow,
+        row: VirtualUserConnectionRow,
     ) -> Result<Option<String>> {
         let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
             return Ok(None);
@@ -452,7 +490,7 @@ impl DbConnectionResolver {
         let _guard = lock.lock().await;
         let Some(row) = self
             .db
-            .get_agent_identity_connection_row_for_session(session_id, &row.provider)
+            .get_virtual_user_connection(row.virtual_user_id, &row.provider)
             .await
             .map_err(|e| AgentLoopError::store(format!("Failed to resolve identity grant: {e}")))?
         else {
@@ -480,7 +518,7 @@ impl DbConnectionResolver {
             Ok(token) => token,
             Err(OAuthRefreshError::InvalidGrant) => {
                 self.db
-                    .delete_agent_identity_connection(row.agent_identity_id, &row.provider)
+                    .revoke_runtime_connection_if_unchanged(row.id, access_token_encrypted)
                     .await
                     .map_err(|e| {
                         AgentLoopError::store(format!(
@@ -495,22 +533,30 @@ impl DbConnectionResolver {
         let fresh_access_token = token.access_token.clone();
         let updated = self
             .db
-            .update_agent_identity_connection_oauth_tokens(UpdateOAuthConnectionTokens {
-                connection_id: row.id,
-                access_token_encrypted: self
-                    .encryption
-                    .encrypt_string(&fresh_access_token)
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to encrypt OAuth access token: {e}"))
-                    })?,
-                refresh_token_encrypted: self.encryption.encrypt_string(rotated_refresh).map_err(
-                    |e| {
-                        AgentLoopError::store(format!("Failed to encrypt OAuth refresh token: {e}"))
-                    },
-                )?,
-                expires_at: Self::expiry_from_response(&token),
-                scopes: token.scope,
-            })
+            .rotate_runtime_connection(
+                access_token_encrypted,
+                UpdateOAuthConnectionTokens {
+                    connection_id: row.id,
+                    access_token_encrypted: self
+                        .encryption
+                        .encrypt_string(&fresh_access_token)
+                        .map_err(|e| {
+                            AgentLoopError::store(format!(
+                                "Failed to encrypt OAuth access token: {e}"
+                            ))
+                        })?,
+                    refresh_token_encrypted: self
+                        .encryption
+                        .encrypt_string(rotated_refresh)
+                        .map_err(|e| {
+                            AgentLoopError::store(format!(
+                                "Failed to encrypt OAuth refresh token: {e}"
+                            ))
+                        })?,
+                    expires_at: Self::expiry_from_response(&token),
+                    scopes: token.scope,
+                },
+            )
             .await
             .map_err(|e| {
                 AgentLoopError::store(format!("Failed to persist refreshed OAuth grant: {e}"))
@@ -524,18 +570,33 @@ impl DbConnectionResolver {
 
 #[async_trait]
 impl UserConnectionResolver for DbConnectionResolver {
+    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn UserConnectionResolver>> {
+        Some(Arc::new(self.bound_to_input_message(id)))
+    }
     async fn get_connection_token(
         &self,
-        session_id: SessionId,
+        session: SessionId,
         provider: &str,
     ) -> Result<Option<String>> {
+        let Some(row) = self.selected_connection(session, provider).await? else {
+            return Ok(None);
+        };
         // Per-agent GitHub App: an agent identity that created its own App
         // (manifest flow) mints with that App's key, so the trigger, the tools
         // and the GitHub MCP all act as the same installation.
         if provider == "github"
-            && let Some((app, installation_id)) = self
+            && let Some(installation_id) = row.installation_id
+            && let Some(app) = self
                 .db
-                .get_identity_github_app_for_session(session_id)
+                .get_github_app_for_identity(
+                    self.db
+                        .get_session_unscoped(session)
+                        .await
+                        .map_err(|e| AgentLoopError::store(e.to_string()))?
+                        .ok_or_else(|| AgentLoopError::session_not_found(session))?
+                        .org_id,
+                    row.virtual_user_id,
+                )
                 .await
                 .map_err(|e| {
                     AgentLoopError::store(format!("Failed to resolve agent GitHub App: {e}"))
@@ -561,169 +622,67 @@ impl UserConnectionResolver for DbConnectionResolver {
             return Ok(Some(token));
         }
 
-        // GitHub App path: mint a fresh installation token
         if provider == "github"
-            && let Some(ref minter) = self.github_app
+            && let Some(minter) = &self.github_app
+            && let Some(id) = row.installation_id
         {
-            let installation_id = self
-                .db
-                .get_installation_id_for_session(session_id, provider)
+            return minter
+                .mint_token(id)
                 .await
-                .map_err(|e| {
-                    AgentLoopError::store(format!("Failed to resolve GitHub installation: {e}"))
-                })?;
-
-            if let Some(id) = installation_id {
-                let token = minter.mint_token(id).await.map_err(AgentLoopError::store)?;
-                return Ok(Some(token));
-            }
+                .map(Some)
+                .map_err(AgentLoopError::store);
         }
-
-        if let Some(server_id) = Self::parse_mcp_oauth_provider(provider) {
-            if let Some(credentials) = self
-                .db
-                .get_mcp_oauth_session_credentials(session_id, server_id)
-                .await
-                .map_err(|e| {
-                    AgentLoopError::store(format!("Failed to resolve session OAuth grant: {e}"))
-                })?
-            {
-                return self
-                    .resolve_session_oauth_token(session_id, server_id, credentials)
-                    .await;
-            }
-
-            if let Some(user_id) = self
-                .db
-                .get_connection_user_for_session(session_id, provider)
-                .await
-                .map_err(|e| {
-                    AgentLoopError::store(format!("Failed to resolve connection owner: {e}"))
-                })?
-                && let Some(row) = self
-                    .db
-                    .get_user_connection(user_id, provider)
-                    .await
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to resolve connection: {e}"))
-                    })?
-            {
-                return self
-                    .resolve_user_oauth_token(session_id, server_id, user_id, row)
-                    .await;
-            }
+        if let Some(server) = Self::parse_mcp_oauth_provider(provider) {
+            return self
+                .resolve_identity_oauth_token(session, server, row)
+                .await;
         }
-
-        // Legacy path: decrypt stored OAuth token
-        let encrypted = self
-            .db
-            .get_connection_token_for_session(session_id, provider)
-            .await
-            .map_err(|e| AgentLoopError::store(format!("Failed to resolve connection: {e}")))?;
-
-        match encrypted {
-            Some(blob) => {
-                let token = self.encryption.decrypt_to_string(&blob).map_err(|e| {
-                    AgentLoopError::store(format!("Failed to decrypt connection token: {e}"))
-                })?;
-                Ok(Some(token))
-            }
-            None => Ok(None),
-        }
+        row.access_token_encrypted
+            .as_deref()
+            .map(|v| self.decrypt(v, "connection token"))
+            .transpose()
     }
-
-    /// Resolve an MCP credential as a pure function of `acts_as`.
-    ///
-    /// Each arm reads exactly one store. There is deliberately no path from one
-    /// arm to another and no fallback to [`Self::get_connection_token`], whose
-    /// identity-preferring lookup is the substitution EVE-1029 removes. The
-    /// fallback stays for the non-MCP providers that depend on it today; MCP no
-    /// longer routes through it.
-    ///
-    /// THREAT[TM-TOOL-041]: resolver-side invariant, not validation. It must
-    /// hold for configs written before validation existed or written straight
-    /// to the database, so it is enforced here rather than at the write path.
     async fn get_mcp_connection_token(
         &self,
-        session_id: SessionId,
+        session: SessionId,
         provider: &str,
         acts_as: everruns_core::McpServerActsAs,
     ) -> Result<Option<String>> {
-        let Some(server_id) = Self::parse_mcp_oauth_provider(provider) else {
+        let Some(server) = Self::parse_mcp_oauth_provider(provider) else {
             return Ok(None);
         };
-
-        match acts_as {
-            // Reads no connection store at all. Literal headers only, and those
-            // are applied by the caller, not here.
-            everruns_core::McpServerActsAs::None => Ok(None),
-
-            // Only the agent identity's own grant. Never a user connection, and
-            // never a session-scoped grant — those are authorized by a human in
-            // the session, which is user auth wearing a service label.
+        let row = match acts_as {
+            everruns_core::McpServerActsAs::None => return Ok(None),
             everruns_core::McpServerActsAs::Service => {
-                let row = self
-                    .db
-                    .get_agent_identity_connection_row_for_session(session_id, provider)
-                    .await
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to resolve identity grant: {e}"))
-                    })?;
-                match row {
-                    Some(row) => {
-                        self.resolve_identity_oauth_token(session_id, server_id, row)
-                            .await
-                    }
-                    None => Ok(None),
-                }
+                self.service_connection(session, provider).await?
             }
-
-            // Only the invoking user's grant, and only when a human actually
-            // initiated the session. An unattended run has no invoking user to
-            // act as, so it fails closed instead of borrowing the owner's.
             everruns_core::McpServerActsAs::User => {
-                if !self
-                    .db
-                    .session_has_human_initiator(session_id)
-                    .await
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to resolve session initiator: {e}"))
-                    })?
-                {
-                    return Ok(None);
-                }
-
-                // A session-scoped grant is authorized in-session by the
-                // invoking human, so it is that user's credential and is
-                // preferred while it lasts.
-                if let Some(credentials) = self
-                    .db
-                    .get_mcp_oauth_session_credentials(session_id, server_id)
-                    .await
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to resolve session OAuth grant: {e}"))
-                    })?
-                {
-                    return self
-                        .resolve_session_oauth_token(session_id, server_id, credentials)
-                        .await;
-                }
-
-                let Some(row) = self
-                    .db
-                    .get_owner_user_connection_for_session(session_id, provider)
-                    .await
-                    .map_err(|e| {
-                        AgentLoopError::store(format!("Failed to resolve user connection: {e}"))
-                    })?
-                else {
+                let Some(id) = self.runtime_subject(session).await? else {
                     return Ok(None);
                 };
-
-                let user_id = row.user_id;
-                self.resolve_user_oauth_token(session_id, server_id, user_id, row)
+                if let Some(grant) = self
+                    .db
+                    .get_mcp_oauth_session_credentials(session, server)
+                    .await
+                    .map_err(|e| AgentLoopError::store(e.to_string()))?
+                    && grant.virtual_user_id == Some(id)
+                {
+                    return self
+                        .resolve_session_oauth_token(session, server, grant)
+                        .await;
+                }
+                self.db
+                    .get_virtual_user_connection(id, provider)
+                    .await
+                    .map_err(|e| AgentLoopError::store(e.to_string()))?
+            }
+        };
+        match row {
+            Some(row) => {
+                self.resolve_identity_oauth_token(session, server, row)
                     .await
             }
+            None => Ok(None),
         }
     }
 
@@ -757,14 +716,19 @@ impl UserConnectionResolver for DbConnectionResolver {
         {
             return Ok(());
         }
-        let Some(agent_id) = session.agent_id else {
+        let agent_id = match self.input_message_id {
+            Some(message) => self
+                .db
+                .runtime_invocation_responder(session_id, message)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+                .map(everruns_provider::typed_id::AgentId::from_uuid),
+            None => session.agent_id,
+        };
+        let Some(agent_id) = agent_id else {
             return Ok(());
         };
-        let row = self
-            .db
-            .get_agent_identity_connection_row_for_session(session_id, provider)
-            .await
-            .map_err(|e| AgentLoopError::store(format!("Failed to resolve identity grant: {e}")))?;
+        let row = self.service_connection(session_id, provider).await?;
         let Some(row) = row else {
             return Ok(());
         };
@@ -780,7 +744,7 @@ impl UserConnectionResolver for DbConnectionResolver {
 
         self.db
             .invalidate_mcp_service_connection_if_access_token_matches(
-                row.agent_identity_id,
+                row.virtual_user_id,
                 provider,
                 access_token_encrypted,
                 session.org_id,
@@ -794,28 +758,21 @@ impl UserConnectionResolver for DbConnectionResolver {
         Ok(())
     }
 
-    async fn get_connection_user(
-        &self,
-        session_id: SessionId,
-        provider: &str,
-    ) -> Result<Option<Uuid>> {
-        self.db
-            .get_connection_user_for_session(session_id, provider)
-            .await
-            .map_err(|e| AgentLoopError::store(format!("Failed to resolve connection owner: {e}")))
+    async fn get_connection_user(&self, s: SessionId, p: &str) -> Result<Option<Uuid>> {
+        Ok(self
+            .selected_connection(s, p)
+            .await?
+            .map(|r| r.virtual_user_id.uuid()))
     }
-
     async fn get_connection_metadata(
         &self,
-        session_id: SessionId,
-        provider: &str,
+        s: SessionId,
+        p: &str,
     ) -> Result<Option<serde_json::Value>> {
-        self.db
-            .get_connection_metadata_for_session(session_id, provider)
-            .await
-            .map_err(|e| {
-                AgentLoopError::store(format!("Failed to resolve connection metadata: {e}"))
-            })
+        Ok(self
+            .selected_connection(s, p)
+            .await?
+            .and_then(|r| r.provider_metadata))
     }
 
     async fn get_connection_token_for_user(

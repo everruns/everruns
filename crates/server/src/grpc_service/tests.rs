@@ -326,6 +326,9 @@ async fn test_execute_command_lists_seeded_harnesses() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            input_message_id: None,
+            platform_session_id: None,
+
             name: "list_harnesses".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{}"#.to_vec(),
@@ -370,6 +373,9 @@ async fn test_execute_command_denies_org_disabled_feature() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            input_message_id: None,
+            platform_session_id: None,
+
             name: "list_skills".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{}"#.to_vec(),
@@ -398,6 +404,9 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            input_message_id: None,
+            platform_session_id: None,
+
             name: "definitely_not_a_command".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{}"#.to_vec(),
@@ -433,6 +442,9 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
     ] {
         let response = service
             .execute_command(Request::new(ExecuteCommandRequest {
+                input_message_id: None,
+                platform_session_id: None,
+
                 name: COMMAND_NAME.to_string(),
                 api_version: "v1".to_string(),
                 params_json: serde_json::to_vec(&serde_json::json!({ "kind": kind }))
@@ -492,6 +504,8 @@ async fn direct_worker_rpcs_do_not_leak_storage_errors() {
     service.db.force_storage_failure("get_session");
     let authorize = service
         .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            input_message_id: None,
+
             org_id: everruns_core::DEFAULT_ORG_ID,
             session_id: everruns_provider::typed_id::SessionId::from_uuid(uuid).to_string(),
         }))
@@ -627,7 +641,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
             trigger_id: None,
             harness_id: None,
             agent_id: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             agent_version_id: None,
             agent_config_hash: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
@@ -653,8 +667,29 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
         .await
         .unwrap();
 
+    let subject = service
+        .db
+        .default_virtual_user(session.org_id, user.id)
+        .await
+        .unwrap();
+    service
+        .db
+        .record_runtime_invocation(
+            session.org_id,
+            session.id,
+            session.id.uuid(),
+            Some(subject.id),
+            Some(user.id),
+            None,
+        )
+        .await
+        .unwrap();
     let response = service
         .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+
             org_id: session.org_id,
             session_id: session.id.to_string(),
         }))
@@ -665,6 +700,10 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
 
     let foreign = service
         .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+
             org_id: session.org_id + 1,
             session_id: session.id.to_string(),
         }))
@@ -675,6 +714,10 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     service.set_permission_resolver(Arc::new(DenyGrpcSessionManageResolver));
     let denied = service
         .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+
             org_id: session.org_id,
             session_id: session.id.to_string(),
         }))
@@ -731,6 +774,7 @@ pub(crate) async fn start_grpc_test_server(
 
 #[tokio::test]
 async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
+    use everruns_core::delegation_services::SessionCreationAuthority;
     use everruns_core::tools::{Tool, ToolExecutionResult};
     use everruns_platform::PlatformStore;
 
@@ -769,6 +813,23 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .await
         .expect("mark parent session as user owned");
 
+    let subject = service
+        .db
+        .default_virtual_user(everruns_core::DEFAULT_ORG_ID, user.id)
+        .await
+        .unwrap();
+    service
+        .db
+        .record_runtime_invocation(
+            everruns_core::DEFAULT_ORG_ID,
+            parent_id,
+            parent_id.uuid(),
+            Some(subject.id),
+            Some(user.id),
+            None,
+        )
+        .await
+        .unwrap();
     // Keep a storage handle: `start_grpc_test_server` takes the service by value.
     let db = service.db.clone();
     let (addr, shutdown_tx, server) = start_grpc_test_server(service).await;
@@ -782,23 +843,26 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             Some(parent_id),
         ),
     );
+    let platform = adapter.for_execution(parent_id.uuid()).unwrap();
     let mut context = everruns_core::tool_context::ToolContext::new(parent_id);
     context.subagent_delegate = Some(std::sync::Arc::new(
-        everruns_platform::PlatformStoreSubagentDelegate(adapter.clone()),
+        everruns_platform::PlatformStoreSubagentDelegate(platform.clone()),
     ));
     context
         .extensions
         .insert(std::sync::Arc::new(everruns_platform::PlatformStoreExt(
-            adapter.clone(),
+            platform.clone(),
         )));
     context.session_store = Some(adapter.clone());
-    context.session_creation_authority = Some(Arc::new(
+    context.session_creation_authority = Some(
         everruns_worker::grpc_adapters::GrpcSessionCreationAuthority::new(
             client.clone(),
             everruns_core::DEFAULT_ORG_ID,
             parent_id,
-        ),
-    ));
+        )
+        .for_execution(parent_id.uuid())
+        .unwrap(),
+    );
 
     let spawn_tool = everruns_platform::capabilities::SpawnSubagentAsAgentTool;
     let spawn_result = spawn_tool
@@ -822,7 +886,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .expect("subagent_id")
         .parse()
         .expect("subagent id parses");
-    let subagent = adapter
+    let subagent = platform
         .get_session_by_id(subagent_id)
         .await
         .expect("get spawned subagent")
@@ -850,7 +914,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .expect("detached id")
         .parse()
         .expect("detached id parses");
-    let detached = adapter
+    let detached = platform
         .get_session_by_id(detached_id)
         .await
         .expect("get detached peer")
@@ -925,7 +989,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .expect("handoff_id")
         .parse()
         .expect("handoff id parses");
-    let handoff = adapter
+    let handoff = platform
         .get_session_by_id(handoff_id)
         .await
         .expect("get handoff child")
@@ -965,6 +1029,9 @@ async fn test_execute_command_uses_user_permissions() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            input_message_id: None,
+            platform_session_id: None,
+
             name: "create_harness".to_string(),
             api_version: "v1".to_string(),
             params_json: serde_json::to_vec(&serde_json::json!({

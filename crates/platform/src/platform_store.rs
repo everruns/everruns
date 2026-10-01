@@ -30,6 +30,13 @@ pub use everruns_core::subagent_delegation::{PlatformCreateSessionRequest, Platf
 /// `a2a_agent_delegation`) and session tooling still call parts of it.
 #[async_trait]
 pub trait PlatformStore: Send + Sync {
+    fn for_execution(
+        &self,
+        _input_message_id: uuid::Uuid,
+    ) -> Option<std::sync::Arc<dyn PlatformStore>> {
+        None
+    }
+
     // =========================================================================
     // Catalog-backed command surface
     // =========================================================================
@@ -323,6 +330,8 @@ pub mod tests {
                 },
                 extra_harnesses: std::sync::Mutex::new(std::collections::HashMap::new()),
                 agent: Agent {
+                    service_virtual_user_id: None,
+
                     public_id: everruns_provider::typed_id::AgentId::new(),
                     internal_id: uuid::Uuid::now_v7(),
                     name: "test-agent".to_string(),
@@ -371,7 +380,7 @@ pub mod tests {
                         harness_id: HarnessId::new(),
                         agent_id: None,
                         agent_version_id: None,
-                        agent_identity_id: None,
+                        virtual_user_id: None,
                         owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                         resolved_owner_user_id: None,
                         owner: None,

@@ -427,8 +427,8 @@ rendered user message, the server emits one audit log entry:
   Everruns user
 - metadata: `source = "app_a2a"`, `app_id`, `app_channel_id`,
   `app_channel_type = "a2a"`, `session_id`, `created_session`, and the app
-  owner principal id; `agent_identity_id` is also present when the invocation
-  runs through an agent identity
+  owner principal id; `virtual_user_id` is also present when the invocation
+  uses an explicit runtime account
 
 This mirrors webhook/schedule coverage because the event is emitted by the
 common app-channel invocation helper, not by the A2A HTTP adapter.

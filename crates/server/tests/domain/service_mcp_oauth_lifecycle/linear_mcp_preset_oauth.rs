@@ -114,7 +114,24 @@ async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) 
         )
         .await
         .unwrap();
-    let org = resolved_org(Uuid::now_v7());
+    let user = db
+        .create_user(everruns_server::storage::models::CreateUserRow {
+            email: format!("{}@example.com", Uuid::now_v7()),
+            name: "Owner".into(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    db.add_organization_member(everruns_core::DEFAULT_ORG_ID, user.id, "owner")
+        .await
+        .unwrap();
+    let org = resolved_org(user.id);
 
     (state, org, server_id, agent.public_id, mock)
 }
@@ -126,8 +143,19 @@ async fn begin_service_oauth(
     agent_id: String,
 ) -> (CookieJar, axum::response::Redirect) {
     authorize_connection(
-        State(state),
-        org,
+        State(state.clone()),
+        org.clone(),
+        everruns_server::api::user_connections::ConnectionUser {
+            id: state
+                .db
+                .default_virtual_user(org.org_id, org.user_id.unwrap())
+                .await
+                .unwrap()
+                .id
+                .uuid(),
+            management_user_id: org.user_id.unwrap(),
+            org_id: org.org_id,
+        },
         CookieJar::new(),
         Path(provider),
         Query(OAuthAuthorizeQuery {
@@ -150,6 +178,17 @@ async fn linear_preset_oauth_differentiates_user_and_service_actors() {
     let (_user_jar, user_redirect) = authorize_connection(
         State(state.clone()),
         org.clone(),
+        everruns_server::api::user_connections::ConnectionUser {
+            id: state
+                .db
+                .default_virtual_user(org.org_id, org.user_id.unwrap())
+                .await
+                .unwrap()
+                .id
+                .uuid(),
+            management_user_id: org.user_id.unwrap(),
+            org_id: org.org_id,
+        },
         CookieJar::new(),
         Path(provider.clone()),
         Query(OAuthAuthorizeQuery {
@@ -228,7 +267,7 @@ async fn linear_preset_oauth_differentiates_user_and_service_actors() {
         .unwrap();
     let _callback = connection_oauth_callback(
         State(state.clone()),
-        org.clone(),
+        Ok(org.clone()),
         service_jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
@@ -276,7 +315,7 @@ async fn linear_preset_oauth_differentiates_user_and_service_actors() {
     let refusal_state = pending_state(&refusal_jar, &provider);
     let refusal = connection_oauth_callback(
         State(state),
-        org,
+        Ok(org),
         refusal_jar,
         Path(provider),
         Query(OAuthCallbackQuery {

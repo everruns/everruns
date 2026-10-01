@@ -1,597 +1,200 @@
-// PostgreSQL repository: User Connections
-
+//! Compatibility DTO adapters over the canonical virtual-user connection store.
 use super::super::mcp_catalog::UserMcpConnectionRow;
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
-use everruns_provider::typed_id::SessionId;
+use everruns_provider::typed_id::{SessionId, VirtualUserId};
 use uuid::Uuid;
-
 impl Database {
-    // ============================================
-    // User Connections
-    // ============================================
-
-    /// Create or replace a user connection for a provider.
-    /// Deletes any existing connection for the same (user_id, provider) first.
     pub async fn upsert_user_connection(
         &self,
         input: CreateUserConnectionRow,
     ) -> Result<UserConnectionRow> {
-        // App-level uniqueness: delete existing connection for this user+provider
-        sqlx::query("DELETE FROM user_connections WHERE user_id = $1 AND provider = $2")
-            .bind(input.user_id)
-            .bind(&input.provider)
-            .execute(&self.pool)
-            .await?;
-
-        let row = sqlx::query_as::<_, UserConnectionRow>(
-            r#"
-            INSERT INTO user_connections (user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
-            "#,
-        )
-        .bind(input.user_id)
-        .bind(&input.provider)
-        .bind(&input.connection_type)
-        .bind(&input.provider_user_id)
-        .bind(&input.provider_username)
-        .bind(&input.access_token_encrypted)
-        .bind(&input.refresh_token_encrypted)
-        .bind(&input.scopes)
-        .bind(input.expires_at)
-        .bind(input.installation_id)
-        .bind(&input.provider_metadata)
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(row)
+        Ok(self
+            .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+                virtual_user_id: VirtualUserId::from_uuid(input.user_id),
+                provider: input.provider,
+                connection_type: input.connection_type,
+                provider_user_id: input.provider_user_id,
+                provider_username: input.provider_username,
+                access_token_encrypted: input.access_token_encrypted,
+                refresh_token_encrypted: input.refresh_token_encrypted,
+                scopes: input.scopes,
+                expires_at: input.expires_at,
+                installation_id: input.installation_id,
+                provider_metadata: input.provider_metadata,
+            })
+            .await?
+            .into())
     }
-
-    /// Get a user's connection for a specific provider
     pub async fn get_user_connection(
         &self,
-        user_id: Uuid,
+        id: Uuid,
         provider: &str,
     ) -> Result<Option<UserConnectionRow>> {
-        let row = sqlx::query_as::<_, UserConnectionRow>(
-            r#"
-            SELECT id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
-            FROM user_connections
-            WHERE user_id = $1 AND provider = $2
-            ORDER BY created_at DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(user_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
+        Ok(self
+            .get_virtual_user_connection(VirtualUserId::from_uuid(id), provider)
+            .await?
+            .map(Into::into))
     }
-
-    /// List all connections for a user
-    pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
-        let rows = sqlx::query_as::<_, UserConnectionRow>(
-            r#"
-            SELECT id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
-            FROM user_connections
-            WHERE user_id = $1
-            ORDER BY provider ASC
-            "#,
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
+    pub async fn list_user_connections(&self, id: Uuid) -> Result<Vec<UserConnectionRow>> {
+        Ok(self
+            .list_virtual_user_connections(VirtualUserId::from_uuid(id))
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
-
-    pub async fn list_user_mcp_connections(
-        &self,
-        org_id: i64,
-        user_id: Uuid,
-    ) -> Result<Vec<UserMcpConnectionRow>> {
-        Ok(sqlx::query_as::<_, UserMcpConnectionRow>(
-            r#"
-            SELECT uc.provider,
-                   uc.provider_username,
-                   uc.id AS connection_id,
-                   uc.scopes,
-                   uc.created_at AS connected_at,
-                   ms.id AS server_id,
-                   ms.name AS server_name,
-                   ms.url AS server_url,
-                   ms.status AS server_status
-            FROM user_connections uc
-            JOIN mcp_servers ms
-              ON uc.provider = 'mcp_oauth_' || ms.id::text
-             AND ms.org_id = $1
-            WHERE uc.user_id = $2
-            ORDER BY LOWER(ms.name), ms.name
-            "#,
-        )
-        .bind(org_id)
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await?)
-    }
-    pub async fn list_user_mcp_connections_page(
-        &self,
-        org_id: i64,
-        user_id: Uuid,
-        cursor: Option<Uuid>,
-        limit: i64,
-    ) -> Result<Vec<UserMcpConnectionRow>> {
-        Ok(sqlx::query_as::<_, UserMcpConnectionRow>(
-            r#"
-            SELECT uc.id AS connection_id,
-                   uc.provider,
-                   uc.provider_username,
-                   uc.scopes,
-                   uc.created_at AS connected_at,
-                   ms.id AS server_id,
-                   ms.name AS server_name,
-                   ms.url AS server_url,
-                   ms.status AS server_status
-            FROM user_connections uc
-            JOIN mcp_servers ms
-              ON uc.provider = 'mcp_oauth_' || ms.id::text
-             AND ms.org_id = $1
-            WHERE uc.user_id = $2
-              AND ($3::uuid IS NULL OR uc.id < $3)
-            ORDER BY uc.id DESC
-            LIMIT $4
-            "#,
-        )
-        .bind(org_id)
-        .bind(user_id)
-        .bind(cursor)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?)
-    }
-
-    /// Atomically persist a refreshed OAuth grant, including rotated refresh token.
     pub async fn update_user_connection_oauth_tokens(
         &self,
         input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<UserConnectionRow>> {
-        let row = sqlx::query_as::<_, UserConnectionRow>(
-            r#"
-            UPDATE user_connections
-            SET access_token_encrypted = $2,
-                refresh_token_encrypted = $3,
-                expires_at = $4,
-                scopes = COALESCE($5, scopes),
-                updated_at = NOW()
-            WHERE id = $1 AND connection_type = 'oauth'
-            RETURNING id, user_id, provider, connection_type, provider_user_id,
-                      provider_username, access_token_encrypted, refresh_token_encrypted,
-                      scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
-            "#,
-        )
-        .bind(input.connection_id)
-        .bind(input.access_token_encrypted)
-        .bind(input.refresh_token_encrypted)
-        .bind(input.expires_at)
-        .bind(input.scopes)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
+        Ok(self
+            .update_virtual_user_connection_oauth_tokens(input)
+            .await?
+            .map(Into::into))
     }
-
-    /// Get the encrypted connection token for a session.
-    ///
-    /// Resolution order:
-    /// 1. If the session has an `agent_identity_id`, use `agent_identity_connections`.
-    /// 2. Otherwise fall back to `user_connections` for the session's resolved owner user.
-    ///
-    /// Returns None for GitHub App connections (use get_installation_id_for_session instead).
-    pub async fn get_connection_token_for_session(
-        &self,
-        session_id: SessionId,
-        provider: &str,
-    ) -> Result<Option<Vec<u8>>> {
-        let row: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
-            r#"
-            WITH has_identity_conn AS (
-                SELECT 1 AS v
-                FROM sessions s
-                JOIN agent_identity_connections aic
-                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
-                WHERE s.id = $1
-                  AND s.agent_identity_id IS NOT NULL
-                LIMIT 1
-            ),
-            identity_conn AS (
-                SELECT aic.access_token_encrypted
-                FROM sessions s
-                JOIN agent_identity_connections aic
-                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
-                WHERE s.id = $1
-                  AND s.agent_identity_id IS NOT NULL
-                  AND aic.access_token_encrypted IS NOT NULL
-                LIMIT 1
-            ),
-            user_conn AS (
-                SELECT uc.access_token_encrypted
-                FROM sessions s
-                JOIN user_connections uc
-                    ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
-                WHERE s.id = $1
-                  AND uc.access_token_encrypted IS NOT NULL
-                  AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
-                ORDER BY uc.created_at ASC
-                LIMIT 1
-            )
-            SELECT access_token_encrypted FROM identity_conn
-            UNION ALL
-            SELECT access_token_encrypted FROM user_conn
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.and_then(|(blob,)| blob))
+    pub async fn delete_user_connection(&self, id: Uuid, provider: &str) -> Result<bool> {
+        self.delete_virtual_user_connection(VirtualUserId::from_uuid(id), provider)
+            .await
     }
-
-    /// Get provider metadata for a session/provider pair.
-    ///
-    /// Same resolution order as get_connection_token_for_session.
-    pub async fn get_connection_metadata_for_session(
+    pub async fn list_user_mcp_connections(
         &self,
-        session_id: SessionId,
-        provider: &str,
-    ) -> Result<Option<serde_json::Value>> {
-        let row: Option<(Option<serde_json::Value>,)> = sqlx::query_as(
-            r#"
-            WITH has_identity_conn AS (
-                SELECT 1 AS v
-                FROM sessions s
-                JOIN agent_identity_connections aic
-                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
-                WHERE s.id = $1
-                  AND s.agent_identity_id IS NOT NULL
-                LIMIT 1
-            ),
-            identity_conn AS (
-                SELECT aic.provider_metadata
-                FROM sessions s
-                JOIN agent_identity_connections aic
-                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
-                WHERE s.id = $1
-                  AND s.agent_identity_id IS NOT NULL
-                LIMIT 1
-            ),
-            user_conn AS (
-                SELECT uc.provider_metadata
-                FROM sessions s
-                JOIN user_connections uc
-                    ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
-                WHERE s.id = $1
-                  AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
-                ORDER BY uc.created_at ASC
-                LIMIT 1
-            )
-            SELECT provider_metadata FROM identity_conn
-            UNION ALL
-            SELECT provider_metadata FROM user_conn
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.and_then(|(meta,)| meta))
-    }
-
-    /// Resolve the user whose connection would be used for a session/provider pair.
-    ///
-    /// Returns None when the session uses an agent identity connection (identity
-    /// connections are not owned by a user).
-    pub async fn get_connection_user_for_session(
-        &self,
-        session_id: SessionId,
-        provider: &str,
-    ) -> Result<Option<Uuid>> {
-        // If session uses an agent identity with a matching connection, there is
-        // no owning user — return None so callers know the credential is identity-owned.
-        let has_identity_conn: Option<(i32,)> = sqlx::query_as(
-            r#"
-            SELECT 1 as v
-            FROM sessions s
-            JOIN agent_identity_connections aic
-                ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
-            WHERE s.id = $1
-              AND s.agent_identity_id IS NOT NULL
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        if has_identity_conn.is_some() {
-            return Ok(None);
+        org: i64,
+        id: Uuid,
+    ) -> Result<Vec<UserMcpConnectionRow>> {
+        let mut rows = vec![];
+        for c in self.list_user_connections(id).await? {
+            if let Some(server_id) = c
+                .provider
+                .strip_prefix("mcp_oauth_")
+                .and_then(|v| v.parse::<Uuid>().ok())
+                && let Some(s) = self.get_mcp_server(org, server_id).await?
+            {
+                rows.push(UserMcpConnectionRow {
+                    connection_id: c.id,
+                    provider: c.provider,
+                    provider_username: c.provider_username,
+                    scopes: c.scopes,
+                    connected_at: c.created_at,
+                    server_id: s.id,
+                    server_name: s.name,
+                    server_url: s.url,
+                    server_status: s.status,
+                });
+            }
         }
-
-        let row: Option<(Uuid,)> = sqlx::query_as(
-            r#"
-            SELECT s.resolved_owner_user_id
-            FROM sessions s
-            JOIN user_connections uc
-                ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
-            WHERE s.id = $1
-              AND s.resolved_owner_user_id IS NOT NULL
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|(user_id,)| user_id))
+        rows.sort_by_key(|r| r.server_name.to_lowercase());
+        Ok(rows)
     }
-
-    /// Whether a human actually initiated this session.
-    ///
-    /// True only when the session's *owning principal is itself a user
-    /// principal*. This is deliberately stricter than
-    /// `sessions.resolved_owner_user_id`, which walks the principal parent
-    /// chain and therefore reports a human for an agent-identity principal
-    /// parented to its creator. That lineage walk is exactly how an unattended
-    /// run borrows a person: a trigger-fired session resolves an owner user and
-    /// would spend their token (EVE-1029).
-    ///
-    /// THREAT[TM-TOOL-042]: reads `principals.kind` rather than the
-    /// denormalized owner column so a session cannot present as attended by
-    /// virtue of who created the agent.
-    pub async fn session_has_human_initiator(&self, session_id: SessionId) -> Result<bool> {
-        let row: Option<(i32,)> = sqlx::query_as(
-            r#"
-            SELECT 1 as v
-            FROM sessions s
-            JOIN principals p ON p.id = s.owner_principal_id
-            WHERE s.id = $1
-              AND p.kind = 'user'
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.is_some())
-    }
-
-    /// Get the agent identity's connection for a session/provider pair.
-    ///
-    /// Reads `agent_identity_connections` and nothing else: there is no user
-    /// fallback here by construction, so an `actsAs: service` attachment can
-    /// never spend a person's token (EVE-1029).
-    pub async fn get_agent_identity_connection_for_session(
+    pub async fn list_user_mcp_connections_page(
         &self,
-        session_id: SessionId,
+        org: i64,
+        id: Uuid,
+        cursor: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<UserMcpConnectionRow>> {
+        let mut rows = self.list_user_mcp_connections(org, id).await?;
+        rows.retain(|r| cursor.is_none_or(|c| r.connection_id < c));
+        rows.sort_by_key(|r| std::cmp::Reverse(r.connection_id));
+        rows.truncate(limit.max(0) as usize);
+        Ok(rows)
+    }
+    // These unbound session helpers serve service accounts only. Consumer credentials
+    // require a recorded input-message subject in DbConnectionResolver.
+    pub async fn get_virtual_user_connection_row_for_session(
+        &self,
+        session: SessionId,
         provider: &str,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        let Some(s) = self.get_session_unscoped(session).await? else {
+            return Ok(None);
+        };
+        let Some(id) = s.virtual_user_id else {
+            return Ok(None);
+        };
+        let Some(v) = self.get_virtual_user(s.org_id, id).await? else {
+            return Ok(None);
+        };
+        if v.usage != "service" || v.status != "active" {
+            return Ok(None);
+        };
+        self.get_virtual_user_connection(id, provider).await
+    }
+    pub async fn get_virtual_user_connection_for_session(
+        &self,
+        s: SessionId,
+        p: &str,
     ) -> Result<Option<Vec<u8>>> {
         Ok(self
-            .get_agent_identity_connection_row_for_session(session_id, provider)
+            .get_virtual_user_connection_row_for_session(s, p)
             .await?
-            .and_then(|row| row.access_token_encrypted))
+            .and_then(|r| r.access_token_encrypted))
     }
-
-    pub async fn get_agent_identity_connection_row_for_session(
+    pub async fn get_connection_token_for_session(
         &self,
-        session_id: SessionId,
-        provider: &str,
-    ) -> Result<Option<AgentIdentityConnectionRow>> {
-        let row = sqlx::query_as::<_, AgentIdentityConnectionRow>(
-            r#"
-            SELECT aic.id, aic.agent_identity_id, aic.provider, aic.connection_type,
-                   aic.provider_user_id, aic.provider_username,
-                   aic.access_token_encrypted, aic.refresh_token_encrypted,
-                   aic.scopes, aic.expires_at, aic.installation_id,
-                   aic.provider_metadata, aic.created_at, aic.updated_at
-            FROM sessions s
-            JOIN agent_identity_connections aic
-                ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
-            WHERE s.id = $1
-              AND s.agent_identity_id IS NOT NULL
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row)
+        s: SessionId,
+        p: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        self.get_virtual_user_connection_for_session(s, p).await
     }
-
-    /// Get the invoking user's own connection row for a session/provider pair.
-    ///
-    /// Reads `user_connections` for the session's resolved owner and nothing
-    /// else — an agent identity grant for the same provider neither satisfies
-    /// nor suppresses this lookup. Attendedness is checked separately by
-    /// [`Self::session_has_human_initiator`] so the two failure reasons stay
-    /// distinguishable (EVE-1029).
+    pub async fn get_connection_metadata_for_session(
+        &self,
+        s: SessionId,
+        p: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        Ok(self
+            .get_virtual_user_connection_row_for_session(s, p)
+            .await?
+            .and_then(|r| r.provider_metadata))
+    }
+    pub async fn get_connection_user_for_session(
+        &self,
+        s: SessionId,
+        p: &str,
+    ) -> Result<Option<Uuid>> {
+        Ok(self
+            .get_virtual_user_connection_row_for_session(s, p)
+            .await?
+            .map(|r| r.virtual_user_id.uuid()))
+    }
+    pub async fn session_has_human_initiator(&self, _s: SessionId) -> Result<bool> {
+        Ok(false)
+    }
     pub async fn get_owner_user_connection_for_session(
         &self,
-        session_id: SessionId,
-        provider: &str,
+        _s: SessionId,
+        _p: &str,
     ) -> Result<Option<UserConnectionRow>> {
-        let row: Option<UserConnectionRow> = sqlx::query_as(
-            r#"
-            SELECT uc.id, uc.user_id, uc.provider, uc.connection_type,
-                   uc.provider_user_id, uc.provider_username,
-                   uc.access_token_encrypted, uc.refresh_token_encrypted,
-                   uc.scopes, uc.expires_at, uc.installation_id,
-                   uc.provider_metadata, uc.created_at, uc.updated_at
-            FROM sessions s
-            JOIN user_connections uc
-                ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
-            WHERE s.id = $1
-              AND s.resolved_owner_user_id IS NOT NULL
-              AND uc.access_token_encrypted IS NOT NULL
-            ORDER BY uc.created_at ASC
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
+        Ok(None)
     }
-
-    /// Get the encrypted connection token for a specific user/provider pair.
     pub async fn get_connection_token_for_user(
         &self,
-        user_id: Uuid,
-        provider: &str,
+        id: Uuid,
+        p: &str,
     ) -> Result<Option<Vec<u8>>> {
-        let row: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
-            r#"
-            SELECT access_token_encrypted
-            FROM user_connections
-            WHERE user_id = $1 AND provider = $2
-              AND access_token_encrypted IS NOT NULL
-            ORDER BY created_at DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(user_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.and_then(|(blob,)| blob))
+        Ok(self
+            .get_user_connection(id, p)
+            .await?
+            .and_then(|r| r.access_token_encrypted))
     }
-
-    /// Get the GitHub App installation ID for a session.
-    ///
-    /// Resolution order:
-    /// 1. If the session has an `agent_identity_id`, use `agent_identity_connections`.
-    /// 2. Otherwise fall back to `user_connections` for the session's resolved owner user.
+    pub async fn get_installation_id_for_user(&self, id: Uuid, p: &str) -> Result<Option<i64>> {
+        Ok(self
+            .get_user_connection(id, p)
+            .await?
+            .and_then(|r| r.installation_id))
+    }
     pub async fn get_installation_id_for_session(
         &self,
-        session_id: SessionId,
-        provider: &str,
+        s: SessionId,
+        p: &str,
     ) -> Result<Option<i64>> {
-        let row: Option<(i64,)> = sqlx::query_as(
-            r#"
-            WITH has_identity_conn AS (
-                SELECT 1 AS v
-                FROM sessions s
-                JOIN agent_identity_connections aic
-                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
-                WHERE s.id = $1
-                  AND s.agent_identity_id IS NOT NULL
-                LIMIT 1
-            ),
-            identity_conn AS (
-                SELECT aic.installation_id
-                FROM sessions s
-                JOIN agent_identity_connections aic
-                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
-                WHERE s.id = $1
-                  AND s.agent_identity_id IS NOT NULL
-                  AND aic.installation_id IS NOT NULL
-                LIMIT 1
-            ),
-            user_conn AS (
-                SELECT uc.installation_id
-                FROM sessions s
-                JOIN user_connections uc
-                    ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
-                WHERE s.id = $1
-                  AND uc.installation_id IS NOT NULL
-                  AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
-                ORDER BY uc.created_at ASC
-                LIMIT 1
-            )
-            SELECT installation_id FROM identity_conn
-            UNION ALL
-            SELECT installation_id FROM user_conn
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|(id,)| id))
+        Ok(self
+            .get_virtual_user_connection_row_for_session(s, p)
+            .await?
+            .and_then(|r| r.installation_id))
     }
-
-    /// Get the GitHub App installation ID for a specific user/provider pair.
-    pub async fn get_installation_id_for_user(
-        &self,
-        user_id: Uuid,
-        provider: &str,
-    ) -> Result<Option<i64>> {
-        let row: Option<(i64,)> = sqlx::query_as(
-            r#"
-            SELECT installation_id
-            FROM user_connections
-            WHERE user_id = $1 AND provider = $2
-              AND installation_id IS NOT NULL
-            ORDER BY created_at DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(user_id)
-        .bind(provider)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|(id,)| id))
-    }
-
-    /// Resolve owning user for a provider installation ID.
-    pub async fn get_user_id_by_installation_id(
-        &self,
-        provider: &str,
-        installation_id: i64,
-    ) -> Result<Option<Uuid>> {
-        let row: Option<(Uuid,)> = sqlx::query_as(
-            r#"
-            SELECT user_id
-            FROM user_connections
-            WHERE provider = $1
-              AND installation_id = $2
-            ORDER BY created_at DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(provider)
-        .bind(installation_id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|(user_id,)| user_id))
-    }
-
-    /// Delete a user's connection for a specific provider
-    pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
-        let result =
-            sqlx::query("DELETE FROM user_connections WHERE user_id = $1 AND provider = $2")
-                .bind(user_id)
-                .bind(provider)
-                .execute(&self.pool)
-                .await?;
-
-        Ok(result.rows_affected() > 0)
+    pub async fn get_user_id_by_installation_id(&self, p: &str, id: i64) -> Result<Option<Uuid>> {
+        Ok(sqlx::query_scalar("SELECT virtual_user_id FROM virtual_user_connections WHERE provider=$1 AND installation_id=$2 ORDER BY created_at DESC LIMIT 1").bind(p).bind(id).fetch_optional(&self.pool).await?)
     }
 }

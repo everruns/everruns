@@ -3,8 +3,6 @@
 
 mod agent_check_rules;
 mod agent_health_checks;
-mod agent_identities;
-mod agent_identity_connections;
 mod agent_mcp_secret_bindings;
 mod agent_triggers;
 mod agents;
@@ -14,6 +12,8 @@ mod audit_logs;
 mod auth;
 mod budgets;
 mod compaction_checkpoints;
+mod virtual_user_connections;
+mod virtual_users;
 pub use budgets::BudgetSubjectLookup;
 mod declarative_capabilities;
 mod evals;
@@ -48,6 +48,7 @@ mod skills;
 mod user_connections;
 mod user_preferences;
 mod users;
+mod virtual_user_preferences;
 mod waiting_turn_resolutions;
 mod workspaces;
 

@@ -739,7 +739,7 @@ mod tests {
             agent_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("session-fs write guard".to_string()),

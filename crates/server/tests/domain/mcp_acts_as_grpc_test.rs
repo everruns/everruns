@@ -8,12 +8,12 @@ use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs};
 use everruns_host::{HostComposition, RuntimeHostAdapter};
 use everruns_provider::{
     ToolCall, ToolResult,
-    typed_id::{AgentId, AgentIdentityId, HarnessId, PrincipalId, SessionId},
+    typed_id::{AgentId, HarnessId, PrincipalId, SessionId, VirtualUserId},
 };
 use everruns_server::grpc_service::WorkerServiceImpl;
 use everruns_server::storage::models::{
-    CreateAgentIdentityConnectionRow, CreateAgentIdentityRow, CreateAgentRow, CreateMcpServerRow,
-    CreatePrincipalRow, CreateSessionRow, CreateUserConnectionRow, CreateUserRow,
+    CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
+    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, CreateVirtualUserRow,
 };
 use everruns_server::storage::{EncryptionService, StorageBackend, UpsertMcpServiceToolCache};
 use everruns_server::{EventDelivery, seed};
@@ -34,8 +34,9 @@ struct ActsAsArrangement {
     provider: String,
     harness_id: HarnessId,
     agent_id: AgentId,
-    identity_id: AgentIdentityId,
+    identity_id: VirtualUserId,
     user_id: Uuid,
+    runtime_user_id: VirtualUserId,
     user_principal_id: PrincipalId,
     identity_principal_id: PrincipalId,
 }
@@ -106,6 +107,14 @@ impl ActsAsArrangement {
             .await
             .unwrap()
             .id;
+        db.add_organization_member(DEFAULT_ORG_ID, user_id, "member")
+            .await
+            .unwrap();
+        let runtime_user_id = db
+            .default_virtual_user(DEFAULT_ORG_ID, user_id)
+            .await
+            .unwrap()
+            .id;
         let user_principal_id = PrincipalId::new();
         db.create_principal(CreatePrincipalRow {
             id: user_principal_id,
@@ -118,8 +127,9 @@ impl ActsAsArrangement {
         })
         .await
         .unwrap();
-        let identity_id = AgentIdentityId::new();
-        db.create_agent_identity(CreateAgentIdentityRow {
+        let identity_id = VirtualUserId::new();
+        db.create_virtual_user(CreateVirtualUserRow {
+            usage: "service".to_string(),
             org_id: DEFAULT_ORG_ID,
             id: identity_id,
             name: "Acts As Identity".to_string(),
@@ -134,7 +144,7 @@ impl ActsAsArrangement {
         db.create_principal(CreatePrincipalRow {
             id: identity_principal_id,
             org_id: DEFAULT_ORG_ID,
-            kind: "agent_identity".to_string(),
+            kind: "virtual_user".to_string(),
             subject_id: Some(identity_id.uuid()),
             parent_principal_id: Some(user_principal_id),
             resolved_user_id: Some(user_id),
@@ -170,7 +180,7 @@ impl ActsAsArrangement {
             .await
             .unwrap();
         assert!(
-            db.set_agent_identity_id(DEFAULT_ORG_ID, agent.id, identity_id)
+            db.set_virtual_user_id(DEFAULT_ORG_ID, agent.id, identity_id)
                 .await
                 .unwrap()
         );
@@ -186,6 +196,7 @@ impl ActsAsArrangement {
             agent_id: agent.id,
             identity_id,
             user_id,
+            runtime_user_id,
             user_principal_id,
             identity_principal_id,
         }
@@ -203,7 +214,7 @@ impl ActsAsArrangement {
     async fn user_grant(&self, token: &str) {
         self.db
             .upsert_user_connection(CreateUserConnectionRow {
-                user_id: self.user_id,
+                user_id: self.runtime_user_id.uuid(),
                 provider: self.provider.clone(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
@@ -221,8 +232,8 @@ impl ActsAsArrangement {
 
     async fn identity_grant(&self, token: &str) {
         self.db
-            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-                agent_identity_id: self.identity_id,
+            .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+                virtual_user_id: self.identity_id,
                 provider: self.provider.clone(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
@@ -242,8 +253,8 @@ impl ActsAsArrangement {
         self.mock
             .seed_oauth_grant(access_token, refresh_token, Some(self.mock.mcp_url()));
         self.db
-            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-                agent_identity_id: self.identity_id,
+            .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+                virtual_user_id: self.identity_id,
                 provider: self.provider.clone(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
@@ -274,7 +285,8 @@ impl ActsAsArrangement {
         owner_principal_id: PrincipalId,
         acts_as: McpServerActsAs,
     ) -> SessionId {
-        self.db
+        let session = self
+            .db
             .create_session(CreateSessionRow {
                 source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
@@ -286,7 +298,7 @@ impl ActsAsArrangement {
                 agent_id: Some(self.agent_id),
                 agent_version_id: None,
                 agent_config_hash: None,
-                agent_identity_id: Some(self.identity_id),
+                virtual_user_id: Some(self.identity_id),
                 owner_principal_id,
                 resolved_owner_user_id: Some(self.user_id),
                 title: None,
@@ -309,7 +321,19 @@ impl ActsAsArrangement {
             })
             .await
             .unwrap()
-            .id
+            .id;
+        self.db
+            .record_runtime_invocation(
+                DEFAULT_ORG_ID,
+                session,
+                session.uuid(),
+                (owner_principal_id == self.user_principal_id).then_some(self.runtime_user_id),
+                None,
+                Some(self.agent_id.uuid()),
+            )
+            .await
+            .unwrap();
+        session
     }
 
     fn worker_service(&self) -> WorkerServiceImpl {
@@ -398,6 +422,8 @@ async fn connect_executor(
     host.mcp_executor(DEFAULT_ORG_ID, session_id, Some(fixture.agent_id))
         .await
         .expect("worker host must expose MCP execution")
+        .for_execution(session_id.uuid())
+        .unwrap()
 }
 
 async fn invoke_executor(
@@ -508,7 +534,7 @@ async fn remote_service_revocation_evicts_the_grant_and_cache_before_the_next_ca
     assert!(
         fixture
             .db
-            .get_agent_identity_connection(fixture.identity_id, &fixture.provider)
+            .get_virtual_user_connection(fixture.identity_id, &fixture.provider)
             .await
             .unwrap()
             .is_none()
@@ -589,7 +615,7 @@ async fn late_old_token_rejection_preserves_a_reauthorized_grant_and_cache() {
     assert!(rejected.await.unwrap().is_err());
     let current = fixture
         .db
-        .get_agent_identity_connection(fixture.identity_id, &fixture.provider)
+        .get_virtual_user_connection(fixture.identity_id, &fixture.provider)
         .await
         .unwrap()
         .expect("reauthorized grant must survive the stale rejection");

@@ -105,6 +105,8 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
     .await
     .unwrap();
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: "list-agent".to_string(),
         display_name: Some("List Agent".to_string()),
@@ -315,6 +317,8 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     .await
     .unwrap();
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: "hydration-agent".to_string(),
         display_name: Some("Hydration Agent".to_string()),
@@ -385,7 +389,11 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         .unwrap();
     }
     db.pin_session(
-        everruns_platform::ANONYMOUS_USER_ID,
+        db.default_virtual_user(DEFAULT_ORG_ID, everruns_platform::ANONYMOUS_USER_ID)
+            .await
+            .unwrap()
+            .id
+            .uuid(),
         agent_session.id,
         DEFAULT_ORG_ID,
     )
@@ -417,7 +425,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
             agent_id: Some(missing_agent_id),
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: missing_owner_id,
             resolved_owner_user_id: None,
             title: Some("missing references".to_string()),
@@ -682,6 +690,9 @@ async fn app_backreference_is_only_set_by_app_session_create() {
         })
         .await
         .unwrap();
+    db.add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+        .await
+        .unwrap();
     let app_owner = principal_service
         .ensure_user_principal(1, user.id)
         .await
@@ -939,6 +950,8 @@ async fn starter_files_are_copied_into_new_sessions() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: "test-agent".to_string(),
         display_name: Some("Test Agent".to_string()),
@@ -1032,6 +1045,9 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
         })
         .await
         .unwrap();
+    db.add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+        .await
+        .unwrap();
     let caller = Caller {
         user_id: Some(user.id),
         ..external_caller(DEFAULT_ORG_ID)
@@ -1060,6 +1076,8 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: "scoped-memory-agent".to_string(),
         display_name: Some("Scoped Memory Agent".to_string()),
@@ -1317,6 +1335,8 @@ async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
     .unwrap();
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: "test-agent".to_string(),
         display_name: Some("Test Agent".to_string()),

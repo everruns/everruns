@@ -44,18 +44,40 @@ impl WorkerServiceImpl {
         // gRPC ExecuteCommand is the auth boundary for worker-driven platform
         // tools. Respect the provided user_id; do not silently upgrade to
         // Caller::internal for user-owned sessions.
-        let caller = match req.user_id.as_deref() {
-            Some(user_id) => {
-                let user_id = user_id
-                    .parse()
-                    .map_err(|e| Status::invalid_argument(format!("Invalid user_id: {e}")))?;
-                crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
-                    .await
-                    .map_err(|e| {
-                        Status::permission_denied(format!("Failed to resolve caller: {e}"))
-                    })?
+        let caller = if let Some(session) = req.platform_session_id.as_ref() {
+            let session =
+                everruns_provider::typed_id::SessionId::from_uuid(parse_uuid(Some(session))?);
+            let message = parse_uuid(req.input_message_id.as_ref())?;
+            self.db
+                .get_session(req.org_id, session)
+                .await
+                .map_err(|_| Status::internal("Session unavailable"))?
+                .ok_or_else(|| Status::not_found("Session"))?;
+            let user = self
+                .db
+                .runtime_invocation_management_user(session, message)
+                .await
+                .map_err(|_| Status::internal("Invocation unavailable"))?
+                .ok_or_else(|| {
+                    Status::permission_denied("Management-authorized invocation required")
+                })?;
+            crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user)
+                .await
+                .map_err(|_| Status::permission_denied("Management authority revoked"))?
+        } else {
+            match req.user_id.as_deref() {
+                Some(user_id) => {
+                    let user_id = user_id
+                        .parse()
+                        .map_err(|e| Status::invalid_argument(format!("Invalid user_id: {e}")))?;
+                    crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
+                        .await
+                        .map_err(|e| {
+                            Status::permission_denied(format!("Failed to resolve caller: {e}"))
+                        })?
+                }
+                None => everruns_core::Caller::internal(req.org_id),
             }
-            None => everruns_core::Caller::internal(req.org_id),
         };
         let ctx = self.org_domain_ctx_for_caller(caller).await?;
         let response = match crate::domains::common::dispatch(&req.name, params, &ctx).await {
@@ -203,11 +225,15 @@ impl WorkerServiceImpl {
                 "Platform command execution requires the platform capability",
             ));
         }
-        let user_id = session.resolved_owner_user_id.ok_or_else(|| {
-            Status::permission_denied(
-                "Platform command execution requires a user-owned session with a resolved owner",
-            )
-        })?;
+        let message = parse_uuid(req.input_message_id.as_ref())?;
+        let user_id = self
+            .db
+            .runtime_invocation_management_user(session.id, message)
+            .await
+            .map_err(|_| Status::internal("Invocation unavailable"))?
+            .ok_or_else(|| {
+                Status::permission_denied("Management-authorized invocation required")
+            })?;
         let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
             .await
             .map_err(|error| {
@@ -299,6 +325,9 @@ pub(crate) mod test_support {
     ) -> serde_json::Value {
         let response = service
             .execute_command(Request::new(ExecuteCommandRequest {
+                input_message_id: None,
+                platform_session_id: None,
+
                 name: name.to_string(),
                 api_version: "v1".to_string(),
                 params_json: serde_json::to_vec(&params).expect("serialize params"),

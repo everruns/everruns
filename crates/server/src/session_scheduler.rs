@@ -231,6 +231,15 @@ async fn poll_and_trigger(
         // Build injected message with metadata.source = "schedule"
         let message_id = Uuid::now_v7();
         let message_id_typed = MessageId::from_uuid(message_id);
+        db.record_runtime_invocation(
+            session.org_id,
+            session.id,
+            message_id,
+            None,
+            None,
+            session.agent_id.map(|id| id.uuid()),
+        )
+        .await?;
         let now = Utc::now();
 
         let mut metadata = HashMap::new();
@@ -267,7 +276,7 @@ async fn poll_and_trigger(
                 .with_metadata(execution_metadata::scheduled_run_metadata(
                     schedule_id,
                     session.owner_principal_id,
-                    session.agent_identity_id,
+                    session.virtual_user_id,
                 )),
             )
             .await

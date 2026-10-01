@@ -6,7 +6,7 @@ use crate::kernel_imports::{
 };
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateAgentIdentityConnectionRow, CreateHarnessRow};
+use crate::storage::models::{CreateHarnessRow, CreateVirtualUserConnectionRow};
 use async_trait::async_trait;
 use everruns_platform::FeatureFlags;
 use std::sync::Arc;
@@ -112,6 +112,8 @@ async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
 
 fn high_risk_agent_request(name: String) -> CreateAgentRequest {
     CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name,
         display_name: None,
@@ -136,6 +138,8 @@ fn high_risk_agent_request(name: String) -> CreateAgentRequest {
 
 fn basic_agent_request(name: &str) -> CreateAgentRequest {
     CreateAgentRequest {
+        service_virtual_user_id: None,
+
         id: None,
         name: name.to_string(),
         display_name: None,
@@ -160,6 +164,8 @@ fn basic_agent_request(name: &str) -> CreateAgentRequest {
 
 fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
     UpdateAgentRequest {
+        service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
         name: None,
         display_name: None,
         description: None,
@@ -240,6 +246,8 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
     let renamed = UpdateAgentCmd {
         id: created.public_id.to_string(),
         req: UpdateAgentRequest {
+            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
             name: None,
             display_name: Some("renamed".to_string()),
             description: None,
@@ -269,6 +277,8 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
     let changed = UpdateAgentCmd {
         id: created.public_id.to_string(),
         req: UpdateAgentRequest {
+            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
             harness_id: Some(second_harness_id),
             ..update_prompt_request("changed harness")
         },
@@ -454,6 +464,8 @@ async fn update_agent_skips_auto_snapshot_for_unchanged_config() {
     UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
+            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
             name: None,
             display_name: None,
             description: None,
@@ -731,6 +743,8 @@ async fn rollback_version_restores_versioned_harness() {
     let changed = UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
+            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
             harness_id: Some(second_harness_id),
             ..update_prompt_request("switch to second harness")
         },
@@ -872,7 +886,7 @@ async fn archiving_agent_revokes_all_identity_connections() {
         .await
         .unwrap()
         .unwrap();
-    let (identity_id, _) = crate::domains::agent_identities::lifecycle::ensure_identity_for_agent(
+    let (identity_id, _) = crate::domains::virtual_users::lifecycle::ensure_identity_for_agent(
         &db,
         DEFAULT_ORG_ID,
         &row,
@@ -880,8 +894,8 @@ async fn archiving_agent_revokes_all_identity_connections() {
     .await
     .unwrap();
     for provider in ["mcp_oauth_one", "mcp_oauth_two"] {
-        db.upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-            agent_identity_id: identity_id,
+        db.upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+            virtual_user_id: identity_id,
             provider: provider.to_string(),
             connection_type: "oauth".to_string(),
             provider_user_id: None,
@@ -905,7 +919,7 @@ async fn archiving_agent_revokes_all_identity_connections() {
     .unwrap();
 
     assert!(
-        db.list_agent_identity_connections(identity_id)
+        db.list_virtual_user_connections(identity_id)
             .await
             .unwrap()
             .is_empty()
@@ -925,15 +939,15 @@ async fn patch_archiving_agent_revokes_all_identity_connections() {
         .await
         .unwrap()
         .unwrap();
-    let (identity_id, _) = crate::domains::agent_identities::lifecycle::ensure_identity_for_agent(
+    let (identity_id, _) = crate::domains::virtual_users::lifecycle::ensure_identity_for_agent(
         &db,
         DEFAULT_ORG_ID,
         &row,
     )
     .await
     .unwrap();
-    db.upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-        agent_identity_id: identity_id,
+    db.upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+        virtual_user_id: identity_id,
         provider: "mcp_oauth_patch".to_string(),
         connection_type: "oauth".to_string(),
         provider_user_id: None,
@@ -951,6 +965,8 @@ async fn patch_archiving_agent_revokes_all_identity_connections() {
     UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
+            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
             status: Some(AgentStatus::Archived),
             ..Default::default()
         },
@@ -960,7 +976,7 @@ async fn patch_archiving_agent_revokes_all_identity_connections() {
     .unwrap();
 
     assert!(
-        db.list_agent_identity_connections(identity_id)
+        db.list_virtual_user_connections(identity_id)
             .await
             .unwrap()
             .is_empty()
@@ -1007,6 +1023,8 @@ async fn built_in_agent_rejects_update() {
     let err = UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
+            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
             system_prompt: Some("hijacked".to_string()),
             ..Default::default()
         },
@@ -1034,6 +1052,8 @@ async fn built_in_agent_rejects_archive() {
     let err = UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
+            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
             status: Some(AgentStatus::Archived),
             ..Default::default()
         },
@@ -1154,6 +1174,8 @@ async fn built_in_agent_can_be_copied() {
     UpdateAgentCmd {
         id: copy.public_id.to_string(),
         req: UpdateAgentRequest {
+            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+
             system_prompt: Some("edited".to_string()),
             ..Default::default()
         },

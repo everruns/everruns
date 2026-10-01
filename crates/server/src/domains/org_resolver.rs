@@ -169,7 +169,7 @@ inventory::submit! {
 inventory::submit! {
     ResourceOrgResolver {
         prefix: "identity",
-        resolve: |db, id| Box::pin(async move { db.get_agent_identity_organization_id(id).await }),
+        resolve: |db, id| Box::pin(async move { db.get_virtual_user_organization_id(id).await }),
     }
 }
 

@@ -31,7 +31,7 @@ impl InMemoryDatabase {
             execution_harness_id: input.execution_harness_id,
             execution_owner_principal_id: input.execution_owner_principal_id,
             execution_resolved_owner_user_id: input.execution_resolved_owner_user_id,
-            execution_agent_identity_id: input.execution_agent_identity_id,
+            execution_virtual_user_id: input.execution_virtual_user_id,
             execution_app_id: input.execution_app_id,
             execution_app_public_id: input.execution_app_public_id,
             execution_app_name: input.execution_app_name,

@@ -439,7 +439,7 @@ mod tests {
                 title,
                 model,
                 locale,
-                agent_identity,
+                virtual_user,
                 system_prompt,
                 tags,
                 capabilities,
@@ -458,7 +458,7 @@ mod tests {
                 assert_eq!(title, Some("Test Session".to_string()));
                 assert_eq!(model, None);
                 assert_eq!(locale, None);
-                assert_eq!(agent_identity, None);
+                assert_eq!(virtual_user, None);
                 assert_eq!(system_prompt, None);
                 assert!(tags.is_empty());
                 assert!(capabilities.is_empty());
@@ -621,7 +621,7 @@ mod tests {
             "create",
             "--agent",
             "agent_abc",
-            "--agent-identity",
+            "--virtual-user",
             "identity_abc",
             "--system-prompt",
             "Be concise",
@@ -645,7 +645,7 @@ mod tests {
         .unwrap();
         if let Commands::Sessions { command } = cli.command {
             if let commands::sessions::SessionsCommand::Create {
-                agent_identity,
+                virtual_user,
                 system_prompt,
                 locale,
                 tags,
@@ -658,7 +658,7 @@ mod tests {
                 ..
             } = command
             {
-                assert_eq!(agent_identity, Some("identity_abc".to_string()));
+                assert_eq!(virtual_user, Some("identity_abc".to_string()));
                 assert_eq!(system_prompt, Some("Be concise".to_string()));
                 assert_eq!(locale, Some("uk-UA".to_string()));
                 assert_eq!(tags, vec!["debugging".to_string()]);

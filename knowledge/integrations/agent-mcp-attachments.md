@@ -12,6 +12,13 @@ tags:
 
 > Status: **Proposed.** Supersedes nothing yet. [mcp-servers.md](mcp-servers.md) and
 > [runtime-mcp.md](runtime-mcp.md) remain authoritative for what exists today.
+>
+> Runtime ownership and credential authority are now defined by
+> [Virtual users](../runtime-resources/virtual-users.md). References below to
+> AgentIdentity, global user connections, or an owning principal as the human
+> initiator describe the earlier proposal. Current execution uses the persisted
+> input's verified end user and responder's service virtual user; no provider
+> retains an identity-to-management-user credential fallback.
 
 ## Abstract
 

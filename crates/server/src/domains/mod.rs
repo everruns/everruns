@@ -6,7 +6,6 @@
 pub mod common;
 
 pub mod agent_endpoints;
-pub mod agent_identities;
 pub mod agent_triggers;
 pub mod agents;
 pub mod apps;
@@ -50,4 +49,5 @@ pub mod system;
 pub mod tool_results;
 pub mod user_connections;
 pub mod users;
+pub mod virtual_users;
 pub mod workspaces;

@@ -51,7 +51,7 @@ level down:
 |---|---|---|
 | `harness_id` | deleted | The agent already pins one; App's copy is a second source of truth that the create form fills *from* the agent. |
 | `agent_id`, version policy | agent is the parent; policy moves to the endpoint | A staging endpoint on `latest` and a prod endpoint `pinned` is a real case the App forces into two Apps. |
-| `agent_identity_id` | endpoint, defaulting to the agent's | Two channels needing different identities requires two Apps today. Per-endpoint is strictly more expressive. |
+| `virtual_user_id` | endpoint, defaulting to the agent's | Two channels needing different identities requires two Apps today. Per-endpoint is strictly more expressive. |
 | `owner_principal_id` | **endpoint, mandatory** | Load-bearing for security. See [Invariants that must not move](#invariants-that-must-not-move). |
 | `status: draft/published` | per-endpoint status + one agent-level suspend | A "published" App with three draft channels is a lie the 2-D `App.status × channel.enabled` matrix tells today. |
 
@@ -77,7 +77,7 @@ each config variant:
 
 - `status`: `draft | live | disabled`
 - `session_binding` (see [Session binding](#session-binding))
-- `agent_identity_id`, nullable, defaults to the agent's lazy identity
+- `virtual_user_id`, nullable, defaults to the agent's service virtual user
 - `agent_version_policy` + `agent_version_id`
 - `owner_principal_id`, `resolved_owner_user_id`
 - `auth`, the shared inline config from [endpoint-auth.md](endpoint-auth.md)
@@ -331,7 +331,7 @@ rest proceeds.
    reserved forever. Must precede phase 4.
 4. **`agent_endpoints`** (EVE-1003, landed) with an `agent_id` FK, backfilled from
    `app_channels ⋈ apps`. `app_channels` is now a read-only view over `agent_endpoints`,
-   retained for compatibility; every writer targets the table. `status`, `agent_identity_id`,
+   retained for compatibility; every writer targets the table. `status`, `virtual_user_id`,
    `agent_version_policy`/`agent_version_id`, and `owner_principal_id`/
    `resolved_owner_user_id` are first-class endpoint columns. The `auth` config did not
    move: it lives inside the channel-config encryption envelope, so lifting it is its own

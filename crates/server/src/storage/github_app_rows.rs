@@ -1,17 +1,17 @@
 // Rows for per-agent GitHub Apps (`crate::github_apps`).
 
 use chrono::{DateTime, Utc};
-use everruns_provider::typed_id::AgentIdentityId;
+use everruns_provider::typed_id::VirtualUserId;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-/// A GitHub App created for one agent identity through the manifest flow.
-/// Secrets are stored encrypted; see migration 147.
+/// A GitHub App created for one service virtual user through the manifest flow.
+/// Secrets are stored encrypted; see migrations 149 and 153.
 #[derive(Debug, Clone, FromRow)]
 pub struct GitHubAppRow {
     pub id: Uuid,
     pub org_id: i64,
-    pub agent_identity_id: AgentIdentityId,
+    pub virtual_user_id: VirtualUserId,
     pub app_id: i64,
     pub slug: String,
     pub name: String,
@@ -30,7 +30,7 @@ pub struct GitHubAppRow {
 pub struct CreateGitHubAppRow {
     pub id: Uuid,
     pub org_id: i64,
-    pub agent_identity_id: AgentIdentityId,
+    pub virtual_user_id: VirtualUserId,
     pub app_id: i64,
     pub slug: String,
     pub name: String,

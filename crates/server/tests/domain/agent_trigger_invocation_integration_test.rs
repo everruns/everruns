@@ -14,7 +14,7 @@ use test_harness::TestServer;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_platform::SessionSource;
 use everruns_provider::typed_id::{
-    AgentId, AgentIdentityId, AppChannelId, HarnessId, SessionId, TriggerId,
+    AgentId, AppChannelId, HarnessId, SessionId, TriggerId, VirtualUserId,
 };
 use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::budgets::BudgetService;
@@ -192,7 +192,7 @@ async fn create_migrated_webhook_trigger(
             execution_harness_id: Some(HarnessId::from_uuid(app_row.harness_id)),
             execution_owner_principal_id: Some(app_row.owner_principal_id),
             execution_resolved_owner_user_id: app_row.resolved_owner_user_id,
-            execution_agent_identity_id: app_row.agent_identity_id.map(AgentIdentityId::from_uuid),
+            execution_virtual_user_id: app_row.virtual_user_id.map(VirtualUserId::from_uuid),
             execution_app_id: Some(app_row.id),
             execution_app_public_id: Some(app_row.public_id),
             execution_app_name: Some(app_row.name),
@@ -675,7 +675,7 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
         .expect("get agent")
         .expect("agent exists");
     let identity_id = agent_row
-        .agent_identity_id
+        .virtual_user_id
         .expect("agent linked to a lazily-created identity on first fire");
     let owner = server
         .db
@@ -684,11 +684,11 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
         .expect("get owner principal")
         .expect("owner principal exists");
     assert_eq!(
-        owner.kind, "agent_identity",
+        owner.kind, "virtual_user",
         "trigger session is owned by the agent's identity principal"
     );
     assert_eq!(
-        session.agent_identity_id,
+        session.virtual_user_id,
         Some(identity_id),
         "session records the agent's identity"
     );
@@ -701,7 +701,7 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
         .expect("get agent")
         .expect("agent exists");
     assert_eq!(
-        agent_after_second.agent_identity_id,
+        agent_after_second.virtual_user_id,
         Some(identity_id),
         "shared-mode reuse keeps the same identity (no re-link)"
     );
@@ -721,7 +721,7 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
     );
 
     server
-        .delete(&format!("/v1/agent-identities/{identity_id}"))
+        .delete(&format!("/v1/virtual-users/{identity_id}"))
         .await
         .assert_status(StatusCode::CONFLICT);
 }

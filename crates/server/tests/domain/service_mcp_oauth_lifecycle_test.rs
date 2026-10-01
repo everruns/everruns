@@ -20,7 +20,7 @@ use everruns_core::{
     Caller, EgressRequest, EgressResponse, EgressService, McpServerActsAs, OrgRole,
 };
 use everruns_platform::connector::ConnectorRegistry;
-use everruns_provider::typed_id::{AgentIdentityId, HarnessId, PrincipalId, SessionId};
+use everruns_provider::typed_id::{HarnessId, PrincipalId, SessionId, VirtualUserId};
 use everruns_server::api::user_connections::{
     AppState, OAuthAuthorizeQuery, OAuthCallbackQuery, authorize_connection,
     connection_oauth_callback,
@@ -126,20 +126,25 @@ fn resolved_org(user_id: Uuid) -> ResolvedOrg {
 }
 
 async fn create_user(db: &StorageBackend, label: &str) -> Uuid {
-    db.create_user(CreateUserRow {
-        email: format!("{label}-{}@example.com", Uuid::now_v7()),
-        name: label.to_string(),
-        avatar_url: None,
-        roles: vec!["user".to_string()],
-        password_hash: None,
-        email_verified: true,
-        auth_provider: None,
-        auth_provider_id: None,
-        external_id: None,
-    })
-    .await
-    .unwrap()
-    .id
+    let user = db
+        .create_user(CreateUserRow {
+            email: format!("{label}-{}@example.com", Uuid::now_v7()),
+            name: label.to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    db.add_organization_member(everruns_core::DEFAULT_ORG_ID, user, "owner")
+        .await
+        .unwrap();
+    user
 }
 
 async fn create_user_principal(db: &StorageBackend, user_id: Uuid) -> PrincipalId {
@@ -160,7 +165,7 @@ async fn create_user_principal(db: &StorageBackend, user_id: Uuid) -> PrincipalI
 async fn create_session(
     db: &StorageBackend,
     agent_id: everruns_provider::typed_id::AgentId,
-    identity_id: AgentIdentityId,
+    identity_id: VirtualUserId,
     harness_id: HarnessId,
     owner_principal_id: PrincipalId,
     user_id: Uuid,
@@ -176,7 +181,7 @@ async fn create_session(
         agent_id: Some(agent_id),
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: Some(identity_id),
+        virtual_user_id: Some(identity_id),
         owner_principal_id,
         resolved_owner_user_id: Some(user_id),
         title: None,
@@ -215,7 +220,7 @@ fn pending_state_value(jar: &CookieJar, provider: &str) -> String {
     pending["state"].as_str().unwrap().to_string()
 }
 
-fn verify_grant_in_separate_process(identity_id: AgentIdentityId, provider: &str) {
+fn verify_grant_in_separate_process(identity_id: VirtualUserId, provider: &str) {
     let output = Command::new(std::env::current_exe().unwrap())
         .arg("--exact")
         // Test names in the merged `domain` binary carry the module prefix.
@@ -246,14 +251,14 @@ fn identity_grant_decrypt_helper() {
     if std::env::var("EVE_IDENTITY_GRANT_DECRYPT_HELPER").as_deref() != Ok("1") {
         return;
     }
-    let identity_id: AgentIdentityId = std::env::var("EVE_IDENTITY_ID").unwrap().parse().unwrap();
+    let identity_id: VirtualUserId = std::env::var("EVE_IDENTITY_ID").unwrap().parse().unwrap();
     let provider = std::env::var("EVE_IDENTITY_PROVIDER").unwrap();
     let expected = std::env::var("EVE_EXPECTED_ACCESS_TOKEN").unwrap();
     let runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.block_on(async {
         let db = StorageBackend::postgres(&get_database_url()).await.unwrap();
         let row = db
-            .get_agent_identity_connection(identity_id, &provider)
+            .get_virtual_user_connection(identity_id, &provider)
             .await
             .unwrap()
             .expect("identity grant must be visible in the shared database");
@@ -351,6 +356,17 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
     let (jar, _) = authorize_connection(
         State(state.clone()),
         org.clone(),
+        everruns_server::api::user_connections::ConnectionUser {
+            id: state
+                .db
+                .default_virtual_user(org.org_id, org.user_id.unwrap())
+                .await
+                .unwrap()
+                .id
+                .uuid(),
+            management_user_id: org.user_id.unwrap(),
+            org_id: org.org_id,
+        },
         CookieJar::new(),
         Path(provider.clone()),
         Query(OAuthAuthorizeQuery {
@@ -366,7 +382,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
     let oauth_state = pending_state_value(&jar, &provider);
     let (_jar, _redirect) = connection_oauth_callback(
         State(state),
-        org.clone(),
+        Ok(org.clone()),
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
@@ -395,7 +411,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         .await
         .unwrap()
         .unwrap();
-    let identity_id = agent.agent_identity_id.unwrap();
+    let identity_id = agent.virtual_user_id.unwrap();
     assert!(
         db.get_user_connection(alice_id, &provider)
             .await
@@ -472,7 +488,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
     verify_grant_in_separate_process(identity_id, &provider);
 
     assert!(
-        db.delete_agent_identity_connection(identity_id, &provider)
+        db.delete_virtual_user_connection(identity_id, &provider)
             .await
             .unwrap()
     );
@@ -486,7 +502,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         );
     }
     assert!(
-        db.get_agent_identity_connection(identity_id, &provider)
+        db.get_virtual_user_connection(identity_id, &provider)
             .await
             .unwrap()
             .is_none()

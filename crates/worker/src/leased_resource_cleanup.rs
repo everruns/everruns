@@ -219,12 +219,21 @@ async fn resolve_provider_token(
     resource: &LeasedResource,
     resolver: &dyn UserConnectionResolver,
 ) -> Result<String> {
-    if let Some(owner_user_id) = resource.owner_user_id
-        && let Some(token) = resolver
-            .get_connection_token_for_user(owner_user_id, &resource.provider)
-            .await?
+    if resource
+        .metadata
+        .get("connection_migration_pending")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
     {
-        return Ok(token);
+        return Err(anyhow!(
+            "Connection migration must be completed before resource cleanup"
+        ));
+    }
+    if let Some(owner) = resource.owner_user_id {
+        return resolver
+            .get_connection_token_for_user(owner, &resource.provider)
+            .await?
+            .ok_or_else(|| anyhow!("The resource's virtual user has no provider connection"));
     }
 
     if let Some(session_id) = resource.session_id
@@ -478,6 +487,51 @@ fn is_browserless_already_gone(error: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct WrongAccountResolver;
+    #[async_trait::async_trait]
+    impl UserConnectionResolver for WrongAccountResolver {
+        async fn get_connection_token(
+            &self,
+            _: everruns_provider::typed_id::SessionId,
+            _: &str,
+        ) -> everruns_provider::error::Result<Option<String>> {
+            panic!("cleanup must never fall back to another account's session grant")
+        }
+        async fn get_connection_token_for_user(
+            &self,
+            _: uuid::Uuid,
+            _: &str,
+        ) -> everruns_provider::error::Result<Option<String>> {
+            Ok(None)
+        }
+    }
+    #[tokio::test]
+    async fn cleanup_requires_the_resource_owner_and_blocks_pending_migrations() {
+        let mut resource: LeasedResource = serde_json::from_value(serde_json::json!({
+            "id": everruns_provider::typed_id::LeasedResourceId::new(), "session_id": everruns_provider::typed_id::SessionId::new(),
+            "provider":"daytona", "resource_type":"sandbox", "external_id":"fixture",
+            "status":"active", "owner_user_id":uuid::Uuid::new_v4(), "lease_duration_seconds":60,
+            "last_touched_at":chrono::Utc::now(),"lease_expires_at":chrono::Utc::now(),
+            "cleanup_attempts":0,"metadata":{},"created_at":chrono::Utc::now(),"updated_at":chrono::Utc::now()
+        })).unwrap();
+        assert!(
+            resolve_provider_token(&resource, &WrongAccountResolver)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("virtual user")
+        );
+        resource.owner_user_id = None;
+        resource.metadata = serde_json::json!({"connection_migration_pending":true});
+        assert!(
+            resolve_provider_token(&resource, &WrongAccountResolver)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("migration")
+        );
+    }
 
     #[test]
     fn browserless_external_id_drops_query_string() {

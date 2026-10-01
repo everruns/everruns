@@ -4,7 +4,7 @@
 // - Keep provenance in event.metadata so it does not change message payload shape.
 // - Record both initiator and acting_principal, but keep external_actor separate.
 
-use everruns_provider::typed_id::{AgentIdentityId, AppId, PrincipalId, ScheduleId, TriggerId};
+use everruns_provider::typed_id::{AppId, PrincipalId, ScheduleId, TriggerId, VirtualUserId};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -25,10 +25,10 @@ pub fn interactive_user_metadata(
 pub fn scheduled_run_metadata(
     schedule_id: ScheduleId,
     owner_principal_id: PrincipalId,
-    agent_identity_id: Option<AgentIdentityId>,
+    virtual_user_id: Option<VirtualUserId>,
 ) -> Value {
-    let acting_principal = agent_identity_id
-        .map(|identity_id| json!({ "type": "agent_identity", "agent_identity_id": identity_id }))
+    let acting_principal = virtual_user_id
+        .map(|identity_id| json!({ "type": "virtual_user", "virtual_user_id": identity_id }))
         .unwrap_or_else(|| json!({ "type": "schedule" }));
     json!({
         "initiator": { "type": "schedule", "schedule_id": schedule_id },
@@ -40,7 +40,7 @@ pub fn scheduled_run_metadata(
 
 /// Provenance for a message injected by an agent's own schedule trigger
 /// (EVE-757). Mirrors [`app_message_metadata`] but keyed on the trigger; the
-/// acting principal is the agent-owned session owner (no agent-identity layer).
+/// acting principal is the agent-owned session owner (no virtual-user layer).
 pub fn agent_trigger_message_metadata(
     trigger_id: TriggerId,
     owner_principal_id: PrincipalId,
@@ -56,10 +56,10 @@ pub fn agent_trigger_message_metadata(
 pub fn app_message_metadata(
     app_id: AppId,
     owner_principal_id: PrincipalId,
-    agent_identity_id: Option<AgentIdentityId>,
+    virtual_user_id: Option<VirtualUserId>,
 ) -> Value {
-    let acting_principal = agent_identity_id
-        .map(|identity_id| json!({ "type": "agent_identity", "agent_identity_id": identity_id }))
+    let acting_principal = virtual_user_id
+        .map(|identity_id| json!({ "type": "virtual_user", "virtual_user_id": identity_id }))
         .unwrap_or_else(|| json!({ "type": "app", "app_id": app_id }));
     json!({
         "initiator": { "type": "app", "app_id": app_id },

@@ -3,7 +3,7 @@
 // Design Decision:
 // - AgentTrigger is an org-scoped, agent-owned entity that describes how an
 //   agent gets invoked autonomously (e.g. on a schedule). It mirrors the
-//   AgentIdentity CRUD shape (see `agent_identity.rs`).
+//   VirtualUser CRUD shape (see `virtual_user.rs`).
 // - The concrete per-type configuration lives in `config` (JSONB). Typed
 //   accessors parse it on demand, mirroring `AppChannel::schedule_config()`.
 

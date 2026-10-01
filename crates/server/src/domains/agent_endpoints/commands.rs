@@ -1,10 +1,10 @@
 use super::types::{CreateAgentEndpointRequest, UpdateAgentEndpointRequest};
 use super::validation::{merge_preserved_secret_fields, normalize_and_validate_channel_config};
 use crate::api::app_ingress::{endpoint_liveness, row_to_ingress};
-use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::apps::redact_channel_for_response;
 use crate::domains::common::*;
+use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::storage::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
 use everruns_durable::UpdateField;
 use everruns_platform::{AppChannel, ChannelType};
@@ -194,7 +194,7 @@ impl Command for CreateAgentEndpoint {
                         "disabled"
                     }
                     .to_string(),
-                    agent_identity_id: Some(identity_id.uuid()),
+                    virtual_user_id: Some(identity_id.uuid()),
                     agent_version_policy: "default".to_string(),
                     agent_version_id: None,
                     owner_principal_id: owner.id.uuid(),
