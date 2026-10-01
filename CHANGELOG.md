@@ -7,6 +7,126 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-01
+
+### Highlights
+
+- **GitHub pull request triggers and per-agent GitHub Apps** - Agents connect their own GitHub App by clicks and act on pull requests, with PR triggers, a Connect GitHub card, PR tools, and a PR summarizer guide ([#3935](https://github.com/everruns/everruns/pull/3935), [#3943](https://github.com/everruns/everruns/pull/3943)).
+- **OpenAI Responses hosted tools and remote MCP** - The OpenAI Responses driver gains hosted web search ([#3918](https://github.com/everruns/everruns/pull/3918), [#3923](https://github.com/everruns/everruns/pull/3923)), hosted code interpreter, shell and file search ([#3928](https://github.com/everruns/everruns/pull/3928)), remote MCP with approval and registered-server credentials ([#3930](https://github.com/everruns/everruns/pull/3930)), and structured output with background mode ([#3932](https://github.com/everruns/everruns/pull/3932)).
+- **Agent trigger event pipeline** - A new event pipeline with filters, dedupe, and per-subject sessions ([#3915](https://github.com/everruns/everruns/pull/3915)), plus outbound MCP Events for session webhooks ([#3931](https://github.com/everruns/everruns/pull/3931)).
+- **MCP Apps for ChatGPT and Codex** - Everruns serves MCP Apps views for ChatGPT and Codex ([#3927](https://github.com/everruns/everruns/pull/3927)), answering form-mode elicitation through ask_user ([#3929](https://github.com/everruns/everruns/pull/3929)).
+- **Pluggable decision drivers** - Decision drivers route behind one router ([#3921](https://github.com/everruns/everruns/pull/3921)), with the OpenAI Decisions API available as a preview driver ([#3924](https://github.com/everruns/everruns/pull/3924)).
+- **Provider-neutral computer use** - A provider-neutral computer tool runs on Browserless ([#3922](https://github.com/everruns/everruns/pull/3922)).
+- **New models** - Claude Sonnet 5.5 joins as the favorite Sonnet ([#3902](https://github.com/everruns/everruns/pull/3902)) and GPT-6.1 Sol arrives with fast and ultrafast speed tiers ([#3925](https://github.com/everruns/everruns/pull/3925)); the sunset Claude Sonnet 4.5 profile is dropped ([#3952](https://github.com/everruns/everruns/pull/3952)).
+- **Rebuilt agent workspace** - The agent page is rebuilt as a single view-and-edit workspace ([#3917](https://github.com/everruns/everruns/pull/3917)).
+
+### What's Changed
+
+- feat(identity): separate runtime users from management accounts ([#3933](https://github.com/everruns/everruns/pull/3933)) by [@chaliy](https://github.com/chaliy)
+- feat(models): drop sunset Claude Sonnet 4.5 ([#3952](https://github.com/everruns/everruns/pull/3952)) by [@chaliy](https://github.com/chaliy)
+- feat(budgets): give trigger ingress a structural budget subject ([#3950](https://github.com/everruns/everruns/pull/3950)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): carry tool-result images on a user message for chat completions ([#3949](https://github.com/everruns/everruns/pull/3949)) by [@chaliy](https://github.com/chaliy)
+- refactor(budgets): drop the retired App variant from BudgetSubjectType ([#3947](https://github.com/everruns/everruns/pull/3947)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): stop presenting App as a live entity ([#3948](https://github.com/everruns/everruns/pull/3948)) by [@chaliy](https://github.com/chaliy)
+- fix(payments): retire the app policy subject for agent_endpoint ([#3946](https://github.com/everruns/everruns/pull/3946)) by [@chaliy](https://github.com/chaliy)
+- fix(budgets): retire the app budget level onto the agent ([#3945](https://github.com/everruns/everruns/pull/3945)) by [@chaliy](https://github.com/chaliy)
+- fix(budgets): key the agent subject by public_id ([#3942](https://github.com/everruns/everruns/pull/3942)) by [@chaliy](https://github.com/chaliy)
+- feat(agent-triggers): GitHub pull request triggers, Connect GitHub card, and PR summarizer guide ([#3943](https://github.com/everruns/everruns/pull/3943)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump next from 16.3.4 to 16.3.6 in /apps/ui ([#3941](https://github.com/everruns/everruns/pull/3941)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump cronstrue from 3.26.0 to 3.27.0 in /apps/ui ([#3940](https://github.com/everruns/everruns/pull/3940)) by [@dependabot](https://github.com/dependabot)
+- chore(deps-dev): bump jest-environment-jsdom from 30.5.1 to 30.5.2 in /apps/ui ([#3939](https://github.com/everruns/everruns/pull/3939)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump @rjsf/utils from 6.10.0 to 6.10.1 in /apps/ui ([#3938](https://github.com/everruns/everruns/pull/3938)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump @astrojs/markdown-satteri from 0.4.1 to 0.4.2 in /apps/docs ([#3937](https://github.com/everruns/everruns/pull/3937)) by [@dependabot](https://github.com/dependabot)
+- fix(mcp): return 400 for scoped MCP validation rejections ([#3936](https://github.com/everruns/everruns/pull/3936)) by [@chaliy](https://github.com/chaliy)
+- feat(github-apps): per-agent GitHub Apps connected by clicks, plus pull request tools ([#3935](https://github.com/everruns/everruns/pull/3935)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): hold @ag-ui/core on 0.0.x until the AG-UI 1.0 migration ([#3934](https://github.com/everruns/everruns/pull/3934)) by [@chaliy](https://github.com/chaliy)
+- feat(agent-triggers): event pipeline with filters, dedupe and per-subject sessions ([#3915](https://github.com/everruns/everruns/pull/3915)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): answer form mode elicitation through ask_user ([#3929](https://github.com/everruns/everruns/pull/3929)) by [@chaliy](https://github.com/chaliy)
+- feat(provider): structured output and background mode for OpenAI Responses ([#3932](https://github.com/everruns/everruns/pull/3932)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): outbound MCP Events for session webhooks (EVE-1121) ([#3931](https://github.com/everruns/everruns/pull/3931)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add GPT-6.1 Sol and the fast and ultrafast speed tiers ([#3925](https://github.com/everruns/everruns/pull/3925)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump utoipa to 6 and jsonschema to 0.58 ([#3909](https://github.com/everruns/everruns/pull/3909)) by [@dependabot](https://github.com/dependabot)
+- feat(openai): remote MCP through OpenAI with approval and registered-server credentials (EVE-1115) ([#3930](https://github.com/everruns/everruns/pull/3930)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): serve MCP Apps views for ChatGPT and Codex (EVE-1122) ([#3927](https://github.com/everruns/everruns/pull/3927)) by [@chaliy](https://github.com/chaliy)
+- feat(decisions): OpenAI Decisions API as a preview decision driver ([#3924](https://github.com/everruns/everruns/pull/3924)) by [@chaliy](https://github.com/chaliy)
+- feat(openai): hosted code interpreter, shell and file search (EVE-1115) ([#3928](https://github.com/everruns/everruns/pull/3928)) by [@chaliy](https://github.com/chaliy)
+- feat(computer-use): provider-neutral computer tool on Browserless (EVE-1119) ([#3922](https://github.com/everruns/everruns/pull/3922)) by [@chaliy](https://github.com/chaliy)
+- feat(openai): show hosted web search activity and price it (EVE-1115) ([#3923](https://github.com/everruns/everruns/pull/3923)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump react and @types/react in /apps/ui ([#3908](https://github.com/everruns/everruns/pull/3908)) by [@dependabot](https://github.com/dependabot)
+- chore(deps-dev): bump oxfmt from 0.51.0 to 0.70.0 in /apps/ui ([#3907](https://github.com/everruns/everruns/pull/3907)) by [@dependabot](https://github.com/dependabot)
+- fix(server): serialize Slack token rotation ([#3895](https://github.com/everruns/everruns/pull/3895)) by [@chaliy](https://github.com/chaliy)
+- fix(files): bound inline PDF resolution ([#3869](https://github.com/everruns/everruns/pull/3869)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump tailwind-merge from 3.6.0 to 3.7.0 in /apps/ui ([#3905](https://github.com/everruns/everruns/pull/3905)) by [@dependabot](https://github.com/dependabot)
+- revert: bind wait test to LlmSim model ([#3926](https://github.com/everruns/everruns/pull/3926)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): prototype OpenAI Agents API as a runtime backend ([#3920](https://github.com/everruns/everruns/pull/3920)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump marked from 18.0.13 to 18.0.14 in /apps/docs ([#3904](https://github.com/everruns/everruns/pull/3904)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates ([#3913](https://github.com/everruns/everruns/pull/3913)) by [@dependabot](https://github.com/dependabot)
+- fix(foreman): isolate external worker environment ([#3872](https://github.com/everruns/everruns/pull/3872)) by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): allow model scout overrides ([#3880](https://github.com/everruns/everruns/pull/3880)) by [@chaliy](https://github.com/chaliy)
+- fix(sprites): name the sprite's checkpoints when a restore fails ([#3916](https://github.com/everruns/everruns/pull/3916)) by [@chaliy](https://github.com/chaliy)
+- fix(builtins): enforce ask_user timeout for in-process responders ([#3900](https://github.com/everruns/everruns/pull/3900)) by [@chaliy](https://github.com/chaliy)
+- fix(anthropic): preserve message role provenance ([#3897](https://github.com/everruns/everruns/pull/3897)) by [@chaliy](https://github.com/chaliy)
+- fix(server): redact NATS credentials from logs ([#3894](https://github.com/everruns/everruns/pull/3894)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): bound research agent requests ([#3893](https://github.com/everruns/everruns/pull/3893)) by [@chaliy](https://github.com/chaliy)
+- fix(server): remove exposed NATS credential fixture ([#3891](https://github.com/everruns/everruns/pull/3891)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): restore reasoning include on recovery ([#3885](https://github.com/everruns/everruns/pull/3885)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): reject unsupported session bindings ([#3882](https://github.com/everruns/everruns/pull/3882)) by [@chaliy](https://github.com/chaliy)
+- fix(observability): gate tool descriptions on content-capture ([#3877](https://github.com/everruns/everruns/pull/3877)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): sanitize attestation type labels ([#3876](https://github.com/everruns/everruns/pull/3876)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): bound cancellation replay to current turn ([#3875](https://github.com/everruns/everruns/pull/3875)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): reject symlinked fixture paths ([#3873](https://github.com/everruns/everruns/pull/3873)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): reject incomplete response tool calls ([#3870](https://github.com/everruns/everruns/pull/3870)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): isolate delivery retries by session ([#3867](https://github.com/everruns/everruns/pull/3867)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): bound markdown reply splitting ([#3866](https://github.com/everruns/everruns/pull/3866)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): replace guardrail-retracted streams ([#3865](https://github.com/everruns/everruns/pull/3865)) by [@chaliy](https://github.com/chaliy)
+- fix(files): exclude private /memory/user from search accounting ([#3863](https://github.com/everruns/everruns/pull/3863)) by [@chaliy](https://github.com/chaliy)
+- feat(decisions): pluggable decision drivers behind one router ([#3921](https://github.com/everruns/everruns/pull/3921)) by [@chaliy](https://github.com/chaliy)
+- feat(openai): hosted web search through the Responses driver (EVE-1115) ([#3918](https://github.com/everruns/everruns/pull/3918)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): correlate task lifecycle events to originating turn ([#3901](https://github.com/everruns/everruns/pull/3901)) by [@chaliy](https://github.com/chaliy)
+- fix(host): preserve ask_user facts in durable turns ([#3899](https://github.com/everruns/everruns/pull/3899)) by [@chaliy](https://github.com/chaliy)
+- fix(server): propagate capability hydration failures ([#3898](https://github.com/everruns/everruns/pull/3898)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): detect undeclared directory test modules ([#3896](https://github.com/everruns/everruns/pull/3896)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): sanitize terminal event labels ([#3892](https://github.com/everruns/everruns/pull/3892)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): sanitize untrusted terminal output in demo-support ([#3890](https://github.com/everruns/everruns/pull/3890)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): keep model edit dialog open on failure ([#3889](https://github.com/everruns/everruns/pull/3889)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): require HTTPS base URLs ([#3888](https://github.com/everruns/everruns/pull/3888)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): keep failed logout sessions visible ([#3887](https://github.com/everruns/everruns/pull/3887)) by [@chaliy](https://github.com/chaliy)
+- fix(compaction): emit one fallback terminal event ([#3886](https://github.com/everruns/everruns/pull/3886)) by [@chaliy](https://github.com/chaliy)
+- fix(server): preserve chat fields in name upserts ([#3884](https://github.com/everruns/everruns/pull/3884)) by [@chaliy](https://github.com/chaliy)
+- fix(tests): bind wait test to LlmSim model ([#3883](https://github.com/everruns/everruns/pull/3883)) by [@chaliy](https://github.com/chaliy)
+- fix(docs): include harness IDs in foreman handoff example ([#3881](https://github.com/everruns/everruns/pull/3881)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): validate workflow secret masks ([#3879](https://github.com/everruns/everruns/pull/3879)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): classify anonymous FCP exposures ([#3874](https://github.com/everruns/everruns/pull/3874)) by [@chaliy](https://github.com/chaliy)
+- fix(ask-user): preserve timeout provenance for expired secret questions ([#3871](https://github.com/everruns/everruns/pull/3871)) by [@chaliy](https://github.com/chaliy)
+- fix(server): limit synchronous message waits ([#3868](https://github.com/everruns/everruns/pull/3868)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): enforce Jev checks after utility cap ([#3864](https://github.com/everruns/everruns/pull/3864)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): enforce task question ownership ([#3862](https://github.com/everruns/everruns/pull/3862)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): attach the agent tab row to the workspace ([#3919](https://github.com/everruns/everruns/pull/3919)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): rebuild the agent page as one view-and-edit workspace ([#3917](https://github.com/everruns/everruns/pull/3917)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): put Reports behind a default-off experimental flag ([#3914](https://github.com/everruns/everruns/pull/3914)) by [@chaliy](https://github.com/chaliy)
+- feat(model-profiles): enumerate registry and selection ([#3912](https://github.com/everruns/everruns/pull/3912)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): wait out an in-flight run before failing the label gate ([#3903](https://github.com/everruns/everruns/pull/3903)) by [@chaliy](https://github.com/chaliy)
+- feat(anthropic): add Claude Sonnet 5.5 profile as favorite Sonnet ([#3902](https://github.com/everruns/everruns/pull/3902)) by [@chaliy](https://github.com/chaliy)
+- fix(observability): keep a standing Braintrust rejection visible ([#3861](https://github.com/everruns/everruns/pull/3861)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): specify inbound MCP form mode elicitation ([#3860](https://github.com/everruns/everruns/pull/3860)) by [@chaliy](https://github.com/chaliy)
+- test(server): pin the worker file ctx's registry-aware store behaviorally ([#3859](https://github.com/everruns/everruns/pull/3859)) by [@chaliy](https://github.com/chaliy)
+- test(server): close org, oauth, slack, and event-delivery test gaps ([#3858](https://github.com/everruns/everruns/pull/3858)) by [@chaliy](https://github.com/chaliy)
+- test(integrations): drive daytona/browserless tool paths, not doubles ([#3857](https://github.com/everruns/everruns/pull/3857)) by [@chaliy](https://github.com/chaliy)
+- test(support,platform): assert llmsim migration bridge, fix capability_boundary ([#3856](https://github.com/everruns/everruns/pull/3856)) by [@chaliy](https://github.com/chaliy)
+- test(durable,cli): exercise max_concurrent skip; unit-test scan_local gitignore ([#3855](https://github.com/everruns/everruns/pull/3855)) by [@chaliy](https://github.com/chaliy)
+- test(ui): cover schedules status filter; stop ledger counting Playwright hooks ([#3854](https://github.com/everruns/everruns/pull/3854)) by [@chaliy](https://github.com/chaliy)
+- perf(framework): clone the core event only when a host listener wants it ([#3836](https://github.com/everruns/everruns/pull/3836)) by [@chaliy](https://github.com/chaliy)
+- fix(llm-tests): stop vendor model de-listings from redding main ([#3853](https://github.com/everruns/everruns/pull/3853)) by [@chaliy](https://github.com/chaliy)
+- test(core): review builtins, core, host, provider and support crate tests ([#3851](https://github.com/everruns/everruns/pull/3851)) by [@chaliy](https://github.com/chaliy)
+- test(server): review every server test and drop waste ([#3849](https://github.com/everruns/everruns/pull/3849)) by [@chaliy](https://github.com/chaliy)
+- test(cli,worker,durable): review every test and drop waste ([#3850](https://github.com/everruns/everruns/pull/3850)) by [@chaliy](https://github.com/chaliy)
+- test(integrations): review every integration test and drop waste ([#3852](https://github.com/everruns/everruns/pull/3852)) by [@chaliy](https://github.com/chaliy)
+- test(ui): review every UI unit test and drop waste ([#3848](https://github.com/everruns/everruns/pull/3848)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.33.0.
+
 ## [0.32.0] - 2026-09-26
 
 ### Highlights
