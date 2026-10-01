@@ -1577,64 +1577,19 @@ where
 
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
 
-        // Run pre-tool-use hooks (capability-contributed). They can mutate
-        // the tool call or block execution entirely. First Block wins; the
-        // tool is not invoked, and the synthetic error result flows through
-        // the same completion/event path as a tool failure.
-        let (execution_tool_call, pre_block_reason, deferred_result) =
-            if self.pre_tool_hooks.is_empty() {
-                (execution_tool_call, None, None)
-            } else {
-                match act_hooks::run_pre_tool_use_hooks(
-                    &self.pre_tool_hooks,
-                    execution_tool_call.clone(),
-                    tool_def,
-                    &tool_context,
-                )
-                .await
-                {
-                    act_hooks::PreToolUseDecision::Continue(updated) => (updated, None, None),
-                    act_hooks::PreToolUseDecision::Block {
-                        tool_call: blocked,
-                        reason,
-                        ..
-                    } => (blocked, Some(reason), None),
-                    act_hooks::PreToolUseDecision::Defer {
-                        tool_call: deferred,
-                        result,
-                    } => (deferred, None, Some(result)),
-                }
-            };
+        // Run pre-tool-use hooks (capability-contributed). They can mutate the
+        // call, block it, or defer it; a blocked or deferred call is not
+        // invoked and its result flows through the ordinary completion path.
+        let (execution_tool_call, pre_hook_result) = act_hooks::pre_tool_use_outcome(
+            &self.pre_tool_hooks,
+            execution_tool_call,
+            tool_def,
+            &tool_context,
+        )
+        .await;
 
-        let result = if let Some(mut deferred) = deferred_result {
-            // A gate parked this call on a durable request (hosted tool
-            // approval). The tool never runs; the structured result flows
-            // through the ordinary completion path so post-act hooks can turn it
-            // into a pause and a replayed act settles to the same outcome.
-            tracing::info!(
-                session_id = %context.session_id,
-                tool_call_id = %execution_tool_call.id,
-                tool_name = %execution_tool_call.name,
-                "ActAtom: pre_tool_use hook deferred execution"
-            );
-            deferred.tool_call_id = execution_tool_call.id.clone();
-            Ok(deferred)
-        } else if let Some(reason) = pre_block_reason {
-            tracing::warn!(
-                session_id = %context.session_id,
-                tool_call_id = %execution_tool_call.id,
-                tool_name = %execution_tool_call.name,
-                reason = %reason,
-                "ActAtom: pre_tool_use hook blocked execution"
-            );
-            Ok(crate::tool_types::ToolResult {
-                tool_call_id: execution_tool_call.id.clone(),
-                result: None,
-                images: None,
-                error: Some(format!("blocked by pre_tool_use hook: {reason}")),
-                connection_required: None,
-                raw_output: None,
-            })
+        let result = if let Some(pre_hook_result) = pre_hook_result {
+            Ok(pre_hook_result)
         } else if tool_def.is_cpu_bound() {
             // CPU-bound / non-yielding in-process tools (e.g. the bash
             // interpreter) get their own task so a long synchronous burst
@@ -1894,3 +1849,7 @@ where
 #[cfg(test)]
 #[path = "act_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "act_approval_tests.rs"]
+mod approval_tests;

@@ -64,6 +64,7 @@ pub mod soft_approval;
 pub mod stateless_todo_list;
 pub mod system_commands;
 pub mod tool_approval;
+mod tool_approval_durable;
 pub mod tool_call_repair;
 pub mod tool_output_distillation;
 pub mod tool_output_persistence;

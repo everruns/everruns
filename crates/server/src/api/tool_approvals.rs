@@ -284,6 +284,14 @@ pub(crate) enum ApprovalResolveError {
     Internal(String),
 }
 
+/// What resolving a batch writes through: storage, the event log, and the
+/// durable runner that resumes the turn.
+pub(crate) struct ApprovalServices<'a> {
+    pub(crate) db: &'a std::sync::Arc<StorageBackend>,
+    pub(crate) event_service: &'a EventService,
+    pub(crate) runner: &'a std::sync::Arc<dyn everruns_worker::AgentRunner>,
+}
+
 /// Settle every pending approval request on a parked session and resume it.
 ///
 /// The one operation the API and the deadline sweep share, so validation,
@@ -291,9 +299,7 @@ pub(crate) enum ApprovalResolveError {
 /// `outcomes` maps request call ids to how they end; any pending request it
 /// does not name ends as `fallback`.
 pub(crate) async fn resolve_tool_approvals(
-    db: &std::sync::Arc<StorageBackend>,
-    event_service: &EventService,
-    runner: &std::sync::Arc<dyn everruns_worker::AgentRunner>,
+    services: &ApprovalServices<'_>,
     org_id: i64,
     session_id: SessionId,
     pending: &[PendingApproval],
@@ -301,6 +307,11 @@ pub(crate) async fn resolve_tool_approvals(
     fallback: ApprovalOutcome,
     kind: &str,
 ) -> Result<Vec<ToolApprovalResolution>, ApprovalResolveError> {
+    let ApprovalServices {
+        db,
+        event_service,
+        runner,
+    } = services;
     if pending.is_empty() {
         return Err(ApprovalResolveError::NotFound(
             "No pending tool approval request".to_string(),
@@ -591,9 +602,11 @@ pub async fn submit_tool_approvals(
     };
     let outcomes = validate_decisions(&pending, &req.decisions, Utc::now()).map_err(to_response)?;
     let resolved = resolve_tool_approvals(
-        &state.db,
-        &state.event_service,
-        &state.runner,
+        &ApprovalServices {
+            db: &state.db,
+            event_service: &state.event_service,
+            runner: &state.runner,
+        },
         org.org_id,
         session_id,
         &pending,

@@ -80,6 +80,7 @@ everruns_core::capabilities::IntegrationPlugin	struct
 everruns_core::capabilities::SPAWN_AGENT_CONCURRENCY_CLASS	constant
 everruns_core::capabilities::SystemPromptContext	struct
 everruns_core::capabilities::SystemPromptContext::model	struct_field
+everruns_core::capabilities::TOOL_APPROVAL_KV_PREFIX	constant
 everruns_core::capabilities::ToolCallHook	trait
 everruns_core::capabilities::ToolDefinitionHook	trait
 everruns_core::capabilities::blueprint::AgentBlueprint	struct
@@ -1571,6 +1572,7 @@ everruns_core::tool_hooks::PostToolExecHookPriority::Normal	variant
 everruns_core::tool_hooks::PreToolUseDecision	enum
 everruns_core::tool_hooks::PreToolUseDecision::Block	variant
 everruns_core::tool_hooks::PreToolUseDecision::Continue	variant
+everruns_core::tool_hooks::PreToolUseDecision::Defer	variant
 everruns_core::tool_hooks::PreToolUseHook	trait
 everruns_core::tool_narration	module
 everruns_core::tool_narration::GroupHeadlineAction	struct

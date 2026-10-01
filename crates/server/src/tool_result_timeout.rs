@@ -270,12 +270,14 @@ async fn resolve_expired_approvals(
         return Ok(());
     }
     use crate::api::tool_approvals::{
-        ApprovalOutcome, ApprovalResolveError, resolve_tool_approvals,
+        ApprovalOutcome, ApprovalResolveError, ApprovalServices, resolve_tool_approvals,
     };
     match resolve_tool_approvals(
-        db,
-        event_service,
-        runner,
+        &ApprovalServices {
+            db,
+            event_service,
+            runner,
+        },
         org_id,
         session_id,
         &pending,

@@ -50,6 +50,60 @@ pub(super) async fn run_pre_tool_use_hooks(
     PreToolUseDecision::Continue(tool_call)
 }
 
+/// Run the pre-tool-use chain and turn its decision into what ActAtom needs:
+/// the (possibly transformed) call, plus the result to record instead of
+/// running it when a hook blocked or deferred the call.
+///
+/// A deferral (hosted tool approval, EVE-1140) carries its own structured
+/// result, so post-act hooks can turn it into a pause and a replayed act
+/// settles to the same outcome.
+pub(super) async fn pre_tool_use_outcome(
+    hooks: &[Arc<dyn PreToolUseHook>],
+    tool_call: ToolCall,
+    tool_def: &ToolDefinition,
+    context: &ToolContext,
+) -> (ToolCall, Option<ToolResult>) {
+    if hooks.is_empty() {
+        return (tool_call, None);
+    }
+    match run_pre_tool_use_hooks(hooks, tool_call, tool_def, context).await {
+        PreToolUseDecision::Continue(updated) => (updated, None),
+        PreToolUseDecision::Block {
+            tool_call, reason, ..
+        } => {
+            tracing::warn!(
+                session_id = %context.session_id,
+                tool_call_id = %tool_call.id,
+                tool_name = %tool_call.name,
+                reason = %reason,
+                "ActAtom: pre_tool_use hook blocked execution"
+            );
+            let result = ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                result: None,
+                images: None,
+                error: Some(format!("blocked by pre_tool_use hook: {reason}")),
+                connection_required: None,
+                raw_output: None,
+            };
+            (tool_call, Some(result))
+        }
+        PreToolUseDecision::Defer {
+            tool_call,
+            mut result,
+        } => {
+            tracing::info!(
+                session_id = %context.session_id,
+                tool_call_id = %tool_call.id,
+                tool_name = %tool_call.name,
+                "ActAtom: pre_tool_use hook deferred execution"
+            );
+            result.tool_call_id = tool_call.id.clone();
+            (tool_call, Some(result))
+        }
+    }
+}
+
 /// Execute post-tool-exec hooks on a single tool result.
 ///
 /// Runs capability-contributed hooks first, then final (infrastructure) hooks.
