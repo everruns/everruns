@@ -735,7 +735,7 @@ pub struct ApiInvocationRequest {
 
 /// Resolve the published app + enabled api_endpoint channel for an
 /// execution-key request. Shared by the create-session and post-message paths
-/// **and** by the HTTP auth layer (`api::app_api::authenticate_request`) so the
+/// **and** by the HTTP auth layer (`api::endpoint_api::authenticate_request`) so the
 /// published / enabled / channel-type gate lives in exactly one place and
 /// cannot drift between the two.
 pub async fn resolve_api_app_channel(

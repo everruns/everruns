@@ -23,8 +23,8 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::{
-    AppA2aState, AuthorizedA2a, build_task_json, derive_task_state_from_events, internal_error,
-    legacy_task_json, rpc_error, rpc_success, session_belongs_to_a2a_channel,
+    AuthorizedA2a, EndpointA2aState, build_task_json, derive_task_state_from_events,
+    internal_error, legacy_task_json, rpc_error, rpc_success, session_belongs_to_a2a_channel,
 };
 use crate::storage::StorageBackend;
 
@@ -427,7 +427,7 @@ pub(super) fn with_status_message(mut task: Value, message: Option<Value>) -> Va
 /// allowed to answer *this* task, and that what it is answering is not a
 /// credential.
 pub(super) async fn handle_ask_user_answer(
-    state: &AppA2aState,
+    state: &EndpointA2aState,
     auth: &AuthorizedA2a,
     task_id: Option<&str>,
     submission: crate::api::question_answers::QuestionAnswersRequest,

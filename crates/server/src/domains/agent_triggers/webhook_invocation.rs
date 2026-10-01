@@ -1,6 +1,6 @@
 //! Webhook trigger invocation: a token-authenticated HTTP request becomes a
 //! trigger event. Authentication and rate limiting happen in
-//! `api::app_webhooks`; everything after normalization is the shared pipeline
+//! `api::endpoint_webhooks`; everything after normalization is the shared pipeline
 //! in [`super::events`].
 
 use super::commands::{WebhookCompatibilityContext, parse_agent_id};

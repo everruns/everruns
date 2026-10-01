@@ -1,6 +1,6 @@
 // The A2A Agent Card: unauthenticated discovery for an A2A endpoint.
 //
-// Split out of `app_a2a.rs` because none of it touches the JSON-RPC request
+// Split out of `endpoint_a2a.rs` because none of it touches the JSON-RPC request
 // path: the card is built from the endpoint's stored config and the request's
 // own URI, and its only contract with the rest of the channel is the security
 // scheme it advertises for the auth policy that channel actually enforces.
@@ -14,7 +14,7 @@ use axum::{
 use serde_json::{Value, json};
 
 use super::{
-    A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_JSONRPC, A2A_PROTOCOL_VERSION, AppA2aState,
+    A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_JSONRPC, A2A_PROTOCOL_VERSION, EndpointA2aState,
     endpoint_app_id, internal_error, not_found,
 };
 use crate::api::a2a_signing::A2A_SIGNATURE_HEADER;
@@ -35,7 +35,7 @@ use crate::api::common::ErrorResponse;
     tag = "apps"
 )]
 pub async fn agent_card_legacy(
-    State(state): State<AppA2aState>,
+    State(state): State<EndpointA2aState>,
     OriginalUri(original_uri): OriginalUri,
     Path((app_id, channel_id)): Path<(String, String)>,
     headers: HeaderMap,
@@ -55,7 +55,7 @@ pub async fn agent_card_legacy(
     tag = "apps"
 )]
 pub async fn agent_card_endpoint(
-    State(state): State<AppA2aState>,
+    State(state): State<EndpointA2aState>,
     OriginalUri(original_uri): OriginalUri,
     Path(channel_id): Path<String>,
     headers: HeaderMap,
@@ -65,7 +65,7 @@ pub async fn agent_card_endpoint(
 }
 
 async fn agent_card(
-    state: AppA2aState,
+    state: EndpointA2aState,
     original_uri: axum::http::Uri,
     app_id: String,
     channel_id: String,
@@ -82,7 +82,7 @@ async fn agent_card(
     if !app.matches_legacy_app_id(&app_id) {
         return Err(not_found());
     }
-    if channel.channel_type != everruns_platform::ChannelType::A2a {
+    if channel.channel_type != everruns_platform::EndpointTransport::A2a {
         return Err(not_found());
     }
     // The Agent Card is only served for a live endpoint: it advertises the
@@ -160,7 +160,7 @@ async fn agent_card(
 
 fn a2a_security_for_config(
     config: &everruns_platform::A2aChannelConfig,
-    auth: Option<&everruns_platform::AppEndpointAuthConfig>,
+    auth: Option<&everruns_platform::EndpointAuthConfig>,
 ) -> (Value, Value) {
     let (mut schemes, mut requirements) = base_a2a_security(auth);
     // THREAT[TM-A2A-010]: When the channel opts into HMAC signing, advertise
@@ -195,7 +195,7 @@ fn a2a_security_for_config(
     (schemes, requirements)
 }
 
-fn base_a2a_security(auth: Option<&everruns_platform::AppEndpointAuthConfig>) -> (Value, Value) {
+fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (Value, Value) {
     let Some(auth) = auth else {
         return (
             json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
@@ -203,13 +203,13 @@ fn base_a2a_security(auth: Option<&everruns_platform::AppEndpointAuthConfig>) ->
         );
     };
     match (&auth.mode, auth.provider.as_ref()) {
-        (everruns_platform::AppEndpointAuthMode::HttpBasic, _) => (
+        (everruns_platform::EndpointAuthMode::HttpBasic, _) => (
             json!({ "httpBasic": { "httpAuthSecurityScheme": { "scheme": "basic" } } }),
             json!([{ "httpBasic": [] }]),
         ),
         (
-            everruns_platform::AppEndpointAuthMode::GoogleOidc,
-            Some(everruns_platform::AppEndpointAuthProviderConfig::GoogleOidc { .. }),
+            everruns_platform::EndpointAuthMode::GoogleOidc,
+            Some(everruns_platform::EndpointAuthProviderConfig::GoogleOidc { .. }),
         ) => (
             json!({
                 "googleOidc": {
@@ -221,8 +221,8 @@ fn base_a2a_security(auth: Option<&everruns_platform::AppEndpointAuthConfig>) ->
             json!([{ "googleOidc": auth.requirements.scopes.clone() }]),
         ),
         (
-            everruns_platform::AppEndpointAuthMode::Oidc,
-            Some(everruns_platform::AppEndpointAuthProviderConfig::Oidc { issuer, .. }),
+            everruns_platform::EndpointAuthMode::Oidc,
+            Some(everruns_platform::EndpointAuthProviderConfig::Oidc { issuer, .. }),
         ) => {
             let discovery = format!(
                 "{}/.well-known/openid-configuration",
@@ -242,15 +242,15 @@ fn base_a2a_security(auth: Option<&everruns_platform::AppEndpointAuthConfig>) ->
         // The linked A2A schema models OAuth2 as concrete OpenAPI flows. An
         // introspection-only channel has no token URL to publish, so advertise
         // generic bearer auth rather than fabricating an unusable OAuth flow.
-        (everruns_platform::AppEndpointAuthMode::OAuth2Introspection, _) => (
+        (everruns_platform::EndpointAuthMode::OAuth2Introspection, _) => (
             json!({ "oauth2Bearer": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
             json!([{ "oauth2Bearer": auth.requirements.scopes.clone() }]),
         ),
-        (everruns_platform::AppEndpointAuthMode::Mtls, _) => (
+        (everruns_platform::EndpointAuthMode::Mtls, _) => (
             json!({ "mtls": { "mtlsSecurityScheme": {} } }),
             json!([{ "mtls": [] }]),
         ),
-        (everruns_platform::AppEndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
+        (everruns_platform::EndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
         _ => (
             json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
             json!([{ "apiKey": [] }]),
@@ -272,17 +272,17 @@ mod tests {
             agent_card_name: None,
             agent_card_description: None,
             rate_limit_per_minute: None,
-            auth: Some(everruns_platform::AppEndpointAuthConfig {
-                mode: everruns_platform::AppEndpointAuthMode::OAuth2Introspection,
+            auth: Some(everruns_platform::EndpointAuthConfig {
+                mode: everruns_platform::EndpointAuthMode::OAuth2Introspection,
                 provider: Some(
-                    everruns_platform::AppEndpointAuthProviderConfig::OAuth2Introspection {
+                    everruns_platform::EndpointAuthProviderConfig::OAuth2Introspection {
                         introspection_url: "https://auth.example.test/introspect".to_string(),
                         client_id: None,
                         client_secret: None,
                         client_secret_configured: false,
                     },
                 ),
-                requirements: everruns_platform::AppEndpointAuthRequirements {
+                requirements: everruns_platform::EndpointAuthRequirements {
                     audiences: vec![],
                     scopes: vec!["app:invoke".to_string()],
                     claims: serde_json::Map::new(),

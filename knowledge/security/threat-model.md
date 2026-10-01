@@ -1471,12 +1471,12 @@ Note: egress filtering (blocking private IPs + cloud metadata) is **not** implem
 
 ## 22. A2A Channel (TM-A2A)
 
-Agent endpoint-owned Agent2Agent (A2A) protocol ingress. JSON-RPC 2.0 endpoint authenticated by endpoint credentials. The canonical route is endpoint-scoped; the App-shaped route is a permanent alias. Mitigations live in `crates/server/src/api/app_a2a.rs`, `crates/server/src/domains/agent_endpoints/`, and the frozen invocation compatibility runtime. See `knowledge/integrations/a2a-channel.md`.
+Agent endpoint-owned Agent2Agent (A2A) protocol ingress. JSON-RPC 2.0 endpoint authenticated by endpoint credentials. The canonical route is endpoint-scoped; the App-shaped route is a permanent alias. Mitigations live in `crates/server/src/api/endpoint_a2a.rs`, `crates/server/src/domains/agent_endpoints/`, and the frozen invocation compatibility runtime. See `knowledge/integrations/a2a-channel.md`.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-A2A-001 | API key brute force | Medium | Existing keys have 256-bit entropy and an `evra2a_` prefix; only the SHA-256 hex digest is stored. Endpoint reads and the Agent Card never include plaintext or the digest. App key creation and regeneration surfaces are retired | MITIGATED |
-| TM-A2A-002 | Timing oracle on key compare | Medium | Constant-time byte comparison of the SHA-256 hash digests via the canonical `security::constant_time_eq` (called from `app_a2a`) before any session creation | MITIGATED |
+| TM-A2A-002 | Timing oracle on key compare | Medium | Constant-time byte comparison of the SHA-256 hash digests via the canonical `security::constant_time_eq` (called from `endpoint_a2a`) before any session creation | MITIGATED |
 | TM-A2A-003 | Plaintext key persistence / log leak | High | Plaintext is never persisted: only hash + non-secret prefix go into `channel_config`. `Authorization` headers are not surfaced into template context (A2A invocations only template `payload`, `a2a.*`, and app metadata, request headers are not exposed) | MITIGATED |
 | TM-A2A-004 | Anonymous ingress to draft, disabled, suspended, or inactive endpoints | High | Endpoint liveness checks run before key validation; the Agent Card endpoint mirrors the same gate and 404s otherwise | MITIGATED |
 | TM-A2A-005 | A2A method abuse beyond the supported set | Medium | Method allowlist of four (`message/send`, `message/stream`, `tasks/get`, `tasks/cancel`); all other methods return JSON-RPC `-32601 Method not found` without touching the session pipeline. Each handler reuses the same auth + channel + method gate before any session work | MITIGATED |
@@ -1655,7 +1655,7 @@ This section reuses the existing TM-API, TM-TOOL, TM-AGENT, and TM-DOS categorie
 
 ## 28. Legacy App API Keys / api_endpoint Channel (TM-APIKEY)
 
-Frozen execution-only API keys (`evr_app_...`) authenticate endpoint-owned native session routes. Canonical routes use `/v1/e/{endpoint_id}/sessions`; `/v1/apps/{legacy_app_id}/api/{endpoint_id}/...` remains a permanent alias. The key has no path to a management API. Mitigations live in `crates/server/src/api/app_api.rs`, `crates/server/src/domains/agent_endpoints/`, and the frozen invocation compatibility runtime. See `knowledge/integrations/app-api-keys.md`.
+Frozen execution-only API keys (`evr_app_...`) authenticate endpoint-owned native session routes. Canonical routes use `/v1/e/{endpoint_id}/sessions`; `/v1/apps/{legacy_app_id}/api/{endpoint_id}/...` remains a permanent alias. The key has no path to a management API. Mitigations live in `crates/server/src/api/endpoint_api.rs`, `crates/server/src/domains/agent_endpoints/`, and the frozen invocation compatibility runtime. See `knowledge/integrations/app-api-keys.md`.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|

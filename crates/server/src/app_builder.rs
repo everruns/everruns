@@ -1171,7 +1171,7 @@ impl ServerAppBuilder {
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         };
-        let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
+        let endpoint_webhooks_state = api::endpoint_webhooks::EndpointWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1215,7 +1215,7 @@ impl ServerAppBuilder {
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
         };
-        let app_a2a_state = api::app_a2a::AppA2aState::new(
+        let endpoint_a2a_state = api::endpoint_a2a::EndpointA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1226,7 +1226,7 @@ impl ServerAppBuilder {
             a2a_replay_store,
             auth_config.frontend_url.clone(),
         );
-        let app_api_state = api::app_api::AppApiState::new(
+        let endpoint_api_state = api::endpoint_api::EndpointApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1596,9 +1596,9 @@ impl ServerAppBuilder {
                     slack_provisioning,
                 ),
             ))
-            .merge(api::app_webhooks::routes(app_webhooks_state))
-            .merge(api::app_a2a::routes(app_a2a_state))
-            .merge(api::app_api::routes(app_api_state))
+            .merge(api::endpoint_webhooks::routes(endpoint_webhooks_state))
+            .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
+            .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))

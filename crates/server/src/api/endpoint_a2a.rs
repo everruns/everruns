@@ -1,4 +1,4 @@
-// App A2A (Agent2Agent) ingress — JSON-RPC + API key authenticated invocation.
+// Agent endpoint A2A (Agent2Agent) ingress — JSON-RPC + API key authenticated invocation.
 //
 // Design Decision: A2A channels use endpoint-scoped routes
 // (`POST /v1/e/{channel_id}/a2a`) so a single app can expose multiple
@@ -82,7 +82,7 @@ const METHOD_TASKS_GET_LEGACY: &str = "GetTask";
 const METHOD_TASKS_CANCEL_LEGACY: &str = "CancelTask";
 
 #[derive(Clone)]
-pub struct AppA2aState {
+pub struct EndpointA2aState {
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub session_service: Arc<SessionService>,
@@ -104,7 +104,7 @@ struct MessageSendContext {
     req_id: Option<axum::Extension<RequestId>>,
 }
 
-impl AppA2aState {
+impl EndpointA2aState {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<StorageBackend>,
@@ -137,7 +137,7 @@ impl AppA2aState {
     }
 }
 
-pub fn routes(state: AppA2aState) -> Router {
+pub fn routes(state: EndpointA2aState) -> Router {
     Router::new()
         .route(
             "/v1/apps/{app_id}/a2a/{channel_id}",
@@ -256,7 +256,7 @@ fn legacy_task_json(mut task: Value) -> Value {
     tag = "apps"
 )]
 pub async fn invoke_a2a_legacy(
-    State(state): State<AppA2aState>,
+    State(state): State<EndpointA2aState>,
     Path((app_id, channel_id)): Path<(String, String)>,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -291,7 +291,7 @@ pub async fn invoke_a2a_legacy(
     tag = "apps"
 )]
 pub async fn invoke_a2a_endpoint(
-    State(state): State<AppA2aState>,
+    State(state): State<EndpointA2aState>,
     Path(channel_id): Path<String>,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -315,7 +315,7 @@ pub async fn invoke_a2a_endpoint(
 }
 
 async fn endpoint_app_id(
-    state: &AppA2aState,
+    state: &EndpointA2aState,
     channel_id: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
@@ -326,7 +326,7 @@ async fn endpoint_app_id(
 }
 
 async fn invoke_a2a(
-    state: AppA2aState,
+    state: EndpointA2aState,
     app_id: String,
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
@@ -431,12 +431,12 @@ async fn invoke_a2a(
 struct AuthorizedA2a {
     org_id: i64,
     app_public_id: String,
-    channel_public_id: everruns_provider::typed_id::AppChannelId,
+    channel_public_id: everruns_platform::AgentEndpointId,
     session_mode: everruns_platform::SessionBinding,
 }
 
 async fn authenticate_request(
-    state: &AppA2aState,
+    state: &EndpointA2aState,
     app_id: &str,
     channel_id: &str,
     headers: &HeaderMap,
@@ -458,7 +458,7 @@ async fn authenticate_request(
     // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
     // reason is logged server-side only.
     let channel_id_typed = channel.public_id;
-    if channel.channel_type != everruns_platform::ChannelType::A2a {
+    if channel.channel_type != everruns_platform::EndpointTransport::A2a {
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous A2A ingress must never reach a non-live
@@ -481,7 +481,7 @@ async fn authenticate_request(
     };
 
     if let Some(auth) = channel.auth.as_ref() {
-        if auth.mode == everruns_platform::AppEndpointAuthMode::ApiKey {
+        if auth.mode == everruns_platform::EndpointAuthMode::ApiKey {
             verify_a2a_api_key(headers, &config.api_key_hash)?;
         } else {
             state
@@ -721,7 +721,7 @@ fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
 }
 
 async fn handle_message_send(
-    state: &AppA2aState,
+    state: &EndpointA2aState,
     auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,
@@ -815,7 +815,7 @@ fn task_id_from_params(
 /// session lifecycle events; it never echoes prompts, tool args, or LLM
 /// outputs back to the caller.
 async fn handle_tasks_get(
-    state: &AppA2aState,
+    state: &EndpointA2aState,
     auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,
@@ -911,7 +911,7 @@ fn a2a_result_artifact(result: Value) -> Value {
 /// THREAT[TM-A2A-012]: `tasks/cancel` performs a destructive action on a
 /// session — it must respect the same channel binding as `tasks/get`.
 async fn handle_tasks_cancel(
-    state: &AppA2aState,
+    state: &EndpointA2aState,
     auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,
@@ -1022,7 +1022,7 @@ async fn derive_task_state_from_events(
 }
 
 async fn cancel_a2a_session_turn(
-    state: &AppA2aState,
+    state: &EndpointA2aState,
     session_id: everruns_provider::typed_id::SessionId,
 ) -> anyhow::Result<()> {
     use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
@@ -1088,7 +1088,7 @@ async fn cancel_a2a_session_turn(
 // shared `SseConnectionTracker` enforces global/per-org/per-session limits
 // so a single API key cannot open unbounded concurrent streams.
 async fn handle_message_stream(
-    state: &AppA2aState,
+    state: &EndpointA2aState,
     auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,

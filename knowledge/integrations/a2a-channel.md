@@ -341,7 +341,7 @@ is no answer shape at all, and an `everruns/ask_user_answer` against a task
 parked on a secret question is refused at the channel boundary rather than
 downstream.
 
-Source: [`crates/server/src/api/app_a2a.rs`](../../crates/server/src/api/app_a2a.rs).
+Source: [`crates/server/src/api/endpoint_a2a.rs`](../../crates/server/src/api/endpoint_a2a.rs).
 
 ### Agent Card
 
@@ -536,7 +536,7 @@ Headers (sent by the client):
   `signing_secret` across multiple A2A channels.
 
 Verification is performed in `crates/server/src/api/a2a_signing.rs` and
-called from `app_a2a::authenticate_request` **after** primary
+called from `endpoint_a2a::authenticate_request` **after** primary
 authentication so unauthenticated callers cannot probe channel existence
 from signing-related signals or grow the in-memory replay store. The
 check covers:

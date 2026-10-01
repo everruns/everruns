@@ -1056,7 +1056,7 @@ pub(crate) async fn handle_agent_session_stopped(
         return Ok(());
     };
 
-    crate::api::app_api::cancel_session_turn_for(
+    crate::api::endpoint_api::cancel_session_turn_for(
         &state.db,
         &state.message_service,
         row.id,

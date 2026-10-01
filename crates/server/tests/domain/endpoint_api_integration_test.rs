@@ -1,4 +1,4 @@
-//! Integration tests for the App api_endpoint channel — endpoint-scoped,
+//! Integration tests for the agent endpoint `api_endpoint` transport — endpoint-scoped,
 //! execution-only API keys driving native session routes.
 
 use crate::test_harness;
