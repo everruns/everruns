@@ -12,6 +12,7 @@
 #[path = "../test_harness.rs"]
 mod test_harness;
 
+mod agents_api_lifecycle_test;
 mod api_integration_test;
 mod mcp_catalog_integration_test;
 mod platform_chat_starter_test;

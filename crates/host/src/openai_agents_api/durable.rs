@@ -73,6 +73,7 @@ use uuid::Uuid;
 
 mod observe;
 mod policy;
+mod settle;
 
 use super::{
     AgentsApiClient, AgentsApiError, AgentsApiEventStream, AgentsApiSessionConfig,
@@ -113,6 +114,10 @@ pub struct AgentsApiTurnRequest {
     pub event_context: EventContext,
     /// Provider type recorded on the turn's `llm.generation` (`openai`).
     pub provider: Option<String>,
+    /// Everruns LLM provider whose credentials the turn uses. The provider
+    /// session belongs to it: lifecycle work resolves its key to delete the
+    /// session, and a turn on another provider starts a new session.
+    pub provider_key: Option<String>,
     /// Tools the remote loop was offered, recorded on `llm.generation`.
     pub tools: Vec<ToolDefinitionSummary>,
 }
@@ -328,10 +333,14 @@ impl AgentsApiTurnDriver {
                 error = heartbeat => Err(error),
             }
         };
-        if matches!(outcome, Err(AgentsApiError::Cancelled)) {
-            run.cancel().await;
+        match outcome {
+            Err(AgentsApiError::Cancelled) => {
+                run.cancel().await;
+                Err(AgentsApiError::Cancelled)
+            }
+            Err(error) => run.settle_permanent_failure(error).await,
+            outcome => outcome,
         }
-        outcome
     }
 }
 
@@ -456,8 +465,26 @@ impl Run<'_> {
                 session_id = %self.request.session_id,
                 "Agents API agent definition changed; starting a new provider session"
             );
-            self.checkpoint.provider_session_id = None;
-            self.checkpoint.create_attempt = None;
+            self.checkpoint.release_provider_session();
+        }
+        if !staged
+            && self.checkpoint.provider_session_id.is_some()
+            && self.checkpoint.provider_key.is_some()
+            && self.checkpoint.provider_key != self.request.provider_key
+        {
+            // The session belongs to the credentials that created it; another
+            // provider (another OpenAI project) cannot reach it. A key rotated
+            // on the same provider keeps the session.
+            tracing::warn!(
+                session_id = %self.request.session_id,
+                "Agents API provider changed; starting a new provider session"
+            );
+            self.checkpoint.release_provider_session();
+        }
+        if self.checkpoint.provider_key.is_none() && self.checkpoint.provider_session_id.is_some() {
+            // A checkpoint written before the provider was recorded: the
+            // session was created with this turn's provider.
+            self.checkpoint.provider_key = self.request.provider_key.clone();
         }
         if self.checkpoint.provider_session_id.is_none()
             && let Some(attempt) = self.checkpoint.create_attempt.clone()
@@ -521,6 +548,7 @@ impl Run<'_> {
         let attempt = Uuid::new_v4().to_string();
         self.checkpoint.create_attempt = Some(attempt.clone());
         self.checkpoint.agent_fingerprint = Some(fingerprint);
+        self.checkpoint.provider_key = self.request.provider_key.clone();
         let turn = self.turn_mut();
         turn.prior_provider_turns.clear();
         turn.provider_turn_id = None;

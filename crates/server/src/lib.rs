@@ -91,6 +91,9 @@ pub mod grpc_service;
 // Event retention background job
 pub mod event_retention;
 
+// Provider-side lifecycle of OpenAI Agents API sessions (EVE-1126)
+pub mod agents_api_lifecycle;
+
 // Object-storage blob garbage collector
 pub mod blob_gc;
 

@@ -135,6 +135,7 @@ fn spawn_background_tasks(
     server_context: &ServerContext,
     background_tasks: Vec<BackgroundTaskFn>,
 ) {
+    crate::agents_api_lifecycle::track(supervisor, server_context);
     for task_fn in background_tasks {
         let ctx = server_context.clone();
         supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));
@@ -2456,9 +2457,8 @@ impl ServerAppBuilder {
         );
 
         // -- Knowledge Index Syncout (both prod and dev) --
-        // Reuses the same GitHub connection resolver as Memory sync, plus the
-        // shared provider resolver / driver registry (for embeddings) and the
-        // platform-selected vector store. See knowledge/runtime-resources/knowledge-indexes.md.
+        // Reuses Memory sync's GitHub connection resolver, the provider resolver, the driver
+        // registry (embeddings), and the vector store: knowledge/runtime-resources/knowledge-indexes.md
         supervisor.track_optional(
             "knowledge_index_sync",
             crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(

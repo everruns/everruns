@@ -30,7 +30,7 @@ async fn create_postgres_backend() -> StorageBackend {
     StorageBackend::Postgres(Database::new(pool))
 }
 
-async fn create_test_principal(repo: &dyn Repository, label: &str) -> PrincipalId {
+pub(crate) async fn create_test_principal(repo: &dyn Repository, label: &str) -> PrincipalId {
     repo.create_principal(CreatePrincipalRow {
         id: PrincipalId::new(),
         org_id: DEFAULT_ORG_ID,
@@ -45,7 +45,7 @@ async fn create_test_principal(repo: &dyn Repository, label: &str) -> PrincipalI
     .id
 }
 
-fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionRow {
+pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionRow {
     CreateSessionRow {
         source: everruns_platform::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,

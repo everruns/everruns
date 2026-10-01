@@ -47,6 +47,7 @@ later change is a deliberate one.
 | SQL databases | Copy (page-level; target design) | Pure data, transparent to the agent. |
 | Leased resources, sandbox, voice, tasks, schedules | **Do not copy** | Execution-bound or externally-billed; the child re-leases on demand. |
 | Parent state required to fork | Not `active` / `waiting_for_tool_results` | Avoids snapshotting a half-written, in-flight turn. |
+| OpenAI Agents API sessions | Refused (`agents_api_session_not_forkable`) | Part of the context lives only at the provider and cannot be copied ([portability](../execution/openai-agents-api-runtime.md#portability)). |
 
 ## What gets copied
 

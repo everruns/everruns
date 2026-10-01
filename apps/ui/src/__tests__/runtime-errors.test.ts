@@ -25,6 +25,14 @@ describe("runtime error localization", () => {
     expect(text).toContain("10,00");
   });
 
+  it("localizes a lost provider session instead of showing the fallback", () => {
+    const error = { code: "provider_session_unavailable" };
+    expect(localizeRuntimeError("en", error, "backend fallback")).toContain("new provider session");
+    expect(localizeRuntimeError("uk", error, "backend fallback")).toContain(
+      "новій сесії провайдера",
+    );
+  });
+
   it("preserves the refusing budget id in localized budget errors", () => {
     const text = localizeRuntimeError(
       "en",

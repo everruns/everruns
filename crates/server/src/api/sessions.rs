@@ -696,7 +696,7 @@ fn strip_internal_only_fields(req: &mut CreateSessionRequest) {
     responses(
         (status = 201, description = "Fork created successfully", body = WithUrls<Session>),
         (status = 404, description = "Parent session, agent, or harness not found", body = ErrorResponse),
-        (status = 409, description = "Parent session is mid-turn and cannot be forked", body = ErrorResponse),
+        (status = 409, description = "Parent session is mid-turn, or ran on the OpenAI Agents API backend (code `agents_api_session_not_forkable`), and cannot be forked", body = ErrorResponse),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"

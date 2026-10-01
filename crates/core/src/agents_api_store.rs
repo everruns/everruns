@@ -52,12 +52,40 @@ pub struct AgentsApiCheckpoint {
     /// A changed definition starts a new provider session.
     #[serde(default)]
     pub agent_fingerprint: Option<String>,
+    /// Everruns LLM provider whose credentials own the provider session.
+    /// Lifecycle work (deletion, retention) resolves that provider's current
+    /// key when it runs; the checkpoint never holds a credential. A turn on
+    /// another provider starts a new provider session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_key: Option<String>,
     /// The turn currently or most recently driven through the provider.
     #[serde(default)]
     pub turn: Option<AgentsApiTurnCheckpoint>,
 }
 
 impl AgentsApiCheckpoint {
+    /// Stop using the provider session: the next turn creates a new one. The
+    /// last turn's state stays, so a replayed activity still returns its
+    /// outcome. The store records the dropped id for remote deletion.
+    pub fn release_provider_session(&mut self) {
+        self.provider_session_id = None;
+        self.create_attempt = None;
+        self.agent_fingerprint = None;
+    }
+
+    /// Whether a function call waits on a pause (an approval, a client
+    /// result) while the provider holds its required action open. Such a turn
+    /// resumes on the same provider session, so retention must not release it
+    /// even when the Everruns session itself looks idle.
+    pub fn holds_pause(&self) -> bool {
+        self.turn.as_ref().is_some_and(|turn| {
+            turn.outcome.is_none()
+                && turn
+                    .tool_results
+                    .values()
+                    .any(|call| matches!(call.state, ToolResultState::Parked { .. }))
+        })
+    }
     /// The turn checkpoint for `turn_id`, replacing any earlier turn's state.
     /// Earlier turns are finished: their effects are already in the event log.
     pub fn turn_mut(
@@ -476,6 +504,45 @@ mod tests {
             store.acquire(other_org).await.is_err(),
             "tenant is part of the fence"
         );
+    }
+
+    #[test]
+    fn releasing_the_provider_session_keeps_the_last_outcome() {
+        let mut checkpoint = AgentsApiCheckpoint {
+            provider_session_id: Some("sess_1".into()),
+            create_attempt: Some("attempt".into()),
+            agent_fingerprint: Some("digest".into()),
+            provider_key: Some("provider".into()),
+            ..AgentsApiCheckpoint::default()
+        };
+        assert!(!checkpoint.holds_pause(), "no turn yet");
+        let turn = checkpoint.turn_mut(TurnId::from_seed(1), MessageId::from_seed(1));
+        turn.provider_turn_id = Some("t1".into());
+        turn.tool_results.insert(
+            "call_1".into(),
+            ToolResultOutbox {
+                provider_turn_id: "t1".into(),
+                call_id: "call_1".into(),
+                name: "lookup".into(),
+                arguments: serde_json::json!({}),
+                attempt: 0,
+                state: ToolResultState::Parked {
+                    reason: ParkReason::ClientResult,
+                    iteration: 1,
+                },
+            },
+        );
+        assert!(checkpoint.holds_pause(), "a call waits on the client");
+        checkpoint.turn.as_mut().unwrap().outcome =
+            Some(serde_json::json!({"status": "cancelled"}));
+        assert!(!checkpoint.holds_pause(), "the turn ended");
+
+        checkpoint.release_provider_session();
+        assert!(checkpoint.provider_session_id.is_none());
+        assert!(checkpoint.create_attempt.is_none());
+        assert!(checkpoint.agent_fingerprint.is_none());
+        assert_eq!(checkpoint.provider_key.as_deref(), Some("provider"));
+        assert!(checkpoint.turn.as_ref().unwrap().outcome.is_some());
     }
 
     #[test]

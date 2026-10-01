@@ -280,7 +280,7 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
 
     // ResourceLimitError → Conflict
     if let Some(limit) = e.downcast_ref::<crate::errors::ResourceLimitError>() {
-        return CommandError::conflict(limit.message().to_string());
+        return limit.to_command_error();
     }
 
     // ResourceNotFoundError → NotFound

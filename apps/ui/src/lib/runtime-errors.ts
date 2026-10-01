@@ -123,6 +123,8 @@ function localizeRuntimeErrorBase(
       return formatMessage(locale, "runtime_error_provider_unavailable");
     case "processing_error":
       return formatMessage(locale, "runtime_error_processing_error");
+    case "provider_session_unavailable":
+      return formatMessage(locale, "runtime_error_provider_session_unavailable");
     case "dependency_unavailable":
       return formatMessage(locale, "runtime_error_dependency_unavailable");
     case "invalid_tool_schema":

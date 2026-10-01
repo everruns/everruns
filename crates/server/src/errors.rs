@@ -93,19 +93,46 @@ impl BadRequestError {
 #[error("{message}")]
 pub struct ConflictError {
     message: String,
+    code: Option<&'static str>,
 }
 
 impl ConflictError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            code: None,
         }
+    }
+
+    /// Attach a stable machine-readable error code.
+    pub fn with_code(mut self, code: &'static str) -> Self {
+        self.code = Some(code);
+        self
     }
 
     pub fn message(&self) -> &str {
         &self.message
     }
+
+    pub fn code(&self) -> Option<&'static str> {
+        self.code
+    }
+
+    /// The `409` command error, carrying the code when one is attached.
+    pub fn to_command_error(&self) -> crate::domains::common::CommandError {
+        let error = crate::domains::common::CommandError::conflict(self.message.clone());
+        match self.code {
+            Some(code) => error.with_code(code),
+            None => error,
+        }
+    }
 }
+
+/// Stable code of a refused fork of a session that ran on the OpenAI Agents
+/// API backend (EVE-1126).
+pub const AGENTS_API_SESSION_NOT_FORKABLE_CODE: &str = "agents_api_session_not_forkable";
+/// Why such a fork is refused.
+pub const AGENTS_API_SESSION_NOT_FORKABLE_DETAIL: &str = "This session ran on the OpenAI Agents API backend, whose provider-held context cannot be copied, so it cannot be forked. Start a new session instead; this session's record stays readable.";
 
 pub type ResourceLimitError = ConflictError;
 

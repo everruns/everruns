@@ -31984,7 +31984,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Parent session is mid-turn and cannot be forked */
+      /** @description Parent session is mid-turn, or ran on the OpenAI Agents API backend (code `agents_api_session_not_forkable`), and cannot be forked */
       409: {
         headers: {
           [name: string]: unknown;

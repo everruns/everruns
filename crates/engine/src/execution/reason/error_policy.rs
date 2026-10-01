@@ -35,6 +35,7 @@ pub(super) fn is_error_placeholder_message(msg: &RuntimeMessage) -> bool {
                 | user_facing_error_codes::PROVIDER_MISCONFIGURED
                 | user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
                 | user_facing_error_codes::PROVIDER_UNAVAILABLE
+                | user_facing_error_codes::PROVIDER_SESSION_UNAVAILABLE
                 | user_facing_error_codes::DEPENDENCY_UNAVAILABLE
                 | user_facing_error_codes::PROCESSING_ERROR
         );

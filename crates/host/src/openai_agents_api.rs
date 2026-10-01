@@ -14,6 +14,7 @@
 
 pub mod backend;
 pub mod durable;
+pub mod lifecycle;
 
 use std::collections::HashMap;
 
