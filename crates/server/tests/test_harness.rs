@@ -993,7 +993,7 @@ impl TestServer {
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         );
-        let app_a2a_state = api::app_a2a::AppA2aState::new(
+        let endpoint_a2a_state = api::endpoint_a2a::EndpointA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1118,7 +1118,7 @@ impl TestServer {
             .merge(api::fcp::routes(fcp_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
-            .merge(api::app_a2a::routes(app_a2a_state))
+            .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
             .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(

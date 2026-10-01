@@ -1215,7 +1215,7 @@ impl ServerAppBuilder {
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
         };
-        let app_a2a_state = api::app_a2a::AppA2aState::new(
+        let endpoint_a2a_state = api::endpoint_a2a::EndpointA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1597,7 +1597,7 @@ impl ServerAppBuilder {
                 ),
             ))
             .merge(api::app_webhooks::routes(app_webhooks_state))
-            .merge(api::app_a2a::routes(app_a2a_state))
+            .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
             .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::public_chat::routes(public_chat_state))

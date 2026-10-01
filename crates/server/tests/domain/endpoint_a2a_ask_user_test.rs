@@ -6,7 +6,7 @@
 //! `DataPart` resumes the parked turn, and a credential is never projected as
 //! something a remote agent could fill in.
 //!
-//! Sibling of `app_a2a_integration_test.rs`, which covers the rest of the
+//! Sibling of `endpoint_a2a_integration_test.rs`, which covers the rest of the
 //! channel. The setup helpers are duplicated rather than shared because each
 //! integration test file is its own crate.
 

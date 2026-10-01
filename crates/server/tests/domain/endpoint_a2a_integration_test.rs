@@ -1,4 +1,4 @@
-//! Integration tests for the App A2A (Agent2Agent) channel.
+//! Integration tests for the agent endpoint A2A (Agent2Agent) transport.
 
 use crate::test_harness;
 
