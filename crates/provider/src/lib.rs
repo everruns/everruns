@@ -42,7 +42,9 @@ pub mod model_discovery;
 pub mod model_profiles;
 pub mod model_spec;
 pub mod native_async;
+pub mod native_computer;
 pub mod openai_compat;
+pub mod openai_computer;
 #[cfg(feature = "http")]
 pub mod openai_errors;
 pub mod openai_hosted_tools;

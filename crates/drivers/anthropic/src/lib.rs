@@ -24,6 +24,7 @@
 //! assert_eq!(service.id().as_str(), "anthropic");
 //! ```
 
+mod computer_toolset;
 mod driver;
 mod effort;
 mod prefill;

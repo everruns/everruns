@@ -61,6 +61,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let supports_tool_search = self.hosted_tool_search;
 
         let (instructions, transcript_input_items) = Self::build_input(&messages, supports_phases);
+        // Native computer tool (EVE-1133): which transcript calls replay as
+        // computer items, decided on the full transcript before delta trimming.
+        let native_computer = self.native_computer_for(config);
+        let computer_call_ids = if native_computer.is_some() {
+            super::computer::computer_call_ids(&transcript_input_items)
+        } else {
+            Default::default()
+        };
         let mut transcript_input_items =
             super::hosted_tools::replay_mcp_approvals(transcript_input_items);
         let update_state = config.reasoning_state.as_ref().filter(|_| {
@@ -135,19 +143,31 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
         };
 
-        let mut tools = if config.tools.is_empty() {
+        let input_items = super::computer::replay_computer_calls(input_items, &computer_call_ids);
+
+        // The native computer tool stands in for the `computer` function tool.
+        let function_tools: Vec<ToolDefinition> = config
+            .tools
+            .iter()
+            .filter(|tool| {
+                native_computer.is_none()
+                    || tool.name() != crate::native_computer::COMPUTER_TOOL_NAME
+            })
+            .cloned()
+            .collect();
+        let mut tools = if function_tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
             if ts_config.enabled && supports_tool_search {
                 Some(Self::convert_tools_with_search(
-                    &config.tools,
+                    &function_tools,
                     ts_config.threshold,
                 ))
             } else {
-                Some(Self::convert_tools(&config.tools))
+                Some(Self::convert_tools(&function_tools))
             }
         } else {
-            Some(Self::convert_tools(&config.tools))
+            Some(Self::convert_tools(&function_tools))
         };
         let hosted_tools = self.hosted_tools_for(config)?;
         if !hosted_tools.is_empty() {
@@ -536,6 +556,19 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     Some("response.output_item.done") => {
                                         // Output item completed - check if it's a function call
                                         if let Some(item) = json.get("item")
+                                            && let Some((call_id, arguments)) =
+                                                crate::openai_computer::computer_call_arguments(item)
+                                        {
+                                            // A native computer call is a client
+                                            // tool call: the agent loop runs it.
+                                            let mut acc = accumulated_tool_calls.lock().unwrap();
+                                            acc.observe_computer_call(&call_id, &arguments);
+                                            if let Some(tool_calls) = acc.take_unemitted() {
+                                                *finish_reason.lock().unwrap() =
+                                                    Some("tool_calls".to_string());
+                                                return Ok(LlmStreamEvent::ToolCalls(tool_calls));
+                                            }
+                                        } else if let Some(item) = json.get("item")
                                             && let Some((id, arguments)) =
                                                 super::hosted_tools::mcp_approval_call(item)
                                         {

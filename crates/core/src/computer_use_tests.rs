@@ -21,12 +21,15 @@ struct FakeBackend {
     recorder: Arc<Recorder>,
     navigation: bool,
     fail_perform: bool,
+    /// Fail only actions with this name.
+    fail_action: Option<&'static str>,
 }
 
 struct FakeSession {
     recorder: Arc<Recorder>,
     display: DisplaySize,
     fail_perform: bool,
+    fail_action: Option<&'static str>,
 }
 
 #[async_trait]
@@ -36,7 +39,7 @@ impl ComputerSession for FakeSession {
     }
 
     async fn perform(&mut self, action: &ComputerAction) -> Result<(), String> {
-        if self.fail_perform {
+        if self.fail_perform || self.fail_action == Some(action.name()) {
             return Err("element moved".to_string());
         }
         self.recorder.performed.lock().unwrap().push(action.clone());
@@ -76,6 +79,7 @@ impl ComputerBackend for FakeBackend {
             recorder: self.recorder.clone(),
             display,
             fail_perform: self.fail_perform,
+            fail_action: self.fail_action,
         }))
     }
 }
@@ -121,6 +125,7 @@ fn tool_with(config: ComputerUseConfig, navigation: bool) -> (ComputerTool, Arc<
         recorder: recorder.clone(),
         navigation,
         fail_perform: false,
+        fail_action: None,
     });
     (ComputerTool::new(backend, config), recorder)
 }
@@ -273,6 +278,60 @@ fn approval_gates_committing_actions_only() {
     }
 }
 
+#[test]
+fn calls_parse_single_or_batched() {
+    let single = ComputerCall::from_arguments(&json!({"action": "screenshot"})).unwrap();
+    assert_eq!(single, ComputerCall::Single(ComputerAction::Screenshot));
+
+    let batch = ComputerCall::from_arguments(&json!({"actions": [
+        {"action": "left_click", "coordinate": [1, 2]},
+        {"action": "type", "text": "Ada"}
+    ]}))
+    .unwrap();
+    assert_eq!(batch.actions().len(), 2);
+    assert_eq!(batch.actions()[1].name(), "type");
+
+    let too_many: Vec<Value> = (0..=MAX_BATCH_ACTIONS)
+        .map(|_| json!({"action": "screenshot"}))
+        .collect();
+    for bad in [
+        json!({"actions": []}),
+        json!({"actions": too_many}),
+        json!({"actions": "screenshot"}),
+        json!({"actions": [{"action": "fly"}]}),
+        json!({}),
+    ] {
+        assert!(ComputerCall::from_arguments(&bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn hard_gate_covers_batches_and_provider_safety_checks() {
+    // Gated: a committing action alone or anywhere in a batch, and any
+    // provider safety check, even on an otherwise free call.
+    for args in [
+        json!({"action": "type", "text": "x"}),
+        json!({"actions": [
+            {"action": "left_click", "coordinate": [1, 1]},
+            {"action": "key", "text": "Return"}
+        ]}),
+        json!({"actions": [{"action": "screenshot"}],
+               "pending_safety_checks": [{"id": "sc_1", "code": "malicious_instructions"}]}),
+    ] {
+        assert!(computer_call_requires_approval(&args), "{args}");
+    }
+    // Free: pointer-only calls, an empty check list, and arguments that do
+    // not parse (the tool rejects those without touching the display).
+    for args in [
+        json!({"action": "left_click", "coordinate": [1, 1]}),
+        json!({"actions": [{"action": "scroll", "scroll_direction": "down", "scroll_amount": 2}],
+               "pending_safety_checks": []}),
+        json!({"action": "fly"}),
+    ] {
+        assert!(!computer_call_requires_approval(&args), "{args}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -290,6 +349,7 @@ fn config_defaults_and_bounds() {
     assert!(ComputerUseConfig::from_value(&json!({"display_width": 4000})).is_err());
     assert!(ComputerUseConfig::from_value(&json!({"max_actions_per_session": 0})).is_err());
     assert!(ComputerUseConfig::from_value(&json!({"colour": "red"})).is_err());
+    assert!(ComputerUseConfig::default().native_tools);
     assert_eq!(
         ComputerUseConfig::from_value_or_default(&json!({"display_width": 4000})),
         ComputerUseConfig::default()
@@ -448,6 +508,7 @@ async fn a_failed_action_is_reported_and_the_display_released() {
         recorder: recorder.clone(),
         navigation: false,
         fail_perform: true,
+        fail_action: None,
     });
     let tool = ComputerTool::new(backend, ComputerUseConfig::default());
 
@@ -473,4 +534,126 @@ async fn without_context_the_tool_refuses() {
     assert!(tool.requires_context());
     let result = tool.execute(json!({"action": "screenshot"})).await;
     assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+}
+
+#[test]
+fn native_tools_request_a_native_adapter_unless_turned_off() {
+    let options = ComputerUseConfig {
+        display_width: 1024,
+        ..ComputerUseConfig::default()
+    }
+    .driver_options();
+    assert_eq!(options.len(), 1);
+    let options: std::collections::HashMap<_, _> = options.into_iter().collect();
+    let native =
+        everruns_provider::native_computer::NativeComputerUse::from_driver_options(&options)
+            .expect("option parses");
+    assert_eq!(native.display_width, 1024);
+    assert_eq!(native.display_height, DEFAULT_DISPLAY_HEIGHT);
+
+    let off = ComputerUseConfig::from_value(&json!({"native_tools": false})).unwrap();
+    assert!(off.driver_options().is_empty());
+}
+
+#[tokio::test]
+async fn a_batch_runs_in_order_charges_each_action_and_returns_one_frame() {
+    let config = ComputerUseConfig {
+        screenshot_after_action: false,
+        ..ComputerUseConfig::default()
+    };
+    let (tool, recorder) = tool_with(config, false);
+    let ctx = context();
+    let args = json!({"actions": [
+        {"action": "left_click", "coordinate": [10, 20]},
+        {"action": "type", "text": "Ada"},
+        {"action": "key", "text": "Tab"}
+    ]});
+    // The batch shape passes the tool's own argument schema.
+    let validator = jsonschema::validator_for(&tool.parameters_schema()).unwrap();
+    assert!(validator.is_valid(&args));
+
+    let result = tool.execute_with_context(args, &ctx).await;
+    let ToolExecutionResult::SuccessWithImages { result, images } = result else {
+        panic!("a batch always answers with a frame: {result:?}");
+    };
+    assert_eq!(images.len(), 1);
+    assert_eq!(result["actions"], json!(["left_click", "type", "key"]));
+    assert_eq!(result["actions_used"], 3);
+    let performed: Vec<&str> = recorder
+        .performed
+        .lock()
+        .unwrap()
+        .iter()
+        .map(ComputerAction::name)
+        .collect();
+    assert_eq!(performed, ["left_click", "type", "key"]);
+}
+
+#[tokio::test]
+async fn a_batch_stops_at_its_first_failure() {
+    let recorder = Arc::new(Recorder::default());
+    let backend = Arc::new(FakeBackend {
+        recorder: recorder.clone(),
+        navigation: false,
+        fail_perform: false,
+        fail_action: Some("type"),
+    });
+    let tool = ComputerTool::new(backend, ComputerUseConfig::default());
+
+    let result = tool
+        .execute_with_context(
+            json!({"actions": [
+                {"action": "left_click", "coordinate": [10, 20]},
+                {"action": "type", "text": "Ada"},
+                {"action": "key", "text": "Return"}
+            ]}),
+            &context(),
+        )
+        .await;
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("action 2 of 3 (type) failed"), "{msg}")
+        }
+        other => panic!("expected tool error, got {other:?}"),
+    }
+    let performed = recorder.performed.lock().unwrap();
+    assert_eq!(performed.len(), 1, "nothing after the failure runs");
+    assert_eq!(*recorder.releases.lock().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn a_batch_is_validated_and_budgeted_whole() {
+    let config = ComputerUseConfig {
+        max_actions_per_session: 2,
+        ..ComputerUseConfig::default()
+    };
+    let (tool, recorder) = tool_with(config, false);
+    let ctx = context();
+
+    // One off-screen action rejects the whole batch before anything runs.
+    let result = tool
+        .execute_with_context(
+            json!({"actions": [
+                {"action": "left_click", "coordinate": [1, 1]},
+                {"action": "left_click", "coordinate": [9000, 1]}
+            ]}),
+            &ctx,
+        )
+        .await;
+    match result {
+        ToolExecutionResult::ToolError(msg) => assert!(msg.contains("action 2 of 2"), "{msg}"),
+        other => panic!("expected validation error, got {other:?}"),
+    }
+
+    // Three actions do not fit a budget of two: nothing is charged or run.
+    let three = json!({"actions": [
+        {"action": "screenshot"}, {"action": "screenshot"}, {"action": "screenshot"}
+    ]});
+    match tool.execute_with_context(three, &ctx).await {
+        ToolExecutionResult::ToolError(msg) => assert!(msg.contains("needs 3"), "{msg}"),
+        other => panic!("expected budget error, got {other:?}"),
+    }
+    assert!(recorder.acquired_at.lock().unwrap().is_empty());
+    let two = json!({"actions": [{"action": "screenshot"}, {"action": "screenshot"}]});
+    assert!(tool.execute_with_context(two, &ctx).await.is_success());
 }
