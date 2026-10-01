@@ -341,7 +341,7 @@ is no answer shape at all, and an `everruns/ask_user_answer` against a task
 parked on a secret question is refused at the channel boundary rather than
 downstream.
 
-Source: [`crates/server/src/api/app_a2a.rs`](../../crates/server/src/api/app_a2a.rs).
+Source: [`crates/server/src/api/endpoint_a2a.rs`](../../crates/server/src/api/endpoint_a2a.rs).
 
 ### Agent Card
 
@@ -427,8 +427,8 @@ rendered user message, the server emits one audit log entry:
   Everruns user
 - metadata: `source = "app_a2a"`, `app_id`, `app_channel_id`,
   `app_channel_type = "a2a"`, `session_id`, `created_session`, and the app
-  owner principal id; `agent_identity_id` is also present when the invocation
-  runs through an agent identity
+  owner principal id; `virtual_user_id` is also present when the invocation
+  uses an explicit runtime account
 
 This mirrors webhook/schedule coverage because the event is emitted by the
 common app-channel invocation helper, not by the A2A HTTP adapter.
@@ -536,7 +536,7 @@ Headers (sent by the client):
   `signing_secret` across multiple A2A channels.
 
 Verification is performed in `crates/server/src/api/a2a_signing.rs` and
-called from `app_a2a::authenticate_request` **after** primary
+called from `endpoint_a2a::authenticate_request` **after** primary
 authentication so unauthenticated callers cannot probe channel existence
 from signing-related signals or grow the in-memory replay store. The
 check covers:

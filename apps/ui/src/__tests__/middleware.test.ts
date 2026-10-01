@@ -117,7 +117,7 @@ describe("auth proxy", () => {
   it("protects the main application routes", () => {
     expect(config.matcher).toEqual([
       "/",
-      "/agent-identities/:path*",
+      "/virtual-users/:path*",
       "/agents/:path*",
       "/capabilities/:path*",
       "/chat/:path*",

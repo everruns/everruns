@@ -22,7 +22,6 @@ fn test_uses_adaptive_thinking_by_family() {
     assert!(uses_adaptive_thinking("claude-sonnet-4-6"));
     // Budget-based families stay on extended thinking.
     assert!(!uses_adaptive_thinking("claude-opus-4-5"));
-    assert!(!uses_adaptive_thinking("claude-sonnet-4-5"));
     assert!(!uses_adaptive_thinking("claude-haiku-4-5-20251001"));
 }
 
@@ -76,11 +75,11 @@ fn test_split_million_context() {
 
     // Models that merely end in `[1m]` but are NOT 1M-capable must be left
     // untouched — never strip them or send `context-1m` (it can 400 or
-    // silently truncate, e.g. on sonnet-4-5 where the header was retired).
+    // silently truncate, e.g. on models where the header was retired).
     for not_1m in [
         "claude-haiku-4-5[1m]",
         "claude-haiku-4-5-20251001[1m]",
-        "claude-sonnet-4-5[1m]",
+        "claude-opus-4-5[1m]",
         "totally-made-up[1m]",
     ] {
         assert_eq!(split_million_context(not_1m), (not_1m, false), "{not_1m}");

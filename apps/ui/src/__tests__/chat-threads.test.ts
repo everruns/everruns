@@ -22,56 +22,44 @@ function session(overrides: Partial<Session> & { id: string }): Session {
 
 describe("selectChatThreads", () => {
   it("keeps only tagged threads", () => {
-    const threads = selectChatThreads(
-      [
-        session({ id: "sess_chat" }),
-        session({ id: "sess_legacy", tags: ["global-chat", "user:1"] }),
-        session({ id: "sess_run", tags: [] }),
-        session({ id: "sess_eval", tags: ["eval"] }),
-      ],
-      "user_1",
-    );
+    const threads = selectChatThreads([
+      session({ id: "sess_chat" }),
+      session({ id: "sess_legacy", tags: ["global-chat", "user:1"] }),
+      session({ id: "sess_run", tags: [] }),
+      session({ id: "sess_eval", tags: ["eval"] }),
+    ]);
 
     expect(threads.map((thread) => thread.id)).toEqual(["sess_chat", "sess_legacy"]);
   });
 
   it("orders by last activity, most recent first", () => {
-    const threads = selectChatThreads(
-      [
-        session({ id: "old", updated_at: "2026-08-01T00:00:00Z" }),
-        session({ id: "newest", updated_at: "2026-08-09T12:00:00Z" }),
-        session({ id: "middle", updated_at: "2026-08-05T00:00:00Z" }),
-      ],
-      "user_1",
-    );
+    const threads = selectChatThreads([
+      session({ id: "old", updated_at: "2026-08-01T00:00:00Z" }),
+      session({ id: "newest", updated_at: "2026-08-09T12:00:00Z" }),
+      session({ id: "middle", updated_at: "2026-08-05T00:00:00Z" }),
+    ]);
 
     expect(threads.map((thread) => thread.id)).toEqual(["newest", "middle", "old"]);
   });
 
   it("keeps pinned threads ahead of newer unpinned threads", () => {
-    const threads = selectChatThreads(
-      [
-        session({ id: "newest", updated_at: "2026-08-09T12:00:00Z" }),
-        session({ id: "pinned-old", updated_at: "2026-08-01T00:00:00Z", is_pinned: true }),
-        session({ id: "pinned-new", updated_at: "2026-08-05T00:00:00Z", is_pinned: true }),
-      ],
-      "user_1",
-    );
+    const threads = selectChatThreads([
+      session({ id: "newest", updated_at: "2026-08-09T12:00:00Z" }),
+      session({ id: "pinned-old", updated_at: "2026-08-01T00:00:00Z", is_pinned: true }),
+      session({ id: "pinned-new", updated_at: "2026-08-05T00:00:00Z", is_pinned: true }),
+    ]);
 
     expect(threads.map((thread) => thread.id)).toEqual(["pinned-new", "pinned-old", "newest"]);
   });
 
-  it("drops threads owned by someone else", () => {
-    const threads = selectChatThreads(
-      [
-        session({ id: "mine" }),
-        session({ id: "theirs", resolved_owner_user_id: "user_2" }),
-        session({ id: "unowned", resolved_owner_user_id: null }),
-      ],
-      "user_1",
-    );
+  it("does not infer runtime ownership from management audit lineage", () => {
+    const threads = selectChatThreads([
+      session({ id: "mine" }),
+      session({ id: "theirs", resolved_owner_user_id: "user_2" }),
+      session({ id: "unowned", resolved_owner_user_id: null }),
+    ]);
 
-    expect(threads.map((thread) => thread.id)).toEqual(["mine", "unowned"]);
+    expect(threads.map((thread) => thread.id)).toEqual(["mine", "theirs", "unowned"]);
   });
 
   it("drops archived threads unless asked for them", () => {
@@ -80,9 +68,9 @@ describe("selectChatThreads", () => {
       session({ id: "archived", archived_at: "2026-08-09T00:00:00Z" }),
     ];
 
-    expect(selectChatThreads(sessions, "user_1").map((thread) => thread.id)).toEqual(["live"]);
+    expect(selectChatThreads(sessions).map((thread) => thread.id)).toEqual(["live"]);
     expect(
-      selectChatThreads(sessions, "user_1", { includeArchived: true }).map((thread) => thread.id),
+      selectChatThreads(sessions, { includeArchived: true }).map((thread) => thread.id),
     ).toEqual(["live", "archived"]);
   });
 
@@ -96,7 +84,6 @@ describe("selectChatThreads", () => {
         }),
         session({ id: "live-old", updated_at: "2026-08-01T00:00:00Z" }),
       ],
-      "user_1",
       { includeArchived: true },
     );
 

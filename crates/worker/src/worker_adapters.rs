@@ -285,6 +285,24 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Load turn context in one batch call
     /// Returns agent, session, messages, model, and MCP tool definitions
     async fn load_turn_context(&self, org_id: i64, session_id: Uuid) -> Result<TurnContext>;
+    async fn load_turn_context_for_execution(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        _input_message_id: Uuid,
+    ) -> Result<TurnContext> {
+        self.load_turn_context(org_id, session_id).await
+    }
+    async fn get_mcp_server_for_execution(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        server_prefix: &str,
+        _input_message_id: Uuid,
+    ) -> Result<crate::mcp_executor::McpServerInfo> {
+        self.get_mcp_server_by_prefix(org_id, Some(session_id), server_prefix)
+            .await
+    }
 
     // =========================================================================
     // Factory Methods for Core Types
@@ -309,6 +327,10 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn native_async_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        None
+    }
+
+    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
         None
     }
 

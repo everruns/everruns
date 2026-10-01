@@ -11,7 +11,7 @@
 // - `provider_resolver` — spans `providers` + `models` + params; no single
 //   owner.
 // - `model_sync` — background provider-model sync listener.
-// - `principal` — resolves users + agent identities; shared.
+// - `principal` — resolves users + virtual users; shared.
 // - `usage_tracking` — cross-domain event listener feeding budgets.
 //
 // Anything with a clear single owner belongs under `domains/<owner>/`. See

@@ -27,7 +27,7 @@ pub(crate) use ::everruns_provider::tool_types::ToolCall;
 pub(crate) use ::everruns_provider::typed_id;
 #[cfg(test)]
 pub(crate) use ::everruns_provider::typed_id::{
-    AgentIdentityId, HarnessId, MessageId, ModelId, PrincipalId, SessionId, TurnId,
+    HarnessId, MessageId, ModelId, PrincipalId, SessionId, TurnId, VirtualUserId,
 };
 pub(crate) use everruns_core::*;
 

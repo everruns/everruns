@@ -194,6 +194,10 @@ Three properties of the consent record matter, all enforced in
   the consent.
 - **Durable and session-scoped**, because the retry may run in a different
   worker process than the call that asked.
+- **Written only by the consent API.** The consent prefix (and form mode's
+  answer prefix) is reserved from the model-facing `kv_store` tool and the
+  storage listing, like `tool_approval/`, so a model cannot mint its own
+  consent (TM-TOOL-034).
 
 Whether the turn pauses at all is a client capability question, so it rides a
 session hint: `url_elicitation` (the UI declares it alongside `setup_connection`

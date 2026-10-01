@@ -18,9 +18,9 @@ pub(crate) async fn revoke_agent_grants(
     ctx: &Ctx,
     row: &crate::storage::models::AgentRow,
 ) -> Result<(), CommandError> {
-    if let Some(identity_id) = row.agent_identity_id {
+    if let Some(identity_id) = row.virtual_user_id {
         ctx.db
-            .delete_all_agent_identity_connections(identity_id)
+            .delete_all_virtual_user_connections(identity_id)
             .await
             .map_err(classify_anyhow)?;
     }

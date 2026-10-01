@@ -1673,7 +1673,7 @@
         "tags": [
           "agents"
         ],
-        "description": "Revokes the current caller's user connection or the agent identity's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.",
+        "description": "Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.",
         "operationId": "revoke_agent_mcp_connection",
         "parameters": [
           {
@@ -3893,6 +3893,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connection-providers": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List providers available to this runtime account and endpoint.",
+        "operationId": "list_runtime_connectors",
+        "responses": {
+          "200": {
+            "description": "Available connection providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderResponse"
+                  }
                 }
               }
             }
@@ -6165,6 +6189,41 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/e/{endpoint_id}/runtime-auth": {
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Exchange verified endpoint authentication for a bounded runtime credential.",
+        "operationId": "exchange",
+        "parameters": [
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
           }
         }
       }
@@ -10131,7 +10190,7 @@
           {
             "name": "owner_type",
             "in": "query",
-            "description": "Filter to a single owner class (user, agent identity, or organization).",
+            "description": "Filter to a single owner class (user, virtual user, or organization).",
             "required": false,
             "schema": {
               "type": [
@@ -13655,7 +13714,7 @@
             }
           },
           "409": {
-            "description": "Parent session is mid-turn and cannot be forked",
+            "description": "Parent session is mid-turn, or ran on the OpenAI Agents API backend (code `agents_api_session_not_forkable`), and cannot be forked",
             "content": {
               "application/json": {
                 "schema": {
@@ -15207,6 +15266,64 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/tool-approvals": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/tool-approvals",
+        "description": "Records a person's decisions about tool calls an agent's `tool_approval`\ngate held back, and resumes the paused turn.",
+        "operationId": "submit_tool_approvals",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitToolApprovalsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Decisions recorded and workflow resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitToolApprovalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or decisions"
+          },
+          "403": {
+            "description": "Caller may not manage this session"
+          },
+          "404": {
+            "description": "Session or pending approval request not found"
+          },
+          "409": {
+            "description": "Session is not waiting, the request expired, or it was already answered"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/tool-results": {
       "post": {
         "tags": [
@@ -16194,6 +16311,61 @@
         }
       }
     },
+    "/v1/user/connection-migrations": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List legacy credentials requiring an explicit organization destination.",
+        "operationId": "list_pending_connection_migrations",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/user/connection-migrations/{connection_id}": {
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Move one legacy credential into the selected organization without copying it.",
+        "operationId": "migrate_pending_connection",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
     "/v1/user/mcp-connections": {
       "get": {
         "tags": [
@@ -16440,6 +16612,886 @@
           },
           "404": {
             "description": "Organization not found or user is not a member"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List virtual users.",
+        "operationId": "list_virtual_users",
+        "parameters": [
+          {
+            "name": "usage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/VirtualUserUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Zero-based page offset.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum results per page.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_VirtualUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Create virtual user.",
+        "operationId": "create_virtual_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVirtualUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/me": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Read the authenticated consumer runtime account.",
+        "operationId": "get_me",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Update the runtime profile without changing management identity or lifecycle.",
+        "operationId": "update_me",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVirtualUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Get virtual user.",
+        "operationId": "get_virtual_user",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Delete virtual user.",
+        "operationId": "delete_virtual_user",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Update virtual user.",
+        "operationId": "update_virtual_user",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVirtualUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/bindings": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List verified external identity bindings.",
+        "operationId": "list_bindings",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/bindings/{binding_id}": {
+      "delete": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Revoke an external binding and its runtime self authority.",
+        "operationId": "revoke_binding",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/connections": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List connections.",
+        "operationId": "list_connections",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Connection"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Virtual user not found"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/connections/{provider}": {
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Create api key connection.",
+        "operationId": "create_api_key_connection",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Virtual user not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Delete connection.",
+        "operationId": "delete_connection",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Virtual user not found"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/connections/{provider}/authorize": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Start provider setup bound to the authorized virtual user.",
+        "operationId": "authorize_target_connection",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Create a target-bound provider setup URL.",
+        "operationId": "start_target_connection",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthAuthorizeQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Browser setup created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionSetupResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Setup not authorized"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/connections/{provider}/verify": {
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Verify connection.",
+        "operationId": "verify_connection",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyConnectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Virtual user not found"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/delete": {
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Destroy virtual user.",
+        "operationId": "destroy_virtual_user",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/preferences": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List agent-facing preferences.",
+        "operationId": "list_preferences",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/preferences/{key}": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Read one agent-facing preference.",
+        "operationId": "get_preference",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Set a bounded agent-facing preference.",
+        "operationId": "set_preference",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPreferenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Delete an agent-facing preference.",
+        "operationId": "delete_preference",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/sessions": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List recent sessions associated with the authorized virtual user.",
+        "operationId": "list_sessions",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
           }
         }
       }
@@ -17543,6 +18595,13 @@
             "description": "Root agent lineage identifier for grouping fork families.",
             "example": "agent_01933b5a00007000800000000000001"
           },
+          "service_virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Org-scoped service account used when a tool acts as the agent."
+          },
           "short_description": {
             "type": [
               "string",
@@ -18244,7 +19303,7 @@
               "string",
               "null"
             ],
-            "description": "Identity of the principal (user or agent identity) that created this version. `None` for system-generated snapshots."
+            "description": "Identity of the principal (user or virtual user) that created this version. `None` for system-generated snapshots."
           },
           "id": {
             "type": "string",
@@ -18479,7 +19538,9 @@
         ],
         "properties": {
           "api_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider API key, encrypted before storage.",
+            "example": "example-api-key"
           }
         }
       },
@@ -18503,14 +19564,6 @@
             ],
             "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
             "example": "agent_01933b5a00007000800000000000001"
-          },
-          "agent_identity_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional virtual identity that represents the app in unattended/channel execution.",
-            "example": "identity_01933b5a00007000800000000000001"
           },
           "agent_version_id": {
             "type": [
@@ -18624,6 +19677,14 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when the app was last updated."
+          },
+          "virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional virtual identity that represents the app in unattended/channel execution.",
+            "example": "identity_01933b5a00007000800000000000001"
           }
         }
       },
@@ -20108,25 +21169,49 @@
         "properties": {
           "connected_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time the grant was created.",
+            "example": "2026-09-29T12:00:00Z"
           },
           "connection_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Credential mechanism used by this connection.",
+            "example": "oauth"
           },
           "provider": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable provider identifier.",
+            "example": "github"
           },
           "provider_username": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Display name on the provider.",
+            "example": "octocat"
           },
           "scopes": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider scopes granted to this account.",
+            "example": "read:user"
+          }
+        }
+      },
+      "ConnectionSetupResponse": {
+        "type": "object",
+        "description": "Browser URL returned to a bearer-authenticated consumer before navigation.",
+        "required": [
+          "authorization_url"
+        ],
+        "properties": {
+          "authorization_url": {
+            "type": "string",
+            "description": "Navigate the browser to this provider authorization URL.",
+            "example": "https://provider.example/authorize?state=opaque"
           }
         }
       },
@@ -21187,6 +22272,12 @@
             "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to use the\nprovider default.",
             "example": true
           },
+          "service_virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "short_description": {
             "type": [
               "string",
@@ -21447,6 +22538,23 @@
             "description": "Kind of resource constrained by the budget.",
             "example": "agent"
           }
+        }
+      },
+      "CreateConnectionRequest": {
+        "type": "object",
+        "description": "Request body for API-key connection creation (plugin-based providers).\nAccepts api_key plus any additional form fields as extra_fields.",
+        "required": [
+          "api_key"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "Provider API key, encrypted before storage.",
+            "example": "example-api-key"
+          }
+        },
+        "additionalProperties": {
+          "description": "Additional provider-specific form fields (e.g. org_slug for Deno personal tokens)."
         }
       },
       "CreateDatabaseRequest": {
@@ -22127,13 +23235,13 @@
           },
           "owner_id": {
             "type": "string",
-            "description": "Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`\n(see above). Example below pairs with `owner_type = \"agent_identity\"`.",
+            "description": "Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`\n(see above). Example below pairs with `owner_type = \"virtual_user\"`.",
             "example": "identity_01933b5a00007000800000000000001"
           },
           "owner_type": {
             "type": "string",
-            "description": "Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.\nThe prefix on `owner_id` must match this: `user` → `user_…`, `agent_identity` → `identity_…`,\n`organization` → `org_…`.",
-            "example": "agent_identity"
+            "description": "Principal class that owns the account. One of: `user`, `virtual_user`, `organization`.\nThe prefix on `owner_id` must match this: `user` → `user_…`, `virtual_user` → `identity_…`,\n`organization` → `org_…`.",
+            "example": "virtual_user"
           },
           "private_key": {
             "type": [
@@ -22246,13 +23354,13 @@
           },
           "subject_id": {
             "type": "string",
-            "description": "Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`\n(see above). Example below pairs with `subject_type = \"agent_identity\"`.",
+            "description": "Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`\n(see above). Example below pairs with `subject_type = \"virtual_user\"`.",
             "example": "identity_01933b5a00007000800000000000001"
           },
           "subject_type": {
             "type": "string",
-            "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`,\n`agent`, `agent_endpoint`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,\n`agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
-            "example": "agent_identity"
+            "description": "Class of subject this policy binds to. One of: `user`, `virtual_user`,\n`agent`, `agent_endpoint`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,\n`agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
+            "example": "virtual_user"
           }
         }
       },
@@ -22504,14 +23612,6 @@
             "description": "ID of the agent to work in this session (optional, format: agent_{32-hex}).\nWhen supplied without a harness, the session inherits the agent's harness.\nMutually exclusive with `agent_name`.",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "agent_identity_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional resident agent identity used for unattended/background execution.",
-            "example": "identity_01933b5a00007000800000000000001"
-          },
           "agent_name": {
             "type": [
               "string",
@@ -22699,6 +23799,14 @@
               }
             ]
           },
+          "virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional resident virtual user used for unattended/background execution.",
+            "example": "identity_01933b5a00007000800000000000001"
+          },
           "workspace_id": {
             "type": [
               "string",
@@ -22744,6 +23852,55 @@
           "url": {
             "type": "string",
             "description": "The URL to POST task terminal-state events to."
+          }
+        }
+      },
+      "CreateVirtualUserRequest": {
+        "type": "object",
+        "description": "Create an organization-scoped runtime account.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Profile image URL.",
+            "example": "https://example.com/avatar.png"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Locale used for agent-facing defaults.",
+            "example": "en-US"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Ops Bot"
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA time zone used for agent-facing defaults.",
+            "example": "America/Los_Angeles"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VirtualUserUsage",
+            "description": "Runtime purpose; service accounts may be attached to agents."
           }
         }
       },
@@ -24725,6 +25882,76 @@
           "required": {
             "type": "boolean",
             "description": "Whether the field is required."
+          }
+        }
+      },
+      "FormFieldResponse": {
+        "type": "object",
+        "description": "Single form field",
+        "required": [
+          "name",
+          "label",
+          "field_type",
+          "required"
+        ],
+        "properties": {
+          "field_type": {
+            "type": "string",
+            "description": "Input type used by the form.",
+            "example": "password"
+          },
+          "help_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Explanation for this form field.",
+            "example": "Your key is stored encrypted."
+          },
+          "label": {
+            "type": "string",
+            "description": "Provider form field label.",
+            "example": "API key"
+          },
+          "name": {
+            "type": "string",
+            "description": "Provider form field name.",
+            "example": "api_key"
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Suggested input placeholder.",
+            "example": "Enter your API key"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the field must be supplied.",
+            "example": true
+          }
+        }
+      },
+      "FormSchemaResponse": {
+        "type": "object",
+        "description": "Form schema for API-key providers",
+        "required": [
+          "fields",
+          "instructions_markdown"
+        ],
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormFieldResponse"
+            },
+            "description": "Provider form fields."
+          },
+          "instructions_markdown": {
+            "type": "string",
+            "description": "Instructions shown before connection setup.",
+            "example": "Create an API key in provider settings."
           }
         }
       },
@@ -27261,6 +28488,13 @@
                   "description": "Root agent lineage identifier for grouping fork families.",
                   "example": "agent_01933b5a00007000800000000000001"
                 },
+                "service_virtual_user_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Org-scoped service account used when a tool acts as the agent."
+                },
                 "short_description": {
                   "type": [
                     "string",
@@ -29371,14 +30605,6 @@
                       "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
                       "example": "agent_01933b5a00007000800000000000001"
                     },
-                    "agent_identity_id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Optional virtual identity that represents the app in unattended/channel execution.",
-                      "example": "identity_01933b5a00007000800000000000001"
-                    },
                     "agent_version_id": {
                       "type": [
                         "string",
@@ -29491,6 +30717,14 @@
                       "type": "string",
                       "format": "date-time",
                       "description": "Timestamp when the app was last updated."
+                    },
+                    "virtual_user_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Optional virtual identity that represents the app in unattended/channel execution.",
+                      "example": "identity_01933b5a00007000800000000000001"
                     }
                   }
                 },
@@ -29981,7 +31215,7 @@
                     "display_name": {
                       "type": "string",
                       "description": "Human-readable display name.",
-                      "example": "Claude Sonnet 4.5"
+                      "example": "Claude Sonnet 5.5"
                     },
                     "enabled": {
                       "type": "boolean",
@@ -30006,7 +31240,7 @@
                     "model_id": {
                       "type": "string",
                       "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
-                      "example": "claude-sonnet-4-5"
+                      "example": "claude-sonnet-5-5"
                     },
                     "model_vendor": {
                       "oneOf": [
@@ -30831,6 +32065,45 @@
           }
         }
       },
+      "LlmCostComponent": {
+        "type": "object",
+        "description": "One billable component of a generation.",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "USD amount. `None` is an explicit unknown amount, not zero.",
+            "example": 0.02
+          },
+          "kind": {
+            "type": "string",
+            "description": "What is billed: `model_tokens`, `hosted_tool`, or `container`.",
+            "example": "hosted_tool"
+          },
+          "name": {
+            "type": "string",
+            "description": "Which one, e.g. the model or the provider item type\n(`web_search_call`).",
+            "example": "web_search_call"
+          },
+          "quantity": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Billed units (tokens, calls), when known.",
+            "example": 2,
+            "minimum": 0
+          }
+        }
+      },
       "LlmGenerationData": {
         "type": "object",
         "description": "Data for llm.generation event\n\nEmitted after each LLM API call to provide full visibility into\nthe messages sent to the model and the response received.",
@@ -30883,6 +32156,13 @@
               }
             ]
           },
+          "cost_components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmCostComponent"
+            },
+            "description": "Billable components of this generation and what each cost, when the\ngeneration bills more than its tokens (provider-run tools, hosted\ncontainers, a managed harness). A component whose `cost_usd` is `None`\nis an explicit unknown amount, never a zero: budgets debit the priced\ncomponents and record the unknown ones (EVE-1125). Empty for an\nordinary token-billed generation."
+          },
           "duration_ms": {
             "type": [
               "integer",
@@ -30917,7 +32197,7 @@
           "model": {
             "type": "string",
             "description": "Model identifier used for generation",
-            "example": "claude-sonnet-4-5"
+            "example": "claude-sonnet-4-6"
           },
           "provider": {
             "type": [
@@ -30951,8 +32231,8 @@
               "string",
               "null"
             ],
-            "description": "Model the provider reported actually serving the request.\n\n`model` is what was *asked for*, which is routinely an alias that\nresolves at request time — `claude-sonnet-4-5` served by\n`claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one\nupstream of several. Collapsing the two loses the only record of which\nweights produced the answer, which is what a regression in output\nquality has to be correlated against.\n\n`None` when the provider reported no model, which is the honest answer:\nconsumers fall back to `model` rather than being told the alias was\nconfirmed.",
-            "example": "claude-sonnet-4-5-20250929"
+            "description": "Model the provider reported actually serving the request.\n\n`model` is what was *asked for*, which is routinely an alias that\nresolves at request time — `claude-sonnet-4-6` served by\n`claude-sonnet-4-6-20260217`, or an OpenRouter route landing on one\nupstream of several. Collapsing the two loses the only record of which\nweights produced the answer, which is what a regression in output\nquality has to be correlated against.\n\n`None` when the provider reported no model, which is the honest answer:\nconsumers fall back to `model` rather than being told the alias was\nconfirmed.",
+            "example": "claude-sonnet-4-6-20260217"
           },
           "retry": {
             "oneOf": [
@@ -32611,7 +33891,7 @@
           "display_name": {
             "type": "string",
             "description": "Human-readable display name.",
-            "example": "Claude Sonnet 4.5"
+            "example": "Claude Sonnet 5.5"
           },
           "enabled": {
             "type": "boolean",
@@ -32636,7 +33916,7 @@
           "model_id": {
             "type": "string",
             "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
-            "example": "claude-sonnet-4-5"
+            "example": "claude-sonnet-5-5"
           },
           "model_vendor": {
             "oneOf": [
@@ -32838,6 +34118,50 @@
           "blocked": [
             "169.254.169.254"
           ]
+        }
+      },
+      "OAuthAuthorizeQuery": {
+        "type": "object",
+        "description": "Browser setup options. The canonical target is selected by the authorized resource path.",
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required when `mode = identity`: the agent whose service grant this is.\nThe grant is owned by the agent's identity, not by the admin who\nauthorizes it (EVE-1030).\nOptional legacy service agent target."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Legacy setup mode; canonical resource paths capture the target.",
+            "example": "virtual_user"
+          },
+          "popup": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether setup completes in a popup.",
+            "example": false
+          },
+          "return_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Same-origin return path after setup.",
+            "example": "/settings/connections"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional session grant destination for legacy setup."
+          }
         }
       },
       "OkfFileInput": {
@@ -33266,14 +34590,6 @@
                   "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                   "example": "agent_01933b5a00007000800000000000001"
                 },
-                "agent_identity_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Optional resident agent identity for unattended/background execution.",
-                  "example": "identity_01933b5a00007000800000000000001"
-                },
                 "agent_version_id": {
                   "type": [
                     "string",
@@ -33617,10 +34933,179 @@
                     }
                   ]
                 },
+                "virtual_user_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional resident virtual user for unattended/background execution.",
+                  "example": "identity_01933b5a00007000800000000000001"
+                },
                 "workspace_id": {
                   "type": "string",
                   "description": "Workspace this session is attached to (format: wsp_{32-hex}). Owns the\nsession's virtual filesystem. For the default 1:1 case this mirrors the\nsession id, but clients should read it here rather than deriving it.",
                   "example": "wsp_01933b5a00007000800000000000001"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum number of items per page.",
+            "minimum": 0
+          },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Current offset (starting position).",
+            "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of items matching the query (across all pages).",
+            "minimum": 0
+          }
+        }
+      },
+      "PaginatedResponse_VirtualUser": {
+        "type": "object",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
+        "required": [
+          "data",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Organization-scoped runtime account with its own profile and connections.",
+              "required": [
+                "id",
+                "organization_id",
+                "usage",
+                "name",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Archive timestamp."
+                },
+                "avatar_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional avatar URL for UI surfaces."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Creation timestamp."
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Delete timestamp."
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional description shown in management UI."
+                },
+                "effective_owner": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PrincipalSummary",
+                      "description": "Effective human owner summary derived from the principal lineage."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (identity_<32-hex>). Shown as `id` in API.",
+                  "example": "identity_01933b5a000070008000000000000001"
+                },
+                "locale": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default locale for unattended runs."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name used when the identity acts autonomously."
+                },
+                "organization_id": {
+                  "type": "string",
+                  "description": "Organization that owns the runtime account.",
+                  "example": "org_example"
+                },
+                "principal": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PrincipalSummary",
+                      "description": "Principal row representing this identity as a durable owner/executor."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "$ref": "#/components/schemas/VirtualUserStatus",
+                  "description": "Lifecycle status."
+                },
+                "timezone": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default timezone for unattended runs."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Last update timestamp."
+                },
+                "usage": {
+                  "$ref": "#/components/schemas/VirtualUserUsage",
+                  "description": "Immutable runtime account purpose."
                 }
               }
             },
@@ -34071,14 +35556,6 @@
                       "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                       "example": "agent_01933b5a00007000800000000000001"
                     },
-                    "agent_identity_id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Optional resident agent identity for unattended/background execution.",
-                      "example": "identity_01933b5a00007000800000000000001"
-                    },
                     "agent_version_id": {
                       "type": [
                         "string",
@@ -34422,6 +35899,14 @@
                         }
                       ]
                     },
+                    "virtual_user_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Optional resident virtual user for unattended/background execution.",
+                      "example": "identity_01933b5a00007000800000000000001"
+                    },
                     "workspace_id": {
                       "type": "string",
                       "description": "Workspace this session is attached to (format: wsp_{32-hex}). Owns the\nsession's virtual filesystem. For the default 1:1 case this mirrors the\nsession id, but clients should read it here rather than deriving it.",
@@ -34503,7 +35988,7 @@
       },
       "PaymentAccount": {
         "type": "object",
-        "description": "A payment account — the org-scoped source of funds for paid agent calls.\nEach account binds an owning principal (user, agent identity, or org)\nto one settlement rail and tracks its provisioning lifecycle.",
+        "description": "A payment account — the org-scoped source of funds for paid agent calls.\nEach account binds an owning principal (user, virtual user, or org)\nto one settlement rail and tracks its provisioning lifecycle.",
         "required": [
           "id",
           "organization_id",
@@ -34547,7 +36032,7 @@
           },
           "owner_type": {
             "$ref": "#/components/schemas/PaymentOwnerType",
-            "description": "Principal class that owns this account (user, agent identity, or organization)."
+            "description": "Principal class that owns this account (user, virtual user, or organization)."
           },
           "public_address": {
             "type": [
@@ -34697,13 +36182,13 @@
         "description": "Principal class that owns a payment account.",
         "enum": [
           "user",
-          "agent_identity",
+          "virtual_user",
           "organization"
         ]
       },
       "PaymentPolicy": {
         "type": "object",
-        "description": "A payment policy — the binding between a paying account and a subject\n(agent identity, session) that controls which paid calls are\nauthorized and at what spend caps.",
+        "description": "A payment policy — the binding between a paying account and a subject\n(virtual user, session) that controls which paid calls are\nauthorized and at what spend caps.",
         "required": [
           "id",
           "organization_id",
@@ -34817,8 +36302,8 @@
           },
           "subject_type": {
             "type": "string",
-            "description": "Class of subject this policy binds to (e.g. `agent_identity`, `session`).",
-            "example": "agent_identity"
+            "description": "Class of subject this policy binds to (e.g. `virtual_user`, `session`).",
+            "example": "virtual_user"
           },
           "updated_at": {
             "type": "string",
@@ -34978,13 +36463,13 @@
         "description": "Class of principal that can hold permissions or own resources. `system`\nis reserved for platform-internal callers and is never minted via the\npublic API.",
         "enum": [
           "user",
-          "agent_identity",
+          "virtual_user",
           "system"
         ]
       },
       "PrincipalSummary": {
         "type": "object",
-        "description": "Compact view of a principal — id + kind + the subject-id pointer back\ninto the user/agent-identity row. Used wherever a full `Principal`\nwould be redundant (e.g. as a sub-field of a session or audit record).",
+        "description": "Compact view of a principal — id + kind + the subject-id pointer back\ninto the user/virtual-user row. Used wherever a full `Principal`\nwould be redundant (e.g. as a sub-field of a session or audit record).",
         "required": [
           "id",
           "kind"
@@ -35218,6 +36703,55 @@
               "$ref": "#/components/schemas/ProviderRequestHeader"
             },
             "description": "Extra HTTP headers added to every request to this provider. They\noverride the driver's and the connection's own headers by name, but\nconnection-level headers (`host`, `content-length`, ...) are ignored."
+          }
+        }
+      },
+      "ProviderResponse": {
+        "type": "object",
+        "description": "Provider info for the connections UI",
+        "required": [
+          "provider_id",
+          "display_name",
+          "description",
+          "icon",
+          "connection_type"
+        ],
+        "properties": {
+          "connection_type": {
+            "type": "string",
+            "description": "Provider credential mechanism.",
+            "example": "oauth"
+          },
+          "description": {
+            "type": "string",
+            "description": "Provider description.",
+            "example": "Connect your repositories"
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Provider display name.",
+            "example": "GitHub"
+          },
+          "form_schema": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FormSchemaResponse",
+                "description": "Fields required for API key providers."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "icon": {
+            "type": "string",
+            "description": "Provider icon name.",
+            "example": "github"
+          },
+          "provider_id": {
+            "type": "string",
+            "description": "Stable provider identifier.",
+            "example": "github"
           }
         }
       },
@@ -37104,14 +38638,6 @@
             "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "agent_identity_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional resident agent identity for unattended/background execution.",
-            "example": "identity_01933b5a00007000800000000000001"
-          },
           "agent_version_id": {
             "type": [
               "string",
@@ -37454,6 +38980,14 @@
                 "type": "null"
               }
             ]
+          },
+          "virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional resident virtual user for unattended/background execution.",
+            "example": "identity_01933b5a00007000800000000000001"
           },
           "workspace_id": {
             "type": "string",
@@ -38386,6 +39920,18 @@
           }
         }
       },
+      "SetPreferenceRequest": {
+        "type": "object",
+        "description": "Request body for setting a preference value.",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "object"
+          }
+        }
+      },
       "SideEffectClass": {
         "type": "string",
         "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -38681,6 +40227,44 @@
         "properties": {
           "path": {
             "type": "string"
+          }
+        }
+      },
+      "SubmitToolApprovalsRequest": {
+        "type": "object",
+        "description": "Request to answer pending tool-approval requests.",
+        "required": [
+          "decisions"
+        ],
+        "properties": {
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolApprovalAnswer"
+            },
+            "description": "Decisions for the pending requests. A pending request in the same batch\nthat is left out is resolved as not approved: the turn resumes once, so\nevery request in it is settled now, and silence never approves."
+          }
+        }
+      },
+      "SubmitToolApprovalsResponse": {
+        "type": "object",
+        "description": "Result of answering tool-approval requests.",
+        "required": [
+          "resolved",
+          "status"
+        ],
+        "properties": {
+          "resolved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolApprovalResolution"
+            },
+            "description": "How every pending request in the batch was settled."
+          },
+          "status": {
+            "type": "string",
+            "description": "Session status after the decision.",
+            "example": "active"
           }
         }
       },
@@ -39414,6 +40998,59 @@
             "format": "int32",
             "description": "Number of output/completion tokens",
             "minimum": 0
+          }
+        }
+      },
+      "ToolApprovalAnswer": {
+        "type": "object",
+        "description": "One decision in a submission.",
+        "required": [
+          "tool_call_id",
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/ToolApprovalDecision",
+            "description": "The person's decision."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The `approve_tool_call` call being answered.",
+            "example": "tool_approval_toolu_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "ToolApprovalDecision": {
+        "type": "string",
+        "description": "What a person decided about one gated call.",
+        "enum": [
+          "allow",
+          "allow_always",
+          "reject",
+          "reject_always"
+        ]
+      },
+      "ToolApprovalResolution": {
+        "type": "object",
+        "description": "How one pending request was settled.",
+        "required": [
+          "tool_call_id",
+          "tool",
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "`allow`, `allow_always`, `reject`, `reject_always`, `not_approved`\n(left out of the submission) or `expired`.",
+            "example": "allow"
+          },
+          "tool": {
+            "type": "string",
+            "description": "The gated tool."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The `approve_tool_call` call that was answered."
           }
         }
       },
@@ -40600,6 +42237,12 @@
             ],
             "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to leave\nunchanged.",
             "example": true
+          },
+          "service_virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "short_description": {
             "type": [
@@ -41864,14 +43507,6 @@
         "type": "object",
         "description": "Request to update a session. Only provided fields will be updated.",
         "properties": {
-          "agent_identity_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional resident agent identity used for unattended/background execution.",
-            "example": "identity_01933b5a00007000800000000000001"
-          },
           "goal": {
             "type": [
               "string",
@@ -41908,6 +43543,14 @@
             ],
             "description": "Human-readable title for the session.",
             "example": "Updated session title"
+          },
+          "virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional resident virtual user used for unattended/background execution.",
+            "example": "identity_01933b5a00007000800000000000001"
           }
         }
       },
@@ -41959,6 +43602,61 @@
               "null"
             ],
             "description": "New target URL."
+          }
+        }
+      },
+      "UpdateVirtualUserRequest": {
+        "type": "object",
+        "description": "Update a runtime account profile or its management lifecycle.",
+        "properties": {
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Profile image URL.",
+            "example": "https://example.com/avatar.png"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Support team member"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Locale used for agent-facing defaults."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Alex"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VirtualUserStatus",
+                "description": "Current lifecycle status."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA time zone used for agent-facing defaults."
           }
         }
       },
@@ -42222,6 +43920,158 @@
             "description": "Whether the cited source supports the claim."
           }
         }
+      },
+      "VerifyConnectionResponse": {
+        "type": "object",
+        "description": "Response for connection verification",
+        "required": [
+          "valid"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider verification failure without credential details.",
+            "example": "Credential expired"
+          },
+          "valid": {
+            "type": "boolean",
+            "description": "Whether the provider accepted the saved credential.",
+            "example": true
+          }
+        }
+      },
+      "VirtualUser": {
+        "type": "object",
+        "description": "Organization-scoped runtime account with its own profile and connections.",
+        "required": [
+          "id",
+          "organization_id",
+          "usage",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Archive timestamp."
+          },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional avatar URL for UI surfaces."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Delete timestamp."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description shown in management UI."
+          },
+          "effective_owner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalSummary",
+                "description": "Effective human owner summary derived from the principal lineage."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (identity_<32-hex>). Shown as `id` in API.",
+            "example": "identity_01933b5a000070008000000000000001"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default locale for unattended runs."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name used when the identity acts autonomously."
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "Organization that owns the runtime account.",
+            "example": "org_example"
+          },
+          "principal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalSummary",
+                "description": "Principal row representing this identity as a durable owner/executor."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/VirtualUserStatus",
+            "description": "Lifecycle status."
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default timezone for unattended runs."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VirtualUserUsage",
+            "description": "Immutable runtime account purpose."
+          }
+        }
+      },
+      "VirtualUserStatus": {
+        "type": "string",
+        "description": "Virtual user lifecycle status.",
+        "enum": [
+          "active",
+          "archived",
+          "deleted"
+        ]
+      },
+      "VirtualUserUsage": {
+        "type": "string",
+        "description": "VirtualUser is a durable virtual principal.",
+        "enum": [
+          "end_user",
+          "service"
+        ]
       },
       "VoiceAttachRequest": {
         "allOf": [
@@ -42883,6 +44733,13 @@
                 "description": "Root agent lineage identifier for grouping fork families.",
                 "example": "agent_01933b5a00007000800000000000001"
               },
+              "service_virtual_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Org-scoped service account used when a tool acts as the agent."
+              },
               "short_description": {
                 "type": [
                   "string",
@@ -43072,14 +44929,6 @@
                 "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
                 "example": "agent_01933b5a00007000800000000000001"
               },
-              "agent_identity_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Optional virtual identity that represents the app in unattended/channel execution.",
-                "example": "identity_01933b5a00007000800000000000001"
-              },
               "agent_version_id": {
                 "type": [
                   "string",
@@ -43192,6 +45041,14 @@
                 "type": "string",
                 "format": "date-time",
                 "description": "Timestamp when the app was last updated."
+              },
+              "virtual_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional virtual identity that represents the app in unattended/channel execution.",
+                "example": "identity_01933b5a00007000800000000000001"
               }
             }
           },
@@ -44055,7 +45912,7 @@
               "display_name": {
                 "type": "string",
                 "description": "Human-readable display name.",
-                "example": "Claude Sonnet 4.5"
+                "example": "Claude Sonnet 5.5"
               },
               "enabled": {
                 "type": "boolean",
@@ -44080,7 +45937,7 @@
               "model_id": {
                 "type": "string",
                 "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
-                "example": "claude-sonnet-4-5"
+                "example": "claude-sonnet-5-5"
               },
               "model_vendor": {
                 "oneOf": [
@@ -44577,14 +46434,6 @@
                 "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                 "example": "agent_01933b5a00007000800000000000001"
               },
-              "agent_identity_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Optional resident agent identity for unattended/background execution.",
-                "example": "identity_01933b5a00007000800000000000001"
-              },
               "agent_version_id": {
                 "type": [
                   "string",
@@ -44927,6 +46776,14 @@
                     "type": "null"
                   }
                 ]
+              },
+              "virtual_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional resident virtual user for unattended/background execution.",
+                "example": "identity_01933b5a00007000800000000000001"
               },
               "workspace_id": {
                 "type": "string",

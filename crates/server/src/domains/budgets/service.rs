@@ -315,6 +315,7 @@ impl BudgetService {
         cache_creation_tokens: i64,
         provider_cost_usd: Option<f64>,
         finish_reasons: Option<&[String]>,
+        cost_unknown_components: &[String],
     ) {
         // Get session to find subject hierarchy
         let session = match self.db.get_session_unscoped(event.session_id).await {
@@ -408,10 +409,13 @@ impl BudgetService {
                     "cache_creation_tokens": cache_creation_tokens,
                     "provider_cost_usd": provider_cost_usd,
                 }),
+                // Billable components nobody could price (EVE-1125): the
+                // totals carry them as an explicit unknown, not a zero.
                 metadata: serde_json::json!({
                     "model": model,
                     "provider": provider,
                     "finish_reasons": finish_reasons,
+                    "cost_unknown_components": cost_unknown_components,
                 }),
             })
             .await
@@ -465,6 +469,7 @@ impl BudgetService {
                     "journal_kind": "llm_generation",
                     "model": model,
                     "provider": provider,
+                    "cost_unknown_components": cost_unknown_components,
                 })),
             };
 
@@ -794,26 +799,21 @@ impl EventListener for BudgetService {
             return;
         };
 
-        let usage = match &data.metadata.usage {
-            Some(u) => u,
-            None => return,
+        let Some(meter) = GenerationMeter::from_metadata(&data.metadata) else {
+            return;
         };
-
-        let input_tokens = usage.input_tokens as i64;
-        let output_tokens = usage.output_tokens as i64;
-        let cache_read_tokens = usage.cache_read_tokens.unwrap_or(0) as i64;
-        let cache_creation_tokens = usage.cache_creation_tokens.unwrap_or(0) as i64;
 
         self.process_llm_generation(
             event,
             Some(data.metadata.model.as_str()),
             data.metadata.provider.as_deref(),
-            input_tokens,
-            output_tokens,
-            cache_read_tokens,
-            cache_creation_tokens,
-            usage.effective_cost_usd(),
+            meter.input_tokens,
+            meter.output_tokens,
+            meter.cache_read_tokens,
+            meter.cache_creation_tokens,
+            meter.cost_usd,
             data.metadata.finish_reasons.as_deref(),
+            &meter.cost_unknown_components,
         )
         .await;
     }
@@ -830,6 +830,59 @@ impl EventListener for BudgetService {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/// What one `llm.generation` meters.
+#[derive(Debug, PartialEq)]
+pub(crate) struct GenerationMeter {
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub cost_usd: Option<f64>,
+    /// `kind:name` of every billable component with an unknown amount.
+    pub cost_unknown_components: Vec<String>,
+}
+
+impl GenerationMeter {
+    /// `None` when the generation bills nothing Everruns knows of. A
+    /// generation with unknown token usage but declared cost components
+    /// (a managed turn whose usage never arrived, EVE-1125) still meters:
+    /// its priced components are debited and the rest recorded as unknown.
+    pub(crate) fn from_metadata(
+        metadata: &everruns_core::events::LlmGenerationMetadata,
+    ) -> Option<Self> {
+        let cost_unknown_components = metadata
+            .unpriced_cost_components()
+            .map(|component| format!("{}:{}", component.kind, component.name))
+            .collect();
+        match &metadata.usage {
+            Some(usage) => Some(Self {
+                input_tokens: usage.input_tokens as i64,
+                output_tokens: usage.output_tokens as i64,
+                cache_read_tokens: usage.cache_read_tokens.unwrap_or(0) as i64,
+                cache_creation_tokens: usage.cache_creation_tokens.unwrap_or(0) as i64,
+                cost_usd: usage.effective_cost_usd(),
+                cost_unknown_components,
+            }),
+            None if !metadata.cost_components.is_empty() => {
+                let priced: Vec<f64> = metadata
+                    .cost_components
+                    .iter()
+                    .filter_map(|component| component.cost_usd)
+                    .collect();
+                Some(Self {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cache_read_tokens: 0,
+                    cache_creation_tokens: 0,
+                    cost_usd: (!priced.is_empty()).then(|| priced.iter().sum()),
+                    cost_unknown_components,
+                })
+            }
+            None => None,
+        }
+    }
+}
 
 /// Decide whether a budget's period has elapsed and the balance should reset.
 fn period_elapsed(period: &BudgetPeriod, started: DateTime<Utc>, now: DateTime<Utc>) -> bool {

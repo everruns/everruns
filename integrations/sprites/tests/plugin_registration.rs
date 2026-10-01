@@ -31,7 +31,7 @@ fn test_sprites_plugin_is_published() {
 }
 
 #[test]
-fn test_sprites_plugin_is_not_experimental() {
+fn test_sprites_plugin_is_experimental() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let sprites = plugins
         .iter()
@@ -42,8 +42,8 @@ fn test_sprites_plugin_is_not_experimental() {
         .expect("Sprites plugin not found");
 
     assert!(
-        !sprites.experimental_only,
-        "Sprites should NOT be marked experimental_only"
+        sprites.experimental_only,
+        "Sprites should be marked experimental_only"
     );
 }
 
@@ -54,11 +54,11 @@ fn test_sprites_registered_in_dev_registry() {
 }
 
 #[test]
-fn test_sprites_registered_in_prod_registry() {
+fn test_sprites_not_registered_in_prod_registry() {
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
-        registry.has("sprites"),
-        "Sprites should be in prod registry"
+        !registry.has("sprites"),
+        "Experimental Sprites should stay out of the prod registry"
     );
 }
 

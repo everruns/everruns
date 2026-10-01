@@ -243,7 +243,7 @@ impl ServerPaymentAuthority {
             session_id,
             agent_id,
             agent_public_id,
-            session.agent_identity_id,
+            session.virtual_user_id,
             session.resolved_owner_user_id,
             endpoint_public_id,
         );
@@ -275,7 +275,7 @@ impl ServerPaymentAuthority {
             }
             // THREAT[TM-AGENT-022]: Prompt-injected agents could try to spend from any wallet.
             // Mitigation: every paid capability request must match an active policy for the
-            // session, agent, agent identity, user, or organization plus capability, host,
+            // session, agent, virtual user, user, or organization plus capability, host,
             // rail, and per-request limit before a payment is signed.
             if !candidates
                 .iter()
@@ -538,7 +538,7 @@ fn subject_candidates(
     session_id: SessionId,
     agent_id: Option<AgentId>,
     agent_public_id: Option<String>,
-    agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
+    virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
     user_id: Option<uuid::Uuid>,
     endpoint_public_id: Option<String>,
 ) -> Vec<(&'static str, String)> {
@@ -557,9 +557,9 @@ fn subject_candidates(
         candidates.push(("agent", agent_id.to_string()));
         candidates.push(("agent", agent_id.uuid().to_string()));
     }
-    if let Some(agent_identity_id) = agent_identity_id {
-        candidates.push(("agent_identity", agent_identity_id.to_string()));
-        candidates.push(("agent_identity", agent_identity_id.uuid().to_string()));
+    if let Some(virtual_user_id) = virtual_user_id {
+        candidates.push(("virtual_user", virtual_user_id.to_string()));
+        candidates.push(("virtual_user", virtual_user_id.uuid().to_string()));
     }
     if let Some(user_id) = user_id {
         candidates.push(("user", user_id.to_string()));

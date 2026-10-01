@@ -89,7 +89,7 @@ impl WorkerServiceImpl {
             let session_id = parse_uuid(Some(session_id))?;
             let internal_caller = everruns_core::Caller::internal(req.org_id);
 
-            if let Some(session) = self
+            if let Some(mut session) = self
                 .session_service
                 .get(&internal_caller, session_id, None)
                 .await
@@ -108,6 +108,29 @@ impl WorkerServiceImpl {
                     Status::internal("Failed to resolve scoped MCP server")
                 })?
             {
+                if let Some(message) = req.input_message_id.as_ref() {
+                    let message = parse_uuid(Some(message))?;
+                    if !self
+                        .db
+                        .runtime_invocation_exists(session.id, message)
+                        .await
+                        .map_err(|_| Status::internal("Invocation unavailable"))?
+                    {
+                        return Err(Status::permission_denied("Unknown invocation"));
+                    }
+                    let responder = self
+                        .db
+                        .runtime_invocation_responder(session.id, message)
+                        .await
+                        .map_err(|_| Status::internal("Invocation unavailable"))?
+                        .map(everruns_provider::typed_id::AgentId::from_uuid);
+
+                    if session.agent_id != responder {
+                        session.agent_version_id = None;
+                    }
+
+                    session.agent_id = responder;
+                }
                 runtime_agent_id = session.agent_id;
                 let mut agent = if let Some(agent_id) = session.agent_id {
                     crate::domains::agents::queries::get_by_public_id(

@@ -1,6 +1,38 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-01
+
+* **The OpenAI Agents API backend enforces Everruns policy at its tool and
+  output boundaries (EVE-1124).** A call the tool pipeline parks (an approval,
+  a client-side tool, a connection setup) parks the Everruns turn while the
+  provider's required action stays open; only a recorded approval runs it
+  again, and a rejection or expiry submits a failure. Budgets stop the turn
+  before more tools run, output guardrails judge every remote message, and
+  configurations with provider-run tools or MCP credentials are refused.
+  TM-LLM-043 is mitigated. See [OpenAI Agents API Runtime
+  Backend](execution/openai-agents-api-runtime.md#policy-at-the-tool-and-output-boundaries).
+* **The OpenAI Agents API backend is durable and opt-in (EVE-1123).** A session
+  selects it with the `openai_agents_api_runtime` capability, which the
+  `openai_agents_api` org flag gates. One encrypted, lease-fenced checkpoint per
+  session holds the provider session id, stream cursor, item correlations, and
+  input and tool-result outboxes, written ahead of every provider call and local
+  effect. Recovery adopts an uncertain create by session metadata (creates are
+  not idempotent at OpenAI), retries input under its idempotency key (which
+  OpenAI honors), and reconciles from saved items after a disconnect. Tools run
+  only as client functions through the Act pipeline. Threat-model entries
+  TM-TOOL-051 and TM-LLM-043. See [OpenAI Agents API Runtime
+  Backend](execution/openai-agents-api-runtime.md).
+* **Hosted sessions have a hard tool-approval gate (EVE-1140).** [Tool Approval](execution/tool-approval.md)
+  records how `tool_approval` works where a turn cannot block on a human: the
+  gate defers an undecided call, the turn parks on an `approve_tool_call`
+  request, a person answers through `POST /v1/sessions/{id}/tool-approvals`, and
+  the retried call finds the decision in session storage on whichever worker
+  runs it. One-off approvals bind to the exact arguments; unanswered requests
+  expire as not approved. TM-TOOL-008 is mitigated.
+
 ## 2026-09-30
+
+* **Virtual users now own runtime profiles, preferences, and connections.** [Virtual Users and Everruns Users](runtime-resources/virtual-users.md) separates organization-scoped agent consumers and service accounts from management users. Chats and personal connection settings use the console default runtime account. Per-input authority replaces historical-owner credential resolution; ambiguous global grants require an explicit destination.
 
 * **Computer use**: Added the provider-neutral [computer use](execution/computer-use.md)
   contract and its first backend on Browserless, with threat-model entries
@@ -31,6 +63,18 @@
   prototype covers one function tool, one MCP tool, event projection, and config
   import. It ran end to end against the live API on 2026-09-30 with one
   function and one MCP tool; the recorded stream is the test fixture. See [OpenAI Agents API Runtime Backend](execution/openai-agents-api-runtime.md).
+## 2026-09-29
+
+* **Virtual users have a proposed replacement design for the runtime identity
+  paths.** [Virtual Users and Everruns Users](runtime-resources/virtual-users.md)
+  separates management accounts from agent consumers, generalizes agent identities
+  into one runtime aggregate, unifies connection ownership, and makes invocation
+  authority explicit. It covers external identity binding, console proxying,
+  Platform Chat management authorization, and cutover. Organization scope is
+  accepted: virtual users and their connections are org-scoped, with explicit
+  destinations for migrating existing multi-org grants. UI and API proposals
+  map console self-service, virtual-user management, and verified external
+  consumer access onto the same model. No product behavior changes.
 
 ## 2026-09-28
 

@@ -984,11 +984,11 @@ Following the agentskills.io specification:
 
 - **ID**: `tool_approval`
 - **Purpose**: Suspends the turn and asks a human before a risky tool runs
-- **Status**: Not registered by default, it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `HostComposition`.
+- **Status**: Not in the portable registry, it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `HostComposition`. The hosted product registers it with `DurableToolApprover`, so any hosted agent can opt in; see [Tool Approval](tool-approval.md) for how a hosted turn parks on it and resumes.
 - **Tools**: None (contributes a `PreToolUseHook`)
-- **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
+- **Config**: `mode` (`off` / `normal` / `protective`, default `normal`) and, for hosted sessions, `timeout_seconds`; schema in source
 - **Source**: `crates/builtins/src/tool_approval.rs`
-- **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints`. `destructive`/`open_world` decide first, so a tool cannot escape the gate by also declaring itself `readonly`; only a tool that declares `readonly` and neither risky hint counts as read-only; an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which blocks the call: the gate is only registered by hosts that can service a prompt, so an unreachable approver is a transport failure, and a gate that fails open is not a gate. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
+- **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints`. `destructive`/`open_world` (or a definition whose policy requires approval) decide first, so a tool cannot escape the gate by also declaring itself `readonly`; only a tool that declares `readonly` and neither risky hint counts as read-only; an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which blocks the call: the gate is only registered by hosts that can service a prompt, so an unreachable approver is a transport failure, and a gate that fails open is not a gate. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
 
 #### SoftApproval
 

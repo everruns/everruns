@@ -398,7 +398,7 @@ mod tests {
     fn test_llm_call_config_builder_with_driver_option() {
         let runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
         let value =
-            serde_json::json!({"models": ["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"]});
+            serde_json::json!({"models": ["openai/gpt-5-mini", "anthropic/claude-sonnet-5.5"]});
 
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
             .driver_option("test/routing", value.clone())

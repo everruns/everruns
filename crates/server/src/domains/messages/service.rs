@@ -41,6 +41,7 @@ pub struct MessageService {
 }
 
 pub struct CreateMessageContext {
+    pub runtime_subject_principal_id: Option<PrincipalId>,
     pub org_id: i64,
     pub user_id: Option<Uuid>,
     pub harness_id: Uuid,
@@ -82,13 +83,13 @@ impl MessageService {
         user_id: Uuid,
     ) -> Result<PrincipalId> {
         let principal = PrincipalService::new(self.db.clone())
-            .ensure_user_principal(org_id, user_id)
+            .ensure_default_virtual_user_principal(org_id, user_id)
             .await?;
-        let display_name = self
-            .db
-            .get_user(user_id)
-            .await?
-            .map(|user| user.name.trim().to_string())
+        let display_name = principal
+            .metadata
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .map(|name| name.trim().to_string())
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| "User".to_string());
 
@@ -137,6 +138,54 @@ impl MessageService {
         let now = Utc::now();
         let session_id = SessionId::from_uuid(ctx.session_id);
         let message_id_typed = MessageId::from_uuid(message_id);
+        let runtime_subject = if let Some(principal_id) = ctx.runtime_subject_principal_id {
+            let p = self
+                .db
+                .get_principal(ctx.org_id, principal_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Runtime principal not found"))?;
+            if p.kind != "virtual_user" || p.status != "active" {
+                anyhow::bail!("Invalid runtime principal");
+            }
+            p.subject_id
+                .map(everruns_provider::typed_id::VirtualUserId::from_uuid)
+        } else if ctx.event_metadata.is_none() {
+            match ctx.user_id {
+                Some(id) => Some(self.db.default_virtual_user(ctx.org_id, id).await?.id),
+                None => None,
+            }
+        } else {
+            None
+        };
+        let responder = if let Some(id) = ctx.agent_id {
+            let public = everruns_provider::typed_id::AgentId::from_uuid(id).to_string();
+            let row = match self.db.get_agent_by_public_id(ctx.org_id, &public).await? {
+                Some(row) => Some(row),
+                None => self.db.get_agent(ctx.org_id, id.into()).await?,
+            };
+            Some(
+                row.ok_or_else(|| anyhow::anyhow!("Responder not available in this organization"))?
+                    .id
+                    .uuid(),
+            )
+        } else {
+            None
+        };
+        self.db
+            .record_runtime_invocation(
+                ctx.org_id,
+                session_id,
+                message_id,
+                runtime_subject,
+                if ctx.event_metadata.is_none() {
+                    ctx.user_id
+                } else {
+                    None
+                },
+                responder,
+            )
+            .await?;
+
         let core_message = everruns_core::RuntimeMessage {
             id: message_id_typed,
             role: everruns_core::RuntimeMessageRole::User,
@@ -148,7 +197,24 @@ impl MessageService {
             external_actor: req.external_actor.clone(),
             created_at: now,
         };
-        let event_metadata = if let Some(metadata) = ctx.event_metadata.clone() {
+        let event_metadata = if let Some(principal_id) = ctx.runtime_subject_principal_id {
+            self.db
+                .ensure_active_user_session_participant(CreateSessionParticipantRow {
+                    org_id: ctx.org_id,
+                    session_id,
+                    kind: SessionParticipantKind::User,
+                    agent_id: None,
+                    agent_version_id: None,
+                    principal_id,
+                    display_name: None,
+                    role: SessionParticipantRole::Member,
+                    joined_at: None,
+                })
+                .await?;
+            Some(
+                serde_json::json!({"type":"virtual_user","principal_id":principal_id,"virtual_user_id":runtime_subject,"source":ctx.event_metadata}),
+            )
+        } else if let Some(metadata) = ctx.event_metadata.clone() {
             Some(metadata)
         } else if let Some(user_id) = ctx.user_id {
             let principal_id = self
@@ -687,7 +753,7 @@ mod tests {
             agent_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(org_id as u128),
             resolved_owner_user_id: None,
             title: None,
@@ -768,6 +834,7 @@ mod tests {
         .unwrap();
 
         let ctx = CreateMessageContext {
+            runtime_subject_principal_id: None,
             org_id: 1,
             user_id: None,
             harness_id: session.id.uuid(),
@@ -817,6 +884,7 @@ mod tests {
         let message = svc
             .create(
                 CreateMessageContext {
+                    runtime_subject_principal_id: None,
                     org_id: 1,
                     user_id: None,
                     harness_id: parked.id.uuid(),
@@ -853,6 +921,7 @@ mod tests {
         let error = svc
             .create(
                 CreateMessageContext {
+                    runtime_subject_principal_id: None,
                     org_id: 1,
                     user_id: None,
                     harness_id: session.id.uuid(),
@@ -875,6 +944,7 @@ mod tests {
         let recovered = svc
             .create(
                 CreateMessageContext {
+                    runtime_subject_principal_id: None,
                     org_id: 1,
                     user_id: None,
                     harness_id: session.id.uuid(),
@@ -931,6 +1001,7 @@ mod tests {
         let error = svc
             .create(
                 CreateMessageContext {
+                    runtime_subject_principal_id: None,
                     org_id: 1,
                     user_id: None,
                     harness_id: session.id.uuid(),
@@ -952,6 +1023,7 @@ mod tests {
 
         svc.create(
             CreateMessageContext {
+                runtime_subject_principal_id: None,
                 org_id: 1,
                 user_id: None,
                 harness_id: session.id.uuid(),
@@ -1020,6 +1092,7 @@ mod tests {
         let message = svc
             .create(
                 CreateMessageContext {
+                    runtime_subject_principal_id: None,
                     org_id: 1,
                     user_id: None,
                     harness_id: session.id.uuid(),
@@ -1081,8 +1154,11 @@ mod tests {
             })
             .await
             .unwrap();
+        db.add_organization_member(everruns_core::DEFAULT_ORG_ID, user.id, "member")
+            .await
+            .unwrap();
         let principal = PrincipalService::new(db.clone())
-            .ensure_user_principal(1, user.id)
+            .ensure_default_virtual_user_principal(1, user.id)
             .await
             .unwrap();
         let session = create_test_session(&db, 1).await;
@@ -1100,6 +1176,17 @@ mod tests {
             })
             .await
             .unwrap();
+        let runtime_user = db.default_virtual_user(1, user.id).await.unwrap();
+        db.update_virtual_user(
+            1,
+            runtime_user.id,
+            crate::storage::models::UpdateVirtualUser {
+                name: Some("Returning runtime user".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         db.leave_session_participant(1, session.id, original_participant.id)
             .await
             .unwrap()
@@ -1107,6 +1194,7 @@ mod tests {
 
         svc.create(
             CreateMessageContext {
+                runtime_subject_principal_id: None,
                 org_id: 1,
                 user_id: Some(user.id),
                 harness_id: session.id.uuid(),
@@ -1129,7 +1217,11 @@ mod tests {
         assert_eq!(active_participant.principal_id, principal.id);
         assert_eq!(
             active_participant.display_name.as_deref(),
-            Some("Returning User")
+            Some("Returning runtime user")
+        );
+        assert_eq!(
+            db.get_user(user.id).await.unwrap().unwrap().name,
+            "Returning User"
         );
 
         let events = db
@@ -1167,6 +1259,7 @@ mod tests {
         let first_message = svc
             .create(
                 CreateMessageContext {
+                    runtime_subject_principal_id: None,
                     org_id: 1,
                     user_id: None,
                     harness_id: first.id.uuid(),
@@ -1185,6 +1278,7 @@ mod tests {
         let err = svc
             .create(
                 CreateMessageContext {
+                    runtime_subject_principal_id: None,
                     org_id: 1,
                     user_id: None,
                     harness_id: second.id.uuid(),

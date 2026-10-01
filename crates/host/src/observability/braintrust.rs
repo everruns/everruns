@@ -746,7 +746,7 @@ impl BraintrustListener {
         metadata["session_id"] = serde_json::json!(event.session_id.to_string());
         metadata["deployment_grade"] =
             serde_json::json!(self.state.config.deployment_grade.to_string());
-
+        super::provider_attrs::annotate_braintrust(event, metadata);
         if let Some(sequence) = event.sequence {
             metadata["session_event_sequence"] = serde_json::json!(sequence);
         }

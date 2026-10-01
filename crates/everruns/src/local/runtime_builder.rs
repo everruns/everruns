@@ -31,7 +31,11 @@ use super::profile::LocalProfile;
 /// should start here, so build-time capability validation sees the same set the
 /// local runtime executes.
 pub fn local_capability_registry() -> everruns_core::CapabilityRegistry {
-    let registry = everruns_platform::capabilities::hosted_capability_registry();
+    let mut registry = everruns_platform::capabilities::hosted_capability_registry();
+    // The hosted catalog carries the durable `tool_approval` gate, which is
+    // answered through the server API. A local host has no such endpoint and
+    // supplies its own in-process approver through the agent builder instead.
+    registry.unregister("tool_approval");
     everruns_host::compose_runtime_capability_registry(registry)
 }
 

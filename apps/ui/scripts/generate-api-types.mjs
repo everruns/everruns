@@ -13,7 +13,7 @@ const outputPath = resolve(uiRoot, "src/lib/api/generated/openapi.ts");
 const schemaTypesPath = resolve(uiRoot, "src/lib/api/schema-types.ts");
 // Hand-maintained type files. A schema they already export is not re-exported
 // from schema-types.ts, which would make `export *` in types.ts ambiguous.
-const legacyTypesPaths = ["legacy-api-types.ts", "mcp-server-types.ts"].map((file) =>
+const legacyTypesPaths = ["legacy-api-types.ts", "mcp-server-types.ts", "runtime-account-types.ts"].map((file) =>
   resolve(uiRoot, "src/lib/api", file),
 );
 const check = process.argv.includes("--check");

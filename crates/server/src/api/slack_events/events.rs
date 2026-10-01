@@ -621,7 +621,7 @@ pub(crate) async fn process_slack_message(
                 goal: None,
                 locale: None,
                 tags: desired_tags.clone(),
-                agent_identity_id: app.agent_identity_id,
+                virtual_user_id: app.virtual_user_id,
                 model_id: None,
                 capabilities: vec![],
                 tools: vec![],
@@ -788,7 +788,7 @@ pub(crate) async fn process_slack_message(
     let mut event_metadata = execution_metadata::app_message_metadata(
         app.public_id,
         app.owner_principal_id,
-        app.agent_identity_id,
+        app.virtual_user_id,
     );
     if let Some(participant) = &speaker_participant
         && let Some(map) = event_metadata.as_object_mut()
@@ -803,6 +803,7 @@ pub(crate) async fn process_slack_message(
         .message_service
         .create(
             CreateMessageContext {
+                runtime_subject_principal_id: speaker_participant.as_ref().map(|p| p.principal_id),
                 org_id,
                 user_id: None,
                 harness_id: app.harness_id.uuid(),
@@ -1055,7 +1056,7 @@ pub(crate) async fn handle_agent_session_stopped(
         return Ok(());
     };
 
-    crate::api::app_api::cancel_session_turn_for(
+    crate::api::endpoint_api::cancel_session_turn_for(
         &state.db,
         &state.message_service,
         row.id,

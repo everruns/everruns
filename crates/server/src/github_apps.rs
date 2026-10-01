@@ -196,7 +196,7 @@ pub fn install_url(web_url: &str, slug: &str, state: &str) -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SetupState {
     pub org_id: i64,
-    pub agent_identity_id: Uuid,
+    pub virtual_user_id: Uuid,
     pub user_id: Uuid,
     /// Row id the created App is stored under.
     pub app_row_id: Uuid,
@@ -209,14 +209,14 @@ pub struct SetupState {
 impl SetupState {
     pub fn new(
         org_id: i64,
-        agent_identity_id: Uuid,
+        virtual_user_id: Uuid,
         user_id: Uuid,
         app_row_id: Uuid,
         return_to: Option<String>,
     ) -> Self {
         Self {
             org_id,
-            agent_identity_id,
+            virtual_user_id,
             user_id,
             app_row_id,
             return_to: return_to.filter(|path| is_safe_return_path(path)),

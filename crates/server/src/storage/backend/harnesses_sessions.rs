@@ -121,51 +121,52 @@ impl StorageBackend {
     // Agent identities
     // ============================================
 
-    pub async fn create_agent_identity(
-        &self,
-        input: CreateAgentIdentityRow,
-    ) -> Result<AgentIdentityRow> {
-        dispatch!(self, create_agent_identity, input)
+    pub async fn create_virtual_user(&self, input: CreateVirtualUserRow) -> Result<VirtualUserRow> {
+        dispatch!(self, create_virtual_user, input)
     }
 
-    pub async fn get_agent_identity(
+    pub async fn get_virtual_user(
         &self,
         org_id: i64,
-        id: AgentIdentityId,
-    ) -> Result<Option<AgentIdentityRow>> {
-        dispatch!(self, get_agent_identity, org_id, id)
+        id: VirtualUserId,
+    ) -> Result<Option<VirtualUserRow>> {
+        dispatch!(self, get_virtual_user, org_id, id)
     }
 
-    pub async fn list_agent_identities(
+    pub async fn list_virtual_users(
         &self,
         org_id: i64,
         search: Option<&str>,
         include_archived: bool,
-    ) -> Result<Vec<AgentIdentityRow>> {
+        usage: Option<&str>,
+        pagination: crate::api::common::Pagination,
+    ) -> Result<(Vec<VirtualUserRow>, u32)> {
         dispatch!(
             self,
-            list_agent_identities,
+            list_virtual_users,
             org_id,
             search,
-            include_archived
+            include_archived,
+            usage,
+            pagination
         )
     }
 
-    pub async fn update_agent_identity(
+    pub async fn update_virtual_user(
         &self,
         org_id: i64,
-        id: AgentIdentityId,
-        input: UpdateAgentIdentity,
-    ) -> Result<Option<AgentIdentityRow>> {
-        dispatch!(self, update_agent_identity, org_id, id, input)
+        id: VirtualUserId,
+        input: UpdateVirtualUser,
+    ) -> Result<Option<VirtualUserRow>> {
+        dispatch!(self, update_virtual_user, org_id, id, input)
     }
 
-    pub async fn delete_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
-        dispatch!(self, delete_agent_identity, org_id, id)
+    pub async fn delete_virtual_user(&self, org_id: i64, id: VirtualUserId) -> Result<bool> {
+        dispatch!(self, delete_virtual_user, org_id, id)
     }
 
-    pub async fn destroy_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
-        dispatch!(self, destroy_agent_identity, org_id, id)
+    pub async fn destroy_virtual_user(&self, org_id: i64, id: VirtualUserId) -> Result<bool> {
+        dispatch!(self, destroy_virtual_user, org_id, id)
     }
 
     // ============================================
@@ -645,6 +646,23 @@ impl StorageBackend {
 
     pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         dispatch!(self, delete_session, org_id, id)
+    }
+
+    /// Whether the session ran on the OpenAI Agents API backend and so has
+    /// provider-held state (EVE-1126). The in-memory backend never does: the
+    /// backend needs the PostgreSQL checkpoint store.
+    pub async fn session_has_agents_api_state(&self, org_id: i64, id: SessionId) -> Result<bool> {
+        let Some(pool) = self.pool() else {
+            return Ok(false);
+        };
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM agents_api_sessions WHERE org_id = $1 AND session_id = $2)",
+        )
+        .bind(org_id)
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        Ok(exists)
     }
 
     // ============================================

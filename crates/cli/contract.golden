@@ -1,8 +1,3 @@
-agent-identities create	--avatar-url --description --locale --name! --timezone
-agent-identities delete destroy	--id!
-agent-identities get	--id!
-agent-identities list	--include-archived --search
-agent-identities update	--avatar-url --description --id! --locale --name --status --timezone
 agents analyze	--capabilities --mcp-servers --system-prompt --tools
 agents check-name	--exclude-id --name!
 agents check-rules delete	--rule-id!
@@ -29,7 +24,7 @@ agents health-checks get	--agent-id! --run-id!
 agents health-checks latest get	--agent-id!
 agents health-checks list	--agent-id!
 agents health-checks trigger	--agent-id!
-agents import	--capabilities --default-model-id --description --display-name --harness-id --harness-name --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --short-description --starters --system-prompt! --tags... --tools
+agents import	--capabilities --default-model-id --description --display-name --harness-id --harness-name --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools
 agents list	
 agents preview	--capabilities --mcp-servers --system-prompt --tools
 agents triggers create	--agent-id! --auth --cron-expression --enabled --event-id-template --filter --github-events... --message! --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-type
@@ -41,7 +36,7 @@ agents triggers runs list	--agent-id! --trigger-id!
 agents triggers trigger	--agent-id! --trigger-id!
 agents triggers update	--agent-id! --auth --cron-expression --enabled --event-id-template --filter --github-events... --message --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable <agent_id>
-agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --short-description --starters --system-prompt! --tags... --tools <id>
+agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents versions create	--agent! --change-kind --summary
 agents versions diff	--agent! --from-version-id! --to-version-id!
 agents versions fork	--agent! --description --display-name --name! --version-id!
@@ -222,7 +217,7 @@ sessions budget-check check	--session-id!
 sessions budgets list	--session-id!
 sessions cancel	--session <session_id>
 sessions context	--session <session_id>
-sessions create	--agent-identity --agent/-a --budget-limit... --budget-soft-limit... --capability... --harness/-H --hint... --hints-json --locale --max-iterations --model --network-allow... --network-block... --secret... --system-prompt --tag/-t... --title
+sessions create	--agent/-a --budget-limit... --budget-soft-limit... --capability... --harness/-H --hint... --hints-json --locale --max-iterations --model --network-allow... --network-block... --secret... --system-prompt --tag/-t... --title --virtual-user
 sessions databases create	--name! --session-id!
 sessions databases delete	--name! --session-id!
 sessions databases get	--name! --session-id!
@@ -273,7 +268,7 @@ sessions tasks push-configs list	--session-id! --task-id!
 sessions tool-results submit	--session-id! --tool-results!
 sessions unarchive	--session <session_id>
 sessions unpin	--session <session_id>
-sessions update	--agent-identity-id --goal --locale --session --tags... --title <session_id>
+sessions update	--goal --locale --session --tags... --title --virtual-user-id <session_id>
 sessions watch	<session>!
 skills content	--id <id>
 skills create	<path>!
@@ -295,6 +290,11 @@ triggers update	--cron --message --session-mode --timezone <trigger>!
 user connections list	--provider
 user connections providers list	--search
 users list	--search
+virtual-users create	--avatar-url --description --locale --name! --timezone --usage
+virtual-users delete destroy	--id!
+virtual-users get	--id!
+virtual-users list	--include-archived --limit --offset --search --usage
+virtual-users update	--avatar-url --description --id! --locale --name --status --timezone
 workspaces create	--description --name!
 workspaces delete	--workspace-id!
 workspaces get	--workspace-id!

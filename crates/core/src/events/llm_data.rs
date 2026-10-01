@@ -98,7 +98,7 @@ pub struct LlmToolSearchInfo {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmGenerationMetadata {
     /// Model identifier used for generation
-    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5"))]
+    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-6"))]
     pub model: String,
 
     /// Provider type (openai, anthropic, etc.)
@@ -109,8 +109,8 @@ pub struct LlmGenerationMetadata {
     /// Model the provider reported actually serving the request.
     ///
     /// `model` is what was *asked for*, which is routinely an alias that
-    /// resolves at request time — `claude-sonnet-4-5` served by
-    /// `claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one
+    /// resolves at request time — `claude-sonnet-4-6` served by
+    /// `claude-sonnet-4-6-20260217`, or an OpenRouter route landing on one
     /// upstream of several. Collapsing the two loses the only record of which
     /// weights produced the answer, which is what a regression in output
     /// quality has to be correlated against.
@@ -119,7 +119,7 @@ pub struct LlmGenerationMetadata {
     /// consumers fall back to `model` rather than being told the alias was
     /// confirmed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5-20250929"))]
+    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-6-20260217"))]
     pub response_model: Option<String>,
 
     /// Token usage statistics
@@ -170,6 +170,68 @@ pub struct LlmGenerationMetadata {
     /// Request-side driver options that were enabled for this generation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_options: Option<LlmRequestOptions>,
+
+    /// Billable components of this generation and what each cost, when the
+    /// generation bills more than its tokens (provider-run tools, hosted
+    /// containers, a managed harness). A component whose `cost_usd` is `None`
+    /// is an explicit unknown amount, never a zero: budgets debit the priced
+    /// components and record the unknown ones (EVE-1125). Empty for an
+    /// ordinary token-billed generation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cost_components: Vec<LlmCostComponent>,
+}
+
+impl LlmGenerationMetadata {
+    /// Components billed at an amount nobody could price.
+    pub fn unpriced_cost_components(&self) -> impl Iterator<Item = &LlmCostComponent> {
+        self.cost_components
+            .iter()
+            .filter(|component| component.cost_usd.is_none())
+    }
+}
+
+/// One billable component of a generation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmCostComponent {
+    /// What is billed: `model_tokens`, `hosted_tool`, or `container`.
+    #[cfg_attr(feature = "openapi", schema(example = "hosted_tool"))]
+    pub kind: String,
+    /// Which one, e.g. the model or the provider item type
+    /// (`web_search_call`).
+    #[cfg_attr(feature = "openapi", schema(example = "web_search_call"))]
+    pub name: String,
+    /// Billed units (tokens, calls), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 2u64))]
+    pub quantity: Option<u64>,
+    /// USD amount. `None` is an explicit unknown amount, not zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 0.02))]
+    pub cost_usd: Option<f64>,
+}
+
+impl LlmCostComponent {
+    /// Component kind for the model's token usage.
+    pub const MODEL_TOKENS: &'static str = "model_tokens";
+    /// Component kind for a provider-run tool billed per call.
+    pub const HOSTED_TOOL: &'static str = "hosted_tool";
+    /// Component kind for provider-hosted compute (sandbox containers).
+    pub const CONTAINER: &'static str = "container";
+
+    pub fn new(
+        kind: &str,
+        name: impl Into<String>,
+        quantity: Option<u64>,
+        cost_usd: Option<f64>,
+    ) -> Self {
+        Self {
+            kind: kind.to_string(),
+            name: name.into(),
+            quantity,
+            cost_usd,
+        }
+    }
 }
 
 /// Information about rate limit retries during LLM generation
@@ -293,6 +355,7 @@ impl LlmGenerationData {
                 retry: None,
                 compaction: None,
                 request_options: None,
+                cost_components: Vec::new(),
             },
         }
     }
@@ -330,6 +393,7 @@ impl LlmGenerationData {
                 retry: None,
                 compaction: None,
                 request_options: None,
+                cost_components: Vec::new(),
             },
         }
     }
@@ -368,6 +432,7 @@ impl LlmGenerationData {
                 retry,
                 compaction: None,
                 request_options: None,
+                cost_components: Vec::new(),
             },
         }
     }
@@ -403,6 +468,7 @@ impl LlmGenerationData {
                 retry: None,
                 compaction: None,
                 request_options: None,
+                cost_components: Vec::new(),
             },
         }
     }
@@ -422,6 +488,13 @@ impl LlmGenerationData {
     /// serving model is only known once the completion metadata comes back.
     pub fn with_response_model(mut self, response_model: Option<String>) -> Self {
         self.metadata.response_model = response_model;
+        self
+    }
+
+    /// Set the generation's billable components (see
+    /// [`LlmGenerationMetadata::cost_components`]).
+    pub fn with_cost_components(mut self, components: Vec<LlmCostComponent>) -> Self {
+        self.metadata.cost_components = components;
         self
     }
 

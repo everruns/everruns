@@ -443,6 +443,38 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         })
     }
 
+    async fn load_turn_context_for_execution(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        input_message_id: Uuid,
+    ) -> Result<TurnContext> {
+        let ctx = crate::grpc_adapters::load_turn_context_for_execution(
+            &self.client,
+            org_id,
+            SessionId::from_uuid(session_id),
+            Some(input_message_id),
+        )
+        .await?;
+        Ok(TurnContext {
+            agent: ctx.agent,
+            session: ctx.session,
+            messages: ctx.messages,
+            model: ctx.model,
+            mcp_tool_definitions: ctx.mcp_tool_definitions,
+        })
+    }
+    async fn get_mcp_server_for_execution(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        server_prefix: &str,
+        input_message_id: Uuid,
+    ) -> Result<crate::mcp_executor::McpServerInfo> {
+        self.client
+            .get_mcp_server_for_execution(org_id, session_id, server_prefix, input_message_id)
+            .await
+    }
     // =========================================================================
     // Factory Methods
     // =========================================================================
@@ -465,6 +497,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     fn native_async_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+    }
+
+    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
         Some(Arc::new(GrpcAdapter::new(self.client.clone())))
     }
 

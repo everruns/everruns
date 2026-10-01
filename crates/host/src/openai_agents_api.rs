@@ -1,47 +1,49 @@
-//! Feature-gated prototype of OpenAI's Agents API as a runtime backend (EVE-1120).
+//! OpenAI Agents API as an opt-in runtime backend (EVE-1120, EVE-1123).
 //!
-//! OpenAI owns the agent loop; Everruns owns the event ledger. This module maps
-//! a resolved Everruns agent onto an Agents API session, projects the provider
-//! stream onto canonical session events, and answers client function calls
-//! through a caller-supplied handler. It is compiled only with the
-//! `openai-agents-api-prototype` feature and nothing in the worker selects it
-//! yet. Design, gaps, and the recommendation live in
-//! `knowledge/execution/openai-agents-api-runtime.md`.
+//! OpenAI owns the agent loop; Everruns owns the event ledger. This module
+//! holds the wire protocol: the session configuration mapped from a resolved
+//! Everruns agent, the portable import back, the HTTP client, and helpers
+//! over provider items. [`durable`] drives one Everruns turn through a
+//! provider session with a write-ahead checkpoint so a worker restart or a
+//! stream disconnect reconciles instead of repeating work. [`backend`] wires
+//! that driver into the host's Reason activity for sessions that selected the
+//! backend. Compiled only with the `openai-agents-api` Cargo feature; selected
+//! only by the `openai_agents_api_runtime` capability, which the platform
+//! strips unless the org has the `openai_agents_api` flag. Design, gaps, and
+//! the recommendation live in `knowledge/execution/openai-agents-api-runtime.md`.
 
-use std::collections::{HashMap, HashSet};
+pub mod backend;
+pub mod durable;
+pub mod lifecycle;
+
+use std::collections::HashMap;
 
 use eventsource_stream::Eventsource;
-use everruns_core::events::{
-    EventContext, EventRequest, LlmGenerationData, ModelMetadata, OutputMessageCompletedData,
-    OutputMessageDeltaData, OutputMessageStartedData, SessionIdledData, TokenUsage,
-    ToolCallRequestedData, ToolCompletedData, ToolStartedData, TurnCancelledData,
-    TurnCompletedData, TurnFailedData, TurnStartedData,
-};
-use everruns_core::{
-    ContentPart, McpServerTransportType, RuntimeAgent, RuntimeMessage, ScopedMcpServer,
-    ScopedMcpServers, mcp_tool_name,
-};
-use everruns_provider::execution_phase::ExecutionPhase;
-use everruns_provider::tool_types::{ToolCall, ToolDefinition};
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
+use everruns_core::events::TokenUsage;
+use everruns_core::{McpServerTransportType, RuntimeAgent, ScopedMcpServer, ScopedMcpServers};
+use everruns_provider::BearerAuth;
+use everruns_provider::runtime_provider::ProviderEndpoint;
+use everruns_provider::tool_types::ToolDefinition;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
-/// Cargo feature that must be enabled before the prototype is compiled.
-pub const PROTOTYPE_FEATURE: &str = "openai-agents-api-prototype";
-/// Product feature flag that must be enabled before a deployment selects this backend.
+/// Cargo feature that compiles the backend.
+pub const CARGO_FEATURE: &str = "openai-agents-api";
+/// Product feature flag that must be enabled before an org can select this backend.
 pub const PRODUCT_FEATURE_FLAG: &str = "openai_agents_api";
+/// Capability that selects this backend for an agent or session.
+pub const RUNTIME_CAPABILITY_ID: &str = everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID;
 
 #[derive(Debug, Error)]
-pub enum AgentsApiPrototypeError {
+pub enum AgentsApiError {
     #[error("Agents API configuration is missing agent.model")]
     MissingModel,
     #[error("Agents API configuration is missing agent.instructions")]
     MissingInstructions,
-    #[error("MCP server '{0}' is not an HTTP server with a URL")]
-    UnsupportedMcpServer(String),
+    #[error("Everruns policy cannot be enforced on this Agents API configuration: {0}")]
+    PolicyViolation(String),
     #[error("Agents API event is missing type")]
     MissingEventType,
     #[error("Agents API terminal event '{0}' is not supported")]
@@ -57,33 +59,17 @@ pub enum AgentsApiPrototypeError {
         event_type: String,
         field: &'static str,
     },
+    #[error("Agents API reconciliation failed: {0}")]
+    Reconcile(String),
+    #[error("Agents API durable state: {0}")]
+    Store(String),
+    #[error("Agents API turn cancelled")]
+    Cancelled,
 }
 
-/// Build the documented continuation event for one client function result.
-///
-/// `turn_id` and `call_id` are copied from the pending `function_call` entry in
-/// `session.required_actions`. OpenAI takes the output as a string, so a JSON
-/// result is serialized by the caller; an `Err` reports a failed call the agent
-/// can react to instead of retrying blind.
-pub fn build_tool_result_input(
-    action: &FunctionCallAction,
-    result: Result<String, String>,
-) -> Value {
-    match result {
-        Ok(output) => json!({
-            "type": "agent.session.input.tool_result",
-            "turn_id": action.turn_id,
-            "call_id": action.call_id,
-            "success": true,
-            "output": output,
-        }),
-        Err(error) => json!({
-            "type": "agent.session.input.tool_result",
-            "turn_id": action.turn_id,
-            "call_id": action.call_id,
-            "success": false,
-            "error": error,
-        }),
+impl AgentsApiError {
+    fn is_conflict(&self) -> bool {
+        matches!(self, Self::Api { status: 409, .. })
     }
 }
 
@@ -97,13 +83,13 @@ pub struct FunctionCallAction {
 }
 
 impl FunctionCallAction {
-    /// Pending function calls in an `agent.session.requires_action` event (or a
-    /// retrieved session). Other action kinds (environment connection, browser
-    /// sign-in) are not function results and are skipped.
-    pub fn from_required_actions(provider_event: &Value) -> Vec<Self> {
-        provider_event
+    /// Pending function calls in a session resource or an
+    /// `agent.session.requires_action` event. Other action kinds (environment
+    /// connection, browser sign-in) are not function results and are skipped.
+    pub fn from_required_actions(provider_value: &Value) -> Vec<Self> {
+        provider_value
             .pointer("/session/required_actions")
-            .or_else(|| provider_event.get("required_actions"))
+            .or_else(|| provider_value.get("required_actions"))
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
@@ -113,26 +99,67 @@ impl FunctionCallAction {
                     turn_id: action.get("turn_id")?.as_str()?.to_string(),
                     call_id: action.get("call_id")?.as_str()?.to_string(),
                     name: action.get("name")?.as_str()?.to_string(),
-                    arguments: action
-                        .get("arguments")
-                        .cloned()
-                        .unwrap_or_else(|| json!({})),
+                    arguments: arguments_value(action),
                 })
             })
             .collect()
     }
 }
 
-/// Prototype session-create configuration for `POST /v1/agents/sessions`.
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+/// Function arguments arrive as an object; tolerate a JSON-encoded string.
+fn arguments_value(value: &Value) -> Value {
+    match value.get("arguments") {
+        Some(Value::String(raw)) => serde_json::from_str(raw).unwrap_or(Value::String(raw.clone())),
+        Some(other) => other.clone(),
+        None => json!({}),
+    }
+}
+
+/// Build the documented continuation event for one client function result.
+///
+/// OpenAI takes the output as a string; an `Err` reports a failed call the
+/// agent can react to instead of retrying blind.
+pub fn build_tool_result_input(turn_id: &str, call_id: &str, result: Result<&str, &str>) -> Value {
+    match result {
+        Ok(output) => json!({
+            "type": "agent.session.input.tool_result",
+            "turn_id": turn_id,
+            "call_id": call_id,
+            "success": true,
+            "output": output,
+        }),
+        Err(error) => json!({
+            "type": "agent.session.input.tool_result",
+            "turn_id": turn_id,
+            "call_id": call_id,
+            "success": false,
+            "error": error,
+        }),
+    }
+}
+
+/// Build the documented follow-up user input event.
+pub fn build_message_input(text: &str) -> Value {
+    json!({
+        "type": "agent.session.input.message",
+        "input": [{"role": "user", "content": [{"type": "input_text", "text": text}]}],
+    })
+}
+
+/// Session-create configuration for `POST /v1/agents/sessions`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AgentsApiSessionConfig {
     pub agent: AgentsApiAgentConfig,
     pub environment: AgentsApiEnvironment,
     pub input: Value,
     pub stream: bool,
+    /// Correlation metadata. Everruns stores its session id and create
+    /// attempt here so an uncertain create can be adopted, not repeated.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, String>,
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AgentsApiAgentConfig {
     pub model: String,
     pub instructions: String,
@@ -142,13 +169,13 @@ pub struct AgentsApiAgentConfig {
     pub multi_agent: Option<AgentsApiMultiAgent>,
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AgentsApiMultiAgent {
     pub enabled: bool,
     pub max_concurrent_subagents: u32,
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentsApiEnvironment {
     None,
@@ -160,7 +187,7 @@ pub enum AgentsApiEnvironment {
     },
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentsApiTool {
     Function {
@@ -175,6 +202,9 @@ pub enum AgentsApiTool {
         transport: AgentsApiMcpTransport,
         connection_origin: String,
         required: bool,
+        /// Tool names the provider may call on this server. `None` allows all.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        allowed_tools: Option<Vec<String>>,
     },
     #[serde(other)]
     Unsupported,
@@ -185,22 +215,163 @@ pub struct AgentsApiMcpTransport {
     #[serde(rename = "type")]
     pub transport_type: String,
     pub server_url: String,
+    /// Only ever read from an imported configuration. Everruns never sends
+    /// MCP credentials to the provider: [`AgentsApiSessionConfig::with_direct_mcp`]
+    /// takes none, and [`AgentsApiSessionConfig::validate_direct_mcp`] refuses
+    /// a configuration that carries any.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub headers: HashMap<String, String>,
+}
+
+// THREAT[TM-LLM-043]: MCP credentials never reach logs through Debug.
+impl std::fmt::Debug for AgentsApiMcpTransport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut header_names: Vec<&str> = self.headers.keys().map(String::as_str).collect();
+        header_names.sort_unstable();
+        f.debug_struct("AgentsApiMcpTransport")
+            .field("transport_type", &self.transport_type)
+            .field("server_url", &self.server_url)
+            .field("headers", &format_args!("<redacted {header_names:?}>"))
+            .finish()
+    }
 }
 
 fn is_false(value: &bool) -> bool {
     !value
 }
 
+impl AgentsApiSessionConfig {
+    /// Add a direct MCP server the provider calls itself, restricted to an
+    /// explicit, non-empty tool allowlist.
+    ///
+    /// Direct MCP runs outside Everruns' tool pipeline (no approval gate, no
+    /// pre-tool guardrails, no network policy), so the production backend
+    /// never uses it; it exists for custom hosts and the live conformance
+    /// test. It takes no credentials: an authenticated server stays behind
+    /// Everruns' session-scoped MCP client and reaches the provider only as
+    /// client functions.
+    pub fn with_direct_mcp(
+        mut self,
+        server_label: &str,
+        server_url: &str,
+        allowed_tools: &[&str],
+    ) -> Result<Self, AgentsApiError> {
+        self.agent.tools.push(AgentsApiTool::Mcp {
+            server_label: server_label.to_string(),
+            transport: AgentsApiMcpTransport {
+                transport_type: "http".to_string(),
+                server_url: server_url.to_string(),
+                headers: HashMap::new(),
+            },
+            connection_origin: "service".to_string(),
+            required: true,
+            allowed_tools: Some(allowed_tools.iter().map(|tool| tool.to_string()).collect()),
+        });
+        self.validate_direct_mcp()?;
+        Ok(self)
+    }
+
+    /// Protocol-level invariants on direct MCP servers, checked before every
+    /// session create: HTTPS only, an explicit non-empty tool allowlist, and
+    /// no credentials.
+    // THREAT[TM-LLM-043]: a provider-run MCP server can never carry Everruns
+    // credentials or call tools nobody listed.
+    pub fn validate_direct_mcp(&self) -> Result<(), AgentsApiError> {
+        for tool in &self.agent.tools {
+            let AgentsApiTool::Mcp {
+                server_label,
+                transport,
+                allowed_tools,
+                ..
+            } = tool
+            else {
+                continue;
+            };
+            if transport.transport_type != "http"
+                || !transport
+                    .server_url
+                    .to_ascii_lowercase()
+                    .starts_with("https://")
+            {
+                return Err(AgentsApiError::PolicyViolation(format!(
+                    "direct MCP server '{server_label}' must use an HTTPS URL"
+                )));
+            }
+            if !transport.headers.is_empty() {
+                return Err(AgentsApiError::PolicyViolation(format!(
+                    "direct MCP server '{server_label}' carries credentials; authenticated MCP servers run through Everruns' session-scoped MCP client"
+                )));
+            }
+            if allowed_tools
+                .as_ref()
+                .is_none_or(|tools| tools.is_empty() || tools.iter().any(|t| t.trim().is_empty()))
+            {
+                return Err(AgentsApiError::PolicyViolation(format!(
+                    "direct MCP server '{server_label}' needs an explicit allowed-tool set"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// The production backend's boundary: every tool is a client function
+    /// that crosses Everruns' tool pipeline. OpenAI built-ins, direct MCP,
+    /// multi-agent delegation, and hosted environments run tools or models
+    /// where Everruns cannot apply approval, guardrail, budget, or network
+    /// policy, so a configuration that asks for any of them is refused.
+    pub fn ensure_enforceable(&self) -> Result<(), AgentsApiError> {
+        for tool in &self.agent.tools {
+            match tool {
+                AgentsApiTool::Function { .. } => {}
+                AgentsApiTool::Mcp { server_label, .. } => {
+                    return Err(AgentsApiError::PolicyViolation(format!(
+                        "direct MCP server '{server_label}' would run tools outside Everruns' tool pipeline"
+                    )));
+                }
+                AgentsApiTool::Unsupported => {
+                    return Err(AgentsApiError::PolicyViolation(
+                        "OpenAI built-in tools run outside Everruns' tool pipeline".to_string(),
+                    ));
+                }
+            }
+        }
+        if self.agent.multi_agent.is_some() {
+            return Err(AgentsApiError::PolicyViolation(
+                "provider-managed subagents bypass Everruns delegation policy".to_string(),
+            ));
+        }
+        if !matches!(self.environment, AgentsApiEnvironment::None) {
+            return Err(AgentsApiError::PolicyViolation(
+                "a provider environment runs commands outside Everruns' tool pipeline".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Stable digest of the agent definition. A provider session keeps the
+    /// agent it was created with, so a changed definition needs a new one.
+    pub fn agent_fingerprint(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let bytes = serde_json::to_vec(&(&self.agent, &self.environment)).unwrap_or_default();
+        Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+}
+
 /// Convert the resolved Everruns runtime configuration to an Agents API session request.
+///
+/// Every Everruns tool, including scoped MCP tools, becomes a client
+/// function, so its execution crosses Everruns' tool pipeline and MCP
+/// credentials stay with Everruns' session-scoped MCP client. Direct MCP is
+/// opt-in through [`AgentsApiSessionConfig::with_direct_mcp`].
 pub fn build_session_config(
     runtime_agent: &RuntimeAgent,
-    mcp_servers: &ScopedMcpServers,
     input: impl Into<String>,
     max_concurrent_subagents: Option<u32>,
-) -> Result<AgentsApiSessionConfig, AgentsApiPrototypeError> {
-    let mut tools = runtime_agent
+) -> Result<AgentsApiSessionConfig, AgentsApiError> {
+    let tools = runtime_agent
         .tools
         .iter()
         .map(|tool| AgentsApiTool::Function {
@@ -210,22 +381,6 @@ pub fn build_session_config(
             defer_loading: false,
         })
         .collect::<Vec<_>>();
-
-    for (name, server) in mcp_servers {
-        if server.transport_type != McpServerTransportType::Http || server.url.trim().is_empty() {
-            return Err(AgentsApiPrototypeError::UnsupportedMcpServer(name.clone()));
-        }
-        tools.push(AgentsApiTool::Mcp {
-            server_label: name.clone(),
-            transport: AgentsApiMcpTransport {
-                transport_type: "http".to_string(),
-                server_url: server.url.clone(),
-                headers: server.headers.clone(),
-            },
-            connection_origin: "service".to_string(),
-            required: true,
-        });
-    }
 
     Ok(AgentsApiSessionConfig {
         agent: AgentsApiAgentConfig {
@@ -240,6 +395,7 @@ pub fn build_session_config(
         environment: AgentsApiEnvironment::None,
         input: Value::String(input.into()),
         stream: true,
+        metadata: HashMap::new(),
     })
 }
 
@@ -254,12 +410,12 @@ pub struct ImportedAgentsApiConfig {
 /// Import function tools and HTTP MCP servers into native Everruns configuration.
 pub fn import_session_config(
     config: AgentsApiSessionConfig,
-) -> Result<ImportedAgentsApiConfig, AgentsApiPrototypeError> {
+) -> Result<ImportedAgentsApiConfig, AgentsApiError> {
     if config.agent.model.trim().is_empty() {
-        return Err(AgentsApiPrototypeError::MissingModel);
+        return Err(AgentsApiError::MissingModel);
     }
     if config.agent.instructions.trim().is_empty() {
-        return Err(AgentsApiPrototypeError::MissingInstructions);
+        return Err(AgentsApiError::MissingInstructions);
     }
 
     let mut runtime_agent = RuntimeAgent::new(
@@ -282,14 +438,26 @@ pub fn import_session_config(
             AgentsApiTool::Mcp {
                 server_label,
                 transport,
+                allowed_tools,
                 ..
             } if transport.transport_type == "http" => {
+                if allowed_tools.is_some() {
+                    warnings.push(format!(
+                        "MCP server '{server_label}' tool allowlist is not imported"
+                    ));
+                }
+                // Credentials are never copied into an agent definition; the
+                // server is reconnected through a session-scoped connection.
+                if !transport.headers.is_empty() {
+                    warnings.push(format!(
+                        "MCP server '{server_label}' credentials are not imported; connect it again"
+                    ));
+                }
                 mcp_servers.insert(
                     server_label,
                     ScopedMcpServer {
                         transport_type: McpServerTransportType::Http,
                         url: transport.server_url,
-                        headers: transport.headers,
                         ..ScopedMcpServer::default()
                     },
                 );
@@ -321,510 +489,9 @@ pub fn import_session_config(
     })
 }
 
-/// How the root turn ended, as reported by the provider.
-#[derive(Clone, Debug, PartialEq)]
-pub enum RootTurnOutcome {
-    Completed,
-    Failed {
-        code: Option<String>,
-        message: String,
-    },
-    Cancelled,
-}
-
-/// Stateful projection from Agents API stream events to canonical Everruns events.
-///
-/// Only the root agent's turn is projected. Subagent turns carry a non-null
-/// `subagent_id` and must never end or overwrite the root turn; their usage is
-/// a follow-up (see the concept's cost section).
-pub struct AgentsApiEventMapper {
-    session_id: SessionId,
-    turn_id: TurnId,
-    input_message_id: MessageId,
-    output_message_id: MessageId,
-    model: String,
-    accumulated_output: String,
-    /// Provider message item the open Everruns output message mirrors.
-    open_item: Option<String>,
-    output_phase: Option<ExecutionPhase>,
-    message_open: bool,
-    /// Last non-commentary message: what the turn reports as its answer.
-    final_answer: Option<(MessageId, String)>,
-    tool_call_count: u32,
-    last_usage: Option<TokenUsage>,
-    last_error: Option<(Option<String>, String)>,
-    outcome: Option<RootTurnOutcome>,
-    provider_session_id: Option<String>,
-    /// Client function calls by call id, with the tool name for the result.
-    requested_tool_calls: HashMap<String, String>,
-    started_tool_calls: HashSet<String>,
-    completed_tool_calls: HashSet<String>,
-}
-
-impl AgentsApiEventMapper {
-    pub fn new(
-        session_id: SessionId,
-        turn_id: TurnId,
-        input_message_id: MessageId,
-        model: impl Into<String>,
-    ) -> Self {
-        Self {
-            session_id,
-            turn_id,
-            input_message_id,
-            output_message_id: MessageId::new(),
-            model: model.into(),
-            accumulated_output: String::new(),
-            open_item: None,
-            output_phase: None,
-            message_open: false,
-            final_answer: None,
-            tool_call_count: 0,
-            last_usage: None,
-            last_error: None,
-            outcome: None,
-            provider_session_id: None,
-            requested_tool_calls: HashMap::new(),
-            started_tool_calls: HashSet::new(),
-            completed_tool_calls: HashSet::new(),
-        }
-    }
-
-    /// The provider session id, once any event has carried it. A durable
-    /// backend stores this with the turn so it can reconcile after a restart.
-    pub fn provider_session_id(&self) -> Option<&str> {
-        self.provider_session_id.as_deref()
-    }
-
-    /// How the root turn ended, once a terminal event has been projected.
-    pub fn outcome(&self) -> Option<&RootTurnOutcome> {
-        self.outcome.as_ref()
-    }
-
-    /// Close the projection when the provider stream ends. A stream that
-    /// closes before the root turn reaches a terminal state is a failure: OpenAI
-    /// does not replay missed events, so the caller must reconcile from the
-    /// saved session rather than report success.
-    pub fn finish(&self) -> Result<RootTurnOutcome, AgentsApiPrototypeError> {
-        self.outcome
-            .clone()
-            .ok_or(AgentsApiPrototypeError::StreamClosedBeforeTurnEnded)
-    }
-
-    /// Project one Agents API stream event. Unmapped progress events return no
-    /// output; an unrecognized terminal event fails closed.
-    pub fn map(
-        &mut self,
-        provider_event: &Value,
-    ) -> Result<Vec<EventRequest>, AgentsApiPrototypeError> {
-        let event_type = provider_event
-            .get("type")
-            .and_then(Value::as_str)
-            .ok_or(AgentsApiPrototypeError::MissingEventType)?;
-        if let Some(id) = provider_event
-            .pointer("/session/id")
-            .or_else(|| provider_event.get("session_id"))
-            .and_then(Value::as_str)
-        {
-            self.provider_session_id
-                .get_or_insert_with(|| id.to_string());
-        }
-        if is_subagent_event(provider_event) {
-            return Ok(Vec::new());
-        }
-        let metadata = json!({
-            "runtime_backend": "openai_agents_api",
-            "provider_event_type": event_type,
-            "provider_event_id": provider_event.get("event_id"),
-            "provider_session_id": self.provider_session_id,
-            "provider_turn_id": provider_event.get("turn_id")
-                .or_else(|| provider_event.pointer("/turn/id")),
-            "provider_item_id": provider_event.pointer("/item/id")
-                .or_else(|| provider_event.get("item_id")),
-            "provider_usage": provider_event.pointer("/turn/usage")
-                .or_else(|| provider_event.get("usage")),
-        });
-        let mut mapped = match event_type {
-            "agent.session.turn.created" => vec![self.request(TurnStartedData {
-                turn_id: self.turn_id,
-                input_message_id: self.input_message_id,
-                input_content: None,
-                agent_id: None,
-                agent_name: None,
-                agent_description: None,
-            })],
-            "agent.session.turn.output_text.delta" => {
-                let delta = string_field(provider_event, event_type, "delta")?;
-                let mut events = self.open_message(item_id(provider_event), None);
-                self.accumulated_output.push_str(&delta);
-                events.push(self.delta(delta));
-                events
-            }
-            // Deltas may be absent; `done` carries the complete part. Emit only
-            // the missing suffix so SSE clients that concatenate deltas agree
-            // with the final message.
-            "agent.session.turn.output_text.done" => {
-                let text = string_field(provider_event, event_type, "text")?;
-                let mut events = self.open_message(item_id(provider_event), None);
-                if let Some(missing) = text.strip_prefix(self.accumulated_output.as_str()) {
-                    if !missing.is_empty() {
-                        self.accumulated_output.push_str(missing);
-                        events.push(self.delta(missing.to_string()));
-                    }
-                } else {
-                    self.accumulated_output = text;
-                }
-                events
-            }
-            "agent.session.requires_action" => {
-                let calls = FunctionCallAction::from_required_actions(provider_event)
-                    .into_iter()
-                    .filter(|action| {
-                        self.requested_tool_calls
-                            .insert(action.call_id.clone(), action.name.clone())
-                            .is_none()
-                    })
-                    .map(|action| ToolCall {
-                        id: action.call_id,
-                        name: action.name,
-                        arguments: action.arguments,
-                    })
-                    .collect::<Vec<_>>();
-                self.tool_call_count = self
-                    .tool_call_count
-                    .saturating_add(u32::try_from(calls.len()).unwrap_or(u32::MAX));
-                if calls.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![self.request(ToolCallRequestedData {
-                        tool_calls: calls,
-                        tool_summaries: Vec::new(),
-                        headline: None,
-                        completed_headline: None,
-                    })]
-                }
-            }
-            "agent.session.turn.item.added"
-            | "agent.session.turn.item.updated"
-            | "agent.session.turn.item.done" => self.map_item(provider_event, event_type)?,
-            "error" => {
-                // The live API reports the cause (e.g. `usage_limit_exceeded`)
-                // on a standalone `error` event just before `turn.failed`.
-                let error = provider_event.get("error");
-                self.last_error = Some((
-                    error
-                        .and_then(|e| e.get("code"))
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    error
-                        .and_then(|e| e.get("message"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("OpenAI Agents API error")
-                        .to_string(),
-                ));
-                Vec::new()
-            }
-            "agent.session.turn.completed" => self.map_completed(provider_event),
-            "agent.session.turn.failed" => self.fail(
-                provider_event.pointer("/turn/error"),
-                "OpenAI Agents API turn failed",
-            ),
-            "agent.session.failed" | "agent.session.environment.failed"
-                if self.outcome.is_none() =>
-            {
-                self.fail(
-                    provider_event.pointer("/session/error"),
-                    "OpenAI Agents API session failed",
-                )
-            }
-            "agent.session.failed" | "agent.session.environment.failed" => Vec::new(),
-            "agent.session.turn.cancelled" => {
-                self.outcome = Some(RootTurnOutcome::Cancelled);
-                vec![self.request(TurnCancelledData {
-                    turn_id: self.turn_id,
-                    reason: Some("OpenAI Agents API turn cancelled".to_string()),
-                    usage: usage_from(provider_event),
-                })]
-            }
-            "agent.session.idle" if self.outcome.is_some() => {
-                vec![self.request(SessionIdledData {
-                    turn_id: self.turn_id,
-                    iterations: Some(1),
-                    usage: self.last_usage.clone(),
-                })]
-            }
-            other if other.ends_with(".failed") || other.ends_with(".cancelled") => {
-                return Err(AgentsApiPrototypeError::UnsupportedTerminalEvent(
-                    other.to_string(),
-                ));
-            }
-            _ => Vec::new(),
-        };
-        for event in &mut mapped {
-            event.metadata = Some(metadata.clone());
-        }
-        Ok(mapped)
-    }
-
-    fn fail(&mut self, error: Option<&Value>, fallback: &str) -> Vec<EventRequest> {
-        let code = error
-            .and_then(|e| e.get("code"))
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .or_else(|| self.last_error.as_ref().and_then(|(code, _)| code.clone()));
-        let message = error
-            .and_then(|e| e.get("message"))
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .or_else(|| self.last_error.as_ref().map(|(_, message)| message.clone()))
-            .unwrap_or_else(|| fallback.to_string());
-        self.outcome = Some(RootTurnOutcome::Failed {
-            code: code.clone(),
-            message: message.clone(),
-        });
-        vec![self.request(TurnFailedData {
-            turn_id: self.turn_id,
-            error: message,
-            error_code: code,
-            error_fields: None,
-            error_disclosure: None,
-        })]
-    }
-
-    fn map_item(
-        &mut self,
-        provider_event: &Value,
-        event_type: &str,
-    ) -> Result<Vec<EventRequest>, AgentsApiPrototypeError> {
-        let Some(item) = provider_event.get("item") else {
-            return Ok(Vec::new());
-        };
-        match item.get("type").and_then(Value::as_str) {
-            Some("mcp_call") => {}
-            // The result Everruns submitted, echoed back by the provider: the
-            // point where the session view shows the client function as done.
-            Some("function_call_output") => {
-                let call_id = string_field(item, event_type, "call_id")?;
-                let Some(tool_name) = self.requested_tool_calls.get(&call_id).cloned() else {
-                    return Ok(Vec::new());
-                };
-                if !self.completed_tool_calls.insert(call_id.clone()) {
-                    return Ok(Vec::new());
-                }
-                let output = provider_output_text(item);
-                return Ok(vec![self.request(
-                    if item.get("status").and_then(Value::as_str) == Some("failed") {
-                        ToolCompletedData::failure(call_id, tool_name, "error".into(), output, None)
-                    } else {
-                        ToolCompletedData::success(
-                            call_id,
-                            tool_name,
-                            vec![ContentPart::text(output)],
-                            None,
-                        )
-                    },
-                )]);
-            }
-            // Each assistant message item (commentary or final answer) is its
-            // own Everruns output message, as with the native runtime.
-            Some("message") if item.get("role").and_then(Value::as_str) == Some("assistant") => {
-                let id = item.get("id").and_then(Value::as_str);
-                return Ok(if event_type == "agent.session.turn.item.done" {
-                    if id.is_some() && id == self.open_item.as_deref() {
-                        self.close_message()
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    let phase = match item.get("phase").and_then(Value::as_str) {
-                        Some("commentary") => Some(ExecutionPhase::Commentary),
-                        Some("final_answer") => Some(ExecutionPhase::FinalAnswer),
-                        _ => None,
-                    };
-                    self.open_message(id, phase)
-                });
-            }
-            _ => return Ok(Vec::new()),
-        }
-        let call_id = string_field(item, event_type, "id")?;
-        let server_label = string_field(item, event_type, "server_label")?;
-        let source_name = string_field(item, event_type, "name")?;
-        let tool_name = mcp_tool_name(&server_label, &source_name);
-        let arguments = item.get("arguments").cloned().unwrap_or_else(|| json!({}));
-        let call = ToolCall {
-            id: call_id.clone(),
-            name: tool_name.clone(),
-            arguments,
-        };
-        let mut events = Vec::new();
-        if self.started_tool_calls.insert(call_id.clone()) {
-            self.tool_call_count = self.tool_call_count.saturating_add(1);
-            events.push(self.request(ToolStartedData {
-                tool_call: call,
-                tool_call_fingerprint: None,
-                display_name: Some(format!("{server_label}: {source_name}")),
-                narration: None,
-            }));
-        }
-        let status = item.get("status").and_then(Value::as_str);
-        let error = item.get("error").filter(|error| !error.is_null());
-        if (status == Some("failed") || error.is_some())
-            && self.completed_tool_calls.insert(call_id.clone())
-        {
-            // A failed call reports its cause in `output`, with `error` null.
-            let message = error
-                .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
-                .unwrap_or_else(|| provider_output_text(item));
-            events.push(
-                self.request(
-                    ToolCompletedData::failure(
-                        call_id,
-                        tool_name,
-                        "error".to_string(),
-                        message,
-                        item.get("duration_ms").and_then(Value::as_u64),
-                    )
-                    .with_display_name(Some(format!("{server_label}: {source_name}"))),
-                ),
-            );
-        } else if status == Some("completed") && self.completed_tool_calls.insert(call_id.clone()) {
-            events.push(
-                self.request(
-                    ToolCompletedData::success(
-                        call_id,
-                        tool_name,
-                        vec![ContentPart::text(provider_output_text(item))],
-                        item.get("duration_ms").and_then(Value::as_u64),
-                    )
-                    .with_display_name(Some(format!("{server_label}: {source_name}"))),
-                ),
-            );
-        }
-        Ok(events)
-    }
-
-    fn map_completed(&mut self, provider_event: &Value) -> Vec<EventRequest> {
-        self.outcome = Some(RootTurnOutcome::Completed);
-        let mut events = self.close_message();
-        // Usage is best-effort and usually still null here; a production
-        // backend upserts it later from the turn resource (EVE-1125).
-        let usage = usage_from(provider_event);
-        self.last_usage = usage.clone();
-        let duration_ms = turn_duration_ms(provider_event);
-        let (final_message_id, final_text) = self
-            .final_answer
-            .clone()
-            .map_or((None, String::new()), |(id, text)| (Some(id), text));
-        events.push(
-            self.request(LlmGenerationData::success_with_metadata(
-                Vec::new(),
-                Vec::new(),
-                Some(final_text.clone()),
-                Vec::new(),
-                self.model.clone(),
-                Some("openai_agents_api".to_string()),
-                usage.clone(),
-                duration_ms,
-                None,
-                Some(vec!["stop".to_string()]),
-                provider_event
-                    .get("turn_id")
-                    .or_else(|| provider_event.pointer("/turn/id"))
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-            )),
-        );
-        events.push(self.request(TurnCompletedData {
-            turn_id: self.turn_id,
-            iterations: 1,
-            duration_ms,
-            usage: usage.clone(),
-            input_content: None,
-            final_message_id,
-            final_answer_preview: Some(final_text.chars().take(500).collect()),
-            time_to_first_token_ms: None,
-            tool_call_count: Some(self.tool_call_count),
-            llm_call_count: None,
-            status: Some("completed".to_string()),
-        }));
-        events
-    }
-
-    /// Open an output message for provider item `item_id`, closing the
-    /// previous one when the item changes. Text without an item id continues
-    /// whatever message is open.
-    fn open_message(
-        &mut self,
-        item_id: Option<&str>,
-        phase: Option<ExecutionPhase>,
-    ) -> Vec<EventRequest> {
-        if self.message_open && (item_id.is_none() || item_id == self.open_item.as_deref()) {
-            if phase.is_some() {
-                self.output_phase = phase;
-            }
-            return Vec::new();
-        }
-        let mut events = self.close_message();
-        self.open_item = item_id.map(str::to_string);
-        self.output_message_id = MessageId::new();
-        self.accumulated_output.clear();
-        self.output_phase = phase;
-        self.message_open = true;
-        events.push(self.request(OutputMessageStartedData {
-            reasoning_state: None,
-            turn_id: self.turn_id,
-            message_id: self.output_message_id,
-            model: Some(self.model.clone()),
-            iteration: Some(1),
-            phase,
-        }));
-        events
-    }
-
-    fn close_message(&mut self) -> Vec<EventRequest> {
-        if !self.message_open {
-            return Vec::new();
-        }
-        self.message_open = false;
-        let mut message = RuntimeMessage::assistant(self.accumulated_output.clone())
-            .with_id(self.output_message_id);
-        if let Some(phase) = self.output_phase {
-            message = message.with_phase(phase);
-        }
-        if self.output_phase != Some(ExecutionPhase::Commentary) {
-            self.final_answer = Some((self.output_message_id, self.accumulated_output.clone()));
-        }
-        vec![self.request(
-            OutputMessageCompletedData::new(message).with_metadata(ModelMetadata {
-                model: self.model.clone(),
-                model_id: None,
-                provider_id: None,
-            }),
-        )]
-    }
-
-    fn delta(&self, delta: String) -> EventRequest {
-        self.request(OutputMessageDeltaData {
-            turn_id: self.turn_id,
-            message_id: self.output_message_id,
-            delta,
-            accumulated: self.accumulated_output.clone(),
-            phase: self.output_phase,
-        })
-    }
-
-    fn request(&self, data: impl Into<everruns_core::events::EventData>) -> EventRequest {
-        EventRequest::new(
-            self.session_id,
-            EventContext::turn(self.turn_id, self.input_message_id),
-            data,
-        )
-    }
-}
-
 /// The text of a provider tool output: MCP `{content: [{text}]}`, a function
 /// output `[{text}]`, or anything else serialized.
-fn provider_output_text(item: &Value) -> String {
+pub(crate) fn provider_output_text(item: &Value) -> String {
     let output = item.get("output").unwrap_or(&Value::Null);
     let parts = output
         .get("content")
@@ -845,46 +512,29 @@ fn provider_output_text(item: &Value) -> String {
     })
 }
 
-fn item_id(provider_event: &Value) -> Option<&str> {
-    provider_event.get("item_id").and_then(Value::as_str)
+/// The assistant text of a saved `message` item.
+pub(crate) fn message_item_text(item: &Value) -> String {
+    item.get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|part| part.get("text").and_then(Value::as_str))
+        .collect::<Vec<_>>()
+        .join("")
 }
 
-fn is_subagent_event(provider_event: &Value) -> bool {
+pub(crate) fn is_subagent_event(provider_event: &Value) -> bool {
     provider_event
         .pointer("/turn/subagent_id")
         .or_else(|| provider_event.get("subagent_id"))
         .is_some_and(|id| !id.is_null())
 }
 
-fn turn_duration_ms(provider_event: &Value) -> Option<u64> {
-    let started = provider_event.pointer("/turn/started_at")?.as_u64()?;
-    let completed = provider_event.pointer("/turn/completed_at")?.as_u64()?;
-    completed.checked_sub(started).map(|seconds| seconds * 1000)
-}
-
-fn string_field(
-    value: &Value,
-    event_type: &str,
-    field: &'static str,
-) -> Result<String, AgentsApiPrototypeError> {
-    value
-        .get(field)
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| AgentsApiPrototypeError::MissingEventField {
-            event_type: event_type.to_string(),
-            field,
-        })
-}
-
 /// OpenAI reports cached tokens inside `input_tokens`; Everruns keeps disjoint
 /// buckets (see [`TokenUsage`]), so the cached subset is subtracted here. The
 /// provider usage is best-effort and may be null, which is not zero.
-fn usage_from(event: &Value) -> Option<TokenUsage> {
-    let usage = event
-        .pointer("/turn/usage")
-        .or_else(|| event.get("usage"))
-        .filter(|usage| !usage.is_null())?;
+pub(crate) fn usage_from(turn: &Value) -> Option<TokenUsage> {
+    let usage = turn.get("usage").filter(|usage| !usage.is_null())?;
     let count = |pointer: &str| {
         usage
             .pointer(pointer)
@@ -905,117 +555,317 @@ fn usage_from(event: &Value) -> Option<TokenUsage> {
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 /// Beta header value the Agents API requires on every request.
 pub const BETA_HEADER: &str = "agents=v1";
+/// Page size for item, turn, and session listings.
+const PAGE_LIMIT: usize = 100;
+/// Bound on listing pages, so a misbehaving cursor cannot loop forever.
+const MAX_PAGES: usize = 50;
 
-/// Minimal HTTP client for the three calls the prototype needs: create a
-/// streamed session, send input events, and retrieve a session.
+/// One page of a provider list response.
+#[derive(Debug, Deserialize)]
+struct ListPage {
+    #[serde(default)]
+    data: Vec<Value>,
+    #[serde(default)]
+    has_more: bool,
+    #[serde(default)]
+    last_id: Option<String>,
+}
+
+/// Provider event stream: each item is one SSE `data` payload.
+pub type AgentsApiEventStream =
+    std::pin::Pin<Box<dyn futures::Stream<Item = Result<Value, AgentsApiError>> + Send>>;
+
+/// HTTP client for the Agents API. Credentials stay inside the
+/// [`ProviderEndpoint`] the provider registry resolved; this type never
+/// exposes them.
 #[derive(Clone)]
 pub struct AgentsApiClient {
     http: reqwest::Client,
-    base_url: String,
-    api_key: String,
+    endpoint: ProviderEndpoint,
 }
 
 impl AgentsApiClient {
+    /// Client for the official API with a bearer key (tests and tools).
     pub fn new(api_key: impl Into<String>) -> Self {
+        Self::from_endpoint(ProviderEndpoint::from_parts(
+            DEFAULT_BASE_URL,
+            BearerAuth::new(api_key),
+        ))
+    }
+
+    /// Client over an already-resolved provider endpoint.
+    pub fn from_endpoint(endpoint: ProviderEndpoint) -> Self {
         Self {
             http: reqwest::Client::new(),
-            base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: api_key.into(),
+            endpoint,
         }
     }
 
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = base_url.into().trim_end_matches('/').to_string();
-        self
+    /// Same credentials, different base URL (tests against a fake server).
+    pub fn with_base_url(self, base_url: impl Into<String>) -> Self {
+        Self::from_endpoint(ProviderEndpoint::from_parts(
+            base_url,
+            EndpointAuth(self.endpoint),
+        ))
     }
 
-    fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        self.http
-            .request(method, format!("{}{path}", self.base_url))
-            .bearer_auth(&self.api_key)
-            .header("OpenAI-Beta", BETA_HEADER)
+    async fn request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<reqwest::RequestBuilder, AgentsApiError> {
+        let url = self
+            .endpoint
+            .url(path)
+            .ok_or_else(|| AgentsApiError::Http("Agents API endpoint has no base URL".into()))?;
+        let bytes = body
+            .map(serde_json::to_vec)
+            .transpose()
+            .map_err(|error| AgentsApiError::Http(error.to_string()))?
+            .unwrap_or_default();
+        let resolved = self
+            .endpoint
+            .resolve(method.as_str(), url, &bytes)
+            .await
+            .map_err(|error| AgentsApiError::Http(error.to_string()))?;
+        let mut request = self
+            .http
+            .request(method, &resolved.url)
+            .header("OpenAI-Beta", BETA_HEADER);
+        for (name, value) in &resolved.headers {
+            request = request.header(name, value);
+        }
+        if body.is_some() {
+            request = request
+                .header("content-type", "application/json")
+                .body(bytes);
+        }
+        Ok(request)
     }
 
-    async fn send(
-        request: reqwest::RequestBuilder,
-    ) -> Result<reqwest::Response, AgentsApiPrototypeError> {
+    async fn send(request: reqwest::RequestBuilder) -> Result<reqwest::Response, AgentsApiError> {
         let response = request
             .send()
             .await
-            .map_err(|error| AgentsApiPrototypeError::Http(error.to_string()))?;
+            .map_err(|error| AgentsApiError::Http(error.to_string()))?;
         let status = response.status();
         if status.is_success() {
             return Ok(response);
         }
         let body = response.text().await.unwrap_or_default();
-        Err(AgentsApiPrototypeError::Api {
+        Err(AgentsApiError::Api {
             status: status.as_u16(),
             body: body.chars().take(2000).collect(),
         })
     }
 
-    /// `POST /agents/sessions` with `stream: true`; yields each SSE `data` payload.
-    pub async fn create_session_stream(
-        &self,
-        config: &AgentsApiSessionConfig,
-    ) -> Result<
-        impl futures::Stream<Item = Result<Value, AgentsApiPrototypeError>> + use<>,
-        AgentsApiPrototypeError,
-    > {
-        let mut body = config.clone();
-        body.stream = true;
-        let response = Self::send(
-            self.request(reqwest::Method::POST, "/agents/sessions")
-                .header("Accept", "text/event-stream")
-                .json(&body),
-        )
-        .await?;
-        Ok(response.bytes_stream().eventsource().filter_map(|event| {
+    async fn get_json(&self, path: &str) -> Result<Value, AgentsApiError> {
+        Self::send(self.request(reqwest::Method::GET, path, None).await?)
+            .await?
+            .json()
+            .await
+            .map_err(|error| AgentsApiError::Http(error.to_string()))
+    }
+
+    fn event_stream(response: reqwest::Response) -> AgentsApiEventStream {
+        Box::pin(response.bytes_stream().eventsource().filter_map(|event| {
             futures::future::ready(match event {
                 Ok(event) if event.data.trim().is_empty() || event.data == "[DONE]" => None,
                 Ok(event) => Some(serde_json::from_str(&event.data).map_err(|error| {
-                    AgentsApiPrototypeError::Http(format!("invalid SSE payload: {error}"))
+                    AgentsApiError::Http(format!("invalid SSE payload: {error}"))
                 })),
-                Err(error) => Some(Err(AgentsApiPrototypeError::Http(error.to_string()))),
+                Err(error) => Some(Err(AgentsApiError::Http(error.to_string()))),
             })
         }))
     }
 
-    /// `POST /agents/sessions/{id}/events`: submit input, tool results, or cancel.
+    /// `POST /agents/sessions` with `stream: true`; yields each SSE payload.
+    /// The first event carries the new session id.
+    pub async fn create_session_stream(
+        &self,
+        config: &AgentsApiSessionConfig,
+    ) -> Result<AgentsApiEventStream, AgentsApiError> {
+        let mut body = config.clone();
+        body.stream = true;
+        let body =
+            serde_json::to_value(&body).map_err(|error| AgentsApiError::Http(error.to_string()))?;
+        let response = Self::send(
+            self.request(reqwest::Method::POST, "agents/sessions", Some(&body))
+                .await?
+                .header("Accept", "text/event-stream"),
+        )
+        .await?;
+        Ok(Self::event_stream(response))
+    }
+
+    /// `GET /agents/sessions/{id}/events?stream=true`: live events from now
+    /// on. The provider does not replay missed events; callers reconcile from
+    /// saved items after opening it.
+    pub async fn stream_session_events(
+        &self,
+        session_id: &str,
+    ) -> Result<AgentsApiEventStream, AgentsApiError> {
+        let response = Self::send(
+            self.request(
+                reqwest::Method::GET,
+                &format!(
+                    "agents/sessions/{}/events?stream=true",
+                    path_segment(session_id)?
+                ),
+                None,
+            )
+            .await?
+            .header("Accept", "text/event-stream"),
+        )
+        .await?;
+        Ok(Self::event_stream(response))
+    }
+
+    /// `POST /agents/sessions/{id}/events`: submit input, tool results, or
+    /// cancel. `idempotency_key` makes a retried submission a no-op at the
+    /// provider (verified live for input events on 2026-10-01).
     pub async fn send_events(
         &self,
         session_id: &str,
         events: Vec<Value>,
-    ) -> Result<(), AgentsApiPrototypeError> {
+        idempotency_key: Option<&str>,
+    ) -> Result<(), AgentsApiError> {
+        let mut request = self
+            .request(
+                reqwest::Method::POST,
+                &format!("agents/sessions/{}/events", path_segment(session_id)?),
+                Some(&json!({ "events": events })),
+            )
+            .await?;
+        if let Some(key) = idempotency_key {
+            request = request.header("Idempotency-Key", key);
+        }
+        Self::send(request).await?;
+        Ok(())
+    }
+
+    /// Where the provider's own trace of a session can be exported
+    /// (`GET /agents/sessions/{id}/traces`, OTLP JSON). Recorded as a link on
+    /// projected events; the driver never fetches or imports it.
+    pub fn trace_url(&self, session_id: &str) -> Option<String> {
+        let segment = path_segment(session_id).ok()?;
+        self.endpoint
+            .url(&format!("agents/sessions/{segment}/traces"))
+    }
+
+    /// `GET /agents/sessions/{id}`: status and pending required actions.
+    pub async fn retrieve_session(&self, session_id: &str) -> Result<Value, AgentsApiError> {
+        self.get_json(&format!("agents/sessions/{}", path_segment(session_id)?))
+            .await
+    }
+
+    /// `DELETE /agents/sessions/{id}`: remove the provider session.
+    pub async fn delete_session(&self, session_id: &str) -> Result<(), AgentsApiError> {
         Self::send(
             self.request(
-                reqwest::Method::POST,
-                &format!("/agents/sessions/{}/events", path_segment(session_id)?),
+                reqwest::Method::DELETE,
+                &format!("agents/sessions/{}", path_segment(session_id)?),
+                None,
             )
-            .json(&json!({ "events": events })),
+            .await?,
         )
         .await?;
         Ok(())
     }
 
-    /// `GET /agents/sessions/{id}`: the reconciliation source after a disconnect.
-    pub async fn retrieve_session(
+    /// `GET /agents/sessions/{id}/turns/{turn}`: status, error, and usage.
+    pub async fn retrieve_turn(
         &self,
         session_id: &str,
-    ) -> Result<Value, AgentsApiPrototypeError> {
-        Self::send(self.request(
-            reqwest::Method::GET,
-            &format!("/agents/sessions/{}", path_segment(session_id)?),
+        turn_id: &str,
+    ) -> Result<Value, AgentsApiError> {
+        self.get_json(&format!(
+            "agents/sessions/{}/turns/{}",
+            path_segment(session_id)?,
+            path_segment(turn_id)?
         ))
-        .await?
-        .json()
         .await
-        .map_err(|error| AgentsApiPrototypeError::Http(error.to_string()))
+    }
+
+    async fn list_all(&self, base: &str) -> Result<Vec<Value>, AgentsApiError> {
+        let separator = if base.contains('?') { '&' } else { '?' };
+        let mut all = Vec::new();
+        let mut after: Option<String> = None;
+        for _ in 0..MAX_PAGES {
+            let mut path = format!("{base}{separator}limit={PAGE_LIMIT}");
+            if let Some(cursor) = &after {
+                path.push_str(&format!("&after={}", path_segment(cursor)?));
+            }
+            let page: ListPage = serde_json::from_value(self.get_json(&path).await?)
+                .map_err(|error| AgentsApiError::Http(format!("invalid list page: {error}")))?;
+            all.extend(page.data);
+            match (page.has_more, page.last_id) {
+                (true, Some(last)) => after = Some(last),
+                _ => return Ok(all),
+            }
+        }
+        Err(AgentsApiError::Reconcile(format!(
+            "listing {base} exceeded {MAX_PAGES} pages"
+        )))
+    }
+
+    /// Every turn of a session, root and subagent.
+    pub async fn list_turns(&self, session_id: &str) -> Result<Vec<Value>, AgentsApiError> {
+        self.list_all(&format!(
+            "agents/sessions/{}/turns",
+            path_segment(session_id)?
+        ))
+        .await
+    }
+
+    /// Saved root items of one turn, oldest first.
+    pub async fn list_turn_items(
+        &self,
+        session_id: &str,
+        turn_id: &str,
+    ) -> Result<Vec<Value>, AgentsApiError> {
+        self.list_all(&format!(
+            "agents/sessions/{}/items?order=asc&turn_id={}",
+            path_segment(session_id)?,
+            path_segment(turn_id)?
+        ))
+        .await
+    }
+
+    /// The most recent sessions, newest first (one page).
+    pub async fn list_recent_sessions(&self) -> Result<Vec<Value>, AgentsApiError> {
+        let page: ListPage = serde_json::from_value(
+            self.get_json(&format!("agents/sessions?limit={PAGE_LIMIT}"))
+                .await?,
+        )
+        .map_err(|error| AgentsApiError::Http(format!("invalid list page: {error}")))?;
+        Ok(page.data)
+    }
+}
+
+/// Reuse a resolved endpoint's authentication under another base URL.
+struct EndpointAuth(ProviderEndpoint);
+
+#[async_trait::async_trait]
+impl everruns_provider::ProviderAuth for EndpointAuth {
+    async fn headers(
+        &self,
+        request: everruns_provider::ProviderAuthRequest<'_>,
+    ) -> everruns_provider::error::Result<Vec<(String, String)>> {
+        Ok(self
+            .0
+            .resolve(request.method, request.url, request.body)
+            .await?
+            .headers)
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
 /// Provider ids are opaque; refuse anything that could alter the request path.
-fn path_segment(id: &str) -> Result<&str, AgentsApiPrototypeError> {
+fn path_segment(id: &str) -> Result<&str, AgentsApiError> {
     if !id.is_empty()
         && id
             .bytes()
@@ -1023,62 +873,8 @@ fn path_segment(id: &str) -> Result<&str, AgentsApiPrototypeError> {
     {
         Ok(id)
     } else {
-        Err(AgentsApiPrototypeError::Http(format!(
-            "invalid provider id '{id}'"
-        )))
+        Err(AgentsApiError::Http(format!("invalid provider id '{id}'")))
     }
-}
-
-/// Run one root turn end to end: create the session, project every provider
-/// event through `mapper` into `sink`, and answer each pending function call.
-///
-/// `handler` is the seam where Everruns keeps control of client functions: in
-/// a production backend it runs permission checks, approval policy, `jev`
-/// guardrails, and the durable tool-result claim before returning, and the
-/// Agents API waits for it. MCP and built-in tools never reach it.
-pub async fn run_root_turn<H, F>(
-    client: &AgentsApiClient,
-    config: &AgentsApiSessionConfig,
-    mapper: &mut AgentsApiEventMapper,
-    mut handler: H,
-    mut sink: impl FnMut(EventRequest),
-) -> Result<RootTurnOutcome, AgentsApiPrototypeError>
-where
-    H: FnMut(FunctionCallAction) -> F,
-    F: std::future::Future<Output = Result<String, String>>,
-{
-    let stream = client.create_session_stream(config).await?;
-    futures::pin_mut!(stream);
-    let mut answered = HashSet::new();
-    while let Some(provider_event) = stream.next().await {
-        let provider_event = provider_event?;
-        for event in mapper.map(&provider_event)? {
-            sink(event);
-        }
-        match provider_event.get("type").and_then(Value::as_str) {
-            Some("agent.session.requires_action") => {
-                let session_id = mapper
-                    .provider_session_id()
-                    .ok_or(AgentsApiPrototypeError::MissingEventField {
-                        event_type: "agent.session.requires_action".to_string(),
-                        field: "session.id",
-                    })?
-                    .to_string();
-                for action in FunctionCallAction::from_required_actions(&provider_event) {
-                    if !answered.insert(action.call_id.clone()) {
-                        continue;
-                    }
-                    let result = handler(action.clone()).await;
-                    client
-                        .send_events(&session_id, vec![build_tool_result_input(&action, result)])
-                        .await?;
-                }
-            }
-            Some("agent.session.idle") if mapper.outcome().is_some() => break,
-            _ => {}
-        }
-    }
-    mapper.finish()
 }
 
 #[cfg(test)]
@@ -1100,21 +896,20 @@ mod tests {
                     "additionalProperties": false
                 }),
             )));
-        let servers = ScopedMcpServers::from([(
-            "docs".to_string(),
-            ScopedMcpServer {
-                url: "https://developers.openai.com/mcp".to_string(),
-                ..ScopedMcpServer::default()
-            },
-        )]);
-        build_session_config(&agent, &servers, "Use the function and MCP tools.", Some(2)).unwrap()
+        build_session_config(&agent, "Use the function and MCP tools.", Some(2))
+            .unwrap()
+            .with_direct_mcp(
+                "docs",
+                "https://developers.openai.com/mcp",
+                &["search_openai_docs"],
+            )
+            .unwrap()
     }
 
     #[test]
-    fn session_config_maps_one_function_and_one_mcp_tool() {
+    fn session_config_maps_one_function_and_one_allowed_mcp_tool() {
         let config = prototype_config();
         assert_eq!(config.agent.model, "gpt-6-astra");
-        assert_eq!(config.agent.tools.len(), 2);
         assert_eq!(
             serde_json::to_value(&config.agent.tools).unwrap(),
             json!([
@@ -1137,295 +932,50 @@ mod tests {
                         "server_url": "https://developers.openai.com/mcp"
                     },
                     "connection_origin": "service",
-                    "required": true
+                    "required": true,
+                    "allowed_tools": ["search_openai_docs"]
                 }
             ])
         );
     }
 
     #[test]
-    fn documented_boundary_fixture_projects_to_canonical_session_events() {
-        let fixture: Vec<Value> =
-            serde_json::from_str(include_str!("../tests/fixtures/agents_api_events.json")).unwrap();
-        let mut mapper = AgentsApiEventMapper::new(
-            SessionId::from_seed(1),
-            TurnId::from_seed(2),
-            MessageId::from_seed(3),
-            "gpt-6-astra",
-        );
-        let events = fixture
-            .iter()
-            .flat_map(|event| mapper.map(event).unwrap())
-            .collect::<Vec<_>>();
-        // Replayed provider events are deduplicated by call id.
-        assert!(mapper.map(&fixture[2]).unwrap().is_empty());
-        assert!(mapper.map(&fixture[3]).unwrap().is_empty());
-        assert_eq!(mapper.outcome(), Some(&RootTurnOutcome::Completed));
-        assert_eq!(mapper.provider_session_id(), Some("sess_fixture"));
-        let types = events
-            .iter()
-            .map(|event| event.event_type.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            types,
-            vec![
-                "turn.started",
-                "tool.call_requested",
-                "tool.started",
-                "tool.completed",
-                "output.message.started",
-                "output.message.delta",
-                "output.message.delta",
-                "output.message.delta",
-                "output.message.completed",
-                "llm.generation",
-                "turn.completed",
-                "session.idled"
-            ]
-        );
-        let requested = events
-            .iter()
-            .find(|event| event.event_type == "tool.call_requested")
-            .unwrap();
-        assert_eq!(
-            serde_json::to_value(&requested.data).unwrap()["tool_calls"][0]["name"],
-            "lookup_customer"
-        );
-        let mcp_completed = events
-            .iter()
-            .find(|event| event.event_type == "tool.completed")
-            .unwrap();
-        assert_eq!(
-            serde_json::to_value(&mcp_completed.data).unwrap()["tool_name"],
-            "mcp_docs__search"
-        );
-        let completed = events
-            .iter()
-            .find(|event| event.event_type == "turn.completed")
-            .unwrap();
-        assert_eq!(
-            serde_json::to_value(&completed.data).unwrap()["usage"],
-            json!({
-                "input_tokens": 61,
-                "output_tokens": 23,
-                "cache_read_tokens": 40
-            })
-        );
-        assert_eq!(
-            serde_json::to_value(&completed.data).unwrap()["final_answer_preview"],
-            "Customer 123 is documented."
-        );
-        assert_eq!(
-            serde_json::to_value(&completed.data).unwrap()["duration_ms"],
-            1000
-        );
-        assert_eq!(
-            completed.metadata.as_ref().unwrap()["runtime_backend"],
-            "openai_agents_api"
-        );
-        assert_eq!(
-            completed.metadata.as_ref().unwrap()["provider_turn_id"],
-            "turn_fixture"
-        );
-        assert_eq!(
-            completed.metadata.as_ref().unwrap()["provider_usage"]["total_tokens"],
-            124
-        );
-    }
-
-    #[test]
-    fn live_round_trip_projects_messages_tools_and_the_final_answer() {
-        // Recorded from the live API on 2026-09-30: one client function, one
-        // HTTP MCP server (a search that succeeded and a fetch that failed),
-        // a commentary preamble, and a final answer. MCP outputs are trimmed.
-        let fixture: Vec<Value> = serde_json::from_str(include_str!(
-            "../tests/fixtures/agents_api_live_round_trip.json"
-        ))
-        .unwrap();
-        let mut mapper = mapper();
-        let events = fixture
-            .iter()
-            .flat_map(|event| mapper.map(event).unwrap())
-            .collect::<Vec<_>>();
-        let data = |event: &EventRequest| serde_json::to_value(&event.data).unwrap();
-        let types = events
-            .iter()
-            .map(|event| event.event_type.as_str())
-            .filter(|kind| *kind != "output.message.delta")
-            .collect::<Vec<_>>();
-        assert_eq!(
-            types,
-            vec![
-                "turn.started",
-                "output.message.started",
-                "output.message.completed",
-                "tool.call_requested",
-                "tool.completed",
-                "tool.started",
-                "tool.completed",
-                "tool.started",
-                "tool.completed",
-                "output.message.started",
-                "output.message.completed",
-                "llm.generation",
-                "turn.completed",
-                "session.idled",
-            ]
-        );
-
-        let messages = events
-            .iter()
-            .filter(|event| event.event_type == "output.message.completed")
-            .map(data)
-            .collect::<Vec<_>>();
-        assert_eq!(messages[0]["message"]["phase"], "commentary");
-        assert_eq!(messages[1]["message"]["phase"], "final_answer");
-        assert_ne!(messages[0]["message"]["id"], messages[1]["message"]["id"]);
-
-        let tools = events
-            .iter()
-            .filter(|event| event.event_type == "tool.completed")
-            .map(data)
-            .collect::<Vec<_>>();
-        assert_eq!(tools[0]["tool_name"], "lookup_customer");
-        assert_eq!(tools[1]["tool_name"], "mcp_docs__search_openai_docs");
-        assert_eq!(tools[2]["tool_name"], "mcp_docs__fetch_openai_doc");
-        assert!(
-            tools[2]["error"]
-                .as_str()
-                .unwrap()
-                .contains("404 Not Found")
-        );
-
-        let completed = data(events.iter().rev().nth(1).unwrap());
-        assert_eq!(completed["final_message_id"], messages[1]["message"]["id"]);
-        assert!(
-            completed["final_answer_preview"]
-                .as_str()
-                .unwrap()
-                .starts_with("Customer 123 is Ada Lovelace")
-        );
-        assert_eq!(completed["tool_call_count"], 3);
-        // Usage had not arrived when the turn completed.
-        assert!(completed.get("usage").is_none());
-        assert_eq!(mapper.finish().unwrap(), RootTurnOutcome::Completed);
-    }
-
-    #[test]
-    fn live_failed_turn_projects_the_error_cause() {
-        // Recorded from the live API on 2026-09-30; the org had no credits left.
-        let fixture: Vec<Value> = serde_json::from_str(include_str!(
-            "../tests/fixtures/agents_api_live_failed_turn.json"
-        ))
-        .unwrap();
-        let mut mapper = AgentsApiEventMapper::new(
-            SessionId::from_seed(1),
-            TurnId::from_seed(2),
-            MessageId::from_seed(3),
-            "gpt-6-astra",
-        );
-        let events = fixture
-            .iter()
-            .flat_map(|event| mapper.map(event).unwrap())
-            .collect::<Vec<_>>();
-        let types = events
-            .iter()
-            .map(|event| event.event_type.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(types, vec!["turn.started", "turn.failed", "session.idled"]);
-        let failed = serde_json::to_value(&events[1].data).unwrap();
-        assert_eq!(failed["error_code"], "usage_limit_exceeded");
-        assert!(matches!(
-            mapper.finish().unwrap(),
-            RootTurnOutcome::Failed { code: Some(code), .. } if code == "usage_limit_exceeded"
-        ));
-        assert!(
-            mapper
-                .provider_session_id()
-                .is_some_and(|id| id.starts_with("sess_"))
-        );
-    }
-
-    fn mapper() -> AgentsApiEventMapper {
-        AgentsApiEventMapper::new(
-            SessionId::from_seed(1),
-            TurnId::from_seed(2),
-            MessageId::from_seed(3),
-            "gpt-6-astra",
-        )
-    }
-
-    #[test]
-    fn stream_closing_before_a_terminal_root_turn_fails_closed() {
-        let mut mapper = mapper();
-        mapper
-            .map(
-                &json!({"type": "agent.session.turn.created", "turn_id": "turn_1",
-                "turn": {"id": "turn_1", "subagent_id": null}}),
-            )
-            .unwrap();
-        // Idle without a terminal turn is not success and emits nothing.
-        assert!(
-            mapper
-                .map(&json!({"type": "agent.session.idle", "session": {"id": "sess_1"}}))
-                .unwrap()
-                .is_empty()
-        );
-        assert!(matches!(
-            mapper.finish(),
-            Err(AgentsApiPrototypeError::StreamClosedBeforeTurnEnded)
-        ));
-    }
-
-    #[test]
-    fn subagent_turns_never_end_the_root_turn() {
-        let mut mapper = mapper();
-        let events = mapper
-            .map(
-                &json!({"type": "agent.session.turn.failed", "turn_id": "turn_child",
-                "turn": {"id": "turn_child", "subagent_id": "sub_1",
-                    "error": {"message": "child failed"}}}),
-            )
-            .unwrap();
-        assert!(events.is_empty());
-        assert!(mapper.outcome().is_none());
-    }
-
-    #[test]
-    fn unknown_terminal_event_fails_closed_and_unknown_progress_is_ignored() {
-        let mut mapper = mapper();
-        assert!(
-            mapper
-                .map(&json!({"type": "agent.session.turn.reasoning.delta"}))
-                .unwrap()
-                .is_empty()
-        );
-        assert!(matches!(
-            mapper.map(&json!({"type": "agent.session.sandbox.failed"})),
-            Err(AgentsApiPrototypeError::UnsupportedTerminalEvent(kind))
-                if kind == "agent.session.sandbox.failed"
-        ));
+    fn agent_fingerprint_tracks_the_agent_not_the_input() {
+        let first = prototype_config();
+        let mut second = first.clone();
+        second.input = json!("another turn");
+        second.metadata.insert("k".into(), "v".into());
+        assert_eq!(first.agent_fingerprint(), second.agent_fingerprint());
+        second.agent.instructions.push_str(" Be brief.");
+        assert_ne!(first.agent_fingerprint(), second.agent_fingerprint());
     }
 
     #[test]
     fn unknown_usage_is_not_reported_as_zero() {
-        assert!(usage_from(&json!({"turn": {"usage": null}})).is_none());
+        assert!(usage_from(&json!({"usage": null})).is_none());
+        let usage = usage_from(&json!({"usage": {
+            "input_tokens": 100, "input_tokens_details": {"cached_tokens": 40}, "output_tokens": 7
+        }}))
+        .unwrap();
+        assert_eq!(usage.input_tokens, 60);
+        assert_eq!(usage.output_tokens, 7);
     }
 
     #[test]
-    fn function_result_builds_agents_api_continuation_input() {
-        let requires_action = json!({
-            "type": "agent.session.requires_action",
-            "session": {"id": "sess_1", "required_actions": [
+    fn function_result_and_message_inputs_match_the_documented_shapes() {
+        let session = json!({
+            "id": "sess_1",
+            "required_actions": [
                 {"type": "environment_connection"},
                 {"type": "function_call", "turn_id": "turn_1", "call_id": "call_customer",
-                 "name": "lookup_customer", "arguments": {"customer_id": "123"}}
-            ]}
+                 "name": "lookup_customer", "arguments": "{\"customer_id\":\"123\"}"}
+            ]
         });
-        let actions = FunctionCallAction::from_required_actions(&requires_action);
+        let actions = FunctionCallAction::from_required_actions(&session);
         assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].arguments, json!({"customer_id": "123"}));
         assert_eq!(
-            build_tool_result_input(&actions[0], Ok(r#"{"name":"Ada"}"#.to_string())),
+            build_tool_result_input("turn_1", "call_customer", Ok(r#"{"name":"Ada"}"#)),
             json!({
                 "type": "agent.session.input.tool_result",
                 "turn_id": "turn_1",
@@ -1435,14 +985,19 @@ mod tests {
             })
         );
         assert_eq!(
-            build_tool_result_input(&actions[0], Err("denied by approval policy".to_string())),
+            build_tool_result_input("turn_1", "call_customer", Err("denied")),
             json!({
                 "type": "agent.session.input.tool_result",
                 "turn_id": "turn_1",
                 "call_id": "call_customer",
                 "success": false,
-                "error": "denied by approval policy"
+                "error": "denied"
             })
+        );
+        assert_eq!(
+            build_message_input("hi"),
+            json!({"type": "agent.session.input.message",
+                   "input": [{"role": "user", "content": [{"type": "input_text", "text": "hi"}]}]})
         );
     }
 
@@ -1457,23 +1012,95 @@ mod tests {
             imported.mcp_servers["docs"].url,
             "https://developers.openai.com/mcp"
         );
-        assert_eq!(imported.warnings.len(), 3);
+        // Built-in, allowlist, multi-agent, and environment warnings.
+        assert_eq!(imported.warnings.len(), 4);
     }
 
     #[test]
-    fn unsupported_mcp_transport_fails_closed() {
-        let agent = RuntimeAgent::new("Test.", "gpt-6-astra");
-        let servers = ScopedMcpServers::from([(
-            "local".to_string(),
-            ScopedMcpServer {
-                transport_type: McpServerTransportType::Stdio,
-                command: Some("mcp-server".to_string()),
-                ..ScopedMcpServer::default()
-            },
-        )]);
+    fn imported_mcp_credentials_are_dropped_and_never_debug_printed() {
+        let mut config = prototype_config();
+        if let AgentsApiTool::Mcp { transport, .. } = &mut config.agent.tools[1] {
+            transport
+                .headers
+                .insert("Authorization".into(), "Bearer sk-mcp-secret".into());
+        }
+        assert!(
+            !format!("{config:?}").contains("sk-mcp-secret"),
+            "Debug output redacts MCP credentials"
+        );
         assert!(matches!(
-            build_session_config(&agent, &servers, "test", None),
-            Err(AgentsApiPrototypeError::UnsupportedMcpServer(name)) if name == "local"
+            config.validate_direct_mcp(),
+            Err(AgentsApiError::PolicyViolation(_))
         ));
+        let imported = import_session_config(config).unwrap();
+        assert!(imported.mcp_servers["docs"].headers.is_empty());
+        assert!(
+            imported
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("credentials are not imported"))
+        );
+    }
+
+    #[test]
+    fn direct_mcp_needs_https_and_an_explicit_allowlist() {
+        let base =
+            build_session_config(&RuntimeAgent::new("Test.", "gpt-6-astra"), "", None).unwrap();
+        for (url, tools) in [
+            ("http://example.com/mcp", vec!["search"]),
+            ("https://example.com/mcp", vec![]),
+            ("https://example.com/mcp", vec![" "]),
+        ] {
+            assert!(
+                matches!(
+                    base.clone().with_direct_mcp("x", url, &tools),
+                    Err(AgentsApiError::PolicyViolation(_))
+                ),
+                "{url} {tools:?}"
+            );
+        }
+        let mut no_allowlist = base
+            .clone()
+            .with_direct_mcp("x", "https://example.com/mcp", &["search"])
+            .unwrap();
+        if let AgentsApiTool::Mcp { allowed_tools, .. } = &mut no_allowlist.agent.tools[0] {
+            *allowed_tools = None;
+        }
+        assert!(no_allowlist.validate_direct_mcp().is_err());
+    }
+
+    #[test]
+    fn the_production_boundary_refuses_tools_it_cannot_police() {
+        let agent = RuntimeAgent::new("Test.", "gpt-6-astra");
+        let functions_only = build_session_config(&agent, "", None).unwrap();
+        assert!(functions_only.ensure_enforceable().is_ok());
+        let refused = [
+            prototype_config(),
+            {
+                let mut config = functions_only.clone();
+                config.agent.tools.push(AgentsApiTool::Unsupported);
+                config
+            },
+            build_session_config(&agent, "", Some(2)).unwrap(),
+            {
+                let mut config = functions_only.clone();
+                config.environment = AgentsApiEnvironment::OpenaiHosted;
+                config
+            },
+        ];
+        for config in refused {
+            assert!(matches!(
+                config.ensure_enforceable(),
+                Err(AgentsApiError::PolicyViolation(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn provider_ids_cannot_alter_request_paths() {
+        assert!(path_segment("sess_abc-1").is_ok());
+        assert!(path_segment("../x").is_err());
+        assert!(path_segment("a?b").is_err());
+        assert!(path_segment("").is_err());
     }
 }

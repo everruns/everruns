@@ -2,7 +2,7 @@
 //
 // Moved out of `everruns-core` in EVE-837. The compact embedded value types
 // remain in `everruns-core`: `PrincipalSummary` is a field of `Session`/
-// `SessionSchedule`/`AgentIdentity`, and `PrincipalKind` backs that summary.
+// `SessionSchedule`/`VirtualUser`, and `PrincipalKind` backs that summary.
 // EVE-845 moved the `PrincipalStatus` lifecycle enum here — no core type embeds
 // it; it describes this durable aggregate. This crate depends on the core value
 // types (direction: platform -> core) and re-exports the full principal surface

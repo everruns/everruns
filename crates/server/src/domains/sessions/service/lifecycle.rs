@@ -22,22 +22,22 @@ impl SessionService {
             return Err(BadRequestError::new(RESERVED_SESSION_TAG_ERROR).into());
         }
 
-        let agent_identity_id = match req.agent_identity_id {
+        let virtual_user_id = match req.virtual_user_id {
             UpdateField::Set(identity_id) => {
                 let identity = self
                     .db
-                    .get_agent_identity(caller.org_id, identity_id)
+                    .get_virtual_user(caller.org_id, identity_id)
                     .await?
                     .ok_or_else(|| ResourceNotFoundError::new("Agent identity"))?;
                 if identity.status != "active" {
-                    anyhow::bail!("Archived or deleted agent identities cannot be assigned");
+                    anyhow::bail!("Archived or deleted virtual users cannot be assigned");
                 }
                 UpdateField::Set(identity.id)
             }
             UpdateField::Clear => UpdateField::Clear,
             UpdateField::Unchanged => UpdateField::Unchanged,
         };
-        let existing = if !matches!(agent_identity_id, UpdateField::Unchanged) {
+        let existing = if !matches!(virtual_user_id, UpdateField::Unchanged) {
             Some(
                 self.db
                     .get_session(caller.org_id, SessionId::from_uuid(id))
@@ -47,7 +47,7 @@ impl SessionService {
         } else {
             None
         };
-        let (owner_principal_id, resolved_owner_user_id) = match agent_identity_id {
+        let (owner_principal_id, resolved_owner_user_id) = match virtual_user_id {
             UpdateField::Set(identity_id) => {
                 let owner = self
                     .principal_service
@@ -95,7 +95,7 @@ impl SessionService {
         let input = UpdateSession {
             title: req.title,
             goal: req.goal,
-            agent_identity_id,
+            virtual_user_id,
             owner_principal_id,
             resolved_owner_user_id,
             locale: req.locale,
@@ -194,7 +194,15 @@ impl SessionService {
     /// Pin a session for a user
     pub async fn pin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<()> {
         self.db
-            .pin_session(user_id, SessionId::from_uuid(session_id), caller.org_id)
+            .pin_session(
+                self.db
+                    .default_virtual_user(caller.org_id, user_id)
+                    .await?
+                    .id
+                    .uuid(),
+                SessionId::from_uuid(session_id),
+                caller.org_id,
+            )
             .await
     }
 
@@ -221,7 +229,15 @@ impl SessionService {
     /// Authorization is enforced at `Command::run` via `UnpinSession::policy`.
     pub async fn unpin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
         self.db
-            .unpin_session(user_id, SessionId::from_uuid(session_id), caller.org_id)
+            .unpin_session(
+                self.db
+                    .default_virtual_user(caller.org_id, user_id)
+                    .await?
+                    .id
+                    .uuid(),
+                SessionId::from_uuid(session_id),
+                caller.org_id,
+            )
             .await
     }
 

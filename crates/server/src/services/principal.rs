@@ -82,30 +82,61 @@ impl PrincipalService {
         org_id: i64,
         actor: &ExternalActor,
     ) -> Result<PrincipalRow> {
-        let subject_key = format!("{}:{}", actor.source, actor.actor_id);
-        let subject_id = Uuid::new_v5(
-            &Uuid::NAMESPACE_URL,
-            format!("everruns:external_actor:{subject_key}").as_bytes(),
-        );
-
-        self.db
-            .create_principal(CreatePrincipalRow {
-                id: PrincipalId::new(),
+        let realm = actor
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("team_id").or_else(|| m.get("issuer")))
+            .cloned()
+            .ok_or_else(|| anyhow!("Verified external identity requires a realm"))?;
+        let user = self
+            .db
+            .resolve_runtime_identity(crate::storage::runtime_identity::VerifiedRuntimeIdentity {
                 org_id,
-                kind: "user".to_string(),
-                subject_id: Some(subject_id),
-                parent_principal_id: None,
-                resolved_user_id: None,
-                metadata: json!({
-                    "name": actor.display_label(),
-                    "source": "external_actor",
-                    "external_source": actor.source,
-                    "external_actor_id": actor.actor_id,
-                    "external_actor_name": actor.actor_name,
-                    "external_actor_metadata": actor.metadata,
-                }),
+                provider: actor.source.clone(),
+                realm,
+                subject: actor.actor_id.clone(),
+                name: actor.display_label().to_string(),
+                avatar_url: None,
+                management_user_id: None,
             })
+            .await?;
+        let parent = self
+            .ensure_system_principal(org_id, "external-users")
+            .await?;
+        self.ensure_virtual_user_principal(org_id, user.id, parent.id)
             .await
+    }
+
+    pub async fn ensure_default_virtual_user_principal(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<PrincipalRow> {
+        let v = self.db.default_virtual_user(org_id, user_id).await?;
+        if v.status != "active" {
+            return Err(anyhow!("Runtime account is not active"));
+        }
+        let parent = self.ensure_user_principal(org_id, user_id).await?;
+        self.ensure_virtual_user_principal(org_id, v.id, parent.id)
+            .await
+    }
+
+    pub async fn default_runtime_owner_principal(
+        &self,
+        caller: &Caller,
+        service: Option<everruns_provider::typed_id::VirtualUserId>,
+    ) -> Result<PrincipalRow> {
+        if service.is_none()
+            && !caller.is_internal
+            && let Some(user_id) = caller.user_id.or_else(|| {
+                (caller.org_id == everruns_core::DEFAULT_ORG_ID).then_some(ANONYMOUS_USER_ID)
+            })
+        {
+            return self
+                .ensure_default_virtual_user_principal(caller.org_id, user_id)
+                .await;
+        }
+        self.default_owner_principal(caller, service).await
     }
 
     pub async fn ensure_system_principal(&self, org_id: i64, name: &str) -> Result<PrincipalRow> {
@@ -134,10 +165,10 @@ impl PrincipalService {
             .await
     }
 
-    pub async fn ensure_agent_identity_principal(
+    pub async fn ensure_virtual_user_principal(
         &self,
         org_id: i64,
-        agent_identity_id: everruns_provider::typed_id::AgentIdentityId,
+        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
         parent_principal_id: PrincipalId,
     ) -> Result<PrincipalRow> {
         let parent = self
@@ -148,7 +179,7 @@ impl PrincipalService {
         let resolved_user_id = self.resolve_user_from_lineage(org_id, &parent).await?;
         let identity = self
             .db
-            .get_agent_identity(org_id, agent_identity_id)
+            .get_virtual_user(org_id, virtual_user_id)
             .await?
             .ok_or_else(|| anyhow!("Agent identity not found"))?;
 
@@ -158,12 +189,12 @@ impl PrincipalService {
             "avatar_url": identity.avatar_url,
             "locale": identity.locale,
             "timezone": identity.timezone,
-            "source": "agent_identity",
+            "source": "virtual_user",
         });
 
         if let Some(existing) = self
             .db
-            .get_principal_by_subject(org_id, "agent_identity", agent_identity_id.uuid())
+            .get_principal_by_subject(org_id, "virtual_user", virtual_user_id.uuid())
             .await?
         {
             return self
@@ -186,8 +217,8 @@ impl PrincipalService {
             .create_principal(CreatePrincipalRow {
                 id: PrincipalId::new(),
                 org_id,
-                kind: "agent_identity".to_string(),
-                subject_id: Some(agent_identity_id.uuid()),
+                kind: "virtual_user".to_string(),
+                subject_id: Some(virtual_user_id.uuid()),
                 parent_principal_id: Some(parent.id),
                 resolved_user_id,
                 metadata,
@@ -198,7 +229,7 @@ impl PrincipalService {
     pub async fn default_owner_principal(
         &self,
         caller: &Caller,
-        agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
+        virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
     ) -> Result<PrincipalRow> {
         let base_user_id = caller.user_id.or({
             if !caller.is_internal && caller.org_id == everruns_core::DEFAULT_ORG_ID {
@@ -216,9 +247,9 @@ impl PrincipalService {
             }
         };
 
-        if let Some(identity_id) = agent_identity_id {
+        if let Some(identity_id) = virtual_user_id {
             return self
-                .ensure_agent_identity_principal(caller.org_id, identity_id, human_owner.id)
+                .ensure_virtual_user_principal(caller.org_id, identity_id, human_owner.id)
                 .await;
         }
 
@@ -230,7 +261,7 @@ impl PrincipalService {
         org_id: i64,
         current_owner_principal_id: PrincipalId,
         current_resolved_owner_user_id: Option<Uuid>,
-        agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
+        virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
     ) -> Result<PrincipalRow> {
         let current_owner = self
             .db
@@ -239,7 +270,7 @@ impl PrincipalService {
             .ok_or_else(|| anyhow!("Current owner principal not found"))?;
         let base_owner = if let Some(user_id) = current_resolved_owner_user_id {
             self.ensure_user_principal(org_id, user_id).await?
-        } else if current_owner.kind == "agent_identity" {
+        } else if current_owner.kind == "virtual_user" {
             match current_owner.parent_principal_id {
                 Some(parent_id) => self
                     .db
@@ -252,9 +283,9 @@ impl PrincipalService {
             current_owner.clone()
         };
 
-        match agent_identity_id {
-            Some(agent_identity_id) => {
-                self.ensure_agent_identity_principal(org_id, agent_identity_id, base_owner.id)
+        match virtual_user_id {
+            Some(virtual_user_id) => {
+                self.ensure_virtual_user_principal(org_id, virtual_user_id, base_owner.id)
                     .await
             }
             None => Ok(base_owner),
@@ -277,15 +308,15 @@ impl PrincipalService {
             .map(|principal| principal.summary()))
     }
 
-    pub async fn sync_agent_identity_status(
+    pub async fn sync_virtual_user_status(
         &self,
         org_id: i64,
-        agent_identity_id: everruns_provider::typed_id::AgentIdentityId,
+        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
         status: PrincipalStatus,
     ) -> Result<()> {
         let Some(existing) = self
             .db
-            .get_principal_by_subject(org_id, "agent_identity", agent_identity_id.uuid())
+            .get_principal_by_subject(org_id, "virtual_user", virtual_user_id.uuid())
             .await?
         else {
             return Ok(());
@@ -308,7 +339,7 @@ impl PrincipalService {
     /// Walk a principal's parent chain to the human user that ultimately owns
     /// it, if any. Returns `None` when the lineage terminates at the org's
     /// system principal: a system-owned (unattended) principal has no resolved
-    /// human user. This lets an agent-identity principal be parented to the
+    /// human user. This lets an virtual-user principal be parented to the
     /// org system-owner — e.g. a lazily-created agent-trigger identity (EVE-758)
     /// — resolving to "no user" (system-owned) rather than erroring.
     async fn resolve_user_from_lineage(
@@ -372,8 +403,8 @@ pub fn row_to_principal(row: PrincipalRow) -> Principal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernel_imports::{AgentIdentityId, DEFAULT_ORG_ID};
-    use crate::storage::{CreateAgentIdentityRow, CreateUserRow, StorageBackend};
+    use crate::kernel_imports::{DEFAULT_ORG_ID, VirtualUserId};
+    use crate::storage::{CreateUserRow, CreateVirtualUserRow, StorageBackend};
     use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 
     async fn create_user_with_principal(
@@ -404,10 +435,11 @@ mod tests {
             .unwrap()
     }
 
-    async fn create_agent_identity(db: &Arc<StorageBackend>, name: &str) -> AgentIdentityId {
-        db.create_agent_identity(CreateAgentIdentityRow {
+    async fn create_virtual_user(db: &Arc<StorageBackend>, name: &str) -> VirtualUserId {
+        db.create_virtual_user(CreateVirtualUserRow {
+            usage: "service".to_string(),
             org_id: DEFAULT_ORG_ID,
-            id: AgentIdentityId::new(),
+            id: VirtualUserId::new(),
             name: name.to_string(),
             description: None,
             avatar_url: None,
@@ -439,19 +471,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ensure_agent_identity_principal_preserves_existing_parent() {
+    async fn ensure_virtual_user_principal_preserves_existing_parent() {
         let db = Arc::new(StorageBackend::in_memory());
         let service = PrincipalService::new(db.clone());
         let owner_a = create_user_with_principal(&db, &service, "owner-a@example.com").await;
         let owner_b = create_user_with_principal(&db, &service, "owner-b@example.com").await;
-        let identity_id = create_agent_identity(&db, "Ops Bot").await;
+        let identity_id = create_virtual_user(&db, "Ops Bot").await;
 
         let original = service
-            .ensure_agent_identity_principal(DEFAULT_ORG_ID, identity_id, owner_a.id)
+            .ensure_virtual_user_principal(DEFAULT_ORG_ID, identity_id, owner_a.id)
             .await
             .unwrap();
         let preserved = service
-            .ensure_agent_identity_principal(DEFAULT_ORG_ID, identity_id, owner_b.id)
+            .ensure_virtual_user_principal(DEFAULT_ORG_ID, identity_id, owner_b.id)
             .await
             .unwrap();
 
@@ -466,9 +498,9 @@ mod tests {
         let service = PrincipalService::new(db.clone());
         let user_principal =
             create_user_with_principal(&db, &service, "session-owner@example.com").await;
-        let identity_id = create_agent_identity(&db, "Scheduler").await;
+        let identity_id = create_virtual_user(&db, "Scheduler").await;
         let identity_principal = service
-            .ensure_agent_identity_principal(DEFAULT_ORG_ID, identity_id, user_principal.id)
+            .ensure_virtual_user_principal(DEFAULT_ORG_ID, identity_id, user_principal.id)
             .await
             .unwrap();
 
@@ -488,18 +520,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_agent_identity_status_updates_principal_row() {
+    async fn sync_virtual_user_status_updates_principal_row() {
         let db = Arc::new(StorageBackend::in_memory());
         let service = PrincipalService::new(db.clone());
         let user_principal = create_user_with_principal(&db, &service, "status@example.com").await;
-        let identity_id = create_agent_identity(&db, "Notifier").await;
+        let identity_id = create_virtual_user(&db, "Notifier").await;
         let principal = service
-            .ensure_agent_identity_principal(DEFAULT_ORG_ID, identity_id, user_principal.id)
+            .ensure_virtual_user_principal(DEFAULT_ORG_ID, identity_id, user_principal.id)
             .await
             .unwrap();
 
         service
-            .sync_agent_identity_status(DEFAULT_ORG_ID, identity_id, PrincipalStatus::Archived)
+            .sync_virtual_user_status(DEFAULT_ORG_ID, identity_id, PrincipalStatus::Archived)
             .await
             .unwrap();
 

@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::AgentIdentityId,
+    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::VirtualUserId,
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ impl InMemoryDatabase {
             default_model_id: input.default_model_id,
             harness_id: input.harness_id,
             harness_source: "explicit".to_string(),
-            agent_identity_id: None,
+            virtual_user_id: None,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -124,7 +124,7 @@ impl InMemoryDatabase {
             default_model_id: input.default_model_id,
             harness_id: input.harness_id,
             harness_source: "explicit".to_string(),
-            agent_identity_id: None,
+            virtual_user_id: None,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -280,6 +280,9 @@ impl InMemoryDatabase {
     ) -> Result<Option<AgentRow>> {
         let mut agents = self.agents.write();
         if let Some(agent) = agents.get_mut(&id).filter(|a| a.org_id == org_id) {
+            if let Some(id) = input.virtual_user_id {
+                agent.virtual_user_id = id;
+            }
             if let Some(name) = input.name {
                 agent.name = name;
             }
@@ -359,18 +362,18 @@ impl InMemoryDatabase {
     /// Link an agent to its lazily-created identity, only when not already
     /// linked (EVE-758). Returns `true` when this call set the link, `false`
     /// when it was already linked — never overrides an existing link.
-    pub async fn set_agent_identity_id(
+    pub async fn set_virtual_user_id(
         &self,
         org_id: i64,
         id: AgentId,
-        agent_identity_id: AgentIdentityId,
+        virtual_user_id: VirtualUserId,
     ) -> Result<bool> {
         let mut agents = self.agents.write();
         if let Some(agent) = agents.get_mut(&id).filter(|a| a.org_id == org_id) {
-            if agent.agent_identity_id.is_some() {
+            if agent.virtual_user_id.is_some() {
                 return Ok(false);
             }
-            agent.agent_identity_id = Some(agent_identity_id);
+            agent.virtual_user_id = Some(virtual_user_id);
             agent.updated_at = Self::now();
             return Ok(true);
         }
@@ -380,11 +383,11 @@ impl InMemoryDatabase {
     pub async fn has_agent_with_identity(
         &self,
         org_id: i64,
-        agent_identity_id: AgentIdentityId,
+        virtual_user_id: VirtualUserId,
     ) -> Result<bool> {
         Ok(self.agents.read().values().any(|agent| {
             agent.org_id == org_id
-                && agent.agent_identity_id == Some(agent_identity_id)
+                && agent.virtual_user_id == Some(virtual_user_id)
                 && agent.status != "deleted"
         }))
     }
@@ -466,7 +469,7 @@ impl InMemoryDatabase {
                 default_model_id: input.default_model_id,
                 harness_id: input.harness_id,
                 harness_source: "explicit".to_string(),
-                agent_identity_id: None,
+                virtual_user_id: None,
                 default_version_id: None,
                 forked_from_agent_id: None,
                 forked_from_version_id: None,
@@ -547,7 +550,7 @@ impl InMemoryDatabase {
                 default_model_id: input.default_model_id,
                 harness_id: input.harness_id,
                 harness_source: "explicit".to_string(),
-                agent_identity_id: None,
+                virtual_user_id: None,
                 default_version_id: None,
                 forked_from_agent_id: None,
                 forked_from_version_id: None,

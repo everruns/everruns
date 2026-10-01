@@ -143,7 +143,7 @@ async fn create_test_session(
         agent_id: None,
         agent_version_id: None,
         agent_config_hash: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id: principal_id,
         resolved_owner_user_id: None,
         title: Some(label.to_string()),

@@ -48,10 +48,10 @@ pub enum Permission {
     OrgCapabilitiesView,
     /// CRUD on capabilities
     OrgCapabilitiesManage,
-    /// View agent identities (read-only)
-    OrgAgentIdentitiesView,
-    /// CRUD on agent identities
-    OrgAgentIdentitiesManage,
+    /// View virtual users (read-only)
+    OrgVirtualUsersView,
+    /// CRUD on virtual users
+    OrgVirtualUsersManage,
     /// View marketplaces and installed plugins (read-only)
     OrgPluginsView,
     /// Register marketplaces and install/uninstall plugins (admin-gated per knowledge/integrations/plugins.md)
@@ -102,8 +102,8 @@ impl Permission {
             Permission::OrgSkillsDangerous => "org:skills:dangerous",
             Permission::OrgCapabilitiesView => "org:capabilities:view",
             Permission::OrgCapabilitiesManage => "org:capabilities:manage",
-            Permission::OrgAgentIdentitiesView => "org:agent-identities:view",
-            Permission::OrgAgentIdentitiesManage => "org:agent-identities:manage",
+            Permission::OrgVirtualUsersView => "org:virtual-users:view",
+            Permission::OrgVirtualUsersManage => "org:virtual-users:manage",
             Permission::OrgPluginsView => "org:plugins:view",
             Permission::OrgPluginsManage => "org:plugins:manage",
             Permission::OrgSessionsManage => "org:sessions:manage",
@@ -139,8 +139,8 @@ impl Permission {
         Permission::OrgSkillsDangerous,
         Permission::OrgCapabilitiesView,
         Permission::OrgCapabilitiesManage,
-        Permission::OrgAgentIdentitiesView,
-        Permission::OrgAgentIdentitiesManage,
+        Permission::OrgVirtualUsersView,
+        Permission::OrgVirtualUsersManage,
         Permission::OrgPluginsView,
         Permission::OrgPluginsManage,
         Permission::OrgSessionsManage,
@@ -186,8 +186,8 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgSkillsDangerous,
     Permission::OrgCapabilitiesView,
     Permission::OrgCapabilitiesManage,
-    Permission::OrgAgentIdentitiesView,
-    Permission::OrgAgentIdentitiesManage,
+    Permission::OrgVirtualUsersView,
+    Permission::OrgVirtualUsersManage,
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
@@ -219,8 +219,8 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgSkillsManage,
     Permission::OrgCapabilitiesView,
     Permission::OrgCapabilitiesManage,
-    Permission::OrgAgentIdentitiesView,
-    Permission::OrgAgentIdentitiesManage,
+    Permission::OrgVirtualUsersView,
+    Permission::OrgVirtualUsersManage,
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
@@ -251,8 +251,8 @@ const MEMBER_PERMISSIONS: &[Permission] = &[
     Permission::OrgSkillsManage,
     Permission::OrgCapabilitiesView,
     Permission::OrgCapabilitiesManage,
-    Permission::OrgAgentIdentitiesView,
-    Permission::OrgAgentIdentitiesManage,
+    Permission::OrgVirtualUsersView,
+    Permission::OrgVirtualUsersManage,
     // Members can view plugins but NOT manage them: PLUGIN_MANAGE has always
     // required OrgPluginsManage, which Members never held (Admin+ only). (EVE-656)
     Permission::OrgPluginsView,
@@ -1110,14 +1110,14 @@ mod tests {
                 true,
             ),
             (
-                Permission::OrgAgentIdentitiesView,
-                "org:agent-identities:view",
+                Permission::OrgVirtualUsersView,
+                "org:virtual-users:view",
                 true,
                 true,
             ),
             (
-                Permission::OrgAgentIdentitiesManage,
-                "org:agent-identities:manage",
+                Permission::OrgVirtualUsersManage,
+                "org:virtual-users:manage",
                 true,
                 true,
             ),

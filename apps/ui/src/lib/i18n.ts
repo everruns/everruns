@@ -132,6 +132,8 @@ const messages = {
       "The AI provider is experiencing issues. Please try again shortly.",
     runtime_error_processing_error:
       "I encountered an error while processing your request. Please try again later.",
+    runtime_error_provider_session_unavailable:
+      "The AI provider no longer holds this session's remote state. Send your message again to continue in a new provider session; it does not carry the earlier conversation.",
     runtime_error_dependency_unavailable:
       "Execution stopped because a required dependency is unavailable.",
     runtime_error_invalid_tool_schema:
@@ -362,6 +364,8 @@ const messages = {
       "AI-провайдер зараз недоступний. Спробуйте ще раз трохи пізніше.",
     runtime_error_processing_error:
       "Під час обробки вашого запиту сталася помилка. Спробуйте ще раз пізніше.",
+    runtime_error_provider_session_unavailable:
+      "AI-провайдер більше не зберігає віддалений стан цієї сесії. Надішліть повідомлення ще раз, щоб продовжити в новій сесії провайдера; вона не містить попередньої розмови.",
     runtime_error_dependency_unavailable: "Виконання зупинено, бо потрібна залежність недоступна.",
     runtime_error_invalid_tool_schema:
       "Підключений інструмент використовує схему вводу, яку цей провайдер моделі не підтримує. Оновіть інтеграцію або виберіть іншого провайдера моделі й повторіть спробу.",

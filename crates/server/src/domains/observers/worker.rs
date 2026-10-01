@@ -330,7 +330,7 @@ mod tests {
             agent_id: Some(agent),
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             parent_session_id: None,
             budget_root_session_id: None,
             owner_principal_id: PrincipalId::from_uuid(Uuid::nil()),

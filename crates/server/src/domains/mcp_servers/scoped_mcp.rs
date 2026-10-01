@@ -756,13 +756,13 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
     egress_service: &dyn EgressService,
 ) -> Result<Vec<ToolDefinition>> {
     let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
-    let cache_context = match session_id {
+    let mut cache_context = match session_id {
         Some(session_id) => {
             db.get_session(org_id, session_id)
                 .await?
                 .map(|session| ScopedMcpCacheContext {
                     agent_id: session.agent_id.map(|id| id.uuid()),
-                    user_id: session.resolved_owner_user_id,
+                    user_id: None,
                 })
         }
         None => None,
@@ -772,6 +772,25 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
         let source = servers
             .get(name)
             .expect("materialized server keeps its name");
+        if let (Some(context), Some(session), Some(resolver)) =
+            (cache_context.as_mut(), session_id, connection_resolver)
+            && let Some(preset) = source.preset.as_ref()
+        {
+            let row = db
+                .get_mcp_server_by_name(org_id, preset.catalog_name())
+                .await?;
+            context.user_id = match row {
+                Some(row) => {
+                    resolver
+                        .get_connection_user(
+                            session,
+                            &everruns_core::mcp_oauth_provider_id_for_uuid(row.id.uuid()),
+                        )
+                        .await?
+                }
+                None => None,
+            };
+        }
         let runtime_identity_attachment =
             !server.acts_as.is_none() && source.preset.is_some() && session_id.is_some();
         if !runtime_identity_attachment {
@@ -948,13 +967,9 @@ async fn resolve_scoped_mcp_discovery_token(
         return Ok(None);
     };
 
-    let token = if server.acts_as.is_none() {
-        resolver.get_connection_token(session_id, provider).await
-    } else {
-        resolver
-            .get_mcp_connection_token(session_id, provider, server.acts_as)
-            .await
-    };
+    let token = resolver
+        .get_mcp_connection_token(session_id, provider, server.acts_as)
+        .await;
     token.map_err(|error| anyhow!("Failed to resolve scoped MCP discovery token: {error}"))
 }
 

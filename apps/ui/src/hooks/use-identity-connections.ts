@@ -6,12 +6,15 @@ import {
   createIdentityApiKeyConnection,
   deleteIdentityConnection,
   verifyIdentityConnection,
-} from "@/lib/api/agent-identity-connections";
+} from "@/lib/api/virtual-user-connections";
+import { useOrg } from "@/providers/org-provider";
 import { queryKeys } from "@/lib/query-keys";
 
 export function useIdentityConnections(identityId: string) {
+  const { currentOrg } = useOrg();
   return useQuery({
-    queryKey: queryKeys.identityConnections.list(identityId),
+    queryKey: [...queryKeys.identityConnections.list(identityId), currentOrg?.public_id],
+    enabled: !!currentOrg,
     queryFn: () => listIdentityConnections(identityId),
     staleTime: 30000,
   });

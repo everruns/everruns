@@ -131,9 +131,9 @@ pub mod budget;
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent_definition;
-pub mod agent_identity;
 pub mod ard_attachment;
 pub mod capability_dto;
+pub mod virtual_user;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
 // enums) moved to the `everruns-platform` crate — they are product
@@ -188,6 +188,8 @@ pub mod resource_names;
 // See knowledge/integrations/plugins.md
 pub mod plugins;
 
+/// Durable orchestration state for the opt-in OpenAI Agents API backend.
+pub mod agents_api_store;
 pub mod capabilities;
 pub mod command;
 pub mod command_host;
@@ -437,7 +439,7 @@ pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 // the `everruns-platform` crate. Core keeps only the portable authored
 // execution configuration consumed during a turn.
 pub use agent_definition::AgentDefinition;
-pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
+pub use virtual_user::{VirtualUser, VirtualUserStatus, VirtualUserUsage};
 // EVE-841: the app and agent-trigger control-plane records moved to the
 // `everruns-platform` crate. They are hosted orchestration records not consumed
 // during a turn, so core no longer defines or re-exports them.
@@ -462,19 +464,19 @@ pub use events::{
     ContextCompactedData, ContextCompactingData, ContextCompactionFailedData,
     ContextCompactionSkippedData, Event, EventBuilder, EventContext, EventData, EventRequest,
     FILE_WRITTEN, FileWrittenData, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
-    LlmCompactionInfo, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, LlmRetryInfo,
-    ModelMetadata, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
-    OUTPUT_MESSAGE_STARTED, OutputMessageCompletedData, OutputMessageDeltaData,
-    OutputMessageReplacedData, OutputMessageStartedData, REASON_COMPLETED, REASON_ITEM,
-    REASON_RECOVERED, REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA,
-    REASON_THINKING_STARTED, ReasonCompletedData, ReasonItemData, ReasonRecoveredData,
-    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED, SESSION_IDLED,
-    SESSION_MODEL_CHANGED, SESSION_STARTED, SESSION_TITLE_UPDATED, SessionActivatedData,
-    SessionIdledData, SessionModelChangedData, SessionStartedData, SessionTitleUpdatedData,
-    TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED,
-    TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED, TokenUsage,
-    ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolOutputDeltaData,
+    LlmCompactionInfo, LlmCostComponent, LlmGenerationData, LlmGenerationMetadata,
+    LlmGenerationOutput, LlmRetryInfo, ModelMetadata, OUTPUT_MESSAGE_COMPLETED,
+    OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED, OUTPUT_MESSAGE_STARTED,
+    OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
+    OutputMessageStartedData, REASON_COMPLETED, REASON_ITEM, REASON_RECOVERED, REASON_STARTED,
+    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReasonCompletedData,
+    ReasonItemData, ReasonRecoveredData, ReasonStartedData, ReasonThinkingCompletedData,
+    ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED,
+    SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED, SESSION_TITLE_UPDATED,
+    SessionActivatedData, SessionIdledData, SessionModelChangedData, SessionStartedData,
+    SessionTitleUpdatedData, TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS,
+    TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_SEALED, TURN_STARTED,
+    TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolOutputDeltaData,
     ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
     TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
@@ -529,7 +531,7 @@ pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, 
 // EVE-837/EVE-845: `Principal` and the `PrincipalStatus` lifecycle enum moved to
 // the `everruns-platform` crate. `PrincipalSummary` and the `PrincipalKind` that
 // backs it stay here — they are embedded by `Session`/`SessionSchedule`/
-// `AgentIdentity`.
+// `VirtualUser`.
 pub use principal::{PrincipalKind, PrincipalSummary};
 pub(crate) use runtime_provider::ProviderKey;
 // EVE-882: the persisted `Session` aggregate and its product lifecycle enums

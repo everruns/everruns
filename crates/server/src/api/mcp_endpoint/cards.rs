@@ -418,6 +418,8 @@ mod tests {
 
     fn sample_agent() -> Agent {
         Agent {
+            service_virtual_user_id: None,
+
             public_id: AgentId::from_seed(1),
             internal_id: uuid::Uuid::nil(),
             name: "customer-support".into(),

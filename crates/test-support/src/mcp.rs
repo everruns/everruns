@@ -372,7 +372,7 @@ impl MockMcpOAuthServer {
         self.assert_latest_authorization(Some(access_token), "user");
     }
 
-    /// Assert that the latest MCP operation used the agent identity's token.
+    /// Assert that the latest MCP operation used the virtual user's token.
     pub fn assert_called_as_identity(&self, access_token: &str) {
         self.assert_latest_authorization(Some(access_token), "identity");
     }

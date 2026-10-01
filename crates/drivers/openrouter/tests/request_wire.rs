@@ -73,7 +73,7 @@ async fn sends_routing_controls_and_session_id() {
         &OpenRouterRoutingConfig {
             models: vec![
                 "openai/gpt-5-mini".to_string(),
-                "anthropic/claude-sonnet-4.5".to_string(),
+                "anthropic/claude-sonnet-5.5".to_string(),
             ],
             route: Some(OpenRouterRoute::Fallback),
             provider: Some(OpenRouterProviderRouting {
@@ -111,7 +111,7 @@ async fn sends_routing_controls_and_session_id() {
 
     assert_eq!(
         body["models"],
-        json!(["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"])
+        json!(["openai/gpt-5-mini", "anthropic/claude-sonnet-5.5"])
     );
     assert_eq!(body["route"], "fallback");
     assert_eq!(
@@ -373,7 +373,7 @@ async fn rejects_invalid_routing_before_dispatch() {
     insert_routing_option(
         &mut mismatch.driver_options,
         &OpenRouterRoutingConfig {
-            models: vec!["anthropic/claude-sonnet-4.5".to_string()],
+            models: vec!["anthropic/claude-sonnet-5.5".to_string()],
             route: Some(OpenRouterRoute::Fallback),
             ..Default::default()
         },

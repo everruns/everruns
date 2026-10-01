@@ -33,13 +33,13 @@ export async function connectAgentGitHub(
 }
 
 export async function disconnectAgentGitHub(identityId: string): Promise<void> {
-  await api.delete(`/v1/agent-identities/${identityId}/connections/github/app`);
+  await api.delete(`/v1/virtual-users/${identityId}/connections/github/app`);
 }
 
 export async function listGitHubRepositories(identityId: string): Promise<GitHubRepository[]> {
   return (
     await api.get<GitHubRepository[]>(
-      `/v1/agent-identities/${identityId}/connections/github/repositories`,
+      `/v1/virtual-users/${identityId}/connections/github/repositories`,
     )
   ).data;
 }

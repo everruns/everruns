@@ -151,7 +151,7 @@ fn generation(success: bool) -> LlmGenerationData {
             tool_calls: if success { vec![call] } else { vec![] },
         },
         metadata: LlmGenerationMetadata {
-            model: "claude-sonnet-4-5".to_string(),
+            model: "claude-sonnet-4-6".to_string(),
             provider: Some("anthropic".to_string()),
             response_model: None,
             usage: Some(usage(120, 30)),
@@ -170,6 +170,7 @@ fn generation(success: bool) -> LlmGenerationData {
                 stream: Some(true),
                 ..LlmRequestOptions::default()
             }),
+            cost_components: Vec::new(),
         },
     }
 }
@@ -209,7 +210,7 @@ async fn run_full_turn(h: &Harness) {
         h.context(Some(reason_exec), None, None),
         ReasonThinkingStartedData {
             turn_id: h.turn,
-            model: Some("claude-sonnet-4-5".to_string()),
+            model: Some("claude-sonnet-4-6".to_string()),
         },
     )
     .await;
@@ -302,29 +303,29 @@ async fn run_full_turn(h: &Harness) {
 
 /// `gen_ai.response.model` must report what the provider served, not echo
 /// the alias that was requested. Both attributes previously came from
-/// `meta.model`, so a request for `claude-sonnet-4-5` served by
-/// `claude-sonnet-4-5-20250929` reported the alias twice and the only
+/// `meta.model`, so a request for `claude-sonnet-4-6` served by
+/// `claude-sonnet-4-6-20260217` reported the alias twice and the only
 /// record of which weights answered was lost.
 #[tokio::test]
 async fn response_model_reports_what_the_provider_served() {
     let h = Harness::new(false, TraceConventions::ALL);
     let mut data = generation(true);
-    data.metadata.response_model = Some("claude-sonnet-4-5-20250929".to_string());
+    data.metadata.response_model = Some("claude-sonnet-4-6-20260217".to_string());
     h.emit(0, h.context(None, None, None), h.turn_started())
         .await;
     h.emit(600, h.context(Some(ExecId::new()), Some("g1"), None), data)
         .await;
 
     let spans = h.spans();
-    let chat = by_name(&spans, "chat claude-sonnet-4-5");
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
     assert_eq!(
         attr_str(chat, "gen_ai.request.model").as_deref(),
-        Some("claude-sonnet-4-5"),
+        Some("claude-sonnet-4-6"),
         "the request attribute keeps the alias that was asked for"
     );
     assert_eq!(
         attr_str(chat, "gen_ai.response.model").as_deref(),
-        Some("claude-sonnet-4-5-20250929"),
+        Some("claude-sonnet-4-6-20260217"),
         "the response attribute must carry the served model"
     );
 }
@@ -343,10 +344,10 @@ async fn response_model_falls_back_to_the_request_when_unreported() {
         .await;
 
     let spans = h.spans();
-    let chat = by_name(&spans, "chat claude-sonnet-4-5");
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
     assert_eq!(
         attr_str(chat, "gen_ai.response.model").as_deref(),
-        Some("claude-sonnet-4-5")
+        Some("claude-sonnet-4-6")
     );
 }
 
@@ -365,7 +366,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
 
     let turn = by_name(&spans, "invoke_agent Weather Helper");
     let reason = by_name(&spans, "reason");
-    let chat = by_name(&spans, "chat claude-sonnet-4-5");
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
     let thinking = by_name(&spans, "thinking");
     let act = by_name(&spans, "act");
     let tool = by_name(&spans, "execute_tool get_weather");
@@ -443,7 +444,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
     );
     assert_eq!(
         attr_str(chat, "gen_ai.request.model").as_deref(),
-        Some("claude-sonnet-4-5")
+        Some("claude-sonnet-4-6")
     );
     assert_eq!(
         attr_str(chat, "gen_ai.response.id").as_deref(),
@@ -493,7 +494,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
     );
     assert_eq!(
         attr_str(chat, "llm.model_name").as_deref(),
-        Some("claude-sonnet-4-5")
+        Some("claude-sonnet-4-6")
     );
     assert_eq!(attr_str(chat, "llm.provider").as_deref(), Some("anthropic"));
     assert_eq!(attr(chat, "llm.token_count.prompt"), Some(&Value::I64(120)));
@@ -597,7 +598,7 @@ async fn content_capture_records_spec_shaped_messages() {
     run_full_turn(&h).await;
     let spans = h.spans();
     let turn = by_name(&spans, "invoke_agent Weather Helper");
-    let chat = by_name(&spans, "chat claude-sonnet-4-5");
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
     let thinking = by_name(&spans, "thinking");
     let tool = by_name(&spans, "execute_tool get_weather");
 
@@ -717,7 +718,7 @@ async fn chat_without_thinking_is_backdated_by_its_duration() {
     )
     .await;
     let spans = h.spans();
-    let chat = by_name(&spans, "chat claude-sonnet-4-5");
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
     assert_eq!(chat.start_time, SystemTime::from(h.at(100)));
     assert_eq!(chat.end_time, SystemTime::from(h.at(600)));
     assert_eq!(chat.span_kind, SpanKind::Client);
@@ -777,7 +778,7 @@ async fn failures_carry_error_type_status_and_exception_event() {
     .await;
 
     let spans = h.spans();
-    let chat = by_name(&spans, "chat claude-sonnet-4-5");
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
     assert_eq!(attr_str(chat, "error.type").as_deref(), Some("503"));
     assert!(
         matches!(&chat.status, Status::Error { description } if description == "provider returned 503")
@@ -839,7 +840,7 @@ async fn cancelled_turn_closes_everything_under_it() {
         h.context(Some(exec), None, None),
         ReasonThinkingStartedData {
             turn_id: h.turn,
-            model: Some("claude-sonnet-4-5".to_string()),
+            model: Some("claude-sonnet-4-6".to_string()),
         },
     )
     .await;
@@ -860,7 +861,7 @@ async fn cancelled_turn_closes_everything_under_it() {
         "{:?}",
         spans.iter().map(|s| s.name.clone()).collect::<Vec<_>>()
     );
-    for name in ["reason", "thinking", "chat claude-sonnet-4-5"] {
+    for name in ["reason", "thinking", "chat claude-sonnet-4-6"] {
         let span = by_name(&spans, name);
         assert_eq!(
             attr(span, "everruns.span.unterminated"),
@@ -898,7 +899,7 @@ async fn pending_chat_is_closed_when_no_generation_record_arrives() {
         h.context(Some(exec), None, None),
         ReasonThinkingStartedData {
             turn_id: h.turn,
-            model: Some("claude-sonnet-4-5".to_string()),
+            model: Some("claude-sonnet-4-6".to_string()),
         },
     )
     .await;
@@ -918,7 +919,7 @@ async fn pending_chat_is_closed_when_no_generation_record_arrives() {
     )
     .await;
     let spans = h.spans();
-    let chat = by_name(&spans, "chat claude-sonnet-4-5");
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
     assert_eq!(chat.end_time, SystemTime::from(h.at(500)));
     assert!(
         matches!(&chat.status, Status::Error { description } if description == "stream dropped")
@@ -1031,7 +1032,7 @@ async fn conventions_can_be_narrowed() {
         );
     }
     // Span names, kinds, and hierarchy do not depend on the vocabulary.
-    let chat = by_name(&spans, "chat claude-sonnet-4-5");
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
     assert_eq!(
         attr_str(chat, "openinference.span.kind").as_deref(),
         Some("LLM")
@@ -1067,4 +1068,46 @@ async fn listener_subscribes_to_the_thirteen_lifecycle_events() {
     assert_eq!(h.listener.name(), "OtelEventListener");
     assert!(!h.listener.record_content());
     assert_eq!(h.listener.conventions(), TraceConventions::ALL);
+}
+
+#[tokio::test]
+async fn provider_correlation_and_unknown_costs_reach_the_chat_span() {
+    use everruns_core::events::LlmCostComponent;
+    let h = Harness::new(false, TraceConventions::ALL);
+    h.emit(0, h.context(None, None, None), h.turn_started())
+        .await;
+    let data = generation(true).with_cost_components(vec![
+        LlmCostComponent::new(
+            LlmCostComponent::MODEL_TOKENS,
+            "gpt-6-astra",
+            Some(10),
+            Some(0.1),
+        ),
+        LlmCostComponent::new(LlmCostComponent::CONTAINER, "openai_hosted", None, None),
+    ]);
+    let mut event = Event::new(h.session, h.context(None, Some("g1"), None), data);
+    event.ts = h.at(600);
+    event.metadata = Some(json!({
+        "runtime_backend": "openai_agents_api",
+        "provider_session_id": "sess_1",
+        "provider_turn_id": "turn_1",
+        "provider_item_id": null,
+    }));
+    h.listener.on_event(&event).await;
+    let spans = h.spans();
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
+    assert_eq!(
+        attr_str(chat, "everruns.provider_session_id").as_deref(),
+        Some("sess_1")
+    );
+    assert_eq!(
+        attr_str(chat, "everruns.runtime_backend").as_deref(),
+        Some("openai_agents_api")
+    );
+    assert!(attr(chat, "everruns.provider_item_id").is_none());
+    // The local turn id stays the span's identity.
+    assert_eq!(attr_str(chat, "everruns.turn.id"), Some(h.turn.to_string()));
+    let unknown = attr_str(chat, "everruns.usage.cost_unknown_components").unwrap();
+    assert!(unknown.contains("container:openai_hosted"), "{unknown}");
+    assert!(!unknown.contains("model_tokens"), "{unknown}");
 }

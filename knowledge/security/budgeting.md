@@ -103,6 +103,8 @@ Immutable raw activity fact. Current writers:
 
 The journal stores scope (`org_id`, `user_id`, `principal_id`, `session_id`, `agent_id`, `harness_id`) plus raw `measures` and free-form `metadata`.
 
+A generation can declare billable components beyond its tokens (`cost_components` on `llm.generation`, used by the OpenAI Agents API backend for hosted tools and containers). The meter debits the priced ones and records every component whose amount is unknown in the journal metadata and the ledger's rating metadata as `cost_unknown_components`, so a total never silently treats an unknown amount as zero. A generation whose token usage is unknown but declares components still journals, with zero tokens ([meter](../../crates/server/src/domains/budgets/service.rs), `GenerationMeter`).
+
 ### Usage Ledger
 
 Immutable, append-only rated posting derived from a journal row. Positive = debit, negative = credit (top-up/refund). Each ledger row links back to `journal_id`; budget-scoped postings also carry `budget_id`. Protected by append-only triggers in Postgres.

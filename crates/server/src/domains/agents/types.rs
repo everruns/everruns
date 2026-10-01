@@ -17,6 +17,9 @@ pub use crate::storage::models::{AgentRow, CreateAgentRow, UpdateAgent};
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateAgentRequest {
+    #[serde(default)]
+    #[schema(value_type=Option<String>)]
+    pub service_virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
     /// Client-supplied agent ID (format: agent_{32-hex}).
     /// If not provided, one is auto-generated.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,6 +117,13 @@ pub struct CreateAgentRequest {
 // publishes those into docs/api/openapi.json, and this is an internal note.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct UpdateAgentRequest {
+    #[serde(
+        default,
+        deserialize_with = "crate::api::common::deserialize_nullable_update_field"
+    )]
+    #[schema(value_type=Option<String>)]
+    pub service_virtual_user_id:
+        everruns_durable::UpdateField<everruns_provider::typed_id::VirtualUserId>,
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "updated-support")]

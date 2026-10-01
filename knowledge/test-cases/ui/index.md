@@ -4,7 +4,7 @@
 * [Agent chat](agent_chat/) - 2 manual UI cases.
 * [Agent checks](agent_checks/) - 2 manual UI cases.
 * [Agent credentials](agent_credentials/) - 1 manual UI case.
-* [Agent identities](agent_identities/) - 3 manual UI cases.
+* [Virtual users](agent_identities/) - 3 manual UI cases.
 * [Agent integrations](agent_integrations/) - 2 manual UI cases.
 * [Agent MCP attachments](agent_mcp_attachments/) - 1 manual UI case.
 * [Agent triggers](agent_triggers/) - 1 manual UI case.

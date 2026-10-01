@@ -8,13 +8,14 @@ use everruns_core::{
     EgressStreamResponse, McpServerActsAs, McpServerAuthMode, ScopedMcpServer, ScopedMcpServers,
     mcp_oauth_provider_id_for_uuid,
 };
-use everruns_provider::typed_id::{AgentId, AgentIdentityId, PrincipalId, SessionId};
+use everruns_provider::typed_id::{AgentId, PrincipalId, SessionId, VirtualUserId};
 use everruns_server::CapabilityService;
 use everruns_server::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions;
 use everruns_server::domains::mcp_servers::{McpServerService, McpServerSettings};
 use everruns_server::storage::models::{
-    CreateAgentIdentityConnectionRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
-    CreateUserConnectionRow, UpdateMcpServerTools,
+    CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
+    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, CreateVirtualUserRow,
+    UpdateMcpServerTools,
 };
 use everruns_server::storage::{DbConnectionResolver, EncryptionService, StorageBackend};
 use serde_json::{Value, json};
@@ -92,7 +93,7 @@ struct CacheFixture {
     server_id: Uuid,
     provider: String,
     agent_id: Uuid,
-    identity_id: AgentIdentityId,
+    identity_id: VirtualUserId,
     user_a: Uuid,
     user_b: Uuid,
     session_a: SessionId,
@@ -102,6 +103,13 @@ struct CacheFixture {
 impl CacheFixture {
     async fn new(scope: &'static str, ttl_ms: i64) -> Self {
         let db = Arc::new(StorageBackend::in_memory());
+        everruns_server::seed::seed_all(
+            &db,
+            everruns_core::DeploymentGrade::Dev,
+            &everruns_server::seed::SeedAuthContext::default(),
+        )
+        .await
+        .unwrap();
         let encryption = EncryptionService::new(TEST_KEY, &[]).unwrap();
         let egress = Arc::new(CountingMcpServer::new(scope, ttl_ms));
         let row = db
@@ -127,10 +135,58 @@ impl CacheFixture {
             .unwrap();
         let server_id = row.id.uuid();
         let provider = mcp_oauth_provider_id_for_uuid(server_id);
-        let agent_id = Uuid::new_v4();
-        let identity_id = AgentIdentityId::new();
-        let user_a = Uuid::new_v4();
-        let user_b = Uuid::new_v4();
+        let harness_id = db
+            .get_harness_by_name(DEFAULT_ORG_ID, "generic")
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+        let agent_id = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    public_id: AgentId::new().to_string(),
+                    name: "cache-agent".into(),
+                    display_name: None,
+                    description: None,
+                    intro_markdown: None,
+                    short_description: None,
+                    starters: json!([]),
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: json!([]),
+                    tools: json!([]),
+                    mcp_servers: json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap()
+            .id
+            .uuid();
+        let identity_id = VirtualUserId::new();
+        db.create_virtual_user(CreateVirtualUserRow {
+            id: identity_id,
+            org_id: DEFAULT_ORG_ID,
+            usage: "service".into(),
+            name: "Cache service".into(),
+            description: None,
+            avatar_url: None,
+            locale: None,
+            timezone: None,
+        })
+        .await
+        .unwrap();
+        db.set_virtual_user_id(DEFAULT_ORG_ID, agent_id.into(), identity_id)
+            .await
+            .unwrap();
+        let user_a = create_runtime_user(&db).await;
+        let user_b = create_runtime_user(&db).await;
         let session_a = create_persisted_session(&db, agent_id, identity_id, user_a).await;
         let session_b = create_persisted_session(&db, agent_id, identity_id, user_b).await;
         let resolver: Arc<dyn UserConnectionResolver> = Arc::new(DbConnectionResolver::new(
@@ -180,7 +236,7 @@ impl CacheFixture {
             DEFAULT_ORG_ID,
             &servers,
             Some(session_id),
-            Some(&self.resolver),
+            Some(&self.resolver.for_execution(session_id.uuid()).unwrap()),
             self.egress.as_ref(),
         )
         .await
@@ -189,8 +245,8 @@ impl CacheFixture {
 
     async fn set_identity_token(&self, token: &str) {
         self.db
-            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-                agent_identity_id: self.identity_id,
+            .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
+                virtual_user_id: self.identity_id,
                 provider: self.provider.clone(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
@@ -229,56 +285,93 @@ impl CacheFixture {
 async fn create_persisted_session(
     db: &StorageBackend,
     agent_id: Uuid,
-    identity_id: AgentIdentityId,
+    identity_id: VirtualUserId,
     user_id: Uuid,
 ) -> SessionId {
     let principal_id = PrincipalId::new();
     db.create_principal(CreatePrincipalRow {
         id: principal_id,
         org_id: DEFAULT_ORG_ID,
-        kind: "user".to_string(),
+        kind: "virtual_user".to_string(),
         subject_id: Some(user_id),
         parent_principal_id: None,
-        resolved_user_id: Some(user_id),
+        resolved_user_id: None,
         metadata: json!({}),
     })
     .await
     .unwrap();
-    db.create_session(CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        org_id: DEFAULT_ORG_ID,
-        workspace_id: None,
-        app_id: None,
-        endpoint_id: None,
-        trigger_id: None,
-        harness_id: None,
-        agent_id: Some(AgentId::from_uuid(agent_id)),
-        agent_version_id: None,
-        agent_config_hash: None,
-        agent_identity_id: Some(identity_id),
-        owner_principal_id: principal_id,
-        resolved_owner_user_id: Some(user_id),
-        title: None,
-        locale: None,
-        tags: Vec::new(),
-        model_id: None,
-        capabilities: json!([]),
-        tools: json!([]),
-        mcp_servers: json!({}),
-        system_prompt: None,
-        initial_files: json!([]),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
-    })
+    let session = db
+        .create_session(CreateSessionRow {
+            trigger_id: None,
+            source: everruns_platform::SessionSource::Api,
+            org_id: DEFAULT_ORG_ID,
+            workspace_id: None,
+            app_id: None,
+            endpoint_id: None,
+            harness_id: None,
+            agent_id: Some(AgentId::from_uuid(agent_id)),
+            agent_version_id: None,
+            agent_config_hash: None,
+            virtual_user_id: Some(identity_id),
+            owner_principal_id: principal_id,
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: Vec::new(),
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    db.record_runtime_invocation(
+        DEFAULT_ORG_ID,
+        session,
+        session.uuid(),
+        Some(VirtualUserId::from_uuid(user_id)),
+        None,
+        Some(agent_id),
+    )
     .await
-    .unwrap()
-    .id
+    .unwrap();
+    session
+}
+
+async fn create_runtime_user(db: &StorageBackend) -> Uuid {
+    let user = db
+        .create_user(CreateUserRow {
+            email: format!("cache-{}@example.com", Uuid::new_v4()),
+            name: "Cache user".into(),
+            avatar_url: None,
+            roles: vec!["user".into()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    db.add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+        .await
+        .unwrap();
+    db.default_virtual_user(DEFAULT_ORG_ID, user.id)
+        .await
+        .unwrap()
+        .id
+        .uuid()
 }
 
 fn hash(token: &str) -> String {
@@ -334,7 +427,7 @@ async fn persisted_grant_revoke_and_acts_as_transition_do_not_reuse_cache_entrie
     assert_eq!(fixture.egress.calls(), 1);
     fixture
         .db
-        .delete_agent_identity_connection(fixture.identity_id, &fixture.provider)
+        .delete_virtual_user_connection(fixture.identity_id, &fixture.provider)
         .await
         .unwrap();
     assert!(

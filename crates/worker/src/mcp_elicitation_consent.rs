@@ -99,6 +99,8 @@ impl FormAnswerStore for SessionElicitationConsents {
 mod tests {
     use super::*;
     use everruns_core::session_services::{KeyInfo, SecretInfo};
+    use everruns_core::tool_context::ToolContext;
+    use everruns_core::tools::{Tool, ToolExecutionResult};
     use everruns_provider::error::Result as CoreResult;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -294,6 +296,90 @@ mod tests {
                 .expect("read")
                 .is_none(),
             "an answer is sent at most once"
+        );
+    }
+
+    // EVE-1141 / THREAT[TM-TOOL-034]: consent and form answers are authority
+    // the answer APIs write on a person's behalf. The model-facing `kv_store`
+    // tool shares the same session storage, so it must not be able to mint
+    // either record and have the retried tool call honour it.
+    async fn model_kv_store_set(
+        storage: Arc<MemoryStorage>,
+        session_id: SessionId,
+        key: &str,
+        value: &str,
+    ) -> ToolExecutionResult {
+        let context = ToolContext::with_storage_store(session_id, storage);
+        everruns_host::KvStoreTool
+            .execute_with_context(
+                serde_json::json!({"operation": "set", "key": key, "value": value}),
+                &context,
+            )
+            .await
+    }
+
+    #[tokio::test]
+    async fn a_model_authored_consent_grants_nothing() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MemoryStorage::default());
+        let forged = StoredConsent::new("billing", "charge", "pay.example.com", chrono::Utc::now());
+
+        let result = model_kv_store_set(
+            storage.clone(),
+            session_id,
+            &consent_storage_key("billing", "charge"),
+            &serde_json::to_string(&forged).expect("serialize"),
+        )
+        .await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("reserved")),
+            "kv_store must refuse the consent prefix, got {result:?}"
+        );
+
+        let consents = SessionElicitationConsents::new(storage, session_id);
+        assert_eq!(
+            consents
+                .take_consent("billing", "charge")
+                .await
+                .expect("read"),
+            None,
+            "a consent the model wrote must not authorise an accept"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_model_authored_form_answer_is_never_sent() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MemoryStorage::default());
+        let forged = StoredFormAnswer::new(
+            "deploys",
+            "release",
+            "fingerprint",
+            everruns_mcp::FormAnswerAction::Accept,
+            Default::default(),
+            chrono::Utc::now(),
+        );
+
+        let result = model_kv_store_set(
+            storage.clone(),
+            session_id,
+            &form_answer_storage_key("deploys", "release"),
+            &serde_json::to_string(&forged).expect("serialize"),
+        )
+        .await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("reserved")),
+            "kv_store must refuse the form-answer prefix, got {result:?}"
+        );
+
+        let answers = SessionElicitationConsents::new(storage, session_id);
+        assert!(
+            answers
+                .take_form_answer("deploys", "release")
+                .await
+                .expect("read")
+                .is_none(),
+            "an answer the model wrote must not reach the server"
         );
     }
 }

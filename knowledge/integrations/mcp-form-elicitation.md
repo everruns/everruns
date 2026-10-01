@@ -181,7 +181,10 @@ retry carries `inputResponses: {<key>: {action, content}}` rather than a bare
 
 Because the retry may run in a different worker process than the call that asked,
 the collected answer is session-scoped durable state, as URL mode's consent
-record is.
+record is. Like that record, its session-storage prefix is reserved from the
+model-facing `kv_store` tool, so only the question-answer API can park an
+answer and a model cannot answer a server's form in the person's name
+(TM-TOOL-034).
 
 ## How it landed
 

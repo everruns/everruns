@@ -160,13 +160,16 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
              organizations, agents, agent_endpoints, agent_triggers,
              harnesses, harness_capabilities, agent_capabilities, agent_versions,
              principals, users, sessions, workspaces, session_participants,
-             events, event_sequences, images, memories, models
+             events, event_sequences, images, memories, models,
+             virtual_users, virtual_user_bindings, runtime_invocations,
+             organization_members, reporting_outbox
          TO {role};
          GRANT INSERT ON
              sessions, workspaces, session_participants, events, images,
-             event_sequences, memories, reporting_outbox, audit_logs
+             event_sequences, memories, reporting_outbox, audit_logs,
+             virtual_users, virtual_user_bindings, runtime_invocations, principals
          TO {role};
-         GRANT UPDATE ON sessions, agent_endpoints, event_sequences TO {role};
+         GRANT UPDATE ON sessions, agent_endpoints, event_sequences, virtual_user_bindings, principals, virtual_users, runtime_invocations, session_participants, reporting_outbox TO {role};
          GRANT SELECT, INSERT, UPDATE, DELETE ON agent_trigger_deliveries TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
@@ -644,7 +647,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         event_delivery.clone(),
         "https://example.com/api".to_string(),
     );
-    let webhook_state = api::app_webhooks::AppWebhookState::new(
+    let webhook_state = api::endpoint_webhooks::EndpointWebhookState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -652,7 +655,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         event_delivery.clone(),
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-webhook"),
     );
-    let a2a_state = api::app_a2a::AppA2aState::new(
+    let a2a_state = api::endpoint_a2a::EndpointA2aState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -663,7 +666,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         api::a2a_signing::A2aReplayStore::in_memory(),
         "https://app.everruns.test".to_string(),
     );
-    let api_state = api::app_api::AppApiState::new(
+    let api_state = api::endpoint_api::EndpointApiState::new(
         db,
         None,
         runner,
@@ -677,9 +680,9 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         .merge(api::public_chat::routes(public_chat_state))
         .merge(api::fcp::routes(fcp_state))
         .merge(api::slack_events::routes(slack_state))
-        .merge(api::app_webhooks::routes(webhook_state))
-        .merge(api::app_a2a::routes(a2a_state))
-        .merge(api::app_api::routes(api_state))
+        .merge(api::endpoint_webhooks::routes(webhook_state))
+        .merge(api::endpoint_a2a::routes(a2a_state))
+        .merge(api::endpoint_api::routes(api_state))
 }
 
 async fn assert_route_status(

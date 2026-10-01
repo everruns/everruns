@@ -3,9 +3,9 @@
 // Design Decision:
 // - AgentTrigger is an org-scoped, agent-owned entity that describes how an
 //   agent gets invoked autonomously (e.g. on a schedule). It mirrors the
-//   AgentIdentity CRUD shape (see `agent_identity.rs`).
+//   VirtualUser CRUD shape (see `virtual_user.rs`).
 // - The concrete per-type configuration lives in `config` (JSONB). Typed
-//   accessors parse it on demand, mirroring `AppChannel::schedule_config()`.
+//   accessors parse it on demand, mirroring `AgentEndpoint::schedule_config()`.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -271,7 +271,7 @@ pub struct AgentTrigger {
 impl AgentTrigger {
     /// Parse `config` as [`ScheduleTriggerConfig`]. Errors if this is not a
     /// schedule trigger or the config is malformed. Mirrors
-    /// `AppChannel::schedule_config()`.
+    /// `AgentEndpoint::schedule_config()`.
     pub fn schedule_config(&self) -> anyhow::Result<ScheduleTriggerConfig> {
         if self.trigger_type != AgentTriggerType::Schedule {
             anyhow::bail!("agent trigger {} is not a schedule trigger", self.id);

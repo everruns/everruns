@@ -181,7 +181,7 @@ async fn run_case(
                 harness_name: None,
                 agent_id: None,
                 agent_name: None,
-                agent_identity_id: None,
+                virtual_user_id: None,
                 title: Some(format!("Health check: {}", case.name)),
                 goal: None,
                 locale: None,
@@ -285,6 +285,7 @@ async fn run_turn(
 ) -> Result<(), String> {
     let last_seq = ctx.db.count_events(session.id, &[]).await.unwrap_or(0) as i32;
     let msg_ctx = CreateMessageContext {
+        runtime_subject_principal_id: None,
         org_id,
         user_id: None,
         harness_id,

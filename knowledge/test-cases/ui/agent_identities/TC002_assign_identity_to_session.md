@@ -1,23 +1,23 @@
 ---
 type: Test Case
 title: "TC002: Assign Identity to Session"
-description: "Verify that an agent identity can be assigned to a session during creation."
+description: "Verify that an service virtual user can be assigned to a session during creation."
 tags:
   - everruns
   - test-case
   - ui
-  - agent-identities
+  - virtual-users
 ---
 # TC002: Assign Identity to Session
 
 ## Description
 
-Verify that an agent identity can be assigned to a session during creation.
+Verify that an service virtual user can be assigned to a session during creation.
 
 ## Preconditions
 
 - UI running (dev or full mode)
-- At least one agent identity exists
+- At least one service virtual user exists
 - At least one agent exists
 
 ## Steps

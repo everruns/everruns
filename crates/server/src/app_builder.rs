@@ -135,6 +135,7 @@ fn spawn_background_tasks(
     server_context: &ServerContext,
     background_tasks: Vec<BackgroundTaskFn>,
 ) {
+    crate::agents_api_lifecycle::track(supervisor, server_context);
     for task_fn in background_tasks {
         let ctx = server_context.clone();
         supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));
@@ -1082,12 +1083,12 @@ impl ServerAppBuilder {
             encryption.clone(),
             auth_state.clone(),
         );
-        let agent_identities_state = api::agent_identities::AppState::new(
+        let virtual_users_state = api::virtual_users::AppState::new(
             db.clone(),
             capability_service.clone(),
             auth_state.clone(),
         );
-        let agent_identity_connections_state = api::agent_identity_connections::AppState::new(
+        let virtual_user_connections_state = api::virtual_user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
             auth_state.clone(),
@@ -1171,7 +1172,7 @@ impl ServerAppBuilder {
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         };
-        let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
+        let endpoint_webhooks_state = api::endpoint_webhooks::EndpointWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1215,7 +1216,7 @@ impl ServerAppBuilder {
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
         };
-        let app_a2a_state = api::app_a2a::AppA2aState::new(
+        let endpoint_a2a_state = api::endpoint_a2a::EndpointA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1226,7 +1227,7 @@ impl ServerAppBuilder {
             a2a_replay_store,
             auth_config.frontend_url.clone(),
         );
-        let app_api_state = api::app_api::AppApiState::new(
+        let endpoint_api_state = api::endpoint_api::EndpointApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1242,7 +1243,8 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             sse_tracker.clone(),
             ag_ui_rate_limiter,
-        );
+        )
+        .with_runtime_auth(auth_state.clone());
         let fcp_state = api::fcp::FcpState::new(
             db.clone(),
             encryption.clone(),
@@ -1260,7 +1262,8 @@ impl ServerAppBuilder {
             sse_tracker.clone(),
             public_chat_rate_limiter,
         )
-        .with_public_chat_enabled(feature_flags.public_chat);
+        .with_public_chat_enabled(feature_flags.public_chat)
+        .with_runtime_auth(auth_state.clone());
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
             event_service.clone(),
@@ -1500,9 +1503,15 @@ impl ServerAppBuilder {
             .merge(api::agent_examples::routes(agent_examples_state))
             .merge(api::agents::routes(agents_state))
             .merge(api::agent_credentials::routes(agent_credentials_state))
-            .merge(api::agent_identities::routes(agent_identities_state))
-            .merge(api::agent_identity_connections::routes(
-                agent_identity_connections_state,
+            .merge(api::runtime_auth::routes(api::runtime_auth::AppState {
+                db: db.clone(),
+                auth: auth_state.clone(),
+                encryption: encryption.clone(),
+                verifier: api::app_endpoint_auth::AppEndpointAuthVerifier::new(),
+            }))
+            .merge(api::virtual_users::routes(virtual_users_state))
+            .merge(api::virtual_user_connections::routes(
+                virtual_user_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
             .merge(api::agent_endpoints::routes(agent_triggers_state.clone()))
@@ -1588,9 +1597,9 @@ impl ServerAppBuilder {
                     slack_provisioning,
                 ),
             ))
-            .merge(api::app_webhooks::routes(app_webhooks_state))
-            .merge(api::app_a2a::routes(app_a2a_state))
-            .merge(api::app_api::routes(app_api_state))
+            .merge(api::endpoint_webhooks::routes(endpoint_webhooks_state))
+            .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
+            .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))
@@ -2448,9 +2457,8 @@ impl ServerAppBuilder {
         );
 
         // -- Knowledge Index Syncout (both prod and dev) --
-        // Reuses the same GitHub connection resolver as Memory sync, plus the
-        // shared provider resolver / driver registry (for embeddings) and the
-        // platform-selected vector store. See knowledge/runtime-resources/knowledge-indexes.md.
+        // Reuses Memory sync's GitHub connection resolver, the provider resolver, the driver
+        // registry (embeddings), and the vector store: knowledge/runtime-resources/knowledge-indexes.md
         supervisor.track_optional(
             "knowledge_index_sync",
             crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(
@@ -2617,91 +2625,5 @@ impl Http2FlowConfig {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_h2_config_defaults() {
-        let config = Http2FlowConfig::from_values(None, None, None);
-        assert_eq!(config.stream_window, 2 * 1024 * 1024); // 2 MB
-        assert_eq!(config.connection_window, 16 * 1024 * 1024); // 16 MB
-        assert_eq!(config.max_concurrent_streams, 256);
-    }
-
-    #[test]
-    fn test_h2_config_from_env() {
-        let config = Http2FlowConfig::from_values(Some("4194304"), Some("33554432"), Some("512"));
-        assert_eq!(config.stream_window, 4 * 1024 * 1024);
-        assert_eq!(config.connection_window, 32 * 1024 * 1024);
-        assert_eq!(config.max_concurrent_streams, 512);
-    }
-
-    #[test]
-    fn test_h2_config_invalid_env_uses_defaults() {
-        let config = Http2FlowConfig::from_values(Some("not_a_number"), Some(""), None);
-        assert_eq!(config.stream_window, 2 * 1024 * 1024); // falls back to default
-        assert_eq!(config.connection_window, 16 * 1024 * 1024); // falls back to default
-        assert_eq!(config.max_concurrent_streams, 256); // not set, default
-    }
-
-    // EVE-401: embedders can layer route-specific middleware on the auto-mounted
-    // personal access token CRUD router via `wrap_personal_access_token_routes()` without re-mounting.
-    #[tokio::test]
-    async fn wrap_personal_access_token_routes_applies_custom_layer() {
-        use axum::body::Body;
-        use axum::http::{HeaderName, HeaderValue, Request, StatusCode};
-        use axum::routing::get;
-        use tower::ServiceExt;
-        use tower_http::set_header::SetResponseHeaderLayer;
-
-        let base = Router::new().route("/v1/auth/personal-access-tokens", get(|| async { "ok" }));
-        let wrap: PersonalAccessTokenRoutesWrapFn = Box::new(|r: Router| {
-            r.layer(SetResponseHeaderLayer::if_not_present(
-                HeaderName::from_static("x-eve-401-marker"),
-                HeaderValue::from_static("applied"),
-            ))
-        });
-
-        let router = apply_personal_access_token_routes_wrap(Some(wrap), base);
-
-        let response = router
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/auth/personal-access-tokens")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get("x-eve-401-marker").unwrap(),
-            "applied"
-        );
-    }
-
-    #[tokio::test]
-    async fn wrap_personal_access_token_routes_passthrough_when_none() {
-        use axum::body::Body;
-        use axum::http::{Request, StatusCode};
-        use axum::routing::get;
-        use tower::ServiceExt;
-
-        let base = Router::new().route("/v1/auth/personal-access-tokens", get(|| async { "ok" }));
-        let router = apply_personal_access_token_routes_wrap(None, base);
-
-        let response = router
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/auth/personal-access-tokens")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-        assert!(response.headers().get("x-eve-401-marker").is_none());
-    }
-}
+#[path = "app_builder_tests.rs"]
+mod tests;

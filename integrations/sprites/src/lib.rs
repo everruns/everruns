@@ -40,8 +40,13 @@ use tools::{
 // ============================================================================
 
 /// Capability plugins this crate contributes to a hosted catalog.
+///
+/// Experimental (dev grade only): Sprites is no longer part of the supported
+/// sandbox set. Its live coverage runs only on manual dispatch, and an outage of
+/// the vendor control plane had been turning `main` red, so prod registries
+/// leave it out the way they do other experimental integrations.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: false,
+    experimental_only: true,
     feature_flag: None,
     factory: || Box::new(SpritesCapability),
 }];
@@ -87,7 +92,8 @@ impl Capability for SpritesCapability {
     fn description(&self) -> &str {
         "Run code in persistent, hardware-isolated Linux microVMs powered by Sprites. \
          Create multiple Firecracker VMs per session with full ext4 filesystems, \
-         execute commands, manage files, checkpoint/restore state, and expose HTTP services."
+         execute commands, manage files, checkpoint/restore state, and expose HTTP services. \
+         EXPERIMENTAL: This capability may change."
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {

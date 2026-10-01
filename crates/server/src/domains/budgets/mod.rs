@@ -7,6 +7,8 @@ use everruns_core::{Permission, Policy, Rule};
 #[cfg(test)]
 mod agent_subject_tests;
 pub mod commands;
+#[cfg(test)]
+mod cost_component_tests;
 pub mod queries;
 #[cfg(test)]
 mod refusal_traceability_tests;

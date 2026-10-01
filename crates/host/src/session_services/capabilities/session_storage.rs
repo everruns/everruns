@@ -28,6 +28,18 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     // reach the model as context, so a session/tool actor forging them would
     // be writing its own prompt.
     everruns_core::channel::THREAD_CONTEXT_KV_KEY,
+    // Durable tool-approval decisions (EVE-1140). THREAT[TM-TOOL-008]: a
+    // session/tool actor that could write here would approve its own calls.
+    everruns_core::capabilities::TOOL_APPROVAL_KV_PREFIX,
+    // MCP elicitation consent and form answers (EVE-1141). THREAT[TM-TOOL-034]:
+    // the retried tool call honours whatever record sits here, so a model that
+    // could write one would accept a URL elicitation or answer a server's form
+    // on the person's behalf. Only the answer APIs write these.
+    everruns_core::capabilities::MCP_ELICITATION_CONSENT_KV_PREFIX,
+    everruns_core::capabilities::MCP_ELICITATION_FORM_KV_PREFIX,
+    // Computer-use action counter (EVE-1141). THREAT[TM-TOOL-050]: resetting or
+    // deleting it would lift the per-session action cap.
+    everruns_core::computer_use::COMPUTER_USE_ACTION_COUNT_KEY,
 ];
 const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:", "mcp_oauth:"];
 // Exact reserved secret names. Unlike the prefixes above, this one cannot
@@ -651,7 +663,64 @@ mod tests {
     #[test]
     fn test_internal_kv_key_filtering() {
         assert!(is_internal_session_kv_key("agent_run:abc"));
+        assert!(is_internal_session_kv_key(
+            "tool_approval/always/send_email"
+        ));
+        assert!(is_internal_session_kv_key("tool_approval/once/sha256_ab"));
+        assert!(is_internal_session_kv_key(
+            "mcp/elicitation-consent/billing/charge"
+        ));
+        assert!(is_internal_session_kv_key(
+            "mcp/elicitation-form/deploys/release"
+        ));
+        assert!(is_internal_session_kv_key("computer_use.action_count"));
         assert!(!is_internal_session_kv_key("user:agent_run:abc"));
+        assert!(!is_internal_session_kv_key("mcp/notes"));
+        assert!(!is_internal_session_kv_key("computer_use.notes"));
+    }
+
+    // EVE-1141: every gate whose decision is read back from session storage
+    // must be out of the model's reach through kv_store, for every operation.
+    #[tokio::test]
+    async fn test_kv_store_rejects_every_security_gate_key() {
+        let tool = KvStoreTool;
+        let session_id = SessionId::new();
+        let storage = Arc::new(TestStorageStore::default());
+        let context = ToolContext::with_storage_store(session_id, storage.clone());
+        let gate_keys = [
+            "tool_approval/always/send_email",
+            "mcp/elicitation-consent/billing/charge",
+            "mcp/elicitation-form/deploys/release",
+            everruns_core::computer_use::COMPUTER_USE_ACTION_COUNT_KEY,
+        ];
+
+        for key in gate_keys {
+            storage.set_value(session_id, key, "trusted").await.unwrap();
+            for arguments in [
+                json!({"operation": "set", "key": key, "value": "forged"}),
+                json!({"operation": "get", "key": key}),
+                json!({"operation": "delete", "key": key}),
+            ] {
+                let result = tool.execute_with_context(arguments, &context).await;
+                assert!(
+                    matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("reserved")),
+                    "{key}: expected reserved-key error, got {result:?}"
+                );
+            }
+            assert_eq!(
+                storage.get_value(session_id, key).await.unwrap().as_deref(),
+                Some("trusted"),
+                "{key}: the record the system wrote is untouched"
+            );
+        }
+
+        let ToolExecutionResult::Success(listed) = tool
+            .execute_with_context(json!({"operation": "list"}), &context)
+            .await
+        else {
+            panic!("expected successful list");
+        };
+        assert_eq!(listed["count"], 0, "no gate key is listed: {listed}");
     }
 
     #[test]

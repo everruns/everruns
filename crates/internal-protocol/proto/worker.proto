@@ -41,6 +41,7 @@ service WorkerService {
     rpc InstallCompactionCheckpoint(InstallCompactionCheckpointRequest) returns (InstallCompactionCheckpointResponse);
 
     rpc NativeAsyncJournal(NativeAsyncJournalRequest) returns (NativeAsyncJournalResponse);
+    rpc AgentsApiJournal(AgentsApiJournalRequest) returns (AgentsApiJournalResponse);
 
     // Event operations
     rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
@@ -315,6 +316,7 @@ message GetTurnContextRequest {
     int64 org_id = 2;
     // Max messages to return (most recent N). 0 = use server default.
     optional int32 message_limit = 3;
+    Uuid input_message_id = 4;
 }
 
 message GetTurnContextResponse {
@@ -346,6 +348,7 @@ message McpToolDef {
 // ============================================================================
 
 message Agent {
+    optional Uuid service_virtual_user_id = 16;
     Uuid id = 1;
     string name = 2;
     string description = 3;
@@ -1198,6 +1201,7 @@ message GetMcpServerByPrefixRequest {
     int64 org_id = 2;
     // Optional session scope for resolving harness/agent/session MCP servers.
     Uuid session_id = 3;
+    Uuid input_message_id = 4;
 }
 
 message GetMcpServerByPrefixResponse {
@@ -1308,12 +1312,15 @@ message SessionStorageListSecretsResponse {
 // ============================================================================
 
 message GetConnectionTokenRequest {
+    optional Uuid input_message_id = 4;
     reserved 3;
     Uuid session_id = 1;
     string provider = 2;  // e.g. "github", "daytona", "gitlab"
 }
 
 message GetMcpConnectionTokenRequest {
+    optional string server_prefix = 5;
+    optional Uuid input_message_id = 4;
     Uuid session_id = 1;
     string provider = 2;
     string acts_as = 3;
@@ -1323,6 +1330,8 @@ message GetConnectionTokenResponse {
     optional string token = 1;  // Decrypted token, or None if not connected
 }
 message InvalidateMcpConnectionRequest {
+    optional string server_prefix = 6;
+    optional Uuid input_message_id = 5;
     Uuid session_id = 1;
     string provider = 2;
     string acts_as = 3;
@@ -1332,6 +1341,7 @@ message InvalidateMcpConnectionRequest {
 message InvalidateMcpConnectionResponse {}
 
 message GetConnectionUserRequest {
+    optional Uuid input_message_id = 3;
     Uuid session_id = 1;
     string provider = 2;
 }
@@ -1573,6 +1583,8 @@ message SessionSqlDbQueryResponse {
 // === Generic domain command transport ===
 
 message ExecuteCommandRequest {
+    optional Uuid platform_session_id = 8;
+    optional Uuid input_message_id = 9;
     string name = 1;
     string api_version = 2;
     bytes params_json = 3;
@@ -1629,6 +1641,7 @@ enum PlatformCommandSurfaceOperation {
 }
 
 message InvokePlatformCommandSurfaceRequest {
+    optional Uuid input_message_id = 5;
     Uuid session_id = 1;
     int64 org_id = 2;
     PlatformCommandSurfaceOperation operation = 3;
@@ -1826,6 +1839,7 @@ message ExecuteMachinePaymentResponse {
 }
 
 message AuthorizeSessionCreationRequest {
+    optional Uuid input_message_id = 3;
     int64 org_id = 1;
     string session_id = 2;
 }
@@ -2169,3 +2183,14 @@ message NativeAsyncJournalRequest {
     bytes checkpoint_json = 6;
 }
 message NativeAsyncJournalResponse { bytes checkpoint_json = 1; }
+
+// Lease-fenced orchestration state for the OpenAI Agents API backend (EVE-1123).
+message AgentsApiJournalRequest {
+    enum Operation { ACQUIRE = 0; RENEW = 1; SAVE = 2; RELEASE = 3; }
+    Operation operation = 1;
+    int64 org_id = 2;
+    Uuid session_id = 3;
+    Uuid owner = 4;
+    bytes checkpoint_json = 5;
+}
+message AgentsApiJournalResponse { bytes checkpoint_json = 1; }

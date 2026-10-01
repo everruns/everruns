@@ -30,7 +30,7 @@ use everruns_platform::{
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
 use everruns_provider::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
-use everruns_provider::typed_id::{AgentId, SessionId};
+use everruns_provider::typed_id::{AgentId, MessageId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -59,7 +59,9 @@ use crate::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
 ///   permissive server might accept.
 /// - The client uses `NoAuthProvider`, so auth is always expressed via
 ///   `headers`.
+#[derive(Clone)]
 struct WorkerMcpResolver<A: WorkerAdapters> {
+    input_message_id: Option<Uuid>,
     adapters: A,
     org_id: i64,
     session_id: Uuid,
@@ -93,12 +95,26 @@ fn pending_oauth_connection(
 
 #[async_trait]
 impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
+    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn McpConnectionResolver>> {
+        let mut bound = self.clone();
+        bound.input_message_id = Some(id);
+        Some(Arc::new(bound))
+    }
+
     async fn resolve(&self, server_prefix: &str) -> anyhow::Result<Option<McpConnection>> {
-        let info = self
-            .adapters
-            .get_mcp_server_by_prefix(self.org_id, Some(self.session_id), server_prefix)
-            .await
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let info = match self.input_message_id {
+            Some(id) => {
+                self.adapters
+                    .get_mcp_server_for_execution(self.org_id, self.session_id, server_prefix, id)
+                    .await
+            }
+            None => {
+                self.adapters
+                    .get_mcp_server_by_prefix(self.org_id, Some(self.session_id), server_prefix)
+                    .await
+            }
+        }
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
         let mut headers = info.headers;
         let has_authorization = |headers: &std::collections::HashMap<String, String>| {
@@ -117,22 +133,18 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             && !has_authorization(&headers)
             && let Some(provider) = info.oauth_provider_id.as_deref()
         {
-            // An attachment that declares an acting identity resolves through
-            // the `actsAs`-aware lookup, which reads exactly one store and has
-            // no fallback. Attachments that declare none (legacy org-level MCP
-            // servers and inline scoped entries) keep the existing lookup, so
-            // configs predating `actsAs` behave exactly as they do today
-            // (EVE-1029).
-            let resolver = self.adapters.connection_resolver();
-            let resolved = if info.acts_as.is_none() {
-                resolver
-                    .get_connection_token(self.session_id.into(), provider)
-                    .await
-            } else {
-                resolver
-                    .get_mcp_connection_token(self.session_id.into(), provider, info.acts_as)
-                    .await
-            };
+            // Every OAuth lookup uses the attachment's verified acting identity.
+            let base = self.adapters.connection_resolver();
+            let resolver = self
+                .input_message_id
+                .and_then(|id| base.for_execution(id))
+                .unwrap_or(base);
+            let resolver = resolver
+                .for_mcp_operation(server_prefix)
+                .unwrap_or(resolver);
+            let resolved = resolver
+                .get_mcp_connection_token(self.session_id.into(), provider, info.acts_as)
+                .await;
 
             match resolved {
                 Ok(Some(token)) => {
@@ -181,11 +193,19 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         server_prefix: &str,
         rejected_connection: &McpConnection,
     ) -> anyhow::Result<()> {
-        let info = self
-            .adapters
-            .get_mcp_server_by_prefix(self.org_id, Some(self.session_id), server_prefix)
-            .await
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let info = match self.input_message_id {
+            Some(id) => {
+                self.adapters
+                    .get_mcp_server_for_execution(self.org_id, self.session_id, server_prefix, id)
+                    .await
+            }
+            None => {
+                self.adapters
+                    .get_mcp_server_by_prefix(self.org_id, Some(self.session_id), server_prefix)
+                    .await
+            }
+        }
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         if info.auth_mode != everruns_core::McpServerAuthMode::OAuth
             || info.acts_as == everruns_core::McpServerActsAs::None
         {
@@ -209,8 +229,15 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         let Some(rejected_credential_fingerprint) = rejected_credential_fingerprint else {
             return Ok(());
         };
-        self.adapters
-            .connection_resolver()
+        let base = self.adapters.connection_resolver();
+        let resolver = self
+            .input_message_id
+            .and_then(|id| base.for_execution(id))
+            .unwrap_or(base);
+        let resolver = resolver
+            .for_mcp_operation(server_prefix)
+            .unwrap_or(resolver);
+        resolver
             .invalidate_mcp_connection(
                 self.session_id.into(),
                 provider,
@@ -295,16 +322,34 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         org_id: i64,
         session_id: SessionId,
     ) -> Result<ResolvedTurnInputs> {
+        self.load_resolved_turn_for_execution(
+            org_id,
+            session_id,
+            everruns_provider::typed_id::MessageId::from_uuid(Uuid::nil()),
+        )
+        .await
+    }
+    async fn load_resolved_turn_for_execution(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        input_message_id: everruns_provider::typed_id::MessageId,
+    ) -> Result<ResolvedTurnInputs> {
         // The batched control-plane transport still ships stored records (see
         // `WorkerAdapters::load_turn_context`).
         // They are projected into the canonical resolved execution snapshot
         // here, at the platform boundary, so host execution never sees them
         // (EVE-872). The control plane returns the harness pre-merged, so the
         // effective definition folds identically to the in-process runtime.
-        let context = self
-            .adapters
-            .load_turn_context(org_id, session_id.uuid())
-            .await?;
+        let context = if input_message_id.uuid().is_nil() {
+            self.adapters
+                .load_turn_context(org_id, session_id.uuid())
+                .await?
+        } else {
+            self.adapters
+                .load_turn_context_for_execution(org_id, session_id.uuid(), input_message_id.uuid())
+                .await?
+        };
         // Loading seam (EVE-877/EVE-881): project the stored records into the
         // portable execution definitions; archived/deleted harnesses and
         // agents fail here, before the snapshot is built.
@@ -371,6 +416,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
     ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
         self.adapters.native_async_store()
+    }
+
+    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
+        self.adapters.agents_api_store()
     }
 
     fn compaction_checkpoint_store(
@@ -457,6 +506,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 platform_store.clone(),
             )));
         }
+        extensions.insert(Arc::new(everruns_core::tool_context::ExecutionServicesExt(
+            Arc::new(PlatformExecutionScope {
+                store: platform_store.clone(),
+                has_catalog: has_platform_capability,
+            }),
+        )));
         extensions.insert(Arc::new(PlatformStoreExt(platform_store)));
         if let Some(store) = self.adapters.knowledge_store() {
             extensions.insert(Arc::new(KnowledgeStoreExt(store)));
@@ -610,6 +665,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             Arc::new(everruns_mcp::StoredFormAnswers::new(answers)),
         ));
         let resolver = Arc::new(WorkerMcpResolver {
+            input_message_id: None,
             adapters: self.adapters.clone(),
             org_id,
             session_id: session_id.uuid(),
@@ -623,8 +679,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         org_id: i64,
         session_id: SessionId,
         agent_id: Option<AgentId>,
+        input_message_id: MessageId,
     ) -> Option<Arc<dyn everruns_provider::hosted_mcp::HostedMcpResolver>> {
         Some(Arc::new(WorkerMcpResolver {
+            input_message_id: Some(input_message_id.uuid()),
             adapters: self.adapters.clone(),
             org_id,
             session_id: session_id.uuid(),
@@ -684,6 +742,25 @@ impl<A: WorkerAdapters> everruns_provider::hosted_mcp::HostedMcpResolver for Wor
     }
 }
 
+struct PlatformExecutionScope {
+    store: Arc<dyn everruns_platform::PlatformStore>,
+    has_catalog: bool,
+}
+impl everruns_core::tool_context::ExecutionServices for PlatformExecutionScope {
+    fn bind(&self, context: &mut everruns_core::tool_context::ToolContext, id: Uuid) {
+        if let Some(store) = self.store.for_execution(id) {
+            if self.has_catalog {
+                context.extensions.insert(Arc::new(
+                    crate::catalog_cli::CatalogCommandSource::handle(store.clone()),
+                ));
+            }
+            context.subagent_delegate =
+                Some(Arc::new(PlatformStoreSubagentDelegate(store.clone())));
+            context.extensions.insert(Arc::new(PlatformStoreExt(store)));
+        }
+    }
+}
+
 #[cfg(test)]
 mod mcp_credential_tests {
     //! EVE-1029: the worker path must send the credential the attachment's
@@ -705,10 +782,11 @@ mod mcp_credential_tests {
     /// Records which lookup the worker used. The legacy lookup and the
     /// `actsAs` lookup return distinguishable tokens so a test can tell which
     /// one produced the header.
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     struct RecordingResolver {
-        acts_as_calls: StdMutex<Vec<McpServerActsAs>>,
-        legacy_calls: StdMutex<usize>,
+        acts_as_calls: Arc<StdMutex<Vec<McpServerActsAs>>>,
+        legacy_calls: Arc<StdMutex<usize>>,
+        execution_inputs: Arc<StdMutex<Vec<Uuid>>>,
         acts_as_token: Option<String>,
         legacy_token: Option<String>,
         fail: bool,
@@ -716,6 +794,10 @@ mod mcp_credential_tests {
 
     #[async_trait::async_trait]
     impl UserConnectionResolver for RecordingResolver {
+        fn for_execution(&self, input: Uuid) -> Option<Arc<dyn UserConnectionResolver>> {
+            self.execution_inputs.lock().unwrap().push(input);
+            Some(Arc::new(self.clone()))
+        }
         async fn get_connection_token(
             &self,
             _session_id: CoreSessionId,
@@ -793,6 +875,7 @@ mod mcp_credential_tests {
             resolver: resolver.clone(),
         };
         let worker_resolver = WorkerMcpResolver {
+            input_message_id: None,
             adapters,
             org_id: everruns_core::DEFAULT_ORG_ID,
             session_id: Uuid::new_v4(),
@@ -811,6 +894,7 @@ mod mcp_credential_tests {
         resolver: RecordingResolver,
     ) -> WorkerMcpResolver<StubAdapters> {
         WorkerMcpResolver {
+            input_message_id: None,
             adapters: StubAdapters {
                 info,
                 resolver: Arc::new(resolver),
@@ -819,6 +903,42 @@ mod mcp_credential_tests {
             session_id: Uuid::new_v4(),
             agent_id: Some(AgentId::from_seed(7)),
         }
+    }
+
+    #[tokio::test]
+    async fn hosted_mcp_factory_scopes_credentials_to_the_current_input() {
+        let input = MessageId::new();
+        let resolver = Arc::new(RecordingResolver {
+            acts_as_token: Some("current-speaker-token".into()),
+            ..Default::default()
+        });
+        let host = WorkerRuntimeHost::new(StubAdapters {
+            info: server_info(
+                McpServerActsAs::User,
+                everruns_core::McpServerAuthMode::OAuth,
+                None,
+                &[],
+            ),
+            resolver: resolver.clone(),
+        });
+        let hosted = host
+            .hosted_mcp_resolver(
+                everruns_core::DEFAULT_ORG_ID,
+                SessionId::new(),
+                Some(AgentId::from_seed(7)),
+                input,
+            )
+            .unwrap();
+        let resolved = hosted.resolve("linear").await.unwrap();
+        assert_eq!(
+            resolved.headers["Authorization"],
+            "Bearer current-speaker-token"
+        );
+        assert_eq!(
+            *resolver.execution_inputs.lock().unwrap(),
+            vec![input.uuid()]
+        );
+        assert_eq!(*resolver.legacy_calls.lock().unwrap(), 0);
     }
 
     /// EVE-1115: a registered server OpenAI calls gets the same credential
@@ -880,9 +1000,8 @@ mod mcp_credential_tests {
     }
 
     #[tokio::test]
-    async fn an_attachment_without_an_acting_identity_keeps_the_existing_lookup() {
-        // Legacy org-level MCP servers and inline scoped entries resolve
-        // exactly as they did before actsAs existed.
+    async fn an_attachment_without_an_acting_identity_never_uses_personal_credentials() {
+        // None is an explicit absence of runtime credential authority.
         let (connection, resolver) = resolve_with(
             server_info(
                 McpServerActsAs::None,
@@ -891,19 +1010,19 @@ mod mcp_credential_tests {
                 &[],
             ),
             RecordingResolver {
-                acts_as_token: Some("scoped-token".to_string()),
+                acts_as_token: None,
                 legacy_token: Some("fallback-token".to_string()),
                 ..Default::default()
             },
         )
         .await;
 
+        assert_eq!(authorization_of(&connection).as_deref(), None);
+        assert_eq!(*resolver.legacy_calls.lock().unwrap(), 0);
         assert_eq!(
-            authorization_of(&connection).as_deref(),
-            Some("Bearer fallback-token")
+            *resolver.acts_as_calls.lock().unwrap(),
+            vec![McpServerActsAs::None]
         );
-        assert_eq!(*resolver.legacy_calls.lock().unwrap(), 1);
-        assert!(resolver.acts_as_calls.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -948,7 +1067,7 @@ mod mcp_credential_tests {
     }
 
     #[tokio::test]
-    async fn a_legacy_missing_grant_keeps_the_provider_only_shape() {
+    async fn an_unscoped_missing_grant_keeps_the_provider_only_shape_without_private_lookup() {
         let (connection, resolver) = resolve_with(
             server_info(
                 McpServerActsAs::None,
@@ -961,10 +1080,14 @@ mod mcp_credential_tests {
         .await;
 
         assert_eq!(authorization_of(&connection), None);
-        assert_eq!(*resolver.legacy_calls.lock().unwrap(), 1);
+        assert_eq!(*resolver.legacy_calls.lock().unwrap(), 0);
+        assert_eq!(
+            *resolver.acts_as_calls.lock().unwrap(),
+            vec![McpServerActsAs::None]
+        );
         let required = connection
             .pending_oauth_provider
-            .expect("legacy missing grant must still prompt");
+            .expect("unscoped missing grant must still prompt");
         assert_eq!(required.subject, None);
         assert_eq!(required.setup_url, None);
     }
@@ -982,6 +1105,7 @@ mod mcp_credential_tests {
             resolver: resolver.clone(),
         };
         let result = WorkerMcpResolver {
+            input_message_id: None,
             adapters,
             org_id: everruns_core::DEFAULT_ORG_ID,
             session_id: Uuid::new_v4(),

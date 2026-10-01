@@ -132,7 +132,7 @@ struct ActiveSpan {
 }
 
 #[derive(Default, Clone)]
-struct AgentIdentity {
+struct VirtualUser {
     id: Option<String>,
     name: Option<String>,
     description: Option<String>,
@@ -143,7 +143,7 @@ struct AgentIdentity {
 struct TurnState {
     /// Keys of the turn's descendant spans that are still open.
     children: Vec<String>,
-    agent: AgentIdentity,
+    agent: VirtualUser,
     /// Tool descriptions seen on `llm.generation`, so `execute_tool` spans can
     /// carry `gen_ai.tool.description`.
     tool_descriptions: HashMap<String, String>,
@@ -294,6 +294,7 @@ impl OtelEventListener {
                 id.to_string(),
             ));
         }
+        attrs.extend(super::provider_attrs::otel_provider_attributes(event));
         attrs
     }
 
@@ -405,7 +406,7 @@ impl OtelEventListener {
     fn handle_turn_started(&self, event: &Event, data: &TurnStartedData) {
         let ts = event_time(event);
         let turn_key = format!("turn:{}", data.turn_id);
-        let agent = AgentIdentity {
+        let agent = VirtualUser {
             id: data.agent_id.map(|id| id.to_string()),
             name: data.agent_name.clone(),
             description: data.agent_description.clone(),
@@ -1114,6 +1115,7 @@ impl OtelEventListener {
         if let Some(cost) = meta.usage.as_ref().and_then(cost_usd) {
             attrs.push(KeyValue::new(everruns_attr::USAGE_COST_USD, cost));
         }
+        attrs.extend(super::provider_attrs::otel_unknown_cost_attributes(meta));
         attrs
     }
 

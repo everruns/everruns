@@ -27,6 +27,38 @@ impl WorkerServiceImpl {
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
+        let input_message = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?;
+        if let Some(message) = input_message {
+            if !self
+                .db
+                .runtime_invocation_exists(session.id, message)
+                .await
+                .map_err(|_| Status::internal("Invocation unavailable"))?
+            {
+                return Err(Status::permission_denied("Unknown invocation"));
+            }
+            let responder = self
+                .db
+                .runtime_invocation_responder(session.id, message)
+                .await
+                .map_err(|_| Status::internal("Invocation unavailable"))?
+                .map(everruns_provider::typed_id::AgentId::from_uuid);
+
+            if session.agent_id != responder {
+                session.agent_version_id = None;
+            }
+
+            session.agent_id = responder;
+        }
+        let bound_resolver = input_message.and_then(|id| {
+            self.connection_resolver
+                .as_ref()
+                .and_then(|resolver| resolver.for_execution(id))
+        });
         // Fold any runtime ARD attachments (knowledge/integrations/integrations.md, resource_discovery)
         // into the session config layer before scoped MCP servers / capabilities
         // are resolved, so attached MCP servers and A2A agents become usable on
@@ -215,7 +247,7 @@ impl WorkerServiceImpl {
                     req.org_id,
                     &effective,
                     Some(session.id),
-                    self.connection_resolver.as_ref(),
+                    bound_resolver.as_ref().or(self.connection_resolver.as_ref()),
                     self.mcp_server_service.egress_service().as_ref(),
                 )
                 .await
@@ -436,6 +468,62 @@ impl WorkerServiceImpl {
             .map_err(|_| Status::internal("cannot encode native async checkpoint"))?
             .unwrap_or_default();
         Ok(Response::new(proto::NativeAsyncJournalResponse {
+            checkpoint_json,
+        }))
+    }
+
+    pub(crate) async fn handle_agents_api_journal(
+        &self,
+        request: Request<proto::AgentsApiJournalRequest>,
+    ) -> Result<Response<proto::AgentsApiJournalResponse>, Status> {
+        use everruns_core::agents_api_store::{
+            AgentsApiLease, AgentsApiStore, MAX_AGENTS_API_CHECKPOINT_BYTES,
+        };
+        use proto::agents_api_journal_request::Operation;
+        let req = request.into_inner();
+        let operation = Operation::try_from(req.operation)
+            .map_err(|_| Status::invalid_argument("invalid journal operation"))?;
+        if req.checkpoint_json.len() > MAX_AGENTS_API_CHECKPOINT_BYTES {
+            return Err(Status::resource_exhausted(
+                "agents api checkpoint exceeds 8 MiB",
+            ));
+        }
+        let lease = AgentsApiLease {
+            org_id: req.org_id,
+            session_id: parse_uuid(req.session_id.as_ref())?.into(),
+            owner: parse_uuid(req.owner.as_ref())?,
+        };
+        let pool = self.db.pool().ok_or_else(|| {
+            Status::failed_precondition("agents api backend requires shared durable storage")
+        })?;
+        let encryption = self.encryption.clone().ok_or_else(|| {
+            Status::failed_precondition("checkpoint encryption is not configured")
+        })?;
+        let store = crate::storage::PgAgentsApiStore::new(pool.clone(), encryption);
+        let fenced = |_| Status::failed_precondition("agents api journal unavailable or fenced");
+        let checkpoint = match operation {
+            Operation::Acquire => Some(store.acquire(lease).await.map_err(fenced)?),
+            Operation::Renew => {
+                store.renew(lease).await.map_err(fenced)?;
+                None
+            }
+            Operation::Save => {
+                let checkpoint = serde_json::from_slice(&req.checkpoint_json)
+                    .map_err(|_| Status::invalid_argument("invalid agents api checkpoint"))?;
+                store.save(lease, &checkpoint).await.map_err(fenced)?;
+                None
+            }
+            Operation::Release => {
+                store.release(lease).await.map_err(fenced)?;
+                None
+            }
+        };
+        let checkpoint_json = checkpoint
+            .map(|checkpoint| serde_json::to_vec(&checkpoint))
+            .transpose()
+            .map_err(|_| Status::internal("cannot encode agents api checkpoint"))?
+            .unwrap_or_default();
+        Ok(Response::new(proto::AgentsApiJournalResponse {
             checkpoint_json,
         }))
     }

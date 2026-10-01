@@ -103,10 +103,10 @@ pub struct ModelWithProvider {
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
     /// Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
-    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5"))]
+    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-5-5"))]
     pub model_id: String,
     /// Human-readable display name.
-    #[cfg_attr(feature = "openapi", schema(example = "Claude Sonnet 4.5"))]
+    #[cfg_attr(feature = "openapi", schema(example = "Claude Sonnet 5.5"))]
     pub display_name: String,
     /// Capability tags supported by this model.
     #[cfg_attr(feature = "openapi", schema(example = json!(["text", "tools", "vision", "thinking"])))]

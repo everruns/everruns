@@ -66,28 +66,14 @@ export function isArchivedThread(session: Pick<Session, "archived_at">): boolean
   return !!session.archived_at;
 }
 
-/**
- * Pick this user's chat threads out of a session page. Pinned threads come
- * first and archived ones last, with each group ordered by most recent
- * activity. `userId` is undefined when auth is off (local development, single
- * anonymous user) — every thread is then "mine".
- *
- * Archived threads are dropped unless `includeArchived` is set. The server
- * applies the same default to the query, so this filter only matters for a
- * page that asked for archived rows and then wants to hide them again.
- */
+/** Sort the server-authorized thread page. Runtime ownership is checked by the server. */
 export function selectChatThreads(
   sessions: Session[],
-  userId?: string,
   options: { includeArchived?: boolean } = {},
 ): Session[] {
   return sessions
     .filter(isChatThread)
     .filter((session) => options.includeArchived || !isArchivedThread(session))
-    .filter(
-      (session) =>
-        !userId || !session.resolved_owner_user_id || session.resolved_owner_user_id === userId,
-    )
     .sort((a, b) => {
       const pinOrder = Number(b.is_pinned === true) - Number(a.is_pinned === true);
       if (pinOrder) return pinOrder;

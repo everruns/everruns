@@ -52,8 +52,10 @@ pub const COMPUTER_TOOL_NAME: &str = "computer";
 /// Capability id for provider-neutral computer use.
 pub const COMPUTER_USE_CAPABILITY_ID: &str = "computer_use";
 
-/// Session storage key for the per-session action counter.
-const ACTION_COUNT_KEY: &str = "computer_use.action_count";
+/// Session storage key for the per-session action counter. Reserved from the
+/// model-facing `kv_store` tool (EVE-1141): a model that could reset it would
+/// lift its own action cap (TM-TOOL-050).
+pub const COMPUTER_USE_ACTION_COUNT_KEY: &str = "computer_use.action_count";
 
 /// Default display width in pixels.
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
@@ -667,7 +669,7 @@ impl ComputerTool {
             return Ok(0);
         };
         let used = storage
-            .get_value(context.session_id, ACTION_COUNT_KEY)
+            .get_value(context.session_id, COMPUTER_USE_ACTION_COUNT_KEY)
             .await
             .ok()
             .flatten()
@@ -682,7 +684,11 @@ impl ComputerTool {
         }
         let next = used + 1;
         if let Err(e) = storage
-            .set_value(context.session_id, ACTION_COUNT_KEY, &next.to_string())
+            .set_value(
+                context.session_id,
+                COMPUTER_USE_ACTION_COUNT_KEY,
+                &next.to_string(),
+            )
             .await
         {
             tracing::warn!("computer_use: failed to persist action count: {e}");

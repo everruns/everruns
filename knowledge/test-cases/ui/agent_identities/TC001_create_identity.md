@@ -1,18 +1,18 @@
 ---
 type: Test Case
-title: "TC001: Create Agent Identity"
-description: "Verify that a new agent identity can be created with locale and timezone defaults."
+title: "TC001: Create Virtual User"
+description: "Verify that a new service virtual user can be created with locale and timezone defaults."
 tags:
   - everruns
   - test-case
   - ui
-  - agent-identities
+  - virtual-users
 ---
-# TC001: Create Agent Identity
+# TC001: Create Virtual User
 
 ## Description
 
-Verify that a new agent identity can be created with locale and timezone defaults.
+Verify that a new service virtual user can be created with locale and timezone defaults.
 
 ## Preconditions
 
@@ -29,7 +29,7 @@ Verify that a new agent identity can be created with locale and timezone default
 
 ## Steps
 
-1. Navigate to `/agent-identities/new`
+1. Navigate to `/virtual-users/new`
 2. Fill in display name, locale, and timezone
 3. Submit the form
 

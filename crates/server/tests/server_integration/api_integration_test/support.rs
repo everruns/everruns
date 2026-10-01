@@ -7,7 +7,7 @@ use everruns_core::DEFAULT_ORG_ID;
 use everruns_platform::Agent;
 use everruns_platform::Session;
 use everruns_provider::typed_id::{
-    AgentId, AgentIdentityId, AppId, HarnessId, PrincipalId, ScheduleId,
+    AgentId, AppId, HarnessId, PrincipalId, ScheduleId, VirtualUserId,
 };
 use everruns_server::storage::models::{
     CreateAppRow, CreatePrincipalRow, CreateSessionScheduleRow,
@@ -21,7 +21,7 @@ pub(crate) async fn seed_archival_app(
     name: &str,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
-    agent_identity_id: Option<AgentIdentityId>,
+    virtual_user_id: Option<VirtualUserId>,
 ) -> AppId {
     let principal_id = PrincipalId::new();
     server
@@ -50,7 +50,7 @@ pub(crate) async fn seed_archival_app(
                 agent_id: agent_id.map(|id| id.uuid()),
                 agent_version_policy: "draft".to_string(),
                 agent_version_id: None,
-                agent_identity_id: agent_identity_id.map(|id| id.uuid()),
+                virtual_user_id: virtual_user_id.map(|id| id.uuid()),
                 owner_principal_id: principal_id,
                 resolved_owner_user_id: None,
                 channel_type: None,

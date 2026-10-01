@@ -109,6 +109,7 @@ pub struct AgUiState {
     pub rate_limiter: ChannelRateLimiter,
     pub auth_verifier: AppEndpointAuthVerifier,
     pub public_chat_enabled: bool,
+    pub runtime_auth: Option<crate::auth::AuthState>,
 }
 
 impl AgUiState {
@@ -134,9 +135,15 @@ impl AgUiState {
             rate_limiter,
             auth_verifier: AppEndpointAuthVerifier::new(),
             public_chat_enabled: false,
+            runtime_auth: None,
             encryption,
             db,
         }
+    }
+
+    pub fn with_runtime_auth(mut self, auth: crate::auth::AuthState) -> Self {
+        self.runtime_auth = Some(auth);
+        self
     }
 
     pub fn with_public_chat_enabled(mut self, enabled: bool) -> Self {
@@ -175,131 +182,7 @@ struct AuthorizedAgUiRequest {
     /// any session it creates (EVE-1004).
     endpoint_internal_id: uuid::Uuid,
     channel_config: AgUiChannelConfig,
-}
-
-async fn authorize_ag_ui_request(
-    state: &AgUiState,
-    target: AgUiTarget,
-    headers: &HeaderMap,
-    peer_addr: Option<std::net::SocketAddr>,
-) -> Result<AuthorizedAgUiRequest, Response> {
-    let (context, channel) = match target {
-        AgUiTarget::LegacyApp(app_id) => {
-            match crate::api::app_ingress::resolve_legacy_endpoint(
-                &state.db,
-                state.encryption.as_ref(),
-                &app_id,
-                ChannelType::AgUi,
-            )
-            .await
-            .map_err(internal_error)?
-            {
-                crate::api::app_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
-                crate::api::app_ingress::LegacyEndpointMatch::NotFound => {
-                    return Err(not_found());
-                }
-                crate::api::app_ingress::LegacyEndpointMatch::Ambiguous => {
-                    return Err(conflict(
-                        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL",
-                    ));
-                }
-            }
-        }
-        AgUiTarget::Endpoint(channel_id) => crate::api::app_ingress::resolve_endpoint(
-            &state.db,
-            state.encryption.as_ref(),
-            &channel_id,
-        )
-        .await
-        .map_err(internal_error)?
-        .ok_or_else(not_found)?,
-    };
-
-    // THREAT[TM-AUTHZ-005]: Anonymous AG-UI requests must not reach draft or
-    // private app configurations.
-    // Mitigation: Require a published app, an enabled AG-UI channel, and
-    // `anonymous=true` before accepting unauthenticated traffic.
-    //
-    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
-    // "app does not exist" apart from "app exists but is not published / has no
-    // AG-UI channel / is misconfigured". Every such case collapses to a single
-    // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
-    // logged server-side only.
-    if channel.channel_type != ChannelType::AgUi {
-        return Err(not_found());
-    }
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&context, &channel) {
-        tracing::debug!(
-            app_id = %context.public_id,
-            endpoint_id = %channel.public_id,
-            reason = reason.as_str(),
-            "AG-UI request rejected: endpoint not live"
-        );
-        return Err(not_found());
-    }
-
-    let Some(channel_config) = channel.ag_ui_config() else {
-        tracing::error!(app_id = %context.public_id, "AG-UI channel config did not deserialize");
-        return Err(not_found());
-    };
-    if let Some(auth) = channel.auth.as_ref() {
-        state
-            .auth_verifier
-            .verify(
-                auth,
-                headers,
-                LegacyEndpointAuth {
-                    shared_secret: channel_config.token.as_deref(),
-                    api_key: None,
-                },
-            )
-            .await
-            .map_err(ag_ui_auth_error_response)?;
-    } else {
-        if !channel_config.anonymous {
-            // No auth provider configured and anonymous access disabled: the
-            // channel is not reachable. Collapse to a generic 404 rather than a
-            // 403 so callers cannot confirm the app exists (TM-TENANT-002).
-            tracing::debug!(app_id = %context.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
-            return Err(not_found());
-        }
-        if let Some(expected_token) = channel_config.token.as_deref()
-            && !expected_token.is_empty()
-        {
-            let provided_token = extract_ag_ui_token(headers).ok_or_else(unauthorized)?;
-            if !constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
-                return Err(unauthorized());
-            }
-        }
-    }
-
-    // THREAT[TM-DOS-010]: Anonymous AG-UI traffic must respect a configurable
-    // per-app, per-IP cap in addition to the global API limit. App owners
-    // tune `rate_limit_per_minute` based on expected client traffic.
-    if let Some(limit) = channel_config.rate_limit_per_minute
-        && limit > 0
-    {
-        let client_ip = extract_client_ip_from_parts(peer_addr, headers);
-        if state
-            .rate_limiter
-            .check(
-                &format!("{}:{}", context.public_id, channel.public_id),
-                client_ip,
-                limit,
-            )
-            .await
-            .is_err()
-        {
-            return Err(too_many_requests("AG-UI rate limit exceeded for this app"));
-        }
-    }
-
-    Ok(AuthorizedAgUiRequest {
-        channel_id: channel.public_id.to_string(),
-        endpoint_internal_id: channel.internal_id,
-        context,
-        channel_config,
-    })
+    runtime_user: Option<everruns_provider::typed_id::VirtualUserId>,
 }
 
 async fn upload_image_legacy(
@@ -475,6 +358,7 @@ async fn run_agent(
         channel_id,
         endpoint_internal_id,
         channel_config,
+        runtime_user,
     } = authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
 
     run_app_agent_stream(
@@ -483,7 +367,14 @@ async fn run_agent(
         endpoint_internal_id,
         channel_config,
         "ag_ui",
-        vec![format!("ag_ui:channel:{channel_id}")],
+        {
+            let mut tags = vec![format!("ag_ui:channel:{channel_id}")];
+            if let Some(id) = runtime_user {
+                tags.push(format!("ag_ui:virtual_user:{id}"));
+            }
+            tags
+        },
+        runtime_user,
         request,
         request_id,
     )
@@ -504,6 +395,7 @@ pub(crate) async fn run_app_agent_stream(
     channel_config: AgUiChannelConfig,
     tag_prefix: &str,
     extra_routing_tags: Vec<String>,
+    runtime_user: Option<everruns_provider::typed_id::VirtualUserId>,
     request: Request,
     request_id: Option<String>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
@@ -550,13 +442,34 @@ pub(crate) async fn run_app_agent_stream(
         format!("{tag_prefix}:thread:{}", thread_tag),
     ];
     routing_tags.extend(extra_routing_tags);
+    let runtime_principal = if let Some(id) = runtime_user {
+        let principals = crate::services::PrincipalService::new(state.db.clone());
+        let parent = principals
+            .ensure_system_principal(app.org_id, "external-users")
+            .await
+            .map_err(internal_error)?;
+        Some(
+            principals
+                .ensure_virtual_user_principal(app.org_id, id, parent.id)
+                .await
+                .map_err(internal_error)?
+                .id,
+        )
+    } else {
+        None
+    };
+    let mut runtime_app = app.clone();
+    if let Some(principal) = runtime_principal {
+        runtime_app.owner_principal_id = principal;
+        runtime_app.resolved_owner_user_id = None;
+    }
     let session = find_or_create_session(
         &state,
         &app,
+        Some(&runtime_app),
         endpoint_internal_id,
         &channel_config,
         &routing_tags,
-        &thread_tag,
         &req,
     )
     .await
@@ -605,6 +518,7 @@ pub(crate) async fn run_app_agent_stream(
         .message_service
         .create(
             CreateMessageContext {
+                runtime_subject_principal_id: runtime_principal,
                 org_id: app.org_id,
                 user_id: None,
                 harness_id: app.harness_id.uuid(),
@@ -613,7 +527,7 @@ pub(crate) async fn run_app_agent_stream(
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     app.public_id,
                     app.owner_principal_id,
-                    app.agent_identity_id,
+                    app.virtual_user_id,
                 )),
                 request_id,
             },
@@ -882,10 +796,10 @@ impl From<anyhow::Error> for SessionError {
 async fn find_or_create_session(
     state: &AgUiState,
     app: &crate::api::app_ingress::IngressContext,
+    runtime_app: Option<&crate::api::app_ingress::IngressContext>,
     endpoint_internal_id: uuid::Uuid,
     config: &AgUiChannelConfig,
     routing_tags: &[String],
-    thread_id: &str,
     req: &AgUiRunAgentInput,
 ) -> Result<SessionResolution, SessionError> {
     let org_row = state
@@ -895,10 +809,18 @@ async fn find_or_create_session(
         .ok_or_else(|| anyhow::anyhow!("Organization not found for app"))?;
     let org_public_id = org_row.public_id;
 
-    let existing = app
+    let mut existing = app
         .find_session_by_tags(&state.db, endpoint_internal_id, routing_tags)
         .await?;
 
+    if existing.is_none()
+        && let Some(runtime) = runtime_app
+    {
+        existing = runtime
+            .find_session_by_tags(&state.db, endpoint_internal_id, routing_tags)
+            .await?;
+    }
+    let app = runtime_app.unwrap_or(app);
     match existing {
         Some(row) => {
             // THREAT[TM-AUTHZ-005]: Public AG-UI threads must not be resumable
@@ -933,7 +855,7 @@ async fn find_or_create_session(
             })
         }
         None => {
-            let title = format!("AG-UI thread {}", thread_id);
+            let title = format!("AG-UI thread {}", req.thread_id);
             let session = state
                 .session_service
                 .create_from_app(
@@ -952,7 +874,8 @@ async fn find_or_create_session(
                     CreateSessionRequest {
                         harness_id: Some(app.harness_id),
                         agent_id: app.agent_id,
-                        agent_identity_id: app.agent_identity_id,
+                        agent_name: None,
+                        virtual_user_id: app.virtual_user_id,
                         title: Some(title),
                         tags: routing_tags.to_vec(),
                         ..Default::default()
@@ -1676,3 +1599,7 @@ fn too_many_requests(message: &str) -> Response {
 #[cfg(test)]
 #[path = "ag_ui_tests.rs"]
 mod tests;
+
+mod runtime_identity;
+use runtime_identity::authorize_ag_ui_request;
+pub(crate) use runtime_identity::{resolve_ingress_identity, runtime_endpoint_account};

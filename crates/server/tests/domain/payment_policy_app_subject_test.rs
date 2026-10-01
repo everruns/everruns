@@ -180,7 +180,7 @@ async fn seed_app_policy(tx: &mut Transaction<'_, Postgres>, fx: &Fixture, per_r
     .await;
     sqlx::query(
         "ALTER TABLE payment_policies ADD CONSTRAINT payment_policies_subject_type_check
-         CHECK (subject_type IN ('user', 'agent_identity', 'agent', 'agent_endpoint', 'session',
+         CHECK (subject_type IN ('user', 'virtual_user', 'agent', 'agent_endpoint', 'session',
                                  'org'))
          NOT VALID",
     )
@@ -294,7 +294,7 @@ async fn subject_type_check_rejects_app_and_accepts_agent_endpoint() {
 
     for subject_type in [
         "user",
-        "agent_identity",
+        "virtual_user",
         "agent",
         "agent_endpoint",
         "session",

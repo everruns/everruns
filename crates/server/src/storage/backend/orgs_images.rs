@@ -737,6 +737,47 @@ impl StorageBackend {
         dispatch!(self, delete_user_preference, user_id, key)
     }
 
+    pub async fn list_virtual_user_preferences(
+        &self,
+        user_id: VirtualUserId,
+        limit: usize,
+    ) -> Result<Vec<VirtualUserPreferenceRow>> {
+        dispatch!(self, list_virtual_user_preferences, user_id, limit)
+    }
+
+    pub async fn get_virtual_user_preference(
+        &self,
+        user_id: VirtualUserId,
+        key: &str,
+    ) -> Result<Option<VirtualUserPreferenceRow>> {
+        dispatch!(self, get_virtual_user_preference, user_id, key)
+    }
+
+    pub async fn set_virtual_user_preference(
+        &self,
+        user_id: VirtualUserId,
+        key: &str,
+        value: &str,
+        max_preferences: usize,
+    ) -> Result<VirtualUserPreferenceRow> {
+        dispatch!(
+            self,
+            set_virtual_user_preference,
+            user_id,
+            key,
+            value,
+            max_preferences
+        )
+    }
+
+    pub async fn delete_virtual_user_preference(
+        &self,
+        user_id: VirtualUserId,
+        key: &str,
+    ) -> Result<bool> {
+        dispatch!(self, delete_virtual_user_preference, user_id, key)
+    }
+
     pub async fn get_connection_token_for_session(
         &self,
         session_id: SessionId,
@@ -770,26 +811,26 @@ impl StorageBackend {
         dispatch!(self, session_has_human_initiator, session_id)
     }
 
-    pub async fn get_agent_identity_connection_for_session(
+    pub async fn get_virtual_user_connection_for_session(
         &self,
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<Vec<u8>>> {
         dispatch!(
             self,
-            get_agent_identity_connection_for_session,
+            get_virtual_user_connection_for_session,
             session_id,
             provider
         )
     }
-    pub async fn get_agent_identity_connection_row_for_session(
+    pub async fn get_virtual_user_connection_row_for_session(
         &self,
         session_id: SessionId,
         provider: &str,
-    ) -> Result<Option<AgentIdentityConnectionRow>> {
+    ) -> Result<Option<VirtualUserConnectionRow>> {
         dispatch!(
             self,
-            get_agent_identity_connection_row_for_session,
+            get_virtual_user_connection_row_for_session,
             session_id,
             provider
         )

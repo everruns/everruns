@@ -11,16 +11,34 @@
 // than a `ToolContext` service because a host without an interactive prompt
 // should not register the gate at all — a registered gate with nowhere to ask
 // is either a deadlock or a silent allow, and neither is a good default.
+//
+// Hosted runtimes cannot block a turn on a human: the process running the act
+// may be gone by the time anyone answers. `DurableToolApprover` is their
+// approver (EVE-1140). It answers from decisions recorded in session storage
+// and otherwise returns `Deferred`, which this hook turns into a structured
+// `tool_approval_required` result; the engine parks the turn on it and the
+// server's tool-approvals API records the answer for the retried call.
+// Spec: knowledge/execution/tool-approval.md.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::capabilities::{Capability, CapabilityStatus};
+use crate::tool_approval_durable::preview_arguments;
 use crate::tool_hooks::{PreToolUseDecision, PreToolUseHook};
-use crate::tool_types::{ToolCall, ToolDefinition};
+use crate::tool_types::{
+    TOOL_APPROVAL_REQUIRED_CODE, ToolApprovalRequired, ToolCall, ToolDefinition, ToolPolicy,
+    ToolResult,
+};
+
+pub use crate::tool_approval_durable::{
+    DurableToolApprover, ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, TOOL_APPROVAL_KV_PREFIX,
+    always_decision_storage_key, approval_fingerprint, one_off_decision_storage_key,
+};
 use crate::typed_id::SessionId;
 use everruns_core::tool_context::ToolContext;
 
@@ -39,6 +57,31 @@ pub trait ToolApprover: Send + Sync {
         tool_call: &ToolCall,
         tool_def: &ToolDefinition,
     ) -> ApprovalDecision;
+
+    /// Ask with the call's [`ToolContext`] in hand.
+    ///
+    /// The gate always calls this one. The default ignores the context and
+    /// delegates to [`approve`](Self::approve); a host whose decisions live in
+    /// per-session services (session storage, for [`DurableToolApprover`])
+    /// overrides it instead.
+    async fn approve_in_context(
+        &self,
+        session_id: SessionId,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> ApprovalDecision {
+        let _ = context;
+        self.approve(session_id, tool_call, tool_def).await
+    }
+
+    /// Whether this approver records "always" answers durably itself.
+    ///
+    /// When `true` the gate does not cache them in memory; the approver
+    /// answers `AllowAlways` / `RejectAlways` from its own record every time.
+    fn remembers_always_decisions(&self) -> bool {
+        false
+    }
 }
 
 /// A host's answer to an approval request.
@@ -59,6 +102,12 @@ pub enum ApprovalDecision {
     /// so this is a broken transport, not a client without a permission UI,
     /// and a gate that fails open on transport failure is not a gate.
     Unavailable,
+    /// The host recorded the request and will resume the turn once a person
+    /// answers. The call does not run now: the gate records a structured
+    /// `tool_approval_required` result that parks the turn, and the decision
+    /// reaches the retried call. Returned by durable hosts that cannot hold a
+    /// turn open on a human ([`DurableToolApprover`]).
+    Deferred,
 }
 
 /// How eagerly to ask for approval.
@@ -115,6 +164,24 @@ impl ApprovalMode {
     }
 }
 
+/// Default time a person has to answer a deferred approval request before the
+/// server treats it as rejected.
+pub const DEFAULT_APPROVAL_TIMEOUT_SECONDS: u64 = 900;
+/// Shortest configurable approval window.
+pub const MIN_APPROVAL_TIMEOUT_SECONDS: u64 = 60;
+/// Longest configurable approval window (one day).
+pub const MAX_APPROVAL_TIMEOUT_SECONDS: u64 = 86_400;
+
+/// Approval window from a capability config object, clamped to the allowed
+/// range. Missing or malformed values fall back to the default, as `mode` does.
+pub fn approval_timeout_from_config(config: &serde_json::Value) -> u64 {
+    config
+        .get("timeout_seconds")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_APPROVAL_TIMEOUT_SECONDS)
+        .clamp(MIN_APPROVAL_TIMEOUT_SECONDS, MAX_APPROVAL_TIMEOUT_SECONDS)
+}
+
 impl std::fmt::Display for ApprovalMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
@@ -138,9 +205,28 @@ enum ToolRisk {
     Destructive,
 }
 
+/// The hint that made a tool risky, as the approval card names it.
+fn risk_label(tool_def: &ToolDefinition) -> &'static str {
+    let hints = tool_def.hints();
+    if matches!(tool_def.policy(), ToolPolicy::RequiresApproval) {
+        "requires_approval"
+    } else if hints.destructive == Some(true) {
+        "destructive"
+    } else if hints.open_world == Some(true) {
+        "open_world"
+    } else {
+        "mutating"
+    }
+}
+
 fn classify(tool_def: &ToolDefinition) -> ToolRisk {
     let hints = tool_def.hints();
-    if hints.destructive == Some(true) || hints.open_world == Some(true) {
+    // A tool whose definition says it requires approval is asked about at
+    // every level but `off`, like a destructive one (TM-TOOL-008).
+    if matches!(tool_def.policy(), ToolPolicy::RequiresApproval)
+        || hints.destructive == Some(true)
+        || hints.open_world == Some(true)
+    {
         ToolRisk::Destructive
     } else if hints.readonly == Some(true) {
         ToolRisk::ReadOnly
@@ -200,10 +286,19 @@ impl ToolApprovalCapability {
         self
     }
 
-    fn hook(&self, mode: ApprovalMode) -> Arc<dyn PreToolUseHook> {
+    pub(crate) fn hook(&self, mode: ApprovalMode) -> Arc<dyn PreToolUseHook> {
+        self.hook_with_timeout(mode, DEFAULT_APPROVAL_TIMEOUT_SECONDS)
+    }
+
+    fn hook_with_timeout(
+        &self,
+        mode: ApprovalMode,
+        timeout_seconds: u64,
+    ) -> Arc<dyn PreToolUseHook> {
         Arc::new(ToolApprovalHook {
             approver: self.approver.clone(),
             mode,
+            timeout_seconds,
             policy: self.policy.clone(),
             remembered: self.remembered.clone(),
         })
@@ -246,6 +341,14 @@ impl Capability for ToolApprovalCapability {
                     "default": "normal",
                     "title": "Approval mode",
                     "description": "off: never ask. normal: ask before tools that declare themselves destructive or outward-facing. protective: ask before anything that is not declared read-only.",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "minimum": MIN_APPROVAL_TIMEOUT_SECONDS,
+                    "maximum": MAX_APPROVAL_TIMEOUT_SECONDS,
+                    "default": DEFAULT_APPROVAL_TIMEOUT_SECONDS,
+                    "title": "Approval window (seconds)",
+                    "description": "How long a hosted session waits for a person to answer before the request counts as rejected.",
                 }
             },
             "additionalProperties": false,
@@ -260,16 +363,29 @@ impl Capability for ToolApprovalCapability {
             return Err("tool_approval config must be an object".to_string());
         };
         match object.get("mode") {
-            None => Ok(()),
+            None => {}
             Some(serde_json::Value::String(mode))
-                if matches!(mode.as_str(), "off" | "normal" | "protective") =>
-            {
-                Ok(())
+                if matches!(mode.as_str(), "off" | "normal" | "protective") => {}
+            Some(other) => {
+                return Err(format!(
+                    "tool_approval mode must be one of off|normal|protective, got {other}"
+                ));
             }
-            Some(other) => Err(format!(
-                "tool_approval mode must be one of off|normal|protective, got {other}"
-            )),
         }
+        match object.get("timeout_seconds") {
+            None => {}
+            Some(value)
+                if value.as_u64().is_some_and(|secs| {
+                    (MIN_APPROVAL_TIMEOUT_SECONDS..=MAX_APPROVAL_TIMEOUT_SECONDS).contains(&secs)
+                }) => {}
+            Some(other) => {
+                return Err(format!(
+                    "tool_approval timeout_seconds must be an integer between \
+                     {MIN_APPROVAL_TIMEOUT_SECONDS} and {MAX_APPROVAL_TIMEOUT_SECONDS}, got {other}"
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn PreToolUseHook>> {
@@ -280,13 +396,18 @@ impl Capability for ToolApprovalCapability {
         &self,
         config: &serde_json::Value,
     ) -> Vec<Arc<dyn PreToolUseHook>> {
-        vec![self.hook(ApprovalMode::from_config(config))]
+        vec![self.hook_with_timeout(
+            ApprovalMode::from_config(config),
+            approval_timeout_from_config(config),
+        )]
     }
 }
 
 struct ToolApprovalHook {
     approver: Arc<dyn ToolApprover>,
     mode: ApprovalMode,
+    /// Window a deferred request stays open before it counts as rejected.
+    timeout_seconds: u64,
     policy: Option<ToolApprovalPolicy>,
     /// "Allow always" / "reject always" answers, keyed by (session, tool name).
     /// `true` = remembered allow, `false` = remembered reject.
@@ -294,12 +415,73 @@ struct ToolApprovalHook {
 }
 
 impl ToolApprovalHook {
+    /// Cache an "always" answer, unless the approver keeps its own durable
+    /// record: a long-lived hosted process serving many sessions would
+    /// otherwise grow this map without bound.
+    fn remember(&self, key: (SessionId, String), allowed: bool) {
+        if self.approver.remembers_always_decisions() {
+            return;
+        }
+        self.remembered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(key, allowed);
+    }
+
     fn block(tool_call: ToolCall, reason: &str) -> PreToolUseDecision {
         PreToolUseDecision::Block {
             reason: reason.to_string(),
             user_message: Some(format!("Denied `{}` — {reason}.", tool_call.name)),
             tool_call,
         }
+    }
+
+    /// Park the call on a durable approval request instead of running it.
+    fn defer(&self, tool_call: ToolCall, tool_def: &ToolDefinition) -> PreToolUseDecision {
+        let asked_at = Utc::now();
+        let window = i64::try_from(self.timeout_seconds)
+            .unwrap_or(MAX_APPROVAL_TIMEOUT_SECONDS as i64)
+            .clamp(
+                MIN_APPROVAL_TIMEOUT_SECONDS as i64,
+                MAX_APPROVAL_TIMEOUT_SECONDS as i64,
+            );
+        let expires_at = asked_at + chrono::Duration::seconds(window);
+        let (arguments, arguments_truncated) = preview_arguments(&tool_call.arguments);
+        let error = format!(
+            "`{name}` needs a person's approval before it runs, so it did not run. The request \
+             has been sent to them. If they approve, you will be told; then call `{name}` again \
+             with exactly the same arguments. If nobody answers by {expires}, treat it as \
+             rejected. Do not try to reach the same outcome another way.",
+            name = tool_call.name,
+            expires = expires_at.to_rfc3339(),
+        );
+        let request = ToolApprovalRequired {
+            code: TOOL_APPROVAL_REQUIRED_CODE.to_string(),
+            error: error.clone(),
+            tool_call_id: tool_call.id.clone(),
+            tool: tool_call.name.clone(),
+            display_name: tool_def.display_name().map(str::to_string),
+            arguments,
+            arguments_truncated,
+            fingerprint: approval_fingerprint(&tool_call),
+            risk: if self.policy.is_some() {
+                "policy".to_string()
+            } else {
+                risk_label(tool_def).to_string()
+            },
+            mode: self.mode.as_str().to_string(),
+            asked_at: asked_at.to_rfc3339(),
+            expires_at: expires_at.to_rfc3339(),
+        };
+        let result = ToolResult {
+            tool_call_id: tool_call.id.clone(),
+            result: Some(serde_json::to_value(&request).unwrap_or_default()),
+            images: None,
+            error: Some(error),
+            connection_required: None,
+            raw_output: None,
+        };
+        PreToolUseDecision::Defer { tool_call, result }
     }
 }
 
@@ -335,27 +517,22 @@ impl PreToolUseHook for ToolApprovalHook {
 
         match self
             .approver
-            .approve(context.session_id, &tool_call, tool_def)
+            .approve_in_context(context.session_id, &tool_call, tool_def, context)
             .await
         {
             ApprovalDecision::Allow => PreToolUseDecision::Continue(tool_call),
             ApprovalDecision::AllowAlways => {
-                self.remembered
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .insert(key, true);
+                self.remember(key, true);
                 PreToolUseDecision::Continue(tool_call)
             }
             ApprovalDecision::Reject => Self::block(tool_call, "rejected by user"),
             ApprovalDecision::RejectAlways => {
-                self.remembered
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .insert(key, false);
+                self.remember(key, false);
                 Self::block(tool_call, "rejected by user")
             }
             ApprovalDecision::Cancelled => Self::block(tool_call, "turn cancelled"),
             ApprovalDecision::Unavailable => Self::block(tool_call, "approval unavailable"),
+            ApprovalDecision::Deferred => self.defer(tool_call, tool_def),
         }
     }
 }
@@ -465,6 +642,19 @@ mod tests {
             })),
             ToolRisk::Destructive
         );
+    }
+
+    #[test]
+    fn a_definition_that_requires_approval_is_gated_like_a_destructive_tool() {
+        let mut tool = tool_with(ToolHints {
+            readonly: Some(true),
+            ..Default::default()
+        });
+        if let ToolDefinition::Builtin(builtin) = &mut tool {
+            builtin.policy = ToolPolicy::RequiresApproval;
+        }
+        assert_eq!(classify(&tool), ToolRisk::Destructive);
+        assert_eq!(risk_label(&tool), "requires_approval");
     }
 
     #[test]

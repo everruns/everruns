@@ -11,7 +11,7 @@ interface EntityDeleteErrorNoticeProps {
 }
 
 function titleFor(entityKind: EntityDeleteErrorNoticeProps["entityKind"], action: DeleteAction) {
-  const label = entityKind === "identity" ? "Agent Identity" : capitalize(entityKind);
+  const label = entityKind === "identity" ? "Virtual User" : capitalize(entityKind);
   return `Cannot ${capitalize(action)} ${label}`;
 }
 
@@ -25,11 +25,11 @@ function formatDeleteErrorMessage(
   message: string,
 ) {
   const appReference = message.match(
-    /^Cannot archive or delete (agent|harness|agent identity) while apps still reference it: (.+)$/i,
+    /^Cannot archive or delete (agent|harness|virtual user) while apps still reference it: (.+)$/i,
   );
   if (appReference) {
     const apps = appReference[2];
-    const label = entityKind === "identity" ? "agent identity" : entityKind;
+    const label = entityKind === "identity" ? "virtual user" : entityKind;
     const verb = action === "archive" ? "archiving" : "deleting";
     return `This ${label} is still used by apps: ${apps}. Remove it from those apps before ${verb}.`;
   }

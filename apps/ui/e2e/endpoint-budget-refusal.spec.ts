@@ -123,12 +123,12 @@ test.describe("endpoint budget refusal", () => {
       `WITH seeded AS (
          INSERT INTO agent_endpoints (
            id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
-           channel_config, enabled, status, agent_identity_id, agent_version_policy,
+           channel_config, enabled, status, virtual_user_id, agent_version_policy,
            agent_version_id, owner_principal_id, resolved_owner_user_id
          )
          SELECT
            :'endpoint_uuid'::uuid, agent_id, NULL, NULL, :'endpoint_id', 'schedule',
-           :'channel_config'::jsonb, true, 'live', agent_identity_id, agent_version_policy,
+           :'channel_config'::jsonb, true, 'live', virtual_user_id, agent_version_policy,
            agent_version_id, owner_principal_id, resolved_owner_user_id
          FROM agent_endpoints
          WHERE public_id = :'bootstrap_endpoint_id'

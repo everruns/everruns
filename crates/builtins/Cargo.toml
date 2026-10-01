@@ -18,7 +18,7 @@ categories = ["development-tools", "asynchronous"]
 # execution values. It owns no host, platform, database, network, process, or
 # interpreter implementation edge.
 everruns-capability.workspace = true
-everruns-core = { path = "../core", version = "0.32.0", default-features = false }
+everruns-core = { path = "../core", version = "0.33.0", default-features = false }
 everruns-provider.workspace = true
 
 async-trait.workspace = true
@@ -37,6 +37,7 @@ ui-capabilities = []
 
 [dev-dependencies]
 anyhow.workspace = true
+tokio-util = { version = "0.7", default-features = false }
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [lints]

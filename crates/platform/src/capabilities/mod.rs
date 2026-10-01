@@ -16,6 +16,7 @@ pub mod knowledge_base;
 pub mod knowledge_index;
 pub mod memory;
 pub mod monitors;
+pub mod openai_agents_api_runtime;
 pub mod platform;
 mod platform_docs;
 pub mod platform_management;
@@ -171,12 +172,21 @@ pub fn register_hosted_capabilities(
     // registering it unconditionally costs an agent nothing until a Slack
     // endpoint creates its session.
     registry.register(SlackCapability);
+    // The hard approval gate (EVE-1140). Opt-in per agent like every guardrail;
+    // decisions live in session storage, so a parked turn resumes on whichever
+    // worker picks it up after a person answers.
+    #[cfg(feature = "portable-builtins")]
+    registry.register(everruns_builtins::ToolApprovalCapability::new(
+        std::sync::Arc::new(everruns_builtins::DurableToolApprover),
+    ));
     registry.register(UserHooksCapability);
     registry.register(DataKnowledgeCapability);
     registry.register(KnowledgeBaseCapability);
     registry.register(KnowledgeIndexCapability);
     registry.register(CitationRetrievalCapability);
     registry.register(CitationVerificationCapability);
+    // Inert unless the org flag lets it through to the worker snapshot.
+    registry.register(openai_agents_api_runtime::OpenAiAgentsApiRuntimeCapability);
     register_environment_capabilities(registry);
     register_platform_capabilities(registry);
     #[cfg(feature = "container-sandbox")]
@@ -236,6 +246,16 @@ mod tests {
         let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
         assert!(registry.has(PLATFORM_CAPABILITY_ID));
         assert!(registry.has(PLATFORM_MANAGEMENT_CAPABILITY_ID));
+    }
+
+    #[cfg(feature = "portable-builtins")]
+    #[test]
+    fn hosted_registry_has_the_hard_tool_approval_gate() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        let capability = registry
+            .get(everruns_builtins::TOOL_APPROVAL_CAPABILITY_ID)
+            .expect("hosted registry registers tool_approval");
+        assert!(!capability.pre_tool_use_hooks().is_empty());
     }
 
     // The `a2a` Cargo feature is the only thing that puts outbound A2A delegation

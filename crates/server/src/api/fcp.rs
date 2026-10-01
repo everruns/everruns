@@ -534,6 +534,7 @@ async fn message(
         .message_service
         .create(
             CreateMessageContext {
+                runtime_subject_principal_id: None,
                 org_id: context.app.org_id,
                 user_id: None,
                 harness_id: context.app.harness_id.uuid(),
@@ -542,7 +543,7 @@ async fn message(
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     context.app.public_id,
                     context.app.owner_principal_id,
-                    context.app.agent_identity_id,
+                    context.app.virtual_user_id,
                 )),
                 request_id,
             },
@@ -838,7 +839,7 @@ async fn resolve_session(
                 harness_name: None,
                 agent_id: app.agent_id,
                 agent_name: None,
-                agent_identity_id: app.agent_identity_id,
+                virtual_user_id: app.virtual_user_id,
                 title: Some(format!("FCP session for {}", app.name)),
                 goal: None,
                 locale: None,

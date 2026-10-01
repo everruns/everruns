@@ -39,13 +39,13 @@ const INSERT_CHANNEL_SQL: &str = r#"
     INSERT INTO agent_endpoints (
         app_id, legacy_app_public_id, agent_id, public_id, channel_type, channel_config,
         channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled,
-        status, agent_identity_id, agent_version_policy, agent_version_id,
+        status, virtual_user_id, agent_version_policy, agent_version_id,
         owner_principal_id, resolved_owner_user_id
     )
     SELECT
         app.id, app.public_id, app.agent_id, $2, $3, $4, $5, $6, $7, $8, $9,
         CASE WHEN $9 THEN 'draft' ELSE 'disabled' END,
-        app.agent_identity_id, app.agent_version_policy, app.agent_version_id,
+        app.virtual_user_id, app.agent_version_policy, app.agent_version_id,
         app.owner_principal_id, app.resolved_owner_user_id
     FROM apps AS app
     WHERE app.id = $1 AND app.agent_id IS NOT NULL
@@ -119,7 +119,7 @@ impl Database {
                 agent.harness_id,
                 agent.status AS agent_status,
                 agent.exposures_suspended,
-                ae.agent_identity_id,
+                ae.virtual_user_id,
                 ae.agent_version_policy,
                 ae.agent_version_id,
                 ae.owner_principal_id,
@@ -157,7 +157,7 @@ impl Database {
                 COALESCE(agent.display_name, agent.name) AS agent_name,
                 agent.description AS agent_description, agent.harness_id,
                 agent.status AS agent_status, agent.exposures_suspended,
-                ae.agent_identity_id, ae.agent_version_policy, ae.agent_version_id,
+                ae.virtual_user_id, ae.agent_version_policy, ae.agent_version_id,
                 ae.owner_principal_id, ae.resolved_owner_user_id, ae.channel_type,
                 ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted,
                 ae.enabled, ae.status AS endpoint_status, ae.created_at, ae.updated_at
@@ -188,7 +188,7 @@ impl Database {
                 COALESCE(agent.display_name, agent.name) AS agent_name,
                 agent.description AS agent_description, agent.harness_id,
                 agent.status AS agent_status, agent.exposures_suspended,
-                ae.agent_identity_id, ae.agent_version_policy, ae.agent_version_id,
+                ae.virtual_user_id, ae.agent_version_policy, ae.agent_version_id,
                 ae.owner_principal_id, ae.resolved_owner_user_id, ae.channel_type,
                 ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted,
                 ae.enabled, ae.status AS endpoint_status, ae.created_at, ae.updated_at
@@ -215,7 +215,7 @@ impl Database {
             INSERT INTO agent_endpoints (
                 agent_id, app_id, legacy_app_public_id, public_id, channel_type,
                 channel_config, channel_config_encrypted, auth, auth_encrypted,
-                enabled, status, agent_identity_id, agent_version_policy,
+                enabled, status, virtual_user_id, agent_version_policy,
                 agent_version_id, owner_principal_id, resolved_owner_user_id
             )
             SELECT $2, NULL, NULL, $3, $4, $5, $6, $7, $8, $9, $10,
@@ -235,7 +235,7 @@ impl Database {
         .bind(&input.auth_encrypted)
         .bind(input.enabled)
         .bind(&input.status)
-        .bind(input.agent_identity_id)
+        .bind(input.virtual_user_id)
         .bind(&input.agent_version_policy)
         .bind(input.agent_version_id)
         .bind(input.owner_principal_id)
@@ -350,7 +350,7 @@ impl Database {
                 agent.harness_id,
                 agent.status AS agent_status,
                 agent.exposures_suspended,
-                ae.agent_identity_id,
+                ae.virtual_user_id,
                 ae.agent_version_policy,
                 ae.agent_version_id,
                 ae.owner_principal_id,

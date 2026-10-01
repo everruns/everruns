@@ -2375,7 +2375,7 @@ mod tests {
                     agent_id: Some(uuid::Uuid::nil()),
                     agent_version_policy: "default".to_string(),
                     agent_version_id: None,
-                    agent_identity_id: None,
+                    virtual_user_id: None,
                     owner_principal_id: PrincipalId::from_seed(1),
                     resolved_owner_user_id: None,
                     channel_type: Some("slack".to_string()),

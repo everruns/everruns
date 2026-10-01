@@ -9,7 +9,7 @@
 // EVE-837: the `Principal` aggregate entity moved to the `everruns-platform`
 // crate. The value types below stay in core because they are embedded by core
 // domain models: `PrincipalSummary` is a field of `Session`/`SessionSchedule`/
-// `AgentIdentity`, and `PrincipalKind` backs that summary. EVE-845: the
+// `VirtualUser`, and `PrincipalKind` backs that summary. EVE-845: the
 // `PrincipalStatus` lifecycle enum, which no core type embeds, moved to
 // `everruns-platform` alongside the `Principal` aggregate it describes.
 
@@ -29,7 +29,7 @@ use utoipa::ToSchema;
 #[serde(rename_all = "snake_case")]
 pub enum PrincipalKind {
     User,
-    AgentIdentity,
+    VirtualUser,
     System,
 }
 
@@ -37,7 +37,7 @@ impl std::fmt::Display for PrincipalKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::User => write!(f, "user"),
-            Self::AgentIdentity => write!(f, "agent_identity"),
+            Self::VirtualUser => write!(f, "virtual_user"),
             Self::System => write!(f, "system"),
         }
     }
@@ -46,7 +46,7 @@ impl std::fmt::Display for PrincipalKind {
 impl From<&str> for PrincipalKind {
     fn from(value: &str) -> Self {
         match value {
-            "agent_identity" => Self::AgentIdentity,
+            "virtual_user" => Self::VirtualUser,
             "system" => Self::System,
             _ => Self::User,
         }
@@ -54,7 +54,7 @@ impl From<&str> for PrincipalKind {
 }
 
 /// Compact view of a principal — id + kind + the subject-id pointer back
-/// into the user/agent-identity row. Used wherever a full `Principal`
+/// into the user/virtual-user row. Used wherever a full `Principal`
 /// would be redundant (e.g. as a sub-field of a session or audit record).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]

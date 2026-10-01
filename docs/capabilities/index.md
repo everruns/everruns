@@ -125,6 +125,7 @@ Streaming-output guardrails and runtime safety nets.
 | [Prompt Canary Guardrail](/capabilities/prompt-canary-guardrail/) | `prompt_canary_guardrail` | 0 |
 | [Tool Call Repair](/capabilities/tool-call-repair/) | `tool_call_repair` | 0 |
 | [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
+| [Tool Approval](/capabilities/tool-approval/) | `tool_approval` | 0 |
 
 The [`guardrails`](/capabilities/guardrails/) capability runs config-driven
 checks over model output and tool activity, blocking or logging per check.

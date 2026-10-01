@@ -25,7 +25,7 @@ impl InMemoryDatabase {
             agent_id: input.agent_id,
             agent_version_policy: input.agent_version_policy,
             agent_version_id: input.agent_version_id,
-            agent_identity_id: input.agent_identity_id,
+            virtual_user_id: input.virtual_user_id,
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             channel_type: input.channel_type,
@@ -186,7 +186,7 @@ impl InMemoryDatabase {
             app.agent_version_policy = policy;
         }
         input.agent_version_id.apply(&mut app.agent_version_id);
-        input.agent_identity_id.apply(&mut app.agent_identity_id);
+        input.virtual_user_id.apply(&mut app.virtual_user_id);
         if let Some(owner_principal_id) = input.owner_principal_id {
             app.owner_principal_id = owner_principal_id;
         }

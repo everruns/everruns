@@ -58,6 +58,8 @@ impl DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
+                    service_virtual_user_id: None,
+
                     public_id: row
                         .public_id
                         .parse()

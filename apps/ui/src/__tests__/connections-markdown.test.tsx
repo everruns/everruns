@@ -172,3 +172,13 @@ describe("ConnectionsPage - Markdown Instructions", () => {
     });
   });
 });
+
+jest.mock("@/hooks/use-identity-connections", () => ({
+  useIdentityConnections: () => mockUseUserConnections(),
+  useDeleteIdentityConnection: () => mockUseDeleteUserConnection(),
+  useCreateIdentityApiKeyConnection: () => mockUseCreateApiKeyConnection(),
+  useVerifyIdentityConnection: () => ({ mutateAsync: jest.fn(), isPending: false }),
+}));
+jest.mock("@/components/connections/pending-connection-migrations", () => ({
+  PendingConnectionMigrations: () => null,
+}));

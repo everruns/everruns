@@ -22,15 +22,17 @@ use everruns_core::{
     org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use everruns_core::{
+    CompactionCheckpointStore, agents_api_store::AgentsApiStore,
     connection_services::ProviderCredentialStore, connection_services::UserConnectionResolver,
-    delegation_services::SessionCreationAuthority, event_emitter::EventEmitter,
-    execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, file_services::FileResolver,
+    delegation_services::SessionCreationAuthority, durability::DurableToolResultStore,
+    durability::PartialStreamStore, event_emitter::EventEmitter, execution_loading::AgentStore,
+    execution_loading::HarnessStore, execution_loading::SessionStore, file_services::FileResolver,
     image_services::ImageArtifactStore, image_services::ImageResolver,
-    provider_resolution::ProviderStore, session_files::SessionFileSystem,
-    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
-    session_services::SessionScheduleStore, session_services::SessionStorageStore,
-    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
+    native_async_store::NativeAsyncStore, provider_resolution::ProviderStore,
+    session_files::SessionFileSystem, session_services::LeasedResourceStore,
+    session_services::SessionResourceRegistry, session_services::SessionScheduleStore,
+    session_services::SessionStorageStore, tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
 };
 use everruns_engine::{
     ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
@@ -129,6 +131,15 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         session_id: SessionId,
     ) -> everruns_provider::error::Result<ResolvedTurnInputs>;
 
+    async fn load_resolved_turn_for_execution(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        _input_message_id: MessageId,
+    ) -> everruns_provider::error::Result<ResolvedTurnInputs> {
+        self.load_resolved_turn(org_id, session_id).await
+    }
+
     fn capability_registry(&self) -> CapabilityRegistry;
 
     fn driver_registry(&self) -> DriverRegistry;
@@ -145,15 +156,16 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     fn message_store(&self) -> Arc<dyn MessageRetriever>;
 
-    fn native_async_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+    fn native_async_store(&self) -> Option<Arc<dyn NativeAsyncStore>> {
         None
     }
 
-    fn compaction_checkpoint_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+    /// Durable state for the opt-in OpenAI Agents API backend (EVE-1123).
+    fn agents_api_store(&self) -> Option<Arc<dyn AgentsApiStore>> {
+        None
+    }
+
+    fn compaction_checkpoint_store(&self) -> Option<Arc<dyn CompactionCheckpointStore>> {
         None
     }
 
@@ -278,9 +290,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     /// Per-turn durable tool result store for act-activity idempotency (EVE-530).
     /// Default: `None` (no durable claim/settle — every execution runs tools fresh).
-    fn durable_tool_result_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
+    fn durable_tool_result_store(&self) -> Option<Arc<dyn DurableToolResultStore>> {
         None
     }
 
@@ -300,9 +310,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     /// Partial-stream store for ContinuePartial recovery (EVE-532).
     /// Default: `None` (no recovery; in-memory and dev hosts use this default).
-    fn partial_stream_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::durability::PartialStreamStore>> {
+    fn partial_stream_store(&self) -> Option<Arc<dyn PartialStreamStore>> {
         None
     }
 
@@ -346,12 +354,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     /// Resolves registered MCP servers OpenAI calls as a hosted tool, with the
-    /// same scoping and credentials as `mcp_executor` (EVE-1115).
+    /// same scoping and credentials as `mcp_executor` (EVE-1115). The current
+    /// input identifies the persisted speaker and responder credential authority.
     fn hosted_mcp_resolver(
         &self,
         _org_id: i64,
         _session_id: SessionId,
         _agent_id: Option<AgentId>,
+        _input_message_id: MessageId,
     ) -> Option<Arc<dyn everruns_provider::hosted_mcp::HostedMcpResolver>> {
         None
     }
@@ -504,190 +514,6 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
     );
     let dispatcher = bash_hook_dispatcher(adapter.file_store(org_id));
     Ok((specs, dispatcher))
-}
-
-async fn load_execution_capabilities<A: RuntimeHostAdapter>(
-    adapter: &A,
-    org_id: i64,
-    session_id: SessionId,
-    harness_id: HarnessId,
-    agent_id: Option<AgentId>,
-    locale: Option<String>,
-    blueprint_id: Option<&str>,
-) -> everruns_provider::error::Result<RuntimeExecutionCapabilities> {
-    let capability_registry = adapter.capability_registry();
-    if let Some(blueprint_id) = blueprint_id {
-        let mut registry = ToolRegistry::with_defaults();
-        #[cfg(feature = "builtins")]
-        everruns_builtins::register_default_tools(&mut registry);
-        let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
-            everruns_provider::error::AgentLoopError::config(format!(
-                "Blueprint \"{blueprint_id}\" not found in registry"
-            ))
-        })?;
-        for tool in blueprint.tools {
-            registry.register_boxed(tool);
-        }
-        return Ok(RuntimeExecutionCapabilities {
-            tool_registry: registry,
-            post_tool_hooks: Vec::new(),
-            pre_tool_hooks: Vec::new(),
-            tool_call_hooks: Vec::new(),
-            subagent_nesting_policy:
-                everruns_core::delegation_services::SubagentNestingPolicy::default(),
-            resolved_capabilities: Vec::new(),
-        });
-    }
-
-    let harness = adapter
-        .harness_store(org_id)
-        .get_harness(harness_id)
-        .await?
-        .ok_or_else(|| everruns_provider::error::AgentLoopError::harness_not_found(harness_id))?;
-
-    let session = adapter
-        .session_store(org_id)
-        .get_session(session_id)
-        .await?
-        .ok_or_else(|| everruns_provider::error::AgentLoopError::session_not_found(session_id))?;
-
-    let agent_store = adapter.agent_store(org_id);
-    let agent =
-        match agent_id {
-            Some(agent_id) => Some(agent_store.get_agent(agent_id).await?.ok_or_else(|| {
-                everruns_provider::error::AgentLoopError::agent_not_found(agent_id)
-            })?),
-            None => None,
-        };
-
-    let resolved =
-        resolve_runtime_capabilities(&harness, agent.as_ref(), &session, &capability_registry);
-    // Executor (act) path: this builds the worker-side tool registry, not the
-    // model-visible tool list. The model is left unset, so a model-adaptive
-    // capability like `auto_tool_search` resolves to its provider-agnostic
-    // client-side mechanism here. That registers the `tool_search` tool in the
-    // executor, which is a harmless superset: on native models the reason path
-    // never shows that tool to the model, so it is simply never called.
-    let prompt_ctx = SystemPromptContext {
-        session_id,
-        locale: locale.or(session.locale.clone()),
-        // Pin system-prompt file reads to the session's workspace (the default
-        // 1:1 case is a transparent pass-through), then resolve through the
-        // mount resolver (EVE-660): `/workspace` is a mount + cwd.
-        // `scoped_prompt_file_store` wraps with `wrap_if_needed` so a local
-        // embedder's backend-native display policy survives here too (it must
-        // match the reason path — see its doc); server stores stay on `/workspace`.
-        file_store: Some(everruns_core::scoped_prompt_file_store(
-            adapter.file_store(org_id),
-            session.workspace_id,
-        )),
-        model: None,
-        session_storage: None,
-    };
-    let collected = collect_capabilities_with_configs(
-        &resolved.resolved_capability_configs,
-        &capability_registry,
-        &prompt_ctx,
-    )
-    .await;
-
-    let mut registry = ToolRegistry::with_defaults();
-    #[cfg(feature = "builtins")]
-    everruns_builtins::register_default_tools(&mut registry);
-    for tool in collected.tools {
-        registry.register_boxed(tool);
-    }
-
-    // Only `Available` capabilities contribute hooks, matching
-    // `collect_capabilities_with_configs` (which skips non-available
-    // capabilities). This keeps a `ComingSoon`/unavailable capability from
-    // affecting execution via any of its hook seams.
-    let mut post_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PostToolExecHook>> = resolved
-        .resolved_capability_configs
-        .iter()
-        .flat_map(|config| {
-            capability_registry
-                .get(config.capability_id())
-                .filter(|capability| capability.status().is_active())
-                .map(|capability| {
-                    capability.post_tool_exec_hooks_with_config(config.config_value())
-                })
-                .unwrap_or_default()
-        })
-        .collect();
-    // Tool-output guardrails must inspect the original result before other
-    // capability hooks can persist or compact it into secondary surfaces.
-    post_tool_hooks.sort_by_key(|hook| hook.priority());
-
-    // User-hook contributions (see `knowledge/runtime-resources/user-hooks.md`). `finalize_specs_from_configs`
-    // gathers specs across every resolved capability — both the user-facing
-    // `user_hooks` capability and any capability that bundles hooks — and applies
-    // `finalize_hook_specs` (namespace stamping, stable ids, `disabled_contributions`
-    // muting; TM-HOOK-004). The same helper backs the lifecycle firing points so
-    // every event finalizes specs identically.
-    let tool_augmentor = adapter.tool_augmentor();
-    let user_hook_specs = finalize_specs_from_configs(
-        &resolved.resolved_capability_configs,
-        &capability_registry,
-        tool_augmentor.as_deref(),
-    );
-    // Persisted messages remain the immutable audit record, so they can contain
-    // text removed by a provider-bound user_prompt_submit hook. Until there is a
-    // durable provider-visible history view, fail closed rather than let
-    // query_history bypass that enforcement boundary.
-    if user_hook_specs
-        .iter()
-        .any(|spec| spec.event == everruns_core::user_hook_types::HookEvent::UserPromptSubmit)
-    {
-        registry.unregister("query_history");
-    }
-    // Capability-contributed pre-tool hooks run first (e.g. approval gating),
-    // then user-hook (`PreToolUse`) specs. The first hook to block wins.
-    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>> = resolved
-        .resolved_capability_configs
-        .iter()
-        .flat_map(|config| {
-            capability_registry
-                .get(config.capability_id())
-                .filter(|capability| capability.status().is_active())
-                .map(|capability| capability.pre_tool_use_hooks_with_config(config.config_value()))
-                .unwrap_or_default()
-        })
-        .collect();
-    if !user_hook_specs.is_empty() {
-        let dispatcher = bash_hook_dispatcher(adapter.file_store(org_id));
-        post_tool_hooks.extend(everruns_core::hook_adapter::build_post_tool_use_hooks(
-            &user_hook_specs,
-            dispatcher.clone(),
-        ));
-        pre_tool_hooks.extend(everruns_core::hook_adapter::build_pre_tool_use_hooks(
-            &user_hook_specs,
-            dispatcher,
-        ));
-    }
-
-    // Use the hook list assembled by `collect_capabilities_with_configs` as the
-    // single source of truth. It already contains every explicit capability
-    // `tool_call_hooks()` followed by the generated `CapabilityNarrationHook`
-    // adapters — one per collected capability plus any auto-activated
-    // cross-cutting capability such as `background_execution`. Re-deriving only
-    // the explicit subset here dropped capability-owned narration, so tools fell
-    // back to generic `Ran {display_name}` lines (EVE-601). Explicit hooks stay
-    // first in this list, so model-authored narration (`human_intent`) keeps its
-    // precedence over default `Tool::narrate()`, and only available capabilities
-    // contributed because collection skips non-available ones.
-    let tool_call_hooks = collected.tool_call_hooks;
-
-    Ok(RuntimeExecutionCapabilities {
-        tool_registry: registry,
-        post_tool_hooks,
-        pre_tool_hooks,
-        tool_call_hooks,
-        subagent_nesting_policy: subagent_nesting_policy_from_configs(
-            &resolved.resolved_capability_configs,
-        ),
-        resolved_capabilities: resolved.resolved_capability_configs,
-    })
 }
 
 /// Shared lifecycle helper for runtime-backed hosts.
@@ -1341,7 +1167,11 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         .validate_context_services(&validation_services)?;
 
     let mut turn_inputs = adapter
-        .load_resolved_turn(org_id, input.context.session_id)
+        .load_resolved_turn_for_execution(
+            org_id,
+            input.context.session_id,
+            input.context.input_message_id,
+        )
         .await?;
     if let Some(augmentor) = adapter.tool_augmentor() {
         augmentor
@@ -1392,6 +1222,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         org_id,
         input.context.session_id,
         input.agent_id,
+        input.context.input_message_id,
     ));
     let context_resolver = match adapter.storage_store(org_id) {
         Some(store) => context_resolver.with_session_storage(store),
@@ -1491,7 +1322,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         emit_model_change_if_switched(adapter, org_id, &input, &assembled).await;
     }
 
-    crate::native_async::execute_reason(adapter, org_id, input, assembled, atom).await
+    crate::reason_backend::execute_reason(adapter, org_id, input, assembled, atom).await
 }
 
 /// Emit `session.model.changed` when this turn's input selects a model
@@ -1678,3 +1509,6 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
 
     atom.execute(input).await
 }
+
+mod execution_capabilities;
+use execution_capabilities::load_execution_capabilities;

@@ -220,6 +220,21 @@ impl SessionService {
         if req.seed != SessionSeedMode::Fresh && req.forked_from_session_id.is_none() {
             return Err(BadRequestError::new("seed requires forked_from_session_id").into());
         }
+        // THREAT[TM-LLM-044] EVE-1126: OpenAI holds part of an Agents API session's context
+        // (managed compaction, hidden reasoning) that neither Everruns nor the
+        // provider can copy. A fork (a user fork or a detached spawn seeded
+        // as one) would silently continue without it, so it is refused before
+        // anything is created. Workspace-only seeds copy no conversation.
+        if req.seed == SessionSeedMode::Fork
+            && let Some(source) = req.forked_from_session_id
+            && self.db.session_has_agents_api_state(org_id, source).await?
+        {
+            return Err(crate::errors::ConflictError::new(
+                crate::errors::AGENTS_API_SESSION_NOT_FORKABLE_DETAIL,
+            )
+            .with_code(crate::errors::AGENTS_API_SESSION_NOT_FORKABLE_CODE)
+            .into());
+        }
 
         // EVE-508: check per-org concurrent session cap before creating.
         let active_sessions = self.db.count_active_sessions_for_org(org_id).await?;
@@ -290,14 +305,14 @@ impl SessionService {
             None
         };
 
-        let agent_identity_id = if let Some(identity_id) = req.agent_identity_id {
+        let virtual_user_id = if let Some(identity_id) = req.virtual_user_id {
             let identity = self
                 .db
-                .get_agent_identity(org_id, identity_id)
+                .get_virtual_user(org_id, identity_id)
                 .await?
                 .ok_or_else(|| ResourceNotFoundError::new("Agent identity"))?;
             if identity.status != "active" {
-                anyhow::bail!("Archived or deleted agent identities cannot be assigned");
+                anyhow::bail!("Archived or deleted virtual users cannot be assigned");
             }
             Some(identity.id)
         } else {
@@ -390,7 +405,7 @@ impl SessionService {
             None => {
                 let owner_principal = self
                     .principal_service
-                    .default_owner_principal(caller, agent_identity_id)
+                    .default_runtime_owner_principal(caller, virtual_user_id)
                     .await?;
                 (owner_principal.id, owner_principal.resolved_user_id)
             }
@@ -450,7 +465,7 @@ impl SessionService {
             agent_config_hash: resolved_agent_version
                 .as_ref()
                 .map(|version| version.config_hash.clone()),
-            agent_identity_id,
+            virtual_user_id,
             owner_principal_id,
             resolved_owner_user_id,
             title: req.title,
@@ -627,7 +642,7 @@ impl SessionService {
         .await?;
         let owner_principal = self
             .principal_service
-            .default_owner_principal(caller, None)
+            .default_runtime_owner_principal(caller, None)
             .await?;
         let requested_goal = req.goal.clone();
 
@@ -642,7 +657,7 @@ impl SessionService {
             agent_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: owner_principal.id,
             resolved_owner_user_id: owner_principal.resolved_user_id,
             title: req.title,

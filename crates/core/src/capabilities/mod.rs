@@ -99,10 +99,26 @@ pub mod util;
 /// attachment logic can reference it even when the `a2a` feature (and the
 /// delegation implementation) is compiled out.
 pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
+/// Capability that selects the opt-in OpenAI Agents API runtime backend
+/// (EVE-1123). Defined ungated so platform feature gating and validation can
+/// reference it whether or not the host compiled the backend.
+pub const OPENAI_AGENTS_API_RUNTIME_ID: &str = "openai_agents_api_runtime";
 /// KV key prefix for A2A delegation run records. Defined ungated so the
 /// session-storage internal-prefix reservation (a TM-TOOL/TM-AGENT mitigation
 /// against forged attachments) holds even when the `a2a` feature is compiled out.
 pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
+/// KV key prefix for durable tool-approval decisions (EVE-1140). Owned by the
+/// `tool_approval` capability in `everruns-builtins`; defined here so the
+/// session-storage internal-prefix reservation holds without that crate.
+pub const TOOL_APPROVAL_KV_PREFIX: &str = "tool_approval/";
+/// KV key prefix for a person's consent to an MCP URL mode elicitation
+/// (EVE-1141). Owned by the MCP client crate; defined here so
+/// the session-storage internal-prefix reservation holds without that crate.
+pub const MCP_ELICITATION_CONSENT_KV_PREFIX: &str = "mcp/elicitation-consent/";
+/// KV key prefix for a person's answer to an MCP form mode elicitation
+/// (EVE-1141). Owned by the MCP client crate; reserved for
+/// the same reason as [`MCP_ELICITATION_CONSENT_KV_PREFIX`].
+pub const MCP_ELICITATION_FORM_KV_PREFIX: &str = "mcp/elicitation-form/";
 /// Shared concurrency class for every provider of the model-visible
 /// `spawn_agent` tool. Implementations live in host/integration crates, while
 /// collection keeps the merged tool serialized through this neutral key.

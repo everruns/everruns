@@ -82,6 +82,7 @@ impl Command for CreateMessage {
         q::message_service(ctx)?
             .create(
                 CreateMessageContext {
+                    runtime_subject_principal_id: None,
                     org_id: ctx.org_id(),
                     user_id: ctx.caller.user_id,
                     harness_id: session.harness_id.uuid(),
@@ -512,7 +513,7 @@ mod tests {
                 agent_id: Some(host_agent.id),
                 agent_version_id: None,
                 agent_config_hash: None,
-                agent_identity_id: None,
+                virtual_user_id: None,
                 owner_principal_id: PrincipalId::from_seed(DEFAULT_ORG_ID as u128),
                 resolved_owner_user_id: None,
                 title: Some("Routing session".to_string()),
@@ -672,7 +673,7 @@ mod tests {
                 agent_id: None,
                 agent_version_id: None,
                 agent_config_hash: None,
-                agent_identity_id: None,
+                virtual_user_id: None,
                 owner_principal_id: PrincipalId::from_seed(owner_user_id.as_u128()),
                 resolved_owner_user_id: Some(owner_user_id),
                 title: Some("Platform Chat".to_string()),

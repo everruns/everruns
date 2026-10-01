@@ -131,6 +131,7 @@ fn test_convert_llm_generation_with_parent() {
             retry: None,
             compaction: None,
             request_options: None,
+            cost_components: Vec::new(),
         },
     };
 

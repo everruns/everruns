@@ -46,7 +46,7 @@ const settingsSections: NavSection[] = [
         description: "Manage LLM providers",
       },
       {
-        name: "Members",
+        name: "Team members",
         href: "/settings/members",
         icon: Users,
         description: "View and manage team members",
@@ -69,10 +69,16 @@ const settingsSections: NavSection[] = [
     label: "Personal",
     items: [
       {
-        name: "Profile",
+        name: "Account",
         href: "/settings/profile",
         icon: User,
-        description: "Manage your profile",
+        description: "Manage your Everruns account",
+      },
+      {
+        name: "My agent experience",
+        href: "/settings/agent-experience",
+        icon: User,
+        description: "Your virtual user in this organization",
       },
       {
         name: "Connections",

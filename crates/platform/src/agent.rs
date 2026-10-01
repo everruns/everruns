@@ -132,7 +132,7 @@ pub struct AgentVersion {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub source_version_id: Option<AgentVersionId>,
-    /// Identity of the principal (user or agent identity) that created this version. `None` for system-generated snapshots.
+    /// Identity of the principal (user or virtual user) that created this version. `None` for system-generated snapshots.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub created_by_principal_id: Option<PrincipalId>,
@@ -195,6 +195,10 @@ impl From<&str> for AgentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Agent {
+    /// Org-scoped service account used when a tool acts as the agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature="openapi",schema(value_type=Option<String>))]
+    pub service_virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
     /// External identifier (agent_<32-hex>). Shown as "id" in API.
     /// Client-supplied or auto-generated.
     #[serde(rename = "id")]
@@ -451,6 +455,8 @@ mod tests {
 
     fn test_agent() -> Agent {
         Agent {
+            service_virtual_user_id: None,
+
             public_id: "agent_01933b5a000070008000000000000001".parse().unwrap(),
             internal_id: Uuid::nil(),
             name: "test".to_string(),

@@ -349,6 +349,7 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "Guardrails", slug: "capabilities/guardrails" },
+                        { label: "Tool Approval", slug: "capabilities/tool-approval" },
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
                         { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
                       ],

@@ -13,8 +13,10 @@ import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 
 export function useUserConnections() {
+  const { currentOrg } = useOrg();
   return useQuery({
-    queryKey: queryKeys.userConnections.list(),
+    queryKey: [...queryKeys.userConnections.list(), currentOrg?.public_id],
+    enabled: !!currentOrg,
     queryFn: () => getUserConnections(),
     staleTime: 30000,
   });
@@ -39,8 +41,10 @@ export function useUserMcpConnections() {
 }
 
 export function useConnectionProviders() {
+  const { currentOrg } = useOrg();
   return useQuery({
-    queryKey: ["connection-providers"],
+    queryKey: ["connection-providers", currentOrg?.public_id],
+    enabled: !!currentOrg,
     queryFn: () => getConnectionProviders(),
     staleTime: 60000,
   });

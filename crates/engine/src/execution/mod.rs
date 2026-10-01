@@ -11,7 +11,10 @@ pub use tool_scheduler::configured_max_tool_concurrency;
 pub use act::{ActAtom, ActInput, ActResult, ToolCallResult};
 pub use act_hooks::{
     ClientSideToolHook, ConnectionSetupHook, OutputHardLimitHook, PostActAction, PostActHook,
+    ToolApprovalPauseHook, has_pending_tool_approval,
 };
 pub use everruns_core::execution_context::ExecutionContext;
 pub use input::{InputAtom, InputAtomInput, InputAtomResult};
-pub use reason::{NativeExecutionCounts, ReasonAtom, ReasonInput, ReasonResult};
+pub use reason::{
+    NativeExecutionCounts, ReasonAtom, ReasonInput, ReasonResult, capability_usage_records,
+};

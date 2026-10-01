@@ -1053,7 +1053,7 @@ fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRo
         "harness" => ("v1/harnesses", format!("harnesses/{id}")),
         "session" => ("v1/sessions", format!("sessions/{id}/chat")),
         "app" => ("v1/apps", format!("apps/{id}")),
-        "identity" => ("v1/agent-identities", format!("agent-identities/{id}")),
+        "identity" => ("v1/virtual-users", format!("virtual-users/{id}")),
         "mcp" => ("v1/mcp-servers", "mcp-servers".to_string()),
         "skill" => ("v1/skills", "skills".to_string()),
         "provider" => ("v1/providers", "settings/providers".to_string()),
@@ -1536,12 +1536,12 @@ impl ResourceUrlable for everruns_platform::Session {
     }
 }
 
-impl ResourceUrlable for everruns_core::AgentIdentity {
+impl ResourceUrlable for everruns_core::VirtualUser {
     fn api_path() -> &'static str {
-        "v1/agent-identities"
+        "v1/virtual-users"
     }
     fn ui_path() -> &'static str {
-        "agent-identities"
+        "virtual-users"
     }
     fn resource_id(&self) -> String {
         self.id.to_string()

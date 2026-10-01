@@ -116,6 +116,12 @@ struct ActingResolver;
 
 #[async_trait]
 impl UserConnectionResolver for ActingResolver {
+    async fn get_connection_user(&self, _: SessionId, _: &str) -> ProviderResult<Option<Uuid>> {
+        Ok(Some(Uuid::nil()))
+    }
+    fn for_execution(&self, _: Uuid) -> Option<Arc<dyn UserConnectionResolver>> {
+        Some(Arc::new(Self))
+    }
     async fn get_connection_token(
         &self,
         _session_id: SessionId,
@@ -253,7 +259,7 @@ async fn create_agent_and_session(
             agent_id: Some(agent.id),
             agent_version_id: None,
             agent_config_hash: None,
-            agent_identity_id: None,
+            virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: Some(Uuid::now_v7()),
             title: None,
@@ -330,8 +336,29 @@ async fn explicit_attachment_replaces_contributed_entry_in_both_identity_directi
         )
         .await;
 
+        let agent_id = db
+            .get_session(everruns_core::DEFAULT_ORG_ID, session_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .agent_id
+            .unwrap();
+        db.record_runtime_invocation(
+            everruns_core::DEFAULT_ORG_ID,
+            session_id,
+            session_id.uuid(),
+            None,
+            None,
+            Some(agent_id.uuid()),
+        )
+        .await
+        .unwrap();
         let context = adapters(db.clone(), registry.clone(), egress.clone())
-            .load_turn_context(everruns_core::DEFAULT_ORG_ID, session_id.uuid())
+            .load_turn_context_for_execution(
+                everruns_core::DEFAULT_ORG_ID,
+                session_id.uuid(),
+                session_id.uuid(),
+            )
             .await
             .unwrap();
         assert!(

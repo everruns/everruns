@@ -19,6 +19,15 @@ impl UserConnectionResolver for MutableConnectionResolver {
     ) -> everruns_provider::error::Result<Option<String>> {
         Ok(self.token.read().await.clone())
     }
+
+    async fn get_mcp_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+        _acts_as: McpServerActsAs,
+    ) -> everruns_provider::error::Result<Option<String>> {
+        Ok(self.token.read().await.clone())
+    }
 }
 
 #[derive(Default)]
@@ -331,6 +340,8 @@ fn test_harness() -> Harness {
 fn test_agent() -> Agent {
     let public_id = generate_agent_public_id();
     Agent {
+        service_virtual_user_id: None,
+
         public_id,
         internal_id: public_id.uuid(),
         name: "test-agent".to_string(),
@@ -378,7 +389,7 @@ fn test_session(harness_id: HarnessId, agent_id: everruns_provider::typed_id::Ag
         harness_id,
         agent_id: Some(agent_id),
         agent_version_id: None,
-        agent_identity_id: None,
+        virtual_user_id: None,
         owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
         owner: None,

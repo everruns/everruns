@@ -410,7 +410,7 @@ async fn invalid_actions_never_reach_the_backend_or_the_budget() {
         .storage_store
         .as_ref()
         .unwrap()
-        .get_value(ctx.session_id, ACTION_COUNT_KEY)
+        .get_value(ctx.session_id, COMPUTER_USE_ACTION_COUNT_KEY)
         .await
         .unwrap();
     assert_eq!(used, None);

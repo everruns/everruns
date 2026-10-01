@@ -282,7 +282,7 @@ impl TestServer {
                     agent_id: Some(agent.id.uuid()),
                     agent_version_policy: "latest".to_string(),
                     agent_version_id: None,
-                    agent_identity_id: None,
+                    virtual_user_id: None,
                     owner_principal_id: principal_id,
                     resolved_owner_user_id: None,
                     channel_type: Some(channel_type.to_string()),
@@ -945,12 +945,12 @@ impl TestServer {
         );
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
 
-        let agent_identities_state = api::agent_identities::AppState::new(
+        let virtual_users_state = api::virtual_users::AppState::new(
             db.clone(),
             capability_service.clone(),
             auth_state.clone(),
         );
-        let agent_identity_connections_state = api::agent_identity_connections::AppState::new(
+        let virtual_user_connections_state = api::virtual_user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
             auth_state.clone(),
@@ -985,7 +985,7 @@ impl TestServer {
             event_delivery.clone(),
             "https://example.com/api".to_string(),
         );
-        let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
+        let endpoint_webhooks_state = api::endpoint_webhooks::EndpointWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -993,7 +993,7 @@ impl TestServer {
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         );
-        let app_a2a_state = api::app_a2a::AppA2aState::new(
+        let endpoint_a2a_state = api::endpoint_a2a::EndpointA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1004,7 +1004,7 @@ impl TestServer {
             api::a2a_signing::A2aReplayStore::in_memory(),
             "https://app.everruns.test".to_string(),
         );
-        let app_api_state = api::app_api::AppApiState::new(
+        let endpoint_api_state = api::endpoint_api::EndpointApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1068,9 +1068,9 @@ impl TestServer {
         let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
             .merge(api::agent_credentials::routes(agent_credentials_state))
-            .merge(api::agent_identities::routes(agent_identities_state))
-            .merge(api::agent_identity_connections::routes(
-                agent_identity_connections_state,
+            .merge(api::virtual_users::routes(virtual_users_state))
+            .merge(api::virtual_user_connections::routes(
+                virtual_user_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
             .merge(api::agent_endpoints::routes(agent_triggers_state.clone()))
@@ -1117,9 +1117,9 @@ impl TestServer {
             .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))
             .merge(api::slack_events::routes(slack_state))
-            .merge(api::app_webhooks::routes(app_webhooks_state))
-            .merge(api::app_a2a::routes(app_a2a_state))
-            .merge(api::app_api::routes(app_api_state))
+            .merge(api::endpoint_webhooks::routes(endpoint_webhooks_state))
+            .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
+            .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
                 auth::cli_auth::CliAuthState {

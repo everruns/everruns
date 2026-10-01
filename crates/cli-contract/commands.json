@@ -1,188 +1,5 @@
 [
   {
-    "wire_name": "create_agent_identity",
-    "path": [
-      "agent-identities"
-    ],
-    "verb": "create",
-    "description": "Create a new agent identity (virtual principal for unattended execution).",
-    "method": "POST",
-    "http_path": "/v1/agent-identities",
-    "args": [
-      {
-        "field": "avatar_url",
-        "long": "avatar-url",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
-      },
-      {
-        "field": "locale",
-        "long": "locale",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable name."
-      },
-      {
-        "field": "timezone",
-        "long": "timezone",
-        "kind": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "wire_name": "delete_agent_identity",
-    "path": [
-      "agent-identities"
-    ],
-    "verb": "delete",
-    "description": "Archive an agent identity (soft delete). Can be restored.",
-    "method": "DELETE",
-    "http_path": "/v1/agent-identities/{identity_id}",
-    "args": [
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "destroy_agent_identity",
-    "path": [
-      "agent-identities",
-      "delete"
-    ],
-    "verb": "destroy",
-    "description": "Permanently delete an agent identity.",
-    "method": "POST",
-    "http_path": "/v1/agent-identities/{identity_id}/delete",
-    "args": [
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "get_agent_identity",
-    "path": [
-      "agent-identities"
-    ],
-    "verb": "get",
-    "description": "Get a single agent identity by ID.",
-    "method": "GET",
-    "http_path": "/v1/agent-identities/{identity_id}",
-    "args": [
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "list_agent_identities",
-    "path": [
-      "agent-identities"
-    ],
-    "verb": "list",
-    "description": "List all active agent identities. Use search for name search, include_archived=true to include archived.",
-    "method": "GET",
-    "http_path": "/v1/agent-identities",
-    "args": [
-      {
-        "field": "include_archived",
-        "long": "include-archived",
-        "kind": "boolean",
-        "required": false
-      },
-      {
-        "field": "search",
-        "long": "search",
-        "kind": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "wire_name": "update_agent_identity",
-    "path": [
-      "agent-identities"
-    ],
-    "verb": "update",
-    "description": "Update an agent identity. Only provided fields are changed.",
-    "method": "PATCH",
-    "http_path": "/v1/agent-identities/{identity_id}",
-    "args": [
-      {
-        "field": "avatar_url",
-        "long": "avatar-url",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
-      },
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      },
-      {
-        "field": "locale",
-        "long": "locale",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable name."
-      },
-      {
-        "field": "status",
-        "long": "status",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "timezone",
-        "long": "timezone",
-        "kind": "string",
-        "required": false
-      }
-    ]
-  },
-  {
     "wire_name": "analyze_agent",
     "path": [
       "agents"
@@ -488,6 +305,12 @@
         "kind": "boolean",
         "required": false,
         "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "service_virtual_user_id",
+        "long": "service-virtual-user-id",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "short_description",
@@ -1168,6 +991,12 @@
         "help": "Request-level parallel tool calling preference (EVE-598)."
       },
       {
+        "field": "service_virtual_user_id",
+        "long": "service-virtual-user-id",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "short_description",
         "long": "short-description",
         "kind": "string",
@@ -1807,6 +1636,12 @@
         "help": "Request-level parallel tool calling preference (EVE-598)."
       },
       {
+        "field": "service_virtual_user_id",
+        "long": "service-virtual-user-id",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "short_description",
         "long": "short-description",
         "kind": "string",
@@ -1962,6 +1797,12 @@
         "kind": "boolean",
         "required": false,
         "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "service_virtual_user_id",
+        "long": "service-virtual-user-id",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "short_description",
@@ -7405,13 +7246,6 @@
         "help": "ID of the agent to work in this session (optional, format: agent_{32-hex}). When supplied wit..."
       },
       {
-        "field": "agent_identity_id",
-        "long": "agent-identity-id",
-        "kind": "string",
-        "required": false,
-        "help": "Optional resident agent identity used for unattended/background execution."
-      },
-      {
         "field": "agent_name",
         "long": "agent-name",
         "kind": "string",
@@ -7535,6 +7369,13 @@
         "kind": "json",
         "required": false,
         "help": "Client-side tools for this session (additive to agent tools). These tools are sent to the LLM..."
+      },
+      {
+        "field": "virtual_user_id",
+        "long": "virtual-user-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional resident virtual user used for unattended/background execution."
       },
       {
         "field": "workspace_id",
@@ -9364,13 +9205,6 @@
         "help": "Session's prefixed public identifier."
       },
       {
-        "field": "agent_identity_id",
-        "long": "agent-identity-id",
-        "kind": "string",
-        "required": false,
-        "help": "Optional resident agent identity used for unattended/background execution."
-      },
-      {
         "field": "goal",
         "long": "goal",
         "kind": "string",
@@ -9397,6 +9231,13 @@
         "kind": "string",
         "required": false,
         "help": "Human-readable title for the session."
+      },
+      {
+        "field": "virtual_user_id",
+        "long": "virtual-user-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional resident virtual user used for unattended/background execution."
       }
     ],
     "examples": [
@@ -9741,6 +9582,228 @@
         "long": "search",
         "kind": "string",
         "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "create_virtual_user",
+    "path": [
+      "virtual-users"
+    ],
+    "verb": "create",
+    "description": "Create a new virtual user (org-scoped runtime account for a consumer or service).",
+    "method": "POST",
+    "http_path": "/v1/virtual-users",
+    "args": [
+      {
+        "field": "avatar_url",
+        "long": "avatar-url",
+        "kind": "string",
+        "required": false,
+        "help": "Profile image URL."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false,
+        "help": "Locale used for agent-facing defaults."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "IANA time zone used for agent-facing defaults."
+      },
+      {
+        "field": "usage",
+        "long": "usage",
+        "kind": "string",
+        "required": false,
+        "help": "VirtualUser is a durable virtual principal.",
+        "choices": [
+          "end_user",
+          "service"
+        ]
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_virtual_user",
+    "path": [
+      "virtual-users"
+    ],
+    "verb": "delete",
+    "description": "Archive a virtual user (soft delete). Can be restored.",
+    "method": "DELETE",
+    "http_path": "/v1/virtual-users/{identity_id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "destroy_virtual_user",
+    "path": [
+      "virtual-users",
+      "delete"
+    ],
+    "verb": "destroy",
+    "description": "Permanently delete a virtual user.",
+    "method": "POST",
+    "http_path": "/v1/virtual-users/{identity_id}/delete",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_virtual_user",
+    "path": [
+      "virtual-users"
+    ],
+    "verb": "get",
+    "description": "Get a single virtual user by ID.",
+    "method": "GET",
+    "http_path": "/v1/virtual-users/{identity_id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_virtual_users",
+    "path": [
+      "virtual-users"
+    ],
+    "verb": "list",
+    "description": "List virtual users by usage and search. Supports pagination (limit/offset) and include_archived.",
+    "method": "GET",
+    "http_path": "/v1/virtual-users",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false,
+        "help": "Include archived runtime accounts."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum results per page, capped at the platform pagination limit."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Zero-based page offset."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false,
+        "help": "Search runtime names and descriptions."
+      },
+      {
+        "field": "usage",
+        "long": "usage",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_virtual_user",
+    "path": [
+      "virtual-users"
+    ],
+    "verb": "update",
+    "description": "Update a virtual user. Only provided fields are changed.",
+    "method": "PATCH",
+    "http_path": "/v1/virtual-users/{identity_id}",
+    "args": [
+      {
+        "field": "avatar_url",
+        "long": "avatar-url",
+        "kind": "string",
+        "required": false,
+        "help": "Profile image URL."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false,
+        "help": "Locale used for agent-facing defaults."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "IANA time zone used for agent-facing defaults."
       }
     ]
   },

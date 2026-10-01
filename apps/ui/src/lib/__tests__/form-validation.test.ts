@@ -1,6 +1,6 @@
 import {
   agentFormSchema,
-  agentIdentityFormSchema,
+  virtualUserFormSchema,
   apiKeySecretSchema,
   createConnectionFormSchema,
   harnessFormSchema,
@@ -76,8 +76,8 @@ describe("form validation schemas", () => {
     expect(parsed.system_prompt).toBeUndefined();
   });
 
-  it("rejects invalid agent identity locale and timezone values", () => {
-    const parsed = agentIdentityFormSchema.safeParse({
+  it("rejects invalid virtual user locale and timezone values", () => {
+    const parsed = virtualUserFormSchema.safeParse({
       name: "Ops Bot",
       description: "",
       locale: "en-MARS",

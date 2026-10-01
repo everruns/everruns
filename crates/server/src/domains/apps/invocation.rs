@@ -257,8 +257,8 @@ fn emit_app_invocation_audit_event(
         .detail("session_id", session_id.to_string())
         .detail("created_session", created_session)
         .detail("app_owner_principal_id", app.owner_principal_id.to_string());
-    if let Some(agent_identity_id) = app.agent_identity_id {
-        event = event.detail("agent_identity_id", agent_identity_id.to_string());
+    if let Some(virtual_user_id) = app.virtual_user_id {
+        event = event.detail("virtual_user_id", virtual_user_id.to_string());
     }
     audit::emit_event(db, event.build());
 }
@@ -360,7 +360,7 @@ async fn find_or_create_invocation_session(
                 harness_name: None,
                 agent_id: app.agent_id,
                 agent_name: None,
-                agent_identity_id: app.agent_identity_id,
+                virtual_user_id: app.virtual_user_id,
                 title: Some(title),
                 goal: None,
                 locale: None,
@@ -401,6 +401,7 @@ async fn dispatch_invocation_message(
     message_service
         .create(
             CreateMessageContext {
+                runtime_subject_principal_id: None,
                 org_id: app.org_id,
                 user_id: None,
                 harness_id: app.harness_id.uuid(),
@@ -409,7 +410,7 @@ async fn dispatch_invocation_message(
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     app.public_id,
                     app.owner_principal_id,
-                    app.agent_identity_id,
+                    app.virtual_user_id,
                 )),
                 request_id,
             },
@@ -734,7 +735,7 @@ pub struct ApiInvocationRequest {
 
 /// Resolve the published app + enabled api_endpoint channel for an
 /// execution-key request. Shared by the create-session and post-message paths
-/// **and** by the HTTP auth layer (`api::app_api::authenticate_request`) so the
+/// **and** by the HTTP auth layer (`api::endpoint_api::authenticate_request`) so the
 /// published / enabled / channel-type gate lives in exactly one place and
 /// cannot drift between the two.
 pub async fn resolve_api_app_channel(

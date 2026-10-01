@@ -602,3 +602,113 @@ mod tests {
         assert_eq!(hash1.len(), 64);
     }
 }
+
+/// Consumer credentials are a distinct audience and type. They carry no
+/// management roles and cannot be validated as Everruns access tokens.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeAccessClaims {
+    pub sub: String,
+    pub org_id: i64,
+    pub endpoint_id: String,
+    pub binding_id: Uuid,
+    pub token_type: String,
+    pub aud: String,
+    pub exp: i64,
+    pub iat: i64,
+}
+impl JwtService {
+    pub fn generate_runtime_token(
+        &self,
+        org: i64,
+        subject: everruns_provider::typed_id::VirtualUserId,
+        endpoint: String,
+        binding: Uuid,
+    ) -> Result<String> {
+        let now = Utc::now().timestamp();
+        Ok(encode(
+            &Header::default(),
+            &RuntimeAccessClaims {
+                sub: subject.to_string(),
+                org_id: org,
+                endpoint_id: endpoint,
+                binding_id: binding,
+                token_type: "runtime_access".into(),
+                aud: "everruns-virtual-user".into(),
+                exp: now + 900,
+                iat: now,
+            },
+            &self.encoding_key,
+        )?)
+    }
+    pub fn validate_runtime_token(&self, token: &str) -> Result<RuntimeAccessClaims> {
+        let mut validation = Validation::default();
+        validation.set_audience(&["everruns-virtual-user"]);
+        let claims = decode::<RuntimeAccessClaims>(token, &self.decoding_key, &validation)?.claims;
+        if claims.token_type != "runtime_access" {
+            anyhow::bail!("Invalid runtime credential");
+        }
+        Ok(claims)
+    }
+}
+
+#[cfg(test)]
+mod runtime_token_tests {
+    use super::*;
+    #[test]
+    fn runtime_and_management_credentials_have_separate_audiences() {
+        let jwt = JwtService::new(JwtConfig::default());
+        let id = everruns_provider::typed_id::VirtualUserId::new();
+        let binding = Uuid::new_v4();
+        let token = jwt
+            .generate_runtime_token(42, id, "endpoint-a".into(), binding)
+            .unwrap();
+        let claims = jwt.validate_runtime_token(&token).unwrap();
+        assert_eq!(claims.org_id, 42);
+        assert_eq!(claims.sub, id.to_string());
+        assert_eq!(claims.endpoint_id, "endpoint-a");
+        assert_eq!(claims.binding_id, binding);
+        assert_eq!(claims.exp - claims.iat, 900);
+        assert!(jwt.validate_access_token(&token).is_err());
+        assert!(jwt.validate_refresh_token(&token).is_err());
+        let management = jwt
+            .generate_access_token(
+                Uuid::new_v4(),
+                "manager@example.com",
+                "Manager",
+                &["admin".into()],
+            )
+            .unwrap();
+        assert!(jwt.validate_runtime_token(&management).is_err());
+    }
+    #[test]
+    fn wrong_runtime_audience_or_type_is_rejected() {
+        let config = JwtConfig::default();
+        let jwt = JwtService::new(config.clone());
+        let token = jwt
+            .generate_runtime_token(
+                1,
+                everruns_provider::typed_id::VirtualUserId::new(),
+                "endpoint".into(),
+                Uuid::new_v4(),
+            )
+            .unwrap();
+        let mut claims = jwt.validate_runtime_token(&token).unwrap();
+        claims.aud = "management".into();
+        let changed = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(config.secret.as_bytes()),
+        )
+        .unwrap();
+        assert!(jwt.validate_runtime_token(&changed).is_err());
+        claims.aud = "everruns-virtual-user".into();
+        claims.token_type = "access".into();
+        let changed = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(config.secret.as_bytes()),
+        )
+        .unwrap();
+        assert!(jwt.validate_runtime_token(&changed).is_err());
+    }
+}

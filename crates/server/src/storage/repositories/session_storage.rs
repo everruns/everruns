@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 #[derive(sqlx::FromRow)]
 struct McpOAuthSessionCredentialColumns {
+    virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
     access_token_encrypted: Option<Vec<u8>>,
     refresh_token_encrypted: Option<Vec<u8>>,
     expires_at_encrypted: Option<Vec<u8>>,
@@ -174,6 +175,7 @@ impl Database {
         let row = sqlx::query_as::<_, McpOAuthSessionCredentialColumns>(
             r#"
             SELECT
+                (SELECT virtual_user_id FROM session_secrets WHERE session_id=$1 AND name=$2) AS virtual_user_id,
                 (SELECT value_encrypted FROM session_secrets WHERE session_id = $1 AND name = $2)
                     AS access_token_encrypted,
                 (SELECT value_encrypted FROM session_secrets WHERE session_id = $1 AND name = $3)
@@ -192,6 +194,7 @@ impl Database {
         Ok(row
             .access_token_encrypted
             .map(|access_token_encrypted| McpOAuthSessionCredentialsRow {
+                virtual_user_id: row.virtual_user_id,
                 access_token_encrypted,
                 refresh_token_encrypted: row.refresh_token_encrypted,
                 expires_at_encrypted: row.expires_at_encrypted,
@@ -219,15 +222,16 @@ impl Database {
             if let Some(value_encrypted) = value {
                 sqlx::query(
                     r#"
-                    INSERT INTO session_secrets (session_id, name, value_encrypted)
-                    VALUES ($1, $2, $3)
+                    INSERT INTO session_secrets (session_id, name, value_encrypted,virtual_user_id)
+                    VALUES ($1, $2, $3,$4)
                     ON CONFLICT (session_id, name) DO UPDATE
-                    SET value_encrypted = EXCLUDED.value_encrypted, updated_at = NOW()
+                    SET value_encrypted = EXCLUDED.value_encrypted, virtual_user_id=EXCLUDED.virtual_user_id, updated_at = NOW()
                     "#,
                 )
                 .bind(input.session_id)
                 .bind(&name)
                 .bind(value_encrypted)
+                .bind(input.virtual_user_id)
                 .execute(&mut *tx)
                 .await?;
             } else {

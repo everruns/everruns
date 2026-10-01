@@ -162,7 +162,10 @@ fn capability_name_snapshot(registry: &CapabilityRegistry, capability_id: &str) 
         .map(|capability| capability.name().to_string())
 }
 
-pub(super) fn capability_usage_snapshot_records(
+/// The `capability.usage` records for the turn's resolved capabilities and
+/// the tools they expose: the attribution every reason backend reports,
+/// whichever loop runs the model.
+pub fn capability_usage_snapshot_records(
     registry: &CapabilityRegistry,
     resolved_capability_configs: &[crate::CapabilityRef],
     tool_definitions: &[ToolDefinition],
@@ -254,7 +257,7 @@ mod tests {
     #[test]
     fn request_options_capture_sampling_and_streaming_intent() {
         let agent = RuntimeAgent {
-            model: "claude-sonnet-4-5".to_string(),
+            model: "claude-sonnet-4-6".to_string(),
             temperature: Some(0.2),
             max_tokens: Some(1024),
             ..RuntimeAgent::default()

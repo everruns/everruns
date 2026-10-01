@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AgentCard } from "@/components/agents/agent-card";
-import { AgentIdentityCard } from "@/app/(main)/agent-identities/page";
+import { VirtualUserCard } from "@/app/(main)/virtual-users/page";
 import { InstalledPluginCard } from "@/app/(main)/plugins/page";
-import type { Agent, AgentIdentity, InstalledPlugin } from "@/lib/api/types";
+import type { Agent, VirtualUser, InstalledPlugin } from "@/lib/api/types";
 
 jest.mock("@/providers/locale-provider", () => ({
   useLocale: () => ({ locale: "en" }),
@@ -34,7 +34,9 @@ const agent: Agent = {
   deleted_at: null,
 };
 
-const identity: AgentIdentity = {
+const identity: VirtualUser = {
+  organization_id: "org_test",
+  usage: "service",
   id: "identity_019fda100f037c008024046d6b3d74c0",
   name: "Researcher",
   description: "Research identity",
@@ -72,8 +74,8 @@ describe("entity identity consumers", () => {
     );
   });
 
-  it("uses the shared identity line without a duplicate raw agent identity ID", () => {
-    render(<AgentIdentityCard identity={identity} />);
+  it("uses the shared identity line without a duplicate raw virtual user ID", () => {
+    render(<VirtualUserCard identity={identity} />);
 
     expect(screen.queryByText(identity.id)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: `Copy ID: ${identity.id}` })).toBeInTheDocument();
