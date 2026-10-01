@@ -103,6 +103,8 @@ everruns_core::capabilities::Capability::tool_definition_hooks_with_config	funct
 everruns_core::capabilities::CapabilityLocalization	struct
 everruns_core::capabilities::CapabilityNarrationHook	struct
 everruns_core::capabilities::IntegrationPlugin	struct
+everruns_core::capabilities::MCP_ELICITATION_CONSENT_KV_PREFIX	constant
+everruns_core::capabilities::MCP_ELICITATION_FORM_KV_PREFIX	constant
 everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID	constant
 everruns_core::capabilities::SPAWN_AGENT_CONCURRENCY_CLASS	constant
 everruns_core::capabilities::SystemPromptContext	struct
@@ -308,6 +310,7 @@ everruns_core::compaction_policy::CompactionStrategy::Summarization	variant
 everruns_core::compaction_policy::ObservationMaskingResult	struct
 everruns_core::computer_use	module
 everruns_core::computer_use::COMPUTER_TOOL_NAME	constant
+everruns_core::computer_use::COMPUTER_USE_ACTION_COUNT_KEY	constant
 everruns_core::computer_use::COMPUTER_USE_CAPABILITY_ID	constant
 everruns_core::computer_use::COMPUTER_USE_SYSTEM_PROMPT	constant
 everruns_core::computer_use::Click	struct

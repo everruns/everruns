@@ -59,8 +59,10 @@ vendor's hosted variant.
 
 Screenshots are image tokens. Config caps the display (default 1280x800, max
 1920x1200) and the number of actions per session (`max_actions_per_session`,
-default 300, screenshots included). The counter lives in session storage and is
-charged only after an action validates, before a display is acquired.
+default 300, screenshots included). The counter lives in session storage, under
+a key reserved from the model-facing `kv_store` tool so the model cannot reset
+its own cap, and is charged only after an action validates, before a display is
+acquired.
 
 ### Safety
 

@@ -111,6 +111,14 @@ pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 /// `tool_approval` capability in `everruns-builtins`; defined here so the
 /// session-storage internal-prefix reservation holds without that crate.
 pub const TOOL_APPROVAL_KV_PREFIX: &str = "tool_approval/";
+/// KV key prefix for a person's consent to an MCP URL mode elicitation
+/// (EVE-1141). Owned by the MCP client crate; defined here so
+/// the session-storage internal-prefix reservation holds without that crate.
+pub const MCP_ELICITATION_CONSENT_KV_PREFIX: &str = "mcp/elicitation-consent/";
+/// KV key prefix for a person's answer to an MCP form mode elicitation
+/// (EVE-1141). Owned by the MCP client crate; reserved for
+/// the same reason as [`MCP_ELICITATION_CONSENT_KV_PREFIX`].
+pub const MCP_ELICITATION_FORM_KV_PREFIX: &str = "mcp/elicitation-form/";
 /// Shared concurrency class for every provider of the model-visible
 /// `spawn_agent` tool. Implementations live in host/integration crates, while
 /// collection keeps the merged tool serialized through this neutral key.
