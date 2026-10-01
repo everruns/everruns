@@ -270,6 +270,35 @@ async fn usage_the_provider_never_reports_is_an_explicit_unknown() {
 }
 
 #[tokio::test]
+async fn a_generation_names_what_late_usage_is_read_back_with() {
+    // EVE-1145: the server reconciler re-reads the turn by `response_id` in
+    // the provider session, with the provider that ran it.
+    let (h, _) = managed_turn(|s| s.null_usage = true).await;
+    let billed: Vec<EventRequest> = projected(&h)
+        .into_iter()
+        .filter(|e| e.event_type == "llm.generation")
+        .collect();
+    assert!(!billed.is_empty());
+    for event in billed {
+        let metadata = event.metadata.as_ref().unwrap();
+        assert_eq!(metadata["everruns_provider_id"], PROVIDER_KEY);
+        assert_eq!(metadata["provider_session_id"], "sess_1");
+    }
+    // Only accounting carries it: no other event names the provider.
+    assert!(
+        projected(&h)
+            .iter()
+            .filter(|e| e.event_type != "llm.generation")
+            .all(|e| e
+                .metadata
+                .as_ref()
+                .unwrap()
+                .get("everruns_provider_id")
+                .is_none())
+    );
+}
+
+#[tokio::test]
 async fn reconnects_duplicates_and_restarts_bill_each_provider_turn_once() {
     let h = Harness::new().await;
     h.fake.with(|s| {

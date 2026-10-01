@@ -24,6 +24,7 @@ mod github_apps;
 mod harnesses;
 mod knowledge_bases;
 mod knowledge_indexes;
+mod late_generation_usage;
 mod mcp_event_subscriptions;
 mod mcp_servers;
 mod memory;
