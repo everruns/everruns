@@ -396,8 +396,9 @@ pub(crate) async fn run_app_agent_stream(
     // THREAT[TM-LLM-020]: Anonymous AG-UI clients must not be able to forge
     // privileged message roles (system/developer/tool) into the LLM context
     // that the server builds from the request body.
-    // Mitigation: Reject any non-{user,assistant} role at the runtime trust
-    // boundary, and reject duplicate message IDs. The error is a generic
+    // Mitigation: Reject system/developer/activity/reasoning roles at the
+    // runtime trust boundary, use a tool message only as the result of a
+    // parked frontend tool call, and reject duplicate message IDs. The error is a generic
     // `invalid_request` so we don't echo the offending role back.
     validate_input_messages(&req.messages).map_err(|err| *err)?;
     // THREAT[TM-TENANT-009]: 1.0 ids are free-form strings, and the thread id
@@ -406,9 +407,16 @@ pub(crate) async fn run_app_agent_stream(
         return Err(bad_request("invalid_request"));
     }
 
-    // A resuming run (AG-UI 1.0) answers the interrupts that ended the last
-    // one and starts no new turn, so it needs no trailing user message.
-    let resuming = !req.resume.is_empty();
+    let frontend_tools = crate::api::ag_ui_frontend_tools::definitions(&req.tools)
+        .map_err(|message| bad_request(&message))?;
+    let frontend_names: std::collections::HashSet<String> =
+        req.tools.iter().map(|tool| tool.name.clone()).collect();
+    let tool_results = crate::api::ag_ui_frontend_tools::trailing_results(&req.messages);
+
+    // A resuming run (AG-UI 1.0) answers the interrupts or frontend tool calls
+    // that ended the last one and starts no new turn, so it needs no trailing
+    // user message.
+    let resuming = !req.resume.is_empty() || !tool_results.is_empty();
     let trigger = if resuming {
         None
     } else {
@@ -468,6 +476,24 @@ pub(crate) async fn run_app_agent_stream(
     )
     .await
     .map_err(SessionError::into_response)?;
+    // A consumer sends its frontend tools on every run; the turn this run
+    // starts or resumes sees the current set.
+    let tools_value =
+        serde_json::to_value(&frontend_tools).map_err(|e| internal_error(e.into()))?;
+    if serde_json::to_value(&session.session.tools).ok() != Some(tools_value.clone()) {
+        state
+            .db
+            .update_session(
+                app.org_id,
+                session.session.id,
+                crate::storage::UpdateSession {
+                    tools: Some(tools_value),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(internal_error)?;
+    }
     // EVE-415: snapshot before SSE guard / history seed / subscribe so the
     // timing field measures only the session lookup-or-create work, matching
     // the contract documented in `knowledge/operations/load-testing.md`.
@@ -551,18 +577,29 @@ pub(crate) async fn run_app_agent_stream(
             event_service: state.event_service.as_ref(),
             runner: state.message_service.runner().clone(),
         };
-        let outcome = crate::api::ag_ui_interrupts::resume(
-            &services,
-            app.org_id,
-            &session.session,
-            &channel_config,
-            &req.resume,
-        )
-        .await
+        let outcome = if req.resume.is_empty() {
+            crate::api::ag_ui_frontend_tools::submit_results(
+                &services,
+                app.org_id,
+                &session.session,
+                &frontend_names,
+                tool_results,
+            )
+            .await
+        } else {
+            crate::api::ag_ui_interrupts::resume(
+                &services,
+                app.org_id,
+                &session.session,
+                &channel_config,
+                &req.resume,
+            )
+            .await
+        }
         .map_err(resume_error_response)?;
         let input_message_id = match &outcome {
             ResumeOutcome::Resumed { input_message_id } => input_message_id.clone(),
-            ResumeOutcome::NothingParked | ResumeOutcome::StillOpen(_) => None,
+            ResumeOutcome::NothingParked | ResumeOutcome::StillOpen { .. } => None,
         };
         (input_message_id, Some(outcome))
     };
@@ -622,8 +659,12 @@ pub(crate) async fn run_app_agent_stream(
             projector.project("turn.completed", &Value::Null);
         }
         // An interrupt without an entry is not abandoned (AG-UI 1.0): it stays
-        // open and the run ends asking again.
-        Some(ResumeOutcome::StillOpen(interrupts)) => projector.interrupt(interrupts),
+        // open and the run ends asking again, as does an unanswered frontend
+        // tool call.
+        Some(ResumeOutcome::StillOpen {
+            tool_calls,
+            interrupts,
+        }) => projector.park(tool_calls, interrupts),
         Some(ResumeOutcome::Resumed { .. }) | None => {}
     }
     let stream_state = AgUiStreamState {
@@ -632,6 +673,7 @@ pub(crate) async fn run_app_agent_stream(
         input_message_id,
         projector,
         config: channel_config,
+        frontend_tools: frontend_names,
     };
 
     let initial_stream = stream::iter(initial_events.into_iter().map(|event| Ok(agui_sse(&event))));
@@ -668,7 +710,12 @@ pub(crate) async fn run_app_agent_stream(
                 continue;
             }
 
-            translate_event(&mut state.projector, &state.config, &event);
+            translate_event(
+                &mut state.projector,
+                &state.config,
+                &state.frontend_tools,
+                &event,
+            );
         }
     });
 
@@ -954,25 +1001,17 @@ fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage
                 .unwrap_or_default(),
             message.name.clone(),
         ),
-        AgUiMessage::Tool(message) => {
-            let content = message.content.to_text();
-            let tool_call_id = &message.tool_call_id;
-            (
-                RuntimeMessageRole::Agent,
-                match &message.error {
-                    Some(error) => format!("[Tool {tool_call_id} error: {error}]\n{content}"),
-                    None => format!("[Tool {tool_call_id} result]\n{content}"),
-                },
-                None,
-            )
-        }
         AgUiMessage::System(message) | AgUiMessage::Developer(message) => (
             RuntimeMessageRole::System,
             message.content.clone(),
             message.name.clone(),
         ),
-        // Activity and reasoning messages are UI state, not conversation.
-        AgUiMessage::Activity(_) | AgUiMessage::Reasoning(_) => return None,
+        // Activity and reasoning messages are UI state, not conversation. A
+        // tool message is only ever a frontend tool result for a parked call
+        // (TM-LLM-020), never history.
+        AgUiMessage::Tool(_) | AgUiMessage::Activity(_) | AgUiMessage::Reasoning(_) => {
+            return None;
+        }
     };
 
     let mut stored = StoredInputMessage {
@@ -1032,6 +1071,9 @@ struct AgUiStreamState {
     input_message_id: Option<String>,
     projector: Projector,
     config: AgUiChannelConfig,
+    /// This run's frontend tool names: parked calls to them stream to the
+    /// consumer instead of waiting on someone else.
+    frontend_tools: std::collections::HashSet<String>,
 }
 
 /// The public channel's projection: reasoning only when the channel opts in,
@@ -1057,13 +1099,17 @@ fn public_projection_policy(config: &AgUiChannelConfig) -> ProjectionPolicy {
 fn translate_event(
     projector: &mut Projector,
     config: &AgUiChannelConfig,
+    frontend_tools: &std::collections::HashSet<String>,
     event: &everruns_core::Event,
 ) {
     // A turn that parks on a question or an approval ends the run with the
-    // interrupt outcome (AG-UI 1.0); the resuming run answers it.
+    // interrupt outcome (AG-UI 1.0); one that parks on frontend tool calls
+    // streams them and ends in success. The next run answers either.
     if let everruns_core::events::EventData::ToolCallRequested(requested) = &event.data {
-        projector.interrupt(
-            crate::api::ag_ui_interrupts::ParkedCalls::from_request(requested).interrupts(config),
+        let parked = crate::api::ag_ui_interrupts::ParkedCalls::from_request(requested);
+        projector.park(
+            crate::api::ag_ui_frontend_tools::pending_calls(requested, &parked, frontend_tools),
+            parked.interrupts(config),
         );
         return;
     }
@@ -1153,10 +1199,11 @@ fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>
     let mut seen_ids: HashSet<&str> = HashSet::with_capacity(messages.len());
     for message in messages {
         match message {
-            AgUiMessage::User(_) | AgUiMessage::Assistant(_) => {}
+            // Tool messages are frontend tool results; only trailing ones that
+            // answer a parked call are used (see `ag_ui_frontend_tools`).
+            AgUiMessage::User(_) | AgUiMessage::Assistant(_) | AgUiMessage::Tool(_) => {}
             AgUiMessage::System(_)
             | AgUiMessage::Developer(_)
-            | AgUiMessage::Tool(_)
             | AgUiMessage::Activity(_)
             | AgUiMessage::Reasoning(_) => {
                 tracing::warn!("AG-UI request rejected: disallowed message role");

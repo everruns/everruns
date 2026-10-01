@@ -2,6 +2,12 @@
 
 ## 2026-10-01
 
+* **AG-UI frontend tools.** `RunAgentInput.tools` become the session's
+  client-side tools; a parked call to one streams to the consumer and ends the
+  run in success with `pendingToolCallIds`, and the next run's trailing `tool`
+  messages resume the turn. Recorded in
+  [AG-UI Channel](integrations/ag-ui.md#frontend-tools), threat-model entry
+  TM-DOS-044 and the updated TM-LLM-020.
 * **AG-UI runs interrupt and resume.** A turn parked on `ask_user` or a tool
   approval ends its AG-UI run with the 1.0 interrupt outcome, and
   `RunAgentInput.resume` answers it through the shared resolvers. Approvals

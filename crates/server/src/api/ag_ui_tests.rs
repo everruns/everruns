@@ -58,6 +58,7 @@ fn test_config() -> AgUiChannelConfig {
 struct TestRun {
     projector: Projector,
     config: AgUiChannelConfig,
+    frontend_tools: std::collections::HashSet<String>,
     session_id: SessionId,
     input_message_id: MessageId,
     turn_id: TurnId,
@@ -73,6 +74,7 @@ impl TestRun {
         Self {
             projector: Projector::new("thread", "run", public_projection_policy(config)),
             config: config.clone(),
+            frontend_tools: ["set_theme".to_string()].into(),
             session_id: SessionId::new(),
             input_message_id: MessageId::new(),
             turn_id: TurnId::new(),
@@ -86,7 +88,12 @@ impl TestRun {
 
     fn send(&mut self, data: impl Into<everruns_core::EventData>) {
         let event = Event::new(self.session_id, self.context(), data);
-        translate_event(&mut self.projector, &self.config, &event);
+        translate_event(
+            &mut self.projector,
+            &self.config,
+            &self.frontend_tools,
+            &event,
+        );
         self.events.extend(self.projector.drain());
     }
 
@@ -1003,12 +1010,12 @@ fn a_parked_secret_question_is_never_offered_as_a_form() {
 }
 
 #[test]
-fn a_client_side_tool_call_alone_raises_no_interrupt() {
+fn a_call_to_no_frontend_tool_raises_nothing() {
     let mut run = TestRun::new();
     run.send(everruns_core::events::ToolCallRequestedData {
         tool_calls: vec![ToolCall {
             id: "call_x".into(),
-            name: "set_theme".into(),
+            name: "not_declared_here".into(),
             arguments: serde_json::json!({}),
         }],
         tool_summaries: Vec::new(),
@@ -1017,4 +1024,41 @@ fn a_client_side_tool_call_alone_raises_no_interrupt() {
     });
     assert!(run.events.is_empty());
     assert!(!run.projector.is_finished());
+}
+
+#[test]
+fn a_frontend_tool_call_streams_by_name_and_ends_the_run_in_success() {
+    // Generic tool visibility hides server tools; a frontend tool is the
+    // consumer's own, so its name and arguments are what it needs to run it.
+    let mut run = TestRun::new();
+    run.send(everruns_core::events::ToolCallRequestedData {
+        tool_calls: vec![ToolCall {
+            id: "call_x".into(),
+            name: "set_theme".into(),
+            arguments: serde_json::json!({ "theme": "dark" }),
+        }],
+        tool_summaries: Vec::new(),
+        headline: None,
+        completed_headline: None,
+    });
+    assert_eq!(
+        run.types(),
+        [
+            "TOOL_CALL_START",
+            "TOOL_CALL_ARGS",
+            "TOOL_CALL_END",
+            "RUN_FINISHED"
+        ]
+    );
+    let wire: Vec<Value> = run
+        .events
+        .iter()
+        .map(|event| serde_json::to_value(event).unwrap())
+        .collect();
+    assert_eq!(wire[0]["toolCallName"], "set_theme");
+    assert_eq!(wire[1]["delta"], r#"{"theme":"dark"}"#);
+    assert_eq!(
+        wire[3]["outcome"],
+        serde_json::json!({ "type": "success", "pendingToolCallIds": ["call_x"] })
+    );
 }

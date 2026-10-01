@@ -1220,7 +1220,8 @@ impl Database {
                 started_at = COALESCE($15, started_at),
                 finished_at = COALESCE($16, finished_at),
                 agent_version_id = COALESCE($17, agent_version_id),
-                agent_config_hash = COALESCE($18, agent_config_hash)
+                agent_config_hash = COALESCE($18, agent_config_hash),
+                tools = COALESCE($19, tools)
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, workspace_id, app_id, endpoint_id, trigger_id, harness_id, agent_id, agent_version_id, agent_config_hash, virtual_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
@@ -1245,6 +1246,7 @@ impl Database {
         .bind(input.finished_at)
         .bind(input.agent_version_id.map(|id| id.uuid()))
         .bind(input.agent_config_hash)
+        .bind(input.tools)
         .fetch_optional(&self.pool)
         .await?;
 

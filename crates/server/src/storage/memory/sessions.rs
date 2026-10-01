@@ -1072,6 +1072,9 @@ impl InMemoryDatabase {
             if let Some(tags) = input.tags {
                 session.tags = tags;
             }
+            if let Some(tools) = input.tools {
+                session.tools = tools;
+            }
             if let Some(status) = input.status {
                 session.status = status;
             }
