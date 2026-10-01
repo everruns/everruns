@@ -27,9 +27,7 @@ describe("runtime error localization", () => {
 
   it("localizes a lost provider session instead of showing the fallback", () => {
     const error = { code: "provider_session_unavailable" };
-    expect(localizeRuntimeError("en", error, "backend fallback")).toContain(
-      "new provider session",
-    );
+    expect(localizeRuntimeError("en", error, "backend fallback")).toContain("new provider session");
     expect(localizeRuntimeError("uk", error, "backend fallback")).toContain(
       "новій сесії провайдера",
     );
