@@ -30,6 +30,34 @@ pub(crate) fn is_database_unique_violation(error: &anyhow::Error) -> bool {
     })
 }
 
+/// Name of the unique constraint (or unique index) a Postgres 23505 violated,
+/// if the error chain carries one. Lets a caller recognize an *expected*
+/// conflict — one a constraint exists to settle — before the generic
+/// `classify_anyhow` path logs it as a warning.
+pub(crate) fn violated_unique_constraint(error: &anyhow::Error) -> Option<String> {
+    if let Some(name) = error.chain().find_map(|source| {
+        source
+            .downcast_ref::<sqlx::Error>()
+            .and_then(sqlx::Error::as_database_error)
+            .filter(|db| db.code().is_some_and(|code| code == "23505"))
+            .and_then(sqlx::error::DatabaseError::constraint)
+            .map(str::to_string)
+    }) {
+        return Some(name);
+    }
+
+    // Errors flattened to text keep Postgres' message shape:
+    // `duplicate key value violates unique constraint "<name>"`.
+    const PREFIX: &str = "duplicate key value violates unique constraint \"";
+    error.chain().find_map(|source| {
+        let text = source.to_string();
+        let start = text.to_ascii_lowercase().find(PREFIX)? + PREFIX.len();
+        let rest = &text[start..];
+        let end = rest.find('"')?;
+        Some(rest[..end].to_string())
+    })
+}
+
 pub(crate) fn is_database_pool_exhausted(error: &anyhow::Error) -> bool {
     error.chain().any(|source| {
         matches!(
