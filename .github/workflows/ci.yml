@@ -460,6 +460,7 @@ jobs:
             -p everruns-serve \
             -p everruns-serve-build \
             -p everruns-serve-macros \
+            -p everruns-ag-ui \
             -p everruns
 
   knowledge:
@@ -939,6 +940,9 @@ jobs:
           # here — it enables `ard-live-tests`, which fails closed without a live
           # registry. Live coverage runs in the dedicated ard.yml workflow.
           cargo test -p everruns-ard
+          # ag-ui: AG-UI 1.0 wire types against the vendored upstream schema
+          # and fixture corpus. Pure, no network.
+          cargo test -p everruns-ag-ui
           # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
           cargo test -p everruns-turbopuffer --lib
