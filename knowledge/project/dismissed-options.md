@@ -20,7 +20,7 @@ This document records technical options that were considered but dismissed for s
 
 **Original reason it was dismissed**: The implementation priorities shifted away from CopilotKit compatibility. The system uses a custom PostgreSQL-backed durable execution engine for orchestration, which provides sufficient visibility into workflow execution state without a separate event streaming layer.
 
-**What changed**: Apps now support AG-UI as a first-class channel with anonymous ingress and SSE streaming translated from durable runtime events. See `knowledge/integrations/apps.md` for the active contract.
+**What changed**: Apps now support AG-UI as a first-class channel with anonymous ingress and SSE streaming translated from durable runtime events. See `knowledge/integrations/ag-ui.md` for the active contract.
 
 **Remaining constraints**:
 - Initial rollout is app-scoped and anonymous only

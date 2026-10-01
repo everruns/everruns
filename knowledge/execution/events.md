@@ -288,7 +288,8 @@ projection is a leak.
 A projection must not move content across channels to imitate a phase. In
 particular, absent phase never makes assistant text into thinking, and tool
 activity never becomes assistant text. AG-UI projection is implemented in
-[`crates/server/src/api/ag_ui.rs`](../../crates/server/src/api/ag_ui.rs).
+[`crates/ag-ui/src/projection.rs`](../../crates/ag-ui/src/projection.rs); see
+the [AG-UI channel](../integrations/ag-ui.md).
 
 ## Storage guarantees
 

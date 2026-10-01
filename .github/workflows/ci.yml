@@ -460,6 +460,7 @@ jobs:
             -p everruns-serve \
             -p everruns-serve-build \
             -p everruns-serve-macros \
+            -p everruns-ag-ui \
             -p everruns
 
   knowledge:
@@ -939,6 +940,9 @@ jobs:
           # here — it enables `ard-live-tests`, which fails closed without a live
           # registry. Live coverage runs in the dedicated ard.yml workflow.
           cargo test -p everruns-ard
+          # ag-ui: AG-UI 1.0 wire types against the vendored upstream schema
+          # and fixture corpus. Pure, no network.
+          cargo test -p everruns-ag-ui --all-features
           # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
           cargo test -p everruns-turbopuffer --lib
@@ -1365,7 +1369,7 @@ jobs:
 
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
-        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
+        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --features postgres-tests -- --test-threads=1
 
       # `agent_reliability_test` was audited for EVE-349 but still fails on a
       # clean PostgreSQL-backed run; keep it out of required CI until its

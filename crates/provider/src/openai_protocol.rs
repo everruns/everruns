@@ -1311,29 +1311,7 @@ mod tests {
     }
 
     fn call_config() -> LlmCallConfig {
-        LlmCallConfig {
-            reasoning_state: None,
-            model: "model".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-            capture_request: false,
-            limits: Default::default(),
-            response_format: None,
-        }
+        LlmCallConfig::new("model")
     }
     async fn mock_provider(sse: &str) -> (wiremock::MockServer, crate::Provider) {
         use wiremock::matchers::{header, method, path};

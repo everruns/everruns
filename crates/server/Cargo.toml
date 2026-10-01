@@ -117,7 +117,7 @@ image.workspace = true  # For image thumbnail generation
 tonic.workspace = true
 prost-types.workspace = true
 serde_urlencoded = "0.7.1"
-ag-ui-core = "0.1.0"
+everruns-ag-ui = { workspace = true, features = ["core"] }
 url = "2"
 
 [dev-dependencies]

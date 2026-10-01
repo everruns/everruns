@@ -1,0 +1,45 @@
+# AG-UI 1.0 wire types.
+#
+# Decision: our own crate instead of the community `ag-ui-core` (0.1.0, last
+# published 2025-08, pre-1.0 and not generated from the schema). The upstream
+# schema and fixture corpus are vendored under `spec/` (MIT, see
+# `spec/LICENSE`, commit in `spec/UPSTREAM_COMMIT`) and are the test suite.
+
+[package]
+name = "everruns-ag-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-ag-ui"
+description = "AG-UI 1.0 protocol types (events, run input, interrupts, capabilities)"
+readme = "README.md"
+keywords = ["agent", "ag-ui", "protocol", "llm", "sse"]
+categories = ["api-bindings", "web-programming"]
+# The fixture corpus and its test are repo-only; the schema ships because
+# it is embedded.
+exclude = ["spec/1.0/fixtures", "tests"]
+
+[features]
+default = []
+# `projection`: map Everruns runtime events onto an AG-UI run.
+core = ["dep:everruns-core", "dep:everruns-provider"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+everruns-core = { workspace = true, optional = true }
+everruns-provider = { workspace = true, optional = true }
+
+[dev-dependencies]
+jsonschema = { version = "0.58.1", default-features = false }
+
+[[test]]
+name = "projection"
+required-features = ["core"]
+
+[lints]
+workspace = true

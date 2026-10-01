@@ -38,6 +38,7 @@ mod ask_user_lifecycle;
 pub mod native_async;
 
 mod backends;
+mod background_call;
 mod builders;
 pub mod capabilities;
 mod command_host;

@@ -167,3 +167,23 @@ impl LlmCallConfigBuilder {
         self.config
     }
 }
+
+// Moved out of `driver_registry.rs` (size ratchet).
+impl LlmCallConfig {
+    /// Resolve the effective wire value for `parallel_tool_calls`, gated by
+    /// whether the driver/model can express it on the request.
+    ///
+    /// Returns `None` (omit the field, keep the provider default) when the
+    /// preference is unset or `supported` is `false`. Drivers call this with
+    /// `self.supports_parallel_tool_calls(&config.model)` so the preference is
+    /// only serialized where the provider has a control for it. The local tool
+    /// scheduler honors the preference independently, so `Some(false)` still
+    /// serializes execution even when this returns `None`.
+    pub fn resolved_parallel_tool_calls(&self, supported: bool) -> Option<bool> {
+        if supported {
+            self.parallel_tool_calls
+        } else {
+            None
+        }
+    }
+}

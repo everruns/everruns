@@ -59,7 +59,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 // (discovery, no request path) and the `ask_user` projection (EVE-1062).
 // `agent_card` is `pub` so `openapi.rs` can name its documented handlers.
 pub mod agent_card;
-mod ask_user;
+pub(crate) mod ask_user;
 
 const A2A_PROTOCOL_VERSION: &str = "1.0";
 const A2A_AGENT_VERSION: &str = "0.1";

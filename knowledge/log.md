@@ -10,6 +10,13 @@
   hard per-call approval gate in hosted sessions, built on the
   [tool approval](execution/tool-approval.md) gate; one answer carries a call
   through both gates. The session UI shows result screenshots as thumbnails.
+* **AG-UI runs interrupt and resume.** A turn parked on `ask_user` or a tool
+  approval ends its AG-UI run with the 1.0 interrupt outcome, and
+  `RunAgentInput.resume` answers it through the shared resolvers. Approvals
+  are answerable by the client only on endpoints that opt in, and token usage
+  is reported only when the endpoint enables it. Recorded in
+  [AG-UI Channel](integrations/ag-ui.md#interrupts-and-resume), threat-model
+  entries TM-TENANT-016 and TM-TOOL-052.
 * **The OpenAI Agents API backend enforces Everruns policy at its tool and
   output boundaries (EVE-1124).** A call the tool pipeline parks (an approval,
   a client-side tool, a connection setup) parks the Everruns turn while the
@@ -37,6 +44,12 @@
   the retried call finds the decision in session storage on whichever worker
   runs it. One-off approvals bind to the exact arguments; unanswered requests
   expire as not approved. TM-TOOL-008 is mitigated.
+* **AG-UI channel moved to 1.0.** The endpoint now uses the in-repo
+  `everruns-ag-ui` types instead of the pre-1.0 community crate, streams
+  `REASONING_*`, reports cancelled runs as a `cancelled` outcome, answers the
+  `protocolVersion` handshake, and closes every open message before the
+  terminal event. The projection moved into the crate so framework and `serve`
+  can share it. Recorded in [AG-UI Channel](integrations/ag-ui.md).
 
 ## 2026-09-30
 

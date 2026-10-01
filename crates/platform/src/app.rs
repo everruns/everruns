@@ -690,6 +690,12 @@ pub struct AgUiChannelConfig {
     /// summaries may derive from private prompts, tools, or retrieved data.
     #[serde(default, skip_serializing_if = "is_false")]
     pub reasoning_summary_visible: bool,
+    /// Let the client answer tool-approval interrupts; off so anonymous visitors cannot (TM-TOOL-052).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub tool_approval_interrupts: bool,
+    /// Report token usage on terminal run events; off because it reveals model and cost.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub usage_visible: bool,
     /// Optional inline auth config for this public endpoint. When omitted,
     /// legacy `anonymous` + `token` behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1017,10 +1023,8 @@ impl PublicChatBranding {
 }
 
 impl PublicChatChannelConfig {
-    /// Project the streaming-relevant fields onto an `AgUiChannelConfig` so the
-    /// shared AG-UI ingress/streaming core can serve Public Chat without a
-    /// parallel implementation. Branding and captcha are Public-Chat-only and
-    /// are handled by the Public Chat handler, not the shared core.
+    /// Project the streaming fields onto an `AgUiChannelConfig` for the shared AG-UI core.
+    /// Branding and captcha stay with the Public Chat handler; approvals and usage stay off.
     pub fn ag_ui_stream_config(&self) -> AgUiChannelConfig {
         AgUiChannelConfig {
             anonymous: self.anonymous,
@@ -1030,6 +1034,8 @@ impl PublicChatChannelConfig {
             tool_visibility: self.tool_visibility,
             generic_tool_text: self.generic_tool_text.clone(),
             reasoning_summary_visible: false,
+            tool_approval_interrupts: false,
+            usage_visible: false,
             auth: self.auth.clone(),
         }
     }
@@ -1183,6 +1189,8 @@ mod tests {
             tool_visibility: PublicToolVisibility::None,
             generic_tool_text: "Please wait".to_string(),
             reasoning_summary_visible: true,
+            tool_approval_interrupts: true,
+            usage_visible: true,
             auth: None,
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -1194,6 +1202,7 @@ mod tests {
         assert_eq!(parsed.tool_visibility, PublicToolVisibility::None);
         assert_eq!(parsed.generic_tool_text, "Please wait");
         assert!(parsed.reasoning_summary_visible);
+        assert!(parsed.tool_approval_interrupts && parsed.usage_visible);
     }
 
     #[test]
@@ -1205,16 +1214,7 @@ mod tests {
 
     #[test]
     fn test_ag_ui_channel_config_omits_rate_limit_when_unset() {
-        let config = AgUiChannelConfig {
-            anonymous: true,
-            token: None,
-            session_expiration_seconds: DEFAULT_SESSION_EXPIRATION_SECONDS,
-            rate_limit_per_minute: None,
-            tool_visibility: PublicToolVisibility::Generic,
-            generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
-            reasoning_summary_visible: false,
-            auth: None,
-        };
+        let config: AgUiChannelConfig = serde_json::from_str("{}").unwrap();
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("rate_limit_per_minute").is_none());
         assert!(json.get("generic_tool_text").is_none());

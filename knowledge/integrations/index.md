@@ -13,6 +13,7 @@
 * [Legacy App Invocation Aliases](app-invocation-channels.md) - Frozen App-shaped aliases for endpoint-owned webhook and schedule ingress.
 * [Endpoint Authentication](endpoint-auth.md) - Shared inbound auth framework for Agent-owned endpoints.
 * [Legacy App API Keys](app-api-keys.md) - Frozen execution-only credentials for endpoint-owned native session ingress.
+* [AG-UI Channel](ag-ui.md) - AG-UI 1.0 inbound channel: wire types, runtime-event projection, and the 1.0 rules the stream keeps.
 * [A2A Channel](a2a-channel.md) - A2A inbound channel.
 * [A2A Capability](a2a-capability.md) - A2A outbound delegation capability.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.

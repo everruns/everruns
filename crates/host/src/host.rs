@@ -109,6 +109,10 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn turn_cancellation(&self) -> Option<tokio::sync::watch::Receiver<bool>> {
         None
     }
+    /// Explicit turn cancellation only, never ownership loss: stops provider work.
+    fn turn_cancel_requested(&self) -> Option<tokio::sync::watch::Receiver<bool>> {
+        None
+    }
     /// Session status mutation is a host effect, separate from execution
     /// inputs: it exposes no stored Session record to the engine.
     async fn set_session_status(
@@ -145,13 +149,9 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn driver_registry(&self) -> DriverRegistry;
 
     fn harness_store(&self, org_id: i64) -> Arc<dyn HarnessStore>;
-
     fn agent_store(&self, org_id: i64) -> Arc<dyn AgentStore>;
-
     fn session_store(&self, org_id: i64) -> Arc<dyn SessionStore>;
-
     fn session_mutator(&self, org_id: i64) -> Arc<dyn SessionMutator>;
-
     fn provider_store(&self, org_id: i64) -> Arc<dyn ProviderStore>;
 
     fn message_store(&self) -> Arc<dyn MessageRetriever>;

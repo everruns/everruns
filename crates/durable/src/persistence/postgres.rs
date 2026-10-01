@@ -1051,13 +1051,12 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         worker_id: &str,
         _details: Option<serde_json::Value>,
     ) -> Result<HeartbeatResponse, StoreError> {
-        // Update heartbeat and check if task is still claimed by this worker
-        let result = sqlx::query(
+        // Renew the claim and report whether the owning workflow was cancelled
+        let result: Option<(Option<String>,)> = sqlx::query_as(
             r#"
-            UPDATE durable_task_queue
-            SET heartbeat_at = NOW()
-            WHERE id = $1 AND claimed_by = $2 AND status = 'claimed'
-            RETURNING status
+            UPDATE durable_task_queue q SET heartbeat_at = NOW()
+            WHERE q.id = $1 AND q.claimed_by = $2 AND q.status = 'claimed'
+            RETURNING (SELECT w.status FROM durable_workflow_instances w WHERE w.id = q.workflow_id)
             "#,
         )
         .bind(task_id)
@@ -1075,9 +1074,10 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         });
 
         match result {
-            Some(_) => Ok(HeartbeatResponse {
+            // Still ours, but the turn was cancelled: stop the work (EVE-1134).
+            Some((workflow_status,)) => Ok(HeartbeatResponse {
                 accepted: true,
-                should_cancel: false, // TODO: Check for cancellation requests
+                should_cancel: workflow_status.as_deref() == Some("cancelled"),
             }),
             None => {
                 // Task no longer claimed by this worker (maybe reclaimed or completed)
