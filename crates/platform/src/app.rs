@@ -1,14 +1,6 @@
-// App domain types
-//
-// Design Decision: Dual-ID pattern (see knowledge/foundations/id-schema.md)
-// - public_id: AppId (external, API-facing, client-supplied or auto-generated)
-// - internal_id: Uuid (internal PK, used for FK references, never exposed in API)
-//
-// An App binds a Harness + Agent to a distribution channel (Slack, AG-UI, etc.)
-// with a publish/unpublish lifecycle.
-//
-// Design Decision: Channel ingress is app-scoped because the App defines the
-// agent, harness, identity, and channel-specific configuration.
+// Agent endpoint records and the frozen `App` row (EVE-1011) `/v1/apps` serves;
+// dual IDs per knowledge/foundations/id-schema.md. EVE-1131: Rust names are
+// endpoint-oriented, serde/OpenAPI names stay App-era via `schema(as = ...)`.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -152,9 +144,10 @@ impl From<&str> for AppStatus {
 /// Supported channel types for app distribution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = ChannelType))]
 #[cfg_attr(feature = "openapi", schema(example = "webhook"))]
 #[serde(rename_all = "lowercase")]
-pub enum ChannelType {
+pub enum EndpointTransport {
     Slack,
     #[serde(rename = "ag_ui")]
     AgUi,
@@ -178,7 +171,7 @@ pub enum ChannelType {
     PublicChat,
 }
 
-impl ChannelType {
+impl EndpointTransport {
     /// The bindings this transport can actually offer.
     ///
     /// A transport constrains the binding because of what it *is*, not because
@@ -194,13 +187,13 @@ impl ChannelType {
     pub fn allowed_bindings(&self) -> &'static [SessionBinding] {
         match self {
             // Messaging: keyed off the inbound message.
-            ChannelType::Slack => &SessionBinding::MESSAGE_KEYED,
+            EndpointTransport::Slack => &SessionBinding::MESSAGE_KEYED,
             // Nothing is listening on a thread; the exposure owns the session.
-            ChannelType::Schedule
-            | ChannelType::Webhook
-            | ChannelType::A2a
-            | ChannelType::ApiEndpoint => &SessionBinding::INVOCATION_KEYED,
-            ChannelType::AgUi | ChannelType::Fcp | ChannelType::PublicChat => &[],
+            EndpointTransport::Schedule
+            | EndpointTransport::Webhook
+            | EndpointTransport::A2a
+            | EndpointTransport::ApiEndpoint => &SessionBinding::INVOCATION_KEYED,
+            EndpointTransport::AgUi | EndpointTransport::Fcp | EndpointTransport::PublicChat => &[],
         }
     }
 
@@ -210,32 +203,32 @@ impl ChannelType {
     }
 }
 
-impl std::fmt::Display for ChannelType {
+impl std::fmt::Display for EndpointTransport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ChannelType::Slack => write!(f, "slack"),
-            ChannelType::AgUi => write!(f, "ag_ui"),
-            ChannelType::Schedule => write!(f, "schedule"),
-            ChannelType::Webhook => write!(f, "webhook"),
-            ChannelType::A2a => write!(f, "a2a"),
-            ChannelType::Fcp => write!(f, "fcp"),
-            ChannelType::ApiEndpoint => write!(f, "api_endpoint"),
-            ChannelType::PublicChat => write!(f, "public_chat"),
+            EndpointTransport::Slack => write!(f, "slack"),
+            EndpointTransport::AgUi => write!(f, "ag_ui"),
+            EndpointTransport::Schedule => write!(f, "schedule"),
+            EndpointTransport::Webhook => write!(f, "webhook"),
+            EndpointTransport::A2a => write!(f, "a2a"),
+            EndpointTransport::Fcp => write!(f, "fcp"),
+            EndpointTransport::ApiEndpoint => write!(f, "api_endpoint"),
+            EndpointTransport::PublicChat => write!(f, "public_chat"),
         }
     }
 }
 
-impl ChannelType {
+impl EndpointTransport {
     pub fn from_str_opt(s: &str) -> Option<Self> {
         match s {
-            "slack" => Some(ChannelType::Slack),
-            "ag_ui" => Some(ChannelType::AgUi),
-            "schedule" => Some(ChannelType::Schedule),
-            "webhook" => Some(ChannelType::Webhook),
-            "a2a" => Some(ChannelType::A2a),
-            "fcp" => Some(ChannelType::Fcp),
-            "api_endpoint" => Some(ChannelType::ApiEndpoint),
-            "public_chat" => Some(ChannelType::PublicChat),
+            "slack" => Some(EndpointTransport::Slack),
+            "ag_ui" => Some(EndpointTransport::AgUi),
+            "schedule" => Some(EndpointTransport::Schedule),
+            "webhook" => Some(EndpointTransport::Webhook),
+            "a2a" => Some(EndpointTransport::A2a),
+            "fcp" => Some(EndpointTransport::Fcp),
+            "api_endpoint" => Some(EndpointTransport::ApiEndpoint),
+            "public_chat" => Some(EndpointTransport::PublicChat),
             _ => None,
         }
     }
@@ -293,7 +286,7 @@ pub struct App {
     pub effective_owner: Option<PrincipalSummary>,
     /// Distribution channels attached to this app.
     #[serde(default)]
-    pub channels: Vec<AppChannel>,
+    pub channels: Vec<AgentEndpoint>,
     /// Current lifecycle status.
     pub status: AppStatus,
     /// Timestamp when the app was last published.
@@ -315,7 +308,8 @@ pub struct App {
 /// Each channel has its own type, config, and lifecycle status.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct AppChannel {
+#[cfg_attr(feature = "openapi", schema(as = AppChannel))]
+pub struct AgentEndpoint {
     /// External identifier (appchan_<32-hex>). Shown as "id" in API.
     #[serde(rename = "id")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "appchan_01933b5a000070008000000000000001"))]
@@ -324,13 +318,13 @@ pub struct AppChannel {
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
     /// Channel type (e.g. slack).
-    pub channel_type: ChannelType,
+    pub channel_type: EndpointTransport,
     /// Channel-specific configuration (validated per channel type).
     #[serde(default)]
     pub channel_config: serde_json::Value,
     /// Authentication policy for this endpoint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<Box<AppEndpointAuthConfig>>,
+    pub auth: Option<Box<EndpointAuthConfig>>,
     /// Whether this channel is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -348,11 +342,11 @@ fn default_true() -> bool {
     true
 }
 
-impl AppChannel {
+impl AgentEndpoint {
     /// Parse channel_config as SlackChannelConfig. Returns None if not a Slack channel
     /// or if the config is invalid.
     pub fn slack_config(&self) -> Option<crate::slack_channel::SlackChannelConfig> {
-        if self.channel_type != ChannelType::Slack {
+        if self.channel_type != EndpointTransport::Slack {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
@@ -361,7 +355,7 @@ impl AppChannel {
     /// Parse channel_config as AgUiChannelConfig. Returns None if not an AG-UI
     /// channel or if the config is invalid.
     pub fn ag_ui_config(&self) -> Option<AgUiChannelConfig> {
-        if self.channel_type != ChannelType::AgUi {
+        if self.channel_type != EndpointTransport::AgUi {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
@@ -370,7 +364,7 @@ impl AppChannel {
     /// Parse channel_config as ScheduleChannelConfig. Returns None if not a
     /// schedule channel or if the config is invalid.
     pub fn schedule_config(&self) -> Option<ScheduleChannelConfig> {
-        if self.channel_type != ChannelType::Schedule {
+        if self.channel_type != EndpointTransport::Schedule {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
@@ -379,7 +373,7 @@ impl AppChannel {
     /// Parse channel_config as WebhookChannelConfig. Returns None if not a
     /// webhook channel or if the config is invalid.
     pub fn webhook_config(&self) -> Option<WebhookChannelConfig> {
-        if self.channel_type != ChannelType::Webhook {
+        if self.channel_type != EndpointTransport::Webhook {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
@@ -388,7 +382,7 @@ impl AppChannel {
     /// Parse channel_config as FcpChannelConfig. Returns None if not an FCP
     /// channel or if the config is invalid.
     pub fn fcp_config(&self) -> Option<FcpChannelConfig> {
-        if self.channel_type != ChannelType::Fcp {
+        if self.channel_type != EndpointTransport::Fcp {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
@@ -397,7 +391,7 @@ impl AppChannel {
     /// Parse channel_config as A2aChannelConfig. Returns None if not an A2A
     /// channel or if the config is invalid.
     pub fn a2a_config(&self) -> Option<A2aChannelConfig> {
-        if self.channel_type != ChannelType::A2a {
+        if self.channel_type != EndpointTransport::A2a {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
@@ -406,7 +400,7 @@ impl AppChannel {
     /// Parse channel_config as ApiEndpointChannelConfig. Returns None if not an
     /// api_endpoint channel or if the config is invalid.
     pub fn api_endpoint_config(&self) -> Option<ApiEndpointChannelConfig> {
-        if self.channel_type != ChannelType::ApiEndpoint {
+        if self.channel_type != EndpointTransport::ApiEndpoint {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
@@ -415,7 +409,7 @@ impl AppChannel {
     /// Parse channel_config as PublicChatChannelConfig. Returns None if not a
     /// Public Chat channel or if the config is invalid.
     pub fn public_chat_config(&self) -> Option<PublicChatChannelConfig> {
-        if self.channel_type != ChannelType::PublicChat {
+        if self.channel_type != EndpointTransport::PublicChat {
             return None;
         }
         serde_json::from_value(self.channel_config.clone()).ok()
@@ -431,63 +425,63 @@ impl AppChannel {
 // orphan in-flight deliveries.
 impl App {
     /// Find the first Slack channel on this app.
-    pub fn slack_channel(&self) -> Option<&AppChannel> {
+    pub fn slack_channel(&self) -> Option<&AgentEndpoint> {
         self.channels
             .iter()
-            .find(|ch| ch.channel_type == ChannelType::Slack && ch.enabled)
+            .find(|ch| ch.channel_type == EndpointTransport::Slack && ch.enabled)
     }
 
     /// Find the first enabled AG-UI channel on this app.
-    pub fn ag_ui_channel(&self) -> Option<&AppChannel> {
+    pub fn ag_ui_channel(&self) -> Option<&AgentEndpoint> {
         self.channels
             .iter()
-            .find(|ch| ch.channel_type == ChannelType::AgUi && ch.enabled)
+            .find(|ch| ch.channel_type == EndpointTransport::AgUi && ch.enabled)
     }
 
     /// Find the first enabled schedule channel on this app.
-    pub fn schedule_channel(&self) -> Option<&AppChannel> {
+    pub fn schedule_channel(&self) -> Option<&AgentEndpoint> {
         self.channels
             .iter()
-            .find(|ch| ch.channel_type == ChannelType::Schedule && ch.enabled)
+            .find(|ch| ch.channel_type == EndpointTransport::Schedule && ch.enabled)
     }
 
     /// Find the first enabled webhook channel on this app.
-    pub fn webhook_channel(&self) -> Option<&AppChannel> {
+    pub fn webhook_channel(&self) -> Option<&AgentEndpoint> {
         self.channels
             .iter()
-            .find(|ch| ch.channel_type == ChannelType::Webhook && ch.enabled)
+            .find(|ch| ch.channel_type == EndpointTransport::Webhook && ch.enabled)
     }
 
     /// Find the first enabled FCP channel on this app.
-    pub fn fcp_channel(&self) -> Option<&AppChannel> {
+    pub fn fcp_channel(&self) -> Option<&AgentEndpoint> {
         self.channels
             .iter()
-            .find(|ch| ch.channel_type == ChannelType::Fcp && ch.enabled)
+            .find(|ch| ch.channel_type == EndpointTransport::Fcp && ch.enabled)
     }
 
     /// Find the first enabled A2A channel on this app.
-    pub fn a2a_channel(&self) -> Option<&AppChannel> {
+    pub fn a2a_channel(&self) -> Option<&AgentEndpoint> {
         self.channels
             .iter()
-            .find(|ch| ch.channel_type == ChannelType::A2a && ch.enabled)
+            .find(|ch| ch.channel_type == EndpointTransport::A2a && ch.enabled)
     }
 
     /// Find the first enabled api_endpoint channel on this app.
-    pub fn api_endpoint_channel(&self) -> Option<&AppChannel> {
+    pub fn api_endpoint_channel(&self) -> Option<&AgentEndpoint> {
         self.channels
             .iter()
-            .find(|ch| ch.channel_type == ChannelType::ApiEndpoint && ch.enabled)
+            .find(|ch| ch.channel_type == EndpointTransport::ApiEndpoint && ch.enabled)
     }
 
     /// Find the first enabled Public Chat channel on this app.
-    pub fn public_chat_channel(&self) -> Option<&AppChannel> {
+    pub fn public_chat_channel(&self) -> Option<&AgentEndpoint> {
         self.channels
             .iter()
-            .find(|ch| ch.channel_type == ChannelType::PublicChat && ch.enabled)
+            .find(|ch| ch.channel_type == EndpointTransport::PublicChat && ch.enabled)
     }
 
     /// Find a channel by its public ID.
-    pub fn channel_by_id(&self, id: &AppChannelId) -> Option<&AppChannel> {
+    pub fn channel_by_id(&self, id: &AppChannelId) -> Option<&AgentEndpoint> {
         self.channels.iter().find(|ch| ch.public_id == *id)
     }
 }
@@ -549,8 +543,9 @@ pub const DEFAULT_AG_UI_GENERIC_TOOL_TEXT: &str = DEFAULT_PUBLIC_TOOL_ACTIVITY_T
 /// creating org-level identity-provider state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = AppEndpointAuthMode))]
 #[serde(rename_all = "snake_case")]
-pub enum AppEndpointAuthMode {
+pub enum EndpointAuthMode {
     Anonymous,
     SharedSecret,
     ApiKey,
@@ -565,8 +560,9 @@ pub enum AppEndpointAuthMode {
 /// OIDC/OAuth/basic/mTLS provider details for one App endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = AppEndpointAuthProviderConfig))]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum AppEndpointAuthProviderConfig {
+pub enum EndpointAuthProviderConfig {
     GoogleOidc {
         client_id: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -616,7 +612,8 @@ pub enum AppEndpointAuthProviderConfig {
 /// Claim and credential requirements common to App endpoint auth providers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct AppEndpointAuthRequirements {
+#[cfg_attr(feature = "openapi", schema(as = AppEndpointAuthRequirements))]
+pub struct EndpointAuthRequirements {
     /// JWT `aud` values to require on inbound tokens. Empty list disables audience checking.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audiences: Vec<String>,
@@ -640,16 +637,17 @@ pub struct AppEndpointAuthRequirements {
 /// Authentication config for one App endpoint/channel.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(as = AppEndpointAuthConfig))]
 #[cfg_attr(
     feature = "openapi",
     schema(example = json!({"mode": "api_key", "requirements": {"audiences": ["everruns-api"], "scopes": ["app:invoke"]}}))
 )]
-pub struct AppEndpointAuthConfig {
-    pub mode: AppEndpointAuthMode,
+pub struct EndpointAuthConfig {
+    pub mode: EndpointAuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<AppEndpointAuthProviderConfig>,
+    pub provider: Option<EndpointAuthProviderConfig>,
     #[serde(default)]
-    pub requirements: AppEndpointAuthRequirements,
+    pub requirements: EndpointAuthRequirements,
 }
 
 /// Typed AG-UI channel configuration.
@@ -695,7 +693,7 @@ pub struct AgUiChannelConfig {
     /// Optional inline auth config for this public endpoint. When omitted,
     /// legacy `anonymous` + `token` behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AppEndpointAuthConfig>,
+    pub auth: Option<EndpointAuthConfig>,
 }
 
 fn default_session_expiration_seconds() -> u32 {
@@ -858,7 +856,7 @@ pub struct A2aChannelConfig {
     /// Optional inline auth config for this A2A endpoint. When omitted,
     /// legacy per-channel API-key behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AppEndpointAuthConfig>,
+    pub auth: Option<EndpointAuthConfig>,
     /// Optional shared HMAC signing secret. When set, requests must include
     /// `X-Everruns-A2A-Timestamp` + `X-Everruns-A2A-Signature` headers and
     /// the server verifies an HMAC-SHA256 signature over the exact
@@ -901,7 +899,7 @@ pub struct ApiEndpointChannelConfig {
     /// Optional inline auth config for this endpoint. When omitted, the
     /// generated per-channel API-key bearer scheme applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AppEndpointAuthConfig>,
+    pub auth: Option<EndpointAuthConfig>,
 }
 
 /// Branding shown on a Public Chat surface. All fields optional; the public app
@@ -998,7 +996,7 @@ pub struct PublicChatChannelConfig {
     /// Optional inline auth config for this public endpoint (e.g. Google OIDC).
     /// When omitted, anonymous + optional `token` behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AppEndpointAuthConfig>,
+    pub auth: Option<EndpointAuthConfig>,
     /// Branding shown on the public chat surface.
     #[serde(default, skip_serializing_if = "PublicChatBranding::is_empty")]
     pub branding: PublicChatBranding,
@@ -1079,18 +1077,18 @@ mod tests {
     fn test_channel_type_mapping() {
         // (variant, wire string) for Display, from_str_opt and serde over the same enum mapping.
         let cases = [
-            (ChannelType::Slack, "slack"),
-            (ChannelType::AgUi, "ag_ui"),
-            (ChannelType::Schedule, "schedule"),
-            (ChannelType::Webhook, "webhook"),
-            (ChannelType::A2a, "a2a"),
-            (ChannelType::Fcp, "fcp"),
-            (ChannelType::PublicChat, "public_chat"),
+            (EndpointTransport::Slack, "slack"),
+            (EndpointTransport::AgUi, "ag_ui"),
+            (EndpointTransport::Schedule, "schedule"),
+            (EndpointTransport::Webhook, "webhook"),
+            (EndpointTransport::A2a, "a2a"),
+            (EndpointTransport::Fcp, "fcp"),
+            (EndpointTransport::PublicChat, "public_chat"),
         ];
         for (variant, s) in cases {
             assert_eq!(variant.to_string(), s, "Display mismatch for {variant:?}");
             assert_eq!(
-                ChannelType::from_str_opt(s),
+                EndpointTransport::from_str_opt(s),
                 Some(variant.clone()),
                 "from_str_opt mismatch for {s:?}"
             );
@@ -1100,11 +1098,11 @@ mod tests {
                 format!("\"{s}\""),
                 "serde wire format mismatch for {variant:?}"
             );
-            let parsed: ChannelType = serde_json::from_str(&json).unwrap();
+            let parsed: EndpointTransport = serde_json::from_str(&json).unwrap();
             assert_eq!(parsed, variant, "serde roundtrip mismatch for {variant:?}");
         }
-        assert_eq!(ChannelType::from_str_opt("unknown"), None);
-        assert_eq!(ChannelType::from_str_opt(""), None);
+        assert_eq!(EndpointTransport::from_str_opt("unknown"), None);
+        assert_eq!(EndpointTransport::from_str_opt(""), None);
     }
 
     #[test]
@@ -1129,17 +1127,17 @@ mod tests {
     /// used different types, not because anything checked.
     #[test]
     fn transports_only_offer_bindings_that_mean_something() {
-        assert!(ChannelType::Slack.allows_binding(SessionBinding::Thread));
-        assert!(ChannelType::Slack.allows_binding(SessionBinding::Conversation));
-        assert!(ChannelType::Slack.allows_binding(SessionBinding::Requester));
-        assert!(!ChannelType::Slack.allows_binding(SessionBinding::Endpoint));
-        assert!(!ChannelType::Slack.allows_binding(SessionBinding::Ephemeral));
+        assert!(EndpointTransport::Slack.allows_binding(SessionBinding::Thread));
+        assert!(EndpointTransport::Slack.allows_binding(SessionBinding::Conversation));
+        assert!(EndpointTransport::Slack.allows_binding(SessionBinding::Requester));
+        assert!(!EndpointTransport::Slack.allows_binding(SessionBinding::Endpoint));
+        assert!(!EndpointTransport::Slack.allows_binding(SessionBinding::Ephemeral));
 
         for transport in [
-            ChannelType::Schedule,
-            ChannelType::Webhook,
-            ChannelType::A2a,
-            ChannelType::ApiEndpoint,
+            EndpointTransport::Schedule,
+            EndpointTransport::Webhook,
+            EndpointTransport::A2a,
+            EndpointTransport::ApiEndpoint,
         ] {
             assert!(
                 transport.allows_binding(SessionBinding::Endpoint),
@@ -1272,7 +1270,7 @@ mod tests {
         assert!(none_json.get("rate_limit_per_minute").is_none());
     }
 
-    fn test_app(channels: Vec<AppChannel>) -> App {
+    fn test_app(channels: Vec<AgentEndpoint>) -> App {
         App {
             public_id: AppId::from_uuid(Uuid::nil()),
             internal_id: Uuid::nil(),
@@ -1298,8 +1296,8 @@ mod tests {
         }
     }
 
-    fn test_channel(channel_type: ChannelType, config: serde_json::Value) -> AppChannel {
-        AppChannel {
+    fn test_channel(channel_type: EndpointTransport, config: serde_json::Value) -> AgentEndpoint {
+        AgentEndpoint {
             public_id: AppChannelId::from_uuid(Uuid::nil()),
             internal_id: Uuid::nil(),
             channel_type,
@@ -1315,7 +1313,7 @@ mod tests {
     #[test]
     fn test_app_channel_slack_config_valid() {
         let ch = test_channel(
-            ChannelType::Slack,
+            EndpointTransport::Slack,
             serde_json::json!({"signing_secret": "sec", "bot_token": "tok"}),
         );
         let config = ch.slack_config().unwrap();
@@ -1325,7 +1323,7 @@ mod tests {
     #[test]
     fn test_app_channel_slack_config_invalid_json() {
         let ch = test_channel(
-            ChannelType::Slack,
+            EndpointTransport::Slack,
             serde_json::json!({"signing_secret": 42}),
         );
         assert!(ch.slack_config().is_none());
@@ -1334,7 +1332,7 @@ mod tests {
     #[test]
     fn test_app_slack_channel_lookup() {
         let ch = test_channel(
-            ChannelType::Slack,
+            EndpointTransport::Slack,
             serde_json::json!({"signing_secret": "s", "bot_token": "t"}),
         );
         let app = test_app(vec![ch]);
@@ -1349,21 +1347,23 @@ mod tests {
 
     #[test]
     fn test_app_channel_ag_ui_config_valid() {
-        let ch = test_channel(ChannelType::AgUi, serde_json::json!({"anonymous": true}));
+        let config = serde_json::json!({"anonymous": true});
+        let ch = test_channel(EndpointTransport::AgUi, config);
         let config = ch.ag_ui_config().unwrap();
         assert!(config.anonymous);
     }
 
     #[test]
     fn test_app_ag_ui_channel_lookup() {
-        let ch = test_channel(ChannelType::AgUi, serde_json::json!({"anonymous": true}));
+        let config = serde_json::json!({"anonymous": true});
+        let ch = test_channel(EndpointTransport::AgUi, config);
         let app = test_app(vec![ch]);
         assert!(app.ag_ui_channel().is_some());
     }
 
     #[test]
     fn test_app_channel_fcp_config_defaults() {
-        let ch = test_channel(ChannelType::Fcp, serde_json::json!({}));
+        let ch = test_channel(EndpointTransport::Fcp, serde_json::json!({}));
         let config = ch.fcp_config().unwrap();
         assert!(config.anonymous);
         assert!(config.token.is_none());
@@ -1380,7 +1380,7 @@ mod tests {
 
     #[test]
     fn test_app_fcp_channel_lookup() {
-        let ch = test_channel(ChannelType::Fcp, serde_json::json!({}));
+        let ch = test_channel(EndpointTransport::Fcp, serde_json::json!({}));
         let app = test_app(vec![ch]);
         assert!(app.fcp_channel().is_some());
     }
@@ -1388,7 +1388,7 @@ mod tests {
     #[test]
     fn test_app_channel_schedule_config_valid() {
         let ch = test_channel(
-            ChannelType::Schedule,
+            EndpointTransport::Schedule,
             serde_json::json!({
                 "cron_expression": "0 * * * * * *",
                 "message": "Run checks"
@@ -1401,7 +1401,7 @@ mod tests {
     #[test]
     fn test_app_schedule_channel_lookup() {
         let ch = test_channel(
-            ChannelType::Schedule,
+            EndpointTransport::Schedule,
             serde_json::json!({
                 "cron_expression": "0 * * * * * *",
                 "message": "Run checks"
@@ -1414,7 +1414,7 @@ mod tests {
     #[test]
     fn test_app_channel_webhook_config_valid() {
         let ch = test_channel(
-            ChannelType::Webhook,
+            EndpointTransport::Webhook,
             serde_json::json!({
                 "token": "secret",
                 "message": "{{payload.ref}}"
@@ -1427,7 +1427,7 @@ mod tests {
     #[test]
     fn test_app_webhook_channel_lookup() {
         let ch = test_channel(
-            ChannelType::Webhook,
+            EndpointTransport::Webhook,
             serde_json::json!({
                 "token": "secret",
                 "message": "{{payload.ref}}"
@@ -1495,7 +1495,7 @@ mod tests {
     #[test]
     fn test_app_channel_a2a_config_valid() {
         let ch = test_channel(
-            ChannelType::A2a,
+            EndpointTransport::A2a,
             serde_json::json!({
                 "api_key_hash": "h",
                 "api_key_prefix": "evra2a_h...",
@@ -1509,7 +1509,7 @@ mod tests {
     #[test]
     fn test_app_a2a_channel_lookup() {
         let ch = test_channel(
-            ChannelType::A2a,
+            EndpointTransport::A2a,
             serde_json::json!({
                 "api_key_hash": "h",
                 "api_key_prefix": "evra2a_h...",
@@ -1588,7 +1588,7 @@ mod tests {
     #[test]
     fn test_app_channel_public_chat_config_valid() {
         let ch = test_channel(
-            ChannelType::PublicChat,
+            EndpointTransport::PublicChat,
             serde_json::json!({"anonymous": true}),
         );
         let config = ch.public_chat_config().unwrap();
@@ -1598,7 +1598,7 @@ mod tests {
     #[test]
     fn test_app_public_chat_channel_lookup() {
         let ch = test_channel(
-            ChannelType::PublicChat,
+            EndpointTransport::PublicChat,
             serde_json::json!({"branding": {"display_name": "Helpdesk"}}),
         );
         let app = test_app(vec![ch]);

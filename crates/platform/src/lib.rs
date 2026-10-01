@@ -46,7 +46,7 @@ pub mod platform_store;
 pub mod vector_store;
 
 // Hosted control-plane orchestration records carved out of `everruns-core`
-// (EVE-841). `App`/`AppChannel` and their channel configs, plus `AgentTrigger`,
+// (EVE-841). `App`/`AgentEndpoint` and their channel configs, plus `AgentTrigger`,
 // are persisted/API records not consumed during a turn. Turn-consumed neutral
 // values (`DeploymentGrade`, `SessionSchedule` and its store) stay in core.
 pub mod agent_trigger;
@@ -231,12 +231,26 @@ pub use agent_trigger::{
 pub use everruns_core::channel::SessionBinding;
 
 pub use app::{
-    A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig, App,
-    AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppEndpointAuthRequirements, AppStatus, CaptchaProvider, ChannelType, EndpointStatus,
-    FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig, PublicChatChannelConfig,
-    SlackReplyMode,
+    A2aChannelConfig, AgUiChannelConfig, AgentEndpoint, AgentVersionPolicy,
+    ApiEndpointChannelConfig, App, AppStatus, CaptchaProvider, EndpointAuthConfig,
+    EndpointAuthMode, EndpointAuthProviderConfig, EndpointAuthRequirements, EndpointStatus,
+    EndpointTransport, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
+    PublicChatChannelConfig, SlackReplyMode,
 };
+/// Endpoint-oriented name for the endpoint ID. The typed ID lives in
+/// `everruns-provider` as `AppChannelId` and keeps its `appchan_` wire prefix.
+pub use everruns_provider::typed_id::AppChannelId as AgentEndpointId;
+// App-era names for the endpoint types (EVE-1131 step 1). Consumers move to the
+// endpoint-oriented names transport by transport; drop each alias once nothing
+// imports it. `App`/`AppStatus` are the frozen `apps` row and keep their names.
+pub use app::{
+    AgentEndpoint as AppChannel, EndpointAuthConfig as AppEndpointAuthConfig,
+    EndpointAuthMode as AppEndpointAuthMode,
+    EndpointAuthProviderConfig as AppEndpointAuthProviderConfig,
+    EndpointAuthRequirements as AppEndpointAuthRequirements, EndpointTransport as ChannelType,
+};
+#[cfg(test)]
+mod endpoint_wire_names_tests;
 // Carved out of `app` for the size ratchet; the public path is unchanged.
 pub use slack_channel::SlackChannelConfig;
 
