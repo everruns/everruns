@@ -661,6 +661,10 @@ impl StoredFormAnswer {
 }
 
 /// Session-storage key an answer for `server`/`tool` is recorded under.
+///
+/// THREAT[TM-TOOL-034]: the prefix is reserved from the model-facing
+/// `kv_store` tool and the storage listing, so only the question-answer API
+/// writes it.
 pub fn form_answer_storage_key(server: &str, tool: &str) -> String {
     fn fold(part: &str) -> String {
         part.chars()
@@ -673,7 +677,12 @@ pub fn form_answer_storage_key(server: &str, tool: &str) -> String {
             })
             .collect()
     }
-    format!("mcp/elicitation-form/{}/{}", fold(server), fold(tool))
+    format!(
+        "{}{}/{}",
+        everruns_core::capabilities::MCP_ELICITATION_FORM_KV_PREFIX,
+        fold(server),
+        fold(tool)
+    )
 }
 
 /// Durable, single-use store of recorded answers.

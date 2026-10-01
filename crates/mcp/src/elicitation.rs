@@ -270,11 +270,13 @@ impl StoredConsent {
 
 /// Session-storage key a consent for `server`/`tool` is recorded under.
 ///
-/// Session storage keys are flat strings that a user can see, so the key is
-/// readable rather than hashed; characters that would make it ambiguous are
-/// folded to `_`. Folding can in principle collide, which is why
-/// [`StoredConsent`] repeats the pairing and [`StoredConsent::grant_for`]
-/// re-checks it.
+/// The key is readable rather than hashed, so it stays debuggable in the
+/// database; characters that would make it ambiguous are folded to `_`.
+/// Folding can in principle collide, which is why [`StoredConsent`] repeats
+/// the pairing and [`StoredConsent::grant_for`] re-checks it.
+///
+/// THREAT[TM-TOOL-034]: the prefix is reserved from the model-facing
+/// `kv_store` tool and the storage listing, so only the consent API writes it.
 pub fn consent_storage_key(server: &str, tool: &str) -> String {
     fn fold(part: &str) -> String {
         part.chars()
@@ -287,7 +289,12 @@ pub fn consent_storage_key(server: &str, tool: &str) -> String {
             })
             .collect()
     }
-    format!("mcp/elicitation-consent/{}/{}", fold(server), fold(tool))
+    format!(
+        "{}{}/{}",
+        everruns_core::capabilities::MCP_ELICITATION_CONSENT_KV_PREFIX,
+        fold(server),
+        fold(tool)
+    )
 }
 
 /// Handler for hosts with no human in the loop: declines everything.
