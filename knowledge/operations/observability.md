@@ -149,7 +149,11 @@ vocabulary in `crates/core/src/telemetry.rs` (`gen_ai`) and
   OpenInference `tool.name/description`.
 - **Everruns extras** live under `everruns.*`: turn/exec/input-message ids,
   `everruns.phase`, iteration and tool-call counters, `everruns.tool.status`,
-  retry counts, `everruns.usage.cost_usd`, and the diagnostic markers
+  retry counts, `everruns.usage.cost_usd`, `everruns.usage.cost_unknown_components`
+  (billable components with no known amount), provider correlation ids copied
+  from event metadata (`everruns.provider_session_id`, `everruns.provider_turn_id`,
+  `everruns.provider_trace_url`, ...; see `crates/core/src/events/correlation.rs`),
+  and the diagnostic markers
   `everruns.span.orphaned` (terminal event without a start) and
   `everruns.span.unterminated` (closed by its turn ending).
 

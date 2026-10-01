@@ -9,6 +9,7 @@ use crate::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 
 // Split out of one 5300-line file; every item keeps its visibility, so the module's public surface is unchanged.
 mod compaction_data;
+pub mod correlation;
 mod file_voice_data;
 mod llm_data;
 mod message_data;

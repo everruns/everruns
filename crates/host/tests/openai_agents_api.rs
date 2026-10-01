@@ -369,7 +369,8 @@ async fn replay_run(
         ledger.clone(),
         executor.clone(),
     )
-    .with_reconnect_policy(4, Duration::from_millis(1));
+    .with_reconnect_policy(4, Duration::from_millis(1))
+    .with_usage_poll(2, Duration::from_millis(1));
     let outcome = driver.run(&request(1, text)).await.unwrap();
     (replay, outcome, ledger, executor)
 }

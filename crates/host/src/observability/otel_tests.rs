@@ -170,6 +170,7 @@ fn generation(success: bool) -> LlmGenerationData {
                 stream: Some(true),
                 ..LlmRequestOptions::default()
             }),
+            cost_components: Vec::new(),
         },
     }
 }
@@ -1067,4 +1068,46 @@ async fn listener_subscribes_to_the_thirteen_lifecycle_events() {
     assert_eq!(h.listener.name(), "OtelEventListener");
     assert!(!h.listener.record_content());
     assert_eq!(h.listener.conventions(), TraceConventions::ALL);
+}
+
+#[tokio::test]
+async fn provider_correlation_and_unknown_costs_reach_the_chat_span() {
+    use everruns_core::events::LlmCostComponent;
+    let h = Harness::new(false, TraceConventions::ALL);
+    h.emit(0, h.context(None, None, None), h.turn_started())
+        .await;
+    let data = generation(true).with_cost_components(vec![
+        LlmCostComponent::new(
+            LlmCostComponent::MODEL_TOKENS,
+            "gpt-6-astra",
+            Some(10),
+            Some(0.1),
+        ),
+        LlmCostComponent::new(LlmCostComponent::CONTAINER, "openai_hosted", None, None),
+    ]);
+    let mut event = Event::new(h.session, h.context(None, Some("g1"), None), data);
+    event.ts = h.at(600);
+    event.metadata = Some(json!({
+        "runtime_backend": "openai_agents_api",
+        "provider_session_id": "sess_1",
+        "provider_turn_id": "turn_1",
+        "provider_item_id": null,
+    }));
+    h.listener.on_event(&event).await;
+    let spans = h.spans();
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
+    assert_eq!(
+        attr_str(chat, "everruns.provider_session_id").as_deref(),
+        Some("sess_1")
+    );
+    assert_eq!(
+        attr_str(chat, "everruns.runtime_backend").as_deref(),
+        Some("openai_agents_api")
+    );
+    assert!(attr(chat, "everruns.provider_item_id").is_none());
+    // The local turn id stays the span's identity.
+    assert_eq!(attr_str(chat, "everruns.turn.id"), Some(h.turn.to_string()));
+    let unknown = attr_str(chat, "everruns.usage.cost_unknown_components").unwrap();
+    assert!(unknown.contains("container:openai_hosted"), "{unknown}");
+    assert!(!unknown.contains("model_tokens"), "{unknown}");
 }
