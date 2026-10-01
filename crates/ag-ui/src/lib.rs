@@ -55,6 +55,8 @@ mod event;
 mod input;
 mod message;
 mod patch;
+#[cfg(feature = "core")]
+pub mod projection;
 
 pub use capabilities::*;
 pub use event::*;
