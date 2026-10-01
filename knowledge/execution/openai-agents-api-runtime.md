@@ -80,7 +80,7 @@ One encrypted, lease-fenced checkpoint per Everruns session ([contract](../../cr
 
 [Restart tests](../../crates/host/tests/openai_agents_api.rs) run the driver against a stateful fake of the API and crash it at each boundary: create, input, function execution, result submission, message emission, and terminal save. Every fake stream ends after the events available so far, so each run also exercises reconnect and reconciliation. Further tests drop or duplicate provider events and replay the two recorded live streams.
 
-Forking into the native runtime starts from the Everruns record; it cannot claim byte-identical hidden context or provider compaction state.
+A session with a checkpoint cannot be forked; see [Portability](#portability).
 
 ## Policy at the tool and output boundaries
 
@@ -116,9 +116,44 @@ Hidden reasoning stays with the provider: a `reasoning` item's `content` and `en
 
 Version-sensitive: the Agents API documents a turn's `subagent_id` but no parent turn field; the driver attributes a subagent turn to the root turn it saw it under, or to a root named by `parent_turn_id`/`root_turn_id` when the provider sends one. It assumes root and subagent usage are reported separately, and the `compaction` and hosted-call item shapes follow the Responses API.
 
-## Import to a native agent
+## Session lifecycle
 
-Import model, instructions, function schemas, and HTTP MCP definitions. Flag OpenAI built-ins, MCP allowlists, hosted files, environment setup, vault references, multi-agent policy, hidden compacted context, and unsupported transports as explicit warnings. Never silently drop a tool or claim that an imported session is resumable as the same execution. Guarded import, fork, and remote session deletion and retention are EVE-1126; the checkpoint table keeps the provider session id in plaintext for that work.
+The Everruns session is the product object. The provider session is loop state Everruns creates, reuses, and deletes on its behalf (EVE-1126): [driver](../../crates/host/src/openai_agents_api/durable.rs), [failure classification and deletion](../../crates/host/src/openai_agents_api/lifecycle.rs), [deletion and retention task](../../crates/server/src/agents_api_lifecycle.rs), [tombstone trigger](../../crates/server/migrations/156_agents_api_session_lifecycle.sql).
+
+**Creation.** A provider session is created lazily, by the first turn routed to the backend, with that turn's provider credentials. The checkpoint row keeps the provider session id and the Everruns provider that owns it (`provider_key`) in plaintext, so lifecycle work never decrypts the checkpoint and never stores a credential. A changed agent definition or a turn on another Everruns provider starts a new provider session; the replaced one is queued for deletion. A new provider session does not carry the earlier conversation; the Everruns record keeps it.
+
+**Cancellation.** Cancelling an Everruns turn sends `agent.session.input.cancel` and saves a cancelled outcome; the provider session stays for the next turn. A new message that abandons a parked turn cancels that provider turn first.
+
+**Deletion.** Every path that drops a provider session id records a tombstone in the same transaction: deleting the session, any cascade into the checkpoint (agent, harness, or organization deletion), replacing the provider session, and releasing it. A server task, running in both runtime modes, claims due tombstones with leased `SKIP LOCKED` claims (safe across replicas), resolves the owning provider's current key, and calls `DELETE /agents/sessions/{id}` on the official API only. Success or 404 removes the tombstone, so a retried deletion converges. Other failures back off exponentially and record a stable code, never a response body. A tombstone whose provider no longer exists, or that keeps failing, stays as `failed` for operators. Deleting a session mid-turn removes the checkpoint, which fences its worker, and the provider deletion stops the remote loop.
+
+**Retention.** `AGENTS_API_SESSION_RETENTION_DAYS` (server, off by default) releases provider sessions whose checkpoint has been idle that long: unleased, the Everruns session `started` or `idle`, and no call parked on an approval or client result. The release is queued for deletion like any other; the Everruns record stays, and the next turn starts a new provider session. `EVENT_RETENTION_DAYS` archives Everruns events only.
+
+**Credential rotation.** Turns and deletions resolve the provider's key when they run, so rotating the key of the same Everruns provider (the same OpenAI project) keeps the provider session. Moving a key to another OpenAI project under the same Everruns provider hides the old session: the next turn fails once with `provider_session_unavailable`, and its deletion resolves as already gone, leaving that session to OpenAI's retention. Rotate within a project, or delete the Everruns sessions first. Rotating the Everruns encryption key re-encrypts the checkpoint with the other registered columns.
+
+**Unavailability.** A provider failure no retry fixes ends the turn with a stable code and an Everruns-authored message; provider response bodies, which can echo part of a key, never reach the turn. The codes pass the session's error-disclosure ceiling like native failures.
+
+| Condition | Outcome |
+|---|---|
+| Credentials rejected (401) | Turn fails `provider_misconfigured`; the provider session is kept |
+| Preview access withdrawn or not enabled (403, or 404 on create) | `provider_misconfigured`; the provider session is kept and resumes when access returns |
+| Model unavailable (create rejected, or a turn failure naming the model) | `model_unavailable` |
+| Account out of credits or quota | `provider_quota_exhausted` |
+| Provider session gone (404, confirmed by reading the session) | `provider_session_unavailable`; the session is released and the next message starts a new one |
+| Rate limit, 5xx, network | Activity error; the durable engine retries |
+| MCP server unreachable | MCP tools are client functions through Everruns' MCP client, so the call fails as a tool result, as in the native runtime, and the turn continues |
+| `openai_agents_api` flag turned off for the org | The capability is stripped; turns run natively from the Everruns record; the provider session stays until deletion or retention releases it |
+
+## Portability
+
+**Export.** The Everruns record (session events and messages) is the export; there is no separate one. It reconstructs every user input, every assistant message as the provider saved it after Everruns output guardrails, every function call and result, MCP call results, reasoning summaries, OpenAI-hosted call markers, compaction markers (`context.compacted`, strategy `provider_managed`), and usage and cost. It cannot reconstruct the context the provider works from after managed compaction (encrypted, never read), hidden reasoning, provider subagent transcripts, or the provider's internal model calls. Replaying the record natively reproduces the conversation, not the provider's working context.
+
+**Fork.** Refused at the API boundary with `409` and code `agents_api_session_not_forkable` for any session with a checkpoint, including detached spawns seeded as a fork: a fork would continue without the provider-held context while presenting itself as a copy. Workspace-only seeds copy no conversation and are allowed.
+
+**Import.** No endpoint imports a provider session as an Everruns session: the provider cannot hand over its compacted context, so an import could not resume as the same execution. `import_session_config` maps an Agents API agent definition to a native one and reports OpenAI built-ins, MCP allowlists, hosted files, environment setup, multi-agent policy, and unsupported transports as explicit warnings; it never silently drops a tool or carries MCP credentials.
+
+## Self-hosting and data residency
+
+OSS builds compile the backend, but it runs only with the platform flag, the capability, an OpenAI provider on `api.openai.com`, PostgreSQL, and an encryption key; without them sessions run natively. Selecting it moves the loop's working state to OpenAI: instructions, user input, tool results, assistant output, reasoning, and compacted context live in the provider session, under the key's OpenAI project and its data controls and region, not only in the self-hosted database. Zero Data Retention is not available for the environment modes (see [Recommendation](#recommendation)). Everruns deletes provider sessions it no longer references and can release idle ones, but cannot verify OpenAI's own deletion or backups, and cannot delete a session once the credentials that own it are gone: delete Agents API sessions before deleting their provider or organization. Deployments whose residency requirements OpenAI does not meet should keep the native runtime.
 
 ## Confirmed details and version-sensitive assumptions
 
@@ -138,12 +173,13 @@ The credentialed conformance test (`live_conformance_one_client_function_and_one
 
 ## Go / no-go
 
-Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a default or as a replacement for the native runtime. Durable orchestration, policy at the tool and output boundaries, and the event, usage, and cost projection are in place. Whether the provider keeps a required action open for as long as an approval may take (15 minutes by default) is unverified against the live API; a provider timeout fails the turn with `tool_action_expired`.
+Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a default or as a replacement for the native runtime. Durable orchestration, policy at the tool and output boundaries, the event, usage, and cost projection, and the session lifecycle are in place. Whether the provider keeps a required action open for as long as an approval may take (15 minutes by default) is unverified against the live API; a provider timeout fails the turn with `tool_action_expired`.
 
 ## Follow-up issues
 
 * EVE-1145, late usage: usage the provider fills after the bounded re-read stays unknown on the record until a later upsert (the generation reconciler, as for OpenRouter) is built.
-* EVE-1126, lifecycle and portability: guarded import to a native agent, fork from the Everruns record, remote session deletion and retention.
+* Seeding a new provider session from the Everruns record, so a replaced, released, or lost provider session keeps the conversation; needs a verified multi-item `input` shape.
+* An uncertain create whose Everruns session is deleted before the next turn adopts it leaves that provider session to OpenAI's retention.
 
 ## References
 

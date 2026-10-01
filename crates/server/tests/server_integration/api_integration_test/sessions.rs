@@ -1345,3 +1345,93 @@ async fn test_session_environment_reports_what_the_session_can_actually_do() {
     // exist yet.
     assert_eq!(environment["resolved_from"], "capabilities");
 }
+
+/// EVE-1126: a session that ran on the OpenAI Agents API backend has context
+/// only the provider holds, so a fork is refused with a stable code, and
+/// deleting the session queues its provider session for remote deletion.
+#[tokio::test]
+async fn test_agents_api_session_fork_is_refused_and_delete_queues_the_provider_session() {
+    let server = TestServer::new().await;
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "agents-api-lifecycle-agent",
+                "display_name": "Agents API Lifecycle Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let mut sessions = Vec::new();
+    for title in ["native", "agents-api"] {
+        let session: Session = server
+            .post(
+                "/v1/sessions",
+                json!({
+                    "harness_id": server.seed_base_harness_id,
+                    "agent_id": agent.public_id,
+                    "title": title
+                }),
+            )
+            .await
+            .assert_status(StatusCode::CREATED)
+            .json();
+        sessions.push(session);
+    }
+    let (native, remote) = (&sessions[0], &sessions[1]);
+    let provider_session_id = format!("sess_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(
+        "INSERT INTO agents_api_sessions \
+         (session_id, org_id, owner, lease_until, provider_session_id, provider_key, payload_encrypted) \
+         SELECT id, org_id, gen_random_uuid(), now(), $2, 'provider-key', '\\x00'::bytea \
+         FROM sessions WHERE id = $1",
+    )
+    .bind(remote.id.uuid())
+    .bind(&provider_session_id)
+    .execute(&server.pool)
+    .await
+    .unwrap();
+
+    server
+        .post(&format!("/v1/sessions/{}/fork", native.id), json!({}))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let refused: Value = server
+        .post(&format!("/v1/sessions/{}/fork", remote.id), json!({}))
+        .await
+        .assert_status(StatusCode::CONFLICT)
+        .json();
+    assert_eq!(
+        refused["code"], "agents_api_session_not_forkable",
+        "{refused}"
+    );
+    assert!(
+        refused["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("cannot be forked")),
+        "{refused}"
+    );
+
+    server
+        .delete(&format!("/v1/sessions/{}", remote.id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    let queued: (String, Option<String>, String) = sqlx::query_as(
+        "SELECT reason, provider_key, state FROM agents_api_provider_deletions \
+         WHERE provider_session_id = $1",
+    )
+    .bind(&provider_session_id)
+    .fetch_one(&server.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        queued,
+        (
+            "session_deleted".to_string(),
+            Some("provider-key".to_string()),
+            "pending".to_string()
+        )
+    );
+}

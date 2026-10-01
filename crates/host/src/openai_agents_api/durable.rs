@@ -113,6 +113,10 @@ pub struct AgentsApiTurnRequest {
     pub event_context: EventContext,
     /// Provider type recorded on the turn's `llm.generation` (`openai`).
     pub provider: Option<String>,
+    /// Everruns LLM provider whose credentials the turn uses. The provider
+    /// session belongs to it: lifecycle work resolves its key to delete the
+    /// session, and a turn on another provider starts a new session.
+    pub provider_key: Option<String>,
     /// Tools the remote loop was offered, recorded on `llm.generation`.
     pub tools: Vec<ToolDefinitionSummary>,
 }
@@ -328,10 +332,14 @@ impl AgentsApiTurnDriver {
                 error = heartbeat => Err(error),
             }
         };
-        if matches!(outcome, Err(AgentsApiError::Cancelled)) {
-            run.cancel().await;
+        match outcome {
+            Err(AgentsApiError::Cancelled) => {
+                run.cancel().await;
+                Err(AgentsApiError::Cancelled)
+            }
+            Err(error) => run.settle_permanent_failure(error).await,
+            outcome => outcome,
         }
-        outcome
     }
 }
 
@@ -456,8 +464,26 @@ impl Run<'_> {
                 session_id = %self.request.session_id,
                 "Agents API agent definition changed; starting a new provider session"
             );
-            self.checkpoint.provider_session_id = None;
-            self.checkpoint.create_attempt = None;
+            self.checkpoint.release_provider_session();
+        }
+        if !staged
+            && self.checkpoint.provider_session_id.is_some()
+            && self.checkpoint.provider_key.is_some()
+            && self.checkpoint.provider_key != self.request.provider_key
+        {
+            // The session belongs to the credentials that created it; another
+            // provider (another OpenAI project) cannot reach it. A key rotated
+            // on the same provider keeps the session.
+            tracing::warn!(
+                session_id = %self.request.session_id,
+                "Agents API provider changed; starting a new provider session"
+            );
+            self.checkpoint.release_provider_session();
+        }
+        if self.checkpoint.provider_key.is_none() && self.checkpoint.provider_session_id.is_some() {
+            // A checkpoint written before the provider was recorded: the
+            // session was created with this turn's provider.
+            self.checkpoint.provider_key = self.request.provider_key.clone();
         }
         if self.checkpoint.provider_session_id.is_none()
             && let Some(attempt) = self.checkpoint.create_attempt.clone()
@@ -521,6 +547,7 @@ impl Run<'_> {
         let attempt = Uuid::new_v4().to_string();
         self.checkpoint.create_attempt = Some(attempt.clone());
         self.checkpoint.agent_fingerprint = Some(fingerprint);
+        self.checkpoint.provider_key = self.request.provider_key.clone();
         let turn = self.turn_mut();
         turn.prior_provider_turns.clear();
         turn.provider_turn_id = None;
@@ -1387,6 +1414,50 @@ impl Run<'_> {
             .release(self.lease)
             .await
             .map_err(store_error)
+    }
+
+    /// A provider failure no retry fixes ends the turn with a stable code
+    /// (see [`super::lifecycle`]); anything else stays an error for the
+    /// durable engine to retry. A provider session that no longer exists is
+    /// released, so the next turn starts a new one instead of failing again;
+    /// the store queues the dropped id for deletion, which finds it gone.
+    async fn settle_permanent_failure(
+        &mut self,
+        error: AgentsApiError,
+    ) -> Result<AgentsApiTurnOutcome, AgentsApiError> {
+        let has_session = self.checkpoint.provider_session_id.is_some();
+        let Some(failure) = super::lifecycle::classify(&error, has_session) else {
+            return Err(error);
+        };
+        if failure.code == super::lifecycle::PROVIDER_SESSION_UNAVAILABLE {
+            // A 404 may name a turn or an item; only a missing session
+            // releases the session.
+            let session_id = self.provider_session()?;
+            match self.driver.client.retrieve_session(&session_id).await {
+                Err(AgentsApiError::Api { status: 404, .. }) => {}
+                _ => return Err(error),
+            }
+            tracing::warn!(
+                session_id = %self.request.session_id,
+                "Agents API provider session no longer exists; releasing it"
+            );
+            self.checkpoint.release_provider_session();
+        } else {
+            tracing::warn!(
+                session_id = %self.request.session_id,
+                code = failure.code,
+                "Agents API turn failed permanently"
+            );
+        }
+        let outcome = AgentsApiTurnOutcome::Failed {
+            code: Some(failure.code.to_string()),
+            message: failure.message,
+            policy: false,
+        };
+        self.turn_mut().outcome = Some(serde_json::to_value(&outcome).map_err(store_error)?);
+        self.save().await?;
+        self.release().await?;
+        Ok(outcome)
     }
 
     /// Best effort: stop the provider turn and keep the cancellation durable

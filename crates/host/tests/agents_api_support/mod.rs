@@ -86,7 +86,17 @@ pub struct FakeState {
     /// The hosted environment fails right after the turn starts; the
     /// provider never closes the root turn.
     pub environment_failure: bool,
+    /// Answer every request with this status (rejected credentials, a
+    /// revoked preview) and a body that echoes part of the key.
+    pub reject_all: Option<u16>,
+    /// Session creates fail because the model is unavailable.
+    pub model_unavailable: bool,
+    /// Every `DELETE /agents/sessions/{id}`, as received.
+    pub deletes: Vec<String>,
 }
+
+/// Everruns provider the test turns run on.
+pub const PROVIDER_KEY: &str = "01933b5a-0000-7000-8000-000000000001";
 
 /// Ends one stream response; the events after it wait for the next stream.
 pub const STREAM_BREAK: &str = "__stream_break__";
@@ -498,7 +508,27 @@ impl Respond for FakeAgentsApi {
         let segments: Vec<&str> = path.split('/').collect();
         let method = request.method.as_str();
         let body: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
+        if let Some(status) = state.reject_all {
+            return ResponseTemplate::new(status).set_body_json(json!({
+                "error": {"message": "Incorrect API key provided: sk-proj-****abcd"}
+            }));
+        }
         match (method, segments.as_slice()) {
+            ("POST", ["agents", "sessions"]) if state.model_unavailable => {
+                ResponseTemplate::new(400).set_body_json(json!({
+                    "error": {"code": "model_not_found", "message": "The model does not exist"}
+                }))
+            }
+            ("DELETE", ["agents", "sessions", id]) => {
+                state.deletes.push(id.to_string());
+                match state.sessions.iter().position(|s| s.id == *id) {
+                    Some(index) => {
+                        state.sessions.remove(index);
+                        ResponseTemplate::new(200).set_body_json(json!({"id": id, "deleted": true}))
+                    }
+                    None => ResponseTemplate::new(404),
+                }
+            }
             ("POST", ["agents", "sessions"]) => {
                 state.creates += 1;
                 state.create_bodies.push(body.clone());
@@ -997,6 +1027,7 @@ pub fn request(turn: u128, text: &str) -> AgentsApiTurnRequest {
         config: build_session_config(&agent(), "", None).unwrap(),
         event_context: EventContext::turn(turn_id, input_message_id),
         provider: Some("openai".to_string()),
+        provider_key: Some(PROVIDER_KEY.to_string()),
         tools: agent().tools.iter().map(Into::into).collect(),
     }
 }

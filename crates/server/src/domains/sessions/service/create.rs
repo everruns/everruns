@@ -220,6 +220,21 @@ impl SessionService {
         if req.seed != SessionSeedMode::Fresh && req.forked_from_session_id.is_none() {
             return Err(BadRequestError::new("seed requires forked_from_session_id").into());
         }
+        // THREAT[TM-LLM-044] EVE-1126: OpenAI holds part of an Agents API session's context
+        // (managed compaction, hidden reasoning) that neither Everruns nor the
+        // provider can copy. A fork (a user fork or a detached spawn seeded
+        // as one) would silently continue without it, so it is refused before
+        // anything is created. Workspace-only seeds copy no conversation.
+        if req.seed == SessionSeedMode::Fork
+            && let Some(source) = req.forked_from_session_id
+            && self.db.session_has_agents_api_state(org_id, source).await?
+        {
+            return Err(crate::errors::ConflictError::new(
+                crate::errors::AGENTS_API_SESSION_NOT_FORKABLE_DETAIL,
+            )
+            .with_code(crate::errors::AGENTS_API_SESSION_NOT_FORKABLE_CODE)
+            .into());
+        }
 
         // EVE-508: check per-org concurrent session cap before creating.
         let active_sessions = self.db.count_active_sessions_for_org(org_id).await?;

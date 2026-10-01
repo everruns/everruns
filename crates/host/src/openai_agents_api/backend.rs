@@ -37,7 +37,7 @@ use everruns_core::output_guardrail::{
 };
 use everruns_core::{
     AssembledTurnContext, ContentPart, DecisionsService, EventEmitter, MessageRetriever,
-    RuntimeAgent, UtilityLlmService,
+    RuntimeAgent, RuntimeMessageRole, UtilityLlmService,
 };
 use everruns_engine::{ActOutcome, ActResult, NativeExecutionCounts, ReasonInput, ReasonResult};
 use everruns_provider::BearerAuth;
@@ -47,6 +47,9 @@ use everruns_provider::openai_hosted_tools::OPENAI_HOSTED_TOOLS_OPTION;
 use everruns_provider::runtime_provider::ProviderEndpoint;
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::{MessageId, SessionId};
+use everruns_provider::user_facing_error::{
+    ErrorDisclosure, UserFacingError, UserFacingErrorContext, classify_runtime_error_message, codes,
+};
 use everruns_provider::{
     ASK_USER_TOOL_NAME, FormElicitationRequired, ToolApprovalRequired, UrlElicitationRequired,
 };
@@ -241,6 +244,16 @@ pub(crate) async fn try_execute_reason<A: crate::RuntimeHostAdapter>(
             // An Everruns-authored failure (budget, policy, expired pause) is
             // user-facing as is, so the canonical error classification
             // (e.g. budget exhausted) still recognizes it.
+            let user_facing = (!policy)
+                .then(|| {
+                    lifecycle_user_error(
+                        code.as_deref(),
+                        &message,
+                        &assembled.model.provider_type.to_string(),
+                        &assembled.model.model,
+                    )
+                })
+                .flatten();
             let error = match (policy, code) {
                 (true, _) => message,
                 (false, Some(code)) => {
@@ -248,12 +261,29 @@ pub(crate) async fn try_execute_reason<A: crate::RuntimeHostAdapter>(
                 }
                 (false, None) => format!("OpenAI Agents API turn failed: {message}"),
             };
-            ReasonResult {
-                success: false,
-                text: error.clone(),
-                error: Some(error),
-                max_iterations: assembled.runtime_agent.max_iterations,
-                ..ReasonResult::default()
+            match user_facing {
+                // A lifecycle failure carries its stable code, filtered through
+                // the session's error-disclosure ceiling like a native failure.
+                Some(source) => {
+                    let disclosure = error_disclosure(&registry, assembled);
+                    let user_error = source.apply_disclosure(disclosure, Some(&error));
+                    ReasonResult {
+                        success: false,
+                        text: user_error.fallback_message(),
+                        error: Some(error),
+                        user_facing_error: Some(user_error),
+                        error_disclosure: Some(disclosure),
+                        max_iterations: assembled.runtime_agent.max_iterations,
+                        ..ReasonResult::default()
+                    }
+                }
+                None => ReasonResult {
+                    success: false,
+                    text: error.clone(),
+                    error: Some(error),
+                    max_iterations: assembled.runtime_agent.max_iterations,
+                    ..ReasonResult::default()
+                },
             }
         }
         Ok(AgentsApiTurnOutcome::Cancelled) | Err(AgentsApiError::Cancelled) => {
@@ -309,6 +339,7 @@ fn prepare_request(
         config,
         event_context,
         provider: Some(assembled.model.provider_type.to_string()),
+        provider_key: Some(assembled.model.provider.to_string()),
         tools: assembled
             .runtime_agent
             .tools
@@ -341,7 +372,7 @@ fn ensure_runtime_policy(agent: &RuntimeAgent) -> std::result::Result<(), Agents
 /// gateway, Azure, or another driver keeps the native loop.
 // THREAT[TM-LLM-043]: the loop leaves the platform only through the official
 // OpenAI API, billed to the session's own provider credentials.
-fn official_endpoint(config: &ProviderConfig) -> Option<ProviderEndpoint> {
+pub fn official_endpoint(config: &ProviderConfig) -> Option<ProviderEndpoint> {
     if config.provider_type != DriverId::OpenAI {
         return None;
     }
@@ -357,6 +388,61 @@ fn official_endpoint(config: &ProviderConfig) -> Option<ProviderEndpoint> {
         .as_deref()
         .filter(|key| !key.trim().is_empty())?;
     official.then(|| ProviderEndpoint::from_parts(base, BearerAuth::new(key)))
+}
+
+/// The stable user-facing error of a provider failure (EVE-1126). Codes the
+/// driver assigned ([`super::lifecycle`]) are reported as is; a failure the
+/// provider reported on the turn is mapped by its code, then by its text.
+fn lifecycle_user_error(
+    code: Option<&str>,
+    message: &str,
+    provider: &str,
+    model: &str,
+) -> Option<UserFacingError> {
+    let code = code?;
+    let context = UserFacingErrorContext::default()
+        .with_provider(provider)
+        .with_model_id(model);
+    let user_error = if super::lifecycle::LIFECYCLE_CODES.contains(&code) {
+        UserFacingError::new(code)
+    } else if code.contains("model") {
+        UserFacingError::new(codes::MODEL_UNAVAILABLE)
+    } else {
+        classify_runtime_error_message(&format!("{code}: {message}"), &context)
+    };
+    Some(match user_error.code.as_str() {
+        codes::MODEL_UNAVAILABLE => user_error.with_field("model_id", model),
+        codes::PROVIDER_MISCONFIGURED | codes::PROVIDER_QUOTA_EXHAUSTED => {
+            user_error.with_field("provider", provider)
+        }
+        _ => user_error,
+    })
+}
+
+/// The session's error-disclosure mode: the capability ceiling, narrowed by
+/// the turn input's own control, as the native reason resolves it.
+// THREAT[TM-LLM-024]: a client control may narrow disclosure, never widen it.
+fn error_disclosure(
+    registry: &CapabilityRegistry,
+    assembled: &AssembledTurnContext,
+) -> ErrorDisclosure {
+    let ceiling = assembled
+        .resolved_capability_configs
+        .iter()
+        .find_map(|config| {
+            registry
+                .get(config.capability_id())?
+                .error_disclosure(config.config_value())
+        })
+        .unwrap_or_default();
+    assembled
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == RuntimeMessageRole::User)
+        .and_then(|message| message.controls.as_ref()?.error_disclosure.as_deref())
+        .and_then(ErrorDisclosure::parse)
+        .map_or(ceiling, |requested| requested.min(ceiling))
 }
 
 fn to_loop_error(error: AgentsApiError) -> AgentLoopError {
@@ -864,6 +950,32 @@ mod tests {
         let mut other = ProviderConfig::new(DriverId::OpenAICompletions);
         other.api_key = Some("sk-test".into());
         assert!(official_endpoint(&other).is_none());
+    }
+
+    #[test]
+    fn provider_failures_map_to_stable_user_facing_codes() {
+        let map = |code: Option<&str>, message: &str| {
+            lifecycle_user_error(code, message, "openai", "gpt-6-astra")
+        };
+        assert_eq!(
+            map(None, "no code"),
+            None,
+            "text classification stays as before"
+        );
+        let lost = map(Some(codes::PROVIDER_SESSION_UNAVAILABLE), "gone").unwrap();
+        assert_eq!(lost.code, codes::PROVIDER_SESSION_UNAVAILABLE);
+        assert!(lost.fallback_message().contains("new provider session"));
+        let model = map(Some("model_not_found"), "retired").unwrap();
+        assert_eq!(model.code, codes::MODEL_UNAVAILABLE);
+        assert_eq!(model.fields["model_id"], "gpt-6-astra");
+        let credentials = map(Some(codes::PROVIDER_MISCONFIGURED), "HTTP 401").unwrap();
+        assert_eq!(credentials.fields["provider"], "openai");
+        let quota = map(
+            Some("insufficient_quota"),
+            "You exceeded your current quota",
+        )
+        .unwrap();
+        assert_eq!(quota.code, codes::PROVIDER_QUOTA_EXHAUSTED);
     }
 
     #[test]

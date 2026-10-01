@@ -35,6 +35,10 @@ pub mod codes {
     pub const PROVIDER_ATTESTATION_REQUIRED: &str = "provider_attestation_required";
     pub const PROVIDER_UNAVAILABLE: &str = "provider_unavailable";
     pub const PROCESSING_ERROR: &str = "processing_error";
+    /// Provider-held session state (OpenAI Agents API) is gone: deleted,
+    /// expired, or out of reach of the current credentials. The next turn
+    /// starts a new provider session from the Everruns record.
+    pub const PROVIDER_SESSION_UNAVAILABLE: &str = "provider_session_unavailable";
     pub const DEPENDENCY_UNAVAILABLE: &str = "dependency_unavailable";
     pub const INVALID_TOOL_SCHEMA: &str = "invalid_tool_schema";
     pub const MAX_ITERATIONS: &str = "max_iterations";
@@ -461,6 +465,10 @@ impl UserFacingError {
             codes::PROVIDER_ATTESTATION_REQUIRED => attestation_required_message(&self.fields),
             codes::PROVIDER_UNAVAILABLE => {
                 "The AI provider is experiencing issues. Please try again shortly.".to_string()
+            }
+            codes::PROVIDER_SESSION_UNAVAILABLE => {
+                "The AI provider no longer holds this session's remote state. Send your message again to continue in a new provider session; it does not carry the earlier conversation."
+                    .to_string()
             }
             codes::DEPENDENCY_UNAVAILABLE => {
                 "Execution stopped because a required dependency is unavailable.".to_string()

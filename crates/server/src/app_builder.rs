@@ -1895,6 +1895,23 @@ impl ServerAppBuilder {
             error_reporter: error_reporter.clone(),
         };
 
+        // -- OpenAI Agents API provider-session lifecycle (EVE-1126) --
+        // Both runtime modes can drive the backend, so both delete provider
+        // sessions their Everruns sessions no longer reference.
+        if let (Some(pool), Some(encryption)) = (db.background_pool(), encryption.as_ref()) {
+            supervisor.track_optional(
+                "agents_api_lifecycle",
+                crate::agents_api_lifecycle::spawn_agents_api_lifecycle_task(
+                    pool.clone(),
+                    crate::storage::PgAgentsApiStore::new(pool.clone(), encryption.clone()),
+                    Arc::new(crate::agents_api_lifecycle::ResolvingDeleter::new(
+                        provider_resolver.clone(),
+                    )),
+                    crate::agents_api_lifecycle::AgentsApiLifecycleConfig::from_env(),
+                ),
+            );
+        }
+
         if !self.config.dev_mode {
             // -- gRPC server --
             let grpc_db = db.clone();

@@ -237,11 +237,13 @@ async fn a_competing_worker_cannot_drive_a_leased_session() {
 }
 
 #[tokio::test]
-async fn http_errors_surface_status_and_body() {
+async fn transient_http_errors_surface_status_and_body() {
+    // Permanent failures (401, 403, 404, a retired model) end the turn with a
+    // stable code instead; see openai_agents_api_lifecycle.rs.
     let server = MockServer::start().await;
     Mock::given(any())
         .respond_with(
-            ResponseTemplate::new(403).set_body_string(r#"{"error":{"code":"beta_access"}}"#),
+            ResponseTemplate::new(503).set_body_string(r#"{"error":{"code":"overloaded"}}"#),
         )
         .mount(&server)
         .await;
@@ -254,7 +256,7 @@ async fn http_errors_surface_status_and_body() {
     );
     let error = driver.run(&request(1, "hi")).await.unwrap_err();
     assert!(
-        matches!(error, AgentsApiError::Api { status: 403, ref body } if body.contains("beta_access")),
+        matches!(error, AgentsApiError::Api { status: 503, ref body } if body.contains("overloaded")),
         "{error}"
     );
     let auth = server.received_requests().await.unwrap()[0].clone();

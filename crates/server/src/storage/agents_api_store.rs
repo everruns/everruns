@@ -45,6 +45,65 @@ impl PgAgentsApiStore {
     }
 }
 
+impl PgAgentsApiStore {
+    /// Retention (EVE-1126): release the provider sessions of checkpoints
+    /// idle for longer than `idle_for`, at most `limit` per call. Only an
+    /// unleased checkpoint of a session that is not mid-turn, and that holds
+    /// no parked call, is released. The Everruns record stays; the next turn
+    /// starts a new provider session. The tombstone trigger queues the
+    /// released id for remote deletion in the same statement. Returns how
+    /// many provider sessions were released.
+    pub async fn release_idle_provider_sessions(
+        &self,
+        idle_for: std::time::Duration,
+        limit: i64,
+    ) -> Result<u64> {
+        let rows: Vec<(uuid::Uuid, Vec<u8>, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+            r#"
+            SELECT a.id, a.payload_encrypted, a.updated_at
+            FROM agents_api_sessions a
+            JOIN sessions s ON s.id = a.session_id
+            WHERE a.provider_session_id IS NOT NULL
+              AND a.updated_at < clock_timestamp() - make_interval(secs => $1)
+              AND a.lease_until <= clock_timestamp()
+              AND s.status IN ('started', 'idle')
+            ORDER BY a.updated_at
+            LIMIT $2
+            "#,
+        )
+        .bind(idle_for.as_secs_f64())
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(store_error)?;
+        let mut released = 0;
+        for (id, payload, updated_at) in rows {
+            let mut checkpoint = self.decode(payload)?;
+            if checkpoint.holds_pause() {
+                continue;
+            }
+            checkpoint.release_provider_session();
+            let payload = self.encode(&checkpoint)?;
+            // Compare-and-swap on updated_at and the lease: a worker that
+            // took the session meanwhile keeps it.
+            let result = sqlx::query(
+                "UPDATE agents_api_sessions SET payload_encrypted = $2, provider_session_id = NULL, \
+                 updated_at = clock_timestamp() \
+                 WHERE id = $1 AND updated_at = $3 AND lease_until <= clock_timestamp() \
+                 AND provider_session_id IS NOT NULL",
+            )
+            .bind(id)
+            .bind(payload)
+            .bind(updated_at)
+            .execute(&self.pool)
+            .await
+            .map_err(store_error)?;
+            released += result.rows_affected();
+        }
+        Ok(released)
+    }
+}
+
 fn store_error(error: impl std::fmt::Display) -> AgentLoopError {
     AgentLoopError::store(format!("agents api journal: {error}"))
 }
@@ -105,7 +164,7 @@ impl AgentsApiStore for PgAgentsApiStore {
         let payload = self.encode(checkpoint)?;
         let result = sqlx::query(
             "UPDATE agents_api_sessions SET payload_encrypted = $5, provider_session_id = $6, \
-             updated_at = clock_timestamp(), lease_until = clock_timestamp() + make_interval(secs => $4) \
+             provider_key = $7, updated_at = clock_timestamp(), lease_until = clock_timestamp() + make_interval(secs => $4) \
              WHERE session_id = $1 AND org_id = $2 AND owner = $3 AND lease_until > clock_timestamp()",
         )
         .bind(lease.session_id)
@@ -114,6 +173,7 @@ impl AgentsApiStore for PgAgentsApiStore {
         .bind(AGENTS_API_LEASE_SECONDS as f64)
         .bind(payload)
         .bind(checkpoint.provider_session_id.as_deref())
+        .bind(checkpoint.provider_key.as_deref())
         .execute(&self.pool)
         .await
         .map_err(store_error)?;
