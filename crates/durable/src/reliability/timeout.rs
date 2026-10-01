@@ -111,17 +111,30 @@ pub struct TaskTimingInfo {
 ///
 /// # Example
 ///
-/// ```ignore
-/// use everruns_durable::reliability::TimeoutManager;
+/// ```
+/// use std::sync::Arc;
+/// use std::time::Duration;
+/// use chrono::Utc;
+/// use everruns_durable::InMemoryWorkflowEventStore;
+/// use everruns_durable::reliability::{TaskTimingInfo, TimeoutConfig, TimeoutManager, TimeoutType};
 ///
-/// let manager = TimeoutManager::new(store);
+/// let manager = TimeoutManager::new(Arc::new(InMemoryWorkflowEventStore::new()));
 ///
-/// // Check for timed out tasks
-/// let timed_out = manager.find_timed_out_tasks().await?;
+/// // Claimed ten minutes ago, last heartbeat five minutes ago.
+/// let now = Utc::now();
+/// let timing = TaskTimingInfo {
+///     task_id: uuid::Uuid::now_v7(),
+///     scheduled_at: now - chrono::Duration::minutes(11),
+///     started_at: Some(now - chrono::Duration::minutes(10)),
+///     last_heartbeat_at: Some(now - chrono::Duration::minutes(5)),
+///     timeout_config: TimeoutConfig::new()
+///         .with_start_to_close(Duration::from_secs(3600))
+///         .with_heartbeat(Duration::from_secs(60)),
+/// };
 ///
-/// for task in timed_out {
-///     manager.handle_timeout(task.task_id, task.timeout_type).await?;
-/// }
+/// let (kind, _error) = manager.check_task_timeout(&timing).unwrap();
+/// assert_eq!(kind, TimeoutType::Heartbeat);
+/// // `manager.handle_timeout(timing.task_id, kind)` then fails the task.
 /// ```
 pub struct TimeoutManager {
     store: Arc<dyn WorkflowEventStore>,

@@ -29,30 +29,7 @@
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 //!
-//! # Example
-//!
-//! ```ignore
-//! use everruns_durable::worker::{WorkerPool, WorkerPoolConfig};
-//!
-//! // Configure the worker pool
-//! let config = WorkerPoolConfig::new(vec!["process_order".to_string()])
-//!     .with_worker_id("order-worker-1")
-//!     .with_max_concurrency(20);
-//!
-//! // Create and start the pool
-//! let pool = WorkerPool::new(store, config);
-//!
-//! pool.register_handler("process_order", |task| async move {
-//!     let order: Order = serde_json::from_value(task.input)?;
-//!     // Process the order...
-//!     Ok(json!({"status": "completed"}))
-//! });
-//!
-//! pool.start().await?;
-//!
-//! // Graceful shutdown
-//! pool.shutdown().await?;
-//! ```
+//! See [`WorkerPool`] for a runnable example.
 
 mod backpressure;
 mod poller;
