@@ -109,7 +109,7 @@ test-integration: start-infra
     cargo test -p everruns-server --test domain -- --test-threads=1
     cargo test -p everruns-durable --test postgres_integration_test --features postgres-tests -- --test-threads=1
     cargo test -p everruns-durable --test postgres_repository_test --features postgres-tests -- --test-threads=1
-    cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
+    cargo test -p everruns-durable --test failure_injection_test --test agent_reliability_test --features "failpoints,postgres-tests" -- --test-threads=1
 
 # Run workflow tests (requires running server + worker)
 test-workflow:

@@ -5,6 +5,7 @@
 
 mod executor;
 mod registry;
+mod replay;
 
 pub use executor::{ExecutorConfig, ExecutorError, WorkflowExecutor};
 pub use registry::{WorkflowFactory, WorkflowRegistry};
