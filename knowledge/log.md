@@ -2,6 +2,13 @@
 
 ## 2026-10-01
 
+* **AG-UI runs interrupt and resume.** A turn parked on `ask_user` or a tool
+  approval ends its AG-UI run with the 1.0 interrupt outcome, and
+  `RunAgentInput.resume` answers it through the shared resolvers. Approvals
+  are answerable by the client only on endpoints that opt in, and token usage
+  is reported only when the endpoint enables it. Recorded in
+  [AG-UI Channel](integrations/ag-ui.md#interrupts-and-resume), threat-model
+  entries TM-TENANT-016 and TM-TOOL-052.
 * **The OpenAI Agents API backend enforces Everruns policy at its tool and
   output boundaries (EVE-1124).** A call the tool pipeline parks (an approval,
   a client-side tool, a connection setup) parks the Everruns turn while the

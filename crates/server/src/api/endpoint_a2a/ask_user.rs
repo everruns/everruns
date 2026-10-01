@@ -112,7 +112,7 @@ pub(super) async fn pending_ask_user(
 ///
 /// The typed twin of `pending_from_events`, which reads the same payload back
 /// out of a stored row.
-pub(super) fn pending_ask_user_from_request(
+pub(crate) fn pending_ask_user_from_request(
     requested: &everruns_core::events::ToolCallRequestedData,
 ) -> Option<crate::api::question_answers::PendingQuestions> {
     let call = requested
@@ -234,7 +234,9 @@ fn a2a_status_message(task_id: &str, parts: Vec<Value>) -> Value {
 /// This is what makes a bare `DataPart` usable in place of the elicitation
 /// primitive A2A does not have: the caller is told the exact object to send
 /// back, down to the option labels it is allowed to select.
-fn ask_user_answer_schema(pending: &crate::api::question_answers::PendingQuestions) -> Value {
+pub(crate) fn ask_user_answer_schema(
+    pending: &crate::api::question_answers::PendingQuestions,
+) -> Value {
     let answers: Vec<Value> = pending
         .questions
         .iter()
