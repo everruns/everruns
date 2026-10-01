@@ -22,8 +22,6 @@ use std::time::Duration;
 
 use anyhow::Context as _;
 use async_trait::async_trait;
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::{DateTime, Utc};
 use everruns_core::events::{TOOL_CALL_REQUESTED, TOOL_COMPLETED, TURN_COMPLETED, TURN_FAILED};
 use everruns_core::{
@@ -31,13 +29,14 @@ use everruns_core::{
     PermissionResolver,
 };
 use everruns_platform::FeatureFlags;
-use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::storage::encryption::EncryptionService;
 use crate::storage::{McpEventSubscriptionRow, StorageBackend, UpsertMcpEventSubscription};
+
+use super::standard_webhooks::{self, MAX_BODY_BYTES, sign};
 
 pub const SESSION_COMPLETED: &str = "session.completed";
 pub const SESSION_FAILED: &str = "session.failed";
@@ -46,15 +45,11 @@ pub const EVENT_NAMES: [&str; 3] = [SESSION_COMPLETED, SESSION_FAILED, SESSION_I
 
 /// JSON-RPC error for a callback that failed verification (draft spec).
 pub const CALLBACK_VERIFICATION_FAILED: i64 = -32015;
-/// The webhook body cap from the spec.
-const MAX_BODY_BYTES: usize = 256 * 1024;
 const DEFAULT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const MIN_TTL: Duration = Duration::from_secs(60);
 const MAX_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const REQUEST_TIMEOUT_MS: u64 = 10_000;
 const ASK_USER_TOOL: &str = "ask_user";
-
-type HmacSha256 = Hmac<Sha256>;
 
 /// An `events/*` failure, shaped for a JSON-RPC error response.
 #[derive(Debug, Clone, PartialEq)]
@@ -691,18 +686,8 @@ fn filter_matches(arguments: &Value, session_id: &str, agent_id: Option<&str>) -
         && wanted("agent_id").is_none_or(|wanted| Some(wanted) == agent_id)
 }
 
-/// `whsec_` + base64 of 24 to 64 key bytes (Standard Webhooks).
 fn decode_secret(secret: &str) -> Result<Vec<u8>, EventsError> {
-    let encoded = secret
-        .strip_prefix("whsec_")
-        .ok_or_else(|| EventsError::invalid("secret must start with whsec_"))?;
-    let key = BASE64
-        .decode(encoded)
-        .map_err(|_| EventsError::invalid("secret must be base64 after whsec_"))?;
-    if !(24..=64).contains(&key.len()) {
-        return Err(EventsError::invalid("secret must decode to 24 to 64 bytes"));
-    }
-    Ok(key)
+    standard_webhooks::decode_secret(secret).map_err(EventsError::invalid)
 }
 
 /// Stable id for (subscriber, url, name, canonical arguments), so a repeated
@@ -747,26 +732,8 @@ fn canonical_json(value: &Value) -> String {
     }
 }
 
-/// Standard Webhooks signature: `v1,` + base64(HMAC-SHA256(key, "{id}.{ts}.{body}")).
-fn sign(key: &[u8], message_id: &str, timestamp: &str, body: &[u8]) -> String {
-    // HMAC accepts keys of any length, so this never takes the else branch.
-    let Ok(mut mac) = HmacSha256::new_from_slice(key) else {
-        return String::new();
-    };
-    mac.update(message_id.as_bytes());
-    mac.update(b".");
-    mac.update(timestamp.as_bytes());
-    mac.update(b".");
-    mac.update(body);
-    format!("v1,{}", BASE64.encode(mac.finalize().into_bytes()))
-}
-
 fn constant_time_eq(a: &str, b: &str) -> bool {
-    a.len() == b.len()
-        && a.bytes()
-            .zip(b.bytes())
-            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-            == 0
+    crate::security::constant_time_eq(a.as_bytes(), b.as_bytes())
 }
 
 /// Verify a Standard Webhooks signature. Public for tests and receivers built
@@ -781,52 +748,14 @@ pub fn verify_signature(
     let key = decode_secret(secret)
         .map_err(|e| anyhow::anyhow!(e.message))
         .context("secret")?;
-    let expected = sign(&key, message_id, timestamp, body);
-    Ok(header
-        .split(' ')
-        .any(|candidate| constant_time_eq(candidate, &expected)))
+    Ok(standard_webhooks::signature_matches(
+        &key, message_id, timestamp, body, header,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn secret() -> String {
-        format!("whsec_{}", BASE64.encode([7u8; 32]))
-    }
-
-    #[test]
-    fn secret_must_be_prefixed_base64_of_24_to_64_bytes() {
-        assert!(decode_secret(&secret()).is_ok());
-        assert!(decode_secret(&BASE64.encode([7u8; 32])).is_err());
-        assert!(decode_secret("whsec_not base64!").is_err());
-        assert!(decode_secret(&format!("whsec_{}", BASE64.encode([7u8; 16]))).is_err());
-        assert!(decode_secret(&format!("whsec_{}", BASE64.encode([7u8; 65]))).is_err());
-    }
-
-    #[test]
-    fn signature_follows_standard_webhooks() {
-        // Standard Webhooks' published test vector.
-        let secret = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
-        let body = br#"{"test": 2432232314}"#;
-        let signature = sign(
-            &decode_secret(secret).unwrap_or_default(),
-            "msg_p5jXN8AQM9LWM0D4loKWxJek",
-            "1614265330",
-            body,
-        );
-        assert_eq!(signature, "v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=");
-        assert!(
-            verify_signature(
-                secret,
-                "msg_p5jXN8AQM9LWM0D4loKWxJek",
-                "1614265330",
-                body,
-                &signature
-            )
-            .unwrap_or(false)
-        );
-    }
 
     #[test]
     fn subscription_id_ignores_argument_order_but_not_the_subscriber() {

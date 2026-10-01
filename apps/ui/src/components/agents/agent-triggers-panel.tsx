@@ -9,6 +9,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Radio,
   Trash2,
   Webhook,
 } from "lucide-react";
@@ -127,6 +128,9 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
           triggers.map((trigger) => {
             const isGithub = trigger.trigger_type === "github";
             const isSchedule = trigger.trigger_type === "schedule";
+            // Created through the API for now; shown read-only here.
+            const isMcpEvent = trigger.trigger_type === "mcp_event";
+            const mcpEventConfig = trigger.config as unknown as { server?: string; event?: string };
             const githubConfig = trigger.config as unknown as {
               events?: string[];
               repositories?: string[];
@@ -145,6 +149,8 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                     <div className="flex items-center gap-2">
                       {isGithub ? (
                         <GitPullRequest className="size-4 text-muted-foreground" />
+                      ) : isMcpEvent ? (
+                        <Radio className="size-4 text-muted-foreground" />
                       ) : isSchedule ? (
                         <Clock3 className="size-4 text-muted-foreground" />
                       ) : (
@@ -152,6 +158,10 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                       )}
                       {isGithub ? (
                         <span className="font-medium">GitHub pull requests</span>
+                      ) : isMcpEvent ? (
+                        <span className="font-medium">
+                          MCP event {mcpEventConfig.event} on {mcpEventConfig.server}
+                        </span>
                       ) : isSchedule ? (
                         <CronLabel
                           expr={getScheduleTriggerConfig(trigger).cron_expression}
@@ -232,7 +242,7 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                   </div>
                 </div>
                 {isSchedule && <TriggerRuns agentId={agentId} triggerId={trigger.id} />}
-                {!isGithub && (
+                {!isGithub && !isMcpEvent && (
                   <div className="border-t pt-4">
                     <p className="mb-3 text-xs font-medium uppercase text-muted-foreground">
                       Set up

@@ -140,6 +140,25 @@ pub fn tools_list_body(id: i64, version: &str, capabilities: ClientCapabilities)
     })
 }
 
+/// Request body for any other method, carrying `_meta` beside `params`
+/// own fields. A non-object `params` is replaced by just `_meta`.
+pub fn request_body(
+    id: i64,
+    method: &str,
+    params: &Value,
+    version: &str,
+    capabilities: ClientCapabilities,
+) -> Value {
+    let mut params = params.as_object().cloned().unwrap_or_default();
+    params.insert("_meta".to_string(), request_meta(version, capabilities));
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": method,
+        "params": Value::Object(params),
+    })
+}
+
 /// `tools/call` request body, carrying `_meta`.
 pub fn tools_call_body(
     id: i64,
@@ -471,6 +490,33 @@ impl Negotiated {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_body_keeps_params_beside_meta() {
+        let params = json!({ "name": "issue.created", "arguments": { "team": "eng" } });
+        let body = request_body(
+            7,
+            "events/subscribe",
+            &params,
+            MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities::none(),
+        );
+        assert_eq!(body["id"], 7);
+        assert_eq!(body["method"], "events/subscribe");
+        assert_eq!(body["params"]["name"], "issue.created");
+        assert_eq!(body["params"]["arguments"], json!({ "team": "eng" }));
+        assert!(body["params"]["_meta"][CLIENT_INFO_META_KEY].is_object());
+
+        let body = request_body(
+            1,
+            "ping",
+            &Value::Null,
+            MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities::none(),
+        );
+        let params = body["params"].as_object().unwrap();
+        assert_eq!(params.len(), 1, "only _meta: {params:?}");
+    }
 
     #[test]
     fn request_meta_carries_client_info_under_canonical_key() {

@@ -128,6 +128,7 @@ impl StorageBackend {
     }
 }
 
+mod agent_trigger_mcp_subscriptions;
 mod harnesses_sessions;
 mod identity;
 mod knowledge;

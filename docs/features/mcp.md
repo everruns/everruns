@@ -44,6 +44,33 @@ Register a remote MCP server and its tools appear as a **virtual capability**: a
 - **Tool naming**: discovered tools are namespaced per server so they never collide with built-in capabilities.
 - **Protocol compatibility**: the client negotiates the MCP protocol era per server. By default (`auto`) it issues a session-less `2026-07-28` request and transparently falls back to the stateful `initialize` handshake (`2025-06-18` / `2025-03-26`) for servers that require it, caching the verdict per server. Set the protocol mode to `legacy`, `stable`, or `rc` to pin a specific era and skip negotiation. No setting is needed for the common case.
 
+### Waking an agent on a server's events (experimental)
+
+With the **MCP Events** flag on, an agent can also subscribe to events that one
+of its own MCP servers publishes, such as a tracker announcing new issues.
+Create an agent trigger with `trigger_type: "mcp_event"`, the attachment's name
+in `mcp_server`, the event name from the server's `events/list` in `mcp_event`,
+and any subscription arguments in `mcp_event_arguments`:
+
+```bash
+curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/triggers" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "trigger_type": "mcp_event",
+    "mcp_server": "tracker",
+    "mcp_event": "issue.created",
+    "mcp_event_arguments": {"team": "eng"},
+    "message": "Triage {{payload.issue.title}}"
+  }'
+```
+
+Everruns subscribes with the server's own credentials for that attachment, a
+signing secret it generates, and a callback URL of its own; the server must
+accept webhook delivery. Each signed event starts a run with the event's `data`
+as `{{payload}}`. Subscriptions are renewed before they expire and cancelled
+when the trigger is disabled or deleted. The attachment must not act as the
+calling user, since a trigger runs as the agent.
+
 ## When a tool needs a person
 
 Some MCP tools cannot finish without a human: a payment to authorize, an API key

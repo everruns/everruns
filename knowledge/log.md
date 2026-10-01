@@ -2,6 +2,14 @@
 
 ## 2026-10-01
 
+* **Agents can wake on MCP events (EVE-1121, inbound half).** An `mcp_event`
+  trigger subscribes, through MCP Events, to an event on one of the agent's own
+  MCP servers with that attachment's credential, and keeps the subscription in
+  step with the trigger: a fresh encrypted secret on create, enable and change,
+  a periodic refresh before `refreshBefore`, unsubscribe on disable and delete.
+  Signed deliveries to `/v1/e/{ingress_id}/mcp-events` feed the shared trigger
+  event pipeline; anything not live answers `410`. Behind `mcp_events`.
+  TM-TRIGGER-005. See [MCP Events](integrations/mcp-events.md#inbound-mcp-event-triggers).
 * **The OpenAI Agents API backend enforces Everruns policy at its tool and
   output boundaries (EVE-1124).** A call the tool pipeline parks (an approval,
   a client-side tool, a connection setup) parks the Everruns turn while the

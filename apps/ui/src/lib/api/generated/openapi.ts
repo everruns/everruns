@@ -5203,7 +5203,7 @@ export interface components {
      * @description The kind of event that fires an agent trigger.
      * @enum {string}
      */
-    AgentTriggerType: "schedule" | "webhook" | "github";
+    AgentTriggerType: "schedule" | "webhook" | "github" | "mcp_event";
     /** @description Immutable snapshot of an Agent's authored and resolved runtime config. */
     AgentVersion: {
       /**
@@ -6963,6 +6963,12 @@ export interface components {
        *     `pull_request.opened`). Defaults to pull request open/update events.
        */
       github_events?: string[] | null;
+      /** @description MCP event only: event name from the server's `events/list`. */
+      mcp_event?: string | null;
+      /** @description MCP event only: subscription arguments object (the event's `inputSchema`). */
+      mcp_event_arguments?: Record<string, unknown> | null;
+      /** @description MCP event only: name of the agent's MCP server attachment to subscribe to. */
+      mcp_server?: string | null;
       /**
        * @description Message content or `{{template}}` sent when the trigger fires.
        * @example Run the daily digest
@@ -6978,7 +6984,7 @@ export interface components {
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
       /**
-       * @description Webhook only: template for the event subject. Required for
+       * @description Webhook and MCP event: template for the event subject. Required for
        *     `session_mode: per_thread`, which keeps one session per subject.
        */
       subject_template?: string | null;
@@ -18404,6 +18410,12 @@ export interface components {
       filter?: components["schemas"]["TriggerEventFilter"] | null;
       /** @description Replacement GitHub event subscriptions. */
       github_events?: string[] | null;
+      /** @description Replacement MCP event name. */
+      mcp_event?: string | null;
+      /** @description Replacement MCP event subscription arguments. */
+      mcp_event_arguments?: Record<string, unknown> | null;
+      /** @description Replacement MCP server attachment name. */
+      mcp_server?: string | null;
       /** @description Replacement message sent when the trigger fires. */
       message?: string | null;
       /**

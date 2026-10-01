@@ -433,6 +433,63 @@ pub async fn http_list_tools(
     )
 }
 
+/// A JSON-RPC error an MCP server returned for a request.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("MCP server error: {message} (code {code})")]
+pub struct McpRpcError {
+    pub code: i64,
+    pub message: String,
+    pub data: Option<Value>,
+}
+
+/// Send one JSON-RPC request for any method (for example `events/subscribe`)
+/// and return its `result`. Negotiates the protocol era (`Auto`) and applies
+/// the same DNS-pinned SSRF contract as tool calls. A JSON-RPC error comes
+/// back as an [`McpRpcError`] inside the `anyhow::Error`; a non-2xx HTTP
+/// response as an [`McpHttpStatusError`].
+pub async fn http_request(
+    egress: &dyn EgressService,
+    url: &str,
+    headers: &HashMap<String, String>,
+    credential: Option<&McpCredential>,
+    method: &str,
+    params: &Value,
+) -> Result<Value> {
+    let capabilities = ClientCapabilities::none();
+    let (text, _negotiated) = negotiate_and_send(
+        egress,
+        url,
+        headers,
+        credential,
+        McpProtocolMode::Auto,
+        method,
+        None,
+        &|version| protocol::request_body(1, method, params, version, capabilities),
+        None,
+        CALL_TIMEOUT,
+    )
+    .await?;
+    let json_str = extract_json_from_response(&text)
+        .ok_or_else(|| anyhow!("SSE response missing data line"))?;
+    let mut response: Value = serde_json::from_str(json_str)?;
+    if let Some(error) = response.get("error").filter(|error| !error.is_null()) {
+        return Err(McpRpcError {
+            code: error.get("code").and_then(Value::as_i64).unwrap_or(-32603),
+            message: error
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown error")
+                .to_string(),
+            data: error.get("data").cloned(),
+        }
+        .into());
+    }
+    response
+        .get_mut("result")
+        .map(Value::take)
+        .ok_or_else(|| anyhow!("MCP server returned empty result"))
+}
+
 /// Execute a tool via `tools/call`. Negotiates the protocol era (`Auto`).
 ///
 /// `elicitation` is the host's URL mode elicitation consent handler. Passing
