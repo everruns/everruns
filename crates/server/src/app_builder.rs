@@ -1171,7 +1171,7 @@ impl ServerAppBuilder {
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         };
-        let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
+        let endpoint_webhooks_state = api::endpoint_webhooks::EndpointWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1596,7 +1596,7 @@ impl ServerAppBuilder {
                     slack_provisioning,
                 ),
             ))
-            .merge(api::app_webhooks::routes(app_webhooks_state))
+            .merge(api::endpoint_webhooks::routes(endpoint_webhooks_state))
             .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
             .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(api::ag_ui::routes(ag_ui_state))

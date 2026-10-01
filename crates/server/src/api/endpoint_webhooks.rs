@@ -1,4 +1,4 @@
-// App webhook ingress — endpoint-scoped token-authenticated invocation.
+// Agent endpoint webhook ingress — endpoint-scoped token-authenticated invocation.
 //
 // Design Decision: Webhooks use `POST /v1/e/{channel_id}/webhook` so one app
 // can expose multiple entry points with different tokens and invocation
@@ -40,18 +40,18 @@ const SENSITIVE_WEBHOOK_HEADERS: &[&str] = &[
 ];
 
 #[derive(Clone)]
-pub struct AppWebhookState {
+pub struct EndpointWebhookState {
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     /// Per-channel, per-IP rate limiter (namespace `webhook`). Mirrors the
-    /// sibling public channels (AG-UI/A2A/app_api/FCP) so a webhook token
+    /// sibling public channels (AG-UI/A2A/endpoint_api/FCP) so a webhook token
     /// holder cannot drive unbounded session/LLM burn (EVE-627, TM-DOS-010).
     pub rate_limiter: ChannelRateLimiter,
 }
 
-impl AppWebhookState {
+impl EndpointWebhookState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
@@ -89,7 +89,7 @@ pub struct WebhookInvocationResponse {
     pub delivery: String,
 }
 
-pub fn routes(state: AppWebhookState) -> Router {
+pub fn routes(state: EndpointWebhookState) -> Router {
     Router::new()
         .route(
             "/v1/apps/{app_id}/webhooks/{channel_id}",
@@ -118,7 +118,7 @@ pub fn routes(state: AppWebhookState) -> Router {
     tag = "apps"
 )]
 pub async fn invoke_webhook_legacy(
-    State(state): State<AppWebhookState>,
+    State(state): State<EndpointWebhookState>,
     Path((app_id, channel_id)): Path<(String, String)>,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -153,7 +153,7 @@ pub async fn invoke_webhook_legacy(
     tag = "apps"
 )]
 pub async fn invoke_webhook_endpoint(
-    State(state): State<AppWebhookState>,
+    State(state): State<EndpointWebhookState>,
     Path(channel_id): Path<String>,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -173,7 +173,7 @@ pub async fn invoke_webhook_endpoint(
 }
 
 async fn invoke_webhook(
-    state: AppWebhookState,
+    state: EndpointWebhookState,
     app_id: Option<String>,
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
@@ -226,7 +226,7 @@ async fn invoke_webhook(
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
     // reason is logged server-side only.
-    if channel.channel_type != everruns_platform::ChannelType::Webhook {
+    if channel.channel_type != everruns_platform::EndpointTransport::Webhook {
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous webhook ingress must never reach a
@@ -311,7 +311,7 @@ async fn invoke_webhook(
 
 #[allow(clippy::too_many_arguments)]
 async fn invoke_trigger_webhook(
-    state: AppWebhookState,
+    state: EndpointWebhookState,
     ingress_id: String,
     trigger: crate::storage::models::AgentTriggerRow,
     req_id: Option<axum::Extension<RequestId>>,

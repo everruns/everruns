@@ -985,7 +985,7 @@ impl TestServer {
             event_delivery.clone(),
             "https://example.com/api".to_string(),
         );
-        let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
+        let endpoint_webhooks_state = api::endpoint_webhooks::EndpointWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1117,7 +1117,7 @@ impl TestServer {
             .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))
             .merge(api::slack_events::routes(slack_state))
-            .merge(api::app_webhooks::routes(app_webhooks_state))
+            .merge(api::endpoint_webhooks::routes(endpoint_webhooks_state))
             .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
             .merge(api::endpoint_api::routes(endpoint_api_state))
             .merge(auth::routes(auth_backend.clone()))

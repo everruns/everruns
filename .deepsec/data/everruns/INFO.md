@@ -44,7 +44,7 @@ metadata.
 - Handler accepts `SessionId`, `AgentId`, `AppId`, `ImageId`, `VolumeId`, or
   other prefixed IDs and does not bind the resource back to the current
   `ResolvedOrg`/`Caller` or authenticated app channel.
-- Anonymous app ingress (`app_webhooks`, `endpoint_a2a`, `ag_ui`, `slack_events`)
+- Anonymous app ingress (`endpoint_webhooks`, `endpoint_a2a`, `ag_ui`, `slack_events`)
   reaches session/message creation before checking publication status, channel
   enabled state, per-channel token/key/signature, and method/rate gates.
 - UI code renders agent/tool/markdown/OpenUI/A2UI/MCP-card content with HTML,

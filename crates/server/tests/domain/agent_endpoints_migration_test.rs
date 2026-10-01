@@ -647,7 +647,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         event_delivery.clone(),
         "https://example.com/api".to_string(),
     );
-    let webhook_state = api::app_webhooks::AppWebhookState::new(
+    let webhook_state = api::endpoint_webhooks::EndpointWebhookState::new(
         db.clone(),
         None,
         runner.clone(),
@@ -680,7 +680,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         .merge(api::public_chat::routes(public_chat_state))
         .merge(api::fcp::routes(fcp_state))
         .merge(api::slack_events::routes(slack_state))
-        .merge(api::app_webhooks::routes(webhook_state))
+        .merge(api::endpoint_webhooks::routes(webhook_state))
         .merge(api::endpoint_a2a::routes(a2a_state))
         .merge(api::endpoint_api::routes(api_state))
 }
