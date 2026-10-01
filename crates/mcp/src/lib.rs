@@ -64,8 +64,8 @@ pub use form_elicitation::{
     StoredFormAnswer, StoredFormAnswers, form_answer_storage_key, parse_requested_schema,
 };
 pub use http::{
-    HttpToolsList, HttpTransport, McpHttpStatusError, http_call_tool, http_list_tools,
-    http_list_tools_with_cache_hints, http_send_rpc,
+    HttpToolsList, HttpTransport, McpHttpStatusError, McpRpcError, http_call_tool, http_list_tools,
+    http_list_tools_with_cache_hints, http_request, http_send_rpc,
 };
 pub use oauth::validate_oauth_resource;
 pub use protocol::{CacheHints, CacheScope, ClientCapabilities, Negotiated};

@@ -1185,6 +1185,27 @@
         "help": "GitHub only: subscribed events (`pull_request` or `pull_request.opened`)."
       },
       {
+        "field": "mcp_event",
+        "long": "mcp-event",
+        "kind": "string",
+        "required": false,
+        "help": "MCP event only: event name from the server's `events/list`."
+      },
+      {
+        "field": "mcp_event_arguments",
+        "long": "mcp-event-arguments",
+        "kind": "json",
+        "required": false,
+        "help": "MCP event only: subscription arguments object (the event's `inputSchema`)."
+      },
+      {
+        "field": "mcp_server",
+        "long": "mcp-server",
+        "kind": "string",
+        "required": false,
+        "help": "MCP event only: name of the agent's MCP server attachment to subscribe to."
+      },
+      {
         "field": "message",
         "long": "message",
         "kind": "string",
@@ -1224,7 +1245,7 @@
         "long": "subject-template",
         "kind": "string",
         "required": false,
-        "help": "Webhook only: template for the event subject."
+        "help": "Webhook and MCP event: template for the event subject."
       },
       {
         "field": "timezone",
@@ -1249,7 +1270,8 @@
         "choices": [
           "schedule",
           "webhook",
-          "github"
+          "github",
+          "mcp_event"
         ]
       }
     ]
@@ -1470,6 +1492,27 @@
         "kind": "string_list",
         "required": false,
         "help": "Replacement GitHub event subscriptions."
+      },
+      {
+        "field": "mcp_event",
+        "long": "mcp-event",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement MCP event name."
+      },
+      {
+        "field": "mcp_event_arguments",
+        "long": "mcp-event-arguments",
+        "kind": "json",
+        "required": false,
+        "help": "Replacement MCP event subscription arguments."
+      },
+      {
+        "field": "mcp_server",
+        "long": "mcp-server",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement MCP server attachment name."
       },
       {
         "field": "message",

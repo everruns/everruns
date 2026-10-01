@@ -277,6 +277,20 @@ pub fn merge_effective_scoped_mcp_servers(
     strip_untrusted_oauth_from_scoped_mcp_servers(&merged)
 }
 
+/// Harness and agent layers without a session, for work the agent does as
+/// itself outside any session (MCP event trigger subscriptions). Inline OAuth
+/// is stripped exactly as for a session.
+pub fn merge_agent_scoped_mcp_servers(
+    harness: Option<&Harness>,
+    agent: &Agent,
+) -> ScopedMcpServers {
+    let layers = harness
+        .map(|harness| &harness.mcp_servers)
+        .into_iter()
+        .chain(std::iter::once(&agent.mcp_servers));
+    strip_untrusted_oauth_from_scoped_mcp_servers(&merge_scoped_mcp_server_layers(layers))
+}
+
 /// Sanitize explicit (user-controlled) scoped MCP servers so they cannot
 /// request OAuth connection tokens for runtime tool discovery.
 ///
@@ -386,7 +400,7 @@ pub async fn resolve_scoped_mcp_server_with_capabilities(
     resolve_matched_scoped_mcp_server(mcp_server_service, org_id, session.id.uuid(), matched).await
 }
 
-async fn resolve_matched_scoped_mcp_server(
+pub(crate) async fn resolve_matched_scoped_mcp_server(
     mcp_server_service: &McpServerService,
     org_id: i64,
     session_id: Uuid,

@@ -12,8 +12,8 @@ use crate::domains::agent_triggers::types::{
 };
 use crate::domains::agent_triggers::{
     CreateAgentTrigger, DeleteAgentTrigger, GetAgentTrigger, ListAgentTriggerDeliveries,
-    ListAgentTriggerRuns, ListAgentTriggers, TriggerAgentTriggerNow, TriggerAgentTriggerOutput,
-    UpdateAgentTriggerCmd,
+    ListAgentTriggerRuns, ListAgentTriggers, McpEventTriggers, TriggerAgentTriggerNow,
+    TriggerAgentTriggerOutput, UpdateAgentTriggerCmd,
 };
 use crate::domains::common::Command;
 use crate::domains::messages::MessageService;
@@ -45,6 +45,8 @@ pub struct AppState {
     pub auth: AuthState,
     pub session_service: Option<Arc<SessionService>>,
     pub message_service: Option<Arc<MessageService>>,
+    /// Subscribes and unsubscribes `mcp_event` triggers.
+    pub mcp_event_triggers: Option<Arc<McpEventTriggers>>,
 }
 
 impl AppState {
@@ -65,7 +67,13 @@ impl AppState {
             auth,
             session_service: Some(session_service),
             message_service: Some(message_service),
+            mcp_event_triggers: None,
         }
+    }
+
+    pub fn with_mcp_event_triggers(mut self, service: Arc<McpEventTriggers>) -> Self {
+        self.mcp_event_triggers = Some(service);
+        self
     }
 
     pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
@@ -84,6 +92,7 @@ impl AppState {
         if let Some(message_service) = &self.message_service {
             ctx = ctx.with_message_service(message_service.clone());
         }
+        ctx.mcp_event_triggers = self.mcp_event_triggers.clone();
         ctx
     }
 }

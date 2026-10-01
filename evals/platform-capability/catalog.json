@@ -1958,7 +1958,8 @@
           "enum": [
             "schedule",
             "webhook",
-            "github"
+            "github",
+            "mcp_event"
           ],
           "type": "string"
         },
@@ -1991,7 +1992,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/TriggerEventFilter",
-                  "description": "Webhook only: conditions an event must meet to start a run."
+                  "description": "Webhook, GitHub and MCP event: conditions an event must meet to start a run."
                 },
                 {
                   "type": "null"
@@ -2005,6 +2006,27 @@
               },
               "type": [
                 "array",
+                "null"
+              ]
+            },
+            "mcp_event": {
+              "description": "MCP event only: event name from the server's `events/list`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "mcp_event_arguments": {
+              "description": "MCP event only: subscription arguments object (the event's `inputSchema`).",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "mcp_server": {
+              "description": "MCP event only: name of the agent's MCP server attachment to subscribe to.",
+              "type": [
+                "string",
                 "null"
               ]
             },
@@ -2037,7 +2059,7 @@
               "description": "Whether invocations reuse a stable session or create a new one."
             },
             "subject_template": {
-              "description": "Webhook only: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
+              "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
               "type": [
                 "string",
                 "null"
@@ -16021,6 +16043,27 @@
               },
               "type": [
                 "array",
+                "null"
+              ]
+            },
+            "mcp_event": {
+              "description": "Replacement MCP event name.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "mcp_event_arguments": {
+              "description": "Replacement MCP event subscription arguments.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "mcp_server": {
+              "description": "Replacement MCP server attachment name.",
+              "type": [
+                "string",
                 "null"
               ]
             },

@@ -15,6 +15,7 @@ mod compaction_checkpoints;
 mod virtual_user_connections;
 mod virtual_users;
 pub use budgets::BudgetSubjectLookup;
+mod agent_trigger_mcp_subscriptions;
 mod declarative_capabilities;
 mod evals;
 mod events;

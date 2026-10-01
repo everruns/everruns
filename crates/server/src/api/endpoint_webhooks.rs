@@ -49,9 +49,19 @@ pub struct EndpointWebhookState {
     /// sibling public channels (AG-UI/A2A/endpoint_api/FCP) so a webhook token
     /// holder cannot drive unbounded session/LLM burn (EVE-627, TM-DOS-010).
     pub rate_limiter: ChannelRateLimiter,
+    /// Verifies and routes inbound MCP Events callbacks (`mcp_event` triggers).
+    pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
 }
 
 impl EndpointWebhookState {
+    pub fn with_mcp_event_triggers(
+        mut self,
+        service: Arc<crate::domains::agent_triggers::McpEventTriggers>,
+    ) -> Self {
+        self.mcp_event_triggers = Some(service);
+        self
+    }
+
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
@@ -71,6 +81,7 @@ impl EndpointWebhookState {
             db,
             encryption,
             rate_limiter,
+            mcp_event_triggers: None,
         }
     }
 }
@@ -97,7 +108,8 @@ pub fn routes(state: EndpointWebhookState) -> Router {
         )
         .route("/v1/e/{channel_id}/webhook", post(invoke_webhook_endpoint))
         .with_state(state.clone())
-        .merge(super::github_webhooks::routes(state))
+        .merge(super::github_webhooks::routes(state.clone()))
+        .merge(super::mcp_event_webhooks::routes(state))
 }
 
 #[utoipa::path(

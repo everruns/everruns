@@ -10,6 +10,7 @@
 mod agent_check_rules;
 mod agent_health_checks;
 mod agent_mcp_secret_bindings;
+mod agent_trigger_mcp_subscriptions;
 mod agent_triggers;
 mod agents;
 mod app_channels;
@@ -227,6 +228,9 @@ pub struct InMemoryDatabase {
     mcp_event_subscriptions: RwLock<HashMap<String, McpEventSubscriptionRow>>,
     // Generations billed before their usage arrived (EVE-1145).
     usage_generations: RwLock<HashMap<Uuid, late_generation_usage::MemoryUsageGeneration>>,
+    agent_trigger_mcp_subscriptions: RwLock<
+        HashMap<TriggerId, super::agent_trigger_mcp_subscriptions::AgentTriggerMcpSubscriptionRow>,
+    >,
     // Evals (user-facing behavioral tests)
     evals: RwLock<HashMap<Uuid, EvalRow>>,
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
@@ -395,6 +399,7 @@ impl Default for InMemoryDatabase {
             org_slack_connections: RwLock::new(HashMap::new()),
             mcp_event_subscriptions: RwLock::new(HashMap::new()),
             usage_generations: RwLock::new(HashMap::new()),
+            agent_trigger_mcp_subscriptions: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),

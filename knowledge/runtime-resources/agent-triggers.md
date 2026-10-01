@@ -31,8 +31,8 @@ Field shapes, SQL, and route handlers live in code, see
 
 An agent trigger is an org-scoped row owned by one agent:
 
-- **trigger_type**: `schedule` or `webhook`; further event sources plug into
-  the same event pipeline (below).
+- **trigger_type**: `schedule`, `webhook`, `github` or `mcp_event`; each event
+  source plugs into the same event pipeline (below).
 - **config** (JSONB), per-type configuration. For `schedule`
   (`ScheduleTriggerConfig`): `cron_expression`, `timezone` (IANA, default
   `UTC`), `session_mode`, and `message` (also the `{{…}}` template body).
@@ -134,6 +134,15 @@ scoped to repositories, and gets the GitHub delivery id as event id and
 request or issue. Unsubscribed events are not recorded; a repository outside
 the scope is a recorded filter miss. Events the App itself caused are dropped so
 an agent commenting on a pull request does not wake itself.
+
+**MCP event triggers** (`trigger_type: mcp_event`) subscribe to an event on one
+of the agent's MCP servers through MCP Events (`events/subscribe`), using the
+attachment's own credential, and keep that subscription in step with the
+trigger: subscribed on create and enable, re-subscribed when server, event or
+arguments change and before it expires, unsubscribed on disable and delete.
+Each signed delivery is an event whose id is the delivery's `webhook-id`;
+`subject_template` can make one, for `per_thread`. Behind the `mcp_events`
+flag. See `knowledge/integrations/mcp-events.md`.
 
 ## Ownership and provenance
 
