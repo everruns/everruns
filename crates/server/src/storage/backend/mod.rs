@@ -131,6 +131,7 @@ impl StorageBackend {
 mod harnesses_sessions;
 mod identity;
 mod knowledge;
+mod late_generation_usage;
 mod mcp_event_subscriptions;
 mod models_files;
 mod observers_billing;

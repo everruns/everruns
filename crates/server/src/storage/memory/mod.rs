@@ -26,6 +26,7 @@ mod github_apps;
 mod harnesses;
 mod knowledge_bases;
 mod knowledge_indexes;
+mod late_generation_usage;
 mod mcp_event_subscriptions;
 mod mcp_servers;
 mod memories;
@@ -224,6 +225,8 @@ pub struct InMemoryDatabase {
     org_feature_flags: RwLock<HashMap<i64, HashMap<String, bool>>>,
     org_slack_connections: RwLock<HashMap<i64, OrgSlackConnectionRow>>,
     mcp_event_subscriptions: RwLock<HashMap<String, McpEventSubscriptionRow>>,
+    // Generations billed before their usage arrived (EVE-1145).
+    usage_generations: RwLock<HashMap<Uuid, late_generation_usage::MemoryUsageGeneration>>,
     // Evals (user-facing behavioral tests)
     evals: RwLock<HashMap<Uuid, EvalRow>>,
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
@@ -391,6 +394,7 @@ impl Default for InMemoryDatabase {
             org_feature_flags: RwLock::new(HashMap::new()),
             org_slack_connections: RwLock::new(HashMap::new()),
             mcp_event_subscriptions: RwLock::new(HashMap::new()),
+            usage_generations: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),

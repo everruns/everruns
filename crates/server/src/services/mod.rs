@@ -17,6 +17,7 @@
 // Anything with a clear single owner belongs under `domains/<owner>/`. See
 // `knowledge/foundations/domains.md` for the "shared services" rule.
 
+pub mod agents_api_usage;
 pub mod approval_audit;
 pub mod capability;
 pub mod event;
@@ -32,6 +33,7 @@ pub mod run_summary;
 pub mod usage_tracking;
 pub mod waiting_turn_resolution;
 
+pub use agents_api_usage::AgentsApiUsageReconciler;
 pub use approval_audit::ApprovalAuditListener;
 pub use capability::CapabilityService;
 pub use event::EventService;

@@ -263,7 +263,7 @@ pub async fn drain_deletions(
     Ok(deleted)
 }
 
-/// Start the lifecycle task under the server's supervisor. Both runtime modes
+/// Start the lifecycle task, and the late usage reconciler, under the server's supervisor. Both runtime modes
 /// can drive the backend, so both run it; a deployment without PostgreSQL or
 /// an encryption key cannot run the backend and gets no task.
 pub(crate) fn track(
@@ -282,6 +282,14 @@ pub(crate) fn track(
             PgAgentsApiStore::new(pool.clone(), encryption.clone()),
             Arc::new(ResolvingDeleter::new(Arc::new(resolver))),
             AgentsApiLifecycleConfig::from_env(),
+        ),
+    );
+    // Usage the provider reported after a turn was billed (EVE-1145).
+    supervisor.track_optional(
+        "agents_api_usage",
+        crate::services::agents_api_usage::spawn_agents_api_usage_reconciler(
+            ctx.db.clone(),
+            ctx.encryption.clone(),
         ),
     );
 }

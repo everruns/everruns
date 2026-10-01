@@ -14,6 +14,7 @@ mod test_harness;
 
 mod agents_api_lifecycle_test;
 mod api_integration_test;
+mod late_generation_usage_test;
 mod mcp_catalog_integration_test;
 mod platform_chat_starter_test;
 mod repository_conformance_test;

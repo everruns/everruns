@@ -154,6 +154,12 @@ LLM Response → llm.generation event → Listeners:
   5. UPDATE agents totals
 ```
 
+A generation without usage is normally not recorded. The exception is an OpenAI
+Agents API turn billed before the provider reported its usage: it is recorded
+with zero tokens and `usage_pending`, and its usage, totals, and budget debit
+are applied once when a later read finds it
+([late usage](../execution/openai-agents-api-runtime.md#observability-and-cost)).
+
 ## API Response
 
 ### TokenUsage Schema
