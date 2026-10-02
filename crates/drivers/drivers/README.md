@@ -45,7 +45,8 @@ register_drivers(&mut registry);
 
 - A Cloudflare driver over the AI REST API's Chat Completions endpoint,
   deriving its URL from the account id and selecting a gateway with the
-  `cf-aig-gateway-id` header
+  `cf-aig-gateway-id` header, with Workers AI model discovery gated to the
+  Cloudflare host
 - A Vercel AI Gateway driver over the gateway's Open Responses API, with model
   discovery gated to the gateway host
 - Registration into the Everruns `DriverRegistry`, per vendor or all at once

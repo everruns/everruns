@@ -293,7 +293,16 @@ pub(crate) struct OpenAiStreamChoice {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAiDelta {
-    #[serde(default)]
+    /// Text for this chunk.
+    ///
+    /// Read leniently because Cloudflare's AI REST API serializes a token that
+    /// is entirely numeric as a JSON *number* rather than a string
+    /// (`"delta":{"content":1}` between two ordinary `"content":", 2"`
+    /// chunks). With a plain `Option<String>` that field fails to deserialize,
+    /// which fails the whole chunk, and the token is dropped from the stream
+    /// with no error: "1, 2, 3" arrives as ", 2, 3". Accepting a number loses
+    /// nothing for a conformant provider, which never sends one.
+    #[serde(default, deserialize_with = "deserialize_lenient_text")]
     pub(crate) content: Option<String>,
     /// Reasoning text on the Chat Completions wire. Reasoning models reached
     /// over this protocol (DeepSeek-R1, Qwen, Groq, Fireworks) stream it here;
@@ -304,6 +313,24 @@ pub(crate) struct OpenAiDelta {
     pub(crate) reasoning: Option<String>,
     #[serde(default)]
     pub(crate) tool_calls: Option<Vec<OpenAiStreamToolCall>>,
+}
+
+/// Accept a string, or a number a non-conformant provider sent where a string
+/// belongs. Anything else is still an error: silently accepting an object or an
+/// array would hide a real protocol change.
+fn deserialize_lenient_text<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize as _;
+    match Option::<serde_json::Value>::deserialize(deserializer)? {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(text)) => Ok(Some(text)),
+        Some(serde_json::Value::Number(number)) => Ok(Some(number.to_string())),
+        Some(other) => Err(serde::de::Error::custom(format!(
+            "expected a string or number for streamed text, got {other}"
+        ))),
+    }
 }
 
 impl OpenAiDelta {
@@ -354,4 +381,46 @@ where
         Value::String(text) => Some(text),
         other => Some(other.to_string()),
     })
+}
+
+#[cfg(test)]
+mod delta_text_tests {
+    use super::OpenAiDelta;
+
+    /// The ordinary wire shape.
+    #[test]
+    fn a_string_delta_reads_as_text() {
+        let delta: OpenAiDelta = serde_json::from_value(serde_json::json!({"content": ", 2"}))
+            .expect("a string delta should deserialize");
+        assert_eq!(delta.content.as_deref(), Some(", 2"));
+    }
+
+    /// Cloudflare's AI REST API sends a numeric token as a JSON number. Before
+    /// this was read leniently the field failed, which failed the whole chunk,
+    /// and "1, 2, 3" reached the caller as ", 2, 3".
+    #[test]
+    fn a_numeric_delta_is_not_dropped() {
+        let delta: OpenAiDelta = serde_json::from_value(serde_json::json!({"content": 1}))
+            .expect("a numeric delta should deserialize");
+        assert_eq!(delta.content.as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn an_absent_or_null_delta_is_none() {
+        let absent: OpenAiDelta =
+            serde_json::from_value(serde_json::json!({})).expect("absent content is valid");
+        assert_eq!(absent.content, None);
+        let null: OpenAiDelta = serde_json::from_value(serde_json::json!({"content": null}))
+            .expect("null content is valid");
+        assert_eq!(null.content, None);
+    }
+
+    /// A shape nobody sends stays an error: quietly accepting an object would
+    /// hide a real protocol change behind an empty delta.
+    #[test]
+    fn a_structured_delta_is_still_an_error() {
+        let result: Result<OpenAiDelta, _> =
+            serde_json::from_value(serde_json::json!({"content": {"text": "hi"}}));
+        assert!(result.is_err(), "an object is not streamed text");
+    }
 }

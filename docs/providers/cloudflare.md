@@ -23,6 +23,9 @@ through an AI Gateway for caching, rate limiting, and logging.
   per-request logging applied by the gateway the call routes through.
 - **Full chat capabilities**: streaming, tool/function calling, and structured
   output, through the same uniform driver as every other provider.
+- **Workers AI model discovery**: the `@cf/` catalog is synced with its
+  advertised context windows and tool-calling support, so those ids appear in
+  the model pickers without being typed by hand.
 
 ## Configure in Everruns
 
@@ -47,18 +50,14 @@ https://api.cloudflare.com/client/v4/accounts/<account-id>/ai/v1
 Set a base URL only to route through a proxy in front of Cloudflare; it
 replaces the derived one.
 
-:::note
-A token holding only **AI Gateway** permissions is rejected with `401` and
-error code `10000`. Those permissions cover gateway configuration, logs, and
-routes — not inference, which is what the Workers AI permission grants.
-:::
-
 ## Models
 
 Model ids are namespaced and passed through unchanged:
 
-- Third-party: `openai/gpt-6-luna`, `anthropic/claude-opus-5`
-- Workers AI: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`
+- Third-party: `openai/gpt-6-luna`, `anthropic/claude-opus-5` — see the
+  [upstream providers AI Gateway supports](https://developers.cloudflare.com/ai-gateway/usage/providers/).
+- Workers AI: `@cf/meta/llama-3.3-70b-instruct-fp8-fast` — see the
+  [Workers AI model catalog](https://developers.cloudflare.com/workers-ai/models/).
 
 Which third-party models a gateway can reach depends on the upstreams
 Cloudflare has enabled for your account, so verify an id with a real request
@@ -68,10 +67,13 @@ Third-party models are billed to your Cloudflare account and return `402`
 ("Insufficient balance") until it is funded or you configure BYOK. Workers AI
 models draw on the account's own allocation instead.
 
-The AI REST API serves no model catalog, so there is nothing to sync: add the
-models you intend to use by id. Everruns matches a namespaced id against its
-model profile registry, so a model it recognizes still gets its capability and
-cost metadata.
+Model sync covers the Workers AI half of the catalog: Everruns reads
+Cloudflare's model search endpoint and keeps its text-generation models, which
+arrive with the context window and tool-calling support Cloudflare advertises.
+Third-party models are never listed — which ones an account can reach depends
+on what it can bill — so add those by id. Everruns matches a namespaced id
+against its model profile registry, so a model it recognizes still gets its
+capability and cost metadata.
 
 ## Why Chat Completions
 
@@ -93,5 +95,7 @@ routes (`dynamic/{route}`), which this provider does not target.
 
 - [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/)
 - [AI Gateway REST API](https://developers.cloudflare.com/ai-gateway/usage/rest-api/)
+- [Workers AI models](https://developers.cloudflare.com/workers-ai/models/)
+- [AI Gateway providers](https://developers.cloudflare.com/ai-gateway/usage/providers/)
 - [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers)
 - [Migrate between providers](/how-to/migrate-providers/)

@@ -240,10 +240,10 @@ mod cloudflare {
         assert_eq!(drain_text(stream).await, "pong");
     }
 
-    /// The AI REST API serves no catalog, so discovery declines rather than
-    /// reporting an empty one as the truth.
+    /// Discovery never probes a host that is not Cloudflare's: a proxy base URL
+    /// would otherwise receive the account's bearer token.
     #[tokio::test]
-    async fn discovery_declines_because_the_rest_api_serves_no_catalog() {
+    async fn discovery_declines_a_foreign_host() {
         let server = MockServer::start().await;
         // Any request at all would be wrong: assert none is made.
         Mock::given(method("GET"))
@@ -252,8 +252,10 @@ mod cloudflare {
             .mount(&server)
             .await;
 
+        // `provider()` derives the api.cloudflare.com URL; overriding the base
+        // is the operator path this gate exists for.
         let endpoint = provider("cloudflare-test", "acct123", "cf-token", None)
-            .base_url(format!("{}/client/v4/accounts/acct123/ai/v1", server.uri()))
+            .base_url(format!("{}/ai/v1", server.uri()))
             .endpoint()
             .clone();
 

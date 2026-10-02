@@ -595,8 +595,23 @@ Chat Completions both serves the whole catalog and streams:
 Cloudflare's base URL is derived from the account id rather than hand-written, since its shape is
 fixed; the gateway is selected by the `cf-aig-gateway-id` header rather than the URL, and the
 account's own API token (Account > Workers AI > Read) bills the whole call, so no upstream vendor
-keys are involved. Neither gateway serves a model catalog on the surface Everruns uses, so
-discovery declines rather than reporting an empty one.
+keys are involved.
+
+Both gateways support discovery, and both gate it on the vendor's own host so a proxy base URL is
+never probed (the OpenRouter/Meta/Fireworks posture). They differ in what a catalog can even mean:
+
+| Gateway | Catalog | Completeness |
+| --- | --- | --- |
+| Vercel | `/models`, the OpenAI-compatible listing on the same base URL | Complete: every `vendor/model` the gateway routes |
+| Cloudflare | `ai/models/search`, a sibling of `v1` rather than a path under it | Partial: Workers AI (`@cf/`) only, filtered to the text-generation task |
+
+Cloudflare's listing cannot be complete. Which third-party models an account reaches depends on
+what it can bill, and no endpoint enumerates that, so those ids are still added by hand. The
+partial list is returned anyway because the `@cf/` ids are the awkward ones to type, and they come
+with the context window and `function_calling` flag the catalog advertises. One trap: that
+endpoint's `result_info.total_count` does not describe the result — an account served 69 models in
+one page is told the total is 321, and page 2 is empty — so the driver reads the page it is given
+rather than paginating on that number.
 
 ## Microsoft MAI Driver (`everruns-mai`)
 

@@ -36,8 +36,11 @@ async-trait.workspace = true
 # HTTP client (model discovery)
 reqwest.workspace = true
 
-# Serialization (model-discovery responses)
+# Serialization (model-discovery responses). Cloudflare's model properties are
+# a name/value list whose value is a string for flags and an array for pricing,
+# so the value stays untyped and each reader interprets its own.
 serde.workspace = true
+serde_json.workspace = true
 
 # Date/time (model `created` timestamps)
 chrono.workspace = true
@@ -53,7 +56,6 @@ everruns-provider = { version = "0.34.1", path = "../../provider" }
 # chat stream.
 tokio = { workspace = true, features = ["full", "test-util"] }
 futures.workspace = true
-serde_json.workspace = true
 wiremock = "0.6"
 
 [lints]
