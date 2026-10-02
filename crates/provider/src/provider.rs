@@ -351,7 +351,8 @@ impl utoipa::PartialSchema for DriverId {
             ))
             .description(Some(
                 "LLM provider type. Built-in: openai, openrouter, azure_openai, \
-                 openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. \
+                 openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, \
+                 cloudflare, vercel. \
                  Any other string is treated as an embedder-defined external provider.",
             ))
             .build()
