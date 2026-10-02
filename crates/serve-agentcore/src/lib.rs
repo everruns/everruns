@@ -213,6 +213,7 @@ pub async fn start(app: App) -> serve::Result {
     let mut options = Options::new(if cli.dev { Mode::Dev } else { Mode::Start });
     options.agent = cli.agent;
     let name = app.name().to_string();
+    sqlite_for_session_storage();
     let (router, agent) = router(app, options.clone())?;
 
     let addr = SocketAddr::from(([0, 0, 0, 0], cli.port));
@@ -227,6 +228,32 @@ pub async fn start(app: App) -> serve::Result {
         })
         .await?;
     Ok(())
+}
+
+/// Make SQLite usable on AgentCore session storage, for this process.
+///
+/// Decision: session storage is an NFSv4 mount, where SQLite's default VFS
+/// fails to open a WAL database ("database is locked"): WAL keeps its index
+/// in shared memory mapped from a file beside the database, which NFS does
+/// not support. The `unix-excl` VFS keeps that index in heap memory and holds
+/// one exclusive lock per database file instead. That is correct here because
+/// exactly one process, this one, ever uses a session's storage: AgentCore
+/// runs one microVM per session. Only the binary entry calls this, since it
+/// is process-wide; tests that open the same files twice keep the default.
+fn sqlite_for_session_storage() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // SAFETY: `sqlite3_vfs_find` takes a NUL-terminated name and returns
+        // a pointer to a VFS SQLite owns for the life of the process (or
+        // null); registering it as the default only changes which built-in
+        // VFS later `open` calls use. Both initialize SQLite as needed.
+        unsafe {
+            let vfs = rusqlite::ffi::sqlite3_vfs_find(c"unix-excl".as_ptr());
+            if !vfs.is_null() {
+                rusqlite::ffi::sqlite3_vfs_register(vfs, 1);
+            }
+        }
+    });
 }
 
 /// The AgentCore contract around `app`: `/ping`, `/invocations`, and serve's

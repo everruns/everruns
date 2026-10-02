@@ -3476,6 +3476,7 @@ dependencies = [
  "everruns-serve",
  "futures-util",
  "reqwest 0.13.5",
+ "rusqlite",
  "serde_json",
  "tempfile",
  "tokio",

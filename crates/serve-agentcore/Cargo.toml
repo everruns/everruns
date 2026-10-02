@@ -45,6 +45,9 @@ clap.workspace = true
 # `HostShell` for `[sandbox] kind = "microvm"`: the session's microVM is the boundary.
 everruns = { workspace = true, features = ["host-shell"] }
 futures-util.workspace = true
+# Only for `sqlite_for_session_storage`: the same bundled SQLite serve and
+# everruns link, so selecting its VFS reaches their connections.
+rusqlite = { version = "0.39", features = ["bundled"] }
 serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tower.workspace = true
