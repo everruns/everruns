@@ -176,8 +176,10 @@ import { HttpAgent } from "@ag-ui/client";
 const agent = new HttpAgent({ url: "http://localhost:3000/v1/e/analyst/ag-ui" });
 ```
 
-Each AG-UI `threadId` maps to one session, which survives a restart. A run
-sends only the input's last user message and streams the turn as AG-UI events,
+Each AG-UI `threadId` maps to one session, which survives a restart. A
+thread's first run records the input's earlier user and assistant messages as
+the new session's history; after that, a run sends only the input's last user
+message. Each run streams the turn as AG-UI events,
 with reasoning, token usage and errors visible. A tool approval or an
 [`ask_user`](/framework/ask-user/) question ends the run with an interrupt
 (`tool_approval` or `everruns.ask_user`), and the next run's `resume` entries

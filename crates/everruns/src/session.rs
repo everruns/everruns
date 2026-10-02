@@ -487,6 +487,26 @@ impl Session {
         result.await.map_err(|_| RunError::SessionClosed)?
     }
 
+    /// Record `messages` as the session's prior conversation when it has
+    /// none yet. Returns whether they were recorded: a session that already
+    /// holds history, or is running a turn, is left as it is.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) async fn seed_history(
+        &self,
+        messages: Vec<everruns_core::RuntimeMessage>,
+    ) -> Result<bool, RunError> {
+        if messages.is_empty() {
+            return Ok(false);
+        }
+        let (response, result) = oneshot::channel();
+        self.command_sender()
+            .await?
+            .send(Command::Seed { messages, response })
+            .await
+            .map_err(|_| RunError::SessionClosed)?;
+        result.await.map_err(|_| RunError::SessionClosed)?
+    }
+
     async fn send_internal(
         &self,
         input: InputMessage,
@@ -558,6 +578,11 @@ enum Command {
     Resume {
         results: Vec<everruns_core::events::ToolCompletedData>,
         response: oneshot::Sender<Result<(), RunError>>,
+    },
+    #[cfg(feature = "ag-ui")]
+    Seed {
+        messages: Vec<everruns_core::RuntimeMessage>,
+        response: oneshot::Sender<Result<bool, RunError>>,
     },
 }
 
@@ -674,6 +699,10 @@ impl SessionActor {
                         break;
                     }
                 }
+                #[cfg(feature = "ag-ui")]
+                Command::Seed { messages, response } => {
+                    let _ = response.send(self.seed_history(messages).await);
+                }
             }
         }
     }
@@ -710,6 +739,60 @@ impl SessionActor {
             commands,
         )
         .await
+    }
+
+    /// Append `messages` as canonical history events, user messages as
+    /// `input.message` and assistant ones as `output.message.completed`, the
+    /// events history is projected from. Only while the session has no
+    /// message yet, so a retried or replayed seed never duplicates history.
+    #[cfg(feature = "ag-ui")]
+    async fn seed_history(
+        &mut self,
+        messages: Vec<everruns_core::RuntimeMessage>,
+    ) -> Result<bool, RunError> {
+        use everruns_core::events::{
+            EventContext, EventRequest, InputMessageData, OutputMessageCompletedData,
+        };
+        use everruns_core::message::RuntimeMessageRole;
+
+        self.ensure_runtime().await?;
+        let backends = self
+            .execution
+            .backends()
+            .await
+            .map_err(crate::agent::BackendInitError::into_agent_loop)?;
+        let page = everruns_host::EventHistory::new(backends.host.event_log.clone())
+            .read_page(everruns_host::EventHistoryReadRequest::new(
+                self.session_id,
+                everruns_host::EventHistoryReadLimit::new(1)
+                    .map_err(|error| AgentLoopError::store(error.to_string()))?,
+            ))
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        if !page.messages.is_empty() {
+            return Ok(false);
+        }
+        let emitter = self
+            .runtime
+            .as_ref()
+            .expect("runtime built above")
+            .host_event_emitter();
+        for message in messages {
+            let request = match message.role {
+                RuntimeMessageRole::Agent => EventRequest::new(
+                    self.session_id,
+                    EventContext::empty(),
+                    OutputMessageCompletedData::new(message),
+                ),
+                _ => EventRequest::new(
+                    self.session_id,
+                    EventContext::empty(),
+                    InputMessageData::new(message),
+                ),
+            };
+            emitter.emit(request).await?;
+        }
+        Ok(true)
     }
 
     #[cfg(feature = "ag-ui")]
@@ -909,6 +992,11 @@ impl SessionActor {
                         #[cfg(feature = "ag-ui")]
                         Some(Command::Resume { results, response }) => {
                             self.deferred.push_back(Command::Resume { results, response });
+                        }
+                        // A running turn means the session has a conversation.
+                        #[cfg(feature = "ag-ui")]
+                        Some(Command::Seed { response, .. }) => {
+                            let _ = response.send(Ok(false));
                         }
                         Some(Command::Cancel { turn_id: requested, response }) => {
                             if requested == turn_id {

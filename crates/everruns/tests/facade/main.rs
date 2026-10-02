@@ -13,6 +13,7 @@
 
 mod advanced_capabilities;
 mod ag_ui;
+mod ag_ui_threads;
 mod agent_builder;
 mod application_parity;
 mod ask_user;

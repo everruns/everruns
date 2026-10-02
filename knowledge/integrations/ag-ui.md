@@ -56,8 +56,27 @@ errors visible), because the developer owns both ends.
 
 - **Input.** The session owns the conversation, so a run sends only the last
   user message, or the trailing `tool` messages that answer parked frontend
-  calls. Earlier messages, `state` and `forwardedProps` are not read; the host
-  maps `threadId` to a session.
+  calls. Earlier messages are read only to seed a new thread (below);
+  `state` and `forwardedProps` are not read.
+- **Threads.** `AgUiThreads` resolves `threadId` to a session through a
+  pluggable `ThreadStore` (in-memory, or `SqliteThreadStore` behind `local`):
+  create on first sight, reopen through `Engine::attach` after a restart. The
+  store holds only thread key to session id; durability needs both a durable
+  store and a backend that keeps sessions (`LocalConfig`). An entry whose
+  session the backend no longer has gets a new session, seeded. Resolution is
+  serialized per `AgUiThreads` so two first runs cannot create two sessions.
+  Thread ids are bounded like the server's (1 to 128 of `[A-Za-z0-9-_.]`),
+  and `run_in` scopes them to a host-chosen caller id, because a thread id is
+  client input (TM-TENANT-017).
+- **History seeding.** `AgUiOptions::seed_history` (set by `AgUiThreads` for
+  a thread it creates) records the input's user and assistant messages before
+  its user message as canonical `input.message` / `output.message.completed`
+  events, the events history is projected from, before the run subscribes and
+  sends. It runs in the session actor and only while the session has no
+  message, so a retry never duplicates history. Same role filter as the
+  server's `seed_history` except that `system`/`developer` messages are never
+  seeded (TM-LLM-020); bounded to the newest 256 messages and 512 KiB
+  (TM-DOS-045).
 - **Frontend tools.** Same semantics as the server's
   ([Frontend tools](#frontend-tools)), with the same bounds and `mcp_`
   refusal: each run sets its `tools` as the session record's client-side
@@ -120,7 +139,8 @@ because every top-level agent is an endpoint and none is declared separately.
   later; AG-UI streams in the response.
 - **Threads.** One session per (agent, `threadId`), kept in the thread map
   channels use under channel key `ag-ui:{agent}`, so a thread survives a
-  restart.
+  restart. serve keeps that map rather than `AgUiThreads` because its sessions
+  live in its own catalog, and sets `seed_history` on a thread's first run.
 - **Interrupts.** serve's own parked approvals and questions, through
   `InterruptSource`: an interrupt can be answered by a `resume` entry, by
   `/question-answers` or by `/approvals/{tool_call_id}`, and the reverse.

@@ -2,6 +2,13 @@
 
 ## 2026-10-02
 
+* **AG-UI threads in the framework.** `everruns::ag_ui::AgUiThreads` maps
+  `threadId` to a session through a pluggable `ThreadStore` (in-memory, or
+  SQLite behind `local`), so a host keeps a thread across restarts, and a
+  thread's first run seeds the client's earlier user and assistant messages
+  as history (`AgUiOptions::seed_history`, also used by serve). See
+  [AG-UI Channel](integrations/ag-ui.md#framework); TM-TENANT-017 and
+  TM-DOS-045.
 * **Opt-in Responses WebSocket transport.** The OpenAI driver can stream a
   call over OpenAI's Responses WebSocket mode (`openai/websocket` driver
   option, or `OpenAIChatDriver::with_websocket_transport`) on `api.openai.com`,

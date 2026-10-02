@@ -66,8 +66,10 @@
 //! `tool` messages that answer its frontend tool calls (below). Earlier
 //! messages, `state` and `forwardedProps` are not read, and neither are
 //! `system` and `developer` messages or `context` unless the host trusts
-//! them (below). Map `threadId` to a session yourself (one session per
-//! thread); the run does not check it.
+//! them (below). The run does not read `threadId`: [`AgUiThreads`] maps
+//! each thread to a session (one per thread, kept in a [`ThreadStore`]), or
+//! map them yourself. A thread's first run can carry the client's earlier
+//! messages into the new session with [`AgUiOptions::seed_history`].
 //!
 //! # Frontend tools
 //!
@@ -228,11 +230,18 @@ use crate::{
 };
 
 mod frontend_tools;
+mod seed;
 mod shapes;
+mod threads;
 
 use frontend_tools::{frontend_definitions, trailing_results};
 
 pub use shapes::{approval_decision, approval_interrupt, question_interrupt, question_outcome};
+#[cfg(feature = "local")]
+pub use threads::SqliteThreadStore;
+pub use threads::{
+    AgUiThreads, InMemoryThreadStore, ThreadError, ThreadSession, ThreadStore, ThreadStoreError,
+};
 
 pub use everruns_ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure};
 pub use everruns_ag_ui::{
@@ -296,6 +305,8 @@ pub enum AgUiError {
     InvalidInput(String),
     /// The session refused the message.
     Run(RunError),
+    /// [`AgUiThreads`] could not resolve the thread to a session.
+    Thread(ThreadError),
 }
 
 impl std::fmt::Display for AgUiError {
@@ -303,6 +314,7 @@ impl std::fmt::Display for AgUiError {
         match self {
             Self::InvalidInput(why) => write!(f, "invalid AG-UI input: {why}"),
             Self::Run(error) => write!(f, "{error}"),
+            Self::Thread(error) => write!(f, "{error}"),
         }
     }
 }
@@ -312,6 +324,7 @@ impl std::error::Error for AgUiError {
         match self {
             Self::InvalidInput(_) => None,
             Self::Run(error) => Some(error),
+            Self::Thread(error) => Some(error),
         }
     }
 }
@@ -344,6 +357,7 @@ pub struct AgUiOptions {
     policy: ProjectionPolicy,
     interrupts: Option<Arc<dyn InterruptSource>>,
     input_instructions: bool,
+    seed_history: bool,
 }
 
 impl std::fmt::Debug for AgUiOptions {
@@ -352,6 +366,7 @@ impl std::fmt::Debug for AgUiOptions {
             .field("policy", &self.policy)
             .field("interrupts", &self.interrupts.is_some())
             .field("input_instructions", &self.input_instructions)
+            .field("seed_history", &self.seed_history)
             .finish()
     }
 }
@@ -438,6 +453,23 @@ impl AgUiOptions {
     /// ```
     pub fn input_instructions(mut self, trusted: bool) -> Self {
         self.input_instructions = trusted;
+        self
+    }
+
+    /// Record the input's earlier user and assistant messages as the
+    /// session's prior history when it has none yet. Off by default;
+    /// [`AgUiThreads`] turns it on for each thread it creates. Messages
+    /// before the run's user message are recorded in order (assistant tool
+    /// calls as text; `tool`, `system`, `developer`, activity and reasoning
+    /// messages never), keeping the newest 256 and 512 KiB. They are client
+    /// text, assistant turns included: no more trusted than the user message.
+    ///
+    /// ```
+    /// let options = everruns::ag_ui::AgUiOptions::new().seed_history(true);
+    /// # let _ = options;
+    /// ```
+    pub fn seed_history(mut self, seed: bool) -> Self {
+        self.seed_history = seed;
         self
     }
 }
@@ -1103,6 +1135,7 @@ impl Session {
             policy,
             interrupts: gate,
             input_instructions: trusted,
+            seed_history,
         } = options;
         let session_id = self.session_id();
         let frontend_tools = frontend_definitions(&input.tools)?;
@@ -1116,11 +1149,11 @@ impl Session {
         // not the conversation: the input is the last message of any other
         // role.
         let trigger = if !resuming {
-            let last = input.messages.iter().rev().find(|message| {
+            let last = input.messages.iter().rposition(|message| {
                 !(trusted && matches!(message, Message::System(_) | Message::Developer(_)))
             });
-            Some(match last {
-                Some(Message::User(message)) => message.content.to_text(),
+            Some(match last.map(|index| (index, &input.messages[index])) {
+                Some((index, Message::User(message))) => (index, message.content.to_text()),
                 Some(_) => return Err(invalid("the final AG-UI message must have role=user")),
                 None => {
                     return Err(invalid(
@@ -1142,6 +1175,17 @@ impl Session {
             })
             .await?;
         }
+        // Seed before subscribing, so the seeded history is not streamed as
+        // this run's output, and before the user message is sent.
+        if seed_history && let Some((index, _)) = &trigger {
+            let earlier = seed::seed_messages(&input.messages[..*index]);
+            if !earlier.is_empty() && !self.seed_history(earlier).await? {
+                tracing::debug!(
+                    session_id = %session_id,
+                    "AG-UI session already has history; not seeding"
+                );
+            }
+        }
         // Subscribe before anything can happen, so no event of this run and
         // no park is missed.
         let events = self.events();
@@ -1154,7 +1198,7 @@ impl Session {
         };
 
         let mut sent = None;
-        let start = if let Some(text) = trigger {
+        let start = if let Some((_, text)) = trigger {
             let open = open_interrupts();
             let pending = self.pending_frontend_calls(&frontend);
             if open.is_empty() && pending.is_empty() {
