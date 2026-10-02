@@ -1062,3 +1062,143 @@ fn a_frontend_tool_call_streams_by_name_and_ends_the_run_in_success() {
         serde_json::json!({ "type": "success", "pendingToolCallIds": ["call_x"] })
     );
 }
+
+fn subagent_task(state: &str, extra: Value) -> everruns_core::EventData {
+    let mut task = serde_json::json!({
+        "id": "task_child",
+        "session_id": SessionId::new().to_string(),
+        "kind": "subagent",
+        "display_name": "Researcher",
+        "spec": { "instructions": "private brief", "mode": "foreground" },
+        "state": state,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:01Z",
+    });
+    if let (Some(task), Value::Object(extra)) = (task.as_object_mut(), extra) {
+        task.extend(extra);
+    }
+    let data = everruns_core::events::SessionTaskEventData {
+        task: serde_json::from_value(task).unwrap(),
+    };
+    if state == "running" {
+        everruns_core::EventData::TaskCreated(data)
+    } else {
+        everruns_core::EventData::TaskUpdated(data)
+    }
+}
+
+#[test]
+fn subagents_stay_hidden_unless_the_endpoint_shows_them() {
+    let mut hidden = TestRun::new();
+    hidden.send(subagent_task("running", Value::Null));
+    hidden.send(subagent_task(
+        "succeeded",
+        serde_json::json!({ "summary": "done" }),
+    ));
+    assert!(
+        hidden.types().is_empty(),
+        "off by default: {:?}",
+        hidden.types()
+    );
+
+    let mut config = test_config();
+    config.subagents_visible = true;
+    let mut run = TestRun::with_config(&config);
+    run.send(subagent_task("running", Value::Null));
+    run.send(subagent_task(
+        "failed",
+        serde_json::json!({ "error": { "kind": "provider_error", "message": "key sk-1 rejected" } }),
+    ));
+    run.completed(RuntimeMessage::assistant("Done."));
+    assert_eq!(
+        run.types(),
+        [
+            "SUBAGENT_STARTED",
+            "SUBAGENT_ERROR",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED",
+        ]
+    );
+    let wire = serde_json::to_string(&run.events).unwrap();
+    assert!(
+        !wire.contains("private brief"),
+        "the task spec stays private"
+    );
+    assert!(
+        !wire.contains("sk-1"),
+        "a child's error goes through PublicError"
+    );
+}
+
+#[test]
+fn run_metadata_carries_the_turn_and_withholds_model_and_session() {
+    let mut run = TestRun::new();
+    let generation: everruns_core::events::LlmGenerationData =
+        serde_json::from_value(serde_json::json!({
+            "messages": [],
+            "output": { "text": "", "tool_calls": [] },
+            "metadata": { "model": "gpt-5", "success": true },
+        }))
+        .unwrap();
+    run.send(generation);
+    run.completed(RuntimeMessage::assistant("Done."));
+    let Some(AgUiEvent::RunFinished(finished)) = run.events.last() else {
+        panic!("expected RUN_FINISHED");
+    };
+    assert_eq!(
+        serde_json::to_value(&finished.base.metadata).unwrap(),
+        serde_json::json!({ "everruns": { "turnId": run.turn_id.to_string() } }),
+        "no model without usage, no session id on a policy that names none"
+    );
+
+    let mut config = test_config();
+    config.usage_visible = true;
+    let policy = public_projection_policy(&config);
+    assert!(policy.model_visible && policy.session_id.is_none());
+}
+
+#[test]
+fn capabilities_follow_the_endpoint_config() {
+    let mut schema: Value = serde_json::from_str(everruns_ag_ui::SCHEMA_JSON).unwrap();
+    schema["$ref"] = serde_json::json!("#/$defs/AgentCapabilities");
+    let validator = jsonschema::validator_for(&schema).unwrap();
+
+    let defaults = crate::api::ag_ui_capabilities::capabilities("Bot", None, &test_config());
+    let wire = serde_json::to_value(&defaults).unwrap();
+    assert!(validator.is_valid(&wire), "schema rejected {wire}");
+    assert_eq!(
+        wire["identity"],
+        serde_json::json!({ "name": "Bot", "type": "everruns" })
+    );
+    assert_eq!(wire["reasoning"]["supported"], false);
+    assert!(
+        wire.get("multiAgent").is_none(),
+        "subagents undeclared when hidden"
+    );
+    assert_eq!(wire["humanInTheLoop"]["approvals"], false);
+    assert_eq!(wire["tools"]["clientProvided"], true);
+    assert!(
+        wire["tools"].get("items").is_none(),
+        "agent tools stay private"
+    );
+    assert_eq!(wire["custom"]["everruns"]["usage"], false);
+
+    let mut config = reasoning_config();
+    config.subagents_visible = true;
+    config.tool_approval_interrupts = true;
+    config.usage_visible = true;
+    let wire = serde_json::to_value(crate::api::ag_ui_capabilities::capabilities(
+        "Bot",
+        Some("Helps"),
+        &config,
+    ))
+    .unwrap();
+    assert!(validator.is_valid(&wire), "schema rejected {wire}");
+    assert_eq!(wire["identity"]["description"], "Helps");
+    assert_eq!(wire["reasoning"]["supported"], true);
+    assert_eq!(wire["multiAgent"]["delegation"], true);
+    assert_eq!(wire["humanInTheLoop"]["approvals"], true);
+    assert_eq!(wire["custom"]["everruns"]["usage"], true);
+}

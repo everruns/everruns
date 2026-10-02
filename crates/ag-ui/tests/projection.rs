@@ -2,7 +2,9 @@
 //! The runtime-event projection keeps 1.0 sequencing on every path.
 
 use everruns_ag_ui::projection::{ProjectionPolicy, Projector};
-use everruns_ag_ui::{Event, RunFinishedOutcome, SCHEMA_JSON};
+use everruns_ag_ui::{
+    Event, RunErrorEvent, RunFinishedOutcome, SCHEMA_JSON, SubagentFinishedOutcome,
+};
 use everruns_core::RuntimeMessage;
 use everruns_core::events::{OutputMessageCompletedData, OutputMessageDeltaData};
 use everruns_provider::typed_id::{MessageId, TurnId};
@@ -19,16 +21,36 @@ fn types(events: &[Event]) -> Vec<&'static str> {
     events.iter().map(Event::event_type).collect()
 }
 
-/// Every opened text message, reasoning message and span is closed before the
-/// run's terminal event, and everything validates against the schema.
+/// Every opened text message, reasoning message, span and subagent is closed
+/// before the run's terminal event, attributed events name an open subagent,
+/// and everything validates against the schema.
 fn assert_conformant(events: &[Event]) {
     let mut schema: Value = serde_json::from_str(SCHEMA_JSON).unwrap();
     schema["$ref"] = json!("#/$defs/Event");
     let validator = jsonschema::validator_for(&schema).unwrap();
     let mut open: Vec<String> = Vec::new();
+    let mut subagents: Vec<String> = Vec::new();
     for (i, event) in events.iter().enumerate() {
         let value = serde_json::to_value(event).unwrap();
         assert!(validator.is_valid(&value), "schema rejected {value}");
+        let subagent = value["subagentRunId"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        match event {
+            Event::SubagentStarted(_) => subagents.push(subagent),
+            Event::SubagentFinished(_) | Event::SubagentError(_) => {
+                assert!(subagents.contains(&subagent), "closes no open subagent");
+                subagents.retain(|id| *id != subagent);
+            }
+            _ if !subagent.is_empty() => {
+                assert!(
+                    subagents.contains(&subagent),
+                    "attributed to no open subagent"
+                );
+            }
+            _ => {}
+        }
         let id = value["messageId"].as_str().unwrap_or_default().to_string();
         match event {
             Event::TextMessageStart(_)
@@ -42,6 +64,7 @@ fn assert_conformant(events: &[Event]) {
             }
             Event::RunFinished(_) | Event::RunError(_) => {
                 assert!(open.is_empty(), "still open at terminal: {open:?}");
+                assert!(subagents.is_empty(), "subagents open at terminal");
                 assert_eq!(i, events.len() - 1, "events after the terminal event");
             }
             _ => {}
@@ -346,4 +369,304 @@ fn frontend_tool_calls_beside_an_interrupt_end_in_the_interrupt() {
         finished.outcome,
         Some(RunFinishedOutcome::Interrupt { .. })
     ));
+}
+
+fn task(id: &str, kind: &str, mode: &str, state: &str, extra: Value) -> Value {
+    let mut task = json!({
+        "id": id,
+        "session_id": everruns_provider::typed_id::SessionId::new().to_string(),
+        "kind": kind,
+        "display_name": "Researcher",
+        "spec": { "instructions": "secret instructions", "mode": mode },
+        "state": state,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:01Z",
+    });
+    if let (Some(task), Value::Object(extra)) = (task.as_object_mut(), extra) {
+        task.extend(extra);
+    }
+    json!({ "task": task })
+}
+
+fn task_message(task_id: &str, id: &str, direction: &str, content: Value) -> Value {
+    json!({
+        "task_id": task_id,
+        "message": {
+            "id": id,
+            "task_id": task_id,
+            "direction": direction,
+            "content": content,
+            "created_at": "2026-01-01T00:00:00Z",
+        },
+    })
+}
+
+#[test]
+fn foreground_subagent_streams_attributed_output_and_finishes() {
+    let mut projector = Projector::new("t", "r", policy());
+    projector.project(
+        "task.created",
+        &task("task_a", "subagent", "foreground", "running", json!({})),
+    );
+    projector.project(
+        "task.message.received",
+        &task_message(
+            "task_a",
+            "tmsg_1",
+            "outbound",
+            json!([{ "type": "text", "text": "halfway" }, { "type": "data", "data": { "step": 2 } }]),
+        ),
+    );
+    projector.project(
+        "task.message.sent",
+        &task_message(
+            "task_a",
+            "tmsg_2",
+            "inbound",
+            json!([{ "type": "text", "text": "go on" }]),
+        ),
+    );
+    projector.project(
+        "task.updated",
+        &task(
+            "task_a",
+            "subagent",
+            "foreground",
+            "succeeded",
+            json!({ "summary": "Found it" }),
+        ),
+    );
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    assert_eq!(
+        types(&events),
+        [
+            "SUBAGENT_STARTED",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "ACTIVITY_SNAPSHOT",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "SUBAGENT_FINISHED",
+            "RUN_FINISHED",
+        ],
+        "inbound messages are the parent's, not the subagent's output"
+    );
+    let Event::SubagentStarted(started) = &events[0] else {
+        panic!("expected SUBAGENT_STARTED");
+    };
+    assert_eq!(started.subagent_run_id, "task_a");
+    assert_eq!(started.name, "Researcher");
+    let wire = serde_json::to_string(&events).unwrap();
+    assert!(
+        !wire.contains("secret instructions"),
+        "the spec stays private"
+    );
+    let Event::TextMessageContent(summary) = &events[6] else {
+        panic!("expected the summary text");
+    };
+    assert_eq!(summary.delta, "Found it");
+    assert_eq!(summary.subagent_run_id.as_deref(), Some("task_a"));
+    let Event::SubagentFinished(finished) = &events[8] else {
+        panic!("expected SUBAGENT_FINISHED");
+    };
+    assert_eq!(finished.outcome, None, "absent outcome is success");
+}
+
+#[test]
+fn failed_and_cancelled_subagents_report_errors_through_the_policy() {
+    let mut projector = Projector::new(
+        "t",
+        "r",
+        ProjectionPolicy {
+            error: std::sync::Arc::new(|_| RunErrorEvent::new("Something went wrong")),
+            ..ProjectionPolicy::default()
+        },
+    );
+    for id in ["task_f", "task_c"] {
+        projector.project(
+            "task.created",
+            &task(id, "subagent", "foreground", "running", json!({})),
+        );
+    }
+    projector.project(
+        "task.updated",
+        &task(
+            "task_f",
+            "subagent",
+            "foreground",
+            "failed",
+            json!({ "error": { "kind": "provider_error", "message": "upstream key sk-1 rejected" } }),
+        ),
+    );
+    projector.project(
+        "task.updated",
+        &task("task_c", "subagent", "foreground", "canceled", json!({})),
+    );
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    let errors: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::SubagentError(error) => Some(error),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(errors.len(), 2);
+    assert_eq!(
+        errors[0].message, "Something went wrong",
+        "sanitized by policy"
+    );
+    assert_eq!(errors[1].code.as_deref(), Some("cancelled"));
+}
+
+#[test]
+fn background_subagent_open_at_run_end_is_suspended_after_an_activity() {
+    let mut projector = Projector::new("t", "r", policy());
+    projector.project(
+        "task.created",
+        &task("task_b", "subagent", "background", "running", json!({})),
+    );
+    projector.project(
+        "task.created",
+        &task("task_f", "subagent", "foreground", "running", json!({})),
+    );
+    projector.project("turn.cancelled", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    assert_eq!(
+        types(&events),
+        [
+            "SUBAGENT_STARTED",
+            "SUBAGENT_STARTED",
+            "ACTIVITY_SNAPSHOT",
+            "SUBAGENT_FINISHED",
+            "SUBAGENT_FINISHED",
+            "RUN_FINISHED",
+        ]
+    );
+    for event in &events[3..5] {
+        let Event::SubagentFinished(finished) = event else {
+            panic!("expected SUBAGENT_FINISHED");
+        };
+        assert_eq!(
+            finished.outcome,
+            Some(SubagentFinishedOutcome::Suspended {
+                interrupt_ids: None
+            })
+        );
+    }
+    // Updates after the run ended are ignored.
+    projector.project(
+        "task.updated",
+        &task("task_b", "subagent", "background", "succeeded", json!({})),
+    );
+    assert_eq!(projector.drain().count(), 0);
+}
+
+#[test]
+fn subagents_hidden_by_policy_other_kinds_and_settled_tasks_are_not_projected() {
+    let mut hidden = Projector::new(
+        "t",
+        "r",
+        ProjectionPolicy {
+            subagents_visible: false,
+            ..ProjectionPolicy::default()
+        },
+    );
+    hidden.project(
+        "task.created",
+        &task("task_a", "subagent", "foreground", "running", json!({})),
+    );
+    hidden.project(
+        "task.message.received",
+        &task_message(
+            "task_a",
+            "tmsg_1",
+            "outbound",
+            json!([{ "type": "text", "text": "x" }]),
+        ),
+    );
+    hidden.project("turn.completed", &json!({}));
+    assert_eq!(types(&hidden.drain().collect::<Vec<_>>()), ["RUN_FINISHED"]);
+
+    let mut projector = Projector::new("t", "r", policy());
+    projector.project(
+        "task.created",
+        &task(
+            "task_t",
+            "background_tool",
+            "background",
+            "running",
+            json!({}),
+        ),
+    );
+    projector.project(
+        "task.updated",
+        &task(
+            "task_old",
+            "subagent",
+            "background",
+            "succeeded",
+            json!({ "summary": "old" }),
+        ),
+    );
+    projector.project(
+        "task.message.received",
+        &task_message(
+            "task_old",
+            "tmsg_1",
+            "outbound",
+            json!([{ "type": "text", "text": "x" }]),
+        ),
+    );
+    projector.project("turn.completed", &json!({}));
+    assert_eq!(
+        types(&projector.drain().collect::<Vec<_>>()),
+        ["RUN_FINISHED"]
+    );
+}
+
+#[test]
+fn run_metadata_names_turn_model_and_only_a_given_session() {
+    let mut projector = Projector::new("t", "r", policy());
+    assert_eq!(projector.run_metadata(), None, "nothing known yet");
+    projector.observe_turn("turn_1");
+    projector.project("llm.generation", &generation("openai", "gpt-5", 10, 5, 0));
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    let Some(Event::RunFinished(finished)) = events.last() else {
+        panic!("expected RUN_FINISHED");
+    };
+    assert_eq!(
+        serde_json::to_value(&finished.base.metadata).unwrap(),
+        json!({ "everruns": { "turnId": "turn_1", "model": "gpt-5" } })
+    );
+
+    let mut public = Projector::new(
+        "t",
+        "r",
+        ProjectionPolicy {
+            model_visible: false,
+            session_id: Some("session_1".into()),
+            ..ProjectionPolicy::default()
+        },
+    );
+    public.observe_turn("turn_2");
+    public.project("llm.generation", &generation("openai", "gpt-5", 10, 5, 0));
+    public.project("turn.failed", &json!({ "error": "boom" }));
+    let events: Vec<Event> = public.drain().collect();
+    assert_conformant(&events);
+    let Some(Event::RunError(error)) = events.last() else {
+        panic!("expected RUN_ERROR");
+    };
+    assert_eq!(
+        serde_json::to_value(&error.base.metadata).unwrap(),
+        json!({ "everruns": { "sessionId": "session_1", "turnId": "turn_2" } })
+    );
 }

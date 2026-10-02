@@ -26,7 +26,7 @@ use axum::{
         IntoResponse, Response,
         sse::{Event as SseEvent, KeepAlive, Sse},
     },
-    routing::post,
+    routing::{get, post},
 };
 use axum_extra::extract::Multipart;
 use everruns_ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure, public_text};
@@ -144,6 +144,10 @@ pub fn routes(state: AgUiState) -> Router {
             )),
         )
         .route("/v1/e/{channel_id}/ag-ui", post(run_agent_endpoint))
+        .route(
+            "/v1/e/{channel_id}/ag-ui/capabilities",
+            get(capabilities_endpoint),
+        )
         .route(
             "/v1/e/{channel_id}/ag-ui/images",
             post(upload_image_endpoint).layer(DefaultBodyLimit::max(
@@ -323,6 +327,33 @@ async fn run_agent_endpoint(
         request,
     )
     .await
+}
+
+/// The endpoint's AG-UI 1.0 `AgentCapabilities`, behind the same auth, gates
+/// and rate limit as a run.
+async fn capabilities_endpoint(
+    State(state): State<AgUiState>,
+    Path(channel_id): Path<String>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+) -> Result<Json<everruns_ag_ui::AgentCapabilities>, Response> {
+    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
+    let AuthorizedAgUiRequest {
+        context,
+        channel_config,
+        ..
+    } = authorize_ag_ui_request(
+        &state,
+        AgUiTarget::Endpoint(channel_id),
+        &headers,
+        peer_addr,
+    )
+    .await?;
+    Ok(Json(crate::api::ag_ui_capabilities::capabilities(
+        &context.name,
+        context.description.as_deref(),
+        &channel_config,
+    )))
 }
 
 async fn run_agent(
@@ -634,12 +665,21 @@ pub(crate) async fn run_app_agent_stream(
         "AG-UI ingress complete; durable turn workflow start scheduled"
     );
 
+    let mut policy = public_projection_policy(&channel_config);
+    // THREAT[TM-API-026]: the session id is an internal handle; only an
+    // identified caller on the AG-UI channel itself is told it, never an
+    // anonymous or Public Chat visitor.
+    if runtime_user.is_some() && tag_prefix == "ag_ui" {
+        policy.session_id = Some(session.session.id.to_string());
+    }
+    let mut projector = Projector::new(thread_id.clone(), run_id.clone(), policy);
     // Version negotiation: a 1.0 consumer declares `protocolVersion`; answer
     // with ours. A pre-versioning consumer gets no field it might reject.
-    let mut run_started = AgUiRunStartedEvent::new(thread_id.clone(), run_id.clone());
+    let mut run_started = AgUiRunStartedEvent::new(thread_id, run_id);
     if req.protocol_version.is_some() {
         run_started.protocol_version = Some(PROTOCOL_VERSION.to_string());
     }
+    run_started.base.metadata = projector.run_metadata();
     let initial_events = vec![
         AgUiEvent::RunStarted(run_started),
         AgUiEvent::MessagesSnapshot(AgUiMessagesSnapshotEvent {
@@ -651,8 +691,6 @@ pub(crate) async fn run_app_agent_stream(
         }),
     ];
 
-    let mut projector =
-        Projector::new(thread_id, run_id, public_projection_policy(&channel_config));
     match resume_outcome {
         // The entries answered nothing and no turn runs: an empty run.
         Some(ResumeOutcome::NothingParked) => {
@@ -1090,6 +1128,10 @@ fn public_projection_policy(config: &AgUiChannelConfig) -> ProjectionPolicy {
         )
         .map(str::to_string),
         usage_visible: config.usage_visible,
+        subagents_visible: config.subagents_visible,
+        // The model rides with usage, which already names it.
+        model_visible: config.usage_visible,
+        session_id: None,
         error: std::sync::Arc::new(|failure: &TurnFailure| {
             public_run_error(PublicError::from_internal_code(failure.code.as_deref()))
         }),
@@ -1102,6 +1144,9 @@ fn translate_event(
     frontend_tools: &std::collections::HashSet<String>,
     event: &everruns_core::Event,
 ) {
+    if let Some(turn_id) = event.context.turn_id {
+        projector.observe_turn(turn_id.to_string());
+    }
     // A turn that parks on a question or an approval ends the run with the
     // interrupt outcome (AG-UI 1.0); one that parks on frontend tool calls
     // streams them and ends in success. The next run answers either.
