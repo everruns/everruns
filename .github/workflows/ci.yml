@@ -263,7 +263,6 @@ jobs:
               - 'apps/ui/src/lib/api/budgets.ts'
               - 'crates/server/src/api/budgets.rs'
               - 'crates/server/src/domains/agent_endpoints/**'
-              - 'crates/server/src/domains/apps/invocation.rs'
               - 'crates/server/src/domains/budgets/**'
               - 'crates/server/src/storage/repositories/budgets.rs'
               - 'crates/server/migrations/027_app_budgets.sql'

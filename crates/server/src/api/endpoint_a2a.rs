@@ -37,7 +37,9 @@ use crate::api::endpoint_auth::{EndpointAuthError, EndpointAuthVerifier, LegacyE
 use crate::api::endpoint_ingress;
 use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
-use crate::domains::apps::{A2aInvocationRequest, hash_a2a_api_key, invoke_endpoint_a2a_with_hook};
+use crate::domains::agent_endpoints::{
+    A2aInvocationRequest, hash_a2a_api_key, invoke_endpoint_a2a_with_hook,
+};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::event_delivery::EventDelivery;
@@ -770,7 +772,7 @@ async fn handle_message_send(
         &state.session_service,
         &state.message_service,
         A2aInvocationRequest {
-            app_id: ctx.app_id,
+            legacy_app_id: ctx.app_id,
             channel_id: ctx.channel_id,
             params: parsed.params,
             text: parsed_msg.text,
@@ -1136,7 +1138,7 @@ async fn handle_message_stream(
         &state.session_service,
         &state.message_service,
         A2aInvocationRequest {
-            app_id: ctx.app_id,
+            legacy_app_id: ctx.app_id,
             channel_id: ctx.channel_id,
             params: parsed.params,
             text: parsed_msg.text,

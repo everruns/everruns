@@ -14,11 +14,11 @@ use super::webhook;
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
-use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
-use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
-use crate::domains::apps::invocation::{
+use crate::domains::agent_endpoints::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
 };
+use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
+use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
@@ -135,8 +135,11 @@ fn prepare_trigger_config(
     config: &impl serde::Serialize,
 ) -> Result<(Value, Option<Vec<u8>>), CommandError> {
     let config = serde_json::to_value(config).map_err(|e| CommandError::internal(e.into()))?;
-    crate::domains::apps::queries::prepare_channel_config(ctx.encryption.as_ref(), &config)
-        .map_err(classify_anyhow)
+    crate::domains::agent_endpoints::queries::prepare_channel_config(
+        ctx.encryption.as_ref(),
+        &config,
+    )
+    .map_err(classify_anyhow)
 }
 
 /// Count currently-enabled triggers in an org (for the per-org cap). Uses the

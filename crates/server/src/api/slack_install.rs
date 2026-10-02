@@ -668,7 +668,7 @@ async fn persist(
         tracing::error!(%error, "Failed to serialise Slack channel config");
         ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
-    crate::domains::apps::queries::update_channel_config_unscoped(
+    crate::domains::agent_endpoints::queries::update_channel_config_unscoped(
         &state.slack.db,
         state.slack.encryption.as_ref(),
         endpoint_internal_id,

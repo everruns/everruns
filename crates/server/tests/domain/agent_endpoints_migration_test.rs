@@ -32,7 +32,7 @@ use everruns_platform::EndpointTransport;
 use everruns_provider::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
-use everruns_server::domains::apps::{hash_a2a_api_key, hash_endpoint_api_key};
+use everruns_server::domains::agent_endpoints::{hash_a2a_api_key, hash_endpoint_api_key};
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
 use everruns_worker::{RunnerBackend, create_runner_with_backend};

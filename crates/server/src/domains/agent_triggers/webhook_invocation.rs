@@ -6,7 +6,7 @@
 use super::commands::{WebhookCompatibilityContext, parse_agent_id};
 use super::events;
 use super::queries as q;
-use crate::domains::apps::invocation::render_message_template;
+use crate::domains::agent_endpoints::invocation::render_message_template;
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;

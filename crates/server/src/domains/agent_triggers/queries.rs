@@ -19,7 +19,7 @@ pub fn row_to_trigger(
     agent_public_id: AgentId,
     encryption: Option<&Arc<EncryptionService>>,
 ) -> AgentTrigger {
-    let config = crate::domains::apps::queries::decrypt_channel_config(
+    let config = crate::domains::agent_endpoints::queries::decrypt_channel_config(
         encryption,
         row.config_encrypted.as_deref(),
         &row.config,

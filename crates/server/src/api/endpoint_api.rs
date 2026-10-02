@@ -33,7 +33,7 @@ use crate::api::endpoint_auth::{
     EndpointAuthError, EndpointAuthVerifier, LegacyEndpointAuth, extract_bearer,
 };
 use crate::auth::rate_limit::extract_client_ip_from_parts;
-use crate::domains::apps::{
+use crate::domains::agent_endpoints::{
     ApiInvocationRequest, hash_endpoint_api_key, invoke_endpoint_api, post_endpoint_api_message,
     resolve_endpoint_api, session_has_endpoint_tags,
 };
@@ -353,7 +353,7 @@ pub async fn create_session(
         &state.session_service,
         &state.message_service,
         ApiInvocationRequest {
-            app_id,
+            legacy_app_id: app_id,
             channel_id,
             message: body.message,
         },
