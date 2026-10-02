@@ -57,7 +57,7 @@ branches.
 
 The exact driver trait, provider constructors, and stream events live in the
 public API reference. Framework usage lives in the public [Models and
-Providers](../../docs/framework/models-and-providers.md) and [Custom
-Providers](../../docs/framework/custom-providers.md) guides. Application versus
+Providers](../../docs/framework/models-and-providers.md) guide, which includes
+custom providers. Application versus
 host ownership remains canonical in [Application API
 Boundaries](application-api.md).

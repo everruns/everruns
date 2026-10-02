@@ -43,7 +43,7 @@ The server is the only public backend HTTP surface. Workers communicate with the
 
 See:
 - [`knowledge/foundations/architecture.md`](../foundations/architecture.md)
-- [`docs/getting-started/architecture.md`](../../docs/getting-started/architecture.md)
+- [`docs/explanation/architecture.md`](../../docs/explanation/architecture.md)
 - [`docs/getting-started/docker-compose.md`](../../docs/getting-started/docker-compose.md)
 
 ## Required Deployment Decisions

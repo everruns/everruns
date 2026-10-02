@@ -28,6 +28,7 @@
 * [Knowledge Indexes Specification](knowledge-indexes.md) - Source-backed, embedded, citable knowledge indexes.
 * [Citations Specification](citations.md) - Claim-level source provenance as composable citation capabilities.
 * [Memory Specification](memory.md) - Org-scoped named Memories (mountable into Workspaces).
+* [Memory Model](memory-model.md) - How the per-session Workspace and durable org Memory tiers relate, shipped and planned surfaces.
 * [Infinity Context](infinity-context.md) - Unlimited conversation length via context management.
 * [Anthropic Infinity Context Compaction](anthropic-infinity-context-compaction.md) - Append-only Anthropic message history through server-side threshold compaction.
 * [Compaction](compaction.md) - Context compaction capability.

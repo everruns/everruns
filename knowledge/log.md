@@ -2,6 +2,11 @@
 
 ## 2026-10-02
 
+* **Memory model moves into knowledge.** The design note on how the
+  per-session Workspace and the durable org Memory tiers relate left the public docs Advanced group
+  and is now [Memory Model](runtime-resources/memory-model.md). The user-facing
+  part stays in the docs Memory Scopes page.
+
 * **Parked approvals and questions survive a restart.** A turn waiting on a
   person blocks inside its act, so a killed process leaves it in the log
   without an end. `Session::interrupted_turn` reports such a turn from the
