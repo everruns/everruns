@@ -1,8 +1,6 @@
 ---
 title: Answer an agent's questions
 description: Implement the AskUser trait so an embedding application can answer an agent's structured questions from its own interface.
-sidebar:
-  order: 8
 ---
 
 An agent with the [Ask User](/capabilities/ask-user/) capability can ask the person it is working with a small batch of structured questions and wait for the answer. In a hosted product the browser renders that card. In an embedding application there is no browser, so the application answers — which is what the `AskUser` trait is for.

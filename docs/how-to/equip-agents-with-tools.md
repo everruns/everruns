@@ -19,32 +19,47 @@ This guide assigns common capabilities to an agent so it can interact with files
 ## Assign capabilities at creation
 
 ```python
+from everruns_sdk import AgentCapabilityConfig
+
 agent = await client.agents.create(
-    name="Researcher",
+    name="researcher",
+    display_name="Researcher",
     system_prompt="You research topics and save notes to /workspace.",
-    capabilities=["web_fetch", "session_file_system", "stateless_todo_list"],
+    capabilities=[
+        AgentCapabilityConfig(ref="web_fetch"),
+        AgentCapabilityConfig(ref="session_file_system"),
+        AgentCapabilityConfig(ref="stateless_todo_list"),
+    ],
 )
 ```
 
 ## Update an existing agent
 
+The SDK has no partial agent update. Re-apply the full definition with `apply_by_name`, which updates the agent when the name exists:
+
 ```python
-await client.agents.update(
-    agent.id,
-    capabilities=["web_fetch", "session_file_system", "bashkit_shell"],
+agent = await client.agents.apply_by_name(
+    "researcher",
+    "You research topics and save notes to /workspace.",
+    capabilities=[
+        AgentCapabilityConfig(ref="web_fetch"),
+        AgentCapabilityConfig(ref="session_file_system"),
+        AgentCapabilityConfig(ref="bashkit_shell"),
+    ],
 )
 ```
 
 ## Configure a capability
 
-Some capabilities accept per-agent configuration. Use the long form:
+Some capabilities accept per-agent configuration. Pass it in `config`:
 
 ```python
-await client.agents.update(
-    agent.id,
+agent = await client.agents.apply_by_name(
+    "researcher",
+    "You research topics and save notes to /workspace.",
     capabilities=[
-        {"ref": "web_fetch", "config": {"enable_file_download": True}},
-        {"ref": "session_file_system"},
+        AgentCapabilityConfig(ref="web_fetch", config={"enable_file_download": True}),
+        AgentCapabilityConfig(ref="session_file_system"),
     ],
 )
 ```
@@ -59,7 +74,7 @@ for cap in agent.capabilities:
 
 ## Notes on ordering
 
-Capability order matters, capabilities earlier in the list contribute their system prompt fragments first. Put high-priority context (project conventions, AGENTS.md) before tool-specific guidance.
+Capability order matters: capabilities earlier in the list contribute their system prompt fragments first. Put high-priority context (project conventions, AGENTS.md) before tool-specific guidance.
 
 ## See also
 

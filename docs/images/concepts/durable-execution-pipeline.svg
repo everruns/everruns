@@ -15,58 +15,58 @@
   <!-- Section header -->
   <text x="400" y="25" text-anchor="middle" class="header-text">DURABLE EXECUTION PIPELINE</text>
 
-  <!-- Box 1: SetupStep -->
+  <!-- Box 1: InputAtom -->
   <rect x="20" y="50" width="120" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="80" y="73" text-anchor="middle" class="label">SetupStep</text>
-  <text x="80" y="90" text-anchor="middle" class="sublabel">Initialize turn</text>
+  <text x="80" y="73" text-anchor="middle" class="label">InputAtom</text>
+  <text x="80" y="90" text-anchor="middle" class="sublabel">Start turn</text>
 
-  <!-- Arrow 1: Setup → LLM1 -->
+  <!-- Arrow 1: Input → Reason -->
   <line x1="140" y1="77" x2="170" y2="77" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="170,73 180,77 170,81" fill="#0A1636"/>
   <!-- Step badge 1 -->
   <rect x="146" y="58" width="18" height="18" fill="#0A1636"/>
   <text x="155" y="71" text-anchor="middle" class="step-num">1</text>
 
-  <!-- Box 2: ExecuteLlmStep -->
+  <!-- Box 2: ReasonAtom -->
   <rect x="182" y="50" width="120" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="242" y="73" text-anchor="middle" class="label">ExecuteLlmStep</text>
+  <text x="242" y="73" text-anchor="middle" class="label">ReasonAtom</text>
   <text x="242" y="90" text-anchor="middle" class="sublabel">Call LLM</text>
 
-  <!-- Arrow 2: LLM1 → Tool -->
+  <!-- Arrow 2: Reason → Act -->
   <line x1="302" y1="77" x2="332" y2="77" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="332,73 342,77 332,81" fill="#0A1636"/>
   <!-- Step badge 2 -->
   <rect x="308" y="58" width="18" height="18" fill="#0A1636"/>
   <text x="317" y="71" text-anchor="middle" class="step-num">2</text>
 
-  <!-- Box 3: ExecuteToolStep(s) -->
+  <!-- Box 3: ActAtom -->
   <rect x="344" y="50" width="140" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="414" y="73" text-anchor="middle" class="label">ExecuteToolStep(s)</text>
+  <text x="414" y="73" text-anchor="middle" class="label">ActAtom</text>
   <text x="414" y="90" text-anchor="middle" class="sublabel">Run tools in parallel</text>
 
-  <!-- Arrow 3: Tool → LLM2 -->
+  <!-- Arrow 3: Act → Reason -->
   <line x1="484" y1="77" x2="514" y2="77" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="514,73 524,77 514,81" fill="#0A1636"/>
   <!-- Step badge 3 -->
   <rect x="490" y="58" width="18" height="18" fill="#0A1636"/>
   <text x="499" y="71" text-anchor="middle" class="step-num">3</text>
 
-  <!-- Box 4: ExecuteLlmStep (again) -->
+  <!-- Box 4: ReasonAtom (again) -->
   <rect x="526" y="50" width="120" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="586" y="73" text-anchor="middle" class="label">ExecuteLlmStep</text>
+  <text x="586" y="73" text-anchor="middle" class="label">ReasonAtom</text>
   <text x="586" y="90" text-anchor="middle" class="sublabel">Call LLM again</text>
 
-  <!-- Arrow 4: LLM2 → Finalize -->
+  <!-- Arrow 4: Reason → done -->
   <line x1="646" y1="77" x2="676" y2="77" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="676,73 686,77 676,81" fill="#0A1636"/>
   <!-- Step badge 4 -->
   <rect x="652" y="58" width="18" height="18" fill="#0A1636"/>
   <text x="661" y="71" text-anchor="middle" class="step-num">4</text>
 
-  <!-- Box 5: FinalizeStep -->
+  <!-- Box 5: turn completes -->
   <rect x="688" y="50" width="100" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="738" y="73" text-anchor="middle" class="label">FinalizeStep</text>
-  <text x="738" y="90" text-anchor="middle" class="sublabel">Complete turn</text>
+  <text x="738" y="73" text-anchor="middle" class="label">Turn done</text>
+  <text x="738" y="90" text-anchor="middle" class="sublabel">turn.completed</text>
 
   <!-- Loop-back arrow: LLM2 (box4) back to Tool (box3) -->
   <!-- Dashed connector going down from LLM2, left under Tool, then up into Tool -->

@@ -11,14 +11,17 @@ This is the simplest orchestration pattern: no shared state, no subagent spawnin
 
 ```python
 import asyncio
-from everruns_sdk import Everruns
+from everruns_sdk import AgentCapabilityConfig, Everruns
 
 
 async def run_pipeline(client: Everruns, topic: str) -> str:
     researcher = await client.agents.create(
-        name="Researcher",
+        name="researcher",
         system_prompt="Research the given topic thoroughly. Write detailed notes.",
-        capabilities=["web_fetch", "session_file_system"],
+        capabilities=[
+            AgentCapabilityConfig(ref="web_fetch"),
+            AgentCapabilityConfig(ref="session_file_system"),
+        ],
     )
 
     research_session = await client.sessions.create(agent_id=researcher.id)
@@ -27,7 +30,7 @@ async def run_pipeline(client: Everruns, topic: str) -> str:
     research_output = await collect_final_text(client, research_session.id)
 
     writer = await client.agents.create(
-        name="Writer",
+        name="writer",
         system_prompt="Write clear, well-structured technical articles.",
     )
     writer_session = await client.sessions.create(agent_id=writer.id)
@@ -73,7 +76,7 @@ For pipelines you'll re-run, *don't* recreate the agents, create them once, stor
 
 ## When to use subagents instead
 
-If one agent needs to delegate to another *during a turn*, use the [Sub Agents capability](/capabilities/sub-agents/) instead of an application-level pipeline. Subagents run inside the parent session and emit `subagent.*` events that the parent agent receives as tool results.
+If one agent needs to delegate to another *during a turn*, use the [Sub Agents capability](/capabilities/sub-agents/) instead of an application-level pipeline. Subagents run inside the parent session and are tracked as session tasks that emit `task.*` events (`task.created`, `task.updated`, `task.message.sent`, `task.message.received`) on the parent session.
 
 Pick application-level pipelines when:
 

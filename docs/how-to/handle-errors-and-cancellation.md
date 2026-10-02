@@ -14,12 +14,28 @@ async for event in client.events.stream(session.id):
     if event.type == "turn.completed":
         break
     if event.type == "turn.failed":
-        err = event.data.get("error", "unknown")
-        print(f"Turn failed: {err}")
+        message = event.data.get("error", "unknown")
+        code = event.data.get("error_code")
+        print(f"Turn failed [{code}]: {message}")
         break
 ```
 
-The `error` field is a structured object, type, message, optional cause. Inspect it to decide whether to retry, surface to the user, or escalate.
+`error` is a human-readable string. `error_code` is a stable, machine-readable string; branch on it, not on the message text. Use it to decide whether to retry, surface to the user, or escalate:
+
+```python
+RETRYABLE = {"provider_rate_limited", "provider_unavailable", "dependency_unavailable"}
+
+if event.type == "turn.failed":
+    code = event.data.get("error_code")
+    if code in RETRYABLE:
+        ...  # wait, then retry with backoff
+    elif code in {"budget_exhausted", "budget_paused"}:
+        ...  # raise or resume the budget
+    else:
+        ...  # surface the message to the user
+```
+
+With the `generic` error disclosure mode, the displayed `error_code` collapses to `processing_error` to hide provider detail.
 
 ## Cancel a long-running turn
 
@@ -68,14 +84,26 @@ async def send_with_retry(client, session_id, content, attempts=2):
 
 Don't retry indefinitely, a turn that fails twice usually fails for a reason (rate limit, malformed prompt, missing capability). Surface to the user.
 
-## Common error patterns
+## Common error codes
 
-| Event payload | Cause | Action |
+| `error_code` | Cause | Action |
 |---|---|---|
-| `rate_limit_exceeded` | LLM provider rate-limited the worker | Wait, retry with backoff |
+| `provider_rate_limited` | LLM provider throttled the request | Wait, retry with backoff |
+| `provider_usage_limit_reached` | Provider subscription or plan limit hit; resets at a later time | Wait for the reset time, or switch model |
+| `provider_unavailable` | Provider is down or unreachable | Retry later, or switch provider |
+| `provider_quota_exhausted` | Provider account is out of credits | Top up the provider account |
+| `provider_misconfigured` | Missing or invalid provider API key | Fix the provider key |
+| `provider_attestation_required` | Provider needs an account confirmation (for example OpenRouter age verification) | Complete it in the provider settings |
+| `model_unavailable` / `model_not_configured` | Model missing, or none set for the agent or session | Pick a configured model |
 | `request_too_large` | Context overflowed even after compaction | Trim the conversation, start a fresh session |
-| `tool_call_failed` (terminal) | A tool errored repeatedly | Inspect tool result events, fix the agent prompt or tool config |
-| `cancelled` | User or app called `sessions.cancel` | No retry, user intent |
+| `invalid_tool_schema` | A tool definition was rejected by the provider | Fix the tool's schema |
+| `budget_exhausted` / `budget_paused` | The budget has no room left, or is paused | Raise or resume the budget, see [Enforce a budget](/how-to/enforce-a-budget/) |
+| `blocked_by_hook` | A `user_prompt_submit` hook rejected the message | Change the message or the hook |
+| `processing_error` | Unclassified failure, or details hidden by disclosure mode | Check server logs |
+
+Cancellation is not a failure: `sessions.cancel` produces `turn.cancelled`, which needs no retry.
+
+The code list lives in `crates/provider/src/user_facing_error.rs`.
 
 ## See also
 

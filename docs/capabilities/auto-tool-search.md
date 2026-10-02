@@ -50,7 +50,7 @@ One, the client-side `tool_search` tool, used only on models without native supp
 {
   "capabilities": [
     {
-      "capability_ref": "auto_tool_search",
+      "ref": "auto_tool_search",
       "config": { "threshold": 10 }
     }
   ]

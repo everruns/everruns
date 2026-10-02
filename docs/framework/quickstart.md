@@ -9,10 +9,11 @@ Add the application-facing crate with a model provider:
 
 ```bash
 cargo add everruns --features openai
+cargo add tokio --features macros,rt-multi-thread
 export OPENAI_API_KEY=sk-...
 ```
 
-`--features openai` bundles the OpenAI driver. Any other provider is its own
+`--features openai` bundles the OpenAI driver. `everruns` does not re-export tokio, so add it for `#[tokio::main]`. Any other provider is its own
 crate — see [Supported providers](/framework/supported-providers/).
 
 ## Run one turn

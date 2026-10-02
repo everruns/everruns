@@ -3,7 +3,7 @@ title: Give an agent web access
 description: Enable the web_fetch capability, restrict outbound network access with allow/block lists, and verify the agent reaches only intended hosts.
 ---
 
-`web_fetch` gives an agent the `web_fetch` tool, fetch any URL, optionally convert HTML to markdown. By default it can reach any public host, with built-in SSRF protection blocking private IPs. To restrict it further, layer **network access lists** on the harness, agent, or session.
+`web_fetch` gives an agent the `web_fetch` tool: fetch any URL, optionally convert HTML to markdown. By default it can reach any public host, with built-in SSRF protection blocking private IPs. To restrict it further, layer **network access lists** on the harness, agent, or session.
 
 ## Enable the capability
 

@@ -5,7 +5,7 @@ description: Use Parallel's hosted MCP server for free web search and URL fetchi
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M7 4v16M12 4v16M17 4v16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
 
-# Parallel
+> **Status:** Experimental, available only on development-grade deployments.
 
 Parallel provides hosted MCP tools for web search and URL fetching.
 

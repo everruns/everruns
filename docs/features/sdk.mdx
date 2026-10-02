@@ -52,31 +52,35 @@ For a hands-on lesson, see [Build your first agent](/tutorials/building-agents-u
 
 ## Authenticate
 
-All SDKs read `EVERRUNS_API_KEY` from the environment by default. You can also pass it explicitly.
+All SDKs read `EVERRUNS_API_KEY` (a personal access token, `evr_pat_...`) and
+`EVERRUNS_API_URL` from the environment. Always set the URL: use
+`https://app.everruns.com/api` for [Everruns Cloud](https://app.everruns.com), or
+`http://<your-host>/api` for a self-hosted Platform. Create the token under
+**Settings** > **Personal Access Tokens**.
 
 <Tabs syncKey="lang">
   <TabItem label="Rust">
     ```rust
-    use everruns_sdk::Client;
+    use everruns_sdk::Everruns;
 
-    let client = Client::from_env()?;          // from env
-    let client = Client::new("your-api-key");  // explicit
+    let client = Everruns::from_env()?; // EVERRUNS_API_KEY + EVERRUNS_API_URL
+    let client = Everruns::with_base_url("evr_pat_...", "https://app.everruns.com/api")?;
     ```
   </TabItem>
   <TabItem label="Python">
     ```python
-    from everruns_sdk import Client
+    from everruns_sdk import Everruns
 
-    client = Client()                           # from env
-    client = Client(api_key="your-api-key")     # explicit
+    client = Everruns()  # EVERRUNS_API_KEY + EVERRUNS_API_URL
+    client = Everruns(api_key="evr_pat_...", base_url="https://app.everruns.com/api")
     ```
   </TabItem>
   <TabItem label="TypeScript">
     ```typescript
-    import { Client } from "@everruns/sdk";
+    import { Everruns } from "@everruns/sdk";
 
-    const client = new Client();                                    // from env
-    const client = new Client({ apiKey: "your-api-key" });          // explicit
+    const client = new Everruns(); // EVERRUNS_API_KEY + EVERRUNS_API_URL
+    const client = new Everruns({ apiKey: "evr_pat_...", baseUrl: "https://app.everruns.com/api" });
     ```
   </TabItem>
 </Tabs>
@@ -85,28 +89,30 @@ All SDKs read `EVERRUNS_API_KEY` from the environment by default. You can also p
 
 | Resource | Operations |
 |---|---|
-| **Agents** | Create, list, get, update, upsert, archive, import, export, preview |
-| **Sessions** | Create, list, get, update, delete, cancel |
-| **Messages** | Create, list |
-| **Events** | Poll, stream (SSE) |
-| **Capabilities** | List, get |
-| **LLM Providers** | Create, list, get, update, delete, sync models |
-| **LLM Models** | Create, list, get, update, delete |
-| **MCP Servers** | Create, list, get, update, delete |
-| **Filesystem** | List, read, create, update, delete, move, copy, grep, stat |
-| **Session Databases** | Create, list, get, delete, schema |
-| **Images** | Upload, list, get, thumbnail, delete |
-| **Organizations** | Create, list, get, update |
-| **Scheduled Tasks** | Create, list, get, update, delete, pause, resume, trigger |
+| **Agents** | Create, list, get, apply, copy, delete, import, export, stats, versions, health checks |
+| **Sessions** | Create, list, get, delete, cancel, resume, pin, export, set secrets, budgets |
+| **Messages** | Create, list, submit client-side tool results |
+| **Events** | List, stream (SSE) |
+| **Capabilities** | List, get, guardrail dry runs |
+| **Harnesses** | Create, list, search, get, update, delete |
+| **Models** | List, get |
+| **Workspaces** | Create, list, get, update, delete |
+| **Workspace files** | List, read, create, update, delete, move, copy, grep, stat |
+| **Memories** | Create, list, get, update, delete, sync, file operations |
+| **Budgets** | Create, list, get, update, delete, top up, ledger, check |
+| **Connections** | Set, list, remove |
+
+Everything else (providers, MCP servers, organizations, schedules) is available
+through the [REST API](/api/).
 
 ## Error handling
 
 | Error type | Description |
 |---|---|
-| `AuthenticationError` | Invalid or missing API key |
-| `NotFoundError` | Resource not found |
-| `RateLimitError` | Rate limit exceeded |
-| `ApiError` | General API error |
+| `AuthenticationError` | Invalid or missing API key (Python, TypeScript) |
+| `NotFoundError` | Resource not found (Python, TypeScript) |
+| `RateLimitError` | Rate limit exceeded (Python, TypeScript) |
+| `ApiError` | General API error; Rust uses `Error::Api { status, .. }` for all HTTP errors and `Error::Auth` for credential problems |
 
 <Tabs syncKey="lang">
   <TabItem label="Rust">
@@ -115,8 +121,8 @@ All SDKs read `EVERRUNS_API_KEY` from the environment by default. You can also p
 
     match client.agents().get("invalid-id").await {
         Ok(agent) => println!("Found: {}", agent.name),
-        Err(Error::NotFound(msg)) => println!("Not found: {}", msg),
-        Err(Error::Authentication(msg)) => println!("Auth error: {}", msg),
+        Err(Error::Api { status: 404, message, .. }) => println!("Not found: {}", message),
+        Err(Error::Auth(msg)) => println!("Auth error: {}", msg),
         Err(e) => println!("Other error: {}", e),
     }
     ```

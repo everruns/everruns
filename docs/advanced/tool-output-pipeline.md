@@ -38,7 +38,7 @@ Two ideas run through the whole pipeline:
 1. **Storage stays lossless.** Whatever the model sees inline, the full output is written to the session filesystem (the *destination*). The inline view always carries a pointer back to it.
 2. **Each stage shrinks, none deletes.** Truncation, distillation, and masking only change the *view*. The agent can always `read_file` the persisted original.
 
-## Stage 1, Verbosity budget (exec tools)
+## Stage 1: Verbosity budget (exec tools)
 
 Exec and sandbox tools (`bash`, `*_exec`, sandboxed shells) clean their output (strip ANSI, collapse carriage returns) and apply a **verbosity budget** before returning. The mode is configurable per call; the default is `auto`:
 
@@ -47,7 +47,7 @@ Exec and sandbox tools (`bash`, `*_exec`, sandboxed shells) clean their output (
 
 The full pre-truncation output is stashed on the result as `raw_output` for the persistence hook to consume. Non-exec tools (MCP, web fetch, client tools) do **not** have a verbosity budget, that gap is what Stage 2 exists for.
 
-## Stage 2, Tool Output Distillation (non-exec tools)
+## Stage 2: Tool Output Distillation (non-exec tools)
 
 [Tool Output Distillation](/capabilities/) targets the tools Stage 1 doesn't: **MCP tools and `web_fetch`**, whose results otherwise enter history verbatim. It runs as a capability hook, so it executes *before* the final hooks.
 
@@ -64,7 +64,7 @@ Before it replaces anything, distillation **persists the full original** to the 
 
 Distillation is on by default in the **generic harness**. Every transform is deterministic, so identical output distills identically and the model provider's prompt cache keeps hitting across turns.
 
-## Stage 3, Persistence and the hard limit
+## Stage 3: Persistence and the hard limit
 
 Two infrastructure hooks always run last, in order:
 

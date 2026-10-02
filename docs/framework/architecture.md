@@ -44,9 +44,6 @@ assert_eq!(resumed.session_id(), session_id);
 # }
 ```
 
-`InMemoryEngine` remains a compatibility alias. It is not a second engine
-implementation; use `Engine` in new 0.18 code.
-
 ## Two execution paths, one kernel
 
 The library path is immediate. `everruns::Engine` uses `everruns-host` to run

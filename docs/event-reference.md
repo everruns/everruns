@@ -1,9 +1,69 @@
 ---
 title: Event Reference
-description: "Every Everruns event type with its schema and an SSE example: input, output, tool, lifecycle, and error events."
+description: "All Everruns event types, with schemas and SSE examples for the common ones: input, output, tool, lifecycle, and error events."
 ---
 
-This page documents all event types in the Everruns event protocol.
+This page lists every event type in the Everruns event protocol and documents the schema of the most common ones. Types without a section below are listed in the table with a short description; the authoritative list is the event type constants in `crates/core/src/events/mod.rs`.
+
+## All event types
+
+| Event type | Description |
+|---|---|
+| [`input.message`](#inputmessage) | User message submitted to the session. |
+| [`output.message.started`](#outputmessagestarted) | Assistant message started. |
+| [`output.message.delta`](#outputmessagedelta) | Streaming chunk of assistant text. |
+| [`output.message.completed`](#outputmessagecompleted) | Assistant message finished and persisted. |
+| `output.message.replaced` | Clients discard streamed text for the turn and show a replacement; the next `output.message.completed` carries it. |
+| [`turn.started`](#turnstarted) | Turn began. |
+| [`turn.completed`](#turncompleted) | Turn finished successfully. |
+| [`turn.failed`](#turnfailed) | Turn failed with an error. |
+| `turn.sealed` | Turn stopped without success or error (for example repeated crash-reclaims or exhausted work budget); carries a `reason`. |
+| [`turn.cancelled`](#turncancelled) | Turn cancelled by the user. |
+| [`reason.started`](#reasonstarted) | LLM inference step began. |
+| [`reason.completed`](#reasoncompleted) | LLM inference step finished. |
+| `reason.recovered` | A reason step was recovered after a failure. |
+| [`reason.thinking.started`](#reasonthinkingstarted) | Model thinking started. |
+| [`reason.thinking.delta`](#reasonthinkingdelta) | Streaming chunk of model thinking. |
+| [`reason.thinking.completed`](#reasonthinkingcompleted) | Model thinking finished. |
+| [`reason.item`](#reasonitem) | Provider reasoning artifact (opaque or encrypted items plus safe summary text). |
+| [`act.started`](#actstarted) | Tool execution phase began. |
+| [`act.completed`](#actcompleted) | Tool execution phase finished. |
+| [`tool.started`](#toolstarted) | A tool call began. |
+| [`tool.completed`](#toolcompleted) | A tool call finished. |
+| `tool.progress` | Progress update from a running tool. |
+| `tool.output.delta` | Streaming chunk of tool output. |
+| `tool.call_requested` | A client-side tool call is waiting for a result from the client. |
+| `tool.call_repaired` | A malformed tool call was repaired, or repair was attempted, by the `tool_call_repair` capability. |
+| `tool.hosted_call` | A provider-executed (hosted) tool call changed state. |
+| `transcript.repaired` | The conversation transcript was repaired before a provider request. |
+| `capability.usage` | Usage of a capability by the agent. |
+| [`llm.generation`](#llmgeneration) | One LLM call: model, usage, and timing. |
+| [`session.started`](#sessionstarted) | Session created. |
+| [`session.activated`](#sessionactivated) | Session started working on a turn. |
+| [`session.idled`](#sessionidled) | Session returned to idle. |
+| `session.title.updated` | Session title changed. |
+| `session.model.changed` | Model override differs from the previous turn's. |
+| `schedule.triggered` | A schedule fired. |
+| `task.created` | Session task created. |
+| `task.updated` | Session task changed. |
+| `task.message.sent` | Message sent to a session task. |
+| `task.message.received` | Message received from a session task. |
+| `context.compacting` | Context compaction started. |
+| `context.compacted` | Context compaction installed a summary. |
+| `context.compaction.skipped` | A compaction evaluation ran but installed nothing. |
+| `context.compaction.failed` | A compaction attempt errored before installing. |
+| `file.written` | A session file was written. |
+| `budget.warning` | Budget crossed its warning threshold. |
+| `budget.paused` | Budget paused the session. |
+| `budget.exhausted` | Budget has no room left. |
+| `budget.resumed` | Budget resumed. |
+| `voice.session.started` | Voice session started. |
+| `voice.input_transcript.delta` | Streaming chunk of the user's speech transcript. |
+| `voice.input_transcript.completed` | User's speech transcript finished. |
+| `voice.output_transcript.delta` | Streaming chunk of the assistant's speech transcript. |
+| `voice.output_transcript.completed` | Assistant's speech transcript finished. |
+| `voice.session.ended` | Voice session ended. |
+| `voice.session.failed` | Voice session failed. |
 
 ## Input Events
 
@@ -184,8 +244,8 @@ Emitted when a turn fails with an error.
   "type": "turn.failed",
   "data": {
     "turn_id": "turn_...",
-    "error": "Rate limit exceeded",
-    "error_code": "RATE_LIMIT"
+    "error": "The model provider is rate limiting requests. Please try again shortly.",
+    "error_code": "provider_rate_limited"
   }
 }
 ```

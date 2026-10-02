@@ -39,9 +39,10 @@ See [Capabilities](/features/capabilities/) for more details.
 
 ### Ways to run Everruns
 
-- **[Everruns Cloud](https://app.everruns.com)**: the hosted Platform, open in
-  early access. We run the server, database, and workers. Free for now, and you
-  bring your own model provider keys.
+- **[Everruns Cloud](https://app.everruns.com)**: the hosted Platform. We run
+  the server, database, and workers. It includes a built-in model provider: your
+  first organization gets $5 of starter credit, and you top up with prepaid
+  credits after that. Bringing your own provider keys is optional.
 - **[Docker Compose](/getting-started/docker-compose/)**: run the full Platform
   on infrastructure you control.
 - **[Framework](/framework/)**: embed durable agents in a Rust process, with no
@@ -51,7 +52,8 @@ See [Capabilities](/features/capabilities/) for more details.
 
 1. Deploy Everruns using the provided Docker images, or create an account on
    [Everruns Cloud](https://app.everruns.com) and skip this step
-2. Configure your LLM providers via the Settings UI
+2. Configure your LLM providers via the Settings UI (on Everruns Cloud the
+   built-in provider is ready to use)
 3. Create an agent
 4. Start sessions and interact through the API or UI
 

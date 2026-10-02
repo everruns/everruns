@@ -22,9 +22,9 @@ slug: features/skills
 
 ## Three-stage disclosure
 
-1. **Discovery** (~100 tokens per skill) — names and descriptions appear in the system prompt under `<available_skills>`.
-2. **Activation** (under 5,000 tokens) — full SKILL.md instructions load when the agent calls `activate_skill`.
-3. **Resources** — bundled files mount at `/skills/{name}/` and are read with the normal filesystem tools.
+1. **Discovery** (~100 tokens per skill): names and descriptions appear in the system prompt under `<available_skills>`.
+2. **Activation** (under 5,000 tokens): full SKILL.md instructions load when the agent calls `activate_skill`.
+3. **Resources**: bundled files mount at `/workspace/.agents/skills/{name}/` and are read with the normal filesystem tools.
 
 This keeps thousands of skills available to an agent without burning context on the ones it doesn't need.
 

@@ -47,7 +47,7 @@ Everruns' own execution capabilities when the agent's work must land there.
 {
   "capabilities": [
     {
-      "capability_ref": "openai_server_tools",
+      "ref": "openai_server_tools",
       "config": { "tools": ["web_search"] }
     }
   ]
@@ -60,7 +60,7 @@ Everruns' own execution capabilities when the agent's work must land there.
 {
   "capabilities": [
     {
-      "capability_ref": "openai_server_tools",
+      "ref": "openai_server_tools",
       "config": {
         "tools": ["web_search"],
         "web_search_context_size": "high",
@@ -78,7 +78,7 @@ Everruns' own execution capabilities when the agent's work must land there.
 {
   "capabilities": [
     {
-      "capability_ref": "openai_server_tools",
+      "ref": "openai_server_tools",
       "config": {
         "tools": ["code_interpreter", "shell", "file_search"],
         "container_memory_limit": "4g",
@@ -96,7 +96,7 @@ Everruns' own execution capabilities when the agent's work must land there.
 {
   "capabilities": [
     {
-      "capability_ref": "openai_server_tools",
+      "ref": "openai_server_tools",
       "config": {
         "tools": ["mcp"],
         "mcp_servers": [

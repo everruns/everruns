@@ -3,66 +3,63 @@ title: Use in AI Tools
 description: Set up Everruns in AI tools through the Everruns plugin.
 ---
 
-# Use in AI Tools (Everruns Plugin)
+The `everruns` plugin connects Claude Code, Codex, and Cursor to Everruns over
+MCP. It ships an `everruns` skill and slash commands for common session work
+(`whoami`, `discover`, `query`, `execute`, `agent-run`, `agent-card`,
+`session-send`, `session-status`). By default it talks to
+[Everruns Cloud](https://app.everruns.com) at `https://app.everruns.com/mcp`.
 
-The `everruns` plugin connects Claude Code, Codex, and Cursor to any Everruns deployment over MCP. It ships skills, slash commands, and agents; Codex setup additionally uses the plugin's `defaultPrompt` and `description`.
+## Install
 
-## Quickstart (local Everruns)
+**Claude Code**, from the GitHub marketplace:
 
-```bash
-just up
-just agent-auth PROVIDER=cursor # or vscode, claude, codex, gemini, droid, opencode
+```text
+/plugin marketplace add everruns/everruns
+/plugin install everruns@everruns
 ```
 
-This scaffolds a plugin that talks to your local deployment. Point the plugin at a different deployment by setting `EVERUNS_MCP_URL` (defaults to `https://app.everruns.com/mcp`).
-
-## Codex (ChatGPT + CLI)
-
-Use the plugin's `defaultPrompt` and `description` so you do not have to type OAuth scopes and MCP labels by hand:
-
-```jsonc
-{
-  "title": "Everruns",
-  "text": "...",
-  "images": ["docs/getting-started/codex-everruns-plugin.png"],
-  "skill": "everruns",
-  "commands": ["commands"],
-  "mcp": "everruns",
-  "defaultPrompt": "You are using Everruns at ${EVERUNS_MCP_URL:-https://app.everruns.com/mcp}. Use the everruns skill...",
-  "description": "Connects Codex to Everruns over MCP with skills, slash commands, and agents."
-}
-```
+**Codex** discovers the plugin through the repository marketplace at
+`.agents/plugins/marketplace.json`. Open the `everruns` plugin page in Codex and
+choose **Add to Codex**.
 
 ![Everruns Codex plugin](codex-everruns-plugin.png)
 
-To install the published plugin, open the `everruns` plugin page in Codex and choose **Add to Codex**.
+**Cursor** discovers the plugin through `.cursor-plugin/marketplace.json` in the
+repository root; enable it from the marketplace UI.
 
-## Plugin layout
+## First run
 
-The portable plugin lives in `plugins/everruns/`:
+1. Run `/everruns:whoami` (Claude Code, Codex) or the `whoami` command (Cursor).
+2. Complete the OAuth sign-in in your browser when prompted.
+3. Ask for an Everruns task in natural language, for example "create a Hacker
+   News summarizer agent and run it".
 
-- `plugin.json` / `mcp.json` — marketplace registration (name `everruns`, version, MCP server URL).
-- `.claude-plugin/plugin.json` — Claude Code manifest.
-- `.codex-plugin/plugin.json` — Codex manifest (`defaultPrompt`, `description`).
-- `.cursor-plugin/plugin.json` — Cursor manifest.
-- `skills/everruns/SKILL.md` — the agent skill (frontmatter `name: everruns`).
-- `commands/` — slash commands.
+## Use a self-hosted deployment
 
-`EVERUNS_MCP_URL` selects the deployment the plugin talks to; it defaults to `https://app.everruns.com/mcp`.
+The plugin reads its MCP endpoint from `plugins/everruns/.mcp.json`, which all
+three hosts share. Install from a local clone and replace the `url` value with
+your deployment's `/mcp` endpoint, for example `http://localhost:9300/mcp` for
+the [Docker Compose](/getting-started/docker-compose/) stack:
+
+```bash
+git clone https://github.com/everruns/everruns.git
+# edit everruns/plugins/everruns/.mcp.json, then:
+claude plugin install ./everruns/plugins/everruns
+```
 
 ## Read the docs as text
 
 The documentation site publishes itself as plain Markdown for agents and other
 tools that would rather read text than HTML.
 
-- [`/llms.txt`](https://docs.everruns.com/llms.txt) — the index: the three ways
+- [`/llms.txt`](https://docs.everruns.com/llms.txt): the index: the three ways
   to run Everruns, every documentation set, and the machine-readable surfaces.
   Start here.
-- [`/llms-full.txt`](https://docs.everruns.com/llms-full.txt) — every prose page
+- [`/llms-full.txt`](https://docs.everruns.com/llms-full.txt): every prose page
   in one file (roughly 250k tokens).
-- [`/llms-small.txt`](https://docs.everruns.com/llms-small.txt) — the same
+- [`/llms-small.txt`](https://docs.everruns.com/llms-small.txt): the same
   corpus without the vendor- and operator-specific long tails.
-- `/_llms-txt/<set>.txt` — one topic at a time, mirroring the sidebar:
+- `/_llms-txt/<set>.txt`: one topic at a time, mirroring the sidebar:
   [framework](https://docs.everruns.com/_llms-txt/framework.txt),
   [getting-started](https://docs.everruns.com/_llms-txt/getting-started.txt),
   [built-ins](https://docs.everruns.com/_llms-txt/built-ins.txt),
@@ -72,7 +69,7 @@ tools that would rather read text than HTML.
   [reference](https://docs.everruns.com/_llms-txt/reference.txt),
   [operations](https://docs.everruns.com/_llms-txt/operations.txt).
   Prefer a set over the complete text.
-- [`/api/openapi.json`](https://docs.everruns.com/api/openapi.json) — the REST
+- [`/api/openapi.json`](https://docs.everruns.com/api/openapi.json): the REST
   API as OpenAPI 3.0. The text sets carry prose only, so take endpoint shapes
   from here.
 

@@ -52,7 +52,7 @@ A Session is a working instance of an agentic loop. It is configured by its harn
 - The agent is optional and can change over the session's lifetime
 - Sessions can have their own capabilities, which are additive to the agent's capabilities
 - Sessions can override the LLM model
-- Status flow: `started` → `active` → `idle` (sessions work indefinitely)
+- Status flow: `started` → `active` → `idle`, with `waiting_for_tool_results` while client-side tools run and `paused` when a budget pauses work (sessions work indefinitely)
 
 ### Capability
 
@@ -100,7 +100,7 @@ Each session contains turns, messages, events, an isolated filesystem, and key-v
 
 ### Turn
 
-A Turn is one iteration of the agent loop: reason (call the LLM) then act (execute tools).
+A Turn is the agent's response to one input message: one or more iterations of the agent loop, each a reason step (call the LLM) followed by an act step (execute tools).
 
 - Each turn belongs to a session
 - A turn produces messages and emits events
@@ -118,7 +118,7 @@ Each iteration:
 2. **Act**: All tool calls from the LLM are executed in parallel. Results are added to the conversation history
 3. **Loop**: If there were tool calls, go back to Reason. If the LLM produced a final text response, the turn is complete
 
-The loop runs for a maximum of **10 iterations** per turn to prevent runaway execution.
+The loop runs for at most **500 iterations** per turn by default to prevent runaway execution; set `max_iterations` on the agent or session to change it.
 
 #### Durable Execution
 
@@ -177,9 +177,9 @@ System-wide configuration for LLM providers, models, and MCP servers.
 
 An LLM Provider is a configured API provider such as OpenAI or Anthropic. Providers store encrypted API keys and contain models.
 
-- Provider types include `openai`, `openrouter`, `openai_completions`, `anthropic`, `gemini`, and `bedrock`
 - Each provider contains many models
-- Default providers (OpenAI, Anthropic) are seeded on startup
+- See [Providers](/providers/) for the supported provider types
+- On Everruns Cloud a built-in Everruns provider is available without your own keys
 
 ### LLM Model
 

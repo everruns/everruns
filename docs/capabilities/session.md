@@ -1,6 +1,6 @@
 ---
 title: Session
-description: Inspect and update the current session's metadata, including its ID, title, and agent name.
+description: Inspect and update the current session's metadata, including its ID, title, agent name, locale, and usage.
 ---
 
 | | |
@@ -31,7 +31,7 @@ repeated write of the current title is a no-op and emits no event.
 
 Get current session metadata.
 
-Returns: session ID, title, agent name.
+Returns: session ID, title, locale, agent name, and token usage (input, output, cache read, cache creation, and total tokens) when available.
 
 ### `write_session_title`
 

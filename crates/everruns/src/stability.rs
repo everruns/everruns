@@ -16,4 +16,4 @@
 //! Items without a marker are provisional: treat them as alpha until marked.
 //!
 //! First pass: the direct-LLM surface ([`llm`], [`Model`], and the provider
-//! traits behind them) is stable; the [`classifier`] surface is alpha.
+//! traits behind them) is stable; the [`decisions`] surface is alpha.

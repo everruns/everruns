@@ -312,7 +312,7 @@ NATS_URL=nats://control:s3cret@nats:4222
 - Credentials embedded in the URL (`nats://user:password@host`) are sent as user/password auth. Reserved characters in the password (`/`, `@`, `:`, `%`) are accepted as-is, so a generated secret can be pasted unmodified; percent-encoded passwords are decoded and also work
 - Fail-graceful: if NATS connection fails at startup, falls back to PG NOTIFY + in-memory delivery with a warning that includes the connection error
 - Only used by control-plane (server); workers communicate via gRPC and don't need NATS access
-- Default port: 4222 (or `PORT_PREFIX22` with `PORT_PREFIX`)
+- Default port: 4222 (or `<PORT_PREFIX>22` with `PORT_PREFIX`, for example `27122` for prefix `271`)
 - `just start-all` automatically starts NATS and exports `NATS_URL` if `nats-server` is installed
 
 ## LLM Provider API Keys
@@ -447,6 +447,19 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 - Disable response buffering for SSE endpoints
 - Example Caddy config: see `local/Caddyfile`
 
+## Other Server Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUTH_MODE` and `AUTH_*` | Depends on `DEPLOYMENT_GRADE` | Authentication mode and its settings (`AUTH_BASE_URL`, `AUTH_JWT_SECRET`, `AUTH_LOGIN_ORIGIN`, and others). See [Authentication](/sre/runbooks/authentication/). |
+| `RATE_LIMIT_API_REQUESTS_PER_MINUTE` | `1200` | API request rate limit per minute. Uses Valkey when `VALKEY_URL` is set, otherwise a per-instance in-memory limiter. |
+| `TRUSTED_PROXY_HOPS` | `1` | Number of trusted reverse proxies in front of the server. The client IP is taken from `X-Forwarded-For` counting this many entries from the right. Raise it if a CDN or load balancer sits in front of your reverse proxy. |
+| `EVENT_RETENTION_DAYS` | `0` (disabled) | Archive session events older than this many days. A background task runs hourly. |
+| `DATABASE_POOL_MAX` | `50` | Maximum PostgreSQL connections in the request pool. |
+| `DATABASE_POOL_MIN` | `5` | Minimum PostgreSQL connections kept open. |
+| `SECRETS_ENCRYPTION_KEY_PREVIOUS` | Unset | Previous encryption key, kept during key rotation so existing values still decrypt. See [Encryption key rotation](/sre/runbooks/encryption-key-rotation/). |
+| `EXPECTED_INSTANCES` | `1` | Number of control-plane instances behind the load balancer. Divides the global and per-org SSE connection limits across instances. Per-session limits are not divided. |
+
 ## SSE Streaming Configuration
 
 | Variable | Default | Description |
@@ -460,7 +473,7 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 
 **Notes:**
 - Heartbeat comments (`: heartbeat\n\n`) are sent on all SSE streams to detect stale connections
-- The heartbeat interval must be less than the SDK read timeout (default: 60s) with safety margin
+- The heartbeat interval must be less than the SDK read timeout (default: 45s) with safety margin
 - Connection cycling prevents stale connections through proxies and load balancers
 - When running behind HTTP/1.1 proxies, increase `SSE_REALTIME_CYCLE_SECS` to reduce reconnection frequency
 

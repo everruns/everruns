@@ -110,7 +110,7 @@ These exist in Everruns but live outside this model:
 | Per-run scratch              | Workspace         | Memory Tool           | Working memory          |
 | Durable named store          | Memory            | Memory Store          | Archival memory         |
 | Mount access control         | RO / RW per mount | RO / RW per attach    | n/a                     |
-| Background consolidation     |, | Dreaming              | Reflection              |
+| Background consolidation     | – | Dreaming              | Reflection              |
 | Multi-surface (files/tables) | Files today; more planned | Files only       | Text blocks             |
 
 ## Further reading

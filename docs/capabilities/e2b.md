@@ -12,7 +12,7 @@ sidebar:
 | **Features** | None |
 | **Dependencies** | [`session_storage`](/capabilities/session-storage/) |
 
-Run code in cloud sandboxes powered by E2B. Create isolated Linux environments, execute commands, and manage sandbox files. Sandboxes are scoped to the session and cleaned up automatically.
+Run code in cloud sandboxes powered by E2B. Create isolated Linux environments, execute commands, and manage sandbox files. Sandboxes are tracked per session; pause, resume, or delete them with `e2b_manage_sandbox`.
 
 ## Tools
 
@@ -23,7 +23,7 @@ Create a new E2B sandbox.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `template` | string | no | Sandbox template name or ID |
-| `timeout_ms` | integer | no | Timeout in milliseconds |
+| `timeout_seconds` | integer | no | Sandbox TTL in seconds |
 
 Returns `sandbox_id` and connection details.
 
@@ -36,6 +36,7 @@ Execute a shell command in a sandbox.
 | `sandbox_id` | string | yes | Target sandbox |
 | `command` | string | yes | Shell command to run |
 | `cwd` | string | no | Working directory |
+| `timeout_ms` | integer | no | Command timeout in milliseconds |
 
 ### `e2b_read_file`
 
@@ -64,12 +65,13 @@ List all E2B sandboxes created in the current session.
 
 ### `e2b_manage_sandbox`
 
-Pause or kill an E2B sandbox.
+Pause, resume, or delete an E2B sandbox.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `sandbox_id` | string | yes | Target sandbox |
-| `action` | string | yes | `pause` or `kill` |
+| `action` | string | yes | `pause`, `resume`, or `delete` |
+| `timeout_seconds` | integer | no | Timeout to apply when resuming |
 
 ## Authentication
 
@@ -78,7 +80,7 @@ E2B API key is resolved automatically from **Settings > Connections > E2B**.
 ## Notes
 
 - Each sandbox is an isolated Linux environment with internet access
-- Sandboxes are tracked per session; use `e2b_manage_sandbox` to kill when done
+- Sandboxes are tracked per session; use `e2b_manage_sandbox` to delete when done
 - File operations target the sandbox filesystem, not the session workspace
 
 ## See Also

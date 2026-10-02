@@ -47,7 +47,7 @@ Token budgets are model-agnostic, they cap raw token usage regardless of which p
 | `credits` | 1 credit = 1,000 tokens | Token count ÷ 1,000 |
 | Custom | Any string | Falls back to raw token count |
 
-USD budgets reflect real costs: $10 lasts much longer on GPT-4o than on Claude Opus.
+USD budgets reflect real costs, so the same amount lasts longer on a cheaper model than on a more expensive one.
 
 ## Stack budgets for layered limits
 

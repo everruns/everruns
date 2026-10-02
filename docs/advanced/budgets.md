@@ -15,9 +15,9 @@ After every LLM generation, Everruns computes the cost and debits it from any ac
 
 1. **LLM call completes**: Everruns extracts token counts (input + output).
 2. **Compute debit**: Converts tokens to the budget's currency:
-   - `usd`, uses per-model pricing (cost per million tokens for input/output)
-   - `tokens`, raw token count
-   - `credits`, 1 credit = 1,000 tokens
+   - `usd`: uses per-model pricing (cost per million tokens for input/output)
+   - `tokens`: raw token count
+   - `credits`: 1 credit = 1,000 tokens
    - Custom currencies fall back to token count
 3. **Debit ledger**: Appends an immutable ledger entry and updates the balance.
 4. **Evaluate rules**: Checks thresholds:
@@ -25,7 +25,7 @@ After every LLM generation, Everruns computes the cost and debits it from any ac
    - Spending exceeds soft limit → session pauses
    - Balance reaches zero → session stops
 
-Enforcement is **post-hoc**: the check runs after each LLM call, not before. This avoids blocking the hot path. The last generation may slightly overshoot the limit, this is expected and by design.
+Enforcement is **post-hoc**: the check runs after each LLM call, not before. This avoids blocking the hot path. The last generation may slightly overshoot the limit; this is expected and by design.
 
 ## Currencies
 
@@ -36,7 +36,9 @@ Enforcement is **post-hoc**: the check runs after each LLM call, not before. Thi
 | `credits` | 1 credit = 1,000 tokens | Token count divided by 1,000 |
 | Custom | Any string | Falls back to raw token count |
 
-USD budgets use real per-model pricing. A $10 budget on GPT-4o will last much longer than $10 on Claude Opus, because the per-token cost differs.
+USD budgets use real per-model pricing, so the same dollar limit buys far more turns on a small model than on a frontier one.
+
+These session and agent budgets are limits you set. They are separate from the prepaid credit balance of an organization on Everruns Cloud, which pays for the built-in model provider and stops it at zero balance.
 
 ## Soft Limits and Pausing
 

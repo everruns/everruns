@@ -27,7 +27,7 @@ Agents need shell access to be effective, installing packages, running builds, i
 
 Everruns integrates bashkit as the execution backend for the **Bashkit Shell** agent capability. When an agent runs shell commands, they execute inside bashkit rather than a real shell.
 
-Everruns compiles bashkit **without** the `http_client` feature, so the `curl`/`wget` network builtins listed above are not available inside sessions, the Bashkit Shell capability has no network access. Use the Web Fetch capability for HTTP.
+Everruns compiles bashkit with the `http_client` feature, but `curl`/`wget` are off by default in sessions. Set `enable_http` in the [Bashkit Shell](/capabilities/bashkit-shell/#outbound-http-optional) capability config to turn them on; requests then go through the platform egress boundary and its network access lists. Without the flag, use the Web Fetch capability for HTTP.
 
 ### Session Filesystem Bridge
 

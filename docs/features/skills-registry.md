@@ -25,7 +25,7 @@ For workspace-scoped skills (drop a SKILL.md into a session's `/.agents/skills/`
 | Source | ID | Example |
 |---|---|---|
 | Registry | `skill:{uuid}` | `skill:550e8400-e29b-41d4-a716-446655440000` |
-| Workspace | Aggregated under `skills` capability |, |
+| Workspace | Aggregated under `skills` capability | – |
 
 ## Dependencies
 

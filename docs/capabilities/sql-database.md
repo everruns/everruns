@@ -20,6 +20,7 @@ Run DDL/DML statements (CREATE TABLE, INSERT, UPDATE, DELETE).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
+| `database` | string | yes | Database name (alphanumeric and underscores); created if missing |
 | `sql` | string | yes | SQL statement to execute |
 
 ### `sql_query`
@@ -28,11 +29,17 @@ Run SELECT queries. Results limited to 1000 rows.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
+| `database` | string | yes | Database name |
 | `sql` | string | yes | SELECT query |
 
 ### `sql_schema`
 
 Introspect the database schema, list tables, columns, and types.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `database` | string | yes | Database name |
+| `table` | string | no | Table name; omit to list all tables |
 
 ## Notes
 

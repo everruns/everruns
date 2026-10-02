@@ -22,6 +22,16 @@ Read the contents of a file. Successful responses include `content_hash`.
 |---|---|---|---|
 | `path` | string | yes | Absolute path (e.g., `/workspace/src/main.py`) |
 
+### `read_many_files`
+
+Read 2-10 independent files in one ordered call. Only batch paths known before the call; if one file reveals another path, read it in a later call. Results keep per-file success or error details. Images return metadata only; read them individually with `read_file`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `paths` | array | yes | Ordered list of 2-10 absolute paths |
+| `offset` | integer | no | Starting line applied to every file (0-indexed, default 0) |
+| `limit` | integer | no | Max lines per file |
+
 ### `write_file`
 
 Create or overwrite a file. Parent directories are created automatically. Successful responses include `content_hash`.

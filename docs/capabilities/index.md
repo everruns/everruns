@@ -11,7 +11,7 @@ Capabilities are modular units that extend what an agent can do. Each capability
 - **System prompt additions**: context and instructions prepended to the agent's prompt
 - **Features**: UI elements unlocked when the capability is active (e.g., Workspace tab)
 
-Agents compose capabilities, enable only what you need.
+Agents compose capabilities; enable only what you need.
 
 ## Capability Reference
 
@@ -21,7 +21,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 
 | Capability | ID | Tools |
 |---|---|---|
-| [File System](/capabilities/file-system/) | `session_file_system` | 6 |
+| [File System](/capabilities/file-system/) | `session_file_system` | 8 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 |
 | [Session](/capabilities/session/) | `session` | 2 |
@@ -33,7 +33,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 | [Auto-Continue After Usage Limit](/capabilities/usage-limit-auto-continue/) | `usage_limit_auto_continue` | 0 |
-| [Sub Agents](/capabilities/sub-agents/) | `subagents` | 3 |
+| [Sub Agents](/capabilities/sub-agents/) | `subagents` | 1 (`spawn_agent` delegation target) |
 | [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
 | [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |
 
@@ -89,7 +89,7 @@ External-service capabilities and blueprint-backed workflows.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [GitHub](/capabilities/github/) | `github` | 3 |
+| [GitHub](/capabilities/github/) | `github` | 5 (6 with `allow_pull_requests`) |
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
 
@@ -130,7 +130,7 @@ Streaming-output guardrails and runtime safety nets.
 The [`guardrails`](/capabilities/guardrails/) capability runs config-driven
 checks over model output and tool activity, blocking or logging per check.
 Checks can be deterministic (regex, blocklist, tool-call patterns) or
-model-backed, an `llm_judge` policy or a `moderation` decisions, plus
+model-backed, an `llm_judge` policy or a `moderation` decision, plus
 delegation to an external guardrail over scoped MCP. Each check binds a rule to
 a stage (`output`, `tool_use`, `tool_output`) with an `on_fail` of `block` or
 `log`; model-backed and MCP checks send a bounded excerpt off the sync path and
@@ -149,16 +149,6 @@ agent actions from outside the model.
 | Capability | ID | Tools |
 |---|---|---|
 | [User Hooks](/capabilities/user-hooks/) | `user_hooks` | 0 |
-
-### Demo
-
-Pre-built domain simulations for testing and demonstrations.
-
-| Capability | ID | Tools |
-|---|---|---|
-| [Fake Warehouse](/capabilities/fake-warehouse/) | `fake_warehouse` | 10 |
-| [Fake AWS](/capabilities/fake-aws/) | `fake_aws` | 11 |
-| [Fake CRM](/capabilities/fake-crm/) | `fake_crm` | 8 |
 
 ## Quick Start
 

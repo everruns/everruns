@@ -1,8 +1,6 @@
 ---
 title: Serve (experimental)
 description: Build a hosted agent app with attribute macros, file-layout discovery and a manifest, served over a subset of the Everruns server /v1 API.
-sidebar:
-  order: 1
 ---
 
 > **Experimental.** serve is a proof of concept. Its APIs will change and it
@@ -87,6 +85,8 @@ default credential chain whenever `AWS_REGION` is set.
 | [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | A tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals and the Bashkit sandbox. |
 | [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
+| [`examples/serve/agentcore`](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore) | The same kind of app packaged for Amazon Bedrock AgentCore Runtime. |
+| [`examples/serve/agentcore-workspace`](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore-workspace) | An AgentCore workspace agent with a shell in the microVM and an approval. |
 | [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | Two agents over A2A: a served `researcher`, and an `everruns` agent that delegates to it. |
 
 ## Project layout
@@ -143,7 +143,7 @@ knows what it registered.
 | `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. |
 | `manifest` | Prints the host contract as JSON: agents, models, tool schemas, skills, channels, cron entries, secrets, sandbox, evals and a build id. |
 | `eval [--against URL]` | Runs the evals in-process, or against a running deployment as a gate before promotion. |
-| `deploy` | Prints what a host would provision from the manifest. There is no cloud target yet. |
+| `deploy` | Prints what a host would provision from the manifest. The one supported deployment target is [Amazon Bedrock AgentCore](/framework/serve-agentcore/). |
 
 ## Wire API
 
@@ -238,7 +238,7 @@ build that owns it.
   request parked by a subagent is lost.
 - A2A tasks are held in memory, and A2A 0.3 clients are not served.
 - A deny note is not passed to the model.
-- There is no OCI build, cloud deploy, or Postgres or NATS adapter.
+- There is no generic OCI build or Postgres or NATS adapter. [AgentCore](/framework/serve-agentcore/) is the one supported deployment target.
 - The server's agent, harness, workspace and tool-result routes are not served.
 
 ## Amazon Bedrock AgentCore

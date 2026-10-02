@@ -15,11 +15,11 @@ The [getting-started architecture](/getting-started/architecture/) page describe
 |-----------|------|----------|--------------|
 | Reverse proxy | TLS termination and route fan-out for `/api`, `/mcp`, `/.well-known/*`, UI | Yes (or equivalent ingress) | 443 |
 | Control plane (server) | REST API, SSE event streams, gRPC server for workers, owns all state | Yes | 9301 (HTTP), 9001 (gRPC) |
-| Worker pool | Stateless executors of the agentic loop (input → reason → act) | Yes |, (outbound only) |
+| Worker pool | Stateless executors of the agentic loop (input → reason → act) | Yes | – (outbound only) |
 | PostgreSQL 17 | Durable storage for agents, sessions, events, durable task queue | Yes | 5432 |
 | NATS JetStream | Push-based ephemeral event delivery and task notifications | Optional | 4222 |
 | Valkey | Distributed sliding-window rate limiting across control-plane instances | Optional | 6379 |
-| Management UI | Operator interface for agent and provider configuration | Optional |, (served by proxy) |
+| Management UI | Operator interface for agent and provider configuration | Optional | – (served by proxy) |
 
 Workers never talk to PostgreSQL, NATS, or Valkey directly. Every read and write goes through the control plane's gRPC service on port 9001. This is what lets workers run with no database credentials, no encryption keys, and no awareness of the data tier.
 

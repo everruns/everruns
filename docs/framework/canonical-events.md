@@ -1,8 +1,6 @@
 ---
 title: Canonical Framework events
 description: Observe a complete agent turn through a bounded typed/raw bridge while keeping durability, live delivery, and derived history distinct.
-sidebar:
-  order: 2
 ---
 
 `Session::events()` installs an in-process subscriber without exposing runtime

@@ -62,6 +62,10 @@ Download sandbox workspace to session storage.
 |---|---|---|---|
 | `sandbox_id` | string | yes | Target sandbox |
 
+### `daytona_list_snapshots`
+
+List available Daytona snapshots (names, CPU/memory/disk specs, state). Use a snapshot name as the `snapshot` parameter of `daytona_create_sandbox`. Takes no parameters.
+
 ### `daytona_list_sandboxes`
 
 List all sandboxes for the current session.
@@ -93,6 +97,16 @@ Configure git credentials for push/pull/fetch.
 |---|---|---|---|
 | `sandbox_id` | string | yes | Target sandbox |
 
+### `daytona_api_call` (opt-in)
+
+Call any Daytona REST endpoint directly, for operations the dedicated tools do not cover. Only available when the capability config sets `enable_api_calling` to `true`. Authentication headers are injected automatically, and the Daytona OpenAPI spec is mounted at `/daytona/openapi.yaml`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `method` | string | yes | `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` |
+| `path` | string | yes | Management API path (`/sandbox/...`) or Toolbox API path (`/toolbox/{sandbox_id}/...`) |
+| `body` | object or array | no | JSON request body |
+
 ## Authentication
 
 Daytona API key is resolved automatically from **Settings > Connections > Daytona**.
@@ -102,7 +116,7 @@ Daytona API key is resolved automatically from **Settings > Connections > Dayton
 - Each sandbox is a full isolated Linux environment with network access
 - Sandboxes auto-stop after 5 minutes of inactivity
 - Always delete sandboxes when done to free resources
-- All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`
+- All sandbox-scoped tools (not `daytona_create_sandbox`, `daytona_list_sandboxes`, or `daytona_list_snapshots`) require a `sandbox_id`
 
 ## See Also
 

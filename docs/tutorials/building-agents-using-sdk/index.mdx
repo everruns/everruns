@@ -8,7 +8,7 @@ slug: tutorials/building-agents-using-sdk
 
 import { Tabs, TabItem } from "@astrojs/starlight/components";
 
-By the end of this tutorial you will have created an Everruns agent, started a session, sent a message, and streamed the response — using the official Python SDK.
+By the end of this tutorial you will have created an Everruns agent, started a session, sent a message, and streamed the response, using the official Python SDK.
 
 This is a *tutorial*: a guided lesson. We make all the choices for you. When you want to do something different (different language, different tools, different patterns), follow up with the [How-to guides](/how-to/).
 
@@ -20,40 +20,50 @@ A research-assistant agent with web access. You'll send it a topic and watch it 
 
 ## What you need
 
-- A running Everruns instance. The easiest path is the [Docker Compose quickstart](/getting-started/docker-compose/).
+- An Everruns account. The quickest option is [Everruns Cloud](https://app.everruns.com),
+  which includes a built-in model provider and starter credit. A
+  [self-hosted Platform](/getting-started/docker-compose/) works too.
+- A personal access token: **Settings** > **Personal Access Tokens** in the UI.
 - Python 3.10 or newer.
-- An LLM provider configured (an OpenAI or Anthropic API key set in the Everruns UI).
 
 ```bash
 pip install everruns-sdk
+export EVERRUNS_API_KEY=evr_pat_...
+export EVERRUNS_API_URL=https://app.everruns.com/api  # or http://localhost:9300/api when self-hosted
 ```
 
-## Step 1 — Connect to the server
+## Step 1: Connect to the server
 
-The `Everruns` client reads `EVERRUNS_API_KEY` and `EVERRUNS_API_URL` from the environment. For a local `just start-dev` deployment, API key `"dev"` works.
+The `Everruns` client reads `EVERRUNS_API_KEY` and `EVERRUNS_API_URL` from the environment.
 
 ```python
 import asyncio
-from everruns_sdk import Everruns
+from everruns_sdk import AgentCapabilityConfig, Everruns
 
-client = Everruns(api_key="dev", base_url="http://localhost:9300/api")
+client = Everruns()
 ```
 
-## Step 2 — Create an agent
+## Step 2: Create an agent
 
 An **agent** is the configuration: a name, a system prompt, and a set of capabilities (tools).
+`apply_by_name` creates the agent, or updates it when you run the script again. Names are
+lowercase words joined by hyphens.
 
 ```python
 async def main():
-    agent = await client.agents.create(
-        name="Research Assistant",
+    agent = await client.agents.apply_by_name(
+        name="research-assistant",
         system_prompt=(
             "You are a research assistant. When given a topic, you:\n"
             "1. Fetch relevant web pages\n"
             "2. Save your notes to /workspace\n"
             "3. Produce a concise summary"
         ),
-        capabilities=["web_fetch", "session_file_system", "current_time"],
+        capabilities=[
+            AgentCapabilityConfig(ref="web_fetch"),
+            AgentCapabilityConfig(ref="session_file_system"),
+            AgentCapabilityConfig(ref="current_time"),
+        ],
     )
     print(f"Agent: {agent.id}")
 
@@ -62,7 +72,7 @@ asyncio.run(main())
 
 The capabilities give the agent its tools: `web_fetch` to retrieve URLs, `session_file_system` for an isolated workspace, `current_time` to know what day it is.
 
-## Step 3 — Start a session
+## Step 3: Start a session
 
 A **session** is a working conversation with the agent. It owns the conversation history, an isolated virtual filesystem, and key/value storage.
 
@@ -74,9 +84,10 @@ session = await client.sessions.create(
 print(f"Session: {session.id}")
 ```
 
-## Step 4 — Send a message
+## Step 4: Send a message
 
-Sending a user message queues a durable workflow that runs the agent's reason–act loop. The call returns immediately — the response arrives as events.
+Sending a user message starts a durable turn that runs the agent's reason-act loop. The call
+returns as soon as the message is recorded; the response arrives as events.
 
 ```python
 await client.messages.create(
@@ -85,12 +96,19 @@ await client.messages.create(
 )
 ```
 
-## Step 5 — Stream the response
+## Step 5: Stream the response
 
-`client.events.stream(...)` returns an async iterator over typed events. It handles SSE reconnection, heartbeats, and resumption for you.
+`client.events.stream(...)` returns an async iterator over typed events and handles SSE
+reconnection and heartbeats for you. A stream only delivers events written after it connects,
+and a fast model can start answering before that. So start the stream from the event that
+recorded your message (`input.message`): nothing after it is missed.
 
 ```python
-async for event in client.events.stream(session.id):
+latest_input = await client.events.list(
+    session.id, types=["input.message"], order_desc=True, limit=1
+)
+
+async for event in client.events.stream(session.id, since_id=latest_input[0].id):
     if event.type == "output.message.delta":
         print(event.data.get("delta", ""), end="", flush=True)
     elif event.type == "tool.started":
@@ -104,29 +122,33 @@ async for event in client.events.stream(session.id):
         break
 ```
 
-You'll see the agent's reasoning stream token-by-token, with `[tool]` markers each time it fetches a URL or writes to its workspace.
+You'll see the agent's answer stream token by token, with `[tool]` markers each time it fetches a URL or writes to its workspace.
 
-## Step 6 — Put it together
+## Step 6: Put it together
 
 Here's the complete program:
 
 ```python
 import asyncio
-from everruns_sdk import Everruns
+from everruns_sdk import AgentCapabilityConfig, Everruns
 
 
 async def main():
-    client = Everruns(api_key="dev", base_url="http://localhost:9300/api")
+    client = Everruns()
 
-    agent = await client.agents.create(
-        name="Research Assistant",
+    agent = await client.agents.apply_by_name(
+        name="research-assistant",
         system_prompt=(
             "You are a research assistant. When given a topic, you:\n"
             "1. Fetch relevant web pages\n"
             "2. Save your notes to /workspace\n"
             "3. Produce a concise summary"
         ),
-        capabilities=["web_fetch", "session_file_system", "current_time"],
+        capabilities=[
+            AgentCapabilityConfig(ref="web_fetch"),
+            AgentCapabilityConfig(ref="session_file_system"),
+            AgentCapabilityConfig(ref="current_time"),
+        ],
     )
 
     session = await client.sessions.create(
@@ -139,7 +161,11 @@ async def main():
         "Research durable execution engines. What are the main approaches?",
     )
 
-    async for event in client.events.stream(session.id):
+    latest_input = await client.events.list(
+        session.id, types=["input.message"], order_desc=True, limit=1
+    )
+
+    async for event in client.events.stream(session.id, since_id=latest_input[0].id):
         if event.type == "output.message.delta":
             print(event.data.get("delta", ""), end="", flush=True)
         elif event.type == "tool.started":
@@ -168,7 +194,7 @@ You should see the agent stream a research response, fetching a few URLs along t
 
 ## What just happened
 
-You configured an agent (long-lived), started a session (per-conversation), and consumed the event stream (per-turn). Those three layers — configuration, runtime, data — are the spine of every Everruns application.
+You configured an agent (long-lived), started a session (per-conversation), and consumed the event stream (per-turn). Those three layers (configuration, runtime, data) are the spine of every Everruns application.
 
 The agent loop you watched run is the **reason–act cycle**. The model reasons (returns text or tool calls), tools execute, results feed back in, repeat until the model produces a final answer. See [The agentic loop](/explanation/agentic-loop/) for the design.
 
@@ -176,11 +202,11 @@ The agent loop you watched run is the **reason–act cycle**. The model reasons 
 
 Common follow-ups, each as a focused how-to:
 
-- [Equip an agent with tools](/how-to/equip-agents-with-tools/) — explore the full capability catalog.
-- [Define agents as files](/how-to/define-agents-as-files/) — version-control your agent definitions.
-- [Stream events with the SDK](/how-to/stream-events/) — richer streaming patterns.
-- [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/) — what to do when things go wrong.
-- [Orchestrate multi-agent pipelines](/how-to/orchestrate-multi-agent-pipelines/) — chain agents together.
-- [Publish an agent as a Slack app](/how-to/publish-to-slack/) — deploy to a channel.
+- [Equip an agent with tools](/how-to/equip-agents-with-tools/): explore the full capability catalog.
+- [Define agents as files](/how-to/define-agents-as-files/): version-control your agent definitions.
+- [Stream events with the SDK](/how-to/stream-events/): richer streaming patterns.
+- [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/): what to do when things go wrong.
+- [Orchestrate multi-agent pipelines](/how-to/orchestrate-multi-agent-pipelines/): chain agents together.
+- [Publish an agent as a Slack app](/how-to/publish-to-slack/): deploy to a channel.
 
 For background, read [Core concepts](/explanation/concepts/) and [The agentic loop](/explanation/agentic-loop/).

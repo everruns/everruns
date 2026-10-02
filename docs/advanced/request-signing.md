@@ -216,8 +216,8 @@ Request signing is configured via environment variables. Set them before startin
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `BOT_AUTH_SIGNING_KEY_SEED` | yes |, | Base64url-encoded 32-byte Ed25519 seed |
-| `BOT_AUTH_AGENT_FQDN` | no |, | FQDN for the `Signature-Agent` header |
+| `BOT_AUTH_SIGNING_KEY_SEED` | yes | – | Base64url-encoded 32-byte Ed25519 seed |
+| `BOT_AUTH_AGENT_FQDN` | no | – | FQDN for the `Signature-Agent` header |
 | `BOT_AUTH_VALIDITY_SECS` | no | `300` | Signature validity window in seconds |
 
 When `BOT_AUTH_SIGNING_KEY_SEED` is not set, signing is disabled and no crypto code runs at request time.

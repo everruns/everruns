@@ -5,7 +5,7 @@ sidebar:
   label: CLI
 ---
 
-The `everruns` CLI is a command-line client for the Everruns API. It covers the same surface as the SDK, agents, sessions, messages, capabilities, and is designed to compose well with shell pipelines.
+The `everruns` CLI is a command-line client for the Everruns API. It covers the same surface as the SDK (agents, sessions, messages, capabilities) and is designed to compose well with shell pipelines.
 
 This page covers installation, configuration, and the command surface. For scripting patterns and `jq` examples, see [Automate with the CLI](/how-to/automate-with-the-cli/).
 
@@ -42,7 +42,15 @@ everruns --version
 
 ## Configure
 
-The CLI defaults to the hosted API at `https://app.everruns.com/api`. Override for local or self-hosted deployments:
+The CLI defaults to [Everruns Cloud](https://app.everruns.com) at `https://app.everruns.com/api`. Sign in once:
+
+```bash
+everruns login          # opens the browser for OAuth
+everruns login --token  # paste a personal access token instead (SSH, headless)
+everruns status         # show the current user and organization
+```
+
+For a self-hosted deployment, point the CLI at your API first:
 
 ```bash
 # Per command
@@ -50,17 +58,24 @@ everruns --api-url http://localhost:9300/api agents list
 
 # Per shell
 export EVERRUNS_API_URL=http://localhost:9300/api
-export EVERRUNS_API_KEY=dev
+export EVERRUNS_API_KEY=evr_pat_...   # or run `everruns login`
 ```
 
 ## Command surface
 
 | Group | Subcommands |
 |---|---|
+| `login`, `logout`, `status` | Sign in, sign out, show the current user and organization |
+| `orgs` | `list` organizations, `select` the active one |
 | `agents` | `create`, `list`, `get`, `update`, `delete` |
-| `sessions` | `create`, `list`, `get`, `cancel`, `delete` |
-| `capabilities` | (list, no subcommand) |
+| `sessions` | `create`, `list`, `get`, `watch`, `export` |
 | `chat` | Send a message and stream the response |
+| `triggers` | Manage an agent's schedule triggers: `list`, `create`, `update`, `enable`, `disable`, `run-now` |
+| `participants` | `list`, `add`, `remove` agents in a session |
+| `files` | Sync files between a local folder and a session |
+| `connections` | `set`, `list`, `remove` your provider API keys |
+| `capabilities` | List capabilities |
+| `plugins`, `skills`, `knowledge-bases` | See [Agent composition](#agent-composition) |
 
 ### Agents
 
@@ -81,19 +96,19 @@ If `./agent.toml` exists and you don't pass inline flags, `everruns agents creat
 
 ```bash
 everruns agents list
-everruns agents get agt_xxx
-everruns agents delete agt_xxx
+everruns agents get agent_...
+everruns agents delete agent_...
 ```
 
 ### Sessions
 
 ```bash
-everruns sessions create --agent agt_xxx
-everruns sessions create --agent agt_xxx --title "Debug session"
+everruns sessions create --agent agent_...
+everruns sessions create --agent agent_... --title "Debug session"
 
 # With session-level overrides
 everruns sessions create \
-  --agent agt_xxx \
+  --agent agent_... \
   --harness generic \
   --capability 'web_fetch={"timeout":10}' \
   --hint setup_connection=true \
@@ -105,13 +120,13 @@ Also accepts: `--locale`, repeatable `--tag`, `--system-prompt`, `--hints-json`,
 
 ```bash
 everruns sessions list
-everruns sessions get ses_xxx
+everruns sessions get session_...
 ```
 
 ### Chat
 
 ```bash
-everruns chat "Tell me a joke!" --session ses_xxx
+everruns chat "Tell me a joke!" --session session_...
 ```
 
 Options: `--timeout <seconds>` (default 300), `--no-stream` to queue without waiting.
@@ -126,12 +141,6 @@ everruns agents list -o yaml
 ```
 
 `--quiet` suppresses headers and prints only the essential identifier, useful for capturing IDs in shell variables.
-
-## See also
-
-- [Automate with the CLI](/how-to/automate-with-the-cli/), `jq`, quiet mode, scripting patterns.
-- [Define agents as files](/how-to/define-agents-as-files/), file formats for `-f`.
-- [SDK](/features/sdk/), the programmatic equivalent.
 
 ## Agent composition
 
@@ -160,3 +169,9 @@ everruns knowledge-bases delete <knowledge-base-id>
 Resource identifiers are URL-encoded before requests are sent. Use the global `--output json` or `--output yaml` option for machine-readable discovery output.
 
 Skill creation reads the supplied Markdown file and sends its contents to Everruns. Knowledge document ingestion and assigning composition resources to an agent are not yet exposed by the CLI.
+
+## See also
+
+- [Automate with the CLI](/how-to/automate-with-the-cli/): `jq`, quiet mode, scripting patterns.
+- [Define agents as files](/how-to/define-agents-as-files/): file formats for `-f`.
+- [SDK](/features/sdk/): the programmatic equivalent.

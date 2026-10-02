@@ -14,7 +14,9 @@ sidebar:
 
 Run commands and manage files in a Docker container tied to the session. The container is lazily started on first use and persists for the session duration. A self-hosted alternative to cloud sandbox providers like Daytona or E2B.
 
-> **Experimental:** This capability may change significantly in future releases.
+> **Status:** Experimental, available only on development-grade deployments.
+
+It is also disabled by default and requires `FEATURE_DOCKER_CAPABILITY=true`. It may change significantly in future releases.
 
 ## Tools
 

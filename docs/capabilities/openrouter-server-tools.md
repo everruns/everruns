@@ -77,7 +77,7 @@ for the current list.
 {
   "capabilities": [
     {
-      "capability_ref": "openrouter_server_tools",
+      "ref": "openrouter_server_tools",
       "config": { "tools": ["web_search"] }
     }
   ]
@@ -90,7 +90,7 @@ for the current list.
 {
   "capabilities": [
     {
-      "capability_ref": "openrouter_server_tools",
+      "ref": "openrouter_server_tools",
       "config": {
         "tools": ["web_search", "web_fetch", "datetime"],
         "web_search_max_results": 5

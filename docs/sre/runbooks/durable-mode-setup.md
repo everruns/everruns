@@ -21,20 +21,15 @@ The durable execution engine is a PostgreSQL-backed workflow orchestration syste
 - `DATABASE_URL` environment variable set
 - Migrations applied (includes durable tables)
 
-### 2. Start API in Durable Mode
+### 2. Start the API
+
+The durable engine is the only execution engine, so there is no mode to select.
 
 ```bash
-# Set runner mode to durable
-export RUNNER_MODE=durable
 export DATABASE_URL="postgres://postgres:postgres@localhost/everruns"
 
 # Start the API server
 cargo run -p everruns-server
-```
-
-You should see:
-```
-Using Durable execution engine runner (PostgreSQL-backed)
 ```
 
 ### 3. Start Durable Worker
@@ -46,7 +41,7 @@ In a separate terminal:
 export SERVER_GRPC_ADDRESS="127.0.0.1:9001"
 
 # Start the task worker
-cargo run -p everruns-worker --bin durable-worker
+cargo run -p everruns-worker
 ```
 
 **Important:** Workers communicate with the control-plane via gRPC and do not
@@ -71,12 +66,11 @@ async fn main() -> anyhow::Result<()> {
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RUNNER_MODE` | Runner mode (durable only) | `durable` |
-| `DATABASE_URL` | PostgreSQL connection URL | Required |
+| `DATABASE_URL` | PostgreSQL connection URL (server only; workers do not need it) | Required |
 | `SERVER_GRPC_ADDRESS` | Server gRPC address (`WORKER_GRPC_ADDRESS` legacy alias) | `127.0.0.1:9001` |
 | `WORKER_GRPC_AUTH_TOKEN` | Bearer token for gRPC auth | Unset (disabled) |
 | `WORKER_ID` | Unique worker identifier | Auto-generated |
-| `MAX_CONCURRENT_TASKS` | Max tasks per worker | `1000` |
+| `MAX_CONCURRENT_TASKS` | Max tasks per worker | `50` |
 
 ### Database Tables
 
@@ -89,36 +83,6 @@ The durable engine uses these tables (created by migration 002_durable_execution
 - `durable_workers` - Worker registration and heartbeats
 - `durable_signals` - Workflow signals (cancel, custom)
 - `durable_circuit_breaker_state` - Circuit breaker states
-
-## Testing
-
-### Unit Tests (No Dependencies)
-
-```bash
-cargo test -p everruns-durable --lib
-```
-
-Expected: 91+ tests passing
-
-### Integration Tests (Requires PostgreSQL)
-
-```bash
-# Create test database
-psql -U postgres -c "CREATE DATABASE everruns_test;"
-
-# Run migrations (required for tests - server auto-migrates but tests don't start server)
-DATABASE_URL="postgres://postgres:postgres@localhost/everruns_test" \
-  sqlx migrate run --source crates/server/migrations
-
-# Run integration tests
-DATABASE_URL="postgres://postgres:postgres@localhost/everruns_test" \
-  cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
-```
-
-Expected: 17 tests passing
-
-> **Note**: In production, migrations are auto-applied when `everruns-server` starts.
-> For tests, we run migrations manually since tests don't start the server.
 
 ## Workflow Lifecycle
 
@@ -225,8 +189,7 @@ UPDATE durable_dead_letter_queue SET requeued_at = NOW() WHERE id = '<dlq_id>';
 | Phase | Status | Description |
 |-------|--------|-------------|
 | Phase 1-4 | ✅ Complete | Core abstractions, persistence, reliability, worker pool |
-| Phase 5 | 🔄 Planned | Observability & Metrics (OpenTelemetry integration) |
 | Phase 6 | 🔄 Planned | Scale Testing (1000+ concurrent workers) |
 | Phase 7 | ✅ Core Complete | gRPC-based worker integration, crash recovery |
 
-The durable execution engine is production-ready for single-instance deployments.
+Metrics and tracing are covered under [Observability](/observability/opentelemetry/).
