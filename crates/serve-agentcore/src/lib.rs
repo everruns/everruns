@@ -19,12 +19,16 @@
 //!   `InvokeAgentRuntime` callers usually send). The AG-UI thread defaults
 //!   to the AgentCore session id from
 //!   `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id`.
+//! - `GET /ws`: the same runs over AgentCore's WebSocket transport. Each text
+//!   message is one invocation body; the run's AG-UI events come back as one
+//!   text message each, so a connection can carry several runs in turn.
 //! - serve's own `/v1` wire API and `/health`, unchanged, for local use and
 //!   `eval --against`.
 //!
 //! Everything else is serve's: the app, its agents and tools, approvals,
-//! `ask_user`, and the durable SQLite session log (point `SERVE_DATA_DIR`
-//! at AgentCore session storage so sessions survive microVM restarts).
+//! `ask_user`, and the durable SQLite session log, kept on AgentCore session
+//! storage (`/mnt/workspace`) when the runtime mounts it, so sessions survive
+//! the microVM stopping.
 //!
 //! ```no_run
 //! use serve::prelude::*;
@@ -55,6 +59,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use axum::body::{Body, Bytes};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -244,6 +249,7 @@ pub fn router(app: App, options: Options) -> serve::Result<(Router, String)> {
     let router = Router::new()
         .route("/ping", get(ping))
         .route("/invocations", post(invocations))
+        .route("/ws", get(ws))
         .fallback(forward)
         .with_state(target);
     Ok((router, agent))
@@ -367,6 +373,93 @@ async fn invocations(State(target): State<Target>, headers: HeaderMap, body: Byt
         Ok(booted) => booted.server.ag_ui(&target.agent, &input).await,
         Err(response) => response,
     }
+}
+
+/// `GET /ws`: AgentCore's WebSocket transport for the same runs.
+///
+/// Decision: a text message is exactly an `/invocations` body, and the reply
+/// is that run's AG-UI events, one JSON event per text message (the SSE
+/// payloads without their framing). Runs on one connection are sequential,
+/// as on an AG-UI client. A body that cannot run gets a single `RUN_ERROR`
+/// instead of closing the socket, so the client can send the next one.
+async fn ws(
+    State(target): State<Target>,
+    headers: HeaderMap,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    let session = headers
+        .get(SESSION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    upgrade.on_upgrade(move |socket| converse(target, session, socket))
+}
+
+async fn converse(target: Target, session: Option<String>, mut socket: WebSocket) {
+    while let Some(Ok(message)) = socket.recv().await {
+        let body = match message {
+            Message::Text(text) => Bytes::from(text.as_str().to_owned()),
+            Message::Binary(bytes) => bytes,
+            Message::Close(_) => break,
+            Message::Ping(_) | Message::Pong(_) => continue,
+        };
+        let response = match run_agent_input(&body, session.as_deref()) {
+            Ok(input) => match target.booted().await {
+                Ok(booted) => booted.server.ag_ui(&target.agent, &input).await,
+                Err(response) => response,
+            },
+            Err(why) => problem(StatusCode::BAD_REQUEST, why),
+        };
+        if relay(response, &mut socket).await.is_err() {
+            break;
+        }
+    }
+}
+
+/// Send one run's AG-UI events over the socket. A problem response (the run
+/// never started) becomes one `RUN_ERROR`.
+async fn relay(response: Response, socket: &mut WebSocket) -> Result<(), axum::Error> {
+    use futures_util::StreamExt;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .unwrap_or_default();
+        let detail = serde_json::from_slice::<Value>(&body)
+            .ok()
+            .and_then(|problem| problem["detail"].as_str().map(str::to_string))
+            .unwrap_or_else(|| status.to_string());
+        let error =
+            json!({ "type": "RUN_ERROR", "message": detail, "code": status.as_u16().to_string() });
+        return socket.send(Message::Text(error.to_string().into())).await;
+    }
+    let mut stream = response.into_body().into_data_stream();
+    let mut pending = String::new();
+    while let Some(chunk) = stream.next().await {
+        let Ok(chunk) = chunk else { break };
+        pending.push_str(&String::from_utf8_lossy(&chunk));
+        while let Some(end) = pending.find("\n\n") {
+            let frame: String = pending.drain(..end + 2).collect();
+            if let Some(data) = sse_data(&frame) {
+                socket.send(Message::Text(data.into())).await?;
+            }
+        }
+    }
+    if let Some(data) = sse_data(&pending) {
+        socket.send(Message::Text(data.into())).await?;
+    }
+    Ok(())
+}
+
+/// The `data:` payload of an SSE frame, joined across lines.
+fn sse_data(frame: &str) -> Option<String> {
+    let lines: Vec<&str> = frame
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .map(|data| data.strip_prefix(' ').unwrap_or(data))
+        .collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 /// Everything else: serve's `/v1` wire API and `/health`.
