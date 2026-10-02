@@ -8,12 +8,11 @@
 //! accepts the manifest we already generate, whole.
 //!
 //! Why this is a seam rather than an implementation. Creating apps requires a
-//! Slack *app configuration token*, which is an Everruns-the-company credential
-//! — not something each self-hosted deployment can hold. So the OSS side owns
-//! the manifest, the routes, and the credential storage, and a deployment that
-//! has a token supplies the provisioner. With no provisioner installed the
-//! one-click path reports itself unavailable and the copy-paste flow that
-//! self-hosted already uses is untouched.
+//! Slack *app configuration token* for the workspace the app will live in,
+//! which each organization supplies for each workspace it connects. The server
+//! implements that against its database; a deployment may substitute its own
+//! provisioner, and one with none reports the one-click path unavailable while
+//! the copy-paste flow stays untouched.
 
 use async_trait::async_trait;
 
@@ -75,6 +74,14 @@ pub struct ProvisionedSlackApp {
     /// When the nonce was minted, so an abandoned install expires.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install_state_issued_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// The Slack workspace (`T…`) the app was created in.
+    ///
+    /// An app exists in exactly one workspace, so retries, the consent screen
+    /// and reaping all have to target this one rather than whichever workspace
+    /// the organization happens to have connected now. `None` only on apps
+    /// created before an organization could connect more than one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
 }
 
 /// Hand-written for the same reason as `SlackAppCredentials`: the derived one
@@ -91,6 +98,7 @@ impl std::fmt::Debug for ProvisionedSlackApp {
                 &self.install_state.as_ref().map(|_| "<set>"),
             )
             .field("install_state_issued_at", &self.install_state_issued_at)
+            .field("team_id", &self.team_id)
             .finish()
     }
 }
@@ -106,6 +114,13 @@ pub enum SlackProvisioningError {
     OrgNotConnected,
     #[error("This organization must reconnect Slack app provisioning")]
     ReconnectRequired,
+    /// The organization has connected several workspaces and the caller did
+    /// not say which one the app belongs in.
+    #[error("Choose which connected Slack workspace to use")]
+    WorkspaceRequired,
+    /// The named workspace is not one this organization has connected.
+    #[error("That Slack workspace is not connected to this organization")]
+    WorkspaceNotConnected,
     /// Slack refused the call. The message is Slack's `error` code, which is a
     /// closed vocabulary (`ratelimited`, `invalid_manifest`, …) and safe to
     /// surface; it never carries our token.
@@ -126,10 +141,13 @@ pub struct SlackProvisioningConnectionStatus {
 /// Creates and reaps per-endpoint Slack apps on behalf of the deployment.
 #[async_trait]
 pub trait SlackAppProvisioner: Send + Sync {
-    /// Create a Slack app from a manifest this server generated.
+    /// Create a Slack app from a manifest this server generated, in the given
+    /// connected workspace. `team_id: None` means the organization's only
+    /// workspace, and is refused with `WorkspaceRequired` when it has several.
     async fn create_app(
         &self,
         org_id: i64,
+        team_id: Option<&str>,
         manifest_yaml: &str,
     ) -> SlackProvisioningResult<SlackAppCredentials>;
 
@@ -140,7 +158,12 @@ pub trait SlackAppProvisioner: Send + Sync {
     /// account that nothing references. Best-effort by contract: the caller
     /// logs a failure and moves on rather than trapping the endpoint in a
     /// state the UI cannot explain.
-    async fn delete_app(&self, org_id: i64, app_id: &str) -> SlackProvisioningResult<()>;
+    async fn delete_app(
+        &self,
+        org_id: i64,
+        team_id: Option<&str>,
+        app_id: &str,
+    ) -> SlackProvisioningResult<()>;
 
     /// Whether this deployment can ever offer managed Slack app provisioning.
     fn deployment_supported(&self) -> bool {
@@ -170,12 +193,18 @@ impl SlackAppProvisioner for UnavailableSlackAppProvisioner {
     async fn create_app(
         &self,
         _org_id: i64,
+        _team_id: Option<&str>,
         _manifest_yaml: &str,
     ) -> SlackProvisioningResult<SlackAppCredentials> {
         Err(SlackProvisioningError::Unavailable)
     }
 
-    async fn delete_app(&self, _org_id: i64, _app_id: &str) -> SlackProvisioningResult<()> {
+    async fn delete_app(
+        &self,
+        _org_id: i64,
+        _team_id: Option<&str>,
+        _app_id: &str,
+    ) -> SlackProvisioningResult<()> {
         Err(SlackProvisioningError::Unavailable)
     }
 
@@ -224,7 +253,7 @@ mod tests {
             SlackProvisioningConnectionStatus::default()
         );
         assert!(matches!(
-            provisioner.create_app(1, "_meta: {}").await,
+            provisioner.create_app(1, None, "_meta: {}").await,
             Err(SlackProvisioningError::Unavailable)
         ));
     }

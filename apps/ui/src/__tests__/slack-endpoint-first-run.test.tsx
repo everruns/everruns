@@ -4,7 +4,8 @@ import EditAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/[endp
 import NewAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/new/page";
 import { ChannelForm, getDefaultChannelFormState } from "@/components/apps/channel-form";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
-import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
+import type { SlackInstallCapability, SlackWorkspace } from "@/lib/api/agent-endpoints";
+import { classifySlackConfigToken } from "@/components/slack/slack-workspaces";
 import type { Agent, AppChannel } from "@/lib/api/types";
 
 const push = jest.fn();
@@ -16,6 +17,18 @@ let mockSlackCapability: SlackInstallCapability = {
   reconnect_required: false,
   can_manage: true,
 };
+
+function workspace(teamId: string, name: string, status: SlackWorkspace["status"] = "connected") {
+  return {
+    id: `ws_${teamId}`,
+    team_id: teamId,
+    team_name: name,
+    status,
+    connected_at: "2026-09-30T00:00:00Z",
+  } satisfies SlackWorkspace;
+}
+
+let mockWorkspaces: SlackWorkspace[] = [workspace("T1", "Acme")];
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_123/endpoints/new",
@@ -70,6 +83,8 @@ jest.mock("@/hooks/use-agent-endpoints", () => ({
     isLoading: false,
     refetch: jest.fn(),
   }),
+  useSlackWorkspaces: () => ({ data: mockWorkspaces, isLoading: false }),
+  useInvalidateSlackWorkspaces: () => jest.fn(),
   useUpdateAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
   useDeleteAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
   usePublishAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
@@ -105,7 +120,10 @@ async function renderNewEndpointPage() {
   });
 }
 async function renderEditEndpointPage(reason: string) {
-  const params = Promise.resolve({ agentId: "agent_123", endpointId: "appchan_123" });
+  const params = Promise.resolve({
+    agentId: "agent_123",
+    endpointId: "appchan_123",
+  });
   const searchParams = Promise.resolve({ slack_install: "failed", reason });
   await act(async () => {
     render(
@@ -126,6 +144,7 @@ describe("Slack endpoint first run", () => {
       reconnect_required: false,
       can_manage: true,
     };
+    mockWorkspaces = [workspace("T1", "Acme")];
     (beginSlackInstall as jest.Mock).mockImplementation(() => new Promise(() => undefined));
     createEndpoint.mockImplementation(
       (_request: unknown, options: { onSuccess: (endpoint: AppChannel) => void }) =>
@@ -174,34 +193,24 @@ describe("Slack endpoint first run", () => {
     expect(screen.getByLabelText("Signing secret")).toBeInTheDocument();
   });
 
-  it("shows secure organization connection setup only to administrators", () => {
+  it("guides an administrator through connecting a workspace when none is connected", () => {
+    mockWorkspaces = [];
     const { unmount } = render(
       <ChannelForm
         state={getDefaultChannelFormState("slack")}
         onChange={jest.fn()}
         mode="new"
-        slackInstallCapability={{
-          supported: true,
-          connected: false,
-          reconnect_required: false,
-          can_manage: true,
-        }}
+        slackInstallCapability={{ ...mockSlackCapability, connected: false }}
       />,
     );
-    expect(screen.getByText("Connect your organization to Slack")).toBeInTheDocument();
-    expect(screen.getByLabelText("Slack configuration refresh token")).toHaveAttribute(
-      "type",
-      "password",
+    expect(screen.getByText("Connect a Slack workspace")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open api\.slack\.com\/apps/ })).toHaveAttribute(
+      "href",
+      "https://api.slack.com/apps",
     );
-    expect(screen.getByRole("button", { name: "Connect Slack" })).toBeDisabled();
+    expect(screen.getByLabelText(/paste it here/)).toHaveAttribute("type", "password");
     expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
-    const tokenWarning = screen.getByText(/A Slack workspace administrator must generate/);
-    expect(tokenWarning).toHaveTextContent(
-      "It can create and modify any Slack app in that workspace.",
-    );
-    expect(tokenWarning).toHaveTextContent(
-      "Everruns rotates it immediately and stores only the encrypted replacement.",
-    );
+    expect(screen.getByText(/can create and change any Slack app in that workspace/)).toBeVisible();
     unmount();
 
     render(
@@ -210,38 +219,120 @@ describe("Slack endpoint first run", () => {
         onChange={jest.fn()}
         mode="new"
         slackInstallCapability={{
-          supported: true,
+          ...mockSlackCapability,
           connected: false,
-          reconnect_required: false,
           can_manage: false,
         }}
       />,
     );
     expect(screen.getByText(/Ask an organization administrator/)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Slack configuration refresh token")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings → Slack workspaces" })).toHaveAttribute(
+      "href",
+      "/settings/slack",
+    );
+    expect(screen.queryByLabelText(/paste it here/)).not.toBeInTheDocument();
   });
 
   it("distinguishes reconnect-required from first-time setup", () => {
+    mockWorkspaces = [workspace("T1", "Acme", "reconnect_required")];
     render(
       <ChannelForm
         state={getDefaultChannelFormState("slack")}
         onChange={jest.fn()}
         mode="new"
         slackInstallCapability={{
-          supported: true,
+          ...mockSlackCapability,
           connected: false,
           reconnect_required: true,
-          can_manage: true,
         }}
       />,
     );
-    expect(screen.getByText("Reconnect your organization to Slack")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reconnect Slack" })).toBeDisabled();
+    expect(screen.getByText("Reconnect your Slack workspace")).toBeInTheDocument();
+  });
+
+  it("names the access-token mistake instead of submitting it", () => {
+    expect(classifySlackConfigToken("")).toBe("empty");
+    expect(classifySlackConfigToken("  xoxe-1-abc ")).toBe("refresh");
+    expect(classifySlackConfigToken("xoxe.xoxp-1-abc")).toBe("access");
+    expect(classifySlackConfigToken("xoxb-123")).toBe("unknown");
+
+    mockWorkspaces = [];
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={jest.fn()}
+        mode="new"
+        slackInstallCapability={{ ...mockSlackCapability, connected: false }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/paste it here/), {
+      target: { value: "xoxe.xoxp-1-access" },
+    });
+    expect(screen.getByText(/That is the access token/)).toBeInTheDocument();
+  });
+
+  it("shows the only workspace and selects it without asking", () => {
+    const onChange = jest.fn();
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={onChange}
+        mode="new"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    expect(screen.getByText("Acme (T1)")).toBeInTheDocument();
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ slackInstallTeamId: "T1" }));
+  });
+
+  it("asks which workspace when several are connected", () => {
+    mockWorkspaces = [workspace("T1", "Acme"), workspace("T2", "Globex")];
+    const onChange = jest.fn();
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={onChange}
+        mode="edit"
+        endpointId="appchan_123"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    expect(screen.getByLabelText("Slack workspace")).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeDisabled();
+  });
+
+  it("links into Slack once the agent's app is installed", () => {
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack", {
+          ...slackEndpoint(),
+          channel_config: {
+            slack_app_id: "A0123",
+            team_id: "T1",
+            bot_token_configured: true,
+            session_strategy: "per_thread",
+          },
+        })}
+        onChange={jest.fn()}
+        mode="edit"
+        endpointId="appchan_123"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    expect(screen.getByText("Live in Slack")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open in Slack/ })).toHaveAttribute(
+      "href",
+      "https://slack.com/app_redirect?app=A0123&team=T1",
+    );
+    expect(screen.queryByRole("button", { name: "Add to Slack" })).not.toBeInTheDocument();
   });
 
   it("starts Slack install immediately after saving a credential-free endpoint", async () => {
     const authorizeUrl = `${window.location.href}#slack-consent`;
-    (beginSlackInstall as jest.Mock).mockResolvedValue({ authorize_url: authorizeUrl });
+    (beginSlackInstall as jest.Mock).mockResolvedValue({
+      authorize_url: authorizeUrl,
+    });
     await renderNewEndpointPage();
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
 
@@ -249,6 +340,7 @@ describe("Slack endpoint first run", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save endpoint" }));
     });
     await waitFor(() => expect(window.location.href).toBe(authorizeUrl));
+    expect(beginSlackInstall).toHaveBeenCalledWith("appchan_123", "T1");
   });
 
   it("does not hijack manually entered credentials", async () => {
@@ -265,6 +357,15 @@ describe("Slack endpoint first run", () => {
 
     expect(beginSlackInstall).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/agents/agent_123/endpoints/appchan_123");
+  });
+
+  it("asks for a workspace before saving when several are connected", async () => {
+    mockWorkspaces = [workspace("T1", "Acme"), workspace("T2", "Globex")];
+    await renderNewEndpointPage();
+    fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
+
+    expect(screen.getByRole("button", { name: "Save endpoint" })).toBeDisabled();
+    expect(beginSlackInstall).not.toHaveBeenCalled();
   });
 
   it("keeps the manual save flow when no provisioner is available", async () => {
@@ -306,7 +407,7 @@ describe("Slack endpoint first run", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Slack rejected the app creation: ratelimited",
     );
-    expect(screen.getByRole("button", { name: "Connect to Slack" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeInTheDocument();
   });
 
   it("does not suggest an unavailable reconnect action after install failure", async () => {
@@ -321,6 +422,6 @@ describe("Slack endpoint first run", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Could not reach Slack to create the app. Configure Slack manually.",
     );
-    expect(screen.queryByText(/Use Connect to Slack/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Use Add to Slack/)).not.toBeInTheDocument();
   });
 });

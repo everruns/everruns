@@ -10,10 +10,10 @@
 //!
 //! Two routes with deliberately different auth:
 //!
-//! * `POST /v1/e/{channel_id}/slack/install` is authenticated. It spends the
-//!   deployment's app configuration token and creates a real app in the
-//!   deployment's Slack account, so an unauthenticated caller could exhaust a
-//!   company credential and fill that account with orphans.
+//! * `POST /v1/e/{channel_id}/slack/install` is authenticated. It spends a
+//!   connected workspace's app configuration token and creates a real app in
+//!   that workspace, so an unauthenticated caller could exhaust the
+//!   organization's credential and fill its workspace with orphans.
 //! * `GET /v1/e/{channel_id}/slack/oauth/callback` cannot be: Slack redirects
 //!   the operator's browser to it and carries none of our auth. It is
 //!   protected by the single-use `install_state` nonce instead.
@@ -23,7 +23,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
-    routing::{get, post, put},
+    routing::{delete, get, post},
 };
 use everruns_platform::slack_provisioning::{
     ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningConnectionStatus,
@@ -37,6 +37,7 @@ use super::common::ErrorResponse;
 use super::slack_events::{SlackState, SlackTarget};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::slack_provisioning::{SlackApiProvisioner, SlackProvisioningSetup};
+use crate::storage::OrgSlackConnectionRow;
 
 /// How long a minted `install_state` stays valid.
 ///
@@ -62,48 +63,146 @@ pub struct SlackInstallState {
 }
 
 #[derive(Deserialize)]
-pub struct SetSlackConnectionRequest {
+pub struct ConnectSlackWorkspaceRequest {
     refresh_token: String,
 }
 
-async fn set_connection(
+/// A connected workspace as the UI sees it. Never carries a token.
+#[derive(Serialize)]
+pub struct SlackWorkspace {
+    pub id: uuid::Uuid,
+    /// `None` only briefly, for a connection made before workspaces were
+    /// recorded; the rotation sweep fills it.
+    pub team_id: Option<String>,
+    pub team_name: Option<String>,
+    /// `connected` or `reconnect_required`.
+    pub status: &'static str,
+    pub connected_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<OrgSlackConnectionRow> for SlackWorkspace {
+    fn from(row: OrgSlackConnectionRow) -> Self {
+        Self {
+            id: row.id,
+            team_id: row.team_id,
+            team_name: row.team_name,
+            status: if row.state == "reconnect_required" {
+                "reconnect_required"
+            } else {
+                "connected"
+            },
+            connected_at: row.created_at,
+        }
+    }
+}
+
+/// GET /v1/slack/workspaces — any member: builders choose from this list when
+/// putting an agent in Slack, and it holds names, not credentials.
+async fn list_workspaces(
     org: ResolvedOrg,
     State(state): State<SlackInstallState>,
-    Json(request): Json<SetSlackConnectionRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<Vec<SlackWorkspace>>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(manager) = state.connection_manager else {
+        return Ok(Json(Vec::new()));
+    };
+    let rows = manager
+        .list_connections(org.org_id)
+        .await
+        .map_err(connection_error_response)?;
+    Ok(Json(rows.into_iter().map(SlackWorkspace::from).collect()))
+}
+
+/// POST /v1/slack/workspaces — admin only. Connects whichever workspace the
+/// refresh token belongs to; Slack tells us which on the first rotation.
+async fn connect_workspace(
+    org: ResolvedOrg,
+    State(state): State<SlackInstallState>,
+    Json(request): Json<ConnectSlackWorkspaceRequest>,
+) -> Result<Json<SlackWorkspace>, (StatusCode, Json<ErrorResponse>)> {
     require_org_admin(&org)?;
     let manager = state.connection_manager.ok_or_else(unsupported_response)?;
-    manager
+    let row = manager
         .connect(org.org_id, &request.refresh_token)
         .await
         .map_err(connection_error_response)?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(row.into()))
 }
 
-async fn test_connection(
+async fn test_workspace(
     org: ResolvedOrg,
     State(state): State<SlackInstallState>,
+    Path(id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     require_org_admin(&org)?;
     let manager = state.connection_manager.ok_or_else(unsupported_response)?;
     manager
-        .test_connection(org.org_id)
+        .test_connection(org.org_id, id)
         .await
         .map_err(connection_error_response)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn clear_connection(
+async fn disconnect_workspace(
     org: ResolvedOrg,
     State(state): State<SlackInstallState>,
+    Path(id): Path<uuid::Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     require_org_admin(&org)?;
     let manager = state.connection_manager.ok_or_else(unsupported_response)?;
-    manager
-        .clear_connection(org.org_id)
+    if manager
+        .clear_connection(org.org_id, id)
         .await
-        .map_err(connection_error_response)?;
-    Ok(StatusCode::NO_CONTENT)
+        .map_err(connection_error_response)?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ErrorResponse::new("Slack workspace not found").into_response(StatusCode::NOT_FOUND))
+    }
+}
+
+/// The workspace an install targets, checked against what this organization
+/// has connected.
+///
+/// A named workspace must be one of the organization's — it is stored on the
+/// endpoint and put on Slack's consent URL, so it is never taken on trust. With
+/// none named, the organization's only workspace, so the consent screen can
+/// still be pre-selected; several connected is left to the provisioner, which
+/// refuses to guess.
+async fn chosen_workspace(
+    state: &SlackInstallState,
+    org_id: i64,
+    requested: Option<String>,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    let requested = requested.filter(|team| !team.is_empty());
+    let Some(manager) = &state.connection_manager else {
+        // A custom provisioner owns workspace resolution entirely.
+        return Ok(requested);
+    };
+    let rows = manager
+        .list_connections(org_id)
+        .await
+        .map_err(provisioning_error_response)?;
+    pick_workspace(&rows, requested).map_err(provisioning_error_response)
+}
+
+fn pick_workspace(
+    rows: &[OrgSlackConnectionRow],
+    requested: Option<String>,
+) -> Result<Option<String>, SlackProvisioningError> {
+    match requested {
+        Some(team_id)
+            if rows
+                .iter()
+                .any(|row| row.team_id.as_deref() == Some(&team_id)) =>
+        {
+            Ok(Some(team_id))
+        }
+        Some(_) => Err(SlackProvisioningError::WorkspaceNotConnected),
+        None => Ok(match rows {
+            [only] => only.team_id.clone(),
+            _ => None,
+        }),
+    }
 }
 
 fn require_org_admin(org: &ResolvedOrg) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -122,12 +221,18 @@ fn unsupported_response() -> (StatusCode, Json<ErrorResponse>) {
         .into_response(StatusCode::NOT_IMPLEMENTED)
 }
 
+/// Errors from connecting, testing or listing a workspace.
+///
+/// Any refusal from Slack here is about the token the admin supplied, never
+/// about creating an app, and it is their input to fix rather than an upstream
+/// outage. A malformed token comes back as `invalid_arguments`, not
+/// `invalid_refresh_token`, so the code is reported rather than matched on.
 fn connection_error_response(error: SlackProvisioningError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        SlackProvisioningError::Rejected(code) if code == "invalid_refresh_token" => {
-            ErrorResponse::new("Slack rejected the configuration refresh token")
-                .into_response(StatusCode::BAD_REQUEST)
-        }
+        SlackProvisioningError::Rejected(code) => ErrorResponse::new(format!(
+            "Slack did not accept the configuration refresh token ({code}). Generate a new one and paste its refresh token."
+        ))
+        .into_response(StatusCode::BAD_REQUEST),
         other => provisioning_error_response(other),
     }
 }
@@ -166,10 +271,11 @@ pub fn routes(state: SlackInstallState) -> Router {
     Router::new()
         .route("/v1/slack/install", get(install_capability))
         .route(
-            "/v1/slack/connection",
-            put(set_connection).delete(clear_connection),
+            "/v1/slack/workspaces",
+            get(list_workspaces).post(connect_workspace),
         )
-        .route("/v1/slack/connection/test", post(test_connection))
+        .route("/v1/slack/workspaces/{id}", delete(disconnect_workspace))
+        .route("/v1/slack/workspaces/{id}/test", post(test_workspace))
         .route("/v1/e/{channel_id}/slack/install", post(begin_install))
         .route(
             "/v1/e/{channel_id}/slack/oauth/callback",
@@ -215,12 +321,30 @@ pub struct BeginInstallResponse {
     pub authorize_url: String,
 }
 
+#[derive(Default, Deserialize)]
+pub struct BeginInstallRequest {
+    /// The connected workspace (`T…`) to create the agent's app in. May be
+    /// omitted while the organization has connected exactly one.
+    #[serde(default)]
+    team_id: Option<String>,
+}
+
 /// POST /v1/e/{channel_id}/slack/install
 async fn begin_install(
     org: ResolvedOrg,
     State(state): State<SlackInstallState>,
     Path(channel_id): Path<String>,
+    body: axum::body::Bytes,
 ) -> Result<Json<BeginInstallResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // The body is optional so a single-workspace organization can keep
+    // posting nothing; an empty body means "the only workspace".
+    let request: BeginInstallRequest = if body.is_empty() {
+        BeginInstallRequest::default()
+    } else {
+        serde_json::from_slice(&body).map_err(|_| {
+            ErrorResponse::new("Invalid install request").into_response(StatusCode::BAD_REQUEST)
+        })?
+    };
     let (app, endpoint) = super::slack_events::resolve_slack_channel(
         &state.slack,
         SlackTarget::Endpoint(channel_id.clone()),
@@ -260,18 +384,57 @@ async fn begin_install(
 
     let mut config = parse_config(&endpoint.channel_config);
 
+    // THREAT[TM-SLACK-008]: pin the workspace before anything is created. An
+    // app lives in exactly one workspace, so the consent screen, retries and
+    // reaping all have to agree on it, and the choice is checked against this
+    // organization's connections rather than taken from the request on trust.
+    let team_id = chosen_workspace(&state, org.org_id, request.team_id).await?;
+
     // Reuse the app the endpoint already has rather than creating a second one
     // per retry: a click that failed after creation but before consent would
-    // otherwise orphan one app per attempt.
-    let mut provisioned = match config.provisioned_app.take() {
-        Some(existing) => existing,
+    // otherwise orphan one app per attempt. Not across workspaces, though —
+    // an app made for one workspace cannot be installed into another, so a
+    // changed choice reaps the old app and creates a fresh one.
+    let (reusable, stale) = match config.provisioned_app.take() {
+        Some(existing)
+            if existing.team_id.is_none() || team_id.is_none() || existing.team_id == team_id =>
+        {
+            (Some(existing), None)
+        }
+        other => (None, other),
+    };
+    if let Some(stale) = stale {
+        // Reaping is only safe before the app was installed. Once it holds a
+        // bot token the agent is live in that workspace, and silently deleting
+        // it to satisfy a changed choice would take the agent offline.
+        if !config.bot_token.is_empty() {
+            return Err(ErrorResponse::new(
+                "This agent is already live in another Slack workspace; disconnect it there first",
+            )
+            .into_response(StatusCode::CONFLICT));
+        }
+        if let Err(error) = state
+            .provisioner
+            .delete_app(org.org_id, stale.team_id.as_deref(), &stale.app_id)
+            .await
+        {
+            tracing::warn!(app_id = %stale.app_id, %error, "Could not reap Slack app created for another workspace");
+        }
+    }
+    let mut provisioned = match reusable {
+        Some(mut existing) => {
+            if existing.team_id.is_none() {
+                existing.team_id = team_id.clone();
+            }
+            existing
+        }
         None => {
             let manifest =
                 super::slack_events::manifest_yaml_for_endpoint(&state.slack, &app, &endpoint)
                     .await?;
             let created = state
                 .provisioner
-                .create_app(org.org_id, &manifest)
+                .create_app(org.org_id, team_id.as_deref(), &manifest)
                 .await
                 .map_err(provisioning_error_response)?;
             config.signing_secret = created.signing_secret;
@@ -281,12 +444,14 @@ async fn begin_install(
                 client_secret: created.client_secret,
                 install_state: None,
                 install_state_issued_at: None,
+                team_id: team_id.clone(),
             }
         }
     };
 
     let install_state = mint_install_state();
     let client_id = provisioned.client_id.clone();
+    let team_id_for_consent = provisioned.team_id.clone();
     provisioned.install_state = Some(install_state.clone());
     provisioned.install_state_issued_at = Some(chrono::Utc::now());
     config.provisioned_app = Some(provisioned);
@@ -296,14 +461,19 @@ async fn begin_install(
         &state.slack.api_base_url,
         &endpoint.public_id.to_string(),
     );
-    Ok(Json(BeginInstallResponse {
-        authorize_url: format!(
-            "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}",
-            urlencoding_encode(&client_id),
-            urlencoding_encode(&install_state),
-            urlencoding_encode(&redirect_uri),
-        ),
-    }))
+    let mut authorize_url = format!(
+        "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}",
+        urlencoding_encode(&client_id),
+        urlencoding_encode(&install_state),
+        urlencoding_encode(&redirect_uri),
+    );
+    // Pre-select the workspace on Slack's consent screen. Without it Slack
+    // offers every workspace the operator belongs to, and picking any other
+    // fails, since the app exists only in this one.
+    if let Some(team_id) = &team_id_for_consent {
+        authorize_url.push_str(&format!("&team={}", urlencoding_encode(team_id)));
+    }
+    Ok(Json(BeginInstallResponse { authorize_url }))
 }
 
 #[derive(Deserialize)]
@@ -528,6 +698,14 @@ fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Js
             "Reconnect Slack for this organization before using one-click install",
         )
         .into_response(StatusCode::CONFLICT),
+        SlackProvisioningError::WorkspaceRequired => {
+            ErrorResponse::new("Choose which connected Slack workspace this agent belongs in")
+                .into_response(StatusCode::BAD_REQUEST)
+        }
+        SlackProvisioningError::WorkspaceNotConnected => {
+            ErrorResponse::new("That Slack workspace is not connected to this organization")
+                .into_response(StatusCode::NOT_FOUND)
+        }
         SlackProvisioningError::Rejected(code) => {
             ErrorResponse::new(format!("Slack rejected the app creation: {code}"))
                 .into_response(StatusCode::BAD_GATEWAY)
@@ -605,8 +783,73 @@ mod tests {
             install_state_issued_at: Some(
                 chrono::Utc::now() - chrono::Duration::minutes(issued_minutes_ago),
             ),
+            team_id: None,
         });
         config
+    }
+
+    fn connection_row(team_id: Option<&str>) -> OrgSlackConnectionRow {
+        OrgSlackConnectionRow {
+            id: uuid::Uuid::now_v7(),
+            org_id: 41,
+            team_id: team_id.map(str::to_string),
+            team_name: None,
+            access_token_encrypted: None,
+            refresh_token_encrypted: None,
+            access_token_expires_at: None,
+            state: "connected".to_string(),
+            token_generation: 1,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn any_slack_refusal_while_connecting_is_reported_as_the_tokens_fault() {
+        for code in ["invalid_refresh_token", "invalid_arguments", "invalid_auth"] {
+            let (status, Json(body)) =
+                connection_error_response(SlackProvisioningError::Rejected(code.to_string()));
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{code}");
+            let rendered = serde_json::to_string(&body).unwrap();
+            assert!(
+                rendered.contains("configuration refresh token"),
+                "{rendered}"
+            );
+            assert!(rendered.contains(code), "{rendered}");
+            assert!(!rendered.contains("app creation"), "{rendered}");
+        }
+    }
+
+    #[test]
+    fn a_requested_workspace_must_be_one_the_org_connected() {
+        let rows = [connection_row(Some("T1")), connection_row(Some("T2"))];
+        assert_eq!(
+            pick_workspace(&rows, Some("T2".to_string())).unwrap(),
+            Some("T2".to_string())
+        );
+        // Never stored or put on the consent URL on the caller's word alone.
+        assert!(matches!(
+            pick_workspace(&rows, Some("T_OTHER_ORG".to_string())),
+            Err(SlackProvisioningError::WorkspaceNotConnected)
+        ));
+    }
+
+    #[test]
+    fn with_no_choice_only_a_sole_workspace_is_assumed() {
+        assert_eq!(
+            pick_workspace(&[connection_row(Some("T1"))], None).unwrap(),
+            Some("T1".to_string())
+        );
+        // Several connected: no guess here; the provisioner refuses later.
+        assert_eq!(
+            pick_workspace(
+                &[connection_row(Some("T1")), connection_row(Some("T2"))],
+                None
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(pick_workspace(&[], None).unwrap(), None);
     }
 
     #[test]
@@ -730,6 +973,7 @@ mod tests {
             install_state: state.map(str::to_string),
             install_state_issued_at: issued_minutes_ago
                 .map(|ago| chrono::Utc::now() - chrono::Duration::minutes(ago)),
+            team_id: None,
         }
     }
 

@@ -30,10 +30,13 @@ This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For 
 
 ## Publish and Connect
 
+Your organization must have a Slack workspace connected in **Settings** > **Slack workspaces** first; an administrator does this once. See [Connect a Slack Workspace](/integrations/slack/#connect-a-slack-workspace).
+
 1. Select **Publish** in the endpoint editor.
-2. Select **Connect to Slack**.
-3. Approve Slack's consent screen and choose a workspace.
-4. If one-click setup is unavailable, return to **Integrations**, expand the endpoint, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
+2. If more than one workspace is connected, choose which one.
+3. Select **Add to Slack**.
+4. Approve Slack's consent screen. The workspace is already selected.
+5. If one-click setup is unavailable, return to **Integrations**, expand the endpoint, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
 
 Publish first because Slack verifies the manifest's endpoint Request URL when it creates the Slack app. New installs use `/v1/e/{endpoint_id}/slack/events`.
 

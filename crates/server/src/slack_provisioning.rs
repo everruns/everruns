@@ -7,6 +7,7 @@ use everruns_platform::slack_provisioning::{
     SlackProvisioningError, SlackProvisioningResult,
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::storage::{
     EncryptionService, OrgSlackConnectionRow, RotateOrgSlackConnection, StorageBackend,
@@ -67,6 +68,7 @@ pub fn configure(
         connection_manager: Some(manager),
     })
 }
+
 #[derive(Clone)]
 pub struct SlackApiProvisioner {
     db: Arc<StorageBackend>,
@@ -108,7 +110,17 @@ impl SlackApiProvisioner {
         })
     }
 
-    pub async fn connect(&self, org_id: i64, refresh_token: &str) -> SlackProvisioningResult<()> {
+    /// Connect the workspace a configuration refresh token belongs to.
+    ///
+    /// The token is rotated before anything is stored, which both proves it
+    /// works and tells us which workspace it is for — Slack's rotate response
+    /// carries `team_id`. Connecting a workspace that is already connected
+    /// replaces its tokens rather than adding a second row.
+    pub async fn connect(
+        &self,
+        org_id: i64,
+        refresh_token: &str,
+    ) -> SlackProvisioningResult<OrgSlackConnectionRow> {
         let refresh_token = refresh_token.trim();
         if refresh_token.is_empty() {
             return Err(SlackProvisioningError::Rejected(
@@ -116,21 +128,39 @@ impl SlackApiProvisioner {
             ));
         }
         let rotated = self.rotate_with(None, refresh_token).await?;
+        let team_id = rotated
+            .team_id
+            .clone()
+            .filter(|team| !team.is_empty())
+            .ok_or_else(|| malformed_response("tooling.tokens.rotate"))?;
+        let team_name = self.workspace_name(&rotated.token).await;
         self.db
             .upsert_org_slack_connection(UpsertOrgSlackConnection {
                 org_id,
+                team_id,
+                team_name,
                 access_token_encrypted: self.encrypt(&rotated.token)?,
                 refresh_token_encrypted: self.encrypt(&rotated.refresh_token)?,
                 access_token_expires_at: rotated.expires_at()?,
             })
             .await
-            .map_err(storage_error)?;
-        Ok(())
+            .map_err(storage_error)
     }
 
-    pub async fn test_connection(&self, org_id: i64) -> SlackProvisioningResult<()> {
+    pub async fn list_connections(
+        &self,
+        org_id: i64,
+    ) -> SlackProvisioningResult<Vec<OrgSlackConnectionRow>> {
+        self.db
+            .list_org_slack_connections(org_id)
+            .await
+            .map_err(storage_error)
+    }
+
+    pub async fn test_connection(&self, org_id: i64, id: Uuid) -> SlackProvisioningResult<()> {
+        let row = self.connection_by_id(org_id, id).await?;
         self.manifest_call(
-            org_id,
+            row,
             "/apps.manifest.validate",
             serde_json::json!({
                 "manifest": {
@@ -142,12 +172,15 @@ impl SlackApiProvisioner {
         Ok(())
     }
 
-    pub async fn clear_connection(&self, org_id: i64) -> SlackProvisioningResult<()> {
+    /// Forget a workspace's configuration token.
+    ///
+    /// Agent apps already installed there keep working: each holds its own
+    /// bot token. What goes is the ability to create or update apps in it.
+    pub async fn clear_connection(&self, org_id: i64, id: Uuid) -> SlackProvisioningResult<bool> {
         self.db
-            .delete_org_slack_connection(org_id)
+            .delete_org_slack_connection(org_id, id)
             .await
-            .map_err(storage_error)?;
-        Ok(())
+            .map_err(storage_error)
     }
 
     pub async fn rotate_due_connections(&self) -> anyhow::Result<()> {
@@ -156,24 +189,44 @@ impl SlackApiProvisioner {
             .list_due_org_slack_connections(chrono::Utc::now() + ROTATE_BEFORE_EXPIRY)
             .await?;
         for row in due {
-            let org_id = row.org_id;
+            let (org_id, connection_id) = (row.org_id, row.id);
             if let Err(error) = self.rotate_row(row).await {
-                tracing::warn!(org_id, %error, "Slack connection rotation failed");
+                tracing::warn!(org_id, %connection_id, %error, "Slack connection rotation failed");
             }
         }
         Ok(())
     }
 
+    /// Best effort: the configuration token may not be allowed to read team
+    /// info, and a missing name is a cosmetic gap, not a failed connection.
+    async fn workspace_name(&self, access_token: &str) -> Option<String> {
+        match self
+            .post("/auth.test", Some(access_token), serde_json::json!({}))
+            .await
+        {
+            Ok(body) => body
+                .get("team")
+                .and_then(serde_json::Value::as_str)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string),
+            Err(error) => {
+                tracing::debug!(%error, "Slack workspace name unavailable");
+                None
+            }
+        }
+    }
+
     async fn manifest_call(
         &self,
-        org_id: i64,
+        row: OrgSlackConnectionRow,
         method: &str,
         body: serde_json::Value,
     ) -> SlackProvisioningResult<serde_json::Value> {
-        let access_token = self.token_for_request(org_id).await?;
+        let (org_id, id) = (row.org_id, row.id);
+        let access_token = self.token_for_request(row).await?;
         match self.post(method, Some(&access_token), body.clone()).await {
             Err(SlackProvisioningError::Rejected(code)) if is_auth_error(&code) => {
-                let row = self.connection(org_id).await?;
+                let row = self.connection_by_id(org_id, id).await?;
                 let replacement = self.rotate_row(row).await?;
                 self.post(method, Some(&replacement), body).await
             }
@@ -181,8 +234,10 @@ impl SlackApiProvisioner {
         }
     }
 
-    async fn token_for_request(&self, org_id: i64) -> SlackProvisioningResult<String> {
-        let row = self.connection(org_id).await?;
+    async fn token_for_request(
+        &self,
+        row: OrgSlackConnectionRow,
+    ) -> SlackProvisioningResult<String> {
         if row
             .access_token_expires_at
             .is_some_and(|expiry| expiry > chrono::Utc::now() + ROTATE_BEFORE_EXPIRY)
@@ -192,29 +247,62 @@ impl SlackApiProvisioner {
         self.rotate_row(row).await
     }
 
-    async fn connection(&self, org_id: i64) -> SlackProvisioningResult<OrgSlackConnectionRow> {
+    async fn connection_by_id(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> SlackProvisioningResult<OrgSlackConnectionRow> {
         let row = self
             .db
-            .get_org_slack_connection(org_id)
+            .get_org_slack_connection(org_id, id)
             .await
             .map_err(storage_error)?
-            .ok_or(SlackProvisioningError::OrgNotConnected)?;
-        if row.state == "reconnect_required" {
-            return Err(SlackProvisioningError::ReconnectRequired);
-        }
-        Ok(row)
+            .ok_or(SlackProvisioningError::WorkspaceNotConnected)?;
+        usable(row)
+    }
+
+    /// The connection an app should be created in or reaped from.
+    ///
+    /// Naming a workspace selects it. Naming none is allowed only while the
+    /// organization has exactly one, so that a caller can never silently land
+    /// an agent in the wrong workspace once a second is connected.
+    async fn connection_for(
+        &self,
+        org_id: i64,
+        team_id: Option<&str>,
+    ) -> SlackProvisioningResult<OrgSlackConnectionRow> {
+        let rows = self
+            .db
+            .list_org_slack_connections(org_id)
+            .await
+            .map_err(storage_error)?;
+        let row = match team_id {
+            Some(team_id) => rows
+                .into_iter()
+                .find(|row| row.team_id.as_deref() == Some(team_id))
+                .ok_or(SlackProvisioningError::WorkspaceNotConnected)?,
+            None => {
+                let mut rows = rows.into_iter();
+                match (rows.next(), rows.next()) {
+                    (None, _) => return Err(SlackProvisioningError::OrgNotConnected),
+                    (Some(only), None) => only,
+                    (Some(_), Some(_)) => return Err(SlackProvisioningError::WorkspaceRequired),
+                }
+            }
+        };
+        usable(row)
     }
 
     async fn rotate_row(&self, row: OrgSlackConnectionRow) -> SlackProvisioningResult<String> {
         let original_generation = row.token_generation;
         let Some(claimed) = self
             .db
-            .claim_org_slack_connection_rotation(row.org_id, original_generation)
+            .claim_org_slack_connection_rotation(row.id, original_generation)
             .await
             .map_err(storage_error)?
         else {
             return self
-                .wait_for_rotation(row.org_id, original_generation)
+                .wait_for_rotation(row.org_id, row.id, original_generation)
                 .await;
         };
         let access_token = self.decrypt_required(claimed.access_token_encrypted.as_deref())?;
@@ -222,12 +310,12 @@ impl SlackApiProvisioner {
         let rotated = match self.rotate_with(Some(&access_token), &refresh_token).await {
             Ok(rotated) => rotated,
             Err(SlackProvisioningError::Rejected(code)) if code == "invalid_refresh_token" => {
-                self.mark_reconnect(claimed.org_id, claimed.token_generation)
+                self.mark_reconnect(claimed.id, claimed.token_generation)
                     .await?;
                 return Err(SlackProvisioningError::ReconnectRequired);
             }
             Err(SlackProvisioningError::Unreachable(_)) => {
-                self.mark_reconnect(claimed.org_id, claimed.token_generation)
+                self.mark_reconnect(claimed.id, claimed.token_generation)
                     .await?;
                 return Err(SlackProvisioningError::ReconnectRequired);
             }
@@ -239,8 +327,9 @@ impl SlackApiProvisioner {
         let replacement = self
             .db
             .rotate_org_slack_connection(RotateOrgSlackConnection {
-                org_id: claimed.org_id,
+                id: claimed.id,
                 expected_generation: claimed.token_generation,
+                team_id: rotated.team_id.clone().filter(|team| !team.is_empty()),
                 access_token_encrypted: self.encrypt(&rotated.token)?,
                 refresh_token_encrypted: self.encrypt(&rotated.refresh_token)?,
                 access_token_expires_at: rotated.expires_at()?,
@@ -258,16 +347,17 @@ impl SlackApiProvisioner {
     async fn wait_for_rotation(
         &self,
         org_id: i64,
+        id: Uuid,
         original_generation: i64,
     ) -> SlackProvisioningResult<String> {
         for _ in 0..ROTATION_WAIT_ATTEMPTS {
             tokio::time::sleep(ROTATION_WAIT).await;
             let row = self
                 .db
-                .get_org_slack_connection(org_id)
+                .get_org_slack_connection(org_id, id)
                 .await
                 .map_err(storage_error)?
-                .ok_or(SlackProvisioningError::OrgNotConnected)?;
+                .ok_or(SlackProvisioningError::WorkspaceNotConnected)?;
             if row.state == "reconnect_required" {
                 return Err(SlackProvisioningError::ReconnectRequired);
             }
@@ -283,8 +373,9 @@ impl SlackApiProvisioner {
     async fn release_claim(&self, claimed: &OrgSlackConnectionRow) -> SlackProvisioningResult<()> {
         self.db
             .rotate_org_slack_connection(RotateOrgSlackConnection {
-                org_id: claimed.org_id,
+                id: claimed.id,
                 expected_generation: claimed.token_generation,
+                team_id: None,
                 access_token_encrypted: claimed
                     .access_token_encrypted
                     .clone()
@@ -304,11 +395,11 @@ impl SlackApiProvisioner {
 
     async fn mark_reconnect(
         &self,
-        org_id: i64,
+        id: Uuid,
         claimed_generation: i64,
     ) -> SlackProvisioningResult<()> {
         self.db
-            .mark_org_slack_reconnect_required(org_id, claimed_generation)
+            .mark_org_slack_reconnect_required(id, claimed_generation)
             .await
             .map_err(storage_error)?;
         Ok(())
@@ -393,6 +484,8 @@ struct RotateResponse {
     token: String,
     refresh_token: String,
     exp: i64,
+    #[serde(default)]
+    team_id: Option<String>,
 }
 
 impl RotateResponse {
@@ -420,11 +513,13 @@ impl SlackAppProvisioner for SlackApiProvisioner {
     async fn create_app(
         &self,
         org_id: i64,
+        team_id: Option<&str>,
         manifest_yaml: &str,
     ) -> SlackProvisioningResult<SlackAppCredentials> {
+        let row = self.connection_for(org_id, team_id).await?;
         let response = self
             .manifest_call(
-                org_id,
+                row,
                 "/apps.manifest.create",
                 serde_json::json!({"manifest": manifest_yaml}),
             )
@@ -439,9 +534,15 @@ impl SlackAppProvisioner for SlackApiProvisioner {
         })
     }
 
-    async fn delete_app(&self, org_id: i64, app_id: &str) -> SlackProvisioningResult<()> {
+    async fn delete_app(
+        &self,
+        org_id: i64,
+        team_id: Option<&str>,
+        app_id: &str,
+    ) -> SlackProvisioningResult<()> {
+        let row = self.connection_for(org_id, team_id).await?;
         self.manifest_call(
-            org_id,
+            row,
             "/apps.manifest.delete",
             serde_json::json!({"app_id": app_id}),
         )
@@ -449,28 +550,34 @@ impl SlackAppProvisioner for SlackApiProvisioner {
         Ok(())
     }
 
+    /// Connected if any workspace is usable; reconnect required only if some
+    /// workspace needs it and none is usable, so one stale workspace does not
+    /// block agents bound for a healthy one.
     async fn connection_status(
         &self,
         org_id: i64,
     ) -> SlackProvisioningResult<SlackProvisioningConnectionStatus> {
-        let row = self
-            .db
-            .get_org_slack_connection(org_id)
-            .await
-            .map_err(storage_error)?;
+        let rows = self.list_connections(org_id).await?;
+        let connected = rows
+            .iter()
+            .any(|row| matches!(row.state.as_str(), "connected" | "rotating"));
         Ok(SlackProvisioningConnectionStatus {
-            connected: row
-                .as_ref()
-                .is_some_and(|row| matches!(row.state.as_str(), "connected" | "rotating")),
-            reconnect_required: row
-                .as_ref()
-                .is_some_and(|row| row.state == "reconnect_required"),
+            connected,
+            reconnect_required: !connected
+                && rows.iter().any(|row| row.state == "reconnect_required"),
         })
     }
 
     fn name(&self) -> &'static str {
         "OrgSlackAppProvisioner"
     }
+}
+
+fn usable(row: OrgSlackConnectionRow) -> SlackProvisioningResult<OrgSlackConnectionRow> {
+    if row.state == "reconnect_required" {
+        return Err(SlackProvisioningError::ReconnectRequired);
+    }
+    Ok(row)
 }
 
 fn malformed_response(method: &str) -> SlackProvisioningError {
@@ -512,8 +619,39 @@ mod tests {
         )
     }
 
+    fn stored(
+        org_id: i64,
+        team_id: &str,
+        expires_in: chrono::Duration,
+    ) -> UpsertOrgSlackConnection {
+        let encryption = encryption();
+        UpsertOrgSlackConnection {
+            org_id,
+            team_id: team_id.to_string(),
+            team_name: None,
+            access_token_encrypted: encryption.encrypt_string("access").unwrap(),
+            refresh_token_encrypted: encryption.encrypt_string("refresh").unwrap(),
+            access_token_expires_at: chrono::Utc::now() + expires_in,
+        }
+    }
+
+    async fn mount_rotate(server: &MockServer, team_id: &str) {
+        Mock::given(method("POST"))
+            .and(path("/tooling.tokens.rotate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "token": "new-access",
+                "refresh_token": "new-refresh",
+                "team_id": team_id,
+                "user_id": "U1",
+                "exp": chrono::Utc::now().timestamp() + 3600
+            })))
+            .mount(server)
+            .await;
+    }
+
     #[tokio::test]
-    async fn connecting_rotates_before_persisting_and_never_stores_plaintext() {
+    async fn connecting_records_the_workspace_and_never_stores_plaintext() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/tooling.tokens.rotate"))
@@ -524,26 +662,55 @@ mod tests {
                 "ok": true,
                 "token": "new-access",
                 "refresh_token": "new-refresh",
+                "team_id": "T0123",
+                "user_id": "U1",
                 "exp": chrono::Utc::now().timestamp() + 3600
             })))
             .expect(1)
             .mount(&server)
             .await;
-        let (provisioner, db) = provisioner(&server);
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"ok": true, "team": "Acme", "team_id": "T0123"}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let (provisioner, _db) = provisioner(&server);
 
-        provisioner.connect(41, "input-refresh").await.unwrap();
+        let row = provisioner.connect(41, "input-refresh").await.unwrap();
 
-        let row = db
-            .get_org_slack_connection(41)
-            .await
-            .unwrap()
-            .expect("stored connection");
+        assert_eq!(row.team_id.as_deref(), Some("T0123"));
+        assert_eq!(row.team_name.as_deref(), Some("Acme"));
         assert!(
             !row.refresh_token_encrypted
                 .unwrap()
                 .windows(b"new-refresh".len())
                 .any(|part| part == b"new-refresh")
         );
+    }
+
+    #[tokio::test]
+    async fn a_workspace_name_slack_will_not_reveal_does_not_fail_the_connection() {
+        let server = MockServer::start().await;
+        mount_rotate(&server, "T0123").await;
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"ok": false, "error": "not_allowed_token_type"}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let (provisioner, _db) = provisioner(&server);
+
+        let row = provisioner.connect(41, "input-refresh").await.unwrap();
+
+        assert_eq!(row.team_id.as_deref(), Some("T0123"));
+        assert_eq!(row.team_name, None);
     }
 
     #[tokio::test]
@@ -559,25 +726,18 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        let encryption = encryption();
-        let db = Arc::new(StorageBackend::in_memory());
-        db.upsert_org_slack_connection(UpsertOrgSlackConnection {
-            org_id: 41,
-            access_token_encrypted: encryption.encrypt_string("expired-access").unwrap(),
-            refresh_token_encrypted: encryption.encrypt_string("invalid-refresh").unwrap(),
-            access_token_expires_at: chrono::Utc::now() - chrono::Duration::minutes(1),
-        })
-        .await
-        .unwrap();
-        let provisioner =
-            SlackApiProvisioner::with_api_base(db.clone(), encryption, &server.uri()).unwrap();
+        let (provisioner, db) = provisioner(&server);
+        let row = db
+            .upsert_org_slack_connection(stored(41, "T1", -chrono::Duration::minutes(1)))
+            .await
+            .unwrap();
 
         assert!(matches!(
-            provisioner.create_app(41, "{}").await,
+            provisioner.create_app(41, None, "{}").await,
             Err(SlackProvisioningError::ReconnectRequired)
         ));
         let row = db
-            .get_org_slack_connection(41)
+            .get_org_slack_connection(41, row.id)
             .await
             .unwrap()
             .expect("connection retained");
@@ -587,18 +747,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn with_several_workspaces_the_caller_must_name_one() {
+        let server = MockServer::start().await;
+        let (provisioner, db) = provisioner(&server);
+        db.upsert_org_slack_connection(stored(41, "T1", chrono::Duration::hours(1)))
+            .await
+            .unwrap();
+        db.upsert_org_slack_connection(stored(41, "T2", chrono::Duration::hours(1)))
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            provisioner.create_app(41, None, "{}").await,
+            Err(SlackProvisioningError::WorkspaceRequired)
+        ));
+        assert!(matches!(
+            provisioner.create_app(41, Some("T9"), "{}").await,
+            Err(SlackProvisioningError::WorkspaceNotConnected)
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_app_is_created_with_the_named_workspaces_token() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/apps.manifest.create"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer access-T2",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "app_id": "A2",
+                "credentials": {
+                    "client_id": "c2",
+                    "client_secret": "s2",
+                    "signing_secret": "g2"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (provisioner, db) = provisioner(&server);
+        let encryption = encryption();
+        for team in ["T1", "T2"] {
+            db.upsert_org_slack_connection(UpsertOrgSlackConnection {
+                access_token_encrypted: encryption
+                    .encrypt_string(&format!("access-{team}"))
+                    .unwrap(),
+                ..stored(41, team, chrono::Duration::hours(1))
+            })
+            .await
+            .unwrap();
+        }
+
+        let created = provisioner.create_app(41, Some("T2"), "{}").await.unwrap();
+
+        assert_eq!(created.app_id, "A2");
+    }
+
+    #[tokio::test]
     async fn connection_status_is_scoped_to_the_requested_organization() {
         let server = MockServer::start().await;
         let (provisioner, db) = provisioner(&server);
-        let encryption = encryption();
-        db.upsert_org_slack_connection(UpsertOrgSlackConnection {
-            org_id: 41,
-            access_token_encrypted: encryption.encrypt_string("access").unwrap(),
-            refresh_token_encrypted: encryption.encrypt_string("refresh").unwrap(),
-            access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
-        })
-        .await
-        .unwrap();
+        db.upsert_org_slack_connection(stored(41, "T1", chrono::Duration::hours(1)))
+            .await
+            .unwrap();
 
         assert!(provisioner.connection_status(41).await.unwrap().connected);
         assert!(!provisioner.connection_status(42).await.unwrap().connected);

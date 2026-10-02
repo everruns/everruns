@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   CalendarClock,
   ChevronDown,
-  CircleAlert,
   Globe,
   Hash,
   MessageSquareText,
@@ -13,7 +13,7 @@ import {
   Webhook,
 } from "lucide-react";
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,12 +54,13 @@ import {
   getSlackReplyModeDisplayName,
 } from "@/lib/app-channels";
 import { generateChannelToken } from "@/lib/channel-tokens";
+import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import { useInvalidateSlackWorkspaces, useSlackWorkspaces } from "@/hooks/use-agent-endpoints";
 import {
-  beginSlackInstall,
-  clearSlackConnection,
-  setSlackConnection,
-  testSlackConnection,
-} from "@/lib/api/agent-endpoints";
+  ConnectSlackWorkspace,
+  slackAppUrl,
+  slackWorkspaceLabel,
+} from "@/components/slack/slack-workspaces";
 import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
 import { ApiError } from "@/lib/api/client";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -80,6 +81,12 @@ const DEFAULT_PUBLIC_CHAT_EXPIRATION_HOURS = 6;
 const DEFAULT_FCP_EXPIRATION_HOURS = 6;
 const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
 
+/** Read-only fields the server adds to a Slack endpoint's config once Everruns created its app. */
+type SlackProvisionedConfig = {
+  /** Public id of the Slack app Everruns created for this endpoint. */
+  slack_app_id?: string;
+};
+
 export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" | "runs";
 
 export type ChannelFormState = {
@@ -90,6 +97,13 @@ export type ChannelFormState = {
   slackTeamId: string;
   slackChannelId: string;
   slackCredentialsConfigured: boolean;
+  /**
+   * Which connected workspace one-click install creates the agent's app in. Transient: it is
+   * sent to the install route, never saved into the endpoint's config.
+   */
+  slackInstallTeamId: string;
+  /** Public id of the Slack app Everruns created for this endpoint, once there is one. */
+  slackAppId: string;
   slackSessionStrategy: SessionStrategy;
   slackReplyMode: SlackReplyMode;
   scheduleCronExpression: string;
@@ -145,6 +159,8 @@ export function getDefaultChannelFormState(
     slackTeamId: "",
     slackChannelId: "",
     slackCredentialsConfigured: false,
+    slackInstallTeamId: "",
+    slackAppId: "",
     slackSessionStrategy: "per_thread",
     slackReplyMode: "all_messages",
     scheduleCronExpression: "0 0 * * * * *",
@@ -296,6 +312,7 @@ export function getDefaultChannelFormState(
       slackCredentialsConfigured: Boolean(
         config.signing_secret_configured || config.bot_token_configured,
       ),
+      slackAppId: (config as SlackChannelConfig & SlackProvisionedConfig).slack_app_id || "",
       slackSessionStrategy: config.session_strategy || "per_thread",
       slackReplyMode: config.reply_mode || "all_messages",
     };
@@ -559,7 +576,7 @@ function FieldGrid({ children }: { children: React.ReactNode }) {
  * manual fields are that deployment's supported path, not a fallback from a
  * failure, so the UI opens them rather than reporting something went wrong.
  */
-function useSlackInstall(endpointId?: string, onUnavailable?: () => void) {
+function useSlackInstall(endpointId?: string, teamId?: string, onUnavailable?: () => void) {
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -569,7 +586,7 @@ function useSlackInstall(endpointId?: string, onUnavailable?: () => void) {
     setPending(true);
     setError(null);
     try {
-      const { authorize_url } = await beginSlackInstall(endpointId);
+      const { authorize_url } = await beginSlackInstall(endpointId, teamId || null);
       // A full navigation, not a router push: the next hop is Slack's consent
       // screen, which is outside this app.
       window.location.href = authorize_url;
@@ -582,142 +599,110 @@ function useSlackInstall(endpointId?: string, onUnavailable?: () => void) {
       }
       setPending(false);
     }
-  }, [endpointId, onUnavailable]);
+  }, [endpointId, teamId, onUnavailable]);
 
   return { begin, pending, unavailable, error } as const;
 }
 
-function SlackOrganizationConnection({
+/**
+ * Where the agent's Slack app will be created (EVE-1148).
+ *
+ * Workspaces are connected once, by an admin, in Settings → Slack workspaces. Here a builder only
+ * picks one; with a single workspace there is nothing to pick and it is simply shown. An admin
+ * with none connected can connect one inline without leaving the form.
+ */
+function SlackWorkspaceChoice({
   capability,
+  selected,
+  onSelect,
   onChanged,
 }: {
   capability: SlackInstallCapability;
+  selected: string;
+  onSelect: (teamId: string) => void;
   onChanged?: () => void | Promise<unknown>;
 }) {
-  const [refreshToken, setRefreshToken] = useState("");
-  const [pending, setPending] = useState<"connect" | "test" | "clear" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const run = async (action: "connect" | "test" | "clear") => {
-    setPending(action);
-    setError(null);
-    try {
-      if (action === "connect") await setSlackConnection(refreshToken);
-      if (action === "test") await testSlackConnection();
-      if (action === "clear") await clearSlackConnection();
-      setRefreshToken("");
-      await onChanged?.();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not update the Slack connection.");
-    } finally {
-      setPending(null);
-    }
+  const workspaces = useSlackWorkspaces(capability.supported);
+  const invalidateWorkspaces = useInvalidateSlackWorkspaces();
+  const connected = async () => {
+    await invalidateWorkspaces();
+    await onChanged?.();
   };
+  const usable = (workspaces.data ?? []).filter(
+    (workspace) => workspace.status === "connected" && workspace.team_id,
+  );
+  const stale = (workspaces.data ?? []).filter(
+    (workspace) => workspace.status === "reconnect_required",
+  );
+  const onlyTeam = usable.length === 1 ? usable[0].team_id : null;
 
-  if (capability.connected && !capability.reconnect_required) {
+  // One workspace: select it so the consent screen opens on it, without asking.
+  useEffect(() => {
+    if (onlyTeam && selected !== onlyTeam) onSelect(onlyTeam);
+  }, [onlyTeam, selected, onSelect]);
+
+  if (workspaces.isLoading) {
+    return <p className="text-xs text-muted-foreground">Loading Slack workspaces…</p>;
+  }
+
+  if (usable.length === 0) {
     return (
-      <div className="space-y-3 border p-4">
-        <div>
-          <p className="text-sm font-medium">Organization connected to Slack</p>
+      <div className="space-y-4 border p-4">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">
+            {stale.length > 0 ? "Reconnect your Slack workspace" : "Connect a Slack workspace"}
+          </p>
           <p className="text-xs text-muted-foreground">
-            New endpoints can create and install their own Slack app.
+            {stale.length > 0
+              ? "Slack stopped accepting the saved token. Reconnect once for the organization, then add agents with one click."
+              : "Once per organization. Afterwards, each agent gets its own Slack app with one click."}
           </p>
         </div>
-        {capability.can_manage && (
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void run("test")}
-              disabled={pending !== null}
-            >
-              {pending === "test" ? "Testing…" : "Test connection"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void run("clear")}
-              disabled={pending !== null}
-            >
-              {pending === "clear" ? "Disconnecting…" : "Disconnect"}
-            </Button>
-          </div>
+        {capability.can_manage ? (
+          <ConnectSlackWorkspace reconnect={stale.length > 0} onConnected={connected} />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Ask an organization administrator to connect a workspace in{" "}
+            <Link className="underline" href="/settings/slack">
+              Settings → Slack workspaces
+            </Link>
+            . You can still configure this endpoint manually below.
+          </p>
         )}
-        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     );
   }
 
-  const reconnect = capability.reconnect_required;
   return (
-    <div className="space-y-4 border p-4">
-      <div className="space-y-1">
-        <p className="text-sm font-medium">
-          {reconnect
-            ? "Reconnect your organization to Slack"
-            : "Connect your organization to Slack"}
+    <div className="space-y-2">
+      {usable.length === 1 ? (
+        <p className="text-sm">
+          Slack workspace: <strong>{slackWorkspaceLabel(usable[0])}</strong>
         </p>
-        <p className="text-xs text-muted-foreground">
-          {reconnect
-            ? "Slack rejected the saved refresh token. Add a new configuration refresh token."
-            : "Connect once for this organization, then each endpoint can create its own Slack app."}
-        </p>
-      </div>
-      {capability.can_manage ? (
-        <>
-          <div className="flex gap-2 border border-warning/40 bg-warning/10 p-3 text-xs">
-            <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
-            <p>
-              A Slack workspace administrator must generate this token. It can create and modify any
-              Slack app in that workspace. Everruns rotates it immediately and stores only the
-              encrypted replacement.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="slack_configuration_refresh_token">
-              Slack configuration refresh token
-            </Label>
-            <Input
-              id="slack_configuration_refresh_token"
-              type="password"
-              autoComplete="off"
-              value={refreshToken}
-              onChange={(event) => setRefreshToken(event.target.value)}
-              placeholder="xoxe-1-..."
-            />
-            <p className="text-xs text-muted-foreground">
-              Create a configuration token in Slack&apos;s app manifest settings. Paste the refresh
-              token, not the access token.{" "}
-              <a
-                className="underline"
-                href="https://docs.slack.dev/app-manifests/configuring-apps-with-app-manifests/#config-tokens"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open Slack instructions
-              </a>
-            </p>
-          </div>
-          <Button
-            type="button"
-            onClick={() => void run("connect")}
-            disabled={!refreshToken.trim() || pending !== null}
-          >
-            <Slack className="size-4" />
-            {pending === "connect"
-              ? "Connecting…"
-              : reconnect
-                ? "Reconnect Slack"
-                : "Connect Slack"}
-          </Button>
-        </>
       ) : (
-        <p className="text-xs text-muted-foreground">
-          Ask an organization administrator to connect Slack provisioning. You can still configure
-          this endpoint manually.
-        </p>
+        <div className="space-y-2">
+          <Label htmlFor="slack_install_workspace">Slack workspace</Label>
+          <Select value={selected} onValueChange={(value) => onSelect(String(value ?? ""))}>
+            <SelectTrigger id="slack_install_workspace" className="w-full sm:w-80">
+              <SelectValue placeholder="Choose a workspace" />
+            </SelectTrigger>
+            <SelectContent>
+              {usable.map((workspace) => (
+                <SelectItem key={workspace.id} value={workspace.team_id ?? ""}>
+                  {slackWorkspaceLabel(workspace)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      <p className="text-xs text-muted-foreground">
+        If this workspace requires admins to approve apps, Slack sends an approval request instead
+        of installing straight away.{" "}
+        <Link className="underline" href="/settings/slack">
+          Manage workspaces
+        </Link>
+      </p>
     </div>
   );
 }
@@ -760,7 +745,14 @@ export function ChannelForm({
     slackCredentialsEntered || slackInstallCapability?.supported === false,
   );
   const openManualSlack = useCallback(() => setManualSlackOpen(true), []);
-  const slackInstall = useSlackInstall(endpointId, openManualSlack);
+  const slackInstall = useSlackInstall(endpointId, state.slackInstallTeamId, openManualSlack);
+  // The OAuth exchange is what records the workspace id, so an app id plus a workspace id means
+  // Everruns created this endpoint's app and it was installed.
+  const slackLive = Boolean(state.slackAppId && state.slackTeamId);
+  const selectSlackInstallTeam = useCallback(
+    (teamId: string) => onChange({ ...state, slackInstallTeamId: teamId }),
+    [onChange, state],
+  );
 
   if (section === "runs") {
     return (
@@ -1266,35 +1258,65 @@ export function ChannelForm({
 
       {state.kind === "slack" && (section === "all" || section === "invocation") && (
         <div className="space-y-4">
-          {slackInstallCapability?.supported && (
-            <SlackOrganizationConnection
+          {slackLive && (
+            <div className="space-y-3 border p-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Live in Slack</p>
+                <p className="text-xs text-muted-foreground">
+                  This agent has its own Slack app in workspace {state.slackTeamId}. Mention it in a
+                  channel, or open it from Slack&apos;s Agents menu.
+                </p>
+              </div>
+              <a
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+                href={slackAppUrl(state.slackAppId, state.slackTeamId)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Slack className="size-4" />
+                Open in Slack
+              </a>
+            </div>
+          )}
+          {!slackLive && slackInstallCapability?.supported && (
+            <SlackWorkspaceChoice
               capability={slackInstallCapability}
+              selected={state.slackInstallTeamId}
+              onSelect={selectSlackInstallTeam}
               onChanged={onSlackCapabilityChanged}
             />
           )}
-          {mode === "edit" && endpointId && slackInstallAvailable && !slackInstall.unavailable && (
-            <div className="border p-4 space-y-3">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Connect to Slack</p>
-                <p className="text-xs text-muted-foreground">
-                  Creates the Slack app for this endpoint and installs it to your workspace. You
-                  approve one consent screen; the signing secret, bot token and workspace ID are
-                  filled in for you.
-                </p>
+          {!slackLive &&
+            mode === "edit" &&
+            endpointId &&
+            slackInstallAvailable &&
+            !slackInstall.unavailable && (
+              <div className="space-y-3 border p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Add to Slack</p>
+                  <p className="text-xs text-muted-foreground">
+                    Creates this agent&apos;s own Slack app in the workspace above and opens Slack
+                    to approve it. The signing secret, bot token and workspace ID are filled in for
+                    you.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  onClick={slackInstall.begin}
+                  disabled={slackInstall.pending || !state.slackInstallTeamId}
+                >
+                  <Slack className="size-4" />
+                  {slackInstall.pending ? "Opening Slack…" : "Add to Slack"}
+                </Button>
+                {slackInstall.error && (
+                  <p className="text-xs text-destructive">{slackInstall.error}</p>
+                )}
               </div>
-              <Button type="button" onClick={slackInstall.begin} disabled={slackInstall.pending}>
-                <Slack className="size-4" />
-                {slackInstall.pending ? "Opening Slack…" : "Connect to Slack"}
-              </Button>
-              {slackInstall.error && (
-                <p className="text-xs text-destructive">{slackInstall.error}</p>
-              )}
-            </div>
-          )}
-          {mode === "new" && slackInstallAvailable && (
+            )}
+          {!slackLive && mode === "new" && slackInstallAvailable && (
             <p className="text-xs text-muted-foreground">
-              Save the endpoint to connect it to Slack in one click, or fill the fields below in now
-              if you already have a Slack app.
+              Save the endpoint to add it to Slack in one click, or fill the fields below in now if
+              you already have a Slack app.
             </p>
           )}
           <Collapsible open={manualSlackOpen} onOpenChange={setManualSlackOpen}>
@@ -1442,7 +1464,8 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Slack</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Reuse the existing manifest flow after saving credentials.
+              Gets its own Slack app, with its own name in Slack&apos;s Agents menu, in the
+              workspace you choose.
             </p>
           </div>
         )}

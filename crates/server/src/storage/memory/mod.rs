@@ -224,7 +224,7 @@ pub struct InMemoryDatabase {
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
     org_feature_flags: RwLock<HashMap<i64, HashMap<String, bool>>>,
-    org_slack_connections: RwLock<HashMap<i64, OrgSlackConnectionRow>>,
+    org_slack_connections: RwLock<HashMap<uuid::Uuid, OrgSlackConnectionRow>>,
     mcp_event_subscriptions: RwLock<HashMap<String, McpEventSubscriptionRow>>,
     // Generations billed before their usage arrived (EVE-1145).
     usage_generations: RwLock<HashMap<Uuid, late_generation_usage::MemoryUsageGeneration>>,

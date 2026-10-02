@@ -10,7 +10,8 @@ required_guide_text=(
   'Select **Add endpoint**.'
   'Select **Save endpoint**.'
   'Select **Publish**'
-  'Select **Connect to Slack**'
+  'Open **Settings** > **Slack workspaces**.'
+  'Select **Add to Slack**'
   '/v1/e/{endpoint_id}/slack/events'
 )
 
@@ -22,6 +23,7 @@ for text in "${required_guide_text[@]}"; do
 done
 
 stale_patterns=(
+  'Select **Connect to Slack**'
   'App detail page'
   'Go to **Apps**'
   'click **New App**'

@@ -62,6 +62,18 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
 
   const agentName = getDisplayName(agent);
   const slackInstallAvailable = slackInstallCapability.data?.connected === true;
+  // Saving a credential-free Slack endpoint installs it straight away, so with
+  // several workspaces connected the choice has to be made before Save, not
+  // discovered as a failure after it. One workspace is selected automatically.
+  const slackWorkspaceUnchosen =
+    formState.kind === "slack" &&
+    slackInstallAvailable &&
+    !formState.slackCredentialsConfigured &&
+    !formState.slackSigningSecret &&
+    !formState.slackBotToken &&
+    !formState.slackTeamId &&
+    !formState.slackChannelId &&
+    !formState.slackInstallTeamId;
 
   return (
     <PageContainer>
@@ -81,7 +93,12 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
             <Button
               type="submit"
               form="endpoint-edit-form"
-              disabled={!canManage || !isChannelFormValid(formState) || createEndpoint.isPending}
+              disabled={
+                !canManage ||
+                !isChannelFormValid(formState) ||
+                slackWorkspaceUnchosen ||
+                createEndpoint.isPending
+              }
             >
               <Check className="size-4" />
               {createEndpoint.isPending ? "Saving..." : "Save endpoint"}
@@ -121,7 +138,10 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
                   return;
                 }
                 try {
-                  const { authorize_url } = await beginSlackInstall(endpoint.id);
+                  const { authorize_url } = await beginSlackInstall(
+                    endpoint.id,
+                    formState.slackInstallTeamId || null,
+                  );
                   window.location.href = authorize_url;
                 } catch (caught) {
                   const reason =
