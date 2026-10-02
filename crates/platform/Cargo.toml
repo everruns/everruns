@@ -54,6 +54,9 @@ environment-capabilities = [
 lua = ["dep:everruns-integrations-lua"]
 # Outbound A2A delegation is product-owned and optional for lightweight hosts.
 a2a = ["dep:a2a", "dep:a2a-client", "dep:url"]
+# Outbound AG-UI delegation (`ag_ui_delegation`): product-owned and optional,
+# like `a2a`. Pulls in the AG-UI SSE client and an HTTP stack.
+ag-ui = ["dep:everruns-ag-ui", "dep:reqwest", "dep:url", "dep:futures-util"]
 # Concrete outbound email transport is product opt-in. Platform record and
 # contract consumers do not compile an HTTP stack by default.
 email-resend = ["dep:reqwest"]
@@ -100,6 +103,10 @@ jsonschema = { version = "0.58.1", default-features = false }
 a2a = { workspace = true, optional = true }
 a2a-client = { workspace = true, optional = true }
 url = { version = "2", optional = true }
+
+# Outbound AG-UI delegation (optional).
+everruns-ag-ui = { workspace = true, optional = true, features = ["client"] }
+futures-util = { workspace = true, optional = true }
 
 # Connector plugin registration (EVE-879): integration crates submit
 # `ConnectorPlugin` entries the server discovers at startup.

@@ -53,8 +53,8 @@ pub struct FeatureFlags {
     pub agent_versions: bool,
     /// Realtime voice endpoints and microphone controls. Experimental.
     pub voice: bool,
-    /// Outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`).
-    /// Experimental: auto-enabled in dev, off in prod by default.
+    /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
+    /// `ag_ui_delegation`, `agent_handoff`). Experimental: auto-enabled in dev, off in prod by default.
     /// When off, these capabilities are not exposed or assignable; deployment-level
     /// disablement also prevents their registration.
     pub agent_delegation: bool,
@@ -464,7 +464,9 @@ impl FeatureFlags {
             "skills" => Some("skills"),
             "memory" => Some("memory"),
             "knowledge_index" | "knowledge_base" => Some("knowledge"),
-            "a2a_agent_delegation" | "agent_handoff" => Some("agent_delegation"),
+            "a2a_agent_delegation" | "ag_ui_delegation" | "agent_handoff" => {
+                Some("agent_delegation")
+            }
             everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
@@ -666,6 +668,7 @@ mod tests {
     fn agent_delegation_capabilities_follow_effective_flag() {
         let disabled = FeatureFlags::default();
         assert!(!disabled.is_capability_enabled("a2a_agent_delegation"));
+        assert!(!disabled.is_capability_enabled("ag_ui_delegation"));
         assert!(!disabled.is_capability_enabled("agent_handoff"));
         assert!(!disabled.is_capability_enabled("skills"));
         assert!(!disabled.is_capability_enabled("skill:019abc"));
@@ -684,6 +687,7 @@ mod tests {
             ..FeatureFlags::default()
         };
         assert!(enabled.is_capability_enabled("a2a_agent_delegation"));
+        assert!(enabled.is_capability_enabled("ag_ui_delegation"));
         assert!(enabled.is_capability_enabled("agent_handoff"));
         assert!(enabled.is_capability_enabled("skills"));
         assert!(enabled.is_capability_enabled("skill:019abc"));

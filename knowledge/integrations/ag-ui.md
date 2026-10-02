@@ -19,7 +19,8 @@ protocol from any session behind the facade's `ag-ui` feature (see
 [Framework](#framework)), and `serve` mounts it at `POST /v1/e/{agent}/ag-ui`
 behind its own `ag-ui` feature (see [serve](#serve)), with the runnable
 `examples/serve/ag-ui` driven by `@ag-ui/client`. The crate also has the
-consumer half (below), which outbound delegation builds on.
+consumer half (below), which outbound delegation, the
+[AG-UI Capability](ag-ui-capability.md), builds on.
 
 ## Pieces
 

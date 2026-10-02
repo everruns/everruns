@@ -88,7 +88,7 @@ impl UnifiedSpawnAgentTool {
     }
 
     pub(crate) fn target_types(&self) -> Vec<&'static str> {
-        ["subagent", "agent", "external_a2a"]
+        ["subagent", "agent", "external_a2a", "external_ag_ui"]
             .into_iter()
             .filter(|target_type| {
                 self.providers
@@ -125,6 +125,12 @@ impl UnifiedSpawnAgentTool {
                         {"required": ["id"]},
                         {"required": ["external_agent_id"]}
                     ]
+                })),
+                "external_ag_ui" => Some(serde_json::json!({
+                    "properties": {
+                        "type": {"const": "external_ag_ui"}
+                    },
+                    "required": ["type", "id"]
                 })),
                 _ => None,
             })
@@ -198,7 +204,7 @@ impl Tool for UnifiedSpawnAgentTool {
                     "type": "string",
                     "enum": ["linked", "detached"],
                     "default": "linked",
-                    "description": "linked creates a lifecycle child; detached creates an independent top-level peer session. Not valid for external_a2a."
+                    "description": "linked creates a lifecycle child; detached creates an independent top-level peer session. Not valid for external targets."
                 },
                 "seed": {
                     "type": "string",
@@ -212,11 +218,11 @@ impl Tool for UnifiedSpawnAgentTool {
                         "type": {
                             "type": "string",
                             "enum": self.target_types(),
-                            "description": "Delegation target type. Use subagent for same-agent child sessions, agent for configured first-party handoffs, or external_a2a for configured remote A2A agents."
+                            "description": "Delegation target type. Use subagent for same-agent child sessions, agent for configured first-party handoffs, external_a2a for configured remote A2A agents, or external_ag_ui for configured remote AG-UI agents."
                         },
                         "id": {
                             "type": "string",
-                            "description": "Configured target id for first-party handoffs or external A2A agents."
+                            "description": "Configured target id for first-party handoffs or external A2A / AG-UI agents."
                         },
                         "external_agent_id": {
                             "type": "string",
@@ -242,11 +248,11 @@ impl Tool for UnifiedSpawnAgentTool {
                 },
                 "result_schema": {
                     "type": "object",
-                    "description": "JSON Schema for a required final structured result. Local child agents must call report_result; external A2A agents must return a structured data artifact."
+                    "description": "JSON Schema for a required final structured result. Local child agents must call report_result; external A2A agents must return a structured data artifact; external AG-UI agents must finish with a matching RUN_FINISHED result."
                 },
                 "message_schema": {
                     "type": "object",
-                    "description": "JSON Schema for structured progress messages from local child agents. When set, the child receives report_task_progress. External A2A targets reject this option explicitly."
+                    "description": "JSON Schema for structured progress messages from local child agents. When set, the child receives report_task_progress. External targets reject this option explicitly."
                 },
                 "public_context": {
                     "type": "object",
@@ -256,11 +262,11 @@ impl Tool for UnifiedSpawnAgentTool {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 86400,
-                    "description": "External-A2A-only foreground timeout."
+                    "description": "External-target-only foreground timeout."
                 },
                 "wake_on_completion": {
                     "type": "boolean",
-                    "description": "External-A2A-only control for background completion wake-ups."
+                    "description": "External-target-only control for background completion wake-ups."
                 }
             },
             "required": ["name", "instructions", "target"],
@@ -272,7 +278,9 @@ impl Tool for UnifiedSpawnAgentTool {
         let mut hints = crate::tool_types::ToolHints::default()
             .with_long_running(true)
             .with_concurrency_class(SPAWN_AGENT_CONCURRENCY_CLASS);
-        if self.provider_for("external_a2a").is_some() {
+        if self.provider_for("external_a2a").is_some()
+            || self.provider_for("external_ag_ui").is_some()
+        {
             hints = hints.with_open_world(true);
         }
         hints
@@ -309,24 +317,25 @@ impl Tool for UnifiedSpawnAgentTool {
         if let Err(error) = validate_spawn_agent_target_fields(&arguments, target_type) {
             return ToolExecutionResult::tool_error(error);
         }
-        if target_type == "external_a2a"
+        let external = matches!(target_type, "external_a2a" | "external_ag_ui");
+        if external
             && arguments
                 .get("lifetime")
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|value| value == "detached")
         {
-            return ToolExecutionResult::tool_error(
-                "lifetime=\"detached\" is only valid for local session targets (subagent or agent), not external_a2a.",
-            );
+            return ToolExecutionResult::tool_error(format!(
+                "lifetime=\"detached\" is only valid for local session targets (subagent or agent), not {target_type}."
+            ));
         }
-        if target_type == "external_a2a"
+        if external
             && arguments
                 .get("message_schema")
                 .is_some_and(|schema| !schema.is_null())
         {
-            return ToolExecutionResult::tool_error(
-                "message_schema is not supported for external_a2a targets because remote agents cannot receive report_task_progress.",
-            );
+            return ToolExecutionResult::tool_error(format!(
+                "message_schema is not supported for {target_type} targets because remote agents cannot receive report_task_progress."
+            ));
         }
 
         provider.execute_with_context(arguments, context).await

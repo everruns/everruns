@@ -96,7 +96,7 @@ everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines
 everruns-provider = { path = "../provider", features = ["sqlx"] }
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
 everruns-builtins = { workspace = true, features = ["ui-capabilities"] }
-everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "email-resend", "container-sandbox"] }
+everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "email-resend", "container-sandbox"] }
 # Observability exporters are enabled through everruns-host below; core retains
 # neutral event-listener contracts only.
 everruns-mcp = { path = "../mcp" }

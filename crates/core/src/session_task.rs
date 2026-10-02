@@ -46,6 +46,8 @@ pub const TASK_KIND_SESSION: &str = "session";
 /// different target). Matches the historical `session_resources.kind`.
 pub const TASK_KIND_AGENT_HANDOFF: &str = "agent_handoff";
 pub const TASK_KIND_EXTERNAL_AGENT: &str = "external_agent";
+/// Outbound AG-UI delegation run; its own kind so it gets its own executor.
+pub const TASK_KIND_EXTERNAL_AG_UI: &str = "external_ag_ui";
 pub const TASK_KIND_BACKGROUND_TOOL: &str = "background_tool";
 /// Long-lived monitor task linked to a session schedule. Stays `running`
 /// until the linked schedule is exhausted (one-shot) or `cancel_task` is called.

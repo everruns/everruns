@@ -77,7 +77,7 @@ impl InternalFeatureFlags {
 #[derive(Debug, Clone)]
 pub struct ExecutionFeatureDecisions {
     /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
-    /// `agent_handoff`). Experimental: auto-enabled in dev, off in prod by
+    /// `ag_ui_delegation`, `agent_handoff`). Experimental: auto-enabled in dev, off in prod by
     /// default. When off, the capabilities are not registered at all.
     pub agent_delegation: bool,
     /// Backend-only infrastructure gates.

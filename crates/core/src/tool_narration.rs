@@ -650,8 +650,8 @@ fn spawn_agent_kind(arguments: &Value, uk: bool) -> &'static str {
     match (target_type, uk) {
         ("agent", false) => "agent",
         ("agent", true) => "агента",
-        ("external_a2a", false) => "external agent",
-        ("external_a2a", true) => "зовнішнього агента",
+        ("external_a2a" | "external_ag_ui", false) => "external agent",
+        ("external_a2a" | "external_ag_ui", true) => "зовнішнього агента",
         (_, false) => "subagent",
         (_, true) => "субагента",
     }

@@ -99,6 +99,10 @@ pub mod util;
 /// attachment logic can reference it even when the `a2a` feature (and the
 /// delegation implementation) is compiled out.
 pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
+/// Capability ID for outbound AG-UI agent delegation. Defined ungated, like the
+/// A2A id, so hosts can name it whether or not the `ag-ui` feature compiled
+/// the implementation in.
+pub const AG_UI_DELEGATION_CAPABILITY_ID: &str = "ag_ui_delegation";
 /// Capability that selects the opt-in OpenAI Agents API runtime backend
 /// (EVE-1123). Defined ungated so platform feature gating and validation can
 /// reference it whether or not the host compiled the backend.
