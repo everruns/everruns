@@ -21,7 +21,7 @@ repository.workspace = true
 documentation = "https://docs.rs/everruns-durable"
 description = "PostgreSQL-backed durable execution for Everruns: event-sourced workflows, task queue, retries and schedules"
 readme = "README.md"
-keywords = ["durable", "workflow", "postgres", "task-queue", "agent"]
+keywords = ["durable", "workflow", "postgres", "task-queue", "orchestration"]
 categories = ["asynchronous", "database", "development-tools"]
 # Benchmark checkpoints and baselines are maintainer history (~1.3 MB) and
 # never needed to build the crate. The bench sources stay packaged so the
@@ -29,10 +29,9 @@ categories = ["asynchronous", "database", "development-tools"]
 exclude = ["benches/checkpoints/", "benches/baseline.jsonl"]
 
 [dependencies]
-everruns-engine.workspace = true
-# Shared database-failure classification (EVE-1071). Already in the tree via
-# everruns-engine; named directly so the macro's path is explicit.
-everruns-core.workspace = true
+# Decision: no `everruns-*` normal dependencies. This crate is a generic
+# durable-execution engine; agent/turn semantics live in the worker and server.
+# Enforced by `scripts/check-durable-isolation.sh`.
 
 # Async runtime
 tokio = { workspace = true }
@@ -70,7 +69,9 @@ indicatif = { version = "0.18", optional = true }
 fail = { workspace = true, optional = true }
 
 [dev-dependencies]
-everruns-provider.workspace = true
+# Test-only drift guard: the local database-failure classifier must match the
+# shared one in core, because dashboards key on its log fields (EVE-1071).
+everruns-core.workspace = true
 # Test-only: capturing log output is how `db_failure` proves every starved
 # subsystem reports one incident under one message (EVE-1071).
 tracing-subscriber.workspace = true

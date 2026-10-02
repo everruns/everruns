@@ -15,7 +15,7 @@ and a serializable planner driven by the durable worker. They encoded the same
 phases and transitions in different shapes, so semantics could drift.
 
 Both real hosts now advance the engine-owned `TurnExecution`: the durable path
-through `DurableExecution`, and the in-process runtime through
+through the worker's `DurableExecution`, and the in-process runtime through
 `InProcessExecution`. The former core/test-support state machines and the
 stateless host compatibility planner have been removed.
 
@@ -118,8 +118,8 @@ has no atom implementation or compatibility module.
 
 `everruns-engine::TurnExecution` owns state advancement as well as planning.
 `everruns-host::InProcessExecution` retains it for the turn lifetime;
-`everruns-durable::DurableExecution` checkpoints the same state between
-activities. A cross-driver conformance test feeds identical outcomes into both
+`everruns-worker::DurableExecution` checkpoints the same state between
+durable activities. A cross-driver conformance test feeds identical outcomes into both
 implementations and compares the resulting engine state.
 
 ### Stage 2, fold in the durable bookkeeping (landed)

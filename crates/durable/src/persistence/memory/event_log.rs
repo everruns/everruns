@@ -321,7 +321,7 @@ impl EventLog for InMemoryWorkflowEventStore {
         Ok(new_workflow_id)
     }
 
-    async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError> {
+    async fn try_start_new_run(&self, workflow_id: Uuid) -> Result<bool, StoreError> {
         {
             let tasks = self.tasks.read();
             let has_claimed_task = tasks.ids_for_workflow(workflow_id).iter().any(|id| {

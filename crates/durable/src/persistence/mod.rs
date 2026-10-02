@@ -12,6 +12,8 @@ mod memory;
 mod postgres;
 mod store;
 
+pub(crate) use db_failure::log_database_failure;
+
 pub use memory::InMemoryWorkflowEventStore;
 pub use postgres::PostgresWorkflowEventStore;
 pub use store::{

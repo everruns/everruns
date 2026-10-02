@@ -31,15 +31,18 @@ cargo add everruns-durable
 - Cron and interval schedules with leader-safe claiming
 - A self-contained PostgreSQL schema (`PostgresWorkflowEventStore::migrate`)
   and an in-memory store for tests
-- `DurableExecution`, the checkpointed driver of `everruns-engine` turns
+
+The crate is a generic engine: it knows workflows, activities, tasks, signals
+and schedules, and depends on no other Everruns crate. It has no notion of
+agents, sessions or turns.
 
 ## How Everruns uses it
 
-Agent turns run on the task queue directly. The worker claims `reason` and
-`act` tasks, advances the turn through `DurableExecution`, the checkpointed
-driver for the shared `everruns-engine::Execution` contract, and enqueues the
-next task. This crate owns persistence, retries and scheduling; turn semantics
-stay in `everruns-engine`.
+Agent turns run on the task queue directly. The Everruns worker claims `reason`
+and `act` tasks, advances the turn through its own checkpointed driver for the
+shared `everruns-engine::Execution` contract, and enqueues the next task. This
+crate owns persistence, retries and scheduling; turn semantics, signal payloads
+and what a sealed task means to a session live in the worker and server.
 
 The general-purpose workflow engine (`WorkflowExecutor` over the
 `Workflow` trait) is the other half of the crate: deterministic state
@@ -156,7 +159,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `TaskDefinition` / `ClaimedTask` | A queued activity. `workflow_id: None` makes it a standalone queue task. |
 | `WorkerPool` | Polls for tasks, runs registered handlers with bounded concurrency, heartbeats, reclaims stale work and applies backpressure. |
 | `DurableScheduler` | Cron and interval schedules that start workflows or tasks, with leader-safe claiming. |
-| `DurableExecution` | Checkpointed driver of `everruns-engine` turns. |
 
 ### Timers and child workflows
 

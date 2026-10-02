@@ -79,23 +79,14 @@ impl WorkflowSignal {
     }
 }
 
-/// Common signal type constants
+/// Signal types the engine itself interprets. Applications define their own
+/// signal types (any string) on top of these.
 pub mod signal_types {
     /// Request workflow cancellation (immediate)
     pub const CANCEL: &str = "cancel";
 
     /// Request graceful shutdown (complete current activity, then stop)
     pub const SHUTDOWN: &str = "shutdown";
-
-    /// User message arrived while a turn is already running (steering).
-    ///
-    /// Payload:
-    /// - Required: `input_message_id` (`<MessageId>`)
-    /// - Optional (used for follow-on turn, with fallbacks if omitted):
-    ///   `org_id`, `harness_id`, `agent_id`
-    ///
-    /// Example: `{ "input_message_id": "<id>", "org_id": 1, "harness_id": "<id>", "agent_id": "<id>" }`
-    pub const USER_MESSAGE: &str = "user_message";
 }
 
 #[cfg(test)]

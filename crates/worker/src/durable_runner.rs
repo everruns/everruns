@@ -305,10 +305,10 @@ impl DurableStoreBackend for DirectDurableStore {
         self.store
             .enqueue_task(everruns_durable::TaskDefinition {
                 workflow_id: Some(workflow_id),
+                options: crate::durable_turn::activity_options_for(&activity_id),
                 activity_id,
                 activity_type,
                 input,
-                options: Default::default(),
             })
             .await
             .map_err(Into::into)
@@ -368,7 +368,7 @@ impl DurableStoreBackend for DirectDurableStore {
 
     async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> Result<bool> {
         self.store
-            .try_claim_workflow_for_new_turn(workflow_id)
+            .try_start_new_run(workflow_id)
             .await
             .map_err(Into::into)
     }
@@ -442,10 +442,10 @@ impl DurableStoreBackend for InMemoryDurableStore {
         self.store
             .enqueue_task(everruns_durable::TaskDefinition {
                 workflow_id: Some(workflow_id),
+                options: crate::durable_turn::activity_options_for(&activity_id),
                 activity_id,
                 activity_type,
                 input,
-                options: Default::default(),
             })
             .await
             .map_err(Into::into)
@@ -520,7 +520,7 @@ impl DurableStoreBackend for InMemoryDurableStore {
 
     async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> Result<bool> {
         self.store
-            .try_claim_workflow_for_new_turn(workflow_id)
+            .try_start_new_run(workflow_id)
             .await
             .map_err(Into::into)
     }
@@ -689,7 +689,7 @@ impl AgentRunner for DurableRunner {
                 }
                 Ok(false) => {
                     let signal = WorkflowSignal::new(
-                        everruns_durable::signal_types::USER_MESSAGE,
+                        crate::durable_turn::USER_MESSAGE,
                         serde_json::json!({
                             "input_message_id": input_message_id.to_string(),
                             "org_id": org_id,
@@ -781,7 +781,7 @@ impl AgentRunner for DurableRunner {
         if let Err(error) = store
             .enqueue_task(
                 workflow_id,
-                format!("waiting_turn_resolution_{resolution_id}"),
+                crate::durable_turn::waiting_turn_resolution_activity_id(resolution_id),
                 "reason".to_string(),
                 input_json,
             )
@@ -979,10 +979,7 @@ mod tests {
             .await
             .expect("signals should load");
         assert_eq!(signals.len(), 1);
-        assert_eq!(
-            signals[0].signal_type,
-            everruns_durable::signal_types::USER_MESSAGE
-        );
+        assert_eq!(signals[0].signal_type, crate::durable_turn::USER_MESSAGE);
     }
 
     #[tokio::test]
@@ -1040,10 +1037,7 @@ mod tests {
             .await
             .expect("signals should load");
         assert_eq!(signals.len(), 1);
-        assert_eq!(
-            signals[0].signal_type,
-            everruns_durable::signal_types::USER_MESSAGE
-        );
+        assert_eq!(signals[0].signal_type, crate::durable_turn::USER_MESSAGE);
 
         let additional_claimed = shared
             .claim_task("worker-2", &["process_input".to_string()], 10)

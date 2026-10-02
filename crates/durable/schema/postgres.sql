@@ -167,6 +167,10 @@ CREATE INDEX IF NOT EXISTS idx_durable_task_queue_standalone
     WHERE workflow_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_durable_task_queue_workflow
     ON durable_task_queue (workflow_id);
+-- Backs `ActivityOptions::dedupe_by_activity_id` for the activity ids Everruns
+-- enqueues idempotently (server migration 143). The engine's dedupe SQL names no
+-- arbiter, so it uses whatever unique index covers a caller's ids; this one is
+-- kept for parity with the server migrations (see schema_drift_test).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_durable_task_queue_waiting_turn_resolution
     ON durable_task_queue (workflow_id, activity_id)
     WHERE workflow_id IS NOT NULL AND activity_id LIKE 'waiting_turn_resolution_%';

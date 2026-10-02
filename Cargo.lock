@@ -2597,8 +2597,6 @@ dependencies = [
  "chrono",
  "cron",
  "everruns-core",
- "everruns-engine",
- "everruns-provider",
  "fail",
  "hostname",
  "indicatif",

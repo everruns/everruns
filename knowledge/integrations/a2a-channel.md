@@ -51,10 +51,9 @@ References:
 ## Non-Goals
 
 1. The full A2A method surface. The endpoint supports send, streaming send,
-   get task, and cancel task. List tasks, subscribe to task, push
-   notifications, and the extended Agent Card answer the A2A error for an
-   unsupported operation (`-32004`, `-32003`, `-32007`) rather than
-   `-32601`.
+   get task, list tasks, subscribe to task, and cancel task. Push
+   notifications and the extended Agent Card answer the A2A error for an
+   unsupported operation (`-32003`, `-32007`) rather than `-32601`.
 2. Persistent per-task identity beyond the session lifecycle. Tasks are
    identified by the underlying session id (`task_id == contextId`); a
    shared session reuses the same task id across follow-up messages.
@@ -127,7 +126,8 @@ without reading `apps` or `app_channels`.
   proxy identity header.
 - Body: A2A JSON-RPC 2.0 envelope. Both protocol versions are served on the
   same URL: A2A 1.0 (`SendMessage`, `SendStreamingMessage`, `GetTask`,
-  `CancelTask`) and A2A 0.3 (`message/send`, `message/stream`, `tasks/get`,
+  `ListTasks`, `SubscribeToTask`, `CancelTask`) and A2A 0.3 (`message/send`,
+  `message/stream`, `tasks/get`, `tasks/list`, `tasks/resubscribe`,
   `tasks/cancel`). Either spelling reaches the same handler.
 
 #### Version negotiation
@@ -208,7 +208,8 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | 400  |, | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
 | 200  | `-32601`      | Method not found (not an A2A method) |
-| 200  | `-32003` / `-32004` / `-32007` | A defined A2A operation this endpoint does not offer (push notifications / list, subscribe, streaming on a shared-session endpoint / extended card) |
+| 200  | `-32003` / `-32004` / `-32007` | A defined A2A operation this endpoint does not offer (push notifications / subscribing to a terminal task, streaming on a shared-session endpoint / extended card) |
+| 200  | `-32002`      | `CancelTask` on a task that already finished |
 | 200  | `-32009`      | `A2A-Version` names a version this endpoint does not speak |
 | 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id, an `ask_user` answer that does not match what was asked) |
 | 200  | `-32001`      | Task not found (`tasks/get` / `tasks/cancel` against an unknown task id) |
@@ -244,9 +245,10 @@ Frame kinds emitted (0.3 names; 1.0 wraps the same objects as
 
 If the session subscription drops without a terminal turn event, the channel
 emits a synthetic `status-update` with `state = "failed"` and `final = true`
-so clients do not hang. Reconnection / replay (`tasks/resubscribe`,
-`Last-Event-ID`) is not supported in this iteration; clients that lose the
-stream should retry the original `message/stream` call.
+so clients do not hang. A client that loses the stream reattaches with
+`SubscribeToTask` (`tasks/resubscribe`), see "Listing and subscribing" below.
+`Last-Event-ID` replay is not supported: the reattached stream opens with the
+current task snapshot instead, so nothing the client missed is lost.
 
 Authentication, gating, and validation errors before the stream opens follow
 the same JSON-RPC error envelope as `message/send` (returned as a normal
@@ -311,9 +313,30 @@ cross-channel lookup collapses to `-32001 Task not found` with no artifact leak.
 
 `tasks/cancel` cancels the in-flight durable workflow for the underlying
 session and emits a `turn.cancelled` event so subsequent `tasks/get` calls
-observe the canceled state. Cancelling an already-terminal task is
-idempotent: the same terminal task object is returned without any state
-transition.
+observe the canceled state. Cancelling a task that already reached a
+terminal state is `-32002 TaskNotCancelableError`, as A2A 1.0 §3.1.5
+requires, and changes nothing.
+
+Every task carries `status.timestamp`, the session's last update time.
+
+### Listing and subscribing (`ListTasks`, `SubscribeToTask`)
+
+`ListTasks` returns this endpoint's tasks only, newest first by status
+timestamp, scoped by the same channel binding as `GetTask` (TM-A2A-012): a
+`contextId` from another channel lists nothing rather than erroring. It
+honours `contextId`, `status`, `pageSize` (1 to 100, default 50),
+`pageToken`, `statusTimestampAfter`, and `includeArtifacts`
+(artifacts are omitted unless it is true). Paging is a keyset cursor over the
+session's update time and id, so a page token stays valid while new tasks
+arrive; `nextPageToken` is empty on the last page. The `status` filter is
+exact on the returned page, while `totalSize` counts the coarser session
+activity that state maps to.
+
+`SubscribeToTask` reattaches a stream to a running task. The first frame is
+the current task, then the same status and artifact frames `message/stream`
+emits until the turn ends. It subscribes to session events before reading
+the task, so nothing that lands in between is lost. A task already in a
+terminal state answers `-32004 UnsupportedOperationError`, per §3.1.6.
 
 Reusing the session id as the task id is acceptable for the in-channel
 contract because:

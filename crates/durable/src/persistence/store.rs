@@ -221,38 +221,38 @@ pub struct DeadTaskInfo {
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
-    /// Serialized task input used to recover session/turn context.
+    /// Serialized task input, so the application can recover its own context.
     pub input: serde_json::Value,
     pub last_error: Option<String>,
 }
 
-/// Information about a task that was sealed during stale reclamation because the
-/// turn made no forward progress across `N` consecutive recoveries (EVE-534).
+/// Information about a task that the no-progress guard sealed during stale
+/// reclamation: its workflow recorded no new event across `N` consecutive
+/// recoveries, so retrying it again would only crash-loop (EVE-534).
 ///
 /// A sealed task is terminal and non-retryable: the reclaim path marks it dead
-/// (routing it to the DLQ) instead of returning it to `pending`. Consumers turn
-/// this into a `turn.sealed` event and an appropriate session status.
+/// (routing it to the DLQ) instead of returning it to `pending`. What a seal
+/// means to the application (a user-facing event, a status change) is decided
+/// by the consumer of [`ReclaimResult::sealed_tasks`].
 #[derive(Debug, Clone)]
 pub struct SealedTaskInfo {
     pub task_id: Uuid,
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
-    /// The task's serialized input. Consumers parse session context (session_id,
-    /// turn_id, org_id, input_message_id) from it to emit the user-facing
-    /// `turn.sealed` and `session.idled` events.
+    /// The task's serialized input, so consumers can recover their own context
+    /// for whatever a seal means to them.
     pub input: serde_json::Value,
-    /// Stable seal-reason wire string (always `"no_progress"` here; budget seals
-    /// are decided in the worker turn loop, not during reclaim).
+    /// Stable seal-reason wire string (always `"no_progress"` here: the reclaim
+    /// path's only seal is the no-progress guard).
     pub reason: String,
     /// Number of consecutive no-progress recoveries that triggered the seal.
     pub no_progress_count: u32,
 }
 
 /// Default number of consecutive no-progress recoveries before a task is sealed.
-/// Mirrors `everruns_core::turn::DEFAULT_NO_PROGRESS_SEAL_THRESHOLD` but is
-/// duplicated here to avoid a dependency from `everruns-durable` on
-/// `everruns-core`. See EVE-534.
+/// Override with `DURABLE_NO_PROGRESS_SEAL_THRESHOLD`; see
+/// [`no_progress_seal_threshold_from_env`]. EVE-534.
 pub const DEFAULT_NO_PROGRESS_SEAL_THRESHOLD: u32 = 3;
 
 /// Read the no-progress seal threshold from the environment, falling back to
@@ -562,7 +562,7 @@ pub struct WorkflowSnapshot {
 ///
 /// Covers workflow creation and status, optimistic-concurrency event appends,
 /// replay loads, replay snapshots, terminal transitions (fail, cancel,
-/// continue-as-new) and the atomic new-turn claim. This is the core of the
+/// continue-as-new) and the atomic new-run claim. This is the core of the
 /// engine: anything that executes or replays a workflow needs it.
 ///
 /// Every method must be implemented explicitly except the derived ones
@@ -678,15 +678,19 @@ pub trait EventLog: Send + Sync + 'static {
         error: crate::workflow::WorkflowError,
     ) -> Result<bool, StoreError>;
 
-    /// Atomically claim a workflow for a new turn.
+    /// Atomically start a new run of a long-lived workflow, unless one is
+    /// already active.
     ///
-    /// Transitions the workflow from any terminal status (or pending) to Running
-    /// in a single atomic operation. Returns true if the claim succeeded,
-    /// false if the workflow is Running (an active turn owns it).
+    /// A workflow instance can be reused for successive runs (for example one
+    /// per inbound request). This transitions it from any terminal status (or
+    /// pending) back to Running and clears its result, error and timestamps.
+    /// Returns true if the claim succeeded, false if a run is still active:
+    /// the workflow is Running or one of its tasks is claimed by a worker.
     ///
-    /// Also cancels any stale pending tasks as part of the atomic operation.
-    /// This is safe for horizontal scaling — only one caller wins the claim.
-    async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError>;
+    /// Also cancels any stale pending tasks left by the previous run, in the
+    /// same atomic operation. Safe under horizontal scaling: only one caller
+    /// wins the claim.
+    async fn try_start_new_run(&self, workflow_id: Uuid) -> Result<bool, StoreError>;
 
     /// Cancel a workflow
     async fn cancel_workflow(&self, workflow_id: Uuid) -> Result<(), StoreError>;
@@ -792,8 +796,8 @@ pub trait TaskQueue: Send + Sync + 'static {
 
 /// Per-workflow signal inbox.
 ///
-/// Needed by the engine to deliver and consume signals (user messages,
-/// cancellation, timers). `consume_pending_signals` has a non-atomic derived
+/// Needed by the engine to deliver and consume signals (application
+/// messages, cancellation, timers). `consume_pending_signals` has a non-atomic derived
 /// default; stores should override it with an atomic implementation.
 #[async_trait]
 pub trait SignalStore: Send + Sync + 'static {
