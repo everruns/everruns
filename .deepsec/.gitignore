@@ -9,6 +9,7 @@ data/*/files/
 data/*/runs/
 data/*/reports/
 data/*/debug/
+data/*/revalidation/
 data/*/setup/
 data/*/project.json
 data/*/tech.json
