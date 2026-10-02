@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-10-02
+
+### What's Changed
+
+- fix(release): order versioned dev-dependencies in the crate publish cascade, and check the order against packaged manifests in CI and before tagging ([#4018](https://github.com/everruns/everruns/pull/4018)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.34.1.
+
+The 0.34.0 crate cascade halted after `everruns-capability` and `everruns-cli-contract`: `everruns-durable` was ordered ahead of `everruns-core`, which it dev-depends on, and could not package. 0.34.1 carries the same source as 0.34.0 plus the ordering fix, and publishes every crate. First published this release: `everruns-ag-ui`, `everruns-drivers`, `everruns-durable`, `everruns-serve-agentcore`.
+
 ## [0.34.0] - 2026-10-02
 
 ### Highlights

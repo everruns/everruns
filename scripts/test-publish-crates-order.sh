@@ -8,6 +8,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 python3 scripts/sync-publish-pin-versions.py --check
+python3 scripts/check-publish-order.py
 
 python3 - <<'PY'
 import importlib.util
@@ -338,6 +339,7 @@ def release_plan(
     registry: dict[str, set[str]],
     deps: dict[str, list[str]] | None = None,
     tags: dict[str, str] | None = None,
+    dev_deps: dict[str, list[tuple[str, str]]] | None = None,
 ) -> list[str]:
     """Run the workflow's own plan script against a stubbed index and tag store.
 
@@ -353,7 +355,8 @@ def release_plan(
         {
             "name": n,
             "version": v,
-            "dependencies": [{"name": d, "kind": None} for d in deps.get(n, [])],
+            "dependencies": [{"name": d, "kind": None, "req": f"^{v}"} for d in deps.get(n, [])]
+            + [{"name": d, "kind": "dev", "req": req} for d, req in (dev_deps or {}).get(n, [])],
         }
         for n, v in packages.items()
     ]}
@@ -444,6 +447,32 @@ require(
     late_join == [],
     "a crate pinning one held back to the next platform version must be held "
     f"back too, not dispatched into a publish it cannot resolve, got: {late_join}",
+)
+
+# A versioned dev-dependency survives into the packaged manifest, so the crate
+# it names must publish first. v0.34.0 ordered everruns-durable (no normal
+# deps) ahead of everruns-core, which it dev-depends on, and the cascade halted
+# when durable could not package. A version-less path dev-dep is stripped by
+# `cargo package` and must not constrain the order (host <-> llmsim).
+with contextlib.redirect_stderr(io.StringIO()):
+    dev_ordered = release_plan(
+        {"everruns-durable": "0.34.0", "everruns-provider": "0.34.0"},
+        {"everruns-durable": set(), "everruns-provider": {"0.33.0"}},
+        dev_deps={"everruns-durable": [("everruns-provider", "^0.34.0")]},
+    )
+    dev_unversioned = release_plan(
+        {"everruns-host": "0.34.0", "everruns-llmsim": "0.34.0"},
+        {"everruns-host": {"0.33.0"}, "everruns-llmsim": {"0.33.0"}},
+        deps={"everruns-llmsim": ["everruns-host"]},
+        dev_deps={"everruns-host": [("everruns-llmsim", "*")]},
+    )
+require(
+    dev_ordered == ["everruns-provider", "everruns-durable"],
+    f"a versioned dev-dependency must publish before its dependant, got: {dev_ordered}",
+)
+require(
+    dev_unversioned == ["everruns-host", "everruns-llmsim"],
+    f"a version-less dev-dependency must not constrain publish order, got: {dev_unversioned}",
 )
 
 legacy_macros = repo / "crates/everruns-macros"
