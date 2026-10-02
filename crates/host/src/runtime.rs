@@ -63,7 +63,7 @@ use std::sync::{Arc, Mutex};
 mod parked;
 mod steering;
 
-pub use parked::ParkedToolCalls;
+pub use parked::{InterruptedToolCalls, ParkedToolCalls};
 use parked::{ParkedTurn, ParkedTurns, lock_parked};
 pub use steering::{TurnSteering, TurnSteeringPushError};
 

@@ -153,7 +153,9 @@ on the first other request. It then picks, in order:
 
 With session storage, a conversation survives AgentCore stopping the microVM
 after its idle timeout: the next invocation with the same session id resumes it
-from the log. Session storage is per session, kept for 14 days, and reset when
+from the log. That includes a turn parked on an approval or an `ask_user`
+question: on the new microVM the interrupt is still open, and the client's
+resume run answers it as before. Session storage is per session, kept for 14 days, and reset when
 you deploy a new runtime version. For history across sessions and versions,
 point `DATABASE_URL` at storage you own, such as an S3 Files or EFS mount
 (both need VPC mode).
@@ -232,7 +234,7 @@ Gateway's credential providers instead of the runtime's environment.
 | AG-UI protocol | Yes, AG-UI 1.0 including interrupts | Yes |
 | `/ws` WebSocket | Yes | Yes |
 | MCP and A2A server protocols | Not yet | Yes |
-| Conversation persistence | SQLite on session storage | File or AgentCore Memory session managers |
+| Conversation persistence | SQLite on session storage, including a turn parked on an approval or question | File or AgentCore Memory session managers |
 | Long-term memory (AgentCore Memory) | Not yet | Yes |
 | Gateway tools | MCP connection | MCP client |
 | Shell and files | Built-in (`sandbox = "microvm"`) | Bring your own tools |
@@ -243,8 +245,9 @@ Gateway's credential providers instead of the runtime's environment.
 ## Limits
 
 - Approvals and `ask_user` questions park a turn without keeping the microVM
-  busy, and a parked turn does not survive a restart yet. Answer within the
-  idle timeout (15 minutes by default).
+  busy. AgentCore may stop the microVM while one waits; with session storage
+  the next microVM asks it again, but an "always" answer given before the
+  restart is not remembered after it, and a request a subagent parked is lost.
 - `#[schedule]`s run in-process, so they only fire while a session's microVM
   is up. Use EventBridge to call `InvokeAgentRuntime` on a schedule instead.
 - Only `bedrock/…` models use the runtime's execution role. Other providers

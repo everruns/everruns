@@ -82,8 +82,9 @@ adds the microVM shell, an approval tool and an `@ag-ui/client` script.
 
 - Not yet served: the MCP and A2A protocol ports.
 - `ask_user` and approvals park the turn without keeping the session busy, so AgentCore
-  may stop the microVM after its idle timeout. serve's pending approvals do not survive
-  a restart yet.
+  may stop the microVM after its idle timeout. With session storage the next microVM
+  reopens the parked turn and its interrupt is still open, but an "always" answer from
+  before the restart is not remembered, and a request a subagent parked is lost.
 - Not yet integrated: AgentCore Memory, Code Interpreter, Browser and Identity.
 - Schedules run in-process, which on AgentCore only fires while a session's microVM is up.
   Use EventBridge to call `InvokeAgentRuntime` instead.

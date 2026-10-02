@@ -206,8 +206,11 @@ it does when a new message arrives while one is open. An entry that cannot be
 applied returns `AgUiError::InvalidInput` before the stream opens, and nothing
 is resolved.
 
-Parked requests live in memory. If the process exits, the waiting turn ends
-cancelled.
+Parked requests live in memory. If the process exits, the waiting turn is left
+unfinished in the session's log; after a restart,
+`Session::resume_interrupted_turn` runs its waiting calls again, so they park
+on the gate anew and a client's resume run can answer them (see
+[session history](/framework/session-history/)).
 
 ## Policy
 

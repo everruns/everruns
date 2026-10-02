@@ -112,7 +112,9 @@ errors visible), because the developer owns both ends.
   match the server's: validate every entry before applying any, re-interrupt
   on a missing entry or a new message, ignore unknown ids. Approval
   interrupts are always client-answerable here (`tool_approval`); there is no
-  operator. A process exit cancels a parked turn.
+  operator. A process exit leaves a parked turn unfinished in the log;
+  `Session::resume_interrupted_turn` runs its waiting calls again after a
+  restart, so they park on the gate anew.
 - **HTTP handler, opt-in.** `ag-ui` adds only `everruns-ag-ui`; the
   `ag-ui-axum` feature adds `AgUiHandler` and `sse_response`
   ([`crates/everruns/src/ag_ui/handler.rs`](../../crates/everruns/src/ag_ui/handler.rs)),
@@ -154,7 +156,9 @@ because every top-level agent is an endpoint and none is declared separately.
 - **Interrupts.** serve's own parked approvals and questions, through
   `InterruptSource`: an interrupt can be answered by a `resume` entry, by
   `/question-answers` or by `/approvals/{tool_call_id}`, and the reverse.
-  They live in memory, like every serve park.
+  They live in memory, like every serve park, and come back after a restart
+  because serve resumes a turn its old process left waiting on a person
+  (see [serve](../framework/serve.md)).
 - **Policy.** Trusted: reasoning, usage and runtime errors visible, because
   the developer owns both ends. A public deployment puts serve behind its own
   auth, as with every serve route.

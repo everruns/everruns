@@ -27,6 +27,11 @@ use crate::hooks::{
 use crate::observers::ObserverDispatcher;
 use crate::{Agent, Harness, SessionEnvironmentError};
 
+mod interrupted;
+
+pub use interrupted::InterruptedTurn;
+use interrupted::ResumedTurn;
+
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
 /// Open one with [`Engine::create`](crate::Engine::create). The first
@@ -569,6 +574,12 @@ enum Command {
         turn_id: TurnId,
         response: oneshot::Sender<bool>,
     },
+    Interrupted {
+        response: oneshot::Sender<Result<Option<InterruptedTurn>, RunError>>,
+    },
+    ResumeInterrupted {
+        response: oneshot::Sender<Result<Option<ResumedTurn>, RunError>>,
+    },
     #[cfg(feature = "ag-ui")]
     Override {
         overrides: SessionOverrides,
@@ -590,6 +601,8 @@ enum Command {
 enum TurnEntry {
     /// A new input starts it.
     Input(Box<AcceptedTurnInput>),
+    /// A turn a process exit cut off runs its unfinished tool calls again.
+    Interrupted,
     /// Client-side tool results continue a parked one.
     #[cfg(feature = "ag-ui")]
     Resume(Vec<everruns_core::events::ToolCompletedData>),
@@ -685,6 +698,14 @@ impl SessionActor {
                 }
                 Command::Cancel { response, .. } => {
                     let _ = response.send(false);
+                }
+                Command::Interrupted { response } => {
+                    let _ = response.send(self.interrupted_turn().await);
+                }
+                Command::ResumeInterrupted { response } => {
+                    if !self.resume_interrupted(response, &mut commands).await {
+                        break;
+                    }
                 }
                 #[cfg(feature = "ag-ui")]
                 Command::Override {
@@ -943,6 +964,9 @@ impl SessionActor {
                     turn_id,
                     steering.clone(),
                 )),
+                TurnEntry::Interrupted => {
+                    Box::pin(runtime.resume_interrupted_turn(self.session_id, steering.clone()))
+                }
                 #[cfg(feature = "ag-ui")]
                 TurnEntry::Resume(results) => Box::pin(runtime.resume_steerable_turn(
                     self.session_id,
@@ -983,6 +1007,13 @@ impl SessionActor {
                         }
                         Some(Command::Inspect { response }) => {
                             self.deferred.push_back(Command::Inspect { response });
+                        }
+                        // A running turn is not interrupted, whatever the log says.
+                        Some(Command::Interrupted { response }) => {
+                            let _ = response.send(Ok(None));
+                        }
+                        Some(Command::ResumeInterrupted { response }) => {
+                            let _ = response.send(Ok(None));
                         }
                         #[cfg(feature = "ag-ui")]
                         Some(Command::Override { overrides, response }) => {

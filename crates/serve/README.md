@@ -202,8 +202,8 @@ It does not have:
 - Postgres or NATS adapters;
 - `#[memoize]` on `Cx`;
 - per-build routing (the manifest defines the contract, but nothing routes on it yet);
-- approvals or questions that survive a restart, or a deny note that reaches
-  the model;
+- a deny note that reaches the model, or "always" approvals and subagent
+  requests that survive a restart;
 - auth, organizations, or the server's agent, harness and workspace routes;
 - Slack signature checks without `SLACK_SIGNING_SECRET` (they are skipped in dev).
 
