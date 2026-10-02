@@ -1,0 +1,125 @@
+name: Release Preflight
+
+# Release-numbering guards around the crates.io cascade (see
+# scripts/release-preflight.py for what each mode checks and why).
+#
+# - On a release PR (one that changes workspace.package.version), check the
+#   new version against crates.io and rehearse packaging every published crate
+#   with verification. The rehearsal compiles each crate the way Publish Crate
+#   will, against its packaged siblings, so a crate that only builds inside the
+#   workspace fails here instead of halting the cascade and burning the version.
+# - After every Crate Release run, and daily, audit that the version on main is
+#   on crates.io for the whole publish set. A halted or held-back cascade used to
+#   leave crates a version behind with nothing on main saying so.
+#
+# The offline publish-set check runs on every PR in ci.yml's Lockfile job.
+
+on:
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'scripts/release-preflight.py'
+      - '.github/crates-publish-set.txt'
+      - '.github/workflows/release-preflight.yml'
+  workflow_run:
+    workflows: [Crate Release]
+    types: [completed]
+  schedule:
+    - cron: '30 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  release-pr:
+    name: Release PR Preflight
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
+
+      - name: Detect a version bump
+        id: bump
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "refs/heads/$BASE_REF:refs/remotes/origin/base"
+          version() { python3 -c 'import sys, tomllib; print(tomllib.loads(sys.stdin.read())["workspace"]["package"]["version"])'; }
+          BASE=$(git show origin/base:Cargo.toml | version)
+          HEAD=$(version < Cargo.toml)
+          echo "Workspace version: $BASE -> $HEAD"
+          if [ "$BASE" != "$HEAD" ]; then echo "release=true" >> "$GITHUB_OUTPUT"; else echo "release=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Check the new version against crates.io
+        if: steps.bump.outputs.release == 'true'
+        run: python3 scripts/release-preflight.py --registry
+
+      - name: Check new crate names against crates.io
+        if: steps.bump.outputs.release != 'true'
+        run: python3 scripts/release-preflight.py --names
+
+      - name: Rust cache
+        if: steps.bump.outputs.release == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-rehearsal
+
+      # Packaging several crates in one invocation verifies each against a
+      # local overlay of its packaged siblings, which is what crates.io holds
+      # once the cascade has published them.
+      - name: Rehearse packaging every published crate
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+          args=()
+          while read -r name; do args+=(-p "$name"); done < <(grep -v '^#' .github/crates-publish-set.txt | sed '/^$/d')
+          cargo package --locked "${args[@]}"
+
+  audit:
+    name: Published Version Audit
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # see whether a Crate Release cascade is still running
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
+
+      # A queued or running cascade will publish what is missing; auditing
+      # mid-cascade would only report its progress.
+      - name: Skip while a cascade is running
+        id: busy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUNNING=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow crate-release.yml --limit 20 \
+            --json status --jq '[.[] | select(.status != "completed")] | length')
+          echo "running=$RUNNING" >> "$GITHUB_OUTPUT"
+          if [ "$RUNNING" != "0" ]; then echo "::notice::Crate Release is still running; skipping the audit"; fi
+
+      - name: Check the version on main is fully published
+        if: steps.busy.outputs.running == '0'
+        run: python3 scripts/release-preflight.py --audit

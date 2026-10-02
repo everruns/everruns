@@ -143,6 +143,14 @@ pre-push:
 pre-push-full:
     EVERRUNS_PRE_PUSH_FULL=1 ./scripts/lib/pre-push.sh
 
+# Check a release PR against crates.io before merge: new version, new names.
+release-preflight:
+    python3 scripts/release-preflight.py --registry
+
+# Report crates in the publish set still missing the workspace version on crates.io.
+release-status:
+    python3 scripts/release-preflight.py --audit
+
 # Run all pre-PR checks (fmt, clippy, tests, UI, OpenAPI, docs)
 pre-pr:
     ./scripts/lib/pre-pr.sh
