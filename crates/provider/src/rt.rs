@@ -168,27 +168,47 @@ mod imp {
 
 pub use imp::*;
 
-/// A periodic tick that skips missed ticks, like Tokio's
-/// `interval` with `MissedTickBehavior::Skip`, with the first tick already
-/// consumed: the first [`Interval::tick`] completes one `period` from now.
+/// A periodic tick that skips missed ticks, like Tokio's `interval` with
+/// `MissedTickBehavior::Skip`: the first [`Interval::tick`] completes at
+/// once, later ones one `period` apart. On native targets it is Tokio's own
+/// interval, so its scheduling (and paused-clock behavior) is unchanged.
 pub struct Interval {
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    inner: tokio::time::Interval,
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     period: Duration,
-    next: std::pin::Pin<Box<Sleep>>,
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    next: Option<std::pin::Pin<Box<Sleep>>>,
 }
 
 impl Interval {
     pub fn new(period: Duration) -> Self {
-        Self {
-            period,
-            next: Box::pin(sleep(period)),
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let mut inner = tokio::time::interval(period);
+            inner.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            Self { inner }
+        }
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            Self { period, next: None }
         }
     }
 
     /// Wait for the next tick. Cancel-safe: a dropped `tick` keeps the
     /// schedule.
     pub async fn tick(&mut self) {
-        self.next.as_mut().await;
-        self.next = Box::pin(sleep(self.period));
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            self.inner.tick().await;
+        }
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            if let Some(next) = self.next.as_mut() {
+                next.as_mut().await;
+            }
+            self.next = Some(Box::pin(sleep(self.period)));
+        }
     }
 }
 

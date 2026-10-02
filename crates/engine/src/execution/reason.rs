@@ -1523,9 +1523,9 @@ impl ReasonAtom {
             let initial_stall_timeout = remaining_retry_time(&retry_config, retry_started_at)
                 .map_or(stall_timeout, |remaining| remaining.min(stall_timeout));
             let mut stall_sleep = Box::pin(everruns_provider::rt::sleep(initial_stall_timeout));
-            // First tick 12s from now; missed ticks are skipped.
             let mut keepalive_ticker =
                 everruns_provider::rt::Interval::new(std::time::Duration::from_secs(12));
+            keepalive_ticker.tick().await; // consume immediate first tick
             let mut last_stream_heartbeat = Instant::now();
             // Tracks the wall-clock time of the last actual token received.
             // Updated only on content events; keepalive heartbeats use this
