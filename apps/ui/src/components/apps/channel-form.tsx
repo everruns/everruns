@@ -81,6 +81,12 @@ const DEFAULT_PUBLIC_CHAT_EXPIRATION_HOURS = 6;
 const DEFAULT_FCP_EXPIRATION_HOURS = 6;
 const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
 
+/** Read-only fields the server adds to a Slack endpoint's config once Everruns created its app. */
+type SlackProvisionedConfig = {
+  /** Public id of the Slack app Everruns created for this endpoint. */
+  slack_app_id?: string;
+};
+
 export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" | "runs";
 
 export type ChannelFormState = {
@@ -306,7 +312,7 @@ export function getDefaultChannelFormState(
       slackCredentialsConfigured: Boolean(
         config.signing_secret_configured || config.bot_token_configured,
       ),
-      slackAppId: config.slack_app_id || "",
+      slackAppId: (config as SlackChannelConfig & SlackProvisionedConfig).slack_app_id || "",
       slackSessionStrategy: config.session_strategy || "per_thread",
       slackReplyMode: config.reply_mode || "all_messages",
     };
