@@ -40,6 +40,7 @@ use crate::api::a2a_signing::{
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::endpoint_auth::{EndpointAuthError, EndpointAuthVerifier, LegacyEndpointAuth};
+use crate::api::endpoint_ingress;
 use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::apps::{
@@ -316,7 +317,7 @@ async fn endpoint_app_id(
     state: &EndpointA2aState,
     channel_id: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    crate::api::endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+    endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
         .await
         .map_err(internal_error)?
         .map(|(app, _)| app.public_id.to_string())
@@ -441,14 +442,11 @@ async fn authenticate_request(
     peer_addr: Option<std::net::SocketAddr>,
     body: &[u8],
 ) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
-    let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(
-        &state.db,
-        state.encryption.as_ref(),
-        channel_id,
-    )
-    .await
-    .map_err(internal_error)?
-    .ok_or_else(not_found)?;
+    let (app, channel) =
+        endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+            .await
+            .map_err(internal_error)?
+            .ok_or_else(not_found)?;
     if !app.matches_legacy_app_id(app_id) {
         return Err(not_found());
     }
@@ -466,7 +464,7 @@ async fn authenticate_request(
     // endpoint, and every request must present the per-channel API key before
     // session creation. Liveness is resolved before auth so a caller cannot
     // distinguish a misconfigured endpoint from a bad key.
-    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = endpoint_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,
