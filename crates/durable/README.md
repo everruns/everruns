@@ -1,16 +1,37 @@
 # everruns-durable
 
-> PostgreSQL-backed durable execution engine for Everruns: event-sourced
-> workflows, a claimable task queue, retries, circuit breakers and schedules.
+> PostgreSQL-backed durable execution engine for Everruns: event-sourced workflows, a claimable task queue, retries, circuit breakers and schedules.
+
+[![Crates.io](https://img.shields.io/crates/v/everruns-durable.svg)](https://crates.io/crates/everruns-durable)
+[![Documentation](https://docs.rs/everruns-durable/badge.svg)](https://docs.rs/everruns-durable)
+[![License](https://img.shields.io/crates/l/everruns-durable.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-durable` keeps work alive across crashes and restarts. State lives in
 PostgreSQL, workers claim tasks with `SELECT ... FOR UPDATE SKIP LOCKED`, and
 anything a dead worker held is reclaimed and retried. It needs no
 infrastructure beyond PostgreSQL.
 
-It is an internal crate of the [Everruns](https://everruns.com) workspace
-(`publish = false`). The control plane and workers use it to keep long-running
-agent turns progressing.
+It is a focused crate in the [Everruns](https://everruns.com) ecosystem. The
+Everruns control plane and workers use it to keep long-running agent turns
+progressing, and it works on its own for any workflow or job queue that should
+survive restarts.
+
+```sh
+cargo add everruns-durable
+```
+
+## What It Provides
+
+- Event-sourced, deterministic workflows (`Workflow`, `WorkflowExecutor`) with
+  replay, snapshots, timers, child workflows, signals and `continue_as_new`
+- A PostgreSQL task queue with priorities, `SKIP LOCKED` claiming, heartbeats,
+  stale-claim reclamation and a dead letter queue
+- Retry policies, timeouts and distributed circuit breakers
+- A worker pool with bounded concurrency and backpressure
+- Cron and interval schedules with leader-safe claiming
+- A self-contained PostgreSQL schema (`PostgresWorkflowEventStore::migrate`)
+  and an in-memory store for tests
+- `DurableExecution`, the checkpointed driver of `everruns-engine` turns
 
 ## How Everruns uses it
 
@@ -203,22 +224,31 @@ The rest of the toolkit:
 
 ## Running against PostgreSQL
 
-The schema lives in the server's migrations (`durable_*` tables):
-
-```sh
-sqlx migrate run --source crates/server/migrations
-```
-
-Then build the store from a pool:
+The crate ships its own schema: the `durable_*` tables, their indexes, and the
+trigger functions behind worker wake-ups and health counters. Apply it with
+`PostgresWorkflowEventStore::migrate` before building the store. It is
+idempotent, runs in one transaction, and serializes concurrent callers on an
+advisory lock, so calling it on every start-up is safe. It needs PostgreSQL 14
+or newer and no extensions. Objects are created in the first schema of the
+connection's `search_path`.
 
 ```rust,no_run
-use everruns_durable::PostgresWorkflowEventStore;
+use everruns_durable::prelude::*;
 
-# async fn connect() -> Result<(), sqlx::Error> {
-let pool = sqlx::PgPool::connect("postgres://localhost/everruns").await?;
-let store = PostgresWorkflowEventStore::new(pool);
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let pool = sqlx::PgPool::connect("postgres://localhost/my_app").await?;
+PostgresWorkflowEventStore::migrate(&pool).await?;
+
+let mut executor = WorkflowExecutor::new(PostgresWorkflowEventStore::new(pool));
+# let _ = &mut executor;
 # Ok(()) }
 ```
+
+If your application manages schema with its own migration tool, copy
+`PostgresWorkflowEventStore::SCHEMA_SQL` into a migration instead. A database
+whose durable tables were created by the Everruns server migrations already
+matches this schema, and `migrate` leaves it unchanged; a CI drift test keeps
+the two in step.
 
 ## Testing
 
@@ -226,10 +256,12 @@ let store = PostgresWorkflowEventStore::new(pool);
 # Unit tests, in-memory store (no database)
 cargo test -p everruns-durable
 
-# PostgreSQL integration tests (DATABASE_URL, default port 9332, migrated)
+# PostgreSQL integration tests (DATABASE_URL, default port 9332, migrated
+# with the server migrations, which schema_drift_test compares against)
 cargo test -p everruns-durable --features postgres-tests \
   --test postgres_integration_test --test postgres_repository_test \
-  --test heartbeat_cancel_test --test store_conformance_test -- --test-threads=1
+  --test heartbeat_cancel_test --test store_conformance_test \
+  --test schema_drift_test -- --test-threads=1
 
 # Failure injection: fail-rs failpoints inside the PostgreSQL store
 cargo test -p everruns-durable --features "failpoints,postgres-tests" \
@@ -263,7 +295,8 @@ Scenarios cover worker scaling (1 to 100 workers, burst load), workflow
 throughput (many workflows with many sequential steps) and cold-start latency.
 Each run writes HTML reports to `crates/durable/target/benchmark-reports/`.
 
-Every bench takes the same flags: `--smoke` runs each scenario at a tiny scale,
+The bench binaries and the `bench` support module need the `bench` feature,
+which the commands above enable. Every bench takes the same flags: `--smoke` runs each scenario at a tiny scale,
 and `--summary <file>` appends one JSON line per scenario.
 
 - **Pull requests** run every bench with `--smoke` on the `durable` CI shard, so
@@ -281,11 +314,12 @@ and `--summary <file>` appends one JSON line per scenario.
 | --- | --- |
 | `postgres-tests` | Compiles the tests that need a live PostgreSQL. |
 | `failpoints` | Enables `fail-rs` failpoints in the PostgreSQL store. Zero cost when off. |
+| `bench` | Builds the benchmark support module and bench binaries. Not a supported API. |
 
 ## Documentation
 
 - [Durable execution](https://docs.everruns.com/explanation/durable-execution/)
-- Design of record: `knowledge/operations/durable-execution-engine.md`
+- [API reference](https://docs.rs/everruns-durable)
 
 ## License
 

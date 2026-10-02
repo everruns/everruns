@@ -19,6 +19,7 @@ mod circuit_breakers;
 mod dlq;
 mod event_log;
 mod schedules;
+mod schema;
 mod signals;
 mod task_queue;
 mod workers;

@@ -145,7 +145,7 @@ impl InMemoryWorkflowEventStore {
     }
 
     /// Make a claimed task look abandoned, so the next
-    /// [`reclaim_stale_tasks`](WorkflowEventStore::reclaim_stale_tasks) returns
+    /// [`reclaim_stale_tasks`](super::TaskQueue::reclaim_stale_tasks) returns
     /// it whatever the threshold. Stands in for a worker that stopped
     /// heartbeating.
     pub fn expire_claim(&self, task_id: Uuid) {

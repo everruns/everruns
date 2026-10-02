@@ -84,7 +84,7 @@ jobs:
       - name: Run benchmarks
         run: |
           for bench in ${{ matrix.benches }}; do
-            cargo bench -p everruns-durable --bench "$bench" -- \
+            cargo bench -p everruns-durable --features bench --bench "$bench" -- \
               --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
           done
 

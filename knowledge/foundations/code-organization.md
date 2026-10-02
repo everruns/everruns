@@ -320,6 +320,7 @@ just test-unit  # Runs in ~30s, no Docker needed
   `knowledge/project/ci-build-time.md`.
 - `crates/durable/tests/postgres_integration_test.rs` - Durable execution task queue, workflows
 - `crates/durable/tests/postgres_repository_test.rs` - Durable SQL queries, circuit breakers
+- `crates/durable/tests/schema_drift_test.rs` - Crate-owned schema (`PostgresWorkflowEventStore::migrate`) matches the server migrations for the durable tables
 - `crates/durable/tests/failure_injection_test.rs` - fail-rs rollback and retry coverage (`failpoints,postgres-tests`)
 - `crates/durable/tests/agent_reliability_test.rs` - manual executor/store reliability harness; not CI-gated until the restart/reclaim scenarios pass cleanly
 

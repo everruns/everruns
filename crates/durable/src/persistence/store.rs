@@ -427,7 +427,7 @@ pub struct WorkerInfo {
 
 impl WorkerInfo {
     /// An active worker that accepts `activity_types`, ready for
-    /// [`WorkflowEventStore::register_worker`].
+    /// [`WorkerRegistry::register_worker`].
     ///
     /// Both stores hand tasks only to a registered worker that is not
     /// draining, so register before claiming.

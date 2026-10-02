@@ -109,7 +109,7 @@ Production event routing therefore prefers:
    - `host/` → `everruns-host` - Low-level in-process execution host, reusable host-phase execution, and session mutation/storage services shared by the facade, worker, and advanced hosts
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
-   - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
+   - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`)
    - `drivers/*` - separately published official LLM driver packages over `everruns-provider`
    - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
    - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
