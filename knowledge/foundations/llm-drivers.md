@@ -377,6 +377,10 @@ With a journal, dropping the stream no longer cancels the response: the drop may
 
 Remaining gaps: a worker that dies after OpenAI accepted the POST but before `response.created` was saved still re-posts; a response abandoned by a turn that then fails without retrying runs to completion unread; and in the native-async path the coordinator holds the turn lease, so the journal is unavailable there and the call keeps the in-process behaviour.
 
+### WebSocket Transport (OpenAI Responses)
+
+The Open Responses driver can stream a call over OpenAI's Responses WebSocket mode instead of SSE, keeping one socket open across the turns of a tool loop. It is opt-in (the `openai/websocket` driver option, or `OpenAIChatDriver::with_websocket_transport`), offered by the OpenAI driver for `api.openai.com` only, never used for background-mode calls, and falls back to SSE whenever the socket fails before the first response event. The wire contract, commit point and reuse rules are in [OpenAI Responses WebSocket Transport](openai-responses-websocket.md).
+
 ### Completion Metadata
 
 `LlmCompletionMetadata` returned on stream completion. Token buckets are

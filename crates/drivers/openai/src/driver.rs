@@ -109,8 +109,20 @@ impl OpenAIChatDriver {
                 .with_native_features(true, true)
                 .with_hosted_tools(true)
                 .with_prompt_cache_options(true)
-                .with_background_mode(true),
+                .with_background_mode(true)
+                .with_websocket_support(true),
         }
+    }
+
+    /// Stream every call over OpenAI's Responses WebSocket mode, keeping one
+    /// connection open across the turns of a tool loop. Off by default; a
+    /// single call can also opt in or out with the
+    /// [`OPENAI_WEBSOCKET_OPTION`](everruns_provider::OPENAI_WEBSOCKET_OPTION)
+    /// driver option. Only `api.openai.com` is reached this way, and a socket
+    /// that cannot connect or drops before the first event falls back to SSE.
+    pub fn with_websocket_transport(mut self, enabled: bool) -> Self {
+        self.inner = self.inner.with_websocket_default(enabled);
+        self
     }
 
     /// Configure retries for `429` and transient `5xx` responses.
@@ -187,14 +199,23 @@ impl ChatDriver for OpenAIChatDriver {
     ) -> Result<LlmResponseStream> {
         // Background mode needs OpenAI's resume and cancel endpoints; a custom
         // gateway on this driver may reject or ignore them.
-        let official = endpoint
-            .url("responses")
-            .is_some_and(|url| is_openai_api_url(&url) || is_azure_openai_api_url(&url));
-        if !official {
-            let foreground = self.inner.clone().with_background_mode(false);
+        let url = endpoint.url("responses");
+        let openai = url.as_deref().is_some_and(is_openai_api_url);
+        let azure = url.as_deref().is_some_and(is_azure_openai_api_url);
+        if !openai && !azure {
+            let foreground = self
+                .inner
+                .clone()
+                .with_background_mode(false)
+                .with_websocket_support(false);
             return foreground
                 .chat_completion_stream(endpoint, messages, config)
                 .await;
+        }
+        // Responses WebSocket mode is documented for api.openai.com only.
+        if !openai {
+            let sse = self.inner.clone().with_websocket_support(false);
+            return sse.chat_completion_stream(endpoint, messages, config).await;
         }
         self.inner
             .chat_completion_stream(endpoint, messages, config)
@@ -735,6 +756,50 @@ mod tests {
                 .await;
             let body = capture.0.lock().unwrap().take().expect("request body");
             assert_eq!(body.get("background").is_some(), background, "{base}");
+        }
+    }
+
+    /// The Responses WebSocket transport is documented for api.openai.com
+    /// only. The handshake resolves auth with a bodiless `GET`; other hosts go
+    /// straight to the SSE `POST`, even when the call opts in.
+    #[tokio::test]
+    async fn websocket_transport_is_limited_to_api_openai_com() {
+        struct Methods(std::sync::Mutex<Vec<String>>);
+        #[async_trait]
+        impl ProviderAuth for Methods {
+            async fn headers(
+                &self,
+                request: ProviderAuthRequest<'_>,
+            ) -> Result<Vec<(String, String)>> {
+                self.0.lock().unwrap().push(request.method.to_string());
+                Err(AgentLoopError::config("captured before network"))
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+        for (base, expected) in [
+            ("https://api.openai.com/v1", vec!["GET", "POST"]),
+            ("https://resource.openai.azure.com/openai/v1", vec!["POST"]),
+            ("https://gateway.example/v1", vec!["POST"]),
+        ] {
+            for opt_in in [false, true] {
+                let methods = std::sync::Arc::new(Methods(std::sync::Mutex::new(Vec::new())));
+                let config = LlmCallConfig::new("gpt-6-astra");
+                let driver = OpenAIChatDriver::new().with_websocket_transport(opt_in);
+                let _ = Provider::new("openai", driver)
+                    .base_url(base)
+                    .auth_arc(methods.clone())
+                    .chat_completion_stream(vec![], &config)
+                    .await;
+                let seen = methods.0.lock().unwrap().clone();
+                let expected = if opt_in {
+                    expected.clone()
+                } else {
+                    vec!["POST"]
+                };
+                assert_eq!(seen, expected, "{base} opt_in={opt_in}");
+            }
         }
     }
 

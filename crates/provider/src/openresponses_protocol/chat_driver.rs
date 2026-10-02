@@ -290,9 +290,28 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // failure that lands before the first event is decoded (the "error
         // decoding response body" flake). Header-phase retries (429/5xx and
         // transient send failures) are handled inside the per-attempt send.
-        let first_connect = match reattached {
-            Some((stream, _)) => Ok((stream, RetryMetadata::default())),
-            None => {
+        // Opt-in WebSocket transport (see `websocket.rs`). `None` means it was
+        // not wanted or failed before committing, and the call goes over SSE.
+        #[cfg(feature = "responses-websocket")]
+        let websocket_stream = match reattached {
+            None if self.websocket.wants(config, background) => {
+                super::websocket_transport::open_stream(
+                    endpoint,
+                    &api_url,
+                    &request_body,
+                    &extension_headers,
+                    config,
+                )
+                .await
+            }
+            _ => None,
+        };
+        #[cfg(not(feature = "responses-websocket"))]
+        let websocket_stream: Option<crate::stream_reconnect::SseStream> = None;
+
+        let first_connect = match (reattached, websocket_stream) {
+            (Some((stream, _)), _) | (None, Some(stream)) => Ok((stream, RetryMetadata::default())),
+            (None, None) => {
                 connect_sse_with_reconnect(
                     &self.retry_config,
                     "OpenResponsesProtocolDriver",

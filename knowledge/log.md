@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-02
+
+* **Opt-in Responses WebSocket transport.** The OpenAI driver can stream a
+  call over OpenAI's Responses WebSocket mode (`openai/websocket` driver
+  option, or `OpenAIChatDriver::with_websocket_transport`) on `api.openai.com`,
+  reusing one socket across the turns of a tool loop and falling back to SSE
+  when the socket fails before the first event. SSE stays the default. The wire
+  contract, including what was inferred from the official SDK, is pinned in
+  [OpenAI Responses WebSocket Transport](foundations/openai-responses-websocket.md);
+  threat-model entry TM-LLM-045.
+
 ## 2026-10-01
 
 * **serve speaks AG-UI.** `serve`'s `ag-ui` feature mounts

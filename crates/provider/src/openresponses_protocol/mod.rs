@@ -49,11 +49,15 @@ mod computer;
 mod hosted_tools;
 mod input;
 mod streaming;
+mod websocket;
+#[cfg(feature = "responses-websocket")]
+mod websocket_transport;
 mod wire;
 
 pub use background::OPENAI_BACKGROUND_OPTION;
 pub(crate) use input::*;
 pub(crate) use streaming::*;
+pub use websocket::OPENAI_WEBSOCKET_OPTION;
 pub(crate) use wire::*;
 
 #[cfg(test)]
@@ -64,6 +68,8 @@ mod tests_request;
 mod tests_support;
 #[cfg(test)]
 mod tests_tools;
+#[cfg(all(test, feature = "responses-websocket"))]
+mod tests_websocket;
 
 const OPENAI_PROMPT_CACHE_KEY_MAX_LEN: usize = 64;
 const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
@@ -156,6 +162,7 @@ pub struct OpenResponsesProtocolChatDriver {
     hosted_tools: bool,
     native_prompt_cache_options: bool,
     background_mode: bool,
+    websocket: websocket::WebSocketPolicy,
 }
 
 impl OpenResponsesProtocolChatDriver {
@@ -175,6 +182,7 @@ impl OpenResponsesProtocolChatDriver {
             hosted_tools: false,
             native_prompt_cache_options: false,
             background_mode: false,
+            websocket: Default::default(),
         }
     }
 
@@ -197,6 +205,28 @@ impl OpenResponsesProtocolChatDriver {
     /// connection (see `background.rs` for the policy).
     pub fn with_background_mode(mut self, enabled: bool) -> Self {
         self.background_mode = enabled;
+        self
+    }
+
+    /// Declare that the endpoint implements OpenAI's Responses WebSocket mode.
+    /// Calls then opt in with the
+    /// [`OPENAI_WEBSOCKET_OPTION`](crate::OPENAI_WEBSOCKET_OPTION) driver
+    /// option; SSE stays the default and the fallback (see `websocket.rs`).
+    pub fn with_websocket_support(mut self, supported: bool) -> Self {
+        self.websocket.supported = supported;
+        if !supported {
+            self.websocket.default_on = false;
+        }
+        self
+    }
+
+    /// Use the Responses WebSocket transport for every call that does not opt
+    /// out with `openai/websocket: false`. Implies support.
+    pub fn with_websocket_default(mut self, enabled: bool) -> Self {
+        self.websocket.default_on = enabled;
+        if enabled {
+            self.websocket.supported = true;
+        }
         self
     }
 

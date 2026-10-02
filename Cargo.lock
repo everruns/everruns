@@ -3248,6 +3248,7 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "url",
  "utoipa",
