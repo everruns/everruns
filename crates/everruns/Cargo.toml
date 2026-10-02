@@ -208,6 +208,9 @@ tracing.workspace = true
 # edges do not force the facade to package before same-cycle sibling releases
 # (e.g. everruns-test-support) reach crates.io.
 everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
+# Gateway drivers live outside the facade's provider features; the Vercel
+# example reaches them directly, which is also how an embedding host would.
+everruns-drivers = { path = "../drivers/drivers", features = ["cloudflare", "vercel"] }
 everruns-test-support = { path = "../test-support", features = ["fixtures"] }
 tokio = { workspace = true, features = ["macros", "net", "process", "rt-multi-thread", "time", "test-util"] }
 # `ServiceExt::oneshot` drives the `ag-ui-axum` router in tests.
@@ -244,6 +247,13 @@ required-features = ["openai"]
 [[example]]
 name = "hello"
 required-features = ["openai"]
+
+[[example]]
+name = "vercel_gateway"
+required-features = ["macros"]
+
+[[example]]
+name = "cloudflare_direct_llm"
 
 [[example]]
 name = "observe_and_cancel"

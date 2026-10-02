@@ -2343,6 +2343,7 @@ dependencies = [
  "everruns-builtins",
  "everruns-capability",
  "everruns-core",
+ "everruns-drivers",
  "everruns-gemini",
  "everruns-host",
  "everruns-integrations-bashkit",
