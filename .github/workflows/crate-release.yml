@@ -216,6 +216,13 @@ jobs:
           echo "Release plan ($COUNT crate(s), dependency order):"
           jq -r '.[] | "  \(.package) \(.version)  (\(.tag))"' release-plan.json
 
+      # Fail before the first tag, not mid-cascade: package every crate in the
+      # plan and check the order against the manifests cargo produces. A
+      # halted cascade can only be finished by the next patch version.
+      - name: Check publish order against packaged manifests
+        if: steps.plan.outputs.count != '0'
+        run: python3 scripts/check-publish-order.py --plan release-plan.json
+
       - name: Tag and publish in dependency order
         if: steps.plan.outputs.count != '0' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:

@@ -216,7 +216,13 @@ inherited with `workspace = true`): `cargo package` keeps them in the packaged
 manifest and resolves them from the index. Version-less path dev-dependencies
 are stripped and do not constrain the order. Missing that is how v0.34.0 halted:
 `everruns-durable` has no normal dependencies, so it was ordered before
-`everruns-core`, which it dev-depends on, and could not package. Detection is by
+`everruns-core`, which it dev-depends on, and could not package.
+`scripts/check-publish-order.py` is the guard: it packages every crate in the
+plan and fails if a workspace dependency left in a packaged manifest publishes
+at or after its dependant. It runs in the CI **Lockfile** job against the plan
+for a fresh version, and in Crate Release against the real plan before the
+first tag is created, so a bad order stops the release before anything
+publishes. Detection is by
 crates.io presence, so re-runs are idempotent and a version already published is
 skipped. `workflow_dispatch` with `dry_run: true` previews the set.
 

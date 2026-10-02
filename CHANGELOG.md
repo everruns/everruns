@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### What's Changed
 
-- fix(release): order versioned dev-dependencies in the crate publish cascade ([#4018](https://github.com/everruns/everruns/pull/4018)) by [@chaliy](https://github.com/chaliy)
+- fix(release): order versioned dev-dependencies in the crate publish cascade, and check the order against packaged manifests in CI and before tagging ([#4018](https://github.com/everruns/everruns/pull/4018)) by [@chaliy](https://github.com/chaliy)
 
 ### Crate Releases
 
