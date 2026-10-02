@@ -56,13 +56,16 @@ the application-facing session context.
 Inspect the next model call before or after a turn:
 
 ```rust
-# use everruns::Engine;
+# use everruns::{Agent, Engine, Model};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let agent = Agent::builder().instructions("x").model(Model::simulated("ok")).build()?;
 let engine = Engine::new();
 let session = engine.create(agent);
 let context = session.inspect().await?;
 println!("messages: {}", context.messages.len());
 println!("tools: {}", context.tools.len());
-# Ok::<(), everruns::RunError>(())
+# Ok(())
+# }
 ```
 
 Inspection uses the same assembly path as execution, including MCP discovery,

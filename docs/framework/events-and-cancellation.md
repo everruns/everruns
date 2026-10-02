@@ -97,6 +97,10 @@ assert!(!cancelled.success);
 
 ```rust
 use everruns::{CancellationToken, RunOptions};
+# use everruns::{Agent, Engine, Model};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let agent = Agent::builder().instructions("x").model(Model::simulated("ok")).build()?;
+# let session = Engine::new().create(agent);
 
 let cancel = CancellationToken::new();
 let options = RunOptions::new().cancel_token(cancel.clone());
@@ -104,7 +108,8 @@ cancel.cancel();
 
 let turn = session.run_with("Stop before starting.", options).await?;
 assert!(!turn.success);
-# Ok::<(), everruns::RunError>(())
+# Ok(())
+# }
 ```
 
 Cancellation is cooperative. Cancelling drops the in-flight turn future and

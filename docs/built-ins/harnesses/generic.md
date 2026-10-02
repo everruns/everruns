@@ -47,7 +47,7 @@ The **Generic** harness is the recommended default for most use cases. It config
 | [Message Metadata](/capabilities/message-metadata/) | Annotates messages with timestamps |
 | Human Intent | Adds model-authored intent narration to each tool call for UI rendering |
 | BTW | Ephemeral side-question command for the current session |
-| Loop Detection | Detects repeated tool loops and injects a warning to break them |
+| Tool Loop Detection | Detects repeated tool loops and injects a warning to break them |
 | Error Disclosure | Shows full provider error detail (`detailed` mode) |
 
 Infinity Context and Context Compaction work together to keep long sessions unbounded. See [Context Compaction](/advanced/compaction/#generic-harness-defaults) for details.

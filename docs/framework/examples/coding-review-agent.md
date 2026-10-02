@@ -40,7 +40,7 @@ cargo run -p everruns-coding-review-agent -- "Read the contract and test. Reprod
 
 This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
 
-```rust
+```rust ignore
 let agent = Agent::builder()
     .name("coding-review-agent")
     .instructions(include_str!("instructions.md"))
@@ -56,7 +56,7 @@ let agent = Agent::builder()
 
 The Framework interaction stays readable in `main.rs`. The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
 
-```rust
+```rust ignore
 let engine = Engine::new();
 let session = engine.create(agent);
 println!("MODEL: {MODEL}");

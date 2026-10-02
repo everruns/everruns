@@ -16,7 +16,7 @@ serve adds no runtime of its own. Agents, sessions, tools, approvals,
 from the `everruns` crate: serve is a thin layer over
 [`Engine`](/framework/architecture/).
 
-```rust
+```rust ignore
 use serve::prelude::*;
 
 #[agent]

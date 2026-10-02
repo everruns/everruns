@@ -82,7 +82,7 @@ impl Capability for MessageMetadataCapability {
     }
 
     fn name(&self) -> &str {
-        "RuntimeMessage Metadata"
+        "Message Metadata"
     }
 
     fn description(&self) -> &str {

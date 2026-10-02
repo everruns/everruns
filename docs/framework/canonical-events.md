@@ -9,6 +9,7 @@ sees the turn from its first event.
 
 ```rust
 use everruns::prelude::*;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 let agent = Agent::builder()
     .instructions("Answer concisely.")
@@ -49,6 +50,9 @@ let turn = session.run("hello").await?;
 drop(session); // closes the subscriber once buffered events are drained
 let recorded = observer.await??;
 assert!(!recorded.is_empty());
+# let _ = turn;
+# Ok(())
+# }
 ```
 
 ## One protocol, two views
@@ -145,7 +149,7 @@ Three request shapes are distinguished by `EventReadRequest::cursor()`:
   `EventCursor::after`, is a poll that captures a fresh snapshot and therefore
   does observe those later appends.
 
-```rust
+```rust ignore
 use async_trait::async_trait;
 use everruns_core::events::{Event, EventRequest};
 use everruns_provider::typed_id::EventId;

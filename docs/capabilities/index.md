@@ -15,6 +15,12 @@ Agents compose capabilities; enable only what you need.
 
 ## Capability Reference
 
+Every capability a production deployment offers, with the number of tools it
+adds by default. The table is checked against the capability registry in CI
+(`scripts/check_docs_catalogs.py`). Rows marked **dev-only** are registered only
+at the `dev` deployment grade; a `FEATURE_*` variable means the deployment has
+to switch the capability on.
+
 ### Core
 
 Fundamental capabilities for file operations, command execution, web access, session management, time awareness, task tracking, scheduling, and agent coordination.
@@ -23,7 +29,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 8 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
-| [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 |
+| [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
@@ -33,9 +39,20 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 | [Auto-Continue After Usage Limit](/capabilities/usage-limit-auto-continue/) | `usage_limit_auto_continue` | 0 |
-| [Sub Agents](/capabilities/sub-agents/) | `subagents` | 1 (`spawn_agent` delegation target) |
 | [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
 | [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |
+| Channel Thread Context | `channel_context` | 0 |
+| System Commands | `system_commands` | 0 |
+
+### Orchestration
+
+Delegating work to other sessions and running it in the background.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
+| Session Tasks | `session_tasks` | 5 |
+| Background Execution | `background_execution` | 1 |
 
 ### Sandboxes
 
@@ -45,7 +62,8 @@ Cloud and container sandbox environments for isolated code execution.
 |---|---|---|
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
-| [Docker Container](/capabilities/docker/) | `docker_container` | 5 |
+| Deno Sandboxes | `deno` | 6 |
+| [Docker Container](/capabilities/docker/) | `docker_container` | 5 (dev-only, needs `FEATURE_DOCKER_CAPABILITY=true`) |
 
 ### Browser
 
@@ -54,17 +72,21 @@ Browser automation and web interaction capabilities.
 | Capability | ID | Tools |
 |---|---|---|
 | [Browserless](/capabilities/browserless/) | `browserless` | 7 |
-| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1 |
+| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1 (dev-only) |
 
-### Data
+### Data and knowledge
 
-Structured data and knowledge capabilities.
+Structured data, knowledge retrieval, and memory.
 
 | Capability | ID | Tools |
 |---|---|---|
 | [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
 | [Retrieval Citations](/capabilities/citation-retrieval/) | `citation_retrieval` | 0 |
 | [Citation Verification](/capabilities/citation-verification/) | `citation_verification` | 0 |
+| Data Knowledge | `data_knowledge` | 0 |
+| Knowledge Base | `knowledge_base` | 1 |
+| Knowledge Index | `knowledge_index` | 0 |
+| Memory | `memory` | 0 |
 
 ### Media
 
@@ -74,14 +96,17 @@ Image generation and editing workflows.
 |---|---|---|
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | `gpt_image_gen` | 2 |
 
-### Tools
+### Models and provider tools
 
-Provider-executed and built-in tool capabilities.
+Provider-executed tools and model selection.
 
 | Capability | ID | Tools |
 |---|---|---|
 | [OpenAI Server Tools](/capabilities/openai-server-tools/) | `openai_server_tools` | 0 |
 | [OpenRouter Server Tools](/capabilities/openrouter-server-tools/) | `openrouter_server_tools` | 0 |
+| Model Scout | `model_scout` | 0 |
+| OpenRouter Workspace | `openrouter_workspace` | 2 |
+| OpenAI Agents API Runtime | `openai_agents_api_runtime` | 0 |
 
 ### Integrations
 
@@ -92,6 +117,7 @@ External-service capabilities and blueprint-backed workflows.
 | [GitHub](/capabilities/github/) | `github` | 5 (6 with `allow_pull_requests`) |
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
+| Cursor | `cursor` | 9 |
 
 ### Platform
 
@@ -101,6 +127,15 @@ Agent self-management and platform control.
 |---|---|---|
 | [Platform](/capabilities/platform/) | `platform` | 3 |
 
+### Generative UI
+
+Structured UI the agent renders in the chat.
+
+| Capability | ID | Tools |
+|---|---|---|
+| OpenUI | `openui` | 0 |
+| A2UI | `a2ui` | 0 |
+
 ### Optimization
 
 Performance and cost optimization for LLM interactions.
@@ -108,13 +143,15 @@ Performance and cost optimization for LLM interactions.
 | Capability | ID | Tools |
 |---|---|---|
 | [Infinity Context](/capabilities/infinity-context/) | `infinity_context` | 1 |
-| [Auto Tool Search](/capabilities/auto-tool-search/) | `auto_tool_search` | 1 |
+| [Context Compaction](/advanced/compaction/) | `compaction` | 0 |
+| [Auto Tool Search](/capabilities/auto-tool-search/) | `auto_tool_search` | 0 (adds `tool_search` on models without native tool search) |
 | [OpenAI Tool Search](/capabilities/openai-tool-search/) | `openai_tool_search` | 0 |
 | [Claude Tool Search](/capabilities/claude-tool-search/) | `claude_tool_search` | 0 |
 | [Tool Search](/capabilities/tool-search/) | `tool_search` | 1 |
 | [Budgeting](/capabilities/budgeting/) | `budgeting` | 1 |
 | [Self-Budget](/capabilities/self-budget/) | `self_budget` | 0 |
 | [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | `parallel_tool_calls` | 0 |
+| Native Async Tools | `native_async_tools` | 0 |
 
 ### Safety
 
@@ -126,6 +163,7 @@ Streaming-output guardrails and runtime safety nets.
 | [Tool Call Repair](/capabilities/tool-call-repair/) | `tool_call_repair` | 0 |
 | [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
 | [Tool Approval](/capabilities/tool-approval/) | `tool_approval` | 0 |
+| Progress Guard | `progress_guard` | 0 |
 
 The [`guardrails`](/capabilities/guardrails/) capability runs config-driven
 checks over model output and tool activity, blocking or logging per check.
@@ -149,6 +187,12 @@ agent actions from outside the model.
 | Capability | ID | Tools |
 |---|---|---|
 | [User Hooks](/capabilities/user-hooks/) | `user_hooks` | 0 |
+
+Harnesses also compose capabilities that are settings rather than features:
+Soft Approval, Human Intent, BTW, Tool Loop Detection, Error Disclosure, Prompt
+Caching, and Tool Output Persistence and Distillation. The
+[Generic](/built-ins/harnesses/generic/) and
+[Platform Chat](/built-ins/harnesses/platform-chat/) harness pages describe them.
 
 ## Quick Start
 
@@ -225,6 +269,13 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
 | [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
+| [Daytona](/capabilities/daytona/) | [Storage](/capabilities/session-storage/) |
+| Deno Sandboxes | Storage |
+| [Browserless](/capabilities/browserless/) | [Storage](/capabilities/session-storage/) |
+| [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |
+| [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
+| Data Knowledge | File System |
+| Memory | File System |
 
 ### Features
 

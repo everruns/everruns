@@ -35,7 +35,7 @@ catalog.
 | [Task Management](/capabilities/task-management/) | Shows multi-step platform mutations as progress in the thread |
 | Prompt Caching | Caches the large system prompt across turns |
 | [Tool Call Repair](/capabilities/tool-call-repair/) | Repairs malformed tool calls |
-| Loop detection | Stops repeated command/discovery cycles |
+| Tool Loop Detection | Stops repeated command/discovery cycles |
 | Error disclosure | Returns actionable command failures to the operator (`detailed` mode) |
 | [Context Compaction](/advanced/compaction/) | Bounds long management conversations |
 | [Ask User](/capabilities/ask-user/) | Ask the operator 1–4 structured questions, or collect a credential, and wait for the answer |

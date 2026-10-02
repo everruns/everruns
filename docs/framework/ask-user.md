@@ -115,21 +115,29 @@ Two details in it are worth copying into any responder:
 **A text answer carries its string in `other_text`.** It has no selected option:
 
 ```rust
+# use everruns::ask_user::Answer;
+# let id = String::from("q1");
+# let _ =
 Answer {
     id,
     selected: Vec::new(),
     other_text: Some("feature/open-question".to_string()),
     secret_ref: None,
 }
+# ;
 ```
 
 ```rust
+# use everruns::ask_user::Answer;
+# let id = String::from("q1");
+# let _ =
 Answer {
     id,
     selected: Vec::new(),
     other_text: None,
     secret_ref: Some(everruns::ask_user::session_secret_ref("MY_TOKEN")),
 }
+# ;
 ```
 
 For the smallest possible version, [`crates/everruns/examples/ask_user.rs`](https://github.com/everruns/everruns/tree/main/crates/everruns/examples/ask_user.rs) runs a responder and the unattended path side by side and prints what each decided.

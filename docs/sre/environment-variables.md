@@ -3,6 +3,32 @@ title: Environment Variables
 description: "Every Everruns environment variable: database connections, authentication, encryption, and development mode."
 ---
 
+## Summary
+
+A production control plane (any `DEPLOYMENT_GRADE` other than `dev`, `DEV_MODE`
+unset) refuses to start without the first three variables. Everything else has
+a working default; each row links to the section that documents it.
+
+| Variable | Process | Required | Without it |
+|---|---|---|---|
+| [`DATABASE_URL`](#database_url) | API | Yes, unless `DEV_MODE=true` | Startup fails. Dev mode uses in-memory storage instead. |
+| [`AUTH_MODE`](#other-server-variables) | API | Yes, unless the grade is `dev` | Startup fails: unset means `none`, which is allowed only at `dev` grade. |
+| [`WORKER_GRPC_AUTH_TOKEN`](#worker_grpc_auth_token) | API and workers (same value) | Yes, unless `DEV_MODE=true` | The API fails to start its gRPC server; workers cannot authenticate. |
+| [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. |
+| [`DEV_MODE`](#dev_mode), [`DEPLOYMENT_GRADE`](#deployment_grade) | API and workers | No | Production behavior (`prod` grade). |
+| [`PUBLIC_APP_URL`](#public_app_url), [`AUTH_LOGIN_ORIGIN`](#auth_login_origin), [`API_PREFIX`](#api_prefix), [`CORS_ALLOWED_ORIGINS`](#cors_allowed_origins), [`HTTP_ADDR`](#http_addr) | API | No | `http://localhost:9300`, same-origin login, `/api`, CORS off, `0.0.0.0:9000`. |
+| [`DATABASE_UNPOOLED_URL`](#database_unpooled_url), [`DATABASE_POOL_MAX`](#other-server-variables), [`DATABASE_POOL_MIN`](#other-server-variables) | API | No | Listeners reuse `DATABASE_URL`; pool of 5 to 50 connections. |
+| [`VALKEY_URL`](#valkey_url) | API | No | Rate limits are per instance. |
+| [`NATS_URL`](#nats_url) | API and workers | No | PostgreSQL `NOTIFY` and in-memory broadcast. |
+| [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
+| [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`. |
+| [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Settings > Providers. |
+| [`UTILITY_*`](#system-model-keys), [`DECISIONS_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
+| [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
+| [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
+| [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
+
+
 ## DEV_MODE
 
 Enable development mode with in-memory storage. No PostgreSQL required.
@@ -211,6 +237,26 @@ VALKEY_URL=rediss://user:password@valkey.example.com:6380
 - Fail-open: if Valkey is unreachable, requests are allowed (availability over strictness)
 - Only used by control-plane (server); workers don't need this variable
 - Uses sliding-window counters via Lua scripts for atomic rate limit checks
+
+## DATABASE_URL
+
+PostgreSQL connection URL for the control plane. Workers do not connect to the
+database; they reach it through the API over gRPC.
+
+| Property | Value |
+|----------|-------|
+| **Required** | Yes, unless `DEV_MODE=true` |
+| **Default** | Not set (startup fails with `DATABASE_URL environment variable required`) |
+
+**Example:**
+
+```bash
+DATABASE_URL=postgres://everruns:secret@db.example.com:5432/everruns?sslmode=require
+```
+
+**Notes:**
+- Startup warns when the URL has no `sslmode` or uses `sslmode=disable`.
+- When this points at a pooler, set [`DATABASE_UNPOOLED_URL`](#database_unpooled_url) for listeners.
 
 ## DATABASE_UNPOOLED_URL
 
