@@ -1,19 +1,19 @@
-version: 0.33.0
-date: 2026-10-01
+version: 0.34.0
+date: 2026-10-02
 headline:
-  - GitHub triggers,
-  - OpenAI tools.
+  - AG-UI 1.0,
+  - everywhere.
 summary:
-  - Agents trigger on GitHub pull requests,
-  - the OpenAI Responses driver gains hosted tools,
-  - and MCP Apps views reach ChatGPT and Codex.
+  - AG-UI 1.0 reaches the server and framework,
+  - an OpenAI Agents API backend arrives,
+  - and computer use goes native.
 highlights:
-  - title: GitHub pull request triggers
-    description: Agents trigger on pull requests and connect their own GitHub App by clicks.
-    source: "#3943"
-  - title: OpenAI Responses hosted tools
-    description: Hosted web search, code interpreter, shell and file search, plus remote MCP.
-    source: "#3930"
-  - title: MCP Apps for ChatGPT and Codex
-    description: Everruns serves MCP Apps views for ChatGPT and Codex.
-    source: "#3927"
+  - title: AG-UI 1.0 across the platform
+    description: Interrupts, frontend tools, a durable thread store and a ready-made axum handler.
+    source: "#3995"
+  - title: OpenAI Agents API backend
+    description: A durable, opt-in runtime backend with Everruns policy at tool boundaries.
+    source: "#3957"
+  - title: Native computer use
+    description: OpenAI and Anthropic computer tools behind a hard approval gate.
+    source: "#3968"
