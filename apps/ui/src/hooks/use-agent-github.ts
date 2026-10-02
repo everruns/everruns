@@ -46,10 +46,10 @@ export function redirectToGitHub(response: AgentGitHubConnectResponse) {
   form.submit();
 }
 
-export function useConnectAgentGitHub(agentId: string) {
+export function useConnectAgentGitHub(agentId: string, returnTo?: string) {
   return useMutation({
     mutationFn: () =>
-      connectAgentGitHub(agentId, { return_to: `/agents/${agentId}?tab=integrations` }),
+      connectAgentGitHub(agentId, { return_to: returnTo ?? `/agents/${agentId}?tab=integrations` }),
     onSuccess: redirectToGitHub,
   });
 }
