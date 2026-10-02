@@ -38,7 +38,7 @@ name = "serve"
 [features]
 # `POST /v1/e/{agent}/ag-ui`: serve every top-level agent to AG-UI 1.0 clients
 # (CopilotKit, `@ag-ui/client`) through `everruns::ag_ui`.
-ag-ui = ["everruns/ag-ui"]
+ag-ui = ["everruns/ag-ui-axum"]
 
 [dependencies]
 everruns = { workspace = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }

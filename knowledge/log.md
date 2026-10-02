@@ -2,6 +2,13 @@
 
 ## 2026-10-02
 
+* **Ready-made AG-UI route.** The facade's `ag-ui-axum` feature adds
+  `everruns::ag_ui::AgUiHandler`: a required pluggable authorizer
+  (`StaticToken`, `Unauthenticated`, closures), thread resolution through
+  `AgUiThreads` scoped to the caller, and SSE with the server's framing and
+  15-second keepalive; serve frames its route with the shared
+  `sse_response`. See [AG-UI Channel](integrations/ag-ui.md#framework) and
+  TM-AUTH-030.
 * **AG-UI threads in the framework.** `everruns::ag_ui::AgUiThreads` maps
   `threadId` to a session through a pluggable `ThreadStore` (in-memory, or
   SQLite behind `local`), so a host keeps a thread across restarts, and a

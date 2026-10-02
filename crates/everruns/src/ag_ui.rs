@@ -193,9 +193,9 @@
 // its `/v1` API already answers, so one responder serves both APIs and an
 // AG-UI client and a `/question-answers` caller see the same request.
 //
-// Decision: no axum handler here. The facade carries no HTTP server
-// dependency, and the handler is five lines over `AgUiStream` (see the public
-// docs page `framework/ag-ui`).
+// Decision: `ag-ui` carries no HTTP server dependency. The ready-made axum
+// route (`AgUiHandler`, `sse_response`) sits behind `ag-ui-axum`, in
+// `ag_ui/handler.rs`.
 //
 // Decision: frontend tools are the session's client-side tools, as on the
 // server. The in-process runtime parks a turn on a call to one and keeps its
@@ -230,12 +230,19 @@ use crate::{
 };
 
 mod frontend_tools;
+#[cfg(feature = "ag-ui-axum")]
+mod handler;
 mod seed;
 mod shapes;
 mod threads;
 
 use frontend_tools::{frontend_definitions, trailing_results};
 
+#[cfg(feature = "ag-ui-axum")]
+pub use handler::{
+    AgUiAuthorizer, AgUiCaller, AgUiHandler, SSE_KEEPALIVE, StaticToken, Unauthenticated,
+    Unauthorized, sse_response,
+};
 pub use shapes::{approval_decision, approval_interrupt, question_interrupt, question_outcome};
 #[cfg(feature = "local")]
 pub use threads::SqliteThreadStore;
