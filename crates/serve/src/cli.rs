@@ -16,7 +16,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use clap::{Parser, Subcommand};
 use everruns::{EventStreamError, SessionEvent};
 use serde_json::Value;
@@ -104,40 +104,12 @@ pub async fn start(app: App) -> crate::Result {
     }
 }
 
-fn data_dir() -> crate::Result<PathBuf> {
-    if let Ok(url) = std::env::var("DATABASE_URL") {
-        return match url
-            .strip_prefix("sqlite://")
-            .or_else(|| url.strip_prefix("sqlite:"))
-        {
-            Some(path) => Ok(PathBuf::from(path)),
-            None => Err(anyhow!(
-                "DATABASE_URL `{url}` is not SQLite; this proof of concept stores sessions in SQLite only"
-            )),
-        };
-    }
-    Ok(std::env::var_os("SERVE_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(".serve")))
-}
-
 async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
-    let manifest = app.manifest();
-    let missing: Vec<&str> = manifest
-        .secrets
-        .iter()
-        .map(|secret| secret.name.as_str())
-        .filter(|name| std::env::var_os(name).is_none_or(|value| value.is_empty()))
-        .collect();
-    if mode == Mode::Start && !missing.is_empty() {
-        bail!("missing secrets: {}", missing.join(", "));
-    }
-    let data_dir = data_dir()?;
-    let host = Host::new(app.clone(), mode, Some(data_dir.clone()))?;
-    // Resolve every agent once so a bad model or tool schema fails at boot.
-    for agent in &app.inner.agents {
-        host.build_agent(agent, None, false)?;
-    }
+    let missing = crate::hosting::missing_secrets(&app);
+    let data_dir = crate::hosting::data_dir()?;
+    let server = crate::hosting::Server::new(app, mode, Some(data_dir.clone()))?;
+    let host = server.host.clone();
+    let missing: Vec<&str> = missing.iter().map(String::as_str).collect();
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -145,8 +117,8 @@ async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
     if mode == Mode::Dev {
         tokio::spawn(console(host.clone(), port));
     }
-    crate::scheduler::spawn(&host);
-    axum::serve(listener, crate::server::router(host))
+    server.spawn_schedules();
+    axum::serve(listener, server.router())
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

@@ -419,6 +419,14 @@ impl Host {
         if active { "active" } else { "idle" }
     }
 
+    /// Whether any session has a turn running that is not parked on a
+    /// person. A turn waiting for an approval or an answer counts as idle:
+    /// nothing runs until someone replies.
+    pub(crate) fn busy(&self) -> bool {
+        let ids: Vec<String> = lock(&self.live).keys().cloned().collect();
+        ids.iter().any(|id| self.status(id) == "active")
+    }
+
     pub(crate) fn pending_approvals(&self, id: &str) -> Vec<PendingApprovalView> {
         let mut pending: Vec<_> = lock(&self.approvals)
             .values()

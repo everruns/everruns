@@ -3325,6 +3325,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-serve-agentcore"
+version = "0.33.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "everruns-serve",
+ "reqwest 0.13.5",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-serve-build"
 version = "0.33.0"
 dependencies = [
@@ -7659,6 +7673,18 @@ name = "serve-example-ag-ui"
 version = "0.1.0"
 dependencies = [
  "everruns-serve",
+ "everruns-serve-build",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "serve-example-agentcore"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-agentcore",
  "everruns-serve-build",
  "serde",
  "serde_json",

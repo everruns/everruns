@@ -106,6 +106,15 @@ runtime.
   `InterruptSource` reads serve's parked approvals and questions, so one
   responder serves both APIs. See [AG-UI Channel](../integrations/ag-ui.md#serve).
 
+- **Hosting targets are sibling crates.** A platform contract (AgentCore
+  Runtime's `/ping`, `/invocations` and port 8080 first) lives in its own crate,
+  `everruns-serve-agentcore`, built on the public `serve::Server` seam: the same
+  boot as `start`, the `/v1` router, a busy signal and the AG-UI run. serve
+  stays platform-neutral, and the target binary hands every other command back
+  to `serve::start`. `/ping` reports busy only while a turn runs, not while it
+  waits on a person, so a parked session can go idle instead of billing until
+  its maximum lifetime.
+
 ## Rejected
 
 - **Runtime filesystem scanning, eve-style.** Not possible for compiled Rust,

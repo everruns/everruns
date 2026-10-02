@@ -65,7 +65,13 @@ pub(crate) async fn run(
     Path(agent): Path<String>,
     body: Bytes,
 ) -> Response {
-    match start(&host, &agent, &body).await {
+    respond(&host, &agent, &body).await
+}
+
+/// One AG-UI run for `agent` from a raw `RunAgentInput` body: the stream, or
+/// the problem the route would answer. Shared with [`crate::Server::ag_ui`].
+pub(crate) async fn respond(host: &Arc<Host>, agent: &str, body: &[u8]) -> Response {
+    match start(host, agent, body).await {
         Ok(response) => response,
         Err(err) => crate::server::Failure::from(err).into_response(),
     }

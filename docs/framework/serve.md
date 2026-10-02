@@ -202,5 +202,16 @@ build that owns it.
 - There is no OCI build, cloud deploy, or Postgres or NATS adapter.
 - The server's agent, harness, workspace and tool-result routes are not served.
 
+## Amazon Bedrock AgentCore
+
+[`everruns-serve-agentcore`](https://docs.rs/everruns-serve-agentcore) runs a
+serve app on AgentCore Runtime. Replace `serve::start` with
+`serve_agentcore::start` in `main`. With no command, the binary then serves
+AgentCore's contract on port 8080: `GET /ping` and `POST /invocations`, which
+takes an AG-UI `RunAgentInput` or `{"prompt": "..."}` and streams AG-UI
+events. serve's own commands keep working. The
+[agentcore example](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore)
+has an arm64 Dockerfile and deploy steps.
+
 The full guide, wire reference and hosting contract live next to the crate in
 [`crates/serve/docs`](https://github.com/everruns/everruns/tree/main/crates/serve/docs).
