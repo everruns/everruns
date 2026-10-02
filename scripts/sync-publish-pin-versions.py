@@ -127,6 +127,30 @@ def target_manifest(owner: Path, dependency: dict[str, Any]) -> Path | None:
     return candidate if candidate.name == "Cargo.toml" else candidate / "Cargo.toml"
 
 
+# `[workspace.dependencies]` is checked on its own, not only through the
+# published manifests that inherit from it. An entry that only unpublished
+# crates (the server, examples) or version-less dev edges consume is invisible
+# to the per-manifest walk, yet Cargo still resolves its pin against the
+# workspace member: left at the previous version, `cargo generate-lockfile`
+# fails after the bump. That is how integrations-catalog, serve-build and
+# serve-agentcore stayed at 0.33.0 while preparing 0.34.0.
+def workspace_pin_drift(
+    workspace_dependencies: dict[str, Any],
+    root_path: Path,
+    published: dict[Path, dict[str, Any]],
+) -> Iterator[tuple[str, str | None, str]]:
+    for key, declaration in workspace_dependencies.items():
+        if not isinstance(declaration, dict):
+            continue
+        dependency_manifest = target_manifest(root_path, declaration)
+        if dependency_manifest is None or dependency_manifest not in published:
+            continue
+        expected = published[dependency_manifest]["version"]
+        actual = declaration.get("version")
+        if actual != expected:
+            yield key, actual, expected
+
+
 TABLE_HEADER = re.compile(r'^\[(?P<name>[^\[\]]+)\]\s*$', re.MULTILINE)
 
 
@@ -247,6 +271,15 @@ def main() -> int:
                         f"{published[dependency_manifest]['name']} is {expected}"
                     )
                     rewrites[(declaration_path, declaration_kind, key)] = expected
+
+    for key, actual, expected in workspace_pin_drift(workspace_dependencies, root_path, published):
+        if (root_path, "dependencies", key) in rewrites:
+            continue
+        failures.append(
+            f"{root_path.relative_to(REPO)} [workspace.dependencies]: "
+            f"{key} pins {actual!r}; workspace member is {expected}"
+        )
+        rewrites[(root_path, "dependencies", key)] = expected
 
     if check_only:
         if failures:
