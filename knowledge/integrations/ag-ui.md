@@ -55,8 +55,18 @@ one AG-UI run per request over the session's live event stream and the shared
 errors visible), because the developer owns both ends.
 
 - **Input.** The session owns the conversation, so a run sends only the last
-  user message. Earlier messages, `state`, `context`, `forwardedProps` and
-  frontend tools are not read; the host maps `threadId` to a session.
+  user message. Earlier messages, `state`, `forwardedProps` and frontend tools
+  are not read; the host maps `threadId` to a session.
+- **Trusted instructions, opt-in.** `AgUiOptions::input_instructions` is for
+  a host that authenticates whoever posts the input (OpenBot runs its
+  coworkers this way): each run's `system` and `developer` messages, then its
+  `context` entries, become that run's instructions, and such messages may
+  trail the user message. They ride the session record's `system_prompt`,
+  the additive session layer appended after the agent's instructions, which
+  the runtime re-reads at every turn and model call: the latest run's set
+  wins, a run with none clears it, and nothing lands in the transcript. Off
+  by default, where the run ignores them and a trailing one is refused, the
+  same trust boundary the server keeps for public callers (TM-LLM-020).
 - **Interrupts without a durable park.** In-process `ask_user` and approvals
   block the turn on a responder instead of parking it, so the facade ships
   `InterruptGate`, a responder for both that parks each request in memory

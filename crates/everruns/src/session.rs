@@ -397,6 +397,29 @@ impl Session {
         result.await.map_err(|_| RunError::SessionClosed)?
     }
 
+    /// Replace this session's run-scoped record fields before a run.
+    ///
+    /// Ordered with sends: an override issued before a send applies to the
+    /// turn that send starts, and mid-turn it applies from the running turn's
+    /// next model call. The record is rewritten after the runtime is built,
+    /// because building it seeds the record afresh.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) async fn override_record(
+        &self,
+        overrides: SessionOverrides,
+    ) -> Result<(), RunError> {
+        let (response, result) = oneshot::channel();
+        self.command_sender()
+            .await?
+            .send(Command::Override {
+                overrides,
+                response,
+            })
+            .await
+            .map_err(|_| RunError::SessionClosed)?;
+        result.await.map_err(|_| RunError::SessionClosed)?
+    }
+
     async fn send_internal(
         &self,
         input: InputMessage,
@@ -459,6 +482,25 @@ enum Command {
         turn_id: TurnId,
         response: oneshot::Sender<bool>,
     },
+    #[cfg(feature = "ag-ui")]
+    Override {
+        overrides: SessionOverrides,
+        response: oneshot::Sender<Result<(), RunError>>,
+    },
+}
+
+/// Session record fields a run replaces for itself (see
+/// [`Session::override_record`]). `None` leaves a field as it is.
+// Decision: run-scoped instructions ride the session record's own
+// `system_prompt`, the additive session layer of the effective system prompt,
+// rather than a message in the transcript: the record is re-read at every turn
+// and model call, so the latest run's value wins and nothing accumulates in
+// history.
+#[cfg(feature = "ag-ui")]
+#[derive(Debug, Default)]
+pub(crate) struct SessionOverrides {
+    /// The session layer of the system prompt; `Some(None)` clears it.
+    pub(crate) instructions: Option<Option<String>>,
 }
 
 struct ActorSentMessage {
@@ -532,8 +574,37 @@ impl SessionActor {
                 Command::Cancel { response, .. } => {
                     let _ = response.send(false);
                 }
+                #[cfg(feature = "ag-ui")]
+                Command::Override {
+                    overrides,
+                    response,
+                } => {
+                    let _ = response.send(self.apply_overrides(overrides).await);
+                }
             }
         }
+    }
+
+    #[cfg(feature = "ag-ui")]
+    async fn apply_overrides(&mut self, overrides: SessionOverrides) -> Result<(), RunError> {
+        self.ensure_runtime().await?;
+        let backends = self
+            .execution
+            .backends()
+            .await
+            .map_err(crate::agent::BackendInitError::into_agent_loop)?;
+        let store = &backends.host.session_store;
+        let mut record = store.get_session(self.session_id).await?.ok_or_else(|| {
+            AgentLoopError::store(format!("session not found: {}", self.session_id))
+        })?;
+        if let Some(instructions) = overrides.instructions {
+            record.system_prompt = instructions;
+        }
+        // Read-modify-write without a store-level lock: the actor serializes
+        // overrides, a running turn is not polled while one applies, and the
+        // in-process runtime keeps no status in the record.
+        store.add_session(record).await?;
+        Ok(())
     }
 
     async fn start_turn(
@@ -658,6 +729,10 @@ impl SessionActor {
                         }
                         Some(Command::Inspect { response }) => {
                             self.deferred.push_back(Command::Inspect { response });
+                        }
+                        #[cfg(feature = "ag-ui")]
+                        Some(Command::Override { overrides, response }) => {
+                            let _ = response.send(self.apply_overrides(overrides).await);
                         }
                         Some(Command::Cancel { turn_id: requested, response }) => {
                             if requested == turn_id {

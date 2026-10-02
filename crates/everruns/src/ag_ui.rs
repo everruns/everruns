@@ -63,9 +63,51 @@
 //!
 //! The [`Session`] owns the conversation, so a run sends only the input's
 //! last message, which must be a user message's text. Earlier messages,
-//! `state`, `context`, `forwardedProps` and frontend `tools` are not read.
-//! Map `threadId` to a session yourself (one session per thread); the run
-//! does not check it.
+//! `state`, `forwardedProps` and frontend `tools` are not read, and neither
+//! are `system` and `developer` messages or `context` unless the host trusts
+//! them (below). Map `threadId` to a session yourself (one session per
+//! thread); the run does not check it.
+//!
+//! # Trusted instructions
+//!
+//! A host that owns both ends, or authenticates whoever posts the input, can
+//! let each run carry instructions with [`AgUiOptions::input_instructions`].
+//! The run's `system` and `developer` messages, then its `context` entries,
+//! become additional system instructions for that run, after the agent's
+//! own; the next run replaces them with its own (or none). Such messages may
+//! sit anywhere in `messages`, including after the user message, which stays
+//! the run's input. Leave it off for a caller you do not trust: these
+//! messages speak with the system prompt's authority.
+//!
+//! ```
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use everruns::ag_ui::{AgUiOptions, Message, RunAgentInput, wire};
+//! use everruns::{Agent, Engine, Model};
+//! use futures::StreamExt;
+//!
+//! let agent = Agent::builder()
+//!     .instructions("Be brief.")
+//!     .model(Model::simulated("ok"))
+//!     .build()?;
+//! let session = Engine::new().create(agent);
+//! let input = RunAgentInput {
+//!     messages: vec![
+//!         Message::user("m1", "Hi"),
+//!         Message::System(wire::TextOnlyMessage {
+//!             id: "s1".into(),
+//!             content: "You are the release coworker.".into(),
+//!             ..Default::default()
+//!         }),
+//!     ],
+//!     ..RunAgentInput::default()
+//! };
+//! let options = AgUiOptions::new().input_instructions(true);
+//! let _events: Vec<_> = session.ag_ui_with(input, options).await?.collect().await;
+//! assert!(session.inspect().await?.instructions.contains("release coworker"));
+//! # Ok(())
+//! # }
+//! ```
 
 // Decision: an in-process responder blocks the turn rather than parking it
 // durably, so interrupts need a host-side bridge. `InterruptGate` is that
@@ -98,6 +140,7 @@ use crate::approval::{ApprovalDecision, ToolApprover};
 use crate::ask_user::{
     Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, QuestionKind, Status,
 };
+use crate::session::SessionOverrides;
 use crate::{
     EventStream, EventStreamError, RunError, SentMessage, Session, SessionId, ToolCall,
     ToolDefinition,
@@ -212,6 +255,7 @@ fn invalid(why: impl Into<String>) -> AgUiError {
 pub struct AgUiOptions {
     policy: ProjectionPolicy,
     interrupts: Option<Arc<dyn InterruptSource>>,
+    input_instructions: bool,
 }
 
 impl std::fmt::Debug for AgUiOptions {
@@ -219,6 +263,7 @@ impl std::fmt::Debug for AgUiOptions {
         f.debug_struct("AgUiOptions")
             .field("policy", &self.policy)
             .field("interrupts", &self.interrupts.is_some())
+            .field("input_instructions", &self.input_instructions)
             .finish()
     }
 }
@@ -282,6 +327,62 @@ impl AgUiOptions {
         self.interrupts = Some(Arc::new(source));
         self
     }
+
+    /// Trust the input's `system` and `developer` messages and `context`
+    /// entries as instructions for the run. Off by default.
+    ///
+    /// When on, every run sets the session's run instructions from its own
+    /// input: those messages in order, then the context entries, appended
+    /// after the agent's instructions. A run that carries none clears the
+    /// previous run's. System and developer messages may appear anywhere in
+    /// `messages`, including after the user message the run sends. The
+    /// instructions stay on the session until the next run replaces them, so
+    /// a turn started with [`Session::send`] in between sees them too.
+    ///
+    /// Turn it on only when the host authenticates whoever posts the input:
+    /// these messages carry the system prompt's authority, so an untrusted
+    /// caller could rewrite the agent's rules. When off, they are ignored and
+    /// a message after the user message is refused.
+    ///
+    /// ```
+    /// let options = everruns::ag_ui::AgUiOptions::new().input_instructions(true);
+    /// # let _ = options;
+    /// ```
+    pub fn input_instructions(mut self, trusted: bool) -> Self {
+        self.input_instructions = trusted;
+        self
+    }
+}
+
+/// A run's trusted instructions: its `system` and `developer` messages in
+/// order, then its `context` entries. `None` when it carries none.
+fn input_instructions(input: &RunAgentInput) -> Option<String> {
+    let mut parts: Vec<String> = input
+        .messages
+        .iter()
+        .filter_map(|message| match message {
+            Message::System(message) | Message::Developer(message) => Some(message.content.trim()),
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+        .collect();
+    let context: Vec<String> = input
+        .context
+        .iter()
+        .filter(|entry| !entry.value.trim().is_empty())
+        .map(|entry| match entry.description.trim() {
+            "" => entry.value.trim().to_string(),
+            description => format!("{description}:\n{}", entry.value.trim()),
+        })
+        .collect();
+    if !context.is_empty() {
+        parts.push(format!(
+            "Context from the application:\n\n{}",
+            context.join("\n\n")
+        ));
+    }
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
 // --- Interrupt gate -----------------------------------------------------------
@@ -1236,7 +1337,9 @@ impl Session {
     /// AG-UI run.
     ///
     /// Without resume entries, the input's last message must be a user
-    /// message; its text starts a turn, or steers the running one. With
+    /// message (system and developer messages after it are skipped when
+    /// [`AgUiOptions::input_instructions`] is on); its text starts a turn,
+    /// or steers the running one. With
     /// resume entries and a [gate](AgUiOptions::gate), the entries answer the
     /// session's open interrupts and the run streams the rest of the parked
     /// turn. A run that would start while interrupts are open, or a resume
@@ -1289,31 +1392,17 @@ impl Session {
         let AgUiOptions {
             policy,
             interrupts: gate,
+            input_instructions: trusted,
         } = options;
         let session_id = self.session_id();
-        // Subscribe before anything can happen, so no event of this run and
-        // no park is missed.
-        let events = self.events();
-        let parked = gate.as_ref().map(|gate| gate.subscribe());
-
-        let mut sent = None;
-        let start = if !input.resume.is_empty() {
-            match &gate {
-                Some(gate) => match gate.resume(session_id, &input.resume)? {
-                    ResumeOutcome::NothingOpen => Start::Empty,
-                    ResumeOutcome::StillOpen(interrupts) => Start::Interrupt(interrupts),
-                    ResumeOutcome::Resumed => Start::Follow,
-                },
-                None => {
-                    tracing::warn!(
-                        session_id = %session_id,
-                        "AG-UI resume entries without an interrupt gate; ignoring them"
-                    );
-                    Start::Empty
-                }
-            }
-        } else {
-            let text = match input.messages.last() {
+        // A trusted run's system and developer messages are instructions,
+        // not the conversation: the input is the last message of any other
+        // role.
+        let trigger = if input.resume.is_empty() {
+            let last = input.messages.iter().rev().find(|message| {
+                !(trusted && matches!(message, Message::System(_) | Message::Developer(_)))
+            });
+            Some(match last {
                 Some(Message::User(message)) => message.content.to_text(),
                 Some(_) => return Err(invalid("the final AG-UI message must have role=user")),
                 None => {
@@ -1321,7 +1410,23 @@ impl Session {
                         "messages must contain at least one user message, or resume entries",
                     ));
                 }
-            };
+            })
+        } else {
+            None
+        };
+        if trusted {
+            self.override_record(SessionOverrides {
+                instructions: Some(input_instructions(&input)),
+            })
+            .await?;
+        }
+        // Subscribe before anything can happen, so no event of this run and
+        // no park is missed.
+        let events = self.events();
+        let parked = gate.as_ref().map(|gate| gate.subscribe());
+
+        let mut sent = None;
+        let start = if let Some(text) = trigger {
             let open = gate
                 .as_ref()
                 .map(|gate| gate.interrupts(session_id))
@@ -1336,6 +1441,21 @@ impl Session {
                 // AG-UI 1.0: an interrupt without an answer is not abandoned;
                 // ask again instead of running past it.
                 Start::Interrupt(open)
+            }
+        } else {
+            match &gate {
+                Some(gate) => match gate.resume(session_id, &input.resume)? {
+                    ResumeOutcome::NothingOpen => Start::Empty,
+                    ResumeOutcome::StillOpen(interrupts) => Start::Interrupt(interrupts),
+                    ResumeOutcome::Resumed => Start::Follow,
+                },
+                None => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        "AG-UI resume entries without an interrupt gate; ignoring them"
+                    );
+                    Start::Empty
+                }
             }
         };
 
