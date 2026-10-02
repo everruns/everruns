@@ -12,12 +12,14 @@ tags:
 
 Implemented on AG-UI 1.0 for the endpoint `POST /v1/e/{endpoint_id}/ag-ui` and
 Public Chat (`POST /v1/e/{endpoint_id}/public-chat`), which reuses the same
-stream, including interrupts and resume, frontend tools and token usage. The
-framework serves the same protocol from any session behind the facade's `ag-ui`
-feature (see [Framework](#framework)), and `serve` mounts it at
-`POST /v1/e/{agent}/ag-ui` behind its own `ag-ui` feature (see [serve](#serve)),
-with the runnable `examples/serve/ag-ui` driven by `@ag-ui/client`. Subagents
-and the outbound client are planned follow-ups of the same upgrade.
+stream, including interrupts and resume, frontend tools, token usage,
+subagents, run metadata, and a capabilities declaration at
+`GET /v1/e/{endpoint_id}/ag-ui/capabilities`. The framework serves the same
+protocol from any session behind the facade's `ag-ui` feature (see
+[Framework](#framework)), and `serve` mounts it at `POST /v1/e/{agent}/ag-ui`
+behind its own `ag-ui` feature (see [serve](#serve)), with the runnable
+`examples/serve/ag-ui` driven by `@ag-ui/client`. The outbound client is a
+planned follow-up of the same upgrade.
 
 ## Pieces
 
@@ -169,12 +171,54 @@ the interrupt with the calls streamed beside it. A run carrying resume entries
 resolves only those, and a frontend call left unanswered is closed as missing
 when the turn resumes. Answering both in one run is a known gap.
 
+## Subagents
+
+With `subagents_visible` (default off) a run projects its subagent tasks
+(`task.*` of kind `subagent`, what `spawn_agent` creates) as `SUBAGENT_*`, with
+`subagentRunId` set to the task id and `name` to its display name. The parent
+stream sees what crosses the task boundary, not the child transcript (see
+[session tasks](../runtime-resources/session-tasks.md)), so attribution
+covers that: text the child posts to its parent and its final summary become
+assistant text messages carrying `subagentRunId`, structured progress becomes
+an `everruns.subagent` activity. Child tool calls stay in the child session.
+A child that fails or is cancelled reports `SUBAGENT_ERROR`, its error passed
+through the run's error policy, so public endpoints sanitize it. The task spec
+(instructions, schemas) is never projected.
+
+A run never finishes with an invocation open. A foreground child ends inside
+its parent's turn; a background child that is still running when the run
+ends gets an `everruns.subagent` activity saying so, then every open segment
+closes with `SUBAGENT_FINISHED` and the `suspended` outcome, which 1.0 defines
+as terminal for the stream and not for the subagent. Success or error would
+claim an outcome nobody has seen. Its later completion belongs to whatever
+turn wakes the parent, not to this run.
+
+## Run metadata
+
+`RUN_STARTED`, `RUN_FINISHED` and `RUN_ERROR` carry `metadata.everruns`
+(the `ag-ui` key is the protocol's): `turnId` once the turn is known, `model`
+(the last model called) only when `usage_visible` is set, since usage already
+names it, and `sessionId` only for an identified caller on the AG-UI endpoint
+itself, never an anonymous or Public Chat visitor.
+
+## Capabilities
+
+`GET /v1/e/{endpoint_id}/ag-ui/capabilities` returns a 1.0 `AgentCapabilities`
+behind the same auth, gates and rate limit as a run
+([`ag_ui_capabilities.rs`](../../crates/server/src/api/ag_ui_capabilities.rs)).
+It is derived from the endpoint config only: identity (the endpoint name and
+description, `type: everruns`), streaming, client-provided tools, interrupts,
+and the opt-ins (reasoning, approvals, subagents, and usage under
+`custom.everruns`). The agent's own tools are not listed, and `multiAgent` is
+undeclared unless subagents are visible. The stream stays authoritative.
+
 ## Public endpoints
 
 Anonymous endpoints use a public projection policy: errors go through
 `PublicError` (see [public endpoints](../execution/public-endpoints.md)), tool
 activity uses only the endpoint's configured text. The decided policy for the
 1.0 additions: anonymous endpoints may receive `ask_user` interrupts, while
-approval interrupts (`tool_approval_interrupts`) and token usage
-(`usage_visible`) stay off unless the endpoint enables them. Public Chat keeps
-both off. See TM-TENANT-016 and TM-TOOL-052.
+approval interrupts (`tool_approval_interrupts`), token usage
+(`usage_visible`) and subagents (`subagents_visible`) stay off unless the
+endpoint enables them. Public Chat keeps all three off. See TM-TENANT-016,
+TM-TOOL-052 and TM-API-026.

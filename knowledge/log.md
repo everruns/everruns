@@ -2,6 +2,15 @@
 
 ## 2026-10-01
 
+* **AG-UI subagents, run metadata and capabilities.** With `subagents_visible`
+  (default off) subagent tasks stream as `SUBAGENT_*` keyed by task id, their
+  posted text and summary attributed by `subagentRunId`; segments still open
+  when a run ends close as `suspended`. Run events carry `metadata.everruns`
+  (turn, model with usage, session id for identified callers), and
+  `GET /v1/e/{endpoint_id}/ag-ui/capabilities` serves a 1.0
+  `AgentCapabilities` derived from the endpoint config. Recorded in
+  [AG-UI Channel](integrations/ag-ui.md#subagents) and threat-model entry
+  TM-API-026.
 * **serve speaks AG-UI.** `serve`'s `ag-ui` feature mounts
   `POST /v1/e/{agent}/ag-ui`, the server's channel route shape, as a thin layer
   over `Session::ag_ui_with`. The facade gained `InterruptSource`, so serve's

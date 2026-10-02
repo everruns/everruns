@@ -629,24 +629,19 @@ pub struct EndpointAuthConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AgUiChannelConfig {
-    /// Whether anonymous access is allowed for this endpoint.
-    /// Enabled by default for the initial AG-UI rollout.
+    /// Whether anonymous access is allowed for this endpoint (default on).
     #[serde(default = "default_true")]
     pub anonymous: bool,
     /// Optional shared bearer token for the public AG-UI endpoint.
     /// When set, requests must include the token in a supported header.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
-    /// How long (in seconds) a thread can be resumed after its session was
-    /// created. Once this elapses, the same `thread_id` cannot reuse the
-    /// existing session and must start a new one. `0` disables expiration.
-    /// Defaults to 6 hours.
+    /// Seconds a thread stays resumable after its session was created; after
+    /// that the `thread_id` starts a new session. `0` disables. Default 6 hours.
     #[serde(default = "default_session_expiration_seconds")]
     pub session_expiration_seconds: u32,
-    /// Optional per-IP rate limit applied to this app's AG-UI endpoint, in
-    /// requests per minute. `None` or `Some(0)` disables the per-app limit
-    /// (the global API limit still applies). Set a positive value to enforce
-    /// a stricter cap on anonymous traffic for this app.
+    /// Optional per-IP rate limit in requests per minute; `None` or `Some(0)`
+    /// disables the per-app limit (the global API limit still applies).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
     /// Public tool activity visibility for anonymous AG-UI streams.
@@ -658,9 +653,8 @@ pub struct AgUiChannelConfig {
         skip_serializing_if = "is_default_ag_ui_generic_tool_text"
     )]
     pub generic_tool_text: String,
-    /// Whether provider-curated reasoning summaries may be emitted on public
-    /// AG-UI streams. Defaults off because published apps can be anonymous and
-    /// summaries may derive from private prompts, tools, or retrieved data.
+    /// Emit provider reasoning summaries; off because endpoints can be anonymous
+    /// and summaries may derive from private prompts, tools, or retrieved data.
     #[serde(default, skip_serializing_if = "is_false")]
     pub reasoning_summary_visible: bool,
     /// Let the client answer tool-approval interrupts; off so anonymous visitors cannot (TM-TOOL-052).
@@ -669,6 +663,9 @@ pub struct AgUiChannelConfig {
     /// Report token usage on terminal run events; off because it reveals model and cost.
     #[serde(default, skip_serializing_if = "is_false")]
     pub usage_visible: bool,
+    /// Stream subagent work as `SUBAGENT_*`; off because child output and errors reach the client.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub subagents_visible: bool,
     /// Optional inline auth config for this public endpoint. When omitted,
     /// legacy `anonymous` + `token` behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1009,6 +1006,7 @@ impl PublicChatChannelConfig {
             reasoning_summary_visible: false,
             tool_approval_interrupts: false,
             usage_visible: false,
+            subagents_visible: false,
             auth: self.auth.clone(),
         }
     }
@@ -1149,7 +1147,7 @@ mod tests {
         assert!(config.auth.is_none());
         assert_eq!(config.tool_visibility, PublicToolVisibility::Generic);
         assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
-        assert!(!config.reasoning_summary_visible);
+        assert!(!config.reasoning_summary_visible && !config.subagents_visible);
     }
 
     #[test]
@@ -1164,6 +1162,7 @@ mod tests {
             reasoning_summary_visible: true,
             tool_approval_interrupts: true,
             usage_visible: true,
+            subagents_visible: true,
             auth: None,
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -1176,6 +1175,7 @@ mod tests {
         assert_eq!(parsed.generic_tool_text, "Please wait");
         assert!(parsed.reasoning_summary_visible);
         assert!(parsed.tool_approval_interrupts && parsed.usage_visible);
+        assert!(parsed.subagents_visible);
     }
 
     #[test]

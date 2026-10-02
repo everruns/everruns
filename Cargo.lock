@@ -3385,6 +3385,7 @@ dependencies = [
  "hyper-util",
  "image",
  "inventory",
+ "jsonschema",
  "jsonwebtoken",
  "k256",
  "metrics",

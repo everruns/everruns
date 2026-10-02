@@ -18,6 +18,7 @@
 #[path = "../test_harness.rs"]
 mod test_harness;
 
+mod ag_ui_capabilities_test;
 mod ag_ui_integration_test;
 mod ag_ui_interrupts_test;
 mod agent_budget_subject_test;
