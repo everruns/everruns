@@ -153,7 +153,7 @@ async fn agent_card(
         "supportedInterfaces": interfaces,
         "capabilities": {
             "streaming": streaming,
-            "pushNotifications": false,
+            "pushNotifications": true,
         },
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],

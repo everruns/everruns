@@ -258,10 +258,7 @@ async fn unsupported_version_is_refused() {
 async fn unimplemented_operations_use_their_error_codes() {
     let server = TestServer::in_memory().await;
     let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
-    for (method, code) in [
-        ("CreateTaskPushNotificationConfig", -32003),
-        ("GetExtendedAgentCard", -32007),
-    ] {
+    for (method, code) in [("GetExtendedAgentCard", -32007)] {
         let res: Value = rpc(
             &server,
             &endpoint,
@@ -431,4 +428,158 @@ async fn list_tasks_filters_on_state() {
     )
     .await;
     assert_eq!(completed["result"]["tasks"], json!([]), "{completed}");
+}
+
+/// Push configs round-trip through Create, Get, List and Delete, never echo
+/// the receiver's secrets, and stay fenced to the endpoint that owns the task.
+#[tokio::test]
+async fn push_configs_round_trip_without_echoing_secrets() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let other = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let task_id = send_task(&server, &endpoint, "push").await;
+    let config = json!({
+        "taskId": task_id,
+        "id": "hook-1",
+        "url": "https://hooks.example.com/a2a",
+        "token": "receiver-token",
+        "authentication": { "scheme": "Bearer", "credentials": "receiver-secret" },
+    });
+
+    let created = v1_call(
+        &server,
+        &endpoint,
+        "CreateTaskPushNotificationConfig",
+        config.clone(),
+    )
+    .await;
+    let expected = json!({
+        "id": "hook-1",
+        "taskId": task_id,
+        "url": "https://hooks.example.com/a2a",
+        "authentication": { "scheme": "Bearer" },
+    });
+    assert_eq!(created["result"], expected, "{created}");
+    let lookup = json!({ "taskId": task_id, "id": "hook-1" });
+    let got = v1_call(
+        &server,
+        &endpoint,
+        "GetTaskPushNotificationConfig",
+        lookup.clone(),
+    )
+    .await;
+    assert_eq!(got["result"], expected, "{got}");
+    let listed = v1_call(
+        &server,
+        &endpoint,
+        "ListTaskPushNotificationConfigs",
+        json!({ "taskId": task_id }),
+    )
+    .await;
+    assert_eq!(listed["result"]["configs"], json!([expected]), "{listed}");
+
+    // Another endpoint's key cannot see or redirect this task's updates.
+    let foreign = v1_call(&server, &other, "CreateTaskPushNotificationConfig", config).await;
+    assert_eq!(foreign["error"]["code"], -32001, "{foreign}");
+
+    let deleted = v1_call(
+        &server,
+        &endpoint,
+        "DeleteTaskPushNotificationConfig",
+        lookup.clone(),
+    )
+    .await;
+    assert_eq!(deleted["result"], json!({}), "{deleted}");
+    let gone = v1_call(&server, &endpoint, "GetTaskPushNotificationConfig", lookup).await;
+    assert_eq!(gone["error"]["code"], -32001, "{gone}");
+
+    for url in [
+        "http://hooks.example.com/a2a",
+        "https://169.254.169.254/latest",
+    ] {
+        let refused = v1_call(
+            &server,
+            &endpoint,
+            "CreateTaskPushNotificationConfig",
+            json!({ "taskId": task_id, "url": url }),
+        )
+        .await;
+        assert_eq!(refused["error"]["code"], -32602, "{url}: {refused}");
+    }
+}
+
+/// A `SendMessage` can register its push config up front, and 0.3 clients
+/// manage configs with their own method names and shapes.
+#[tokio::test]
+async fn send_message_registers_push_config_and_0_3_names_work() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let sent: Value = rpc(
+        &server,
+        &endpoint,
+        vec![("A2A-Version", "1.0")],
+        v1_send(
+            "with-push",
+            json!({ "configuration": {
+                "returnImmediately": true,
+                "taskPushNotificationConfig": { "id": "on-send", "url": "https://hooks.example.com/a2a" },
+            }}),
+        ),
+    )
+    .await
+    .json();
+    let task_id = sent["result"]["task"]["id"].as_str().unwrap().to_string();
+
+    let legacy = |method: &str, params: Value| json!({ "jsonrpc": "2.0", "id": method, "method": method, "params": params });
+    let listed: Value = rpc(
+        &server,
+        &endpoint,
+        vec![],
+        legacy(
+            "tasks/pushNotificationConfig/list",
+            json!({ "id": task_id }),
+        ),
+    )
+    .await
+    .json();
+    assert_eq!(
+        listed["result"],
+        json!([{
+            "taskId": task_id,
+            "pushNotificationConfig": { "id": "on-send", "url": "https://hooks.example.com/a2a" },
+        }]),
+        "{listed}"
+    );
+    let set: Value = rpc(
+        &server,
+        &endpoint,
+        vec![],
+        legacy(
+            "tasks/pushNotificationConfig/set",
+            json!({ "taskId": task_id, "pushNotificationConfig": {
+                "id": "legacy", "url": "https://hooks.example.com/legacy",
+                "authentication": { "schemes": ["Basic"], "credentials": "dXNlcjpwdw==" },
+            }}),
+        ),
+    )
+    .await
+    .json();
+    assert_eq!(
+        set["result"]["pushNotificationConfig"]["authentication"],
+        json!({ "schemes": ["Basic"] }),
+        "{set}"
+    );
+    let deleted: Value = rpc(
+        &server,
+        &endpoint,
+        vec![],
+        legacy(
+            "tasks/pushNotificationConfig/delete",
+            json!({ "id": task_id, "pushNotificationConfigId": "legacy" }),
+        ),
+    )
+    .await
+    .json();
+    assert_eq!(deleted["result"], Value::Null, "{deleted}");
+    assert!(deleted.get("error").is_none(), "{deleted}");
 }

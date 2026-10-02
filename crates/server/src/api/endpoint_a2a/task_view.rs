@@ -138,26 +138,33 @@ pub(super) async fn load_task(
     auth: &AuthorizedA2a,
     session: &SessionRow,
 ) -> anyhow::Result<Value> {
-    let turn = read_latest_turn(&state.db, session.id).await?;
+    load_task_for(&state.db, &state.frontend_url, auth.org_id, session).await
+}
+
+/// [`load_task`] without a request: push delivery builds the same task from
+/// the event that settled it.
+pub(super) async fn load_task_for(
+    db: &Arc<StorageBackend>,
+    frontend_url: &str,
+    org_id: i64,
+    session: &SessionRow,
+) -> anyhow::Result<Value> {
+    let turn = read_latest_turn(db, session.id).await?;
     let mut state_label = turn.state;
 
     // EVE-1062: a session parked on `ask_user` is `input-required`, and the
     // question rides `TaskStatus.message`; the turn that asked is still open,
     // so the lifecycle events above report `working` on their own.
     let mut status_message = None;
-    if let Some(pending) = ask_user::pending_ask_user(&state.db, session).await? {
+    if let Some(pending) = ask_user::pending_ask_user(db, session).await? {
         let projection =
-            ask_user::project_ask_user(&pending, &session.id.to_string(), &state.frontend_url);
+            ask_user::project_ask_user(&pending, &session.id.to_string(), frontend_url);
         state_label = projection.state;
         status_message = Some(projection.message);
     }
 
-    let structured_result = crate::domains::session_tasks::read_structured_task_result(
-        &state.db,
-        auth.org_id,
-        session.id,
-    )
-    .await?;
+    let structured_result =
+        crate::domains::session_tasks::read_structured_task_result(db, org_id, session.id).await?;
 
     let mut artifacts: Vec<Value> = turn
         .outputs

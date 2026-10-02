@@ -305,7 +305,7 @@ fn a2a_agent_card(endpoint: &str) -> Value {
         ],
         "capabilities": {
             "streaming": false,
-            "pushNotifications": false,
+            "pushNotifications": true,
             "stateTransitionHistory": false
         },
         "defaultInputModes": ["text/plain"],

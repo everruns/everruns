@@ -9,6 +9,7 @@
 // - DbSessionStorageStore: implements SessionStorageStore for key/value and secret storage
 // - DbProviderStore: implements ProviderStore for LLM provider retrieval
 
+pub mod a2a_push_configs;
 pub mod agent_store;
 pub mod agent_trigger_deliveries;
 pub mod agent_trigger_mcp_subscriptions;
@@ -54,6 +55,7 @@ pub mod subagent_spawn_handles;
 #[cfg(test)]
 mod event_tests;
 
+pub use a2a_push_configs::*;
 pub use agent_store::{DbAgentStore, create_db_agent_store};
 pub use agents_api_store::PgAgentsApiStore;
 pub use backend::StorageBackend;
