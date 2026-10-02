@@ -20,6 +20,7 @@ so the same app runs under `dev` on a laptop and on AgentCore without changes.
 |---|---|
 | Runtime session (`X-Amzn-Bedrock-AgentCore-Runtime-Session-Id`) | One serve session: the AG-UI thread defaults to the session id |
 | `POST /invocations` | An AG-UI 1.0 run of the app's agent, streamed as server-sent events |
+| `GET /ws` (WebSocket) | The same runs: each text message is one invocation body, each AG-UI event one text message back |
 | `GET /ping` | `Healthy`, or `HealthyBusy` while a turn runs so AgentCore keeps the microVM up |
 | Session storage mount (`/mnt/workspace`) | serve's SQLite session log and the agent's workspace |
 | The session microVM | The sandbox: `[sandbox] kind = "microvm"` gives the agent a real shell |
@@ -131,6 +132,12 @@ const agent = new HttpAgent({
 
 Reuse a session id to return to the same microVM, conversation and workspace.
 
+Over AgentCore's WebSocket transport, connect to the runtime's `/ws` URL
+(`wss://bedrock-agentcore.<region>.amazonaws.com/runtimes/<escaped-arn>/ws?qualifier=DEFAULT`)
+with the same session header, and send one invocation body per text message.
+Each AG-UI event comes back as its own text message, ending with `RUN_FINISHED`
+or `RUN_ERROR`; send the next body on the same socket for the next turn.
+
 ## Persistence
 
 AgentCore mounts session storage only when an invocation arrives, not while the
@@ -146,7 +153,16 @@ on the first other request. It then picks, in order:
 
 With session storage, a conversation survives AgentCore stopping the microVM
 after its idle timeout: the next invocation with the same session id resumes it
-from the log. Session storage is per session, kept for 14 days, and reset when
+from the log. That includes a turn parked on an approval or an `ask_user`
+question: on the new microVM the interrupt is still open, and the client's
+resume run answers it as before.
+
+Session storage is an NFS mount that refuses POSIX file locks, so the binary
+switches SQLite to dot-file locking (`unix-dotfile`) and rollback-journal mode
+for the whole process, and clears lock files a stopped microVM left behind.
+That is safe because one process owns a session's storage.
+
+Session storage is per session, kept for 14 days, and reset when
 you deploy a new runtime version. For history across sessions and versions,
 point `DATABASE_URL` at storage you own, such as an S3 Files or EFS mount
 (both need VPC mode).
@@ -181,7 +197,26 @@ point `DATABASE_URL` at storage you own, such as an S3 Files or EFS mount
 
 ## Models
 
-serve routes `provider/model` ids through its gateway. Set `SERVE_GATEWAY_URL`
+Name a Bedrock model as `bedrock/<model-id>`, where the rest is a Bedrock model
+id or inference profile:
+
+```rust
+Agent::builder()
+    .model("bedrock/us.anthropic.claude-sonnet-4-6")
+```
+
+When `AWS_REGION` or `AWS_DEFAULT_REGION` is set, serve calls Amazon Bedrock
+directly with the runtime's execution role: no keys in the image or the
+environment. Credentials come from the AWS default chain, which on AgentCore is
+the execution role's container credentials, and refresh before they expire.
+The role needs `bedrock:InvokeModelWithResponseStream` on the model; for a
+cross-region inference profile such as `us.…`, on the profile and on the
+foundation model in each region it routes to. Pass the region in
+`--environment-variables` if the runtime does not already provide it. This
+route is serve's `bedrock` feature, on by default in `everruns-serve-agentcore`;
+`default-features = false` drops it and the AWS SDK.
+
+Other `provider/model` ids go through serve's gateway. Set `SERVE_GATEWAY_URL`
 to an AgentCore Gateway inference endpoint (`https://<gateway>/inference/v1`)
 with targets named after providers (`anthropic`, `openai`), and
 `anthropic/claude-sonnet-5` routes as-is. Provider API keys then stay in the
@@ -196,6 +231,7 @@ Gateway's credential providers instead of the runtime's environment.
 | `SERVE_DATA_DIR`, `DATABASE_URL` | Where the session log lives. Default: session storage when mounted |
 | `SERVE_WORKSPACE` | The agent's workspace. Default: the session storage mount |
 | `SERVE_GATEWAY_URL`, `SERVE_GATEWAY_KEY` | serve's model gateway |
+| `AWS_REGION`, `AWS_DEFAULT_REGION` | Region for `bedrock/<model-id>` models, which run on the execution role |
 
 ## Compared with other AgentCore agents
 
@@ -203,9 +239,9 @@ Gateway's credential providers instead of the runtime's environment.
 |---|---|---|
 | `/ping`, `/invocations`, busy reporting | Yes | Yes |
 | AG-UI protocol | Yes, AG-UI 1.0 including interrupts | Yes |
-| `/ws` WebSocket | Not yet | Yes |
+| `/ws` WebSocket | Yes | Yes |
 | MCP and A2A server protocols | Not yet | Yes |
-| Conversation persistence | SQLite on session storage | File or AgentCore Memory session managers |
+| Conversation persistence | SQLite on session storage, including a turn parked on an approval or question | File or AgentCore Memory session managers |
 | Long-term memory (AgentCore Memory) | Not yet | Yes |
 | Gateway tools | MCP connection | MCP client |
 | Shell and files | Built-in (`sandbox = "microvm"`) | Bring your own tools |
@@ -216,13 +252,15 @@ Gateway's credential providers instead of the runtime's environment.
 ## Limits
 
 - Approvals and `ask_user` questions park a turn without keeping the microVM
-  busy, and a parked turn does not survive a restart yet. Answer within the
-  idle timeout (15 minutes by default).
+  busy. AgentCore may stop the microVM while one waits; with session storage
+  the next microVM asks it again, but an "always" answer given before the
+  restart is not remembered after it, and a request a subagent parked is lost.
 - `#[schedule]`s run in-process, so they only fire while a session's microVM
   is up. Use EventBridge to call `InvokeAgentRuntime` on a schedule instead.
-- The Bedrock model driver takes static keys only. Route models through an
-  AgentCore Gateway, or another gateway, rather than relying on the runtime's
-  IAM role.
+- Only `bedrock/…` models use the runtime's execution role. Other providers
+  need the gateway or their own keys. The role must allow
+  `bedrock:InvokeModelWithResponseStream`; a missing permission surfaces as an
+  `AccessDeniedException` on the first turn.
 
 ## Reference
 

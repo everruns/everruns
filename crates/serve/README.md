@@ -94,7 +94,9 @@ curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"   # replay, then l
 
 To use a real model, set `OPENROUTER_API_KEY` (it accepts `provider/model`
 ids as they are). You can instead point `SERVE_GATEWAY_URL` and
-`SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway.
+`SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway. With the `bedrock`
+feature, `bedrock/<model-id>` models call Amazon Bedrock on the AWS default
+credential chain whenever `AWS_REGION` is set.
 
 | Example | Shows |
 |---|---|
@@ -212,8 +214,8 @@ It does not have:
 - Postgres or NATS adapters;
 - `#[memoize]` on `Cx`;
 - per-build routing (the manifest defines the contract, but nothing routes on it yet);
-- approvals or questions that survive a restart, or a deny note that reaches
-  the model;
+- a deny note that reaches the model, or "always" approvals and subagent
+  requests that survive a restart;
 - auth, organizations, or the server's agent, harness and workspace routes;
 - Slack signature checks without `SLACK_SIGNING_SECRET` (they are skipped in dev).
 

@@ -26,7 +26,10 @@ let agent = Agent::builder()
 Each driver crate offers the same entry point, returning a ready `Provider`.
 The facade bundles OpenAI, Anthropic, Gemini and OpenRouter behind the
 `openai`, `anthropic`, `gemini` and `openrouter` features (`Anthropic::from_env`
-and friends); any other driver is a separate crate you add as a dependency:
+and friends), and AWS Bedrock behind `bedrock`, where
+`Bedrock::default_chain()` resolves credentials the way the AWS SDK does (an
+IAM role, SSO or a profile, or the `AWS_*` variables) instead of reading
+declared names; any other driver is a separate crate you add as a dependency:
 
 ```rust
 use everruns::{Agent, Model};

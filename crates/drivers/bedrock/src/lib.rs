@@ -12,6 +12,12 @@
 //! ```
 //! `session_token` is optional. The `base_url` field is unused.
 //!
+//! With the opt-in `default-credentials` feature, [`BedrockAuth::default_chain`]
+//! and [`provider_from_default_chain`] authenticate through the AWS default
+//! credential chain instead (environment, profile/SSO, web identity,
+//! ECS/AgentCore container credentials, instance profile), so a process running
+//! under an IAM role needs no static keys.
+//!
 //! # Example
 //!
 //! ```
@@ -23,9 +29,13 @@
 //! ```
 
 mod credential;
+#[cfg(feature = "default-credentials")]
+mod default_chain;
 mod driver;
 
 pub use credential::BedrockCredential;
+#[cfg(feature = "default-credentials")]
+pub use driver::provider_from_default_chain;
 pub use driver::{BedrockAuth, BedrockChatDriver, descriptor, from_env, provider, register_driver};
 
 pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

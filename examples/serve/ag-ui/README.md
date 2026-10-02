@@ -62,7 +62,7 @@ const runtime = new CopilotRuntime({
 | `evals/deploy.rs` | `#[eval] async fn deploys_after_approval(t)` |
 | `client/run.mjs` | the `@ag-ui/client` driver |
 
-Each AG-UI `threadId` maps to one session, which survives a restart. Pending
-approvals and questions live in memory, as on every serve route, and can also
-be answered through `/v1/sessions/{id}/approvals/{tool_call_id}` and
+Each AG-UI `threadId` maps to one session, which survives a restart, along
+with a turn parked on an approval or a question: after a restart the interrupt
+is still open. Pending approvals and questions can also be answered through `/v1/sessions/{id}/approvals/{tool_call_id}` and
 `/question-answers`. Set `OPENROUTER_API_KEY` to run the agent on a real model.

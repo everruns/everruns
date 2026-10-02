@@ -77,7 +77,10 @@ curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"
 ```
 
 To use a real model, set `OPENROUTER_API_KEY`, or point `SERVE_GATEWAY_URL`
-and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway.
+and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway. With serve's
+`bedrock` feature, `bedrock/<model-id>` models (for example
+`bedrock/us.anthropic.claude-sonnet-4-6`) call Amazon Bedrock on the AWS
+default credential chain whenever `AWS_REGION` is set.
 
 | Example | Shows |
 | --- | --- |
@@ -218,7 +221,11 @@ continues. Requests need the `A2A-Version: 1.0` header. A pending approval or
 The agent card lists each agent's endpoint under `a2a`.
 
 Sessions survive a restart: the binary rebuilds each agent and resumes the
-session from the local store. A session pinned to a different build gets
+session from the local store. A turn the old process left waiting on an
+approval or an `ask_user` question waits again: the call runs again, so the
+request is pending once more under the same tool call id, and answering it
+finishes the turn. A turn cut off while a tool executed is not re-run. A
+session pinned to a different build gets
 `409 Conflict` with an `x-serve-build` header, so a host can route it to the
 build that owns it.
 
@@ -227,7 +234,8 @@ build that owns it.
 
 ## Limitations
 
-- Pending approvals and questions are held in memory and do not survive a restart.
+- After a restart, an approval answered "always" before it is asked again, and a
+  request parked by a subagent is lost.
 - A2A tasks are held in memory, and A2A 0.3 clients are not served.
 - A deny note is not passed to the model.
 - There is no OCI build, cloud deploy, or Postgres or NATS adapter.

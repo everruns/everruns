@@ -250,3 +250,72 @@ async fn sessions_survive_a_microvm_restart_on_the_same_storage() {
     assert!(kinds.contains(&"input.message"), "{kinds:?}");
     assert!(kinds.contains(&"output.message.completed"), "{kinds:?}");
 }
+
+/// Reads text frames until `RUN_FINISHED` or `RUN_ERROR`.
+async fn ws_run<S>(socket: &mut S) -> Vec<Value>
+where
+    S: futures_util::Stream<
+            Item = Result<
+                tokio_tungstenite::tungstenite::Message,
+                tokio_tungstenite::tungstenite::Error,
+            >,
+        > + Unpin,
+{
+    use futures_util::StreamExt;
+    let mut events = Vec::new();
+    while let Some(message) = tokio::time::timeout(Duration::from_secs(10), socket.next())
+        .await
+        .expect("a frame within 10s")
+    {
+        let text = message.unwrap().into_text().unwrap();
+        let event: Value = serde_json::from_str(text.as_str()).unwrap();
+        let last = matches!(event["type"].as_str(), Some("RUN_FINISHED" | "RUN_ERROR"));
+        events.push(event);
+        if last {
+            break;
+        }
+    }
+    events
+}
+
+#[tokio::test]
+async fn websocket_carries_runs_one_event_per_message() {
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
+
+    let booted = boot().await;
+    let session = "agentcore-session-ws-0123456789abcdef01234567";
+    let mut request = format!("{}/ws", booted.base.replace("http://", "ws://"))
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert(SESSION_HEADER, session.parse().unwrap());
+    let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+
+    // Two runs in turn on one connection, both on the AgentCore session.
+    for _ in 0..2 {
+        socket
+            .send(Message::text(json!({ "prompt": "hi" }).to_string()))
+            .await
+            .unwrap();
+        let events = ws_run(&mut socket).await;
+        let kinds: Vec<&str> = events.iter().filter_map(|e| e["type"].as_str()).collect();
+        assert_eq!(kinds.first(), Some(&"RUN_STARTED"), "{kinds:?}");
+        assert_eq!(kinds.last(), Some(&"RUN_FINISHED"), "{kinds:?}");
+        assert_eq!(events[0]["threadId"], session);
+    }
+
+    // A body that cannot run is one RUN_ERROR, and the socket stays open.
+    socket.send(Message::text("{}")).await.unwrap();
+    let events = ws_run(&mut socket).await;
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(events[0]["type"], "RUN_ERROR");
+    assert_eq!(events[0]["code"], "400");
+    socket
+        .send(Message::text(json!({ "prompt": "again" }).to_string()))
+        .await
+        .unwrap();
+    let events = ws_run(&mut socket).await;
+    assert_eq!(events.last().unwrap()["type"], "RUN_FINISHED");
+}

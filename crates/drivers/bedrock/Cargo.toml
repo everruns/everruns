@@ -18,6 +18,14 @@ repository.workspace = true
 documentation = "https://docs.rs/everruns-bedrock"
 description = "AWS Bedrock provider for Everruns agents"
 
+[features]
+# Resolve credentials through the AWS default chain instead of static keys
+# (`BedrockAuth::default_chain`). Off by default: the server and worker always
+# pass org-scoped stored keys and must never pick up ambient AWS credentials
+# (scripts/lib/check-provider-isolation.sh). Standalone hosts, such as a serve
+# app on AgentCore Runtime with an execution role, opt in.
+default-credentials = ["dep:aws-config", "dep:aws-credential-types"]
+
 [dependencies]
 # Core dependencies
 async-trait.workspace = true
@@ -51,6 +59,19 @@ aws-sdk-bedrockruntime = { version = "1", default-features = false, features = [
     "rt-tokio",
 ] }
 aws-smithy-types = "1"
+# Opt-in AWS default credential chain (`default-credentials` feature): env,
+# shared profile/SSO, web identity, ECS/AgentCore container credentials, and
+# the EC2 instance profile. Same stack rule as aws-sdk-bedrockruntime above:
+# default features would bring back the legacy `rustls` connector, so only the
+# modern `default-https-client` (rustls 0.23) plus `rt-tokio`, `sso`, and
+# `credentials-process` are enabled.
+aws-config = { version = "1", optional = true, default-features = false, features = [
+    "default-https-client",
+    "rt-tokio",
+    "sso",
+    "credentials-process",
+] }
+aws-credential-types = { version = "1", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

@@ -40,8 +40,15 @@ npm install && npm start
 
 ## Deploy
 
+The agent's model is `bedrock/us.anthropic.claude-sonnet-4-6`, called with the
+runtime's execution role: no API keys in the image or the runtime. The role
+needs `bedrock:InvokeModelWithResponseStream` on the model and its inference
+profile, plus the usual ECR pull and CloudWatch Logs permissions.
+
 The image is Debian slim rather than distroless, because the agent needs a shell
 and the tools it is expected to use. Add more to the `Dockerfile` as needed.
+AgentCore runs `linux/arm64`; without a local arm64 builder, an `ARM_CONTAINER`
+CodeBuild project with this `Dockerfile` works.
 
 ```sh
 docker buildx build --platform linux/arm64 \
@@ -54,16 +61,29 @@ aws bedrock-agentcore-control create-agent-runtime \
   --network-configuration networkMode=PUBLIC \
   --protocol-configuration serverProtocol=AGUI \
   --filesystem-configurations '[{"sessionStorage":{"mountPath":"/mnt/workspace"}}]' \
-  --environment-variables "SERVE_GATEWAY_URL=$GATEWAY_URL/inference/v1,SERVE_GATEWAY_KEY=$GATEWAY_TOKEN"
+  --environment-variables AWS_REGION=us-east-1
 ```
 
-Then point the client at the runtime. Reuse `AGENTCORE_SESSION` to come back to
-the same workspace:
+## Talk to it
+
+With IAM credentials (`pip install boto3`). The session id is kept in
+`.agentcore-session`, so the next call returns to the same microVM, conversation
+and files; `--new` starts over:
+
+```sh
+python3 client/invoke.py --arn "$AGENT_ARN" "Add 'check the build' to my todo list and share it."
+python3 client/invoke.py --arn "$AGENT_ARN" "What is on my todo list?"
+```
+
+With a bearer token (JWT inbound auth), the `@ag-ui/client` script works too:
 
 ```sh
 AGENTCORE_URL="https://bedrock-agentcore.$REGION.amazonaws.com/runtimes/$(node -p 'encodeURIComponent(process.argv[1])' "$AGENT_ARN")/invocations?qualifier=DEFAULT" \
 AGENTCORE_TOKEN="$BEARER_TOKEN" npm start
 ```
+
+Locally, `agentcore` without `--dev` runs the real shell on your machine, in
+`SERVE_WORKSPACE`; keep `--dev` unless you mean it.
 
 ## Tools from an AgentCore Gateway
 
@@ -84,5 +104,6 @@ fn gateway() -> McpServer {
 | `src/agent.rs` | `#[agent] fn assistant()`, with an offline script |
 | `src/tools.rs` | `#[tool(needs_approval)] async fn share_report(...)` |
 | `evals/workspace.rs` | uses the shell, then shares only after approval |
+| `client/invoke.py` | a boto3 (IAM) client with the approval round trip |
 | `client/run.mjs` | an `@ag-ui/client` run with the approval round trip |
 | `Dockerfile` | the `arm64` image, with a shell |

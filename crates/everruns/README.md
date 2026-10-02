@@ -218,6 +218,7 @@ opt-in.
 | Feature | Adds |
 | --- | --- |
 | `openai` | OpenAI Responses API provider configuration |
+| `bedrock` | AWS Bedrock provider configuration: static keys, or the AWS default credential chain for IAM roles |
 | `typesafe` | TypeSafe decisions provider and the `jev` capability |
 | `bashkit` | Sandboxed shell execution |
 | `web-fetch` | HTTP content fetching |

@@ -17,8 +17,17 @@
 //!   started on. A hosted router sends a session back to that build while it
 //!   still runs; `start` refuses a session from another build (409) so the
 //!   router can, and `dev` resumes it anyway because dev rebuilds constantly.
-//! - Pending approvals and questions live in memory. A restart or a cancel
-//!   abandons them; the runtime then sees the turn cancelled.
+//! - Pending approvals and questions are parked in memory, and the event
+//!   log is what survives a restart. A turn waiting on a person waits inside
+//!   its act, and a killed process leaves that turn in the log without an
+//!   end. When the session next comes back, the host asks the engine for that
+//!   interrupted turn and, if every unfinished call is one that waits on a
+//!   person (an approval-gated call, or `ask_user`), resumes it: the calls
+//!   run again, so each parks here again under its old tool call id, and an
+//!   answer lets the turn finish as it would have. A turn cut off while a
+//!   call executed is left alone, so an ungated tool never runs twice.
+//! - A cancel abandons the pending approvals and questions; the runtime then
+//!   sees the turn cancelled.
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -171,6 +180,13 @@ struct PendingQuestion {
 
 /// A parked request: (session it surfaces on, tool call id).
 type Key = (String, String);
+
+/// How long a resumed session waits for its interrupted turn to park again
+/// before it answers the request that woke it.
+const REPARK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long it waits for the rest once one of several calls has parked.
+const REPARK_GRACE: std::time::Duration = std::time::Duration::from_millis(200);
 
 struct Live {
     session: everruns::Session,
@@ -392,7 +408,86 @@ impl Host {
             resumed: true,
             after,
         });
+        self.resume_interrupted(id, &live, &entry).await?;
         Ok(live)
+    }
+
+    /// Pick up a turn the last process left waiting on a person: run its
+    /// waiting calls again, which parks them here, and return once they
+    /// have (or the turn ended), so the request that woke the session sees
+    /// them open.
+    async fn resume_interrupted(
+        &self,
+        id: &str,
+        live: &Arc<Live>,
+        entry: &AgentEntry,
+    ) -> crate::Result {
+        let Some(interrupted) = live.session.interrupted_turn().await? else {
+            return Ok(());
+        };
+        // At most once for everything else: a call cut off while it ran is
+        // not run again.
+        if !interrupted
+            .tool_calls
+            .iter()
+            .all(|call| self.waits_on_person(entry, call))
+        {
+            return Ok(());
+        }
+        let mut notices = self.notices.subscribe();
+        let Some(turn) = live.session.resume_interrupted_turn().await? else {
+            return Ok(());
+        };
+        self.follow(id, live, turn.clone());
+        let expected = interrupted.tool_calls.len();
+        let deadline = tokio::time::Instant::now() + REPARK_WAIT;
+        loop {
+            let parked = self.pending_approvals(id).len() + self.pending_questions(id).len();
+            if parked >= expected {
+                break;
+            }
+            // Calls the act runs one after another park one at a time: once
+            // the first is back, the rest get only a moment.
+            let until = if parked > 0 {
+                deadline.min(tokio::time::Instant::now() + REPARK_GRACE)
+            } else {
+                deadline
+            };
+            tokio::select! {
+                notice = notices.recv() => {
+                    if let Err(broadcast::error::RecvError::Closed) = notice {
+                        break;
+                    }
+                }
+                _ = turn.wait() => break,
+                () = tokio::time::sleep_until(until) => break,
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether `call` waits on a person before it runs: `ask_user`, or a
+    /// tool whose approval rule gates these arguments.
+    fn waits_on_person(&self, entry: &AgentEntry, call: &ToolCall) -> bool {
+        if call.name == "ask_user" {
+            return true;
+        }
+        self.app
+            .tools_for(entry)
+            .into_iter()
+            .find(|tool| tool.name == call.name)
+            .is_some_and(|tool| match tool.approval {
+                Approval::Never => false,
+                Approval::Always => true,
+                Approval::When(predicate) => predicate(&call.arguments),
+            })
+    }
+
+    /// Wake `id` after a restart, so a turn it left waiting on a person is
+    /// waiting again. Reading a session never depends on it: a session this
+    /// build cannot run is still shown.
+    pub(crate) async fn wake(&self, id: &str) {
+        let _ = self.live(id).await;
     }
 
     /// The everruns session behind `id`, resuming it if needed.
@@ -486,7 +581,11 @@ impl Host {
         if !matches!(sent.disposition, SendDisposition::Started) {
             return;
         }
-        let turn = sent.turn();
+        self.follow(id, live, sent.turn());
+    }
+
+    /// Follow a running turn: status, cancel, and delivery when it ends.
+    fn follow(&self, id: &str, live: &Arc<Live>, turn: TurnHandle) {
         *lock(&live.active) = Some(turn.clone());
         let me = self.me.clone();
         let id = id.to_string();
