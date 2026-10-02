@@ -23,6 +23,9 @@ through an AI Gateway for caching, rate limiting, and logging.
   per-request logging applied by the gateway the call routes through.
 - **Full chat capabilities**: streaming, tool/function calling, and structured
   output, through the same uniform driver as every other provider.
+- **Workers AI model discovery**: the `@cf/` catalog is synced with its
+  advertised context windows and tool-calling support, so those ids appear in
+  the model pickers without being typed by hand.
 
 ## Configure in Everruns
 
@@ -64,10 +67,13 @@ Third-party models are billed to your Cloudflare account and return `402`
 ("Insufficient balance") until it is funded or you configure BYOK. Workers AI
 models draw on the account's own allocation instead.
 
-The AI REST API serves no model catalog, so there is nothing to sync: add the
-models you intend to use by id. Everruns matches a namespaced id against its
-model profile registry, so a model it recognizes still gets its capability and
-cost metadata.
+Model sync covers the Workers AI half of the catalog: Everruns reads
+Cloudflare's model search endpoint and keeps its text-generation models, which
+arrive with the context window and tool-calling support Cloudflare advertises.
+Third-party models are never listed — which ones an account can reach depends
+on what it can bill — so add those by id. Everruns matches a namespaced id
+against its model profile registry, so a model it recognizes still gets its
+capability and cost metadata.
 
 ## Why Chat Completions
 

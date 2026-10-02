@@ -51,14 +51,19 @@
 // unchanged.
 
 use async_trait::async_trait;
+use chrono::{NaiveDateTime, TimeZone, Utc};
+use serde::Deserialize;
 
 use everruns_provider::OpenAIProtocolChatDriver;
 use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
+use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmResponse, LlmResponseStream, Message,
 };
 use everruns_provider::error::Result;
+use everruns_provider::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
+use everruns_provider::openai_protocol::url_host_eq;
 use everruns_provider::{Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint};
 
 /// Host serving Cloudflare's REST API.
@@ -147,16 +152,199 @@ impl ChatDriver for CloudflareChatDriver {
             .await
     }
 
-    /// No catalog: the AI REST API serves no `/models` listing, and the set of
-    /// reachable models spans whichever upstreams the account can bill plus
-    /// Workers AI. Returning `None` lets the caller fall back rather than
-    /// reporting an empty catalog as the truth.
+    /// The Workers AI half of the catalog, from `ai/models/search`.
+    ///
+    /// That endpoint enumerates Workers AI (`@cf/`) models only — the
+    /// third-party models the gateway can route to are never listed, because
+    /// which ones an account can reach depends on what it is able to bill. So
+    /// this is a partial catalog by construction, and the models it omits still
+    /// have to be added by id.
+    ///
+    /// Returning the partial list still beats `None`: the `@cf/` ids are the
+    /// awkward ones to type from memory, and they arrive with the context
+    /// window and tool-calling support the gateway advertises.
     async fn list_models(
         &self,
-        _endpoint: &ProviderEndpoint,
+        endpoint: &ProviderEndpoint,
     ) -> Result<Option<Vec<DiscoveredModel>>> {
-        Ok(None)
+        let Some(models_url) = models_search_url(endpoint) else {
+            return Ok(None);
+        };
+        // Discovery only runs against Cloudflare's own host; a custom proxy URL
+        // may resolve to private infrastructure at request time. Mirrors the
+        // Vercel/OpenRouter/Meta/Fireworks gating.
+        if !url_host_eq(&models_url, CLOUDFLARE_API_HOST) {
+            return Ok(None);
+        }
+
+        let resolved = endpoint.resolve("GET", &models_url, &[]).await?;
+        let mut request = self.inner.client().get(&resolved.url);
+        for (name, value) in resolved.headers {
+            request = request.header(name, value);
+        }
+        fetch_models::<CloudflareModelsResponse, _>(
+            request,
+            "Failed to fetch Cloudflare Workers AI models",
+            "Failed to parse Cloudflare Workers AI models response",
+            &[],
+            |models| {
+                models
+                    .result
+                    .into_iter()
+                    // Only the text-generation task serves chat completions.
+                    // The rest of the catalog is embeddings, speech, and image
+                    // work this driver cannot route.
+                    .filter(|m| {
+                        m.task
+                            .as_ref()
+                            .is_some_and(|t| t.name == CF_TEXT_GENERATION)
+                    })
+                    .map(|m| m.into_discovered())
+                    .collect()
+            },
+        )
+        .await
     }
+}
+
+/// The Workers AI task whose models serve chat completions.
+const CF_TEXT_GENERATION: &str = "Text Generation";
+
+/// Derive the model-search URL from the chat base URL.
+///
+/// The chat base stops at `/ai/v1` because the protocol driver appends
+/// `chat/completions`; the model catalog is a sibling of `v1`, at
+/// `/ai/models/search`. Deriving it rather than rebuilding from the account id
+/// keeps a configured base URL (a proxy) in control of where discovery points,
+/// which is what the host gate below is then checking.
+fn models_search_url(endpoint: &ProviderEndpoint) -> Option<String> {
+    let base = endpoint.base_url()?;
+    let trimmed = base.trim_end_matches('/');
+    let root = trimmed.strip_suffix("/v1").unwrap_or(trimmed);
+    Some(format!("{root}/models/search"))
+}
+
+/// `ai/models/search` response.
+///
+/// `result_info.total_count` is not a reliable page count: an account that gets
+/// 69 models in one page is told the total is 321, and page 2 comes back empty.
+/// So this reads the single page the endpoint serves instead of paginating on a
+/// number that does not describe this result.
+#[derive(Debug, Deserialize)]
+struct CloudflareModelsResponse {
+    result: Vec<CloudflareModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CloudflareModel {
+    name: String,
+    description: Option<String>,
+    created_at: Option<String>,
+    task: Option<CloudflareTask>,
+    #[serde(default)]
+    properties: Vec<CloudflareProperty>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CloudflareTask {
+    name: String,
+}
+
+/// A property is a loosely typed name/value pair: `value` is a string for the
+/// flags this driver reads and an array for pricing, so it stays untyped here
+/// and each reader interprets its own.
+#[derive(Debug, Deserialize)]
+struct CloudflareProperty {
+    property_id: String,
+    value: serde_json::Value,
+}
+
+impl CloudflareModel {
+    fn property(&self, id: &str) -> Option<&serde_json::Value> {
+        self.properties
+            .iter()
+            .find(|p| p.property_id == id)
+            .map(|p| &p.value)
+    }
+
+    fn flag(&self, id: &str) -> bool {
+        self.property(id)
+            .and_then(|v| v.as_str())
+            .is_some_and(|v| v.eq_ignore_ascii_case("true"))
+    }
+
+    fn into_discovered(self) -> DiscoveredModel {
+        let context = self
+            .property("context_window")
+            .and_then(|v| v.as_str())
+            .and_then(|v| v.parse::<i32>().ok());
+        let tool_call = self.flag("function_calling");
+
+        // `2024-12-06 17:09:18.338`: no zone, no `T`. Cloudflare serves this
+        // field in UTC.
+        let created_at = self.created_at.as_deref().and_then(|raw| {
+            NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S%.f")
+                .ok()
+                .and_then(|naive| Utc.from_local_datetime(&naive).single())
+        });
+
+        // `@cf/meta/llama-3.3-70b-instruct-fp8-fast` -> `meta`.
+        let owned_by = self
+            .name
+            .strip_prefix("@cf/")
+            .and_then(|rest| rest.split('/').next())
+            .map(str::to_string);
+
+        let profile = ModelProfile {
+            name: short_model_name(&self.name),
+            family: self.name.clone(),
+            description: self.description.clone(),
+            release_date: None,
+            last_updated: None,
+            attachment: false,
+            // The catalog advertises no reasoning flag; leave it off rather
+            // than guess.
+            reasoning: false,
+            temperature: true,
+            knowledge: None,
+            tool_call,
+            structured_output: false,
+            // Workers AI serves open-weight models.
+            open_weights: true,
+            cost: None,
+            limits: context.map(|context| ModelLimits {
+                context,
+                input: None,
+                output: context,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+            supports_server_compaction: false,
+        };
+
+        DiscoveredModel {
+            capabilities: vec!["chat".to_string()],
+            created_at,
+            display_name: None,
+            owned_by,
+            discovered_profile: Some(profile),
+            model_id: self.name,
+        }
+    }
+}
+
+/// Last path segment of a namespaced id, for display.
+fn short_model_name(id: &str) -> String {
+    id.rsplit('/').next().unwrap_or(id).to_string()
 }
 
 impl std::fmt::Debug for CloudflareChatDriver {
@@ -338,4 +526,95 @@ pub fn from_env(
     everruns_provider::credential_provider::EnvCredentialError,
 > {
     everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The catalog is a sibling of `v1`, not a path under it: the chat base
+    /// stops at `/ai/v1` only because the protocol driver appends
+    /// `chat/completions`.
+    #[test]
+    fn models_search_is_a_sibling_of_the_api_version() {
+        let endpoint = provider("cf", "acct123", "token", None).endpoint().clone();
+        assert_eq!(
+            models_search_url(&endpoint).as_deref(),
+            Some("https://api.cloudflare.com/client/v4/accounts/acct123/ai/models/search")
+        );
+    }
+
+    /// A base URL that already lacks the version suffix must not lose a segment.
+    #[test]
+    fn models_search_tolerates_a_base_without_the_version_suffix() {
+        let endpoint = provider("cf", "acct123", "token", None)
+            .base_url("https://proxy.example/ai")
+            .endpoint()
+            .clone();
+        assert_eq!(
+            models_search_url(&endpoint).as_deref(),
+            Some("https://proxy.example/ai/models/search")
+        );
+    }
+
+    fn model(json: serde_json::Value) -> CloudflareModel {
+        serde_json::from_value(json).expect("fixture should deserialize")
+    }
+
+    /// The advertised properties are what make a discovered model useful: a
+    /// context window and tool-calling support the caller would otherwise have
+    /// to look up by hand.
+    #[test]
+    fn properties_map_into_the_discovered_profile() {
+        let discovered = model(serde_json::json!({
+            "name": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+            "description": "Llama 3.3 70B",
+            "created_at": "2024-12-06 17:09:18.338",
+            "task": { "name": "Text Generation" },
+            "properties": [
+                { "property_id": "context_window", "value": "24000" },
+                { "property_id": "function_calling", "value": "true" },
+                { "property_id": "price", "value": [{ "unit": "per M input tokens", "price": 0.293 }] }
+            ]
+        }))
+        .into_discovered();
+
+        assert_eq!(
+            discovered.model_id,
+            "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+        );
+        // `@cf/<owner>/<model>` — the owner is the segment after the namespace.
+        assert_eq!(discovered.owned_by.as_deref(), Some("meta"));
+        assert_eq!(discovered.capabilities, vec!["chat".to_string()]);
+        assert!(
+            discovered.created_at.is_some(),
+            "the timestamp should parse"
+        );
+
+        let profile = discovered
+            .discovered_profile
+            .expect("a discovered model carries its profile");
+        assert!(profile.tool_call);
+        assert_eq!(profile.limits.map(|l| l.context), Some(24_000));
+        assert_eq!(profile.name, "llama-3.3-70b-instruct-fp8-fast");
+    }
+
+    /// A model that advertises nothing still discovers, just without a profile
+    /// claim the catalog never made.
+    #[test]
+    fn absent_properties_claim_nothing() {
+        let discovered = model(serde_json::json!({
+            "name": "@cf/qwen/qwen1.5-0.5b-chat",
+            "task": { "name": "Text Generation" },
+            "properties": []
+        }))
+        .into_discovered();
+
+        let profile = discovered
+            .discovered_profile
+            .expect("a discovered model carries its profile");
+        assert!(!profile.tool_call, "absence is not tool support");
+        assert!(profile.limits.is_none(), "absence is not a context window");
+        assert!(discovered.created_at.is_none());
+    }
 }
