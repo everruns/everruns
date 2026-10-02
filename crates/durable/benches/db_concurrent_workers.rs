@@ -24,10 +24,12 @@ use tokio::sync::Semaphore;
 
 use everruns_durable::bench::{
     ActivityDuration, BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore,
-    EnvironmentInfo, ReportConfig, clear_terminal_progress, set_terminal_progress,
+    EnvironmentInfo, ReportConfig, clear_terminal_progress, register_bench_worker,
+    set_terminal_progress,
 };
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+    DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, PostgresWorkflowEventStore, TaskDefinition,
+    WorkflowEventStore,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;
@@ -41,7 +43,9 @@ fn get_database_url() -> String {
 /// Shared test scenario state with PostgreSQL backend
 struct DbTestScenario {
     store: Arc<PostgresWorkflowEventStore>,
-    workflow_id: Uuid,
+    /// Tasks are spread over enough workflows to stay under the store's
+    /// per-workflow pending-task cap.
+    workflow_ids: Vec<Uuid>,
     task_count: u64,
     enqueue_times: Arc<parking_lot::Mutex<std::collections::HashMap<Uuid, Instant>>>,
     completed: Arc<AtomicU64>,
@@ -60,7 +64,9 @@ impl DbTestScenario {
     ) -> Self {
         Self {
             store: Arc::new(PostgresWorkflowEventStore::new(pool)),
-            workflow_id: Uuid::now_v7(),
+            workflow_ids: (0..task_count.div_ceil(DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW as u64))
+                .map(|_| Uuid::now_v7())
+                .collect(),
             task_count,
             enqueue_times: Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new())),
             completed: Arc::new(AtomicU64::new(0)),
@@ -70,15 +76,20 @@ impl DbTestScenario {
     }
 
     async fn setup(&self) {
-        self.store
-            .create_workflow(
-                self.workflow_id,
-                "db_benchmark",
-                serde_json::json!({}),
-                None,
+        for workflow_id in &self.workflow_ids {
+            self.store
+                .create_workflow(*workflow_id, "db_benchmark", serde_json::json!({}), None)
+                .await
+                .expect("Failed to create workflow");
+        }
+        for worker_id in 0..self.worker_count {
+            register_bench_worker(
+                self.store.as_ref(),
+                &format!("db-worker-{worker_id}"),
+                "db_benchmark_activity",
             )
-            .await
-            .expect("Failed to create workflow");
+            .await;
+        }
     }
 
     async fn enqueue_all_tasks(&self) {
@@ -87,7 +98,10 @@ impl DbTestScenario {
             let task_id = self
                 .store
                 .enqueue_task(TaskDefinition {
-                    workflow_id: Some(self.workflow_id),
+                    workflow_id: Some(
+                        self.workflow_ids
+                            [(i / DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW as u64) as usize],
+                    ),
                     activity_id: format!("task-{}", i),
                     activity_type: "db_benchmark_activity".to_string(),
                     input: serde_json::json!({ "task_num": i }),
@@ -198,31 +212,19 @@ impl DbTestScenario {
         let pool = self.store.pool();
 
         // Delete in reverse dependency order
-        sqlx::query("DELETE FROM durable_signals WHERE workflow_id = $1")
-            .bind(self.workflow_id)
-            .execute(pool)
-            .await
-            .ok();
-        sqlx::query("DELETE FROM durable_dead_letter_queue WHERE workflow_id = $1")
-            .bind(self.workflow_id)
-            .execute(pool)
-            .await
-            .ok();
-        sqlx::query("DELETE FROM durable_task_queue WHERE workflow_id = $1")
-            .bind(self.workflow_id)
-            .execute(pool)
-            .await
-            .ok();
-        sqlx::query("DELETE FROM durable_workflow_events WHERE workflow_id = $1")
-            .bind(self.workflow_id)
-            .execute(pool)
-            .await
-            .ok();
-        sqlx::query("DELETE FROM durable_workflow_instances WHERE id = $1")
-            .bind(self.workflow_id)
-            .execute(pool)
-            .await
-            .ok();
+        for statement in [
+            "DELETE FROM durable_signals WHERE workflow_id = ANY($1)",
+            "DELETE FROM durable_dead_letter_queue WHERE workflow_id = ANY($1)",
+            "DELETE FROM durable_task_queue WHERE workflow_id = ANY($1)",
+            "DELETE FROM durable_workflow_events WHERE workflow_id = ANY($1)",
+            "DELETE FROM durable_workflow_instances WHERE id = ANY($1)",
+        ] {
+            sqlx::query(statement)
+                .bind(&self.workflow_ids)
+                .execute(pool)
+                .await
+                .ok();
+        }
     }
 }
 
