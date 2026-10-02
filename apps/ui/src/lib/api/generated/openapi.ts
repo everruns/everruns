@@ -8247,8 +8247,8 @@ export interface components {
      *     express "published App, disabled channel" and forced publishing a whole App —
      *     and therefore every sibling endpoint on it — to make one endpoint reachable.
      *
-     *     Liveness is not this value alone; see `endpoint_is_live` in
-     *     `crates/server/src/api/app_ingress.rs` for the agent-level terms, which are
+     *     Liveness is not this value alone; see `endpoint_liveness` in
+     *     `crates/server/src/api/endpoint_ingress.rs` for the agent-level terms, which are
      *     folded in at resolution time rather than stored here.
      * @example live
      * @enum {string}

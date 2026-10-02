@@ -241,15 +241,9 @@ pub use app::{
 /// Endpoint-oriented name for the endpoint ID. The typed ID lives in
 /// `everruns-provider` as `AppChannelId` and keeps its `appchan_` wire prefix.
 pub use everruns_provider::typed_id::AppChannelId as AgentEndpointId;
-// App-era names for the endpoint types (EVE-1131 step 1). Consumers move to the
-// endpoint-oriented names transport by transport; drop each alias once nothing
-// imports it. `App`/`AppStatus` are the frozen `apps` row and keep their names.
-pub use app::{
-    AgentEndpoint as AppChannel, EndpointAuthConfig as AppEndpointAuthConfig,
-    EndpointAuthMode as AppEndpointAuthMode,
-    EndpointAuthProviderConfig as AppEndpointAuthProviderConfig,
-    EndpointAuthRequirements as AppEndpointAuthRequirements, EndpointTransport as ChannelType,
-};
+// EVE-1131 dropped the App-era Rust aliases (`AppChannel`, `ChannelType`,
+// `AppEndpointAuth*`). Their OpenAPI component names stay via `schema(as = ...)`.
+// `App`/`AppStatus` are the frozen `apps` row and keep their names.
 #[cfg(test)]
 mod endpoint_wire_names_tests;
 // Carved out of `app` for the size ratchet; the public path is unchanged.

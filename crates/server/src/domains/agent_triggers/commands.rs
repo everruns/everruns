@@ -34,11 +34,12 @@ use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
 };
+use everruns_platform::AgentEndpointId;
 use everruns_platform::{AgentAction, AuditEvent};
 use everruns_platform::{
     AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, SessionBinding, WebhookTriggerConfig,
 };
-use everruns_provider::typed_id::{AgentId, AppChannelId, SessionId, TriggerId};
+use everruns_provider::typed_id::{AgentId, SessionId, TriggerId};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::str::FromStr;
@@ -457,7 +458,7 @@ impl Command for CreateAgentTrigger {
                 };
                 let (config, encrypted) = prepare_trigger_config(ctx, &config)?;
                 (
-                    Some(AppChannelId::from_uuid(trigger_id.uuid()).to_string()),
+                    Some(AgentEndpointId::from_uuid(trigger_id.uuid()).to_string()),
                     config,
                     encrypted,
                 )
@@ -467,7 +468,7 @@ impl Command for CreateAgentTrigger {
             }
             // The ingress id names the MCP server's callback for this trigger.
             AgentTriggerType::McpEvent => (
-                Some(AppChannelId::from_uuid(trigger_id.uuid()).to_string()),
+                Some(AgentEndpointId::from_uuid(trigger_id.uuid()).to_string()),
                 mcp_event::create_config(ctx, &agent, &req).await?,
                 None,
             ),

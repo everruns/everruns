@@ -62,8 +62,8 @@ pub(crate) async fn handle_slack_manifest(
 /// if the two cannot drift.
 pub(crate) async fn manifest_yaml_for_endpoint(
     state: &SlackState,
-    app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     // A config we cannot parse still produces the channel-bot manifest rather than
     // a 500: the agent surface is additive, so defaulting it off is the safe read.
@@ -153,7 +153,7 @@ pub(crate) fn slack_oauth_redirect_url(api_base_url: &str, channel_public_id: &s
 /// cosmetic next to that.
 pub(crate) async fn resolve_manifest_starters(
     state: &SlackState,
-    app: &crate::api::app_ingress::IngressContext,
+    app: &crate::api::endpoint_ingress::IngressContext,
 ) -> Vec<ConversationStarter> {
     let agent_starters = match app.agent_id.as_ref() {
         Some(agent_id) => {

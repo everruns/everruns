@@ -1,4 +1,4 @@
-use everruns_platform::{AgentVersionPolicy, ChannelType};
+use everruns_platform::{AgentVersionPolicy, EndpointTransport};
 use everruns_provider::typed_id::AgentVersionId;
 use serde::Deserialize;
 use serde_json::Value;
@@ -8,7 +8,7 @@ use utoipa::ToSchema;
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAgentEndpointRequest {
     /// Transport used by the endpoint.
-    pub channel_type: ChannelType,
+    pub channel_type: EndpointTransport,
     /// Transport-specific endpoint configuration.
     #[serde(default)]
     pub channel_config: Value,

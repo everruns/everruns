@@ -217,7 +217,7 @@ async fn invoke_webhook(
         )
         .await;
     }
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(
+    let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(
         &state.db,
         state.encryption.as_ref(),
         &channel_id,
@@ -245,7 +245,7 @@ async fn invoke_webhook(
     // non-live endpoint, and every request must present the per-channel shared
     // secret before session creation. Liveness is resolved before auth so a
     // caller cannot distinguish a misconfigured endpoint from a bad token.
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,

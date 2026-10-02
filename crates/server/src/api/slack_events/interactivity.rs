@@ -26,7 +26,7 @@ use serde::Deserialize;
 
 use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signature};
 use crate::api::ErrorResponse;
-use crate::api::app_ingress::{IngressContext, IngressEndpoint};
+use crate::api::endpoint_ingress::{IngressContext, IngressEndpoint};
 use crate::middleware::RequestId;
 use crate::slack_approvals::{
     ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalRequest, build_resolved_blocks,

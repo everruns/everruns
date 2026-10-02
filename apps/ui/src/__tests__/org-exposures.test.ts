@@ -28,7 +28,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   } as Agent;
 }
 
-// Pinned to `live(endpoint)` in crates/server/src/api/app_ingress.rs:
+// Pinned to `endpoint_liveness` in crates/server/src/api/endpoint_ingress.rs:
 //
 //   live = endpoint.status == live && agent.status == active
 //                                  && !agent.exposures_suspended

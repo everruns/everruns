@@ -3,8 +3,8 @@ use crate::domains::common::{CommandError, classify_anyhow};
 use crate::storage::password::hash_password;
 use everruns_platform::app::{ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_platform::{
-    A2aChannelConfig, AgUiChannelConfig, ApiEndpointChannelConfig, AppEndpointAuthConfig,
-    AppEndpointAuthMode, AppEndpointAuthProviderConfig, ChannelType, FcpChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, ApiEndpointChannelConfig, EndpointAuthConfig,
+    EndpointAuthMode, EndpointAuthProviderConfig, EndpointTransport, FcpChannelConfig,
     PublicChatChannelConfig, PublicToolVisibility, SlackChannelConfig,
 };
 use serde_json::Value;
@@ -20,17 +20,20 @@ fn schedule_channel_min_interval_seconds() -> i64 {
 }
 
 pub(crate) fn normalize_and_validate_channel_config(
-    channel_type: ChannelType,
+    channel_type: EndpointTransport,
     mut channel_config: Value,
 ) -> Result<Value, CommandError> {
     match channel_type {
-        ChannelType::AgUi
-        | ChannelType::A2a
-        | ChannelType::ApiEndpoint
-        | ChannelType::PublicChat => {
+        EndpointTransport::AgUi
+        | EndpointTransport::A2a
+        | EndpointTransport::ApiEndpoint
+        | EndpointTransport::PublicChat => {
             normalize_inline_endpoint_auth(&channel_type, &mut channel_config)?;
         }
-        ChannelType::Fcp | ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
+        EndpointTransport::Fcp
+        | EndpointTransport::Slack
+        | EndpointTransport::Schedule
+        | EndpointTransport::Webhook => {
             // FCP deliberately runs its own minimal auth stack (anonymous +
             // shared bearer token) so it never shares verifier code with
             // AG-UI/A2A. See `knowledge/integrations/fcp-channel.md`.
@@ -42,7 +45,7 @@ pub(crate) fn normalize_and_validate_channel_config(
         }
     }
     match channel_type {
-        ChannelType::Slack => {
+        EndpointTransport::Slack => {
             // The channel must exist before its manifest can be generated, while
             // Slack provides credentials only after the app is created.
             let config = serde_json::from_value::<SlackChannelConfig>(channel_config.clone())
@@ -51,7 +54,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 })?;
             validate_session_binding(&channel_type, config.session_strategy)?;
         }
-        ChannelType::AgUi => {
+        EndpointTransport::AgUi => {
             let config: AgUiChannelConfig = serde_json::from_value(channel_config.clone())
                 .map_err(|e| {
                     CommandError::bad_request(format!("Invalid AG-UI channel config: {e}"))
@@ -91,7 +94,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 ));
             }
         }
-        ChannelType::Schedule => {
+        EndpointTransport::Schedule => {
             let config: ScheduleChannelConfig = serde_json::from_value(channel_config.clone())
                 .map_err(|e| {
                     CommandError::bad_request(format!("Invalid schedule channel config: {e}"))
@@ -118,7 +121,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 map.insert("cron_expression".to_string(), Value::String(normalized));
             }
         }
-        ChannelType::Webhook => {
+        EndpointTransport::Webhook => {
             let config: WebhookChannelConfig = serde_json::from_value(channel_config.clone())
                 .map_err(|e| {
                     CommandError::bad_request(format!("Invalid webhook channel config: {e}"))
@@ -135,7 +138,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 ));
             }
         }
-        ChannelType::A2a => {
+        EndpointTransport::A2a => {
             let config: A2aChannelConfig =
                 serde_json::from_value(channel_config.clone()).map_err(|e| {
                     CommandError::bad_request(format!("Invalid A2A channel config: {e}"))
@@ -186,7 +189,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 }
             }
         }
-        ChannelType::ApiEndpoint => {
+        EndpointTransport::ApiEndpoint => {
             let config: ApiEndpointChannelConfig = serde_json::from_value(channel_config.clone())
                 .map_err(|e| {
                 CommandError::bad_request(format!("Invalid api_endpoint channel config: {e}"))
@@ -213,7 +216,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 ));
             }
         }
-        ChannelType::Fcp => {
+        EndpointTransport::Fcp => {
             let config: FcpChannelConfig =
                 serde_json::from_value(channel_config.clone()).map_err(|e| {
                     CommandError::bad_request(format!("Invalid FCP channel config: {e}"))
@@ -245,7 +248,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 ));
             }
         }
-        ChannelType::PublicChat => {
+        EndpointTransport::PublicChat => {
             let config: PublicChatChannelConfig = serde_json::from_value(channel_config.clone())
                 .map_err(|e| {
                     CommandError::bad_request(format!("Invalid Public Chat channel config: {e}"))
@@ -335,7 +338,7 @@ pub(crate) fn normalize_and_validate_channel_config(
 }
 
 fn validate_session_binding(
-    channel_type: &ChannelType,
+    channel_type: &EndpointTransport,
     binding: everruns_platform::SessionBinding,
 ) -> Result<(), CommandError> {
     if channel_type.allows_binding(binding) {
@@ -352,7 +355,7 @@ fn hash_endpoint_basic_password(password: &str) -> Result<String, CommandError> 
 }
 
 fn normalize_inline_endpoint_auth(
-    channel_type: &ChannelType,
+    channel_type: &EndpointTransport,
     channel_config: &mut Value,
 ) -> Result<(), CommandError> {
     let Some(auth_value) = channel_config.get("auth") else {
@@ -361,7 +364,7 @@ fn normalize_inline_endpoint_auth(
     if auth_value.is_null() {
         return Ok(());
     }
-    let auth: AppEndpointAuthConfig = serde_json::from_value(auth_value.clone())
+    let auth: EndpointAuthConfig = serde_json::from_value(auth_value.clone())
         .map_err(|e| CommandError::bad_request(format!("Invalid endpoint auth config: {e}")))?;
     validate_endpoint_auth_config(channel_type, channel_config, &auth)?;
 
@@ -398,14 +401,16 @@ fn normalize_inline_endpoint_auth(
 }
 
 fn validate_endpoint_auth_config(
-    channel_type: &ChannelType,
+    channel_type: &EndpointTransport,
     channel_config: &Value,
-    auth: &AppEndpointAuthConfig,
+    auth: &EndpointAuthConfig,
 ) -> Result<(), CommandError> {
     match auth.mode {
-        AppEndpointAuthMode::Anonymous => Ok(()),
-        AppEndpointAuthMode::SharedSecret => {
-            if *channel_type != ChannelType::AgUi && *channel_type != ChannelType::PublicChat {
+        EndpointAuthMode::Anonymous => Ok(()),
+        EndpointAuthMode::SharedSecret => {
+            if *channel_type != EndpointTransport::AgUi
+                && *channel_type != EndpointTransport::PublicChat
+            {
                 return Err(CommandError::bad_request(
                     "Shared token auth is only supported for AG-UI and Public Chat channels",
                 ));
@@ -422,8 +427,10 @@ fn validate_endpoint_auth_config(
                 ))
             }
         }
-        AppEndpointAuthMode::ApiKey => {
-            if *channel_type != ChannelType::A2a && *channel_type != ChannelType::ApiEndpoint {
+        EndpointAuthMode::ApiKey => {
+            if *channel_type != EndpointTransport::A2a
+                && *channel_type != EndpointTransport::ApiEndpoint
+            {
                 return Err(CommandError::bad_request(
                     "API key auth is only supported for A2A and api_endpoint channels",
                 ));
@@ -444,8 +451,8 @@ fn validate_endpoint_auth_config(
                 ))
             }
         }
-        AppEndpointAuthMode::GoogleOidc => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::GoogleOidc { client_id, .. })
+        EndpointAuthMode::GoogleOidc => match auth.provider.as_ref() {
+            Some(EndpointAuthProviderConfig::GoogleOidc { client_id, .. })
                 if !client_id.trim().is_empty() =>
             {
                 Ok(())
@@ -454,8 +461,8 @@ fn validate_endpoint_auth_config(
                 "Google auth requires provider.type=google_oidc and non-empty client_id",
             )),
         },
-        AppEndpointAuthMode::Oidc => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::Oidc { issuer, jwks_url }) => {
+        EndpointAuthMode::Oidc => match auth.provider.as_ref() {
+            Some(EndpointAuthProviderConfig::Oidc { issuer, jwks_url }) => {
                 if issuer.trim().is_empty() {
                     return Err(CommandError::bad_request(
                         "OIDC auth requires a non-empty issuer",
@@ -474,8 +481,8 @@ fn validate_endpoint_auth_config(
                 "OIDC auth requires provider.type=oidc",
             )),
         },
-        AppEndpointAuthMode::OAuth2Introspection => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::OAuth2Introspection {
+        EndpointAuthMode::OAuth2Introspection => match auth.provider.as_ref() {
+            Some(EndpointAuthProviderConfig::OAuth2Introspection {
                 introspection_url, ..
             }) => {
                 everruns_provider::url_validation::validate_safe_url(introspection_url).map_err(
@@ -487,8 +494,8 @@ fn validate_endpoint_auth_config(
                 "OAuth2 introspection auth requires provider.type=oauth2_introspection",
             )),
         },
-        AppEndpointAuthMode::HttpBasic => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::HttpBasic {
+        EndpointAuthMode::HttpBasic => match auth.provider.as_ref() {
+            Some(EndpointAuthProviderConfig::HttpBasic {
                 username,
                 password,
                 password_hash,
@@ -505,8 +512,8 @@ fn validate_endpoint_auth_config(
                 "HTTP Basic auth requires provider.type=http_basic, username, and password or password_hash",
             )),
         },
-        AppEndpointAuthMode::Mtls => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::Mtls {
+        EndpointAuthMode::Mtls => match auth.provider.as_ref() {
+            Some(EndpointAuthProviderConfig::Mtls {
                 header_name,
                 allowed_values,
                 proxy_secret_header,
@@ -531,7 +538,7 @@ fn validate_endpoint_auth_config(
 }
 
 pub(crate) fn merge_preserved_secret_fields(
-    channel_type: ChannelType,
+    channel_type: EndpointTransport,
     final_channel_config: &mut Value,
     existing_decrypted: &Value,
 ) {
@@ -543,7 +550,7 @@ pub(crate) fn merge_preserved_secret_fields(
     };
 
     match channel_type {
-        ChannelType::Slack => {
+        EndpointTransport::Slack => {
             for key in ["signing_secret", "bot_token"] {
                 let should_preserve = out
                     .get(key)
@@ -555,14 +562,14 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
         }
-        ChannelType::AgUi => {
+        EndpointTransport::AgUi => {
             if !out.contains_key("token")
                 && let Some(existing_value) = existing.get("token")
             {
                 out.insert("token".to_string(), existing_value.clone());
             }
         }
-        ChannelType::Webhook => {
+        EndpointTransport::Webhook => {
             let should_preserve = out
                 .get("token")
                 .and_then(Value::as_str)
@@ -572,7 +579,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 out.insert("token".to_string(), existing_value.clone());
             }
         }
-        ChannelType::A2a => {
+        EndpointTransport::A2a => {
             for key in ["api_key_hash", "api_key_prefix"] {
                 if let Some(existing_value) = existing.get(key) {
                     out.insert(key.to_string(), existing_value.clone());
@@ -588,7 +595,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 out.insert("signing_secret".to_string(), existing_value.clone());
             }
         }
-        ChannelType::Fcp => {
+        EndpointTransport::Fcp => {
             let should_preserve = out
                 .get("token")
                 .and_then(Value::as_str)
@@ -598,7 +605,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 out.insert("token".to_string(), existing_value.clone());
             }
         }
-        ChannelType::ApiEndpoint => {
+        EndpointTransport::ApiEndpoint => {
             // api_key_hash is write-only on the wire (redacted on read), so a
             // PATCH that edits session_mode / rate_limit must preserve the
             // existing frozen key rather than wipe it.
@@ -608,7 +615,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
         }
-        ChannelType::PublicChat => {
+        EndpointTransport::PublicChat => {
             let should_preserve = out
                 .get("token")
                 .and_then(Value::as_str)
@@ -636,7 +643,7 @@ pub(crate) fn merge_preserved_secret_fields(
                 }
             }
         }
-        ChannelType::Schedule => {}
+        EndpointTransport::Schedule => {}
     }
     merge_preserved_endpoint_auth_secrets(final_channel_config, existing_decrypted);
 }
@@ -690,26 +697,26 @@ mod tests {
         ] {
             let config = json!({ "session_strategy": binding });
             assert!(
-                normalize_and_validate_channel_config(ChannelType::Slack, config).is_err(),
+                normalize_and_validate_channel_config(EndpointTransport::Slack, config).is_err(),
                 "Slack accepted unsupported binding {binding}"
             );
         }
 
         let invocation_configs = [
             (
-                ChannelType::Schedule,
+                EndpointTransport::Schedule,
                 json!({ "cron_expression": "0 0 * * * *", "message": "run" }),
             ),
             (
-                ChannelType::Webhook,
+                EndpointTransport::Webhook,
                 json!({ "token": "secret", "message": "run" }),
             ),
             (
-                ChannelType::A2a,
+                EndpointTransport::A2a,
                 json!({ "api_key_hash": "hash", "api_key_prefix": "prefix", "message": "run" }),
             ),
             (
-                ChannelType::ApiEndpoint,
+                EndpointTransport::ApiEndpoint,
                 json!({ "api_key_hash": "hash", "api_key_prefix": "prefix" }),
             ),
         ];

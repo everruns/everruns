@@ -8,27 +8,27 @@ pub(super) async fn authorize_ag_ui_request(
 ) -> Result<AuthorizedAgUiRequest, Response> {
     let (context, channel) = match target {
         AgUiTarget::LegacyApp(app_id) => {
-            match crate::api::app_ingress::resolve_legacy_endpoint(
+            match crate::api::endpoint_ingress::resolve_legacy_endpoint(
                 &state.db,
                 state.encryption.as_ref(),
                 &app_id,
-                ChannelType::AgUi,
+                EndpointTransport::AgUi,
             )
             .await
             .map_err(internal_error)?
             {
-                crate::api::app_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
-                crate::api::app_ingress::LegacyEndpointMatch::NotFound => {
+                crate::api::endpoint_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
+                crate::api::endpoint_ingress::LegacyEndpointMatch::NotFound => {
                     return Err(not_found());
                 }
-                crate::api::app_ingress::LegacyEndpointMatch::Ambiguous => {
+                crate::api::endpoint_ingress::LegacyEndpointMatch::Ambiguous => {
                     return Err(conflict(
                         "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL",
                     ));
                 }
             }
         }
-        AgUiTarget::Endpoint(channel_id) => crate::api::app_ingress::resolve_endpoint(
+        AgUiTarget::Endpoint(channel_id) => crate::api::endpoint_ingress::resolve_endpoint(
             &state.db,
             state.encryption.as_ref(),
             &channel_id,
@@ -48,10 +48,10 @@ pub(super) async fn authorize_ag_ui_request(
     // AG-UI channel / is misconfigured". Every such case collapses to a single
     // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
     // logged server-side only.
-    if channel.channel_type != ChannelType::AgUi {
+    if channel.channel_type != EndpointTransport::AgUi {
         return Err(not_found());
     }
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&context, &channel) {
+    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&context, &channel) {
         tracing::debug!(
             app_id = %context.public_id,
             endpoint_id = %channel.public_id,

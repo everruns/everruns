@@ -38,7 +38,7 @@ use everruns_ag_ui::{
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_platform::exposure::public_tool_activity_text;
-use everruns_platform::{AgUiChannelConfig, ChannelType};
+use everruns_platform::{AgUiChannelConfig, EndpointTransport};
 use everruns_provider::execution_phase::ExecutionPhase;
 use everruns_provider::typed_id::ImageId;
 #[cfg(test)]
@@ -51,11 +51,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::api::ag_ui_interrupts::{ResumeError, ResumeOutcome};
-use crate::api::app_endpoint_auth::{
-    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
-};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
+use crate::api::endpoint_auth::{EndpointAuthError, EndpointAuthVerifier, LegacyEndpointAuth};
 use crate::api::images::{
     ImageUploadResponse, generate_thumbnail, is_valid_content_type, validate_image_bytes,
 };
@@ -89,7 +87,7 @@ pub struct AgUiState {
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
-    pub auth_verifier: AppEndpointAuthVerifier,
+    pub auth_verifier: EndpointAuthVerifier,
     pub public_chat_enabled: bool,
     pub runtime_auth: Option<crate::auth::AuthState>,
 }
@@ -115,7 +113,7 @@ impl AgUiState {
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             sse_tracker,
             rate_limiter,
-            auth_verifier: AppEndpointAuthVerifier::new(),
+            auth_verifier: EndpointAuthVerifier::new(),
             public_chat_enabled: false,
             runtime_auth: None,
             encryption,
@@ -162,7 +160,7 @@ enum AgUiTarget {
 }
 
 struct AuthorizedAgUiRequest {
-    context: crate::api::app_ingress::IngressContext,
+    context: crate::api::endpoint_ingress::IngressContext,
     channel_id: String,
     /// Internal id of the endpoint this request arrived through, recorded on
     /// any session it creates (EVE-1004).
@@ -403,7 +401,7 @@ async fn run_agent(
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_app_agent_stream(
     state: AgUiState,
-    app: crate::api::app_ingress::IngressContext,
+    app: crate::api::endpoint_ingress::IngressContext,
     endpoint_internal_id: uuid::Uuid,
     channel_config: AgUiChannelConfig,
     tag_prefix: &str,
@@ -770,7 +768,7 @@ pub(crate) async fn run_app_agent_stream(
 }
 
 fn ag_ui_message_metadata(
-    app: &crate::api::app_ingress::IngressContext,
+    app: &crate::api::endpoint_ingress::IngressContext,
     thread_tag: String,
     run_tag: String,
 ) -> HashMap<String, Value> {
@@ -786,7 +784,7 @@ fn ag_ui_message_metadata(
     .collect()
 }
 
-fn ag_ui_image_metadata(app: &crate::api::app_ingress::IngressContext) -> Value {
+fn ag_ui_image_metadata(app: &crate::api::endpoint_ingress::IngressContext) -> Value {
     serde_json::json!({
         "_app_id": app.public_id.to_string(),
         "source": "ag_ui",
@@ -803,7 +801,7 @@ fn is_ag_ui_app_image(metadata: &Value, app_public_id: &str) -> bool {
 
 async fn ag_ui_image_content_parts(
     state: &AgUiState,
-    app: &crate::api::app_ingress::IngressContext,
+    app: &crate::api::endpoint_ingress::IngressContext,
     forwarded_props: Option<&Value>,
 ) -> Result<Vec<InputContentPart>, Box<Response>> {
     let Some(forwarded_props) = forwarded_props else {
@@ -902,8 +900,8 @@ impl From<anyhow::Error> for SessionError {
 
 async fn find_or_create_session(
     state: &AgUiState,
-    app: &crate::api::app_ingress::IngressContext,
-    runtime_app: Option<&crate::api::app_ingress::IngressContext>,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    runtime_app: Option<&crate::api::endpoint_ingress::IngressContext>,
     endpoint_internal_id: uuid::Uuid,
     config: &AgUiChannelConfig,
     routing_tags: &[String],
@@ -1303,11 +1301,11 @@ fn service_unavailable(message: &str) -> Response {
         .into_response()
 }
 
-fn ag_ui_auth_error_response(error: AppEndpointAuthError) -> Response {
+fn ag_ui_auth_error_response(error: EndpointAuthError) -> Response {
     match error {
-        AppEndpointAuthError::Unauthorized => unauthorized(),
-        AppEndpointAuthError::Misconfigured => forbidden("AG-UI auth is misconfigured"),
-        AppEndpointAuthError::ProviderUnavailable => {
+        EndpointAuthError::Unauthorized => unauthorized(),
+        EndpointAuthError::Misconfigured => forbidden("AG-UI auth is misconfigured"),
+        EndpointAuthError::ProviderUnavailable => {
             service_unavailable("AG-UI auth provider is unavailable")
         }
     }

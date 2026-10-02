@@ -2,7 +2,7 @@
 //! component names and serde spellings are a public contract (third-party
 //! clients and the generated UI types key on them), so pin both here.
 
-use crate::{AgentEndpoint, AppChannel, ChannelType, EndpointTransport};
+use crate::{AgentEndpoint, EndpointTransport};
 
 #[cfg(feature = "openapi")]
 #[test]
@@ -27,16 +27,15 @@ fn renamed_endpoint_types_keep_app_era_openapi_names() {
 }
 
 #[test]
-fn old_names_are_the_same_types_and_serde_is_unchanged() {
-    // The aliases must be re-exports, not copies: a value of one is a value of
-    // the other.
-    let transport: ChannelType = EndpointTransport::ApiEndpoint;
-    assert_eq!(serde_json::to_value(&transport).unwrap(), "api_endpoint");
+fn renamed_endpoint_types_keep_app_era_serde_shape() {
+    let transport = EndpointTransport::ApiEndpoint;
+    assert_eq!(serde_json::to_value(transport).unwrap(), "api_endpoint");
     assert_eq!(
         serde_json::from_value::<EndpointTransport>("public_chat".into()).unwrap(),
         EndpointTransport::PublicChat
     );
 
+    // The endpoint ID keeps its `appchan_` wire prefix.
     let endpoint: AgentEndpoint = serde_json::from_value(serde_json::json!({
         "id": "appchan_01933b5a000070008000000000000001",
         "channel_type": "fcp",
@@ -47,8 +46,7 @@ fn old_names_are_the_same_types_and_serde_is_unchanged() {
         "updated_at": "2026-01-01T00:00:00Z",
     }))
     .unwrap();
-    let legacy: &AppChannel = &endpoint;
-    let wire = serde_json::to_value(legacy).unwrap();
+    let wire = serde_json::to_value(&endpoint).unwrap();
     assert_eq!(wire["id"], "appchan_01933b5a000070008000000000000001");
     assert_eq!(wire["channel_type"], "fcp");
     assert_eq!(wire["status"], "live");

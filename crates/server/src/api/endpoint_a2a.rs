@@ -37,11 +37,9 @@ use crate::api::a2a_signing::{
     A2A_SIGNATURE_HEADER, A2A_TIMESTAMP_HEADER, A2aReplayStore, SignatureCheckError,
     now_unix_seconds, verify_signature,
 };
-use crate::api::app_endpoint_auth::{
-    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
-};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
+use crate::api::endpoint_auth::{EndpointAuthError, EndpointAuthVerifier, LegacyEndpointAuth};
 use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::apps::{
@@ -90,7 +88,7 @@ pub struct EndpointA2aState {
     pub event_delivery: EventDelivery,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
-    pub auth_verifier: AppEndpointAuthVerifier,
+    pub auth_verifier: EndpointAuthVerifier,
     pub replay_store: A2aReplayStore,
     /// UI origin, used to hand a `secret` question to a human instead of
     /// asking the calling agent for the credential (EVE-1062). Empty when no
@@ -130,7 +128,7 @@ impl EndpointA2aState {
             event_delivery,
             sse_tracker,
             rate_limiter,
-            auth_verifier: AppEndpointAuthVerifier::new(),
+            auth_verifier: EndpointAuthVerifier::new(),
             replay_store,
             frontend_url,
         }
@@ -318,7 +316,7 @@ async fn endpoint_app_id(
     state: &EndpointA2aState,
     channel_id: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+    crate::api::endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
         .await
         .map_err(internal_error)?
         .map(|(app, _)| app.public_id.to_string())
@@ -443,11 +441,14 @@ async fn authenticate_request(
     peer_addr: Option<std::net::SocketAddr>,
     body: &[u8],
 ) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
-    let (app, channel) =
-        crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
-            .await
-            .map_err(internal_error)?
-            .ok_or_else(not_found)?;
+    let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(
+        &state.db,
+        state.encryption.as_ref(),
+        channel_id,
+    )
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(not_found)?;
     if !app.matches_legacy_app_id(app_id) {
         return Err(not_found());
     }
@@ -465,7 +466,7 @@ async fn authenticate_request(
     // endpoint, and every request must present the per-channel API key before
     // session creation. Liveness is resolved before auth so a caller cannot
     // distinguish a misconfigured endpoint from a bad key.
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,
@@ -1458,11 +1459,11 @@ fn service_unavailable(message: impl Into<String>) -> (StatusCode, Json<ErrorRes
     ErrorResponse::new(message.into()).into_response(StatusCode::SERVICE_UNAVAILABLE)
 }
 
-fn a2a_auth_error_response(error: AppEndpointAuthError) -> (StatusCode, Json<ErrorResponse>) {
+fn a2a_auth_error_response(error: EndpointAuthError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        AppEndpointAuthError::Unauthorized => unauthorized(),
-        AppEndpointAuthError::Misconfigured => forbidden("A2A auth is misconfigured"),
-        AppEndpointAuthError::ProviderUnavailable => {
+        EndpointAuthError::Unauthorized => unauthorized(),
+        EndpointAuthError::Misconfigured => forbidden("A2A auth is misconfigured"),
+        EndpointAuthError::ProviderUnavailable => {
             service_unavailable("A2A auth provider is unavailable")
         }
     }

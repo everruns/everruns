@@ -22,17 +22,15 @@ use axum::{
     routing::{get, post},
 };
 use everruns_platform::{
-    AppEndpointAuthMode, AppEndpointAuthProviderConfig, ChannelType, PublicChatChannelConfig,
+    EndpointAuthMode, EndpointAuthProviderConfig, EndpointTransport, PublicChatChannelConfig,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::api::ag_ui::{AgUiState, run_app_agent_stream};
-use crate::api::app_endpoint_auth::{
-    AppEndpointAuthError, AppEndpointAuthPrincipal, LegacyEndpointAuth,
-};
 use crate::api::common::ErrorResponse;
+use crate::api::endpoint_auth::{EndpointAuthError, EndpointAuthPrincipal, LegacyEndpointAuth};
 use crate::api::turnstile::{TurnstileOutcome, TurnstileVerifier};
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::middleware::RequestId;
@@ -136,10 +134,10 @@ async fn get_config(
     let sign_in = config
         .auth
         .as_ref()
-        .filter(|auth| auth.mode != AppEndpointAuthMode::Anonymous)
+        .filter(|auth| auth.mode != EndpointAuthMode::Anonymous)
         .map(|auth| {
             let google_client_id = match auth.provider.as_ref() {
-                Some(AppEndpointAuthProviderConfig::GoogleOidc { client_id, .. }) => {
+                Some(EndpointAuthProviderConfig::GoogleOidc { client_id, .. }) => {
                     Some(client_id.clone())
                 }
                 _ => None,
@@ -237,7 +235,7 @@ async fn run_public_chat(
     let real_auth = config
         .auth
         .as_ref()
-        .filter(|auth| auth.mode != AppEndpointAuthMode::Anonymous);
+        .filter(|auth| auth.mode != EndpointAuthMode::Anonymous);
     let runtime_account = if let Some(endpoint) = runtime_endpoint {
         super::ag_ui::runtime_endpoint_account(&state, &endpoint, &headers).await?
     } else {
@@ -247,7 +245,7 @@ async fn run_public_chat(
         if let Some((account, binding)) = runtime_account {
             (
                 true,
-                signed_in_visitor_tag(&AppEndpointAuthPrincipal {
+                signed_in_visitor_tag(&EndpointAuthPrincipal {
                     issuer: binding.realm.clone(),
                     subject: binding.subject.clone(),
                 }),
@@ -360,7 +358,7 @@ async fn run_public_chat(
     Ok(response)
 }
 
-fn signed_in_visitor_tag(principal: &AppEndpointAuthPrincipal) -> String {
+fn signed_in_visitor_tag(principal: &EndpointAuthPrincipal) -> String {
     visitor_tag(
         "signed",
         &[principal.issuer.as_str(), principal.subject.as_str()],
@@ -453,7 +451,7 @@ async fn resolve_published_channel(
     target: PublicChatTarget,
 ) -> Result<
     (
-        crate::api::app_ingress::IngressContext,
+        crate::api::endpoint_ingress::IngressContext,
         uuid::Uuid,
         PublicChatChannelConfig,
     ),
@@ -465,23 +463,23 @@ async fn resolve_published_channel(
     }
     let (app, channel) = match target {
         PublicChatTarget::LegacyApp(app_id) => {
-            match crate::api::app_ingress::resolve_legacy_endpoint(
+            match crate::api::endpoint_ingress::resolve_legacy_endpoint(
                 &state.db,
                 state.encryption.as_ref(),
                 &app_id,
-                ChannelType::PublicChat,
+                EndpointTransport::PublicChat,
             )
             .await
             .map_err(internal_error)?
             {
-                crate::api::app_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
-                crate::api::app_ingress::LegacyEndpointMatch::NotFound
-                | crate::api::app_ingress::LegacyEndpointMatch::Ambiguous => {
+                crate::api::endpoint_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
+                crate::api::endpoint_ingress::LegacyEndpointMatch::NotFound
+                | crate::api::endpoint_ingress::LegacyEndpointMatch::Ambiguous => {
                     return Err(not_found());
                 }
             }
         }
-        PublicChatTarget::Endpoint(channel_id) => crate::api::app_ingress::resolve_endpoint(
+        PublicChatTarget::Endpoint(channel_id) => crate::api::endpoint_ingress::resolve_endpoint(
             &state.db,
             state.encryption.as_ref(),
             &channel_id,
@@ -490,10 +488,10 @@ async fn resolve_published_channel(
         .map_err(internal_error)?
         .ok_or_else(not_found)?,
     };
-    if channel.channel_type != ChannelType::PublicChat {
+    if channel.channel_type != EndpointTransport::PublicChat {
         return Err(not_found());
     }
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,
@@ -508,16 +506,16 @@ async fn resolve_published_channel(
     Ok((app, endpoint_internal_id, config))
 }
 
-fn auth_mode_str(mode: &AppEndpointAuthMode) -> &'static str {
+fn auth_mode_str(mode: &EndpointAuthMode) -> &'static str {
     match mode {
-        AppEndpointAuthMode::Anonymous => "anonymous",
-        AppEndpointAuthMode::SharedSecret => "shared_secret",
-        AppEndpointAuthMode::ApiKey => "api_key",
-        AppEndpointAuthMode::GoogleOidc => "google_oidc",
-        AppEndpointAuthMode::Oidc => "oidc",
-        AppEndpointAuthMode::OAuth2Introspection => "oauth2_introspection",
-        AppEndpointAuthMode::HttpBasic => "http_basic",
-        AppEndpointAuthMode::Mtls => "mtls",
+        EndpointAuthMode::Anonymous => "anonymous",
+        EndpointAuthMode::SharedSecret => "shared_secret",
+        EndpointAuthMode::ApiKey => "api_key",
+        EndpointAuthMode::GoogleOidc => "google_oidc",
+        EndpointAuthMode::Oidc => "oidc",
+        EndpointAuthMode::OAuth2Introspection => "oauth2_introspection",
+        EndpointAuthMode::HttpBasic => "http_basic",
+        EndpointAuthMode::Mtls => "mtls",
     }
 }
 
@@ -551,11 +549,11 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         == 0
 }
 
-fn auth_error_response(error: AppEndpointAuthError) -> Response {
+fn auth_error_response(error: EndpointAuthError) -> Response {
     match error {
-        AppEndpointAuthError::Unauthorized => unauthorized(),
-        AppEndpointAuthError::Misconfigured => forbidden("Sign-in is misconfigured"),
-        AppEndpointAuthError::ProviderUnavailable => {
+        EndpointAuthError::Unauthorized => unauthorized(),
+        EndpointAuthError::Misconfigured => forbidden("Sign-in is misconfigured"),
+        EndpointAuthError::ProviderUnavailable => {
             service_unavailable("Sign-in provider is unavailable")
         }
     }
@@ -657,24 +655,21 @@ mod tests {
 
     #[test]
     fn auth_mode_str_roundtrips_known_modes() {
-        assert_eq!(
-            auth_mode_str(&AppEndpointAuthMode::GoogleOidc),
-            "google_oidc"
-        );
-        assert_eq!(auth_mode_str(&AppEndpointAuthMode::Anonymous), "anonymous");
+        assert_eq!(auth_mode_str(&EndpointAuthMode::GoogleOidc), "google_oidc");
+        assert_eq!(auth_mode_str(&EndpointAuthMode::Anonymous), "anonymous");
     }
 
     #[test]
     fn signed_in_visitor_tags_are_stable_and_subject_scoped() {
-        let alice = AppEndpointAuthPrincipal {
+        let alice = EndpointAuthPrincipal {
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
         };
-        let alice_again = AppEndpointAuthPrincipal {
+        let alice_again = EndpointAuthPrincipal {
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
         };
-        let bob = AppEndpointAuthPrincipal {
+        let bob = EndpointAuthPrincipal {
             issuer: "https://accounts.google.com".to_string(),
             subject: "bob".to_string(),
         };

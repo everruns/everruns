@@ -3,7 +3,7 @@
 use super::queries as q;
 use crate::domains::common::*;
 use everruns_core::{Permission, Policy, Rule};
-use everruns_platform::{App, AppChannel, ChannelType};
+use everruns_platform::{AgentEndpoint, App, EndpointTransport};
 use everruns_provider::typed_id::AppId;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -14,13 +14,13 @@ const APP_VIEW: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgAppsView)],
 };
 
-fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
+fn redact_channel_config(channel_type: &EndpointTransport, config: &mut Value) {
     redact_inline_endpoint_auth(config);
     let Some(map) = config.as_object_mut() else {
         return;
     };
     match channel_type {
-        ChannelType::Slack => {
+        EndpointTransport::Slack => {
             // The whole object, not selected keys inside it. It carries the
             // OAuth client secret *and* the single-use install nonce, and
             // leaking the nonce would hand a reader exactly what the callback's
@@ -53,17 +53,17 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 }
             }
         }
-        ChannelType::AgUi => {
+        EndpointTransport::AgUi => {
             if map.remove("token").is_some() {
                 map.insert("token_configured".to_string(), Value::Bool(true));
             }
         }
-        ChannelType::Webhook => {
+        EndpointTransport::Webhook => {
             if map.remove("token").is_some() {
                 map.insert("token_configured".to_string(), Value::Bool(true));
             }
         }
-        ChannelType::A2a => {
+        EndpointTransport::A2a => {
             map.remove("api_key_hash");
             // signing_secret is write-only — the API redacts it on read
             // and only surfaces `signing_secret_configured: bool` so
@@ -82,18 +82,18 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 map.insert("signing_secret_configured".to_string(), Value::Bool(true));
             }
         }
-        ChannelType::Fcp => {
+        EndpointTransport::Fcp => {
             if map.remove("token").is_some() {
                 map.insert("token_configured".to_string(), Value::Bool(true));
             }
         }
-        ChannelType::ApiEndpoint => {
+        EndpointTransport::ApiEndpoint => {
             // The api_key_hash is a secret-equivalent: anyone who can submit a
             // key whose SHA-256 matches it authenticates. Never surface it on
             // read; the non-secret api_key_prefix stays for display.
             map.remove("api_key_hash");
         }
-        ChannelType::PublicChat => {
+        EndpointTransport::PublicChat => {
             if map.remove("token").is_some() {
                 map.insert("token_configured".to_string(), Value::Bool(true));
             }
@@ -111,7 +111,7 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 }
             }
         }
-        ChannelType::Schedule => {}
+        EndpointTransport::Schedule => {}
     }
 }
 
@@ -139,7 +139,7 @@ fn redact_inline_endpoint_auth(config: &mut Value) {
     }
 }
 
-pub(crate) fn redact_channel_for_response(mut channel: AppChannel) -> AppChannel {
+pub(crate) fn redact_channel_for_response(mut channel: AgentEndpoint) -> AgentEndpoint {
     if let Some(auth) = channel.auth.take() {
         let mut wrapped = json!({ "auth": auth });
         redact_inline_endpoint_auth(&mut wrapped);
@@ -272,7 +272,7 @@ mod redaction_tests {
                 "install_state_issued_at": "2026-09-19T00:00:00Z",
             },
         });
-        redact_channel_config(&ChannelType::Slack, &mut config);
+        redact_channel_config(&EndpointTransport::Slack, &mut config);
 
         let rendered = config.to_string();
         assert!(!rendered.contains("client-secret-value"), "{rendered}");
@@ -296,7 +296,7 @@ mod redaction_tests {
     #[test]
     fn a_hand_configured_endpoint_gains_no_provisioned_flag() {
         let mut config = json!({ "signing_secret": "shhh" });
-        redact_channel_config(&ChannelType::Slack, &mut config);
+        redact_channel_config(&EndpointTransport::Slack, &mut config);
         assert!(config.get("slack_app_provisioned").is_none());
     }
 }

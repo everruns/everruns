@@ -28,7 +28,7 @@ use axum::{
 };
 use everruns_durable::InMemoryWorkflowEventStore;
 
-use everruns_platform::ChannelType;
+use everruns_platform::EndpointTransport;
 use everruns_provider::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
@@ -65,7 +65,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     seed_ingress_endpoint(
         &pool,
         &fixture,
-        ChannelType::AgUi,
+        EndpointTransport::AgUi,
         json!({"anonymous": true, "token": ag_ui_token}),
     )
     .await;
@@ -74,14 +74,14 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     seed_ingress_endpoint(
         &pool,
         &fixture,
-        ChannelType::PublicChat,
+        EndpointTransport::PublicChat,
         json!({"anonymous": true, "token": public_chat_token}),
     )
     .await;
     seed_ingress_endpoint(
         &pool,
         &fixture,
-        ChannelType::Fcp,
+        EndpointTransport::Fcp,
         json!({
             "anonymous": false,
             "token": fcp_token,
@@ -92,7 +92,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let webhook_id = seed_ingress_endpoint(
         &pool,
         &fixture,
-        ChannelType::Webhook,
+        EndpointTransport::Webhook,
         json!({
             "token": webhook_token,
             "message": "{{webhook.body}}",
@@ -103,7 +103,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let a2a_id = seed_ingress_endpoint(
         &pool,
         &fixture,
-        ChannelType::A2a,
+        EndpointTransport::A2a,
         json!({
             "api_key_hash": hash_a2a_api_key(a2a_key),
             "api_key_prefix": "evra2a_test...",
@@ -115,7 +115,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let api_id = seed_ingress_endpoint(
         &pool,
         &fixture,
-        ChannelType::ApiEndpoint,
+        EndpointTransport::ApiEndpoint,
         json!({
             "api_key_hash": hash_app_api_key(api_key),
             "api_key_prefix": "evr_app_test...",
@@ -126,7 +126,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     seed_ingress_endpoint(
         &pool,
         &fixture,
-        ChannelType::Schedule,
+        EndpointTransport::Schedule,
         json!({
             "cron_expression": "0 * * * *",
             "timezone": "UTC",
@@ -576,7 +576,7 @@ async fn seed_migrated_webhook_trigger(pool: &PgPool, fixture: &Fixture, token: 
 async fn seed_ingress_endpoint(
     pool: &PgPool,
     fixture: &Fixture,
-    channel_type: ChannelType,
+    channel_type: EndpointTransport,
     channel_config: Value,
 ) -> String {
     let endpoint_public_id = format!("appchan_{}", hex32());

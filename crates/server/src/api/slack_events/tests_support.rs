@@ -15,12 +15,12 @@ pub(crate) fn make_signature(secret: &str, timestamp: &str, body: &str) -> Strin
 }
 
 pub(crate) struct TestIngress {
-    context: crate::api::app_ingress::IngressContext,
-    pub(crate) channels: Vec<crate::api::app_ingress::IngressEndpoint>,
+    context: crate::api::endpoint_ingress::IngressContext,
+    pub(crate) channels: Vec<crate::api::endpoint_ingress::IngressEndpoint>,
 }
 
 impl Deref for TestIngress {
-    type Target = crate::api::app_ingress::IngressContext;
+    type Target = crate::api::endpoint_ingress::IngressContext;
 
     fn deref(&self) -> &Self::Target {
         &self.context
@@ -34,15 +34,15 @@ impl DerefMut for TestIngress {
 }
 
 pub(crate) fn test_app() -> TestIngress {
-    use everruns_platform::{ChannelType, EndpointStatus};
-    use everruns_provider::typed_id::AppChannelId;
+    use everruns_platform::AgentEndpointId;
+    use everruns_platform::{EndpointStatus, EndpointTransport};
 
     TestIngress {
-        context: crate::api::app_ingress::IngressContext::for_test("Test App", None),
-        channels: vec![crate::api::app_ingress::IngressEndpoint {
-            public_id: AppChannelId::from_uuid(uuid::Uuid::nil()),
+        context: crate::api::endpoint_ingress::IngressContext::for_test("Test App", None),
+        channels: vec![crate::api::endpoint_ingress::IngressEndpoint {
+            public_id: AgentEndpointId::from_uuid(uuid::Uuid::nil()),
             internal_id: uuid::Uuid::nil(),
-            channel_type: ChannelType::Slack,
+            channel_type: EndpointTransport::Slack,
             channel_config: serde_json::json!({}),
             auth: None,
             enabled: true,

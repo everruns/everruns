@@ -9,13 +9,11 @@ use crate::storage::encryption::EncryptionService;
 use crate::storage::models::UpdateAppChannel;
 use everruns_durable::UpdateField;
 use everruns_platform::{
-    AgentVersionPolicy, App, AppChannel, AppEndpointAuthConfig, AppStatus, ChannelType,
-    EndpointStatus,
+    AgentEndpoint, AgentEndpointId, AgentVersionPolicy, App, AppStatus, EndpointAuthConfig,
+    EndpointStatus, EndpointTransport,
 };
 use everruns_provider::typed_id::AppId;
-use everruns_provider::typed_id::{
-    AgentId, AgentVersionId, AppChannelId, HarnessId, VirtualUserId,
-};
+use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, VirtualUserId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -116,7 +114,7 @@ pub fn prepare_channel_storage(
         .and_then(|object| object.remove("auth"))
         .filter(|value| !value.is_null());
     let auth = auth.map(|value| {
-        serde_json::from_value::<AppEndpointAuthConfig>(value.clone())
+        serde_json::from_value::<EndpointAuthConfig>(value.clone())
             .and_then(serde_json::to_value)
             .unwrap_or(value)
     });
@@ -177,7 +175,7 @@ fn first_class_auth_value(
 pub fn decrypt_endpoint_auth(
     encryption: Option<&Arc<EncryptionService>>,
     row: &AppChannelRow,
-) -> Option<AppEndpointAuthConfig> {
+) -> Option<EndpointAuthConfig> {
     first_class_auth_value(encryption, row).map(|value| {
         serde_json::from_value(value).unwrap_or_else(|err| {
             tracing::error!(error = %err, "Failed to parse endpoint auth");
@@ -186,12 +184,12 @@ pub fn decrypt_endpoint_auth(
     })
 }
 
-fn fail_closed_endpoint_auth() -> AppEndpointAuthConfig {
+fn fail_closed_endpoint_auth() -> EndpointAuthConfig {
     serde_json::from_value(serde_json::json!({"mode": "http_basic"}))
         .expect("fail-closed endpoint auth is valid")
 }
 
-fn parse_legacy_endpoint_auth(value: serde_json::Value) -> AppEndpointAuthConfig {
+fn parse_legacy_endpoint_auth(value: serde_json::Value) -> EndpointAuthConfig {
     serde_json::from_value(value).unwrap_or_else(|err| {
         tracing::error!(error = %err, "Failed to parse legacy endpoint auth");
         fail_closed_endpoint_auth()
@@ -227,11 +225,11 @@ pub fn channel_config_with_auth(
 pub fn channel_row_to_channel(
     encryption: Option<&Arc<EncryptionService>>,
     row: AppChannelRow,
-) -> AppChannel {
-    let public_id: AppChannelId = row
+) -> AgentEndpoint {
+    let public_id: AgentEndpointId = row
         .public_id
         .parse()
-        .unwrap_or_else(|_| AppChannelId::from_uuid(row.id));
+        .unwrap_or_else(|_| AgentEndpointId::from_uuid(row.id));
 
     let mut channel_config = decrypt_channel_config(
         encryption,
@@ -247,10 +245,11 @@ pub fn channel_row_to_channel(
         legacy_auth.map(|value| Box::new(parse_legacy_endpoint_auth(value)))
     };
 
-    AppChannel {
+    AgentEndpoint {
         public_id,
         internal_id: row.id,
-        channel_type: ChannelType::from_str_opt(&row.channel_type).unwrap_or(ChannelType::Slack),
+        channel_type: EndpointTransport::from_str_opt(&row.channel_type)
+            .unwrap_or(EndpointTransport::Slack),
         channel_config,
         auth,
         enabled: row.enabled,
@@ -298,13 +297,13 @@ pub async fn row_to_app(
             Vec::new()
         }
     };
-    let channels: Vec<AppChannel> = if channel_rows.is_empty() {
+    let channels: Vec<AgentEndpoint> = if channel_rows.is_empty() {
         // Fallback: synthesize a channel from legacy apps columns when no
         // app_channels rows exist (e.g. incomplete migration, DB restore).
         if let Some(ct) = row
             .channel_type
             .as_deref()
-            .and_then(ChannelType::from_str_opt)
+            .and_then(EndpointTransport::from_str_opt)
         {
             let mut config = decrypt_channel_config(
                 encryption,
@@ -315,8 +314,8 @@ pub async fn row_to_app(
                 .as_object_mut()
                 .and_then(|object| object.remove("auth"))
                 .map(|value| Box::new(parse_legacy_endpoint_auth(value)));
-            vec![AppChannel {
-                public_id: AppChannelId::from_uuid(row.id),
+            vec![AgentEndpoint {
+                public_id: AgentEndpointId::from_uuid(row.id),
                 internal_id: row.id,
                 channel_type: ct,
                 channel_config: config,
@@ -346,7 +345,7 @@ pub async fn row_to_app(
     // The frozen App carried one version selection for all of its channels.
     let agent_version_policy = AgentVersionPolicy::from(row.agent_version_policy.as_str());
     let agent_version_id = row.agent_version_id.map(AgentVersionId::from_uuid);
-    let channels: Vec<AppChannel> = channels
+    let channels: Vec<AgentEndpoint> = channels
         .into_iter()
         .map(|mut channel| {
             channel.agent_version_policy = agent_version_policy.clone();
@@ -594,7 +593,7 @@ mod tests {
         AppChannelRow {
             id: Uuid::now_v7(),
             app_id: Uuid::now_v7(),
-            public_id: AppChannelId::new().to_string(),
+            public_id: AgentEndpointId::new().to_string(),
             channel_type: "ag_ui".to_string(),
             channel_config,
             channel_config_encrypted,
@@ -685,7 +684,7 @@ mod tests {
         let channel = channel_row_to_channel(None, row);
         assert_eq!(
             channel.auth.map(|auth| auth.mode),
-            Some(everruns_platform::AppEndpointAuthMode::GoogleOidc)
+            Some(everruns_platform::EndpointAuthMode::GoogleOidc)
         );
         assert!(channel.channel_config.get("auth").is_none());
     }
@@ -702,7 +701,7 @@ mod tests {
         let channel = channel_row_to_channel(Some(&encryption()), row);
         assert_eq!(
             channel.auth.map(|auth| auth.mode),
-            Some(everruns_platform::AppEndpointAuthMode::HttpBasic)
+            Some(everruns_platform::EndpointAuthMode::HttpBasic)
         );
         assert!(channel.channel_config.get("auth").is_none());
     }

@@ -500,7 +500,7 @@ export type SessionBinding =
 
 /**
  * The bindings a messaging transport can offer — it keys off an inbound message.
- * Mirrors `ChannelType::allowed_bindings()` for Slack.
+ * Mirrors `EndpointTransport::allowed_bindings()` for Slack.
  */
 export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channel" | "per_user">;
 
@@ -509,7 +509,7 @@ export type SlackReplyMode = "all_messages" | "report_progress_only";
 /**
  * The bindings a trigger or request/reply endpoint can offer — nothing is
  * listening on a thread, so the exposure owns the session. Mirrors
- * `ChannelType::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
+ * `EndpointTransport::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
  */
 export type InvocationSessionMode = Extract<
   SessionBinding,

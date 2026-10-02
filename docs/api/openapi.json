@@ -24549,7 +24549,7 @@
       },
       "EndpointStatus": {
         "type": "string",
-        "description": "Per-endpoint lifecycle (EVE-1007).\n\nThis is the authority for whether an exposure accepts traffic. It replaced\nthe two-dimensional `App.status × AppChannel.enabled` matrix, which could\nexpress \"published App, disabled channel\" and forced publishing a whole App —\nand therefore every sibling endpoint on it — to make one endpoint reachable.\n\nLiveness is not this value alone; see `endpoint_is_live` in\n`crates/server/src/api/app_ingress.rs` for the agent-level terms, which are\nfolded in at resolution time rather than stored here.",
+        "description": "Per-endpoint lifecycle (EVE-1007).\n\nThis is the authority for whether an exposure accepts traffic. It replaced\nthe two-dimensional `App.status × AppChannel.enabled` matrix, which could\nexpress \"published App, disabled channel\" and forced publishing a whole App —\nand therefore every sibling endpoint on it — to make one endpoint reachable.\n\nLiveness is not this value alone; see `endpoint_liveness` in\n`crates/server/src/api/endpoint_ingress.rs` for the agent-level terms, which are\nfolded in at resolution time rather than stored here.",
         "enum": [
           "draft",
           "live",

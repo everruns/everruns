@@ -1,6 +1,6 @@
 use super::types::{CreateAgentEndpointRequest, UpdateAgentEndpointRequest};
 use super::validation::{merge_preserved_secret_fields, normalize_and_validate_channel_config};
-use crate::api::app_ingress::{endpoint_liveness, row_to_ingress};
+use crate::api::endpoint_ingress::{endpoint_liveness, row_to_ingress};
 use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::apps::redact_channel_for_response;
@@ -8,8 +8,8 @@ use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::storage::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
 use everruns_durable::UpdateField;
-use everruns_platform::{AppChannel, ChannelType};
-use everruns_provider::typed_id::{AgentId, AppChannelId};
+use everruns_platform::{AgentEndpoint, AgentEndpointId, EndpointTransport};
+use everruns_provider::typed_id::AgentId;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -35,7 +35,7 @@ async fn resolve_agent(
     Ok(row)
 }
 
-fn row_to_endpoint(ctx: &Ctx, row: IngressEndpointRow) -> Result<AppChannel, CommandError> {
+fn row_to_endpoint(ctx: &Ctx, row: IngressEndpointRow) -> Result<AgentEndpoint, CommandError> {
     let (context, endpoint) =
         row_to_ingress(ctx.encryption.as_ref(), row).map_err(classify_anyhow)?;
     Ok(redact_channel_for_response(endpoint.into_channel(&context)))
@@ -72,7 +72,7 @@ pub struct ListAgentEndpoints {
 }
 
 impl Command for ListAgentEndpoints {
-    type Output = Vec<AppChannel>;
+    type Output = Vec<AgentEndpoint>;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -109,7 +109,7 @@ pub struct GetAgentEndpoint {
 }
 
 impl Command for GetAgentEndpoint {
-    type Output = AppChannel;
+    type Output = AgentEndpoint;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -147,7 +147,7 @@ pub struct CreateAgentEndpoint {
 }
 
 impl Command for CreateAgentEndpoint {
-    type Output = AppChannel;
+    type Output = AgentEndpoint;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -164,10 +164,11 @@ impl Command for CreateAgentEndpoint {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        if self.req.channel_type == ChannelType::PublicChat && !ctx.feature_flags.public_chat {
+        if self.req.channel_type == EndpointTransport::PublicChat && !ctx.feature_flags.public_chat
+        {
             return Err(CommandError::feature_not_enabled("public_chat"));
         }
-        if self.req.channel_type == ChannelType::Schedule {
+        if self.req.channel_type == EndpointTransport::Schedule {
             return Err(CommandError::bad_request(
                 "Create schedules through agent triggers",
             ));
@@ -197,7 +198,7 @@ impl Command for CreateAgentEndpoint {
             &config,
         )
         .map_err(classify_anyhow)?;
-        let endpoint_id = AppChannelId::new();
+        let endpoint_id = AgentEndpointId::new();
         let row = ctx
             .db
             .create_agent_endpoint(
@@ -241,7 +242,7 @@ pub struct UpdateAgentEndpointCmd {
 }
 
 impl Command for UpdateAgentEndpointCmd {
-    type Output = AppChannel;
+    type Output = AgentEndpoint;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -265,7 +266,7 @@ impl Command for UpdateAgentEndpointCmd {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Endpoint"))?;
-        let channel_type = ChannelType::from_str_opt(&existing.channel_type)
+        let channel_type = EndpointTransport::from_str_opt(&existing.channel_type)
             .ok_or_else(|| CommandError::bad_request("Endpoint has an unsupported channel type"))?;
         let version = resolve_version_selection(
             ctx,
@@ -346,7 +347,7 @@ pub struct PublishAgentEndpoint {
 }
 
 impl Command for PublishAgentEndpoint {
-    type Output = AppChannel;
+    type Output = AgentEndpoint;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -376,7 +377,7 @@ pub struct UnpublishAgentEndpoint {
 }
 
 impl Command for UnpublishAgentEndpoint {
-    type Output = AppChannel;
+    type Output = AgentEndpoint;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -405,7 +406,7 @@ async fn set_endpoint_status(
     endpoint_id: &str,
     enabled: bool,
     status: &str,
-) -> Result<AppChannel, CommandError> {
+) -> Result<AgentEndpoint, CommandError> {
     let agent = resolve_agent(ctx, agent_id).await?;
     let row = ctx
         .db
@@ -506,7 +507,7 @@ impl Command for TriggerAgentEndpoint {
             .ok_or_else(|| CommandError::not_found("Endpoint"))?;
         let (context, endpoint) =
             row_to_ingress(ctx.encryption.as_ref(), row).map_err(classify_anyhow)?;
-        if endpoint.channel_type != ChannelType::Schedule {
+        if endpoint.channel_type != EndpointTransport::Schedule {
             return Err(CommandError::bad_request(
                 "Only schedule endpoints can run now",
             ));

@@ -28,7 +28,7 @@ use async_trait::async_trait;
 use everruns_platform::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
 };
-use everruns_platform::{App, AppChannel, ChannelType};
+use everruns_platform::{AgentEndpoint, App, EndpointTransport};
 use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
@@ -217,16 +217,19 @@ enum EndpointSelector {
 
 /// Pick the Slack endpoint `selector` names, or `None` when it names none.
 ///
-/// Requires `ChannelType::Slack` even when the id matches: an id that resolves
+/// Requires `EndpointTransport::Slack` even when the id matches: an id that resolves
 /// to a non-Slack endpoint means the session came through another channel, and
 /// falling through to a sibling Slack endpoint would be exactly the
 /// wrong-bot bug that resolving by endpoint exists to prevent.
-fn select_slack_endpoint<'a>(app: &'a App, selector: &EndpointSelector) -> Option<&'a AppChannel> {
+fn select_slack_endpoint<'a>(
+    app: &'a App,
+    selector: &EndpointSelector,
+) -> Option<&'a AgentEndpoint> {
     let endpoint = app.channels.iter().find(|channel| match selector {
         EndpointSelector::Internal(internal_id) => channel.internal_id == *internal_id,
         EndpointSelector::Public(public_id) => &channel.public_id.to_string() == public_id,
     })?;
-    (endpoint.channel_type == ChannelType::Slack).then_some(endpoint)
+    (endpoint.channel_type == EndpointTransport::Slack).then_some(endpoint)
 }
 
 impl From<SlackApiError> for SlackActionError {

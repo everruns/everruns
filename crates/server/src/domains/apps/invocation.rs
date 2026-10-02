@@ -12,7 +12,7 @@ use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use chrono::{DateTime, Duration, Utc};
 use everruns_platform::app::SessionBinding;
-use everruns_platform::{AgentAction, AuditEvent, ChannelType};
+use everruns_platform::{AgentAction, AuditEvent, EndpointTransport};
 use everruns_provider::typed_id::SessionId;
 use regex::Regex;
 use serde_json::{Value, json};
@@ -202,8 +202,8 @@ pub(crate) fn render_message_template(template: &str, context: &Value) -> String
 }
 
 fn app_session_tags(
-    app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    channel: &crate::api::endpoint_ingress::IngressEndpoint,
 ) -> Vec<String> {
     vec![
         format!("app:{}", app.public_id),
@@ -214,8 +214,8 @@ fn app_session_tags(
 }
 
 fn app_invocation_message_metadata(
-    app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    channel: &crate::api::endpoint_ingress::IngressEndpoint,
     source: AppInvocationSource,
 ) -> HashMap<String, Value> {
     [
@@ -242,8 +242,8 @@ fn app_invocation_message_metadata(
 
 fn emit_app_invocation_audit_event(
     db: Arc<crate::storage::StorageBackend>,
-    app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    channel: &crate::api::endpoint_ingress::IngressEndpoint,
     session_id: SessionId,
     source: AppInvocationSource,
     created_session: bool,
@@ -263,14 +263,14 @@ fn emit_app_invocation_audit_event(
     audit::emit_event(db, event.build());
 }
 fn shared_session_title(
-    app: &crate::api::app_ingress::IngressContext,
+    app: &crate::api::endpoint_ingress::IngressContext,
     source: AppInvocationSource,
 ) -> String {
     format!("{} {}", app.name, source.as_str())
 }
 
 fn invocation_session_title(
-    app: &crate::api::app_ingress::IngressContext,
+    app: &crate::api::endpoint_ingress::IngressContext,
     source: AppInvocationSource,
 ) -> String {
     format!(
@@ -284,8 +284,8 @@ fn invocation_session_title(
 async fn find_or_create_invocation_session(
     db: &Arc<crate::storage::StorageBackend>,
     session_service: &SessionService,
-    app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    channel: &crate::api::endpoint_ingress::IngressEndpoint,
     session_mode: SessionBinding,
     source: AppInvocationSource,
 ) -> Result<(SessionId, bool), CommandError> {
@@ -389,8 +389,8 @@ async fn find_or_create_invocation_session(
 
 async fn dispatch_invocation_message(
     message_service: &MessageService,
-    app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    channel: &crate::api::endpoint_ingress::IngressEndpoint,
     session_id: SessionId,
     source: AppInvocationSource,
     request_id: Option<String>,
@@ -439,8 +439,8 @@ struct InvocationServices<'a> {
 }
 
 struct InvocationRequest {
-    app: crate::api::app_ingress::IngressContext,
-    channel: crate::api::app_ingress::IngressEndpoint,
+    app: crate::api::endpoint_ingress::IngressContext,
+    channel: crate::api::endpoint_ingress::IngressEndpoint,
     session_mode: SessionBinding,
     source: AppInvocationSource,
     template_context: Value,
@@ -564,7 +564,7 @@ pub async fn invoke_scheduled_app_channel(
     app_id: &str,
     channel_id: &str,
 ) -> Result<AppInvocationResult, CommandError> {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, channel_id)
+    let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(db, encryption, channel_id)
         .await
         .map_err(classify_anyhow)?
         .filter(|(context, _)| context.org_id == org_id)
@@ -583,7 +583,7 @@ pub async fn invoke_scheduled_agent_endpoint(
     org_id: i64,
     channel_id: &str,
 ) -> Result<AppInvocationResult, CommandError> {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, channel_id)
+    let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(db, encryption, channel_id)
         .await
         .map_err(classify_anyhow)?
         .filter(|(context, _)| context.org_id == org_id)
@@ -595,8 +595,8 @@ async fn invoke_scheduled_endpoint_inner(
     db: &Arc<crate::storage::StorageBackend>,
     session_service: &SessionService,
     message_service: &MessageService,
-    app: crate::api::app_ingress::IngressContext,
-    channel: crate::api::app_ingress::IngressEndpoint,
+    app: crate::api::endpoint_ingress::IngressContext,
+    channel: crate::api::endpoint_ingress::IngressEndpoint,
 ) -> Result<AppInvocationResult, CommandError> {
     let config = channel
         .schedule_config()
@@ -672,10 +672,11 @@ where
     F: FnOnce(SessionId) -> Fut,
     Fut: std::future::Future<Output = Result<(), CommandError>>,
 {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, &req.channel_id)
-        .await
-        .map_err(classify_anyhow)?
-        .ok_or_else(|| CommandError::not_found("Endpoint"))?;
+    let (app, channel) =
+        crate::api::endpoint_ingress::resolve_endpoint(db, encryption, &req.channel_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Endpoint"))?;
     if !app.matches_legacy_app_id(&req.app_id) {
         return Err(CommandError::not_found("Endpoint"));
     }
@@ -745,25 +746,25 @@ pub async fn resolve_api_app_channel(
     channel_id: &str,
 ) -> Result<
     (
-        crate::api::app_ingress::IngressContext,
-        crate::api::app_ingress::IngressEndpoint,
+        crate::api::endpoint_ingress::IngressContext,
+        crate::api::endpoint_ingress::IngressEndpoint,
     ),
     CommandError,
 > {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, channel_id)
+    let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(db, encryption, channel_id)
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("Endpoint"))?;
     if !app.matches_legacy_app_id(app_id) {
         return Err(CommandError::not_found("Endpoint"));
     }
-    if channel.channel_type != ChannelType::ApiEndpoint {
+    if channel.channel_type != EndpointTransport::ApiEndpoint {
         return Err(CommandError::not_found("Channel"));
     }
     // EVE-1007: the endpoint's own status, folded with the agent-level terms, is
     // the authority. The rejection stays the same forbidden shape a draft App
     // produced before, so a key holder cannot tell the reasons apart.
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,
@@ -912,10 +913,11 @@ pub async fn invoke_webhook_app_channel(
     req: WebhookInvocationRequest,
     request_id: Option<String>,
 ) -> Result<AppInvocationResult, CommandError> {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, &req.channel_id)
-        .await
-        .map_err(classify_anyhow)?
-        .ok_or_else(|| CommandError::not_found("Endpoint"))?;
+    let (app, channel) =
+        crate::api::endpoint_ingress::resolve_endpoint(db, encryption, &req.channel_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Endpoint"))?;
     if !app.matches_legacy_app_id(&req.app_id) {
         return Err(CommandError::not_found("Endpoint"));
     }

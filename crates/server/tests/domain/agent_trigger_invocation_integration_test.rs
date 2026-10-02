@@ -12,10 +12,8 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::SessionSource;
-use everruns_provider::typed_id::{
-    AgentId, AppChannelId, HarnessId, SessionId, TriggerId, VirtualUserId,
-};
+use everruns_platform::{AgentEndpointId, SessionSource};
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId, TriggerId, VirtualUserId};
 use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::budgets::BudgetService;
 use everruns_server::domains::messages::MessageService;
@@ -171,7 +169,7 @@ async fn create_migrated_webhook_trigger(
         .expect("get migrated app")
         .expect("migrated app exists");
 
-    let ingress_id = AppChannelId::new().to_string();
+    let ingress_id = AgentEndpointId::new().to_string();
     server
         .db
         .create_agent_trigger(CreateAgentTriggerRow {

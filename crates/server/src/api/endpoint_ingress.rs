@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use everruns_platform::app::{ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_platform::{
-    A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig, AppChannel,
-    AppEndpointAuthConfig, ChannelType, EndpointStatus, FcpChannelConfig, PublicChatChannelConfig,
-    SlackChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, AgentEndpoint, AgentEndpointId, AgentVersionPolicy,
+    ApiEndpointChannelConfig, EndpointAuthConfig, EndpointStatus, EndpointTransport,
+    FcpChannelConfig, PublicChatChannelConfig, SlackChannelConfig,
 };
 use everruns_provider::typed_id::{
-    AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId, VirtualUserId,
+    AgentId, AgentVersionId, AppId, HarnessId, PrincipalId, VirtualUserId,
 };
 use uuid::Uuid;
 
@@ -99,11 +99,11 @@ impl IngressContext {
 
 #[derive(Debug, Clone)]
 pub struct IngressEndpoint {
-    pub public_id: AppChannelId,
+    pub public_id: AgentEndpointId,
     pub internal_id: Uuid,
-    pub channel_type: ChannelType,
+    pub channel_type: EndpointTransport,
     pub channel_config: serde_json::Value,
-    pub auth: Option<Box<AppEndpointAuthConfig>>,
+    pub auth: Option<Box<EndpointAuthConfig>>,
     pub enabled: bool,
     pub status: EndpointStatus,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -114,8 +114,8 @@ impl IngressEndpoint {
     /// Render the endpoint for the API. The version selection lives on the
     /// ingress context, so it is copied from there; surfacing it is what lets an
     /// org see that an exposure is pinned (EVE-1139).
-    pub fn into_channel(self, context: &IngressContext) -> AppChannel {
-        AppChannel {
+    pub fn into_channel(self, context: &IngressContext) -> AgentEndpoint {
+        AgentEndpoint {
             public_id: self.public_id,
             internal_id: self.internal_id,
             channel_type: self.channel_type,
@@ -130,38 +130,38 @@ impl IngressEndpoint {
         }
     }
     pub fn slack_config(&self) -> Option<SlackChannelConfig> {
-        self.config(ChannelType::Slack)
+        self.config(EndpointTransport::Slack)
     }
 
     pub fn ag_ui_config(&self) -> Option<AgUiChannelConfig> {
-        self.config(ChannelType::AgUi)
+        self.config(EndpointTransport::AgUi)
     }
 
     pub fn schedule_config(&self) -> Option<ScheduleChannelConfig> {
-        self.config(ChannelType::Schedule)
+        self.config(EndpointTransport::Schedule)
     }
 
     pub fn webhook_config(&self) -> Option<WebhookChannelConfig> {
-        self.config(ChannelType::Webhook)
+        self.config(EndpointTransport::Webhook)
     }
 
     pub fn fcp_config(&self) -> Option<FcpChannelConfig> {
-        self.config(ChannelType::Fcp)
+        self.config(EndpointTransport::Fcp)
     }
 
     pub fn a2a_config(&self) -> Option<A2aChannelConfig> {
-        self.config(ChannelType::A2a)
+        self.config(EndpointTransport::A2a)
     }
 
     pub fn api_endpoint_config(&self) -> Option<ApiEndpointChannelConfig> {
-        self.config(ChannelType::ApiEndpoint)
+        self.config(EndpointTransport::ApiEndpoint)
     }
 
     pub fn public_chat_config(&self) -> Option<PublicChatChannelConfig> {
-        self.config(ChannelType::PublicChat)
+        self.config(EndpointTransport::PublicChat)
     }
 
-    fn config<T: serde::de::DeserializeOwned>(&self, expected: ChannelType) -> Option<T> {
+    fn config<T: serde::de::DeserializeOwned>(&self, expected: EndpointTransport) -> Option<T> {
         if self.channel_type != expected {
             return None;
         }
@@ -184,7 +184,7 @@ pub async fn resolve_legacy_endpoint(
     db: &StorageBackend,
     encryption: Option<&Arc<EncryptionService>>,
     legacy_app_id: &str,
-    channel_type: ChannelType,
+    channel_type: EndpointTransport,
 ) -> anyhow::Result<LegacyEndpointMatch> {
     let rows = db
         .list_ingress_endpoints_by_legacy_alias(legacy_app_id, &channel_type.to_string())
@@ -206,7 +206,7 @@ pub(crate) fn row_to_ingress(
     let endpoint_public_id = row
         .endpoint_public_id
         .parse()
-        .unwrap_or_else(|_| AppChannelId::from_uuid(row.endpoint_id));
+        .unwrap_or_else(|_| AgentEndpointId::from_uuid(row.endpoint_id));
     let mut channel_config = decrypt_json(
         encryption,
         row.channel_config_encrypted.as_deref(),
@@ -253,7 +253,8 @@ pub(crate) fn row_to_ingress(
     let endpoint = IngressEndpoint {
         public_id: endpoint_public_id,
         internal_id: row.endpoint_id,
-        channel_type: ChannelType::from_str_opt(&row.channel_type).unwrap_or(ChannelType::Slack),
+        channel_type: EndpointTransport::from_str_opt(&row.channel_type)
+            .unwrap_or(EndpointTransport::Slack),
         channel_config,
         auth,
         enabled: row.enabled,
@@ -286,7 +287,7 @@ fn decrypt_json(
         })
 }
 
-fn endpoint_auth_fail_closed(value: serde_json::Value) -> Box<AppEndpointAuthConfig> {
+fn endpoint_auth_fail_closed(value: serde_json::Value) -> Box<EndpointAuthConfig> {
     Box::new(serde_json::from_value(value).unwrap_or_else(|error| {
         tracing::error!(%error, "Failed to parse endpoint authentication");
         serde_json::from_value(serde_json::json!({"mode": "http_basic"}))
