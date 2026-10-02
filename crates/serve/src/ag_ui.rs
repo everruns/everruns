@@ -25,31 +25,27 @@
 //! - The trusted projection policy (reasoning, usage and runtime errors
 //!   visible): the developer owns both ends of a serve app. A public
 //!   deployment puts it behind its own auth, as with every serve route.
-//! - SSE framing matches the server's AG-UI route: unnamed `data:` events and
-//!   a `keepalive` comment every 15 seconds.
+//! - SSE framing is the facade's `sse_response`, which matches the server's
+//!   AG-UI route: unnamed `data:` events and a `keepalive` comment every 15
+//!   seconds. The facade's `AgUiHandler` is not used: serve resolves threads
+//!   and authorizes requests its own way.
 
-use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use everruns::SessionId;
 use everruns::ag_ui::{
     AgUiError, AgUiOptions, Interrupt, InterruptSource, ResumeEntry, ResumeOutcome, RunAgentInput,
-    approval_decision, approval_interrupt, question_interrupt, question_outcome,
+    approval_decision, approval_interrupt, question_interrupt, question_outcome, sse_response,
 };
 use everruns::approval::ApprovalDecision;
 use everruns::ask_user::Outcome;
-use futures::StreamExt;
 use serde_json::json;
 use tokio::sync::broadcast;
 
 use crate::host::{ApiError, Host, NewSession};
-
-const KEEPALIVE: Duration = Duration::from_secs(15);
 
 /// The route of `agent`'s AG-UI endpoint.
 pub(crate) fn route(agent: &str) -> String {
@@ -93,13 +89,7 @@ async fn start(host: &Arc<Host>, agent: &str, body: &[u8]) -> crate::Result<Resp
         .interrupts(HostInterrupts { host: host.clone() })
         .seed_history(created);
     let run = host.ag_ui(&session, input, options).await?;
-    let events = run.map(|event| {
-        let data = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
-        Ok::<_, Infallible>(SseEvent::default().data(data))
-    });
-    Ok(Sse::new(events)
-        .keep_alive(KeepAlive::new().interval(KEEPALIVE).text("keepalive"))
-        .into_response())
+    Ok(sse_response(run))
 }
 
 /// The session behind `agent`'s AG-UI thread, created on its first run, and

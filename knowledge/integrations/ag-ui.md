@@ -113,10 +113,20 @@ errors visible), because the developer owns both ends.
   on a missing entry or a new message, ignore unknown ids. Approval
   interrupts are always client-answerable here (`tool_approval`); there is no
   operator. A process exit cancels a parked turn.
-- **No HTTP server dependency.** The facade adds only `everruns-ag-ui`; an
-  axum handler is a few lines over the returned stream, kept as the
-  `ag_ui_axum` example and the public `framework/ag-ui` page rather than a
-  helper.
+- **HTTP handler, opt-in.** `ag-ui` adds only `everruns-ag-ui`; the
+  `ag-ui-axum` feature adds `AgUiHandler` and `sse_response`
+  ([`crates/everruns/src/ag_ui/handler.rs`](../../crates/everruns/src/ag_ui/handler.rs)),
+  so a host on another server never compiles axum. The handler authorizes,
+  resolves the thread through `AgUiThreads`, runs with host-set
+  `AgUiOptions`, and streams SSE with the server's framing (unnamed `data:`
+  events, a `keepalive` comment every 15 seconds). The authorizer is a
+  constructor argument, so an open endpoint is an explicit `Unauthenticated`;
+  `StaticToken` compares in constant time (TM-AUTH-030), and an authorizer's
+  `AgUiCaller::scoped` scopes threads to the caller (TM-TENANT-017). Failures
+  before the stream are statuses (401 before the body is read, 400 for bad
+  input, 500 logged with a fixed message), never details. serve frames its
+  own route with `sse_response` but resolves threads and authorizes its own
+  way.
 
 - **Host interrupt sources.** `InterruptSource` is the seam between a run
   and whatever parks requests: it lists a session's open interrupts, names

@@ -21,42 +21,16 @@ visible, and a failure carries the runtime's message.
 
 ## Mount it on axum
 
-`AgUiThreads` maps each AG-UI `threadId` to a session: the first run of a
-thread creates one from your agent, later runs reopen it. Turn each event into
-an SSE frame:
+The `ag-ui-axum` feature adds `AgUiHandler`, a ready-made route:
+
+```bash
+cargo add everruns --features ag-ui-axum
+```
 
 ```rust
-use std::convert::Infallible;
-
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
-use axum::response::{IntoResponse, Response};
-use axum::routing::post;
-use axum::{Json, Router};
-use everruns::ag_ui::{AgUiError, AgUiOptions, AgUiThreads, InterruptGate, RunAgentInput};
+use axum::Router;
+use everruns::ag_ui::{AgUiHandler, AgUiOptions, AgUiThreads, InterruptGate, StaticToken};
 use everruns::{Agent, Engine, OpenAI};
-use futures::StreamExt;
-
-#[derive(Clone)]
-struct App {
-    threads: AgUiThreads,
-    gate: InterruptGate,
-}
-
-async fn ag_ui(State(app): State<App>, Json(input): Json<RunAgentInput>) -> Response {
-    let options = AgUiOptions::new().gate(app.gate.clone());
-    match app.threads.run(input, options).await {
-        Ok(run) => {
-            let events = run.map(|event| {
-                Ok::<_, Infallible>(SseEvent::default().json_data(&event).unwrap_or_default())
-            });
-            Sse::new(events).keep_alive(KeepAlive::default()).into_response()
-        }
-        Err(AgUiError::InvalidInput(why)) => (StatusCode::BAD_REQUEST, why).into_response(),
-        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response(),
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -68,22 +42,79 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ask_user(gate.clone())
         .approver(gate.clone())
         .build()?;
-    let app = App {
-        threads: AgUiThreads::new(Engine::new(), agent),
-        gate,
-    };
-    let router = Router::new().route("/ag-ui", post(ag_ui)).with_state(app);
+    let handler = AgUiHandler::new(
+        AgUiThreads::new(Engine::new(), agent),
+        StaticToken::bearer(std::env::var("AG_UI_TOKEN")?),
+    )
+    .options(AgUiOptions::new().gate(gate));
+    let router = Router::new().route("/ag-ui", handler.route());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     axum::serve(listener, router).await?;
     Ok(())
 }
 ```
 
-The crate's `ag_ui_axum` example is the same server on the offline simulated
+Each request is authorized, its `threadId` resolved to a session with
+`AgUiThreads` (the first run of a thread creates one from your agent, later
+runs reopen it), and the run streamed as server-sent events: one unnamed
+`data: <json>` event per AG-UI event and a `: keepalive` comment every 15
+seconds. Everything that can fail does so before the stream opens:
+
+| Status | When |
+|---|---|
+| `401` | The authorizer refuses the request. The body is not read. |
+| `400` | The body is not a `RunAgentInput`, the `threadId` is invalid, or the run cannot use the input. |
+| `500` | The thread store or the session failed. The detail is logged, not returned. |
+
+Errors are `application/problem+json`. Once the stream is open, a failure is
+the run's own `RUN_ERROR`. Request bodies are capped by axum's default 2 MB
+limit.
+
+### Authorization
+
+`AgUiHandler::new` takes an authorizer, so an open endpoint is a choice you
+write down:
+
+- `StaticToken::bearer(token)` accepts `Authorization: Bearer <token>`, and
+  `StaticToken::header(name, token)` a custom header. Tokens are compared in
+  constant time; a refusal carries `WWW-Authenticate: Bearer` for the bearer
+  form.
+- `Unauthenticated` accepts everything: for local development, or behind a
+  proxy that already authenticates.
+- Any `Fn(&HeaderMap) -> Result<AgUiCaller, Unauthorized>`, or your own
+  `AgUiAuthorizer` implementation when the check needs to await.
+
+The authorizer returns an `AgUiCaller`. `AgUiCaller::scoped(user_id)` gives
+each caller its own threads, so one user cannot continue another's
+conversation by sending its `threadId`:
+
+```rust
+use axum::http::HeaderMap;
+use everruns::ag_ui::{AgUiCaller, Unauthorized};
+
+// Your proxy has verified the user and set this header.
+let by_user = |headers: &HeaderMap| {
+    headers
+        .get("x-user-id")
+        .and_then(|value| value.to_str().ok())
+        .map(AgUiCaller::scoped)
+        .ok_or_else(Unauthorized::new)
+};
+let handler = AgUiHandler::new(threads, by_user);
+```
+
+### Your own route
+
+On another HTTP server, or to resolve sessions yourself, call
+`Session::ag_ui_with` (or `AgUiThreads::run`) and frame the stream. With
+`ag-ui-axum`, `sse_response(run)` does the framing; without it, each event is
+`serde_json::to_string(&event)` in a `data:` line.
+
+The crate's `ag_ui_axum` example is the handler on the offline simulated
 model:
 
 ```bash
-cargo run -p everruns --features ag-ui --example ag_ui_axum
+cargo run -p everruns --features ag-ui-axum --example ag_ui_axum
 ```
 
 Point any AG-UI client at the route:
@@ -91,7 +122,10 @@ Point any AG-UI client at the route:
 ```ts
 import { HttpAgent } from "@ag-ui/client";
 
-const agent = new HttpAgent({ url: "http://127.0.0.1:3000/ag-ui" });
+const agent = new HttpAgent({
+  url: "http://127.0.0.1:3000/ag-ui",
+  headers: { Authorization: `Bearer ${token}` },
+});
 ```
 
 ## Threads across restarts
@@ -121,7 +155,8 @@ instead.
 
 A thread id is chosen by the client, and anyone who knows one continues that
 conversation. When one server serves several users, scope threads to the
-authenticated caller with `run_in`:
+authenticated caller: `AgUiCaller::scoped` does it in `AgUiHandler`, and
+`run_in` on your own route:
 
 ```rust
 let run = app.threads.run_in(&user_id, input, options).await?;
