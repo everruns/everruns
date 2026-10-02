@@ -155,7 +155,14 @@ With session storage, a conversation survives AgentCore stopping the microVM
 after its idle timeout: the next invocation with the same session id resumes it
 from the log. That includes a turn parked on an approval or an `ask_user`
 question: on the new microVM the interrupt is still open, and the client's
-resume run answers it as before. Session storage is per session, kept for 14 days, and reset when
+resume run answers it as before.
+
+Session storage is an NFS mount that refuses POSIX file locks, so the binary
+switches SQLite to dot-file locking (`unix-dotfile`) and rollback-journal mode
+for the whole process, and clears lock files a stopped microVM left behind.
+That is safe because one process owns a session's storage.
+
+Session storage is per session, kept for 14 days, and reset when
 you deploy a new runtime version. For history across sessions and versions,
 point `DATABASE_URL` at storage you own, such as an S3 Files or EFS mount
 (both need VPC mode).
