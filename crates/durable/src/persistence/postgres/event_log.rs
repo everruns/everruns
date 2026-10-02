@@ -461,7 +461,7 @@ impl EventLog for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
-    async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError> {
+    async fn try_start_new_run(&self, workflow_id: Uuid) -> Result<bool, StoreError> {
         // Atomic CAS: transition from terminal/pending → running.
         // Also cancels stale pending tasks in the same transaction.
         // Uses SELECT FOR UPDATE to prevent concurrent claims across replicas.
@@ -493,7 +493,7 @@ impl EventLog for PostgresWorkflowEventStore {
 
         let status: String = row.get("status");
         if status == "running" {
-            // Active turn — cannot claim, caller should send steering signal
+            // Active run — cannot claim; the caller should signal the run instead
             tx.rollback().await.ok();
             return Ok(false);
         }
@@ -541,7 +541,7 @@ impl EventLog for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        // Cancel any stale pending tasks from previous turn
+        // Cancel any stale pending tasks from the previous run
         sqlx::query(
             r#"
             UPDATE durable_task_queue

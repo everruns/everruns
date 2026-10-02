@@ -3,7 +3,9 @@ pub mod activities;
 pub mod adapters;
 pub mod app_builder;
 mod catalog_cli;
+pub mod durable_execution;
 pub mod durable_runner;
+pub mod durable_turn;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
 pub mod grpc_files_adapter;
@@ -30,6 +32,7 @@ mod unified_worker_test_adapters;
 pub mod worker_adapters;
 
 // Re-export main types
+pub use durable_execution::DurableExecution;
 pub use durable_runner::{
     DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTaskNotifier, DurableTurnInput,
     DurableTurnOutput, InMemoryDurableStore,

@@ -128,7 +128,7 @@ impl PostgresWorkflowEventStore {
     }
 
     /// Create a workflow, write its initial events, and enqueue the first task in
-    /// one transaction. This is the hot path for a new session turn.
+    /// one transaction. This is the hot path for starting a new workflow run.
     pub async fn start_workflow_with_task(
         &self,
         workflow_id: Uuid,

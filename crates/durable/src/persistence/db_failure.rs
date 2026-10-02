@@ -3,14 +3,96 @@
 //!
 //! EVE-1071: a pool exhaustion in prod became four separate Sentry issues
 //! because each background poller rendered the same underlying failure into
-//! its own message, and grouping keys on the message. The shared wording and
-//! classification live in [`everruns_core::database_failure`]; this module is
-//! how the durable crate reaches them, and is where that behaviour is proven
-//! — EVE-876 keeps a tracing subscriber, and therefore this test, out of core.
-
-use everruns_core::log_database_failure;
+//! its own message, and grouping keys on the message.
+//!
+//! Decision: this is a local copy of `everruns_core::database_failure`, not a
+//! dependency on it. `everruns-durable` is a generic engine with no `everruns-*`
+//! dependencies (`scripts/check-durable-isolation.sh`), but its log output must
+//! stay byte-identical to what core emits (same messages, same `subsystem`,
+//! `db_failure` and `error` fields) because dashboards and alerts key on them.
+//! The `matches_the_shared_core_classifier` test pins the two together.
 
 use super::store::StoreError;
+
+/// A storage failure, classified into the shape that decides how it is
+/// reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum DatabaseFailureKind {
+    /// No connection became available within the pool's acquire timeout.
+    PoolExhausted,
+    /// The connection went away mid-flight.
+    ConnectionLost,
+    /// Anything else, including ordinary query and constraint errors.
+    Other,
+}
+
+impl DatabaseFailureKind {
+    /// Classify a failure from its rendered text (substring, case-insensitive).
+    pub(crate) fn classify(rendered: &str) -> Self {
+        let text = rendered.to_ascii_lowercase();
+        if text.contains("pool timed out while waiting for an open connection")
+            || text.contains("pool timed out")
+        {
+            return Self::PoolExhausted;
+        }
+        if text.contains("connection reset by peer")
+            || text.contains("connection closed")
+            || text.contains("error communicating with database")
+            || text.contains("server closed the connection unexpectedly")
+        {
+            return Self::ConnectionLost;
+        }
+        Self::Other
+    }
+
+    /// Stable, machine-readable identifier, emitted as the `db_failure` field.
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::PoolExhausted => "database.pool_exhausted",
+            Self::ConnectionLost => "database.connection_lost",
+            Self::Other => "database.other",
+        }
+    }
+
+    /// The canonical message every subsystem uses for a shared incident.
+    pub(crate) fn shared_message(&self) -> Option<&'static str> {
+        match self {
+            Self::PoolExhausted => Some("database connection pool exhausted"),
+            Self::ConnectionLost => Some("database connection lost"),
+            Self::Other => None,
+        }
+    }
+}
+
+/// Log a storage failure so that one infrastructure incident reads as one
+/// incident, and report how it was classified.
+///
+/// `subsystem` names who hit the failure and `fallback` is the message for an
+/// ordinary failure. A shared incident overrides `fallback` with
+/// [`DatabaseFailureKind::shared_message`] so every starved subsystem groups
+/// together; the varying part stays in the `error` field.
+pub(crate) fn log_database_failure(
+    subsystem: &'static str,
+    fallback: &'static str,
+    rendered: &str,
+) -> DatabaseFailureKind {
+    let kind = DatabaseFailureKind::classify(rendered);
+    match kind.shared_message() {
+        Some(shared) => tracing::error!(
+            subsystem,
+            db_failure = kind.as_str(),
+            error = %rendered,
+            "{shared}"
+        ),
+        None => tracing::error!(
+            subsystem,
+            db_failure = kind.as_str(),
+            error = %rendered,
+            "{fallback}"
+        ),
+    }
+    kind
+}
 
 /// Log a persistence failure under the wording its kind deserves, then wrap it
 /// as a [`StoreError`].
@@ -33,7 +115,6 @@ pub(crate) fn store_failure(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::DatabaseFailureKind;
     use std::sync::{Arc, Mutex};
     use tracing_subscriber::Layer;
     use tracing_subscriber::layer::{Context, SubscriberExt};
@@ -156,5 +237,25 @@ mod tests {
             DatabaseFailureKind::classify(&rendered),
             DatabaseFailureKind::PoolExhausted
         );
+    }
+
+    #[test]
+    fn matches_the_shared_core_classifier() {
+        // Drift guard for the local copy: same kind id and same message as
+        // `everruns_core::database_failure` for every class of input.
+        for rendered in [
+            "Failed to claim due schedules: pool timed out while waiting for an open connection",
+            "Store(Database(\"POOL TIMED OUT\"))",
+            "error communicating with database: Connection reset by peer (os error 104)",
+            "connection closed",
+            "server closed the connection unexpectedly",
+            "duplicate key value violates unique constraint \"sessions_pkey\"",
+            "no such row",
+        ] {
+            let local = DatabaseFailureKind::classify(rendered);
+            let core = everruns_core::DatabaseFailureKind::classify(rendered);
+            assert_eq!(local.as_str(), core.as_str(), "{rendered}");
+            assert_eq!(local.shared_message(), core.shared_message(), "{rendered}");
+        }
     }
 }

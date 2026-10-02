@@ -6,7 +6,7 @@ use super::*;
 impl TaskQueue for InMemoryWorkflowEventStore {
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
         let mut tasks = self.tasks.write();
-        if task.activity_id.starts_with("waiting_turn_resolution_")
+        if task.options.dedupe_by_activity_id
             && let Some(workflow_id) = task.workflow_id
             && let Some(task_id) = tasks.ids_for_workflow(workflow_id).into_iter().find(|id| {
                 tasks
@@ -323,7 +323,7 @@ impl TaskQueue for InMemoryWorkflowEventStore {
                     .unwrap_or(-1);
                 let cur_token = cur_seq + 1; // -1 (no events) => token 0
 
-                // A missing prior token is treated as the 0 baseline, so a turn that
+                // A missing prior token is treated as the 0 baseline, so a task that
                 // records nothing on its first attempt already counts as no-progress
                 // (mirrors the Postgres COALESCE(prev_token, 0) rule).
                 let prev = task.progress_token.unwrap_or(0);
@@ -339,7 +339,7 @@ impl TaskQueue for InMemoryWorkflowEventStore {
                 if task.no_progress_count >= threshold {
                     task.status = TaskStatus::Dead;
                     task.last_error = Some(format!(
-                        "Turn sealed: no forward progress across {} consecutive recoveries (EVE-534)",
+                        "Task sealed by the no-progress guard: no forward progress across {} consecutive recoveries (EVE-534)",
                         task.no_progress_count
                     ));
                     task.claimed_by = None;
