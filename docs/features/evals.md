@@ -3,6 +3,7 @@ title: Evals
 description: Define, run, and track behavioral tests for Agents. Each case runs a real session and is scored.
 sidebar:
   label: Evals
+appliesTo: [platform, cloud]
 ---
 
 Evals let you define, run, and track **behavioral tests** for your Agents. An Eval is a named collection of cases; each case sends messages to a fresh session and scores the result. Use them to compare runs across models and catch regressions after a prompt change.

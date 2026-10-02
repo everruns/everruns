@@ -1,6 +1,7 @@
 ---
 title: GitHub Scout
 description: Blueprint-only GitHub repository exploration capability that spawns read-only scout subagents.
+appliesTo: [platform, cloud]
 ---
 
 | | |

@@ -1,6 +1,7 @@
 ---
 title: Web Fetch
 description: Fetch a URL and convert its HTML to markdown.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

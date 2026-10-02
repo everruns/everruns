@@ -1,6 +1,7 @@
 ---
 title: Current Time
 description: Read the current date and time in a chosen format and timezone.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

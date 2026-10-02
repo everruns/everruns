@@ -1,6 +1,7 @@
 ---
 title: Use AGENTS.md for project instructions
 description: Inject project-level context, coding style, build commands, architecture notes, into an agent's leading user message by enabling the AGENTS.md capability.
+appliesTo: [platform, cloud]
 ---
 
 `AGENTS.md` is an emerging open standard for providing project-level instructions to AI agents, backed by OpenAI, Google, Cursor, Sourcegraph, and others. Everruns ships it as the default file for its built-in agent instructions capability, which re-reads configured files on every turn.

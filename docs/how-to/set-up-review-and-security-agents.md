@@ -1,6 +1,7 @@
 ---
 title: Set up review and security agents
 description: Adopt the PR Reviewer and Security Scanner templates to review every pull request with inline comments and scan a repository for vulnerabilities on a schedule, on any model.
+appliesTo: [platform, cloud]
 ---
 
 Two agent templates turn the [GitHub](/capabilities/github/) capability into

@@ -1,6 +1,7 @@
 ---
 title: Sub Agents
 description: Spawn subagents that run tasks in isolated context windows, through the generic session task tools.
+appliesTo: [platform, cloud]
 ---
 
 | | |

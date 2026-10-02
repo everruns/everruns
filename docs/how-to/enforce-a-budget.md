@@ -1,6 +1,7 @@
 ---
 title: Enforce a budget
 description: Cap LLM spend per session or agent with USD, token, or credit-denominated budgets, soft pause thresholds, and stacked limits.
+appliesTo: [platform, cloud]
 ---
 
 Budgets cap how much a session can spend on LLM calls. After every generation, Everruns debits the cost from any active budgets; when the balance reaches zero, the session stops. This guide creates and applies a budget.

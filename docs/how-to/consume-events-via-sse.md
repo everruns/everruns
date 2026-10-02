@@ -1,6 +1,7 @@
 ---
 title: Consume events via raw SSE
 description: Subscribe to the Everruns event stream from any HTTP client using Server-Sent Events, with reconnection via since_id.
+appliesTo: [platform, cloud]
 ---
 
 When you can't use the SDK, a non-Python service, a browser client, a Postman test, the SSE protocol is available directly. This guide covers the protocol details you need.

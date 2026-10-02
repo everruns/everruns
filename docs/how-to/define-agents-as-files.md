@@ -1,6 +1,7 @@
 ---
 title: Define agents as files
 description: Author agent definitions in Markdown, TOML, YAML, or JSON so they can be version-controlled, reviewed in pull requests, and imported via the SDK or CLI.
+appliesTo: [platform, cloud]
 ---
 
 Agents can be defined as files with structured metadata and a system prompt. This makes them shareable, reviewable, and version-controllable, useful for teams that want agents in git rather than only in the API.

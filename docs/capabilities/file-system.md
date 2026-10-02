@@ -1,6 +1,7 @@
 ---
 title: File System
 description: Read, write, search, and manage files in an isolated per-session workspace, with glob, grep, and directory operations.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

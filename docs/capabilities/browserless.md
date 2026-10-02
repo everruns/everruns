@@ -1,6 +1,7 @@
 ---
 title: Browserless
 description: Headless browser automation through Browserless for screenshots, DOM reading, scraping, and page interaction.
+appliesTo: [platform, cloud]
 ---
 
 | | |

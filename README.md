@@ -14,9 +14,9 @@ sessions, and observe execution through one application-facing API.
 
 Use the framework in your application. When you need a shared runtime and
 production operations, run the Everruns platform yourself or use
-[Hosted Everruns](https://app.everruns.com).
+[Everruns Cloud](https://app.everruns.com).
 
-[Build with the framework](https://docs.everruns.com/framework/quickstart/) · [Read the docs](https://docs.everruns.com/framework/) · [Use Hosted Everruns](https://app.everruns.com)
+[Build with the framework](https://docs.everruns.com/framework/quickstart/) · [Read the docs](https://docs.everruns.com/framework/) · [Use Everruns Cloud](https://docs.everruns.com/getting-started/cloud/)
 
 <p align="center">
   <img src="./assets/readme/banner.png" alt="Everruns" width="100%" />
@@ -89,13 +89,13 @@ loop explicit and embeddable:
 
 ## Choose how you run Everruns
 
-| Framework | Self-hosted platform | Hosted Everruns |
+| Framework | Self-hosted platform | Everruns Cloud |
 | --- | --- | --- |
-| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://docs.everruns.com/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[Docker Compose quickstart →](https://docs.everruns.com/getting-started/docker-compose/) · [Architecture →](https://docs.everruns.com/explanation/architecture/) | Use the shared runtime and production operations without operating the platform yourself.<br><br>[Open Hosted Everruns →](https://app.everruns.com) |
+| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://docs.everruns.com/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[Docker Compose quickstart →](https://docs.everruns.com/getting-started/docker-compose/) · [Architecture →](https://docs.everruns.com/explanation/architecture/) | Use the shared runtime and production operations without operating the platform yourself.<br><br>[Everruns Cloud quickstart →](https://docs.everruns.com/getting-started/cloud/) · [Open app.everruns.com →](https://app.everruns.com) |
 
 ### Platform capabilities
 
-The self-hosted and hosted platform adds durable execution, a stateless worker
+The Platform, self-hosted or on Everruns Cloud, adds durable execution, a stateless worker
 pool, a web UI, and a remote API. It also publishes agents to Slack, web chat,
 A2A, webhooks, schedules, voice, HTTP, and MCP; manages organizations and
 permissions; and supports observation, budgeting, and evaluation.

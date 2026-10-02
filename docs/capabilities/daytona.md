@@ -1,6 +1,7 @@
 ---
 title: Daytona
 description: Run agent code in Daytona cloud sandboxes with command execution, file access, workspace downloads, and session-scoped lifecycle controls.
+appliesTo: [platform, cloud]
 ---
 
 | | |

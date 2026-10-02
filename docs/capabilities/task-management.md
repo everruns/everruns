@@ -1,6 +1,7 @@
 ---
 title: Task Management
 description: Structured task lists for tracking multi-step work within a session.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

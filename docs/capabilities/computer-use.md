@@ -1,6 +1,7 @@
 ---
 title: Computer Use
 description: Let an agent see a browser through screenshots and operate it with clicks, typing, scrolling, and key presses, with any model that accepts images.
+appliesTo: [platform]
 ---
 
 | | |

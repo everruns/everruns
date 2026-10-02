@@ -3,6 +3,7 @@ title: OpenAI Server Tools
 description: Enable OpenAI's hosted tools (web search, code interpreter, hosted shell, file search, remote MCP) on agents that run on the OpenAI or Azure OpenAI Responses API. OpenAI runs them inside the response.
 sidebar:
   order: 94
+appliesTo: [platform, cloud]
 ---
 
 | | |

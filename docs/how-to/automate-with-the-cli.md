@@ -1,6 +1,7 @@
 ---
 title: Automate with the CLI
 description: Script the Everruns CLI with structured output, jq, quiet mode, and shell pipelines for CI, cron jobs, and integration with other tools.
+appliesTo: [platform, cloud]
 ---
 
 The CLI emits structured output (JSON, YAML) for scripting. Combined with `jq` and `--quiet` mode, it composes naturally with shell pipelines.

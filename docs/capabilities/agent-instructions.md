@@ -1,6 +1,7 @@
 ---
 title: AGENTS.md
 description: Project instructions loaded from configured files in the session workspace and injected into every turn.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

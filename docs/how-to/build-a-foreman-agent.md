@@ -1,6 +1,7 @@
 ---
 title: Build a foreman agent
 description: Put one agent in front of a team of specialists, so a Slack mention is triaged and delegated to the right worker instead of answered by a generalist.
+appliesTo: [platform, cloud]
 ---
 
 A **foreman** is an agent whose job is routing, not answering. It receives an

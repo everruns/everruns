@@ -3,6 +3,7 @@ title: Prompt Canary Guardrail
 description: Streaming output guardrail that withholds the assistant message when the model echoes the first sentence of its system prompt back to the user.
 sidebar:
   order: 95
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

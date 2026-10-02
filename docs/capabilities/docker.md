@@ -3,6 +3,7 @@ title: Docker Container Sandbox
 description: Run agent commands and manage files in a Docker container tied to the session. Self-hosted alternative to cloud sandbox providers.
 sidebar:
   label: Docker Container
+appliesTo: [platform]
 ---
 
 | | |

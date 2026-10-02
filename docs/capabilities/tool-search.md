@@ -3,6 +3,7 @@ title: Tool Search
 description: Provider-agnostic deferred tool loading. Tool parameter schemas stay hidden until the model loads them on demand.
 sidebar:
   order: 92
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

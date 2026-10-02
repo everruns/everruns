@@ -1,6 +1,7 @@
 ---
 title: Package an agent skill
 description: Author a SKILL.md, bundle scripts and references, and place it in the session workspace so agents can discover and activate it on demand.
+appliesTo: [platform, cloud]
 ---
 
 Skills are portable instruction packages following the [Agent Skills](https://agentskills.io/) open spec. They use progressive disclosure: the agent sees only names and descriptions until it activates a skill, at which point the full instructions load.

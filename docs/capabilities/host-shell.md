@@ -1,6 +1,7 @@
 ---
 title: Host Shell
 description: Run bash commands on the machine hosting the agent, bounded by a kernel policy (Landlock and seccomp on Linux, Seatbelt on macOS).
+appliesTo: [framework]
 ---
 
 | | |

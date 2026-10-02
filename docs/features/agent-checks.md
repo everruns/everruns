@@ -1,6 +1,7 @@
 ---
 title: Agent Checks
 description: Advisory quality checks for agent configurations, structural problems, completeness gaps, and cost warnings surfaced while you build.
+appliesTo: [platform, cloud]
 ---
 
 # Agent Checks

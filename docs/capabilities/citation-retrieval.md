@@ -1,6 +1,7 @@
 ---
 title: Retrieval Citations
 description: Attach claim-level citations to an agent's answer from its knowledge retrieval results, so each grounded sentence links back to the source that supports it.
+appliesTo: [platform, cloud]
 ---
 
 | | |

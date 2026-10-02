@@ -1,6 +1,7 @@
 ---
 title: Self-Budget
 description: Prompt-only guidance for agents to reason about a user-requested indicative budget using session usage data. Distinct from the platform-enforced `budgeting` capability.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

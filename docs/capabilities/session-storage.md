@@ -3,6 +3,7 @@ title: Session Storage
 description: Session-scoped key/value storage and encrypted secret storage.
 sidebar:
   label: Storage
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

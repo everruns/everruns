@@ -1,6 +1,7 @@
 ---
 title: Apps Compatibility
 description: Understand the retired App model, permanent route compatibility, and the Agent-owned endpoint model that replaces it.
+appliesTo: [platform, cloud]
 ---
 
 Apps are retired from Everruns management. New integrations belong directly to an Agent as **endpoints** or **triggers**.

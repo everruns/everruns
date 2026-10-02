@@ -1,76 +1,80 @@
 ---
-title: Introduction
-description: What Everruns is, what it provides, and where to go next.
+title: Start here
+description: Choose how you run Everruns, the Framework, a self-hosted Platform, or Everruns Cloud, and go to the right first page.
+sidebar:
+  label: Start here
 ---
 
-Everruns is a durable agentic harness engine built on Rust. It provides APIs for
-managing agents, sessions, and runs, streams events over SSE, and persists
-execution state in PostgreSQL so a long-running task survives a worker restart.
+Everruns is a durable agentic harness engine built on Rust. You can use it in
+three ways. They run the same agent model (agents, sessions, capabilities,
+events) and differ in what you operate.
 
-## Key Concepts
+| | Framework | Self-hosted | Everruns Cloud |
+|---|---|---|---|
+| **For** | Rust developers who want agents inside their own application | Teams that need the full Platform on their own infrastructure | Anyone who wants the Platform without operating it |
+| **You operate** | Your application process. No server, database, or worker | The Platform: API server, workers, PostgreSQL, UI | Nothing. Everruns runs the Platform at [app.everruns.com](https://app.everruns.com) |
+| **You talk to it through** | The `everruns` Rust crate, in process | The REST API, SDKs, CLI, UI, and MCP | The REST API, SDKs, CLI, UI, and MCP |
+| **Cost** | Free and open source (MIT). You pay your model provider | Free and open source (MIT). You pay for your infrastructure and model providers | Prepaid credit for the built-in model provider, with $5 of starter credit. Your own provider keys are optional |
+| **First page** | [Framework quickstart](/framework/quickstart/) | [Docker Compose](/getting-started/docker-compose/) | [Everruns Cloud quickstart](/getting-started/cloud/) |
 
-### Agents
+Pages across these docs carry an **Applies to** row under the title that names
+which of the three the page covers.
 
-An agent is a configuration the runtime executes. Each one carries:
+## Framework
 
-- A system prompt that defines its behavior
-- A set of capabilities that provide tools
-- Model configuration for the underlying LLM
+Embed agents in a Rust process with the `everruns` crate. The agent runs inside
+your application, so there is nothing else to deploy. Bring a model provider
+key.
 
-### Sessions
+```rust
+let agent = Agent::builder().instructions("Be concise.")
+    .provider(OpenAI::from_env()?).model("gpt-5.6-terra").build()?;
+let session = Engine::new().create(agent);
+println!("{}", session.send_and_wait("Say hello.").await?.response);
+```
 
-Sessions represent conversations with an agent. Each session maintains:
+Next: [Framework quickstart](/framework/quickstart/), which sets up the crate
+and runs this program end to end.
 
-- Conversation history
-- Current execution state
-- Configuration overrides
+## Self-hosted
 
-### Capabilities
+Run the full Platform on infrastructure you control: the API server, durable
+workers, PostgreSQL, and the management UI. Use it when you need remote
+clients, multi-tenant organizations, or durable execution that survives a worker
+restart, and want to keep the deployment and data in your own environment.
 
-A capability is a unit of agent behavior. Each one can:
+```bash
+curl -o docker-compose.yaml https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
+# write .env with the required secrets, see the Docker Compose guide
+docker compose up -d   # UI and API on http://localhost:9300
+```
 
-- Add instructions to the system prompt
-- Provide tools for the agent to use
-- Modify execution behavior
+Next: [Docker Compose](/getting-started/docker-compose/), which lists the
+required secrets and walks through the first session. Operators continue with
+[Environment variables](/sre/environment-variables/).
 
-See [Capabilities](/features/capabilities/) for more details.
+## Everruns Cloud
 
-## Getting Started
+Use the Platform at [app.everruns.com](https://app.everruns.com) without running
+it. A built-in model provider is ready on sign-up, and your first organization
+gets $5 of starter credit, so you need no provider keys to start.
 
-### Ways to run Everruns
+```bash
+everruns login
+SESSION=$(everruns sessions create -q)
+everruns chat --session "$SESSION" "Say hello."
+```
 
-- **[Everruns Cloud](https://app.everruns.com)**: the hosted Platform. We run
-  the server, database, and workers. It includes a built-in model provider: your
-  first organization gets $5 of starter credit, and you top up with prepaid
-  credits after that. Bringing your own provider keys is optional.
-- **[Docker Compose](/getting-started/docker-compose/)**: run the full Platform
-  on infrastructure you control.
-- **[Framework](/framework/)**: embed durable agents in a Rust process, with no
-  separate Platform to operate.
+Next: [Everruns Cloud quickstart](/getting-started/cloud/), which covers sign-up,
+tokens, the SDK, CLI and AI-tool setup, and how credit works.
 
-### Quick Start
+## After the first page
 
-1. Deploy Everruns using the provided Docker images, or create an account on
-   [Everruns Cloud](https://app.everruns.com) and skip this step
-2. Configure your LLM providers via the Settings UI (on Everruns Cloud the
-   built-in provider is ready to use)
-3. Create an agent
-4. Start sessions and interact through the API or UI
-
-### API Access
-
-The API is available at your deployment URL:
-
-- **API Base**: `https://your-domain.com/api/v1/`
-- **OpenAPI Spec**: `https://your-domain.com/api-doc/openapi.json`
-
-## Architecture
-
-Everruns uses a layered architecture:
-
-- **API Layer**: HTTP endpoints (axum), SSE streaming
-- **Core Layer**: Agent abstractions, capabilities, tools
-- **Worker Layer**: Durable workflows for reliable execution
-- **Storage Layer**: PostgreSQL with encrypted secrets and durable execution state
-
-See [Architecture](/getting-started/architecture/) for how these layers interact.
+- [Concepts](/getting-started/concepts/): agents, sessions, harnesses,
+  capabilities, and events.
+- [Use in AI Tools](/getting-started/use-in-ai-tools/): drive Everruns from
+  Claude Code, Codex, or Cursor.
+- [Build your first agent](/tutorials/building-agents-using-sdk/): a guided SDK
+  lesson for the self-hosted Platform or Everruns Cloud.
+- [Capabilities](/capabilities/): the tools an agent can use, each marked with
+  where it is available.

@@ -1,6 +1,7 @@
 ---
 title: Session
 description: Inspect and update the current session's metadata, including its ID, title, agent name, locale, and usage.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

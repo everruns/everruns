@@ -1,6 +1,7 @@
 ---
 title: Schedules
 description: Schedule one-shot and recurring cron-based tasks within a session.
+appliesTo: [platform, cloud]
 ---
 
 | | |

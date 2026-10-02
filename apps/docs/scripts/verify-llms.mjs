@@ -75,7 +75,7 @@ for (const htmlPage of htmlPages) {
 // run Everruns, one link per documentation set, and the machine-readable
 // surfaces that the sets deliberately leave out.
 if (index) {
-  for (const marker of ["Framework", "Self-hosted platform", "Hosted Everruns"]) {
+  for (const marker of ["Framework", "Self-hosted platform", "Everruns Cloud"]) {
     check(index.includes(marker), `llms.txt does not describe the ${marker} target`);
   }
   const setLinks = [...index.matchAll(/\]\((https:\/\/[^)]*\/_llms-txt\/[^)]+\.txt)\)/g)].map(

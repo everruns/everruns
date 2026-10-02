@@ -35,7 +35,7 @@ A model provider is: pick one from
 | **Advanced host crates** | Low-level execution-host composition through `everruns-host` and focused siblings |
 | **SDKs** | Remote clients that call a running Everruns server |
 | **Platform (self-hosted)** | The control plane, server, workers, UI, and durable deployment you run yourself, for example with [Docker Compose](/getting-started/docker-compose/) |
-| **Everruns Cloud** | The hosted Platform at [app.everruns.com](https://app.everruns.com), with a built-in model provider and a starter credit; bring-your-own keys are optional |
+| **Everruns Cloud** | The Platform operated for you at [app.everruns.com](https://app.everruns.com), with a built-in model provider and a starter credit; bring-your-own keys are optional. See the [Everruns Cloud quickstart](/getting-started/cloud/) |
 
 Normal library users should start with the Framework. Hosts that must replace
 storage or orchestration cross into [custom backends](/framework/custom-backends/).
