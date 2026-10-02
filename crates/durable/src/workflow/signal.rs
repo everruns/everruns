@@ -10,10 +10,23 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Example
 ///
-/// ```ignore
-/// // Send a cancellation signal
-/// let signal = WorkflowSignal::cancel("User requested cancellation");
-/// store.send_signal(workflow_id, signal).await?;
+/// ```
+/// use everruns_durable::{InMemoryWorkflowEventStore, WorkflowEventStore, WorkflowSignal};
+/// use serde_json::json;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), everruns_durable::StoreError> {
+/// let store = InMemoryWorkflowEventStore::new();
+/// let workflow_id = uuid::Uuid::now_v7();
+/// store.create_workflow(workflow_id, "order", json!({}), None).await?;
+///
+/// store.send_signal(workflow_id, WorkflowSignal::cancel("user requested")).await?;
+///
+/// // The executor hands pending signals to `Workflow::on_signal` on its next pass.
+/// let pending = store.get_pending_signals(workflow_id).await?;
+/// assert!(pending[0].is_cancel());
+/// assert_eq!(pending[0].payload["reason"], "user requested");
+/// # Ok(()) }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorkflowSignal {

@@ -83,26 +83,53 @@ impl From<anyhow::Error> for ActivityError {
 ///
 /// # Example
 ///
-/// ```ignore
-/// use everruns_durable::prelude::*;
+/// ```
+/// use everruns_durable::{Activity, ActivityContext, ActivityError};
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct SendEmail {
+///     to: String,
+/// }
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct Sent {
+///     message_id: String,
+/// }
 ///
 /// struct SendEmailActivity;
 ///
-/// #[async_trait]
+/// #[async_trait::async_trait]
 /// impl Activity for SendEmailActivity {
 ///     const TYPE: &'static str = "send_email";
-///     type Input = SendEmailInput;
-///     type Output = SendEmailOutput;
+///     type Input = SendEmail;
+///     type Output = Sent;
 ///
-///     async fn execute(
-///         &self,
-///         ctx: &ActivityContext,
-///         input: Self::Input,
-///     ) -> Result<Self::Output, ActivityError> {
-///         // Send email...
-///         Ok(SendEmailOutput { message_id: "..." })
+///     async fn execute(&self, ctx: &ActivityContext, input: SendEmail) -> Result<Sent, ActivityError> {
+///         if !input.to.contains('@') {
+///             // Retrying cannot fix a bad address.
+///             return Err(ActivityError::non_retryable("invalid address").with_type("validation"));
+///         }
+///         Ok(Sent { message_id: format!("{}-{}", ctx.activity_id, ctx.attempt) })
 ///     }
 /// }
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() {
+/// let ctx = ActivityContext::new(uuid::Uuid::now_v7(), "email-1".into(), 1, 3);
+/// let sent = SendEmailActivity
+///     .execute(&ctx, SendEmail { to: "ada@example.com".into() })
+///     .await
+///     .unwrap();
+/// assert_eq!(sent.message_id, "email-1-1");
+///
+/// let err = SendEmailActivity
+///     .execute(&ctx, SendEmail { to: "nobody".into() })
+///     .await
+///     .err()
+///     .unwrap();
+/// assert!(!err.retryable);
+/// # }
 /// ```
 #[async_trait]
 pub trait Activity: Send + Sync + 'static {

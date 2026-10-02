@@ -18,6 +18,7 @@ use crate::persistence::{
 use crate::workflow::{WorkflowAction, WorkflowEvent, WorkflowSignal};
 
 use super::registry::{AnyWorkflow, RegistryError, WorkflowRegistry};
+use super::replay::{has_terminal_action, unrecorded_actions};
 
 /// Configuration for the workflow executor
 #[derive(Debug, Clone)]
@@ -99,22 +100,62 @@ pub struct ProcessResult {
 ///
 /// The executor drives workflow state machines by replaying events and
 /// processing actions. It uses optimistic concurrency control to handle
-/// concurrent updates.
+/// concurrent updates: every append names the sequence number it expects.
+///
+/// Each call replays history, then applies the actions the workflow requested
+/// that have no recording event yet. Calling [`process_workflow`](Self::process_workflow)
+/// again after a crash therefore picks up exactly the work that was lost.
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```
 /// use everruns_durable::prelude::*;
+/// use serde_json::{Value, json};
 ///
-/// let store = InMemoryWorkflowEventStore::new();
-/// let mut executor = WorkflowExecutor::new(store);
-/// executor.register::<MyWorkflow>();
+/// /// Waits for one approval activity, then completes with its verdict.
+/// struct Approval {
+///     verdict: Option<Value>,
+/// }
 ///
-/// // Start a new workflow
-/// let workflow_id = executor.start_workflow::<MyWorkflow>(input).await?;
+/// impl Workflow for Approval {
+///     const TYPE: &'static str = "approval";
+///     type Input = Value;
+///     type Output = Value;
 ///
-/// // Process the workflow (after activities complete)
-/// executor.process_workflow(workflow_id).await?;
+///     fn new(_: Value) -> Self {
+///         Self { verdict: None }
+///     }
+///     fn on_start(&mut self) -> Vec<WorkflowAction> {
+///         vec![WorkflowAction::schedule_activity("review", "review", json!({}))]
+///     }
+///     fn on_activity_completed(&mut self, _: &str, result: Value) -> Vec<WorkflowAction> {
+///         self.verdict = Some(result.clone());
+///         vec![WorkflowAction::complete(result)]
+///     }
+///     fn on_activity_failed(&mut self, _: &str, e: &ActivityError) -> Vec<WorkflowAction> {
+///         vec![WorkflowAction::fail(WorkflowError::new(&e.message))]
+///     }
+///     fn is_completed(&self) -> bool {
+///         self.verdict.is_some()
+///     }
+///     fn result(&self) -> Option<Value> {
+///         self.verdict.clone()
+///     }
+/// }
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ExecutorError> {
+/// let mut executor = WorkflowExecutor::new(InMemoryWorkflowEventStore::new());
+/// executor.register::<Approval>();
+///
+/// let id = executor.start_workflow::<Approval>(json!({}), None).await?;
+/// assert_eq!(executor.store().get_workflow_status(id).await?, WorkflowStatus::Running);
+///
+/// // A worker finished the "review" activity.
+/// let outcome = executor.on_activity_completed(id, "review", json!("approved")).await?;
+/// assert!(outcome.completed);
+/// assert_eq!(executor.store().get_workflow_status(id).await?, WorkflowStatus::Completed);
+/// # Ok(()) }
 /// ```
 pub struct WorkflowExecutor<S: WorkflowEventStore> {
     store: Arc<S>,
@@ -273,18 +314,38 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         let mut events_written = 0;
         let mut tasks_enqueued = 0;
 
-        // Replay events to rebuild state
+        // Replay events to rebuild state. Replay also yields the actions the
+        // workflow requested; any not yet recorded in history (typically the
+        // follow-up to the event that triggered this call) are applied below.
+        let mut replayed_actions = Vec::new();
         for (_seq, event) in &events {
-            self.replay_event(&mut *workflow, event)?;
+            replayed_actions.extend(self.replay_event(&mut *workflow, event)?);
         }
+        let pending_actions =
+            unrecorded_actions(replayed_actions, events.iter().map(|(_, event)| event));
+        let mut terminal_recorded = events.iter().any(|(_, event)| {
+            matches!(
+                event,
+                WorkflowEvent::WorkflowCompleted { .. } | WorkflowEvent::WorkflowFailed { .. }
+            )
+        });
 
         debug!(
             %workflow_id,
             current_sequence,
             snapshot_seq,
             events_replayed = events.len(),
+            pending_actions = pending_actions.len(),
             "replayed events"
         );
+
+        terminal_recorded |= has_terminal_action(&pending_actions);
+        let (new_seq, written, enqueued) = self
+            .process_actions_internal(workflow_id, current_sequence, pending_actions)
+            .await?;
+        current_sequence = new_seq;
+        events_written += written;
+        tasks_enqueued += enqueued;
 
         // Check for pending signals
         let signals = self.store.get_pending_signals(workflow_id).await?;
@@ -292,6 +353,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
 
         for signal in &signals {
             let actions = workflow.on_signal(signal);
+            terminal_recorded |= has_terminal_action(&actions);
             let signal_event = WorkflowEvent::SignalReceived {
                 signal: signal.clone(),
             };
@@ -319,9 +381,10 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
                 .await?;
         }
 
-        // Check if workflow is now complete
+        // Check if workflow is now complete. A workflow that reports completion
+        // without returning a terminal action still gets its status recorded.
         let completed = workflow.is_completed();
-        if completed {
+        if completed && !terminal_recorded {
             if let Some(result) = workflow.result_json() {
                 self.store
                     .update_workflow_status(
@@ -495,7 +558,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         // Replay events to rebuild state
         let mut workflow = workflow;
         for (_seq, event) in &events {
-            self.replay_event(&mut *workflow, event)?;
+            let _actions = self.replay_event(&mut *workflow, event)?;
         }
 
         // Serialize current state — required for continue-as-new
@@ -693,24 +756,19 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         }
     }
 
-    /// Replay a single event on a workflow
+    /// Replay a single event on a workflow, returning the actions it requested.
     fn replay_event(
         &self,
         workflow: &mut dyn AnyWorkflow,
         event: &WorkflowEvent,
-    ) -> Result<(), ExecutorError> {
-        match event {
-            WorkflowEvent::WorkflowStarted { .. } => {
-                // on_start is called during workflow creation, not replay
-                let _actions = workflow.on_start();
-            }
+    ) -> Result<Vec<WorkflowAction>, ExecutorError> {
+        let actions = match event {
+            WorkflowEvent::WorkflowStarted { .. } => workflow.on_start(),
 
             WorkflowEvent::ActivityCompleted {
                 activity_id,
                 result,
-            } => {
-                let _actions = workflow.on_activity_completed(activity_id, result.clone());
-            }
+            } => workflow.on_activity_completed(activity_id, result.clone()),
 
             WorkflowEvent::ActivityFailed {
                 activity_id,
@@ -718,18 +776,16 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
                 will_retry,
             } => {
                 // Only notify workflow of final failure (when won't retry)
-                if !will_retry {
-                    let _actions = workflow.on_activity_failed(activity_id, error);
+                if *will_retry {
+                    Vec::new()
+                } else {
+                    workflow.on_activity_failed(activity_id, error)
                 }
             }
 
-            WorkflowEvent::TimerFired { timer_id } => {
-                let _actions = workflow.on_timer_fired(timer_id);
-            }
+            WorkflowEvent::TimerFired { timer_id } => workflow.on_timer_fired(timer_id),
 
-            WorkflowEvent::SignalReceived { signal } => {
-                let _actions = workflow.on_signal(signal);
-            }
+            WorkflowEvent::SignalReceived { signal } => workflow.on_signal(signal),
 
             // Events that don't affect workflow state during replay
             WorkflowEvent::WorkflowCompleted { .. }
@@ -745,10 +801,11 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
             | WorkflowEvent::ChildWorkflowCompleted { .. }
             | WorkflowEvent::ChildWorkflowFailed { .. } => {
                 // These events are informational during replay
+                Vec::new()
             }
-        }
+        };
 
-        Ok(())
+        Ok(actions)
     }
 
     /// Process actions from workflow, returning the new sequence number
@@ -1145,6 +1202,187 @@ mod tests {
         assert_eq!(status, WorkflowStatus::Completed);
     }
 
+    /// Claim every pending `increment` task, sorted: the in-memory store does
+    /// not claim in FIFO order.
+    async fn claim_all(executor: &WorkflowExecutor<InMemoryWorkflowEventStore>) -> Vec<String> {
+        executor
+            .store()
+            .claim_task("test-worker", &["increment".to_string()], 100)
+            .await
+            .expect("should claim tasks")
+            .into_iter()
+            .map(|task| task.activity_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_activity_completion_schedules_follow_up_activity() {
+        let store = InMemoryWorkflowEventStore::new();
+        let mut executor = WorkflowExecutor::new(store);
+        executor.register::<CounterWorkflow>();
+
+        let workflow_id = executor
+            .start_workflow::<CounterWorkflow>(
+                CounterInput {
+                    start: 0,
+                    target: 3,
+                },
+                None,
+            )
+            .await
+            .expect("should start workflow");
+        assert_eq!(claim_all(&executor).await, vec!["increment-0"]);
+
+        let result = executor
+            .on_activity_completed(
+                workflow_id,
+                "increment-0",
+                serde_json::json!({ "value": 1 }),
+            )
+            .await
+            .expect("should complete activity");
+
+        // The action returned by on_activity_completed must reach the queue,
+        // otherwise a multi-step workflow stalls after its first activity.
+        assert_eq!(result.tasks_enqueued, 1);
+        assert_eq!(claim_all(&executor).await, vec!["increment-1"]);
+    }
+
+    #[tokio::test]
+    async fn test_process_workflow_is_idempotent() {
+        let store = InMemoryWorkflowEventStore::new();
+        let mut executor = WorkflowExecutor::new(store);
+        executor.register::<CounterWorkflow>();
+
+        let workflow_id = executor
+            .start_workflow::<CounterWorkflow>(
+                CounterInput {
+                    start: 0,
+                    target: 3,
+                },
+                None,
+            )
+            .await
+            .expect("should start workflow");
+        executor
+            .on_activity_completed(
+                workflow_id,
+                "increment-0",
+                serde_json::json!({ "value": 1 }),
+            )
+            .await
+            .expect("should complete activity");
+        let events_before = executor.store().count_events(workflow_id).await.unwrap();
+
+        // Re-processing (e.g. after a crash or a duplicate delivery) must not
+        // schedule the same follow-up twice.
+        let result = executor
+            .process_workflow(workflow_id)
+            .await
+            .expect("should process workflow");
+
+        assert_eq!(result.tasks_enqueued, 0);
+        assert_eq!(result.events_written, 0);
+        assert_eq!(
+            executor.store().count_events(workflow_id).await.unwrap(),
+            events_before
+        );
+        assert_eq!(
+            claim_all(&executor).await,
+            vec!["increment-0", "increment-1"]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_process_workflow_applies_actions_left_unapplied() {
+        let store = InMemoryWorkflowEventStore::new();
+        let mut executor = WorkflowExecutor::new(store);
+        executor.register::<CounterWorkflow>();
+
+        let workflow_id = executor
+            .start_workflow::<CounterWorkflow>(
+                CounterInput {
+                    start: 0,
+                    target: 3,
+                },
+                None,
+            )
+            .await
+            .expect("should start workflow");
+
+        // Simulate a crash right after the completion event was persisted,
+        // before its follow-up activity was scheduled.
+        let next_seq = executor.store().count_events(workflow_id).await.unwrap() as i32;
+        executor
+            .store()
+            .append_events(
+                workflow_id,
+                next_seq,
+                vec![WorkflowEvent::ActivityCompleted {
+                    activity_id: "increment-0".into(),
+                    result: serde_json::json!({ "value": 1 }),
+                }],
+            )
+            .await
+            .unwrap();
+
+        let result = executor
+            .process_workflow(workflow_id)
+            .await
+            .expect("should process workflow");
+
+        assert_eq!(result.tasks_enqueued, 1);
+        assert_eq!(
+            claim_all(&executor).await,
+            vec!["increment-0", "increment-1"]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_completion_records_workflow_completed_event() {
+        let store = InMemoryWorkflowEventStore::new();
+        let mut executor = WorkflowExecutor::new(store);
+        executor.register::<CounterWorkflow>();
+
+        let workflow_id = executor
+            .start_workflow::<CounterWorkflow>(
+                CounterInput {
+                    start: 0,
+                    target: 1,
+                },
+                None,
+            )
+            .await
+            .expect("should start workflow");
+        let result = executor
+            .on_activity_completed(
+                workflow_id,
+                "increment-0",
+                serde_json::json!({ "value": 1 }),
+            )
+            .await
+            .expect("should complete activity");
+        assert!(result.completed);
+
+        let events = executor.store().load_events(workflow_id).await.unwrap();
+        let completed: Vec<_> = events
+            .iter()
+            .filter_map(|(_, event)| match event {
+                WorkflowEvent::WorkflowCompleted { result } => Some(result.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(completed, vec![serde_json::json!({ "final_value": 1 })]);
+        let info = executor
+            .store()
+            .get_workflow_info(workflow_id)
+            .await
+            .unwrap();
+        assert_eq!(info.status, WorkflowStatus::Completed);
+    }
+
     #[tokio::test]
     async fn test_activity_failure() {
         let store = InMemoryWorkflowEventStore::new();
@@ -1279,1007 +1517,5 @@ mod tests {
         assert!(result.completed);
     }
 
-    // =================================================================
-    // Snapshot-capable workflow for testing
-    // =================================================================
-
-    /// A counter workflow that supports snapshot serialization
-    #[derive(Debug, Serialize, Deserialize)]
-    struct SnapCounterState {
-        current: i32,
-        target: i32,
-        completed: bool,
-        failed: bool,
-        error_message: Option<String>,
-    }
-
-    struct SnapCounterWorkflow {
-        state: SnapCounterState,
-    }
-
-    impl crate::workflow::Workflow for SnapCounterWorkflow {
-        const TYPE: &'static str = "snap_counter_workflow";
-        type Input = CounterInput;
-        type Output = CounterOutput;
-
-        fn new(input: Self::Input) -> Self {
-            Self {
-                state: SnapCounterState {
-                    current: input.start,
-                    target: input.target,
-                    completed: false,
-                    failed: false,
-                    error_message: None,
-                },
-            }
-        }
-
-        fn on_start(&mut self) -> Vec<WorkflowAction> {
-            if self.state.current >= self.state.target {
-                self.state.completed = true;
-                vec![WorkflowAction::complete(
-                    serde_json::json!({ "final_value": self.state.current }),
-                )]
-            } else {
-                vec![WorkflowAction::schedule_activity(
-                    format!("increment-{}", self.state.current),
-                    "increment",
-                    serde_json::json!({ "value": self.state.current }),
-                )]
-            }
-        }
-
-        fn on_activity_completed(
-            &mut self,
-            _activity_id: &str,
-            result: serde_json::Value,
-        ) -> Vec<WorkflowAction> {
-            self.state.current = result.get("value").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-
-            if self.state.current >= self.state.target {
-                self.state.completed = true;
-                vec![WorkflowAction::complete(
-                    serde_json::json!({ "final_value": self.state.current }),
-                )]
-            } else {
-                vec![WorkflowAction::schedule_activity(
-                    format!("increment-{}", self.state.current),
-                    "increment",
-                    serde_json::json!({ "value": self.state.current }),
-                )]
-            }
-        }
-
-        fn on_activity_failed(
-            &mut self,
-            _activity_id: &str,
-            error: &ActivityError,
-        ) -> Vec<WorkflowAction> {
-            self.state.failed = true;
-            self.state.error_message = Some(error.message.clone());
-            vec![WorkflowAction::fail(crate::WorkflowError::new(
-                &error.message,
-            ))]
-        }
-
-        fn is_completed(&self) -> bool {
-            self.state.completed || self.state.failed
-        }
-
-        fn result(&self) -> Option<Self::Output> {
-            if self.state.completed && !self.state.failed {
-                Some(CounterOutput {
-                    final_value: self.state.current,
-                })
-            } else {
-                None
-            }
-        }
-
-        fn error(&self) -> Option<crate::WorkflowError> {
-            self.state
-                .error_message
-                .as_ref()
-                .map(crate::WorkflowError::new)
-        }
-
-        fn snapshot_state(&self) -> Option<Vec<u8>> {
-            serde_json::to_vec(&self.state).ok()
-        }
-
-        fn restore_state(input: Self::Input, data: &[u8]) -> Option<Self> {
-            let state: SnapCounterState = serde_json::from_slice(data).ok()?;
-            // Validate consistency: target from input should match snapshot
-            let _ = input; // Input already embedded in state
-            Some(Self { state })
-        }
-    }
-
-    /// Helper: create executor with a specific snapshot interval
-    fn snap_executor(
-        store: InMemoryWorkflowEventStore,
-        interval: i32,
-    ) -> WorkflowExecutor<InMemoryWorkflowEventStore> {
-        let config = ExecutorConfig {
-            snapshot_interval: interval,
-            ..Default::default()
-        };
-        let mut executor = WorkflowExecutor::with_config(store, config);
-        executor.register::<SnapCounterWorkflow>();
-        executor
-    }
-
-    fn test_executor(
-        max_events_per_workflow: usize,
-        snapshot_interval: i32,
-    ) -> WorkflowExecutor<InMemoryWorkflowEventStore> {
-        let config = ExecutorConfig {
-            max_events_per_workflow,
-            snapshot_interval,
-            ..Default::default()
-        };
-        let mut executor = WorkflowExecutor::with_config(InMemoryWorkflowEventStore::new(), config);
-        executor.register::<CounterWorkflow>();
-        executor.register::<SnapCounterWorkflow>();
-        executor
-    }
-
-    // =================================================================
-    // Snapshot tests
-    // =================================================================
-
-    #[tokio::test]
-    async fn test_full_replay_rejects_oversized_history_before_loading_events() {
-        let executor = test_executor(2, 0);
-        let workflow_id = Uuid::now_v7();
-
-        executor
-            .store()
-            .create_workflow(
-                workflow_id,
-                <CounterWorkflow as crate::workflow::Workflow>::TYPE,
-                serde_json::json!({ "start": 0, "target": 10 }),
-                None,
-            )
-            .await
-            .unwrap();
-        executor
-            .store()
-            .append_events(
-                workflow_id,
-                0,
-                vec![
-                    WorkflowEvent::WorkflowStarted {
-                        input: serde_json::json!({ "start": 0, "target": 10 }),
-                    },
-                    WorkflowEvent::ActivityScheduled {
-                        activity_id: "increment-0".into(),
-                        activity_type: "increment".into(),
-                        input: serde_json::json!({ "value": 0 }),
-                        options: crate::workflow::ActivityOptions::default(),
-                    },
-                    WorkflowEvent::ActivityCompleted {
-                        activity_id: "increment-0".into(),
-                        result: serde_json::json!({ "value": 1 }),
-                    },
-                ],
-            )
-            .await
-            .unwrap();
-
-        let result = executor.process_workflow(workflow_id).await;
-
-        assert!(matches!(
-            result,
-            Err(ExecutorError::TooManyEvents(id, 3, 2)) if id == workflow_id
-        ));
-        assert_eq!(executor.store().count_events_call_count(), 1);
-        assert_eq!(executor.store().load_events_call_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_replay_rejects_oversized_delta() {
-        let executor = test_executor(2, 0);
-        let workflow_id = Uuid::now_v7();
-
-        executor
-            .store()
-            .create_workflow(
-                workflow_id,
-                <SnapCounterWorkflow as crate::workflow::Workflow>::TYPE,
-                serde_json::json!({ "start": 0, "target": 10 }),
-                None,
-            )
-            .await
-            .unwrap();
-        executor
-            .store()
-            .append_events(
-                workflow_id,
-                0,
-                vec![
-                    WorkflowEvent::WorkflowStarted {
-                        input: serde_json::json!({ "start": 0, "target": 10 }),
-                    },
-                    WorkflowEvent::ActivityScheduled {
-                        activity_id: "increment-0".into(),
-                        activity_type: "increment".into(),
-                        input: serde_json::json!({ "value": 0 }),
-                        options: crate::workflow::ActivityOptions::default(),
-                    },
-                    WorkflowEvent::ActivityCompleted {
-                        activity_id: "increment-0".into(),
-                        result: serde_json::json!({ "value": 1 }),
-                    },
-                    WorkflowEvent::ActivityScheduled {
-                        activity_id: "increment-1".into(),
-                        activity_type: "increment".into(),
-                        input: serde_json::json!({ "value": 1 }),
-                        options: crate::workflow::ActivityOptions::default(),
-                    },
-                    WorkflowEvent::ActivityCompleted {
-                        activity_id: "increment-1".into(),
-                        result: serde_json::json!({ "value": 2 }),
-                    },
-                ],
-            )
-            .await
-            .unwrap();
-        executor
-            .store()
-            .save_snapshot(
-                workflow_id,
-                1,
-                serde_json::to_vec(&SnapCounterState {
-                    current: 0,
-                    target: 10,
-                    completed: false,
-                    failed: false,
-                    error_message: None,
-                })
-                .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let result = executor.process_workflow(workflow_id).await;
-
-        assert!(matches!(
-            result,
-            Err(ExecutorError::TooManyEvents(id, 3, 2)) if id == workflow_id
-        ));
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_save_and_restore() {
-        // Use a very small interval to trigger snapshot quickly
-        let store = InMemoryWorkflowEventStore::new();
-        let mut executor = snap_executor(store, 3);
-        executor.register::<CounterWorkflow>(); // also register non-snap version
-
-        let input = CounterInput {
-            start: 0,
-            target: 10,
-        };
-        let workflow_id = executor
-            .start_workflow::<SnapCounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        // Complete several activities to exceed snapshot interval (3 events)
-        for i in 0..5 {
-            executor
-                .on_activity_completed(
-                    workflow_id,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        // Verify a snapshot was saved
-        let snapshot = executor
-            .store()
-            .load_latest_snapshot(workflow_id)
-            .await
-            .unwrap();
-        assert!(snapshot.is_some(), "snapshot should have been saved");
-
-        let snap = snapshot.unwrap();
-        assert!(snap.sequence_num > 0, "snapshot sequence should be > 0");
-        assert!(
-            !snap.snapshot_data.is_empty(),
-            "snapshot data should not be empty"
-        );
-
-        // Continue processing — should use snapshot for replay
-        executor
-            .on_activity_completed(
-                workflow_id,
-                "increment-5",
-                serde_json::json!({ "value": 6 }),
-            )
-            .await
-            .unwrap();
-
-        // Verify workflow is still running (not at target 10 yet)
-        let status = executor
-            .store()
-            .get_workflow_status(workflow_id)
-            .await
-            .unwrap();
-        assert_eq!(status, WorkflowStatus::Running);
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_at_sequence_zero_is_treated_as_valid_snapshot() {
-        let executor = snap_executor(InMemoryWorkflowEventStore::new(), 100);
-        let workflow_id = Uuid::now_v7();
-
-        executor
-            .store()
-            .create_workflow(
-                workflow_id,
-                <SnapCounterWorkflow as crate::workflow::Workflow>::TYPE,
-                serde_json::json!({ "start": 0, "target": 10 }),
-                None,
-            )
-            .await
-            .unwrap();
-
-        executor
-            .store()
-            .append_events(
-                workflow_id,
-                0,
-                vec![
-                    WorkflowEvent::WorkflowStarted {
-                        input: serde_json::json!({ "start": 0, "target": 10 }),
-                    },
-                    WorkflowEvent::ActivityScheduled {
-                        activity_id: "increment-0".into(),
-                        activity_type: "increment".into(),
-                        input: serde_json::json!({ "value": 0 }),
-                        options: crate::workflow::ActivityOptions::default(),
-                    },
-                ],
-            )
-            .await
-            .unwrap();
-
-        executor
-            .store()
-            .save_snapshot(
-                workflow_id,
-                0,
-                serde_json::to_vec(&SnapCounterState {
-                    current: 0,
-                    target: 10,
-                    completed: false,
-                    failed: false,
-                    error_message: None,
-                })
-                .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        executor
-            .send_signal(
-                workflow_id,
-                WorkflowSignal::new("noop", serde_json::json!({})),
-            )
-            .await
-            .unwrap();
-
-        let result = executor.process_workflow(workflow_id).await.unwrap();
-        assert_eq!(result.signals_processed, 1);
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_produces_same_result() {
-        // Run workflow to completion with snapshots enabled
-        let store = InMemoryWorkflowEventStore::new();
-        let executor = snap_executor(store, 3);
-
-        let input = CounterInput {
-            start: 0,
-            target: 5,
-        };
-        let workflow_id = executor
-            .start_workflow::<SnapCounterWorkflow>(input.clone(), None)
-            .await
-            .unwrap();
-
-        for i in 0..5 {
-            executor
-                .on_activity_completed(
-                    workflow_id,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        let status1 = executor
-            .store()
-            .get_workflow_status(workflow_id)
-            .await
-            .unwrap();
-        assert_eq!(status1, WorkflowStatus::Completed);
-
-        // Run same workflow WITHOUT snapshots
-        let store2 = InMemoryWorkflowEventStore::new();
-        let executor2 = snap_executor(store2, 0); // snapshots disabled
-
-        let workflow_id2 = executor2
-            .start_workflow::<SnapCounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        for i in 0..5 {
-            executor2
-                .on_activity_completed(
-                    workflow_id2,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        let status2 = executor2
-            .store()
-            .get_workflow_status(workflow_id2)
-            .await
-            .unwrap();
-        assert_eq!(status2, WorkflowStatus::Completed);
-
-        // Both should produce same final status
-        assert_eq!(status1, status2);
-    }
-
-    #[tokio::test]
-    async fn test_no_snapshot_without_support() {
-        // Use the non-snapshot CounterWorkflow with snapshot interval enabled
-        let store = InMemoryWorkflowEventStore::new();
-        let config = ExecutorConfig {
-            snapshot_interval: 2,
-            ..Default::default()
-        };
-        let mut executor = WorkflowExecutor::with_config(store, config);
-        executor.register::<CounterWorkflow>();
-
-        let input = CounterInput {
-            start: 0,
-            target: 5,
-        };
-        let workflow_id = executor
-            .start_workflow::<CounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        for i in 0..4 {
-            executor
-                .on_activity_completed(
-                    workflow_id,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        // No snapshot should be saved since CounterWorkflow doesn't implement snapshot_state
-        let snapshot = executor
-            .store()
-            .load_latest_snapshot(workflow_id)
-            .await
-            .unwrap();
-        assert!(snapshot.is_none(), "no snapshot for non-snapshot workflows");
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_disabled_when_interval_zero() {
-        let store = InMemoryWorkflowEventStore::new();
-        let executor = snap_executor(store, 0); // disabled
-
-        let input = CounterInput {
-            start: 0,
-            target: 5,
-        };
-        let workflow_id = executor
-            .start_workflow::<SnapCounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        for i in 0..4 {
-            executor
-                .on_activity_completed(
-                    workflow_id,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        let snapshot = executor
-            .store()
-            .load_latest_snapshot(workflow_id)
-            .await
-            .unwrap();
-        assert!(snapshot.is_none(), "no snapshot when interval is 0");
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_not_saved_on_completion() {
-        let store = InMemoryWorkflowEventStore::new();
-        let executor = snap_executor(store, 2);
-
-        let input = CounterInput {
-            start: 0,
-            target: 2,
-        };
-        let workflow_id = executor
-            .start_workflow::<SnapCounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        // Complete all activities
-        executor
-            .on_activity_completed(
-                workflow_id,
-                "increment-0",
-                serde_json::json!({ "value": 1 }),
-            )
-            .await
-            .unwrap();
-        executor
-            .on_activity_completed(
-                workflow_id,
-                "increment-1",
-                serde_json::json!({ "value": 2 }),
-            )
-            .await
-            .unwrap();
-
-        // Workflow completed - snapshot should NOT be saved for terminal workflows
-        let status = executor
-            .store()
-            .get_workflow_status(workflow_id)
-            .await
-            .unwrap();
-        assert_eq!(status, WorkflowStatus::Completed);
-
-        // Even though enough events accumulated, snapshot not saved for completed workflow
-        // (this is by design - no point snapshotting terminal workflows)
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_delete() {
-        let store = InMemoryWorkflowEventStore::new();
-
-        // Manually save a snapshot
-        let workflow_id = Uuid::now_v7();
-        store
-            .save_snapshot(workflow_id, 10, b"test_data".to_vec())
-            .await
-            .unwrap();
-
-        let snap = store.load_latest_snapshot(workflow_id).await.unwrap();
-        assert!(snap.is_some());
-
-        // Delete snapshots
-        store.delete_snapshots(workflow_id).await.unwrap();
-
-        let snap = store.load_latest_snapshot(workflow_id).await.unwrap();
-        assert!(snap.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_upsert() {
-        let store = InMemoryWorkflowEventStore::new();
-        let workflow_id = Uuid::now_v7();
-
-        // Save snapshot at seq 5
-        store
-            .save_snapshot(workflow_id, 5, b"data_v1".to_vec())
-            .await
-            .unwrap();
-
-        // Save snapshot at seq 10
-        store
-            .save_snapshot(workflow_id, 10, b"data_v2".to_vec())
-            .await
-            .unwrap();
-
-        // Latest should be seq 10
-        let snap = store
-            .load_latest_snapshot(workflow_id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(snap.sequence_num, 10);
-        assert_eq!(snap.snapshot_data, b"data_v2");
-
-        // Upsert seq 5 with new data
-        store
-            .save_snapshot(workflow_id, 5, b"data_v1_updated".to_vec())
-            .await
-            .unwrap();
-
-        // Latest should still be seq 10
-        let snap = store
-            .load_latest_snapshot(workflow_id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(snap.sequence_num, 10);
-    }
-
-    #[tokio::test]
-    async fn test_load_events_after() {
-        let store = InMemoryWorkflowEventStore::new();
-
-        // Create a workflow and add events
-        let workflow_id = Uuid::now_v7();
-        store
-            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
-            .await
-            .unwrap();
-
-        let events = vec![WorkflowEvent::WorkflowStarted {
-            input: serde_json::json!({}),
-        }];
-        store.append_events(workflow_id, 0, events).await.unwrap();
-
-        let events = vec![WorkflowEvent::ActivityScheduled {
-            activity_id: "a1".into(),
-            activity_type: "test".into(),
-            input: serde_json::json!({}),
-            options: crate::workflow::ActivityOptions::default(),
-        }];
-        store.append_events(workflow_id, 1, events).await.unwrap();
-
-        let events = vec![WorkflowEvent::ActivityCompleted {
-            activity_id: "a1".into(),
-            result: serde_json::json!(42),
-        }];
-        store.append_events(workflow_id, 2, events).await.unwrap();
-
-        // Load events after seq 0
-        let after_0 = store.load_events_after(workflow_id, 0).await.unwrap();
-        assert_eq!(after_0.len(), 2); // seq 1 and seq 2
-
-        // Load events after seq 1
-        let after_1 = store.load_events_after(workflow_id, 1).await.unwrap();
-        assert_eq!(after_1.len(), 1); // only seq 2
-
-        // Load events after seq 2 (none left)
-        let after_2 = store.load_events_after(workflow_id, 2).await.unwrap();
-        assert_eq!(after_2.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_fallback_to_full_replay() {
-        // If snapshot data is corrupted, should fall back to full replay
-        let store = InMemoryWorkflowEventStore::new();
-        let executor = snap_executor(store, 3);
-
-        let input = CounterInput {
-            start: 0,
-            target: 5,
-        };
-        let workflow_id = executor
-            .start_workflow::<SnapCounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        // Add some activities
-        for i in 0..3 {
-            executor
-                .on_activity_completed(
-                    workflow_id,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        // Manually save corrupted snapshot
-        executor
-            .store()
-            .save_snapshot(workflow_id, 5, b"corrupted_data".to_vec())
-            .await
-            .unwrap();
-
-        // Processing should still work (falls back to full replay)
-        let result = executor
-            .on_activity_completed(
-                workflow_id,
-                "increment-3",
-                serde_json::json!({ "value": 4 }),
-            )
-            .await;
-        assert!(
-            result.is_ok(),
-            "should succeed with fallback to full replay"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_many_events_with_snapshot_bounded_replay() {
-        // Simulate a workflow with many events and verify snapshot-based
-        // replay only loads events after the snapshot
-        let store = InMemoryWorkflowEventStore::new();
-        let executor = snap_executor(store, 5); // snapshot every 5
-
-        let target = 20;
-        let input = CounterInput { start: 0, target };
-        let workflow_id = executor
-            .start_workflow::<SnapCounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        // Complete 19 activities (0..19, need to reach 20)
-        for i in 0..target {
-            executor
-                .on_activity_completed(
-                    workflow_id,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        // Workflow should be completed
-        let status = executor
-            .store()
-            .get_workflow_status(workflow_id)
-            .await
-            .unwrap();
-        assert_eq!(status, WorkflowStatus::Completed);
-
-        // Verify total events accumulated (should be many)
-        let all_events = executor.store().load_events(workflow_id).await.unwrap();
-        assert!(
-            all_events.len() > 20,
-            "should have many events (got {})",
-            all_events.len()
-        );
-    }
-
-    // =================================================================
-    // Snapshot path pre-load count check + stale snapshot deletion
-    // =================================================================
-
-    #[tokio::test]
-    async fn test_snapshot_path_rejects_before_loading_events() {
-        // max_events = 2, snapshot at seq 1 with 3 events after it (indices 2,3,4)
-        let executor = test_executor(2, 0);
-        let workflow_id = Uuid::now_v7();
-
-        executor
-            .store()
-            .create_workflow(
-                workflow_id,
-                <SnapCounterWorkflow as crate::workflow::Workflow>::TYPE,
-                serde_json::json!({ "start": 0, "target": 10 }),
-                None,
-            )
-            .await
-            .unwrap();
-        executor
-            .store()
-            .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
-            .await
-            .unwrap();
-        executor
-            .store()
-            .append_events(
-                workflow_id,
-                0,
-                vec![
-                    WorkflowEvent::WorkflowStarted {
-                        input: serde_json::json!({ "start": 0, "target": 10 }),
-                    },
-                    WorkflowEvent::ActivityScheduled {
-                        activity_id: "increment-0".into(),
-                        activity_type: "increment".into(),
-                        input: serde_json::json!({ "value": 0 }),
-                        options: crate::workflow::ActivityOptions::default(),
-                    },
-                    WorkflowEvent::ActivityCompleted {
-                        activity_id: "increment-0".into(),
-                        result: serde_json::json!({ "value": 1 }),
-                    },
-                    WorkflowEvent::ActivityScheduled {
-                        activity_id: "increment-1".into(),
-                        activity_type: "increment".into(),
-                        input: serde_json::json!({ "value": 1 }),
-                        options: crate::workflow::ActivityOptions::default(),
-                    },
-                    WorkflowEvent::ActivityCompleted {
-                        activity_id: "increment-1".into(),
-                        result: serde_json::json!({ "value": 2 }),
-                    },
-                ],
-            )
-            .await
-            .unwrap();
-        // Snapshot at seq 1 (very stale — 3 events after it)
-        executor
-            .store()
-            .save_snapshot(
-                workflow_id,
-                1,
-                serde_json::to_vec(&SnapCounterState {
-                    current: 0,
-                    target: 10,
-                    completed: false,
-                    failed: false,
-                    error_message: None,
-                })
-                .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let result = executor.process_workflow(workflow_id).await;
-
-        // Should reject with TooManyEvents (3 events after snapshot > max 2)
-        assert!(
-            matches!(
-                &result,
-                Err(ExecutorError::TooManyEvents(id, 3, 2)) if *id == workflow_id
-            ),
-            "expected TooManyEvents(_, 3, 2), got: {:?}",
-            result
-        );
-
-        // Stale snapshot should have been deleted
-        let snapshot = executor
-            .store()
-            .load_latest_snapshot(workflow_id)
-            .await
-            .unwrap();
-        assert!(
-            snapshot.is_none(),
-            "stale snapshot should be deleted on rejection"
-        );
-    }
-
-    // =================================================================
-    // Continue-as-new tests
-    // =================================================================
-
-    #[tokio::test]
-    async fn test_continue_as_new_roundtrip() {
-        let store = InMemoryWorkflowEventStore::new();
-        let executor = snap_executor(store, 3);
-
-        let input = CounterInput {
-            start: 0,
-            target: 10,
-        };
-        let workflow_id = executor
-            .start_workflow::<SnapCounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        // Advance workflow to value 5
-        for i in 0..5 {
-            executor
-                .on_activity_completed(
-                    workflow_id,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        // Continue as new
-        let new_workflow_id = executor.continue_as_new(workflow_id).await.unwrap();
-
-        // Old workflow should be terminal with ContinuedAsNew status
-        let old_info = executor
-            .store()
-            .get_workflow_info(workflow_id)
-            .await
-            .unwrap();
-        assert_eq!(old_info.status, WorkflowStatus::ContinuedAsNew);
-        assert_eq!(old_info.continued_as_new_id, Some(new_workflow_id));
-        assert!(old_info.status.is_terminal());
-
-        // New workflow should be running
-        let new_info = executor
-            .store()
-            .get_workflow_info(new_workflow_id)
-            .await
-            .unwrap();
-        assert_eq!(new_info.status, WorkflowStatus::Running);
-
-        // New workflow should have a snapshot
-        let snapshot = executor
-            .store()
-            .load_latest_snapshot(new_workflow_id)
-            .await
-            .unwrap();
-        assert!(snapshot.is_some(), "new workflow should have a snapshot");
-
-        // New workflow should be processable — continue from value 5 to 10
-        for i in 5..10 {
-            executor
-                .on_activity_completed(
-                    new_workflow_id,
-                    &format!("increment-{}", i),
-                    serde_json::json!({ "value": i + 1 }),
-                )
-                .await
-                .unwrap();
-        }
-
-        let final_status = executor
-            .store()
-            .get_workflow_status(new_workflow_id)
-            .await
-            .unwrap();
-        assert_eq!(final_status, WorkflowStatus::Completed);
-    }
-
-    #[tokio::test]
-    async fn test_continue_as_new_rejects_non_snapshot_workflow() {
-        let store = InMemoryWorkflowEventStore::new();
-        let config = ExecutorConfig {
-            snapshot_interval: 0,
-            ..Default::default()
-        };
-        let mut executor = WorkflowExecutor::with_config(store, config);
-        executor.register::<CounterWorkflow>();
-
-        let input = CounterInput {
-            start: 0,
-            target: 10,
-        };
-        let workflow_id = executor
-            .start_workflow::<CounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        let result = executor.continue_as_new(workflow_id).await;
-
-        assert!(
-            matches!(result, Err(ExecutorError::ReplayError(_))),
-            "should fail for workflows without snapshot support"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_continue_as_new_rejects_terminal_workflow() {
-        let store = InMemoryWorkflowEventStore::new();
-        let executor = snap_executor(store, 3);
-
-        let input = CounterInput {
-            start: 10,
-            target: 5,
-        };
-        // Workflow completes immediately (start >= target)
-        let workflow_id = executor
-            .start_workflow::<SnapCounterWorkflow>(input, None)
-            .await
-            .unwrap();
-
-        let result = executor.continue_as_new(workflow_id).await;
-
-        assert!(
-            matches!(result, Err(ExecutorError::WorkflowCompleted(_))),
-            "should reject continue-as-new on completed workflow"
-        );
-    }
+    mod snapshot_tests;
 }

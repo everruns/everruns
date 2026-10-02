@@ -145,9 +145,42 @@ impl WorkflowRegistry {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```
+    /// use everruns_durable::prelude::*;
+    /// use serde_json::{Value, json};
+    ///
+    /// struct Noop;
+    ///
+    /// impl Workflow for Noop {
+    ///     const TYPE: &'static str = "noop";
+    ///     type Input = Value;
+    ///     type Output = Value;
+    ///
+    ///     fn new(_: Value) -> Self {
+    ///         Noop
+    ///     }
+    ///     fn on_start(&mut self) -> Vec<WorkflowAction> {
+    ///         vec![WorkflowAction::complete(json!(null))]
+    ///     }
+    ///     fn on_activity_completed(&mut self, _: &str, _: Value) -> Vec<WorkflowAction> {
+    ///         vec![]
+    ///     }
+    ///     fn on_activity_failed(&mut self, _: &str, _: &ActivityError) -> Vec<WorkflowAction> {
+    ///         vec![]
+    ///     }
+    ///     fn is_completed(&self) -> bool {
+    ///         true
+    ///     }
+    ///     fn result(&self) -> Option<Value> {
+    ///         Some(json!(null))
+    ///     }
+    /// }
+    ///
     /// let mut registry = WorkflowRegistry::new();
-    /// registry.register::<MyWorkflow>();
+    /// registry.register::<Noop>();
+    /// assert!(registry.contains("noop"));
+    /// assert!(registry.create("noop", json!({})).is_ok());
+    /// assert!(registry.create("missing", json!({})).is_err());
     /// ```
     pub fn register<W: Workflow>(&mut self) {
         let factory: WorkflowFactory = Box::new(|input: Value| {

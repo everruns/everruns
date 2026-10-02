@@ -1371,12 +1371,9 @@ jobs:
         if: ${{ matrix.shard == 'durable' }}
         run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --features postgres-tests -- --test-threads=1
 
-      # `agent_reliability_test` was audited for EVE-349 but still fails on a
-      # clean PostgreSQL-backed run; keep it out of required CI until its
-      # restart/reclaim scenarios are stabilized.
       - name: Run durable failpoint tests
         if: ${{ matrix.shard == 'durable' }}
-        run: cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
+        run: cargo test -p everruns-durable --test failure_injection_test --test agent_reliability_test --features "failpoints,postgres-tests" -- --test-threads=1
 
   # Slack live API tests — split out of the `durable` integration shard (EVE-1039).
   #

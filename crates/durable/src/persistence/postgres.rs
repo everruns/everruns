@@ -66,12 +66,11 @@ fn sanitize_json_null_bytes(mut value: serde_json::Value) -> serde_json::Value {
 ///
 /// # Example
 ///
-/// ```ignore
-/// use everruns_durable::PostgresWorkflowEventStore;
-/// use sqlx::PgPool;
-///
-/// let pool = PgPool::connect("postgres://localhost/mydb").await?;
-/// let store = PostgresWorkflowEventStore::new(pool);
+/// ```no_run
+/// # async fn run() -> Result<(), sqlx::Error> {
+/// let pool = sqlx::PgPool::connect("postgres://localhost/everruns").await?;
+/// let store = everruns_durable::PostgresWorkflowEventStore::new(pool);
+/// # Ok(()) }
 /// ```
 #[derive(Clone)]
 pub struct PostgresWorkflowEventStore {

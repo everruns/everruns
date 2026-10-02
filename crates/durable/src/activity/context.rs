@@ -34,23 +34,32 @@ pub enum HeartbeatError {
 ///
 /// # Example
 ///
-/// ```ignore
-/// async fn execute(&self, ctx: &ActivityContext, input: Input) -> Result<Output, ActivityError> {
-///     for i in 0..100 {
-///         // Check for cancellation
-///         if ctx.is_cancelled() {
-///             return Err(ActivityError::non_retryable("cancelled"));
-///         }
+/// ```
+/// use everruns_durable::{ActivityContext, ActivityError};
+/// use serde_json::json;
 ///
-///         // Do work...
-///         do_work(i).await?;
-///
-///         // Send heartbeat with progress
-///         ctx.heartbeat(Some(json!({"progress": i}))).await?;
+/// /// Process items, reporting progress and stopping when cancelled.
+/// async fn process(ctx: &ActivityContext, items: u32) -> Result<u32, ActivityError> {
+///     for i in 0..items {
+///         // `heartbeat` also fails once the activity is cancelled.
+///         ctx.heartbeat(Some(json!({ "progress": i })))
+///             .await
+///             .map_err(|e| ActivityError::non_retryable(e.to_string()))?;
 ///     }
-///
-///     Ok(Output { ... })
+///     Ok(items)
 /// }
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() {
+/// let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+/// let ctx = ActivityContext::new(uuid::Uuid::now_v7(), "batch".into(), 1, 3).with_heartbeat(tx);
+///
+/// assert_eq!(process(&ctx, 3).await.unwrap(), 3);
+/// assert_eq!(rx.recv().await.unwrap().details, Some(json!({ "progress": 0 })));
+///
+/// ctx.cancellation_handle().cancel();
+/// assert!(process(&ctx, 3).await.is_err());
+/// # }
 /// ```
 #[derive(Debug)]
 pub struct ActivityContext {
@@ -141,13 +150,23 @@ impl ActivityContext {
     ///
     /// This is useful for select! patterns:
     ///
-    /// ```ignore
-    /// tokio::select! {
-    ///     result = do_work() => { ... }
-    ///     _ = ctx.cancelled() => {
-    ///         return Err(ActivityError::non_retryable("cancelled"));
+    /// ```
+    /// use everruns_durable::{ActivityContext, ActivityError};
+    /// use std::time::Duration;
+    ///
+    /// async fn slow(ctx: &ActivityContext) -> Result<&'static str, ActivityError> {
+    ///     tokio::select! {
+    ///         _ = tokio::time::sleep(Duration::from_secs(60)) => Ok("done"),
+    ///         _ = ctx.cancelled() => Err(ActivityError::non_retryable("cancelled")),
     ///     }
     /// }
+    ///
+    /// # #[tokio::main(flavor = "current_thread")]
+    /// # async fn main() {
+    /// let ctx = ActivityContext::new(uuid::Uuid::now_v7(), "slow".into(), 1, 1);
+    /// ctx.cancellation_handle().cancel();
+    /// assert!(slow(&ctx).await.is_err());
+    /// # }
     /// ```
     pub async fn cancelled(&self) {
         loop {

@@ -12,10 +12,15 @@ tags:
 
 End-to-end reliability tests that verify agent execution survives infrastructure failures. Four failure domains: worker crashes, control plane restarts, worker↔CP network partitions, and CP↔DB network partitions.
 
-Status: audited in EVE-349. This binary is not part of required CI coverage
-yet because a clean PostgreSQL-backed run still fails several restart/reclaim
-scenarios; keep it as an explicit manual harness until those cases are
-stabilized.
+Status: runs in required CI (the durable PostgreSQL shard's failpoint step).
+It was kept out after the EVE-349 audit because its multi-step scenarios
+stalled: `WorkflowExecutor::process_workflow` replayed history but discarded
+the actions the replay produced, so the activity following a completion was
+never enqueued. Replay now applies every replayed action that has no
+recording event in history yet, which also makes re-processing after a crash
+idempotent. The extended DB outage scenario models the failpoint as it is
+placed: the claim commits and only its response is lost, so recovery goes
+through stale reclamation.
 
 ## Goals
 

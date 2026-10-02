@@ -97,7 +97,9 @@ Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `co
 - **Pre-load count check (snapshot path):** `count_events_after()` before `load_events_after()` rejects stale snapshots. Deletes the stale snapshot on rejection.
 - **Continue-as-new:** When a workflow exceeds `max_events_per_workflow`, it can roll over via `continue_as_new()`. This snapshots current state, creates a new workflow from the snapshot, archives old events, and marks the old workflow `continued_as_new` with a reference to the new workflow ID (`continued_as_new_id` column).
 
-See `crates/durable/src/engine/executor.rs` for `load_workflow_state()` and `continue_as_new()`.
+- **Action application:** replay re-runs every handler, so the workflow re-issues every action it ever requested. `process_workflow` applies only those without a recording event in history yet (`ActivityScheduled`, `TimerStarted`, `WorkflowCompleted`, and so on), counted per occurrence. This is how the follow-up to a just-appended completion gets scheduled, and it makes re-processing after a crash between appending an event and applying its actions idempotent.
+
+See `crates/durable/src/engine/executor.rs` for `load_workflow_state()`, `unrecorded_actions()`, and `continue_as_new()`.
 
 ### Task Claiming
 

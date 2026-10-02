@@ -918,7 +918,8 @@ async fn test_extended_db_outage_then_recovery() {
     // Complete step 1
     execute_one_task(&executor, "worker-1").await;
 
-    // DB goes down: claim fails
+    // DB goes down: the claim commits but its response is lost, so the
+    // worker sees an error while step 2 is held by a claim nobody runs.
     fail::cfg("postgres_claim_task_after_query", "return").unwrap();
 
     let result = store
@@ -929,8 +930,20 @@ async fn test_extended_db_outage_then_recovery() {
     // DB recovers
     fail::cfg("postgres_claim_task_after_query", "off").unwrap();
 
-    // Complete step 2 normally
-    execute_one_task(&executor, "worker-1").await;
+    // The orphaned claim is not handed out again while its heartbeat is fresh.
+    assert!(
+        !execute_one_task(&executor, "worker-1").await,
+        "orphaned claim should not be claimable before it goes stale"
+    );
+
+    // Stale reclamation returns it to the queue, and step 2 completes.
+    make_task_stale(store, wf_id).await;
+    let reclaimed = store
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+    assert_eq!(reclaimed.reclaimed_ids.len(), 1);
+    assert!(execute_one_task(&executor, "worker-1").await);
 
     let info = store.get_workflow_info(wf_id).await.unwrap();
     assert_eq!(info.status, WorkflowStatus::Completed);

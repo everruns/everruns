@@ -67,37 +67,76 @@ impl std::error::Error for WorkflowError {}
 ///
 /// # Example
 ///
-/// ```ignore
+/// An order that is validated, then charged. A validation failure fails the
+/// workflow; replaying the same events always yields the same actions.
+///
+/// ```
 /// use everruns_durable::prelude::*;
+/// use serde::{Deserialize, Serialize};
+/// use serde_json::{Value, json};
+///
+/// #[derive(Clone, Serialize, Deserialize)]
+/// struct Order {
+///     id: String,
+/// }
 ///
 /// struct OrderWorkflow {
-///     state: OrderState,
-///     order_id: String,
+///     order: Order,
+///     charged: Option<Value>,
+///     error: Option<WorkflowError>,
 /// }
 ///
 /// impl Workflow for OrderWorkflow {
-///     const TYPE: &'static str = "order_workflow";
-///     type Input = OrderInput;
-///     type Output = OrderResult;
+///     const TYPE: &'static str = "order";
+///     type Input = Order;
+///     type Output = Value;
 ///
-///     fn new(input: Self::Input) -> Self {
-///         Self {
-///             state: OrderState::Created,
-///             order_id: input.order_id,
-///         }
+///     fn new(order: Order) -> Self {
+///         Self { order, charged: None, error: None }
 ///     }
 ///
 ///     fn on_start(&mut self) -> Vec<WorkflowAction> {
-///         vec![WorkflowAction::ScheduleActivity {
-///             activity_id: "validate".into(),
-///             activity_type: "validate_order".into(),
-///             input: json!({ "order_id": self.order_id }),
-///             options: ActivityOptions::default(),
-///         }]
+///         vec![WorkflowAction::schedule_activity("validate", "validate_order", json!({ "id": self.order.id }))]
 ///     }
 ///
-///     // ... implement other methods
+///     fn on_activity_completed(&mut self, activity_id: &str, result: Value) -> Vec<WorkflowAction> {
+///         match activity_id {
+///             "validate" => vec![WorkflowAction::schedule_activity("charge", "charge_card", result)],
+///             _ => {
+///                 self.charged = Some(result.clone());
+///                 vec![WorkflowAction::complete(result)]
+///             }
+///         }
+///     }
+///
+///     fn on_activity_failed(&mut self, _: &str, error: &ActivityError) -> Vec<WorkflowAction> {
+///         let error = WorkflowError::new(&error.message);
+///         self.error = Some(error.clone());
+///         vec![WorkflowAction::fail(error)]
+///     }
+///
+///     fn is_completed(&self) -> bool {
+///         self.charged.is_some() || self.error.is_some()
+///     }
+///
+///     fn result(&self) -> Option<Value> {
+///         self.charged.clone()
+///     }
+///
+///     fn error(&self) -> Option<WorkflowError> {
+///         self.error.clone()
+///     }
 /// }
+///
+/// let mut order = OrderWorkflow::new(Order { id: "o-1".into() });
+/// assert_eq!(
+///     order.on_start(),
+///     vec![WorkflowAction::schedule_activity("validate", "validate_order", json!({ "id": "o-1" }))]
+/// );
+/// let next = order.on_activity_completed("validate", json!({ "id": "o-1", "amount": 42 }));
+/// assert!(matches!(&next[0], WorkflowAction::ScheduleActivity { activity_id, .. } if activity_id == "charge"));
+/// order.on_activity_completed("charge", json!({ "receipt": "r-1" }));
+/// assert!(order.is_completed());
 /// ```
 pub trait Workflow: Send + Sync + 'static {
     /// Unique type identifier for this workflow

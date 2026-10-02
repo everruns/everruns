@@ -23,44 +23,15 @@ use sqlx::postgres::PgListener;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
-use chrono::Utc;
 use everruns_durable::bench::{
     BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
-    ReportConfig,
+    ReportConfig, register_bench_worker,
 };
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, TaskDefinition, WorkerInfo, WorkflowEventStore,
+    PostgresWorkflowEventStore, TaskDefinition, WorkflowEventStore,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;
-
-async fn register_benchmark_worker(
-    store: &PostgresWorkflowEventStore,
-    worker_id: String,
-    activity_type: &str,
-) {
-    store
-        .register_worker(WorkerInfo {
-            id: worker_id,
-            worker_group: Some("bench".to_string()),
-            activity_types: vec![activity_type.to_string()],
-            max_concurrency: 1,
-            current_load: 0,
-            status: "active".to_string(),
-            accepting_tasks: true,
-            backpressure_reason: None,
-            started_at: Utc::now(),
-            last_heartbeat_at: Utc::now(),
-            hostname: None,
-            version: None,
-            metadata: None,
-            tasks_completed: 0,
-            tasks_failed: 0,
-            avg_task_duration_ms: None,
-        })
-        .await
-        .unwrap();
-}
 
 /// Get test database URL from environment or use default
 fn get_database_url() -> String {
@@ -167,12 +138,7 @@ async fn run_cold_start_scenario(pool: PgPool, config: ColdStartConfig) -> Arc<B
         let tasks_completed = tasks_completed.clone();
         let worker_name = format!("db-cold-start-worker-{}-{}", worker_id, workflow_id);
 
-        register_benchmark_worker(
-            store.as_ref(),
-            worker_name.clone(),
-            "db_cold_start_activity",
-        )
-        .await;
+        register_bench_worker(store.as_ref(), &worker_name, "db_cold_start_activity").await;
 
         worker_handles.push(tokio::spawn(async move {
             loop {
@@ -294,9 +260,9 @@ async fn run_push_notification_scenario(
     let mut listener = PgListener::connect_with(&pool).await.unwrap();
     listener.listen("task_available").await.unwrap();
     let worker_name = format!("push-notification-worker-{}", workflow_id);
-    register_benchmark_worker(
+    register_bench_worker(
         store.as_ref(),
-        worker_name.clone(),
+        &worker_name,
         "db_push_notification_activity",
     )
     .await;

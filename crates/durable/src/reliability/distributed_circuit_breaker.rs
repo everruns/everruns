@@ -81,32 +81,37 @@ impl<'a> CircuitBreakerPermit<'a> {
     }
 }
 
-/// Distributed circuit breaker that shares state via PostgreSQL
+/// Distributed circuit breaker that shares state through the store
+///
+/// Every process that builds a breaker with the same key sees the same state, so
+/// one service outage trips the breaker for all workers.
 ///
 /// # Example
 ///
-/// ```ignore
-/// use everruns_durable::reliability::{DistributedCircuitBreaker, CircuitBreakerConfig};
+/// ```
+/// use std::sync::Arc;
+/// use everruns_durable::reliability::{
+///     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker,
+/// };
+/// use everruns_durable::InMemoryWorkflowEventStore;
 ///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), CircuitBreakerError> {
 /// let breaker = DistributedCircuitBreaker::new(
-///     "external_service",
-///     CircuitBreakerConfig::default(),
-///     store,
+///     "payments-api",
+///     CircuitBreakerConfig::new().with_failure_threshold(2),
+///     Arc::new(InMemoryWorkflowEventStore::new()),
 /// );
 ///
-/// // Try to make a call
-/// match breaker.allow().await {
-///     Ok(permit) => {
-///         match make_external_call().await {
-///             Ok(result) => permit.success().await?,
-///             Err(e) => permit.failure().await?,
-///         }
-///     }
-///     Err(CircuitBreakerError::Open) => {
-///         // Circuit is open, fail fast
-///         return Err("Service unavailable");
-///     }
+/// // Each call takes a permit and reports how it went.
+/// for _ in 0..2 {
+///     let permit = breaker.allow().await?;
+///     permit.failure().await?;
 /// }
+///
+/// assert_eq!(breaker.state().await?, CircuitState::Open);
+/// assert!(matches!(breaker.allow().await, Err(CircuitBreakerError::Open)));
+/// # Ok(()) }
 /// ```
 pub struct DistributedCircuitBreaker {
     /// Unique key identifying this circuit breaker

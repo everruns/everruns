@@ -16,4 +16,4 @@ pub use distributed_circuit_breaker::{
     CircuitBreakerError, CircuitBreakerPermit, DistributedCircuitBreaker,
 };
 pub use retry::RetryPolicy;
-pub use timeout::{TimeoutConfig, TimeoutError, TimeoutManager};
+pub use timeout::{TaskTimingInfo, TimeoutConfig, TimeoutError, TimeoutManager, TimeoutType};

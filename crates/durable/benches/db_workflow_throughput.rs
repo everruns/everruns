@@ -23,7 +23,7 @@ use tokio::runtime::Runtime;
 
 use everruns_durable::bench::{
     BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
-    ReportConfig, clear_terminal_progress, set_terminal_progress,
+    ReportConfig, clear_terminal_progress, register_bench_worker, set_terminal_progress,
 };
 use everruns_durable::persistence::{
     PostgresWorkflowEventStore, TaskDefinition, WorkflowEventStore,
@@ -152,9 +152,10 @@ impl DbWorkflowScenario {
             let tasks_completed_counter = metrics.tasks_completed.clone();
             let pb = pb.clone();
 
-            handles.push(tokio::spawn(async move {
-                let worker_name = format!("db-wf-worker-{}", worker_id);
+            let worker_name = format!("db-wf-worker-{}", worker_id);
+            register_bench_worker(store.as_ref(), &worker_name, &activity_type).await;
 
+            handles.push(tokio::spawn(async move {
                 loop {
                     // Check if all workflows are done
                     if completed_workflows.load(Ordering::Relaxed) >= workflow_count as u64 {
