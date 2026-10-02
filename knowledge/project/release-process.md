@@ -227,11 +227,21 @@ crates.io presence, so re-runs are idempotent and a version already published is
 skipped. `workflow_dispatch` with `dry_run: true` previews the set.
 
 **A halted cascade is resumed at the same commit or not at all.** Re-running
-Crate Release on the release commit finishes it. A fix pushed to `main` cannot
-finish it at the same version: siblings already published came from the
-release commit, so the plan reads the version as cut earlier and holds back
-every never-published crate and its dependants. When the fix has to change
-source, cut the next patch version instead (v0.34.0 was finished by v0.34.1).
+Crate Release on the release commit finishes it. A run at any other commit
+publishes nothing for that version: once a sibling is on crates.io from a commit
+other than the one its release tag names, the plan holds back every crate still
+at that version, previously published ones included. A version is published from
+one tree, never finished from a later one. Before v0.34.2 only never-published
+crates were held back, and runs triggered by later pushes to `main` finished
+0.34.1 from three different commits. When the fix has to change source, cut the
+next patch version instead (v0.34.0 was finished by v0.34.1, v0.34.1 by v0.34.2).
+
+**Every crate tag is created up front, in one atomic push.** GitHub refuses a
+`GITHUB_TOKEN` push of a ref whose tree has different workflow files from the
+default branch, so a tag pushed an hour into a cascade fails as soon as any PR
+touching `.github/workflows/` merges. Pushing all tags right after the release
+commit lands means a re-run only reuses them, and a refused push fails before
+anything publishes.
 
 **Publish Crate** validates the selected manifest version, derives internal pins
 from Cargo metadata, and publishes only that package. Publishing cannot be
