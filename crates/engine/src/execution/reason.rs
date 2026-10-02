@@ -20,8 +20,8 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Instant;
 use uuid::Uuid;
+use web_time::Instant;
 
 fn add_compaction_cost(usage: &mut TokenUsage, compaction_cost: f64) {
     let generation_cost = usage.effective_cost_usd();
@@ -100,10 +100,7 @@ use stream_state::{
 use transcript::repair_dangling_tool_calls;
 
 fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    everruns_provider::rt::unix_now_secs()
 }
 
 /// Input for ReasonAtom
@@ -1357,7 +1354,7 @@ impl ReasonAtom {
             let stream_result = if let Some(remaining) =
                 remaining_retry_time(&retry_config, retry_started_at)
             {
-                match tokio::time::timeout(
+                match everruns_provider::rt::timeout(
                     remaining,
                     chat_driver.chat_completion_stream(
                         &crate::ProviderEndpoint::default(),
@@ -1472,7 +1469,7 @@ impl ReasonAtom {
                         "ReasonAtom: transient provider failure before stream, retrying"
                     );
                     stream_retry_metadata.record_retry(wait_duration, None);
-                    tokio::time::sleep(wait_duration).await;
+                    everruns_provider::rt::sleep(wait_duration).await;
                     continue 'stream_attempt;
                 }
                 Err(error) => {
@@ -1525,9 +1522,9 @@ impl ReasonAtom {
                 .unwrap_or(std::time::Duration::from_secs(120));
             let initial_stall_timeout = remaining_retry_time(&retry_config, retry_started_at)
                 .map_or(stall_timeout, |remaining| remaining.min(stall_timeout));
-            let mut stall_sleep = Box::pin(tokio::time::sleep(initial_stall_timeout));
-            let mut keepalive_ticker = tokio::time::interval(std::time::Duration::from_secs(12));
-            keepalive_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut stall_sleep = Box::pin(everruns_provider::rt::sleep(initial_stall_timeout));
+            let mut keepalive_ticker =
+                everruns_provider::rt::Interval::new(std::time::Duration::from_secs(12));
             keepalive_ticker.tick().await; // consume immediate first tick
             let mut last_stream_heartbeat = Instant::now();
             // Tracks the wall-clock time of the last actual token received.
@@ -1598,7 +1595,7 @@ impl ReasonAtom {
                                 "ReasonAtom: provider stream stall, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
-                            tokio::time::sleep(wait_duration).await;
+                            everruns_provider::rt::sleep(wait_duration).await;
                             continue 'stream_attempt;
                         }
                         compaction_lifecycle
@@ -1630,9 +1627,7 @@ impl ReasonAtom {
                 replay_state.observe(&event);
                 let advanced_stall_deadline = advances_stall_deadline(&event);
                 if advanced_stall_deadline {
-                    stall_sleep
-                        .as_mut()
-                        .reset(tokio::time::Instant::now() + stall_timeout);
+                    stall_sleep = Box::pin(everruns_provider::rt::sleep(stall_timeout));
                     last_token_at_unix = unix_now_secs();
                 }
                 match event {
@@ -1982,7 +1977,7 @@ impl ReasonAtom {
                                 "ReasonAtom: transient stream error before output, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
-                            tokio::time::sleep(wait_duration).await;
+                            everruns_provider::rt::sleep(wait_duration).await;
                             continue 'stream_attempt;
                         }
 

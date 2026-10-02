@@ -61,6 +61,7 @@ pub mod openresponses_types;
 pub mod provider;
 mod provider_managed;
 pub mod reasoning;
+pub mod rt;
 pub mod runtime_provider;
 pub mod stream_accumulator;
 mod stream_error;

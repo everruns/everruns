@@ -20,7 +20,8 @@
 //! Ported from yolop, where this gate sits between the turn loop and the
 //! terminal/ACP hosts.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use crate::turn::TurnStopReason;
 

@@ -1,7 +1,7 @@
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use std::time::Instant;
 use uuid::Uuid;
+use web_time::Instant;
 
 use crate::compact::{CompactRequest, messages_to_compact_input};
 use crate::driver_registry::{Message, MessageContent, MessageRole};
