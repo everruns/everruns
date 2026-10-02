@@ -128,6 +128,15 @@ runtime.
   workspace through `ServerBuilder::microvm`: the per-session microVM is the
   isolation boundary, and stacking bashkit inside it would only remove real
   tools.
+- **celld keeps durability in the cell, not the container.** A celld container
+  loses its disk whenever its Durable Object moves, so
+  `everruns-serve-celld` only makes serve's state portable (a tar snapshot,
+  SQLite through the backup API) and observable (boot id, busy). The
+  supervising Durable Object holds the snapshot and a journal of mutating
+  requests, and replays the journal into a fresh container. Turn-level, not
+  event-level: the engine does not build for wasm32 yet, so it cannot run in
+  the cell and write each event there. Session creation is not journaled,
+  because serve mints the id, so it is acknowledged only after a snapshot.
 
 ## Rejected
 

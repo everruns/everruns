@@ -3530,6 +3530,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-serve-celld"
+version = "0.34.1"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "everruns",
+ "everruns-serve",
+ "reqwest",
+ "rusqlite",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "tokio",
+ "tower",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-serve-macros"
 version = "0.34.1"
 dependencies = [
@@ -7866,6 +7885,17 @@ dependencies = [
  "everruns-serve-agentcore",
  "everruns-serve-build",
  "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "serve-example-celld"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-build",
+ "everruns-serve-celld",
  "serde_json",
  "tokio",
 ]
