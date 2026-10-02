@@ -144,7 +144,9 @@ function AgentEndpointForm({
         items={[
           { label: "Agents", href: "/agents" },
           { label: agentName, href: returnHref },
-          { label: `${getChannelTypeDisplayName(endpoint.channel_type)} endpoint` },
+          {
+            label: `${getChannelTypeDisplayName(endpoint.channel_type)} endpoint`,
+          },
         ]}
       />
       <PageMasthead
@@ -182,7 +184,12 @@ function AgentEndpointForm({
             <Button
               type="button"
               variant="outline"
-              onClick={() => publishEndpoint.mutate({ endpointId, publish: !lifecycle.isLive })}
+              onClick={() =>
+                publishEndpoint.mutate({
+                  endpointId,
+                  publish: !lifecycle.isLive,
+                })
+              }
               disabled={!canDangerous || !formState.enabled || publishEndpoint.isPending}
             >
               {lifecycle.isLive ? "Unpublish" : "Publish"}
@@ -235,7 +242,7 @@ function AgentEndpointForm({
                 <NoticeDescription>
                   The endpoint was saved. {slackInstallFailureMessage}{" "}
                   {slackInstallAvailable
-                    ? "Use Connect to Slack to try again, or configure Slack manually."
+                    ? "Use Add to Slack to try again, or configure Slack manually."
                     : "Configure Slack manually."}
                 </NoticeDescription>
               </Notice>

@@ -20,8 +20,24 @@ Everruns connects an Agent to Slack through an Agent-owned endpoint. The endpoin
 - Create an active Agent.
 - Give Everruns a public HTTPS origin. Set `PUBLIC_APP_URL` to that origin and restart Everruns.
 - Ask a Slack workspace administrator for permission to install an app.
+- An organization administrator connects your Slack workspace once; see [Connect a Slack Workspace](#connect-a-slack-workspace).
 
 Slack cannot verify `localhost`. For local development, expose Everruns through a public HTTPS tunnel before you create the Slack app.
+
+## Connect a Slack Workspace
+
+Every Agent you put in Slack gets its own Slack app, with its own name and its own entry in Slack's Agents menu. Everruns creates those apps for you in your workspace. To do that it needs a Slack configuration token for the workspace, which an organization administrator adds once:
+
+1. Open **Settings** > **Slack workspaces**.
+2. Select **Open api.slack.com/apps**, signed in to the workspace you want your Agents in.
+3. Scroll to **Your App Configuration Tokens**, select **Generate Token**, and pick the workspace.
+4. Copy the **Refresh Token** (it starts `xoxe-1-`) and paste it into Everruns. Do not copy the access token above it.
+
+Everruns connects the workspace as soon as you paste the token, rotates it immediately, and stores only the encrypted replacement. You do not need to repeat this for each Agent.
+
+The token can create and change any Slack app in that workspace, and your Slack workspace may require an administrator to generate it. An organization can connect more than one workspace.
+
+**Disconnecting a workspace** does not affect Agents already in it: each has its own Slack app and keeps working. Until you connect the workspace again, you cannot add Agents to it or update their Slack apps.
 
 ## Connect an Agent to Slack
 
@@ -31,8 +47,9 @@ Slack cannot verify `localhost`. For local development, expose Everruns through 
 2. Select **Integrations**.
 3. Select **Add endpoint**.
 4. Select **Slack**.
-5. Choose the session strategy and reply mode. Leave the Slack credentials empty.
-6. Select **Save endpoint**.
+5. If your organization has connected more than one Slack workspace, choose one.
+6. Choose the session strategy and reply mode. Leave the Slack credentials empty.
+7. Select **Save endpoint**.
 
 Everruns opens the endpoint editor after it saves the endpoint.
 
@@ -42,11 +59,13 @@ Select **Publish** in the endpoint editor. Publishing makes only this endpoint l
 
 Publish before you create the Slack app. The generated Slack manifest contains the endpoint's Request URL, and Slack verifies that URL when it creates the app.
 
-### 3. Connect to Slack
+### 3. Add the Agent to Slack
 
-Select **Connect to Slack** in the endpoint editor. Approve the Slack consent screen and choose a workspace. Everruns creates and installs the Slack app, then stores its signing secret, bot token, and workspace ID on this endpoint.
+Select **Add to Slack** in the endpoint editor. Everruns creates the Agent's Slack app in the chosen workspace and opens Slack's consent screen with that workspace selected. Approve it, and Everruns stores the app's signing secret, bot token, and workspace ID on this endpoint. The endpoint then shows **Live in Slack** with an **Open in Slack** link.
 
-Some self-hosted deployments do not configure one-click Slack app creation. If Everruns reports that one-click setup is unavailable:
+If your Slack workspace requires administrators to approve apps, Slack sends an approval request instead of installing straight away.
+
+Deployments without `SECRETS_ENCRYPTION_KEY` do not create Slack apps. If Everruns reports that one-click setup is unavailable:
 
 1. Return to the Agent's **Integrations** tab.
 2. Expand the live Slack endpoint.
@@ -74,7 +93,7 @@ Do not replace `{endpoint_id}` with an Agent ID or an App ID.
 
 ## Configure a Slack App Manually
 
-Use this flow only when you cannot use **Connect to Slack** or **Create Slack app**.
+Use this flow only when you cannot use **Add to Slack** or **Create Slack app**.
 
 1. Create and publish a Slack endpoint from the Agent's **Integrations** tab.
 2. Copy its Request URL from the expanded endpoint row.

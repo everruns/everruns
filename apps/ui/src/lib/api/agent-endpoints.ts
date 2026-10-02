@@ -107,16 +107,35 @@ export async function getSlackInstallCapability(): Promise<SlackInstallCapabilit
   return response.data;
 }
 
-export async function setSlackConnection(refreshToken: string): Promise<void> {
-  await api.put("/v1/slack/connection", { refresh_token: refreshToken });
+/** A Slack workspace the organization has connected. Never carries a token. */
+export interface SlackWorkspace {
+  id: string;
+  /** `null` only briefly, for a connection made before workspaces were recorded. */
+  team_id: string | null;
+  team_name: string | null;
+  status: "connected" | "reconnect_required";
+  connected_at: string;
 }
 
-export async function testSlackConnection(): Promise<void> {
-  await api.post("/v1/slack/connection/test");
+export async function listSlackWorkspaces(): Promise<SlackWorkspace[]> {
+  const response = await api.get<SlackWorkspace[]>("/v1/slack/workspaces");
+  return response.data;
 }
 
-export async function clearSlackConnection(): Promise<void> {
-  await api.delete("/v1/slack/connection");
+/** Connects whichever workspace the refresh token belongs to. Admin only. */
+export async function connectSlackWorkspace(refreshToken: string): Promise<SlackWorkspace> {
+  const response = await api.post<SlackWorkspace>("/v1/slack/workspaces", {
+    refresh_token: refreshToken,
+  });
+  return response.data;
+}
+
+export async function testSlackWorkspace(id: string): Promise<void> {
+  await api.post(`/v1/slack/workspaces/${id}/test`);
+}
+
+export async function disconnectSlackWorkspace(id: string): Promise<void> {
+  await api.delete(`/v1/slack/workspaces/${id}`);
 }
 
 /**
@@ -125,11 +144,20 @@ export async function clearSlackConnection(): Promise<void> {
  * Keyed on the endpoint's own public id rather than the agent, because the
  * route is the same `/v1/e/{endpoint}` family Slack itself calls back into.
  *
+ * `teamId` picks which connected workspace the agent's app is created in; it
+ * may be omitted while the organization has connected exactly one.
+ *
  * Answers 501 when the deployment holds no Slack app configuration token —
  * the self-hosted steady state, where the manual fields are the supported
  * path rather than a fallback from a failure.
  */
-export async function beginSlackInstall(endpointId: string): Promise<BeginSlackInstallResult> {
-  const response = await api.post<BeginSlackInstallResult>(`/v1/e/${endpointId}/slack/install`);
+export async function beginSlackInstall(
+  endpointId: string,
+  teamId?: string | null,
+): Promise<BeginSlackInstallResult> {
+  const response = await api.post<BeginSlackInstallResult>(
+    `/v1/e/${endpointId}/slack/install`,
+    teamId ? { team_id: teamId } : undefined,
+  );
   return response.data;
 }

@@ -1,11 +1,13 @@
 "use client";
 
+import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createAgentEndpoint,
   deleteAgentEndpoint,
   getSlackInstallCapability,
   listAgentEndpoints,
+  listSlackWorkspaces,
   publishAgentEndpoint,
   triggerAgentEndpoint,
   unpublishAgentEndpoint,
@@ -50,8 +52,12 @@ function useEndpointMutation<TVariables, TResult>(
   return useMutation({
     mutationFn,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.agentEndpoints.all(agentId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agentEndpoints.all(agentId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.detail(agentId),
+      });
     },
   });
 }
@@ -66,6 +72,31 @@ export function useSlackInstallCapability() {
     queryKey: ["slack-install-capability"],
     queryFn: getSlackInstallCapability,
   });
+}
+
+export const SLACK_WORKSPACES_QUERY_KEY = ["slack-workspaces"] as const;
+
+export function useSlackWorkspaces(enabled = true) {
+  return useQuery({
+    queryKey: SLACK_WORKSPACES_QUERY_KEY,
+    queryFn: listSlackWorkspaces,
+    enabled,
+  });
+}
+
+/** Refresh everything that depends on which workspaces are connected. */
+export function useInvalidateSlackWorkspaces() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: SLACK_WORKSPACES_QUERY_KEY }),
+        queryClient.invalidateQueries({
+          queryKey: ["slack-install-capability"],
+        }),
+      ]),
+    [queryClient],
+  );
 }
 
 export function useUpdateAgentEndpoint(agentId: string, endpointId: string) {

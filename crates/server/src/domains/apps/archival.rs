@@ -27,8 +27,14 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
             // state check exists to withhold — this redaction runs on keys at
             // this level only, so a nested secret is not covered by the loop
             // below (EVE-1069).
-            if map.remove("provisioned_app").is_some() {
+            if let Some(provisioned) = map.remove("provisioned_app") {
                 map.insert("slack_app_provisioned".to_string(), Value::Bool(true));
+                // The app id is public — it is in every URL of the app's Slack
+                // page — and it is what lets the UI link straight into the
+                // agent in Slack. Everything else in the object stays withheld.
+                if let Some(app_id) = provisioned.get("app_id").and_then(Value::as_str) {
+                    map.insert("slack_app_id".to_string(), Value::String(app_id.to_string()));
+                }
             }
             for (key, flag) in [
                 ("signing_secret", "signing_secret_configured"),
@@ -274,6 +280,8 @@ mod redaction_tests {
             config.get("slack_app_provisioned"),
             Some(&Value::Bool(true))
         );
+        // The public app id survives, so the UI can link into Slack.
+        assert_eq!(config.get("slack_app_id"), Some(&json!("A0123")));
         // The flat secrets keep their existing treatment.
         assert!(!rendered.contains("shhh"), "{rendered}");
         assert_eq!(

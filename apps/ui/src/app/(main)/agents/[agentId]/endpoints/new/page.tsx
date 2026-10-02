@@ -121,7 +121,10 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
                   return;
                 }
                 try {
-                  const { authorize_url } = await beginSlackInstall(endpoint.id);
+                  const { authorize_url } = await beginSlackInstall(
+                    endpoint.id,
+                    formState.slackInstallTeamId || null,
+                  );
                   window.location.href = authorize_url;
                 } catch (caught) {
                   const reason =

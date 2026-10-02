@@ -587,6 +587,8 @@ export interface SlackChannelConfig {
   bot_token_configured?: boolean;
   channel_id?: string;
   team_id?: string;
+  /** Public id of the Slack app Everruns created for this endpoint (read-only). */
+  slack_app_id?: string;
   session_strategy: SessionStrategy;
   reply_mode?: SlackReplyMode;
   webhook_verified_at?: string | null;

@@ -16,6 +16,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
+import { SlackIcon } from "@/components/icons/slack-icon";
 
 interface NavItem {
   name: string;
@@ -50,6 +51,12 @@ const settingsSections: NavSection[] = [
         href: "/settings/members",
         icon: Users,
         description: "View and manage team members",
+      },
+      {
+        name: "Slack workspaces",
+        href: "/settings/slack",
+        icon: SlackIcon,
+        description: "Connect Slack workspaces your agents can join",
       },
       {
         name: "Features",

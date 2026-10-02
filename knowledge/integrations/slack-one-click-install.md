@@ -166,6 +166,25 @@ The consequence is that per-agent one-click goes through the partner-reserved
 manager app or not at all, and the customer-supplied token path is the design
 until then.
 
+**A workspace is connected once, by an admin, as organization setup.** An
+organization connects any number of Slack workspaces in settings; each
+connection records which workspace it is (Slack's rotate response carries
+`team_id`), so the UI can name it and the consent screen can be pre-selected
+with `team=`. Builders putting an agent in Slack only choose among connected
+workspaces and never handle a token. With one workspace there is nothing to
+choose; with several the server refuses to guess, so an agent cannot land in
+the wrong workspace because a second one was connected later.
+
+**An endpoint is pinned to the workspace its app was created in.** An app lives
+in exactly one workspace, so retries, consent and reaping all target that one.
+A changed choice before install reaps the unused app and creates a fresh one; an
+app already installed is never reaped to satisfy a changed choice.
+
+**Disconnecting a workspace does not take agents offline.** Each agent app holds
+its own bot token, independent of the configuration token. Disconnecting removes
+only the ability to create agent apps there or update existing ones, and the UI
+says so before it happens.
+
 **One-click is an OSS capability, not a SaaS feature.** A self-hosted deployment
 has a workspace and can generate a config token, so it gets the same path. Only
 configuration differs.
@@ -227,9 +246,10 @@ reverse-engineering.
 
 - `crates/server/src/slack_provisioning.rs` — `configure`, the two early returns above, the provisioner, and the supervised `slack_token_rotation` sweep
 - `crates/platform/src/slack_provisioning.rs` — the `SlackAppProvisioner` trait and its unavailable default
-- `crates/server/src/storage/org_slack_connections.rs` — per-organization connection storage; migration `145_org_slack_connections.sql`
+- `crates/server/src/storage/org_slack_connections.rs` — per-workspace connection storage; migrations `145`, `146` and `156`
 - `crates/server/src/api/slack_install.rs` — install and connection routes, and their deliberately different auth
 - `crates/server/src/api/slack_events/manifest.rs` — manifest generation and the endpoint URLs it declares
-- `apps/ui/src/components/apps/channel-form.tsx` — the setup states the capability drives
+- `apps/ui/src/components/apps/channel-form.tsx` — the setup states the capability drives, and the workspace choice
+- `apps/ui/src/components/slack/slack-workspaces.tsx` — the connect wizard and token-shape check; the settings page lives at `apps/ui/src/app/(main)/settings/slack/`
 - [Slack Integration Modernization](slack-modernization.md) — where setup ordering was decided
 - [Slack Agent Actions](slack-agent-actions.md) — the capability and approval work this sits beside
