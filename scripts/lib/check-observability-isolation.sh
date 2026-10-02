@@ -64,6 +64,7 @@ CLEAN_CRATES=(
   everruns-mai
   everruns-fireworks
   everruns-meta
+  everruns-drivers
 )
 for crate in "${CLEAN_CRATES[@]}"; do
   tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)

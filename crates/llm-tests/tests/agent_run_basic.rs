@@ -47,7 +47,10 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
 #[case::openrouter_gpt6_luna(OPENROUTER_GPT6_LUNA)]
-#[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
+#[case::fireworks_kimi_k3(FIREWORKS_KIMI_K3)]
+#[case::vercel_glm_46(VERCEL_GLM_46)]
+#[case::cloudflare_llama_33_70b(CLOUDFLARE_LLAMA_33_70B)]
+#[case::bedrock_haiku(BEDROCK_HAIKU)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 #[tokio::test]
 async fn test_basic_completion(#[case] config: ProviderModelConfig) {
@@ -101,7 +104,10 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
 #[case::openrouter_gpt6_luna(OPENROUTER_GPT6_LUNA)]
-#[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
+#[case::fireworks_kimi_k3(FIREWORKS_KIMI_K3)]
+#[case::vercel_glm_46(VERCEL_GLM_46)]
+#[case::cloudflare_llama_33_70b(CLOUDFLARE_LLAMA_33_70B)]
+#[case::bedrock_haiku(BEDROCK_HAIKU)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 #[tokio::test]
 async fn test_tool_call(#[case] config: ProviderModelConfig) {

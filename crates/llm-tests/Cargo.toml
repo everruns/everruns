@@ -33,6 +33,7 @@ everruns-anthropic = { path = "../drivers/anthropic" }
 everruns-gemini = { path = "../drivers/gemini" }
 everruns-bedrock = { path = "../drivers/bedrock" }
 everruns-meta = { path = "../drivers/meta" }
+everruns-drivers = { path = "../drivers/drivers", features = ["cloudflare", "vercel"] }
 everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 

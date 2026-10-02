@@ -523,6 +523,8 @@ re-executes a completed tool.
 | Microsoft MAI driver | `crates/drivers/mai/src/driver.rs` |
 | Fireworks AI driver | `crates/drivers/fireworks/src/driver.rs` |
 | Meta Model API driver | `crates/drivers/meta/src/driver.rs` |
+| Cloudflare AI Gateway driver | `crates/drivers/drivers/src/cloudflare.rs` |
+| Vercel AI Gateway driver | `crates/drivers/drivers/src/vercel.rs` |
 | Error handling | `crates/engine/src/execution/reason.rs` |
 
 ## OpenAI Driver Variants
@@ -564,6 +566,37 @@ through `previous_response_id`, and discovers models from the host-gated
 `/v1/models` endpoint. Profile gating enables Meta's native message phases and
 hosted tool search only on the direct `meta` surface; gateway aliases fall back
 to client-side transcript replay and tool search.
+
+## Gateway Drivers (`everruns-drivers`)
+
+Cloudflare AI Gateway and Vercel AI Gateway front many upstream vendors behind one
+OpenAI-compatible endpoint, so neither needs a wire implementation. Both live as feature-gated
+modules in one crate rather than a package each; the crate's
+[README](../../crates/drivers/drivers/README.md) owns the membership rule and when a vendor
+graduates out of it.
+
+Which endpoint each speaks was settled by measurement, and the losing options fail in ways worth
+recording because the documentation does not predict them.
+
+Vercel serves the Open Responses spec at `/v1/responses`, so it uses the shared Open Responses
+driver. Model ids are namespaced (`provider/model`), and the gateway's own `/models` catalog is
+synced, host-gated like the other drivers.
+
+Cloudflare uses Chat Completions on its account-scoped AI REST API. Its `/compat` endpoint is
+deprecated by Cloudflare for single-model calls, and of the four formats the REST API offers only
+Chat Completions both serves the whole catalog and streams:
+
+| Endpoint | Why not |
+| --- | --- |
+| `/ai/v1/responses` | Rejects Workers AI models: a `@cf/` model answers HTTP 400 asking for `prompt` or `messages`, because the gateway does not translate them into the Responses shape |
+| `/ai/run` | Cannot stream. With `stream: true` it answers `content-type: application/json` and an empty `{"result":{}}` body — no events, HTTP 200, no error |
+| `/ai/v1/messages` | Excludes Workers AI models |
+
+Cloudflare's base URL is derived from the account id rather than hand-written, since its shape is
+fixed; the gateway is selected by the `cf-aig-gateway-id` header rather than the URL, and the
+account's own API token (Account > Workers AI > Read) bills the whole call, so no upstream vendor
+keys are involved. Neither gateway serves a model catalog on the surface Everruns uses, so
+discovery declines rather than reporting an empty one.
 
 ## Microsoft MAI Driver (`everruns-mai`)
 

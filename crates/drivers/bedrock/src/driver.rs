@@ -248,7 +248,7 @@ impl ChatDriver for BedrockChatDriver {
         req = req.inference_config(inference_cfg);
 
         let response = req.send().await.map_err(|e| {
-            let msg = format!("{e}");
+            let msg = error_chain(&e);
             if is_too_large(&msg) {
                 AgentLoopError::request_too_large(msg)
             } else {
@@ -256,7 +256,7 @@ impl ChatDriver for BedrockChatDriver {
                 // kind from AWS SDK exception names in the message text.
                 AgentLoopError::llm_kind(
                     LlmErrorKind::from_error_text(&msg),
-                    format!("Bedrock ConverseStream failed: {e}"),
+                    format!("Bedrock ConverseStream failed: {msg}"),
                 )
             }
         })?;
@@ -764,6 +764,30 @@ fn json_to_document(value: Value) -> Document {
 // ============================================================================
 // Error classification
 // ============================================================================
+
+/// Render an AWS SDK error with its source chain.
+///
+/// `SdkError`'s `Display` is a bare category — a failed `ConverseStream` reads
+/// only "service error", and the reason (`AccessDeniedException`,
+/// `ValidationException`, the model id, the message) lives in the sources
+/// behind it. Formatting with `{e}` alone throws that away, leaving an error
+/// nothing can be diagnosed from, and `LlmErrorKind::from_error_text` nothing
+/// to classify.
+fn error_chain(error: &dyn std::error::Error) -> String {
+    let mut rendered = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        let text = cause.to_string();
+        // Skip a link that only repeats what is already rendered; the SDK
+        // wraps some errors in a same-message layer.
+        if !text.is_empty() && !rendered.contains(&text) {
+            rendered.push_str(": ");
+            rendered.push_str(&text);
+        }
+        source = cause.source();
+    }
+    rendered
+}
 
 fn is_too_large(msg: &str) -> bool {
     let lower = msg.to_lowercase();
