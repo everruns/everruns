@@ -12,6 +12,7 @@ pub mod credentials;
 pub mod health_check;
 pub mod queries;
 pub mod types;
+pub(crate) mod version_policy;
 
 pub use commands::*;
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};

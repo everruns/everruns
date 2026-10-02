@@ -5,7 +5,8 @@
 // request DTOs below are the flat shape callers send, which commands normalize.
 
 use chrono::{DateTime, Utc};
-use everruns_platform::{AgentTriggerType, SessionBinding, TriggerEventFilter};
+use everruns_platform::{AgentTriggerType, AgentVersionPolicy, SessionBinding, TriggerEventFilter};
+use everruns_provider::typed_id::AgentVersionId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
@@ -89,6 +90,15 @@ pub struct CreateAgentTriggerRequest {
     /// Whether the trigger is active on creation (default `true`).
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Which Agent version sessions started by this trigger run. Omitted means
+    /// `default` (the agent's default version).
+    #[serde(default)]
+    pub agent_version_policy: Option<AgentVersionPolicy>,
+    /// Version to run when `agent_version_policy` is `pinned`. Must be a saved
+    /// version of this agent.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
+    pub agent_version_id: Option<AgentVersionId>,
 }
 
 /// Request to update a trigger. Only provided fields change; the rest are
@@ -144,6 +154,14 @@ pub struct UpdateAgentTriggerRequest {
     /// Replacement enabled state.
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Replacement version policy. `pinned` keeps the current pin when
+    /// `agent_version_id` is omitted; `default` or `latest` clears the pin.
+    #[serde(default)]
+    pub agent_version_policy: Option<AgentVersionPolicy>,
+    /// Version to pin. Only valid with policy `pinned`.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
+    pub agent_version_id: Option<AgentVersionId>,
 }
 
 fn default_timezone() -> String {

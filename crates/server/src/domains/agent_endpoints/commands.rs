@@ -1,6 +1,7 @@
 use super::types::{CreateAgentEndpointRequest, UpdateAgentEndpointRequest};
 use super::validation::{merge_preserved_secret_fields, normalize_and_validate_channel_config};
 use crate::api::app_ingress::{endpoint_liveness, row_to_ingress};
+use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::apps::redact_channel_for_response;
 use crate::domains::common::*;
@@ -35,8 +36,18 @@ async fn resolve_agent(
 }
 
 fn row_to_endpoint(ctx: &Ctx, row: IngressEndpointRow) -> Result<AppChannel, CommandError> {
-    let (_, endpoint) = row_to_ingress(ctx.encryption.as_ref(), row).map_err(classify_anyhow)?;
-    Ok(redact_channel_for_response(endpoint.into_channel()))
+    let (context, endpoint) =
+        row_to_ingress(ctx.encryption.as_ref(), row).map_err(classify_anyhow)?;
+    Ok(redact_channel_for_response(endpoint.into_channel(&context)))
+}
+
+fn stored_version_selection(row: &IngressEndpointRow) -> VersionSelection {
+    VersionSelection {
+        policy: everruns_platform::AgentVersionPolicy::from(row.agent_version_policy.as_str()),
+        version_id: row
+            .agent_version_id
+            .map(everruns_provider::typed_id::AgentVersionId::from_uuid),
+    }
 }
 
 fn decrypted_config(ctx: &Ctx, row: IngressEndpointRow) -> Result<Value, CommandError> {
@@ -162,6 +173,18 @@ impl Command for CreateAgentEndpoint {
             ));
         }
         let agent = resolve_agent(ctx, &self.agent_id).await?;
+        let version = resolve_version_selection(
+            ctx,
+            agent.id,
+            None,
+            self.req.agent_version_policy,
+            self.req.agent_version_id,
+        )
+        .await?
+        .unwrap_or(VersionSelection {
+            policy: everruns_platform::AgentVersionPolicy::Default,
+            version_id: None,
+        });
         let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent)
             .await
             .map_err(classify_anyhow)?;
@@ -195,8 +218,8 @@ impl Command for CreateAgentEndpoint {
                     }
                     .to_string(),
                     virtual_user_id: Some(identity_id.uuid()),
-                    agent_version_policy: "default".to_string(),
-                    agent_version_id: None,
+                    agent_version_policy: version.policy_str(),
+                    agent_version_id: version.version_id.map(|id| id.uuid()),
                     owner_principal_id: owner.id.uuid(),
                     resolved_owner_user_id: owner.resolved_user_id,
                 },
@@ -244,6 +267,14 @@ impl Command for UpdateAgentEndpointCmd {
             .ok_or_else(|| CommandError::not_found("Endpoint"))?;
         let channel_type = ChannelType::from_str_opt(&existing.channel_type)
             .ok_or_else(|| CommandError::bad_request("Endpoint has an unsupported channel type"))?;
+        let version = resolve_version_selection(
+            ctx,
+            agent.id,
+            Some(&stored_version_selection(&existing)),
+            self.req.agent_version_policy,
+            self.req.agent_version_id,
+        )
+        .await?;
         let (channel_config, channel_config_encrypted, auth, auth_encrypted) =
             if let Some(mut config) = self.req.channel_config {
                 let current = decrypted_config(ctx, existing.clone())?;
@@ -292,6 +323,10 @@ impl Command for UpdateAgentEndpointCmd {
                     auth_encrypted,
                     enabled: self.req.enabled,
                     status,
+                    agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
+                    agent_version_id: version.map_or(UpdateField::Unchanged, |version| {
+                        UpdateField::from_option(version.version_id.map(|id| id.uuid()))
+                    }),
                     ..Default::default()
                 },
             )

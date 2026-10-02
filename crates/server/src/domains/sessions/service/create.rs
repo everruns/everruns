@@ -150,6 +150,9 @@ impl SessionService {
         // `sessions.trigger_id` so its budget subject is a column rather than
         // the `agent_trigger:` tag (EVE-1138).
         trigger_internal_id: Option<Uuid>,
+        // The trigger's own version selection (EVE-1139).
+        agent_version_policy: AgentVersionPolicy,
+        agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
         source: SessionSource,
@@ -160,7 +163,7 @@ impl SessionService {
             harness_id,
             Some(agent_internal_id),
             Some(agent_public_id),
-            None,
+            Some((agent_version_policy, agent_version_id)),
             None,
             None,
             trigger_internal_id,

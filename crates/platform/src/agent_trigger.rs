@@ -299,6 +299,13 @@ pub struct AgentTrigger {
     pub config: serde_json::Value,
     /// Whether the trigger is currently active.
     pub enabled: bool,
+    /// Which Agent version sessions started by this trigger run.
+    #[serde(default)]
+    pub agent_version_policy: crate::app::AgentVersionPolicy,
+    /// Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
+    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
     /// Creation timestamp.
     pub created_at: DateTime<Utc>,
     /// Last update timestamp.

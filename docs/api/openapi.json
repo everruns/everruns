@@ -19092,6 +19092,18 @@
             "description": "Agent that owns this trigger.",
             "example": "agent_01933b5a000070008000000000000001"
           },
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pinned Agent version. Set only when `agent_version_policy` is `pinned`.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "agent_version_policy": {
+            "$ref": "#/components/schemas/AgentVersionPolicy",
+            "description": "Which Agent version sessions started by this trigger run."
+          },
           "archived_at": {
             "type": [
               "string",
@@ -19410,7 +19422,7 @@
       },
       "AgentVersionPolicy": {
         "type": "string",
-        "description": "How an App resolves the Agent version it runs.",
+        "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
         "enum": [
           "default",
           "latest",
@@ -19699,6 +19711,18 @@
           "updated_at"
         ],
         "properties": {
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pinned Agent version. Set only when `agent_version_policy` is `pinned`.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "agent_version_policy": {
+            "$ref": "#/components/schemas/AgentVersionPolicy",
+            "description": "Which Agent version sessions started through this endpoint run."
+          },
           "auth": {
             "oneOf": [
               {
@@ -22129,6 +22153,25 @@
           "channel_type"
         ],
         "properties": {
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "agent_version_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentVersionPolicy",
+                "description": "Which Agent version sessions started through this endpoint run.\nOmitted means `default` (the agent's default version)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "channel_config": {
             "description": "Transport-specific endpoint configuration."
           },
@@ -22344,6 +22387,25 @@
           "message"
         ],
         "properties": {
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "agent_version_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentVersionPolicy",
+                "description": "Which Agent version sessions started by this trigger run. Omitted means\n`default` (the agent's default version)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "auth": {
             "description": "Shared endpoint auth is not supported by webhook triggers."
           },
@@ -42113,6 +42175,25 @@
         "type": "object",
         "description": "Request to update an ingress endpoint owned by an Agent.",
         "properties": {
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version to pin. Only valid with policy `pinned`.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "agent_version_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentVersionPolicy",
+                "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "channel_config": {
             "description": "Replacement transport-specific endpoint configuration."
           },
@@ -42350,6 +42431,25 @@
         "type": "object",
         "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
         "properties": {
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version to pin. Only valid with policy `pinned`.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "agent_version_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentVersionPolicy",
+                "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "auth": {
             "description": "Shared endpoint auth is not supported by webhook triggers."
           },

@@ -21,6 +21,10 @@ import { type StatStripStats } from "@/components/apps/stat-strip";
 import { EndpointDetailsPanel } from "@/components/agents/integrations/endpoint-details-panel";
 import { AgentGitHubCard } from "@/components/agents/agent-github-card";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
+import {
+  AgentVersionSelectionBadge,
+  versionSelectionOf,
+} from "@/components/agents/agent-version-policy-field";
 import { BudgetPanel } from "@/components/budgets/budget-panel";
 import {
   PageControlStrip,
@@ -169,6 +173,10 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     }
                     usePanel={
                       <div className="space-y-4">
+                        <AgentVersionSelectionBadge
+                          agentId={agent.id}
+                          selection={versionSelectionOf(channel)}
+                        />
                         <EndpointDetailsPanel
                           agentName={agent.display_name ?? agent.name}
                           agentDescription={agent.description}

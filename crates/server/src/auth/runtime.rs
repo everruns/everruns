@@ -103,16 +103,26 @@ impl RuntimeAccount {
             crate::domains::agents::queries::resolve(db, self.org_id, &endpoint.agent_public_id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Agent unavailable"))?;
-        let version = if endpoint.agent_version_policy == "pinned" {
-            match endpoint.agent_version_id {
+        // Same selection session creation applies, so consumer setup sees the
+        // configuration the endpoint actually runs.
+        let version = match everruns_platform::AgentVersionPolicy::from(
+            endpoint.agent_version_policy.as_str(),
+        ) {
+            everruns_platform::AgentVersionPolicy::Pinned => match endpoint.agent_version_id {
                 Some(id) => db.get_agent_version(self.org_id, id.into()).await?,
                 None => None,
+            },
+            everruns_platform::AgentVersionPolicy::Latest => {
+                db.get_latest_agent_version(
+                    self.org_id,
+                    everruns_provider::typed_id::AgentId::from_uuid(endpoint.agent_id),
+                )
+                .await?
             }
-        } else {
-            match agent.default_version_id {
+            everruns_platform::AgentVersionPolicy::Default => match agent.default_version_id {
                 Some(id) => db.get_agent_version(self.org_id, id).await?,
                 None => None,
-            }
+            },
         };
         if let Some(version) = version {
             agent = crate::domains::agents::queries::version_to_agent(

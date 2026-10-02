@@ -316,6 +316,10 @@ impl InMemoryDatabase {
         if let Some(status) = input.status {
             endpoint.endpoint_status = status;
         }
+        if let Some(policy) = input.agent_version_policy {
+            endpoint.agent_version_policy = policy;
+        }
+        input.agent_version_id.apply(&mut endpoint.agent_version_id);
         endpoint.updated_at = Self::now();
         Ok(Some(endpoint.clone()))
     }

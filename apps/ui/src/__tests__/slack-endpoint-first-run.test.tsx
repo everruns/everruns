@@ -46,6 +46,7 @@ jest.mock("@/hooks/use-agents", () => ({
     isLoading: false,
     refetch: jest.fn(),
   }),
+  useAgentVersions: () => ({ data: [], isLoading: false }),
 }));
 
 jest.mock("@/hooks/use-policies", () => ({
