@@ -14,8 +14,10 @@ Implemented on AG-UI 1.0 for the endpoint `POST /v1/e/{endpoint_id}/ag-ui` and
 Public Chat (`POST /v1/e/{endpoint_id}/public-chat`), which reuses the same
 stream, including interrupts and resume, frontend tools and token usage. The
 framework serves the same protocol from any session behind the facade's `ag-ui`
-feature (see [Framework](#framework)). Subagents and the outbound client are
-planned follow-ups of the same upgrade.
+feature (see [Framework](#framework)), and `serve` mounts it at
+`POST /v1/e/{agent}/ag-ui` behind its own `ag-ui` feature (see [serve](#serve)),
+with the runnable `examples/serve/ag-ui` driven by `@ag-ui/client`. Subagents
+and the outbound client are planned follow-ups of the same upgrade.
 
 ## Pieces
 
@@ -30,6 +32,12 @@ planned follow-ups of the same upgrade.
 - **Server adapter**: [`crates/server/src/api/ag_ui.rs`](../../crates/server/src/api/ag_ui.rs)
   validates input, runs the turn and feeds the session's events to the
   projector.
+- **Framework**: `Session::ag_ui` in
+  [`crates/everruns/src/ag_ui.rs`](../../crates/everruns/src/ag_ui.rs), one run
+  per request over a session, with interrupts read through `InterruptSource`.
+- **serve channel**: [`crates/serve/src/ag_ui.rs`](../../crates/serve/src/ag_ui.rs)
+  maps each thread to a session and implements `InterruptSource` over serve's
+  pending approvals and questions.
 
 ## Framework
 
@@ -56,6 +64,40 @@ errors visible), because the developer owns both ends.
   axum handler is a few lines over the returned stream, kept as the
   `ag_ui_axum` example and the public `framework/ag-ui` page rather than a
   helper.
+
+- **Host interrupt sources.** `InterruptSource` is the seam between a run
+  and whatever parks requests: it lists a session's open interrupts, names
+  sessions as requests park, and applies resume entries under the same
+  producer rules. `InterruptGate` is the built-in source; a host that already
+  parks requests for an API of its own implements the trait instead, so an
+  AG-UI client and that API see the same request. A run exposes the message
+  it sent (`AgUiStream::sent`), so a host that tracks turns (cancel, status)
+  follows the turn the run started.
+
+## serve
+
+`serve`'s `ag-ui` feature serves `POST /v1/e/{agent}/ag-ui` for every
+top-level agent, listed in the manifest's routes and the agent card's `ag_ui`
+map. The path has the server's channel shape so a CopilotKit front end moves
+between serve and Everruns by base URL and id alone; the id is the agent name
+because every top-level agent is an endpoint and none is declared separately.
+
+- **Built in, not a `Channel`.** That trait answers a webhook and delivers
+  later; AG-UI streams in the response.
+- **Threads.** One session per (agent, `threadId`), kept in the thread map
+  channels use under channel key `ag-ui:{agent}`, so a thread survives a
+  restart.
+- **Interrupts.** serve's own parked approvals and questions, through
+  `InterruptSource`: an interrupt can be answered by a `resume` entry, by
+  `/question-answers` or by `/approvals/{tool_call_id}`, and the reverse.
+  They live in memory, like every serve park.
+- **Policy.** Trusted: reasoning, usage and runtime errors visible, because
+  the developer owns both ends. A public deployment puts serve behind its own
+  auth, as with every serve route.
+- **Errors.** A body that is not a `RunAgentInput`, an empty `threadId`, or
+  input the run cannot use is a `400` problem; an unknown agent or a subagent
+  is `404`. SSE framing matches the server: unnamed `data:` events and a
+  `keepalive` comment every 15 seconds.
 
 ## Rules the stream keeps
 

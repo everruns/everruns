@@ -83,6 +83,7 @@ and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway.
 | --- | --- |
 | [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | A tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals and the Bashkit sandbox. |
+| [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 
 ## Project layout
 
@@ -152,8 +153,39 @@ request and response bodies:
 - `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions
 
 It adds a few routes of its own: `GET /health`, `GET /v1/agent` (the agent
-card), channel webhooks, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
+card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit) route, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
 to approve or deny a pending tool call. Errors are `application/problem+json`.
+
+## AG-UI and CopilotKit
+
+With the `ag-ui` feature, every top-level agent also serves
+[AG-UI](https://docs.ag-ui.com) 1.0 clients such as CopilotKit and
+`@ag-ui/client`:
+
+```sh
+cargo add everruns-serve --features ag-ui
+```
+
+The route is `POST /v1/e/{agent}/ag-ui`, the same shape as an Everruns
+endpoint's AG-UI route, so a front end moves between a local serve app and
+Everruns by base URL and id alone:
+
+```ts
+import { HttpAgent } from "@ag-ui/client";
+
+const agent = new HttpAgent({ url: "http://localhost:3000/v1/e/analyst/ag-ui" });
+```
+
+Each AG-UI `threadId` maps to one session, which survives a restart. A run
+sends only the input's last user message and streams the turn as AG-UI events,
+with reasoning, token usage and errors visible. A tool approval or an
+[`ask_user`](/framework/ask-user/) question ends the run with an interrupt
+(`tool_approval` or `everruns.ask_user`), and the next run's `resume` entries
+answer it and stream the rest of the turn. These are the same pending requests
+the approvals and `question-answers` routes answer, so either API can resolve
+them. Input that is not a valid `RunAgentInput` gets `400`, and an unknown
+agent `404`. The agent card lists each agent's route under `ag_ui`. See
+[Serve AG-UI](/framework/ag-ui/) for the event and interrupt shapes.
 
 Sessions survive a restart: the binary rebuilds each agent and resumes the
 session from the local store. A session pinned to a different build gets

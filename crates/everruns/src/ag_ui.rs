@@ -22,7 +22,9 @@
 //! and pass it in [`AgUiOptions::gate`]: a question or approval then ends the
 //! AG-UI run with the interrupt outcome, the turn stays parked in the
 //! process, and the next run's [`RunAgentInput::resume`] entries answer it
-//! and stream the rest of the same turn.
+//! and stream the rest of the same turn. A host that already parks these
+//! requests for an API of its own implements [`InterruptSource`] and passes
+//! it in [`AgUiOptions::interrupts`] instead.
 //!
 //! ```
 //! # #[tokio::main]
@@ -72,6 +74,11 @@
 // process between the interrupted run and the resuming one; a process restart
 // cancels it, which the runtime records as a cancelled turn.
 //
+// Decision: `InterruptSource` is the seam between a run and whatever parks
+// requests. `serve` implements it over the pending approvals and questions
+// its `/v1` API already answers, so one responder serves both APIs and an
+// AG-UI client and a `/question-answers` caller see the same request.
+//
 // Decision: no axum handler here. The facade carries no HTTP server
 // dependency, and the handler is five lines over `AgUiStream` (see the public
 // docs page `framework/ag-ui`).
@@ -92,7 +99,8 @@ use crate::ask_user::{
     Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, QuestionKind, Status,
 };
 use crate::{
-    EventStream, EventStreamError, RunError, Session, SessionId, ToolCall, ToolDefinition,
+    EventStream, EventStreamError, RunError, SentMessage, Session, SessionId, ToolCall,
+    ToolDefinition,
 };
 
 pub use everruns_ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure};
@@ -200,10 +208,19 @@ fn invalid(why: impl Into<String>) -> AgUiError {
 ///     });
 /// # let _ = options;
 /// ```
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct AgUiOptions {
     policy: ProjectionPolicy,
-    gate: Option<InterruptGate>,
+    interrupts: Option<Arc<dyn InterruptSource>>,
+}
+
+impl std::fmt::Debug for AgUiOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgUiOptions")
+            .field("policy", &self.policy)
+            .field("interrupts", &self.interrupts.is_some())
+            .finish()
+    }
 }
 
 impl AgUiOptions {
@@ -246,8 +263,23 @@ impl AgUiOptions {
     /// let options = AgUiOptions::new().gate(gate.clone());
     /// # let _ = options;
     /// ```
-    pub fn gate(mut self, gate: InterruptGate) -> Self {
-        self.gate = Some(gate);
+    pub fn gate(self, gate: InterruptGate) -> Self {
+        self.interrupts(gate)
+    }
+
+    /// Read and answer interrupts through a host's own
+    /// [`InterruptSource`] instead of an [`InterruptGate`]. Replaces any
+    /// gate set before.
+    ///
+    /// ```
+    /// use everruns::ag_ui::{AgUiOptions, InterruptGate};
+    ///
+    /// // An `InterruptGate` is itself a source.
+    /// let options = AgUiOptions::new().interrupts(InterruptGate::new());
+    /// # let _ = options;
+    /// ```
+    pub fn interrupts(mut self, source: impl InterruptSource) -> Self {
+        self.interrupts = Some(Arc::new(source));
         self
     }
 }
@@ -383,10 +415,6 @@ impl InterruptGate {
             .collect()
     }
 
-    fn subscribe(&self) -> broadcast::Receiver<SessionId> {
-        self.inner.parked_on.subscribe()
-    }
-
     fn park(&self, key: Key, request: Request) -> ParkGuard<'_> {
         let order = {
             let mut next = lock(&self.inner.next);
@@ -405,7 +433,11 @@ impl InterruptGate {
     /// interrupt is ignored; an open interrupt without an entry is not
     /// abandoned, so nothing is resolved and the run interrupts again; every
     /// entry is validated before any is applied.
-    fn resume(&self, session_id: SessionId, entries: &[ResumeEntry]) -> Result<Resume, AgUiError> {
+    fn resume_entries(
+        &self,
+        session_id: SessionId,
+        entries: &[ResumeEntry],
+    ) -> Result<ResumeOutcome, AgUiError> {
         let mut parked = lock(&self.inner.parked);
         let mut open: Vec<(&Key, &Parked)> = parked
             .iter()
@@ -422,11 +454,11 @@ impl InterruptGate {
             }
         }
         if open.is_empty() {
-            return Ok(Resume::NothingParked);
+            return Ok(ResumeOutcome::NothingOpen);
         }
         let entry_for = |id: &str| entries.iter().find(|entry| entry.interrupt_id == id);
         if open.iter().any(|((_, id), _)| entry_for(id).is_none()) {
-            return Ok(Resume::StillOpen(
+            return Ok(ResumeOutcome::StillOpen(
                 open.iter()
                     .map(|((_, id), parked)| parked.interrupt(id))
                     .collect(),
@@ -466,14 +498,116 @@ impl InterruptGate {
                 _ => {}
             }
         }
-        Ok(Resume::Resumed)
+        Ok(ResumeOutcome::Resumed)
     }
 }
 
-enum Resume {
-    NothingParked,
+/// What applying a run's resume entries did, as an [`InterruptSource`]
+/// reports it.
+///
+/// ```
+/// use everruns::ag_ui::ResumeOutcome;
+///
+/// let outcome = ResumeOutcome::StillOpen(Vec::new());
+/// assert!(matches!(outcome, ResumeOutcome::StillOpen(_)));
+/// ```
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ResumeOutcome {
+    /// The session waits on nothing: the run finishes empty.
+    NothingOpen,
+    /// Some open interrupt had no entry, so nothing was resolved: the run
+    /// ends at once with these interrupts again.
     StillOpen(Vec<Interrupt>),
+    /// Every open interrupt was answered: the run streams the rest of the
+    /// parked turn.
     Resumed,
+}
+
+/// Where an AG-UI run reads its session's open interrupts and applies resume
+/// entries.
+///
+/// [`InterruptGate`] is the built-in source. A host that already parks
+/// `ask_user` questions and tool approvals for an API of its own (`serve`
+/// does, for its `/question-answers` and `/approvals` routes) implements this
+/// trait instead, so the same requests surface as AG-UI interrupts without a
+/// second responder. Build interrupts with [`question_interrupt`] and
+/// [`approval_interrupt`], and read answers with [`question_outcome`] and
+/// [`approval_decision`], so the shapes match the built-in gate.
+///
+/// Implementations follow the AG-UI 1.0 producer rules: an entry naming no
+/// open interrupt is ignored; an open interrupt without an entry is not
+/// abandoned, so nothing is resolved and [`ResumeOutcome::StillOpen`] is
+/// returned; every entry is validated before any is applied.
+///
+/// ```
+/// use everruns::SessionId;
+/// use everruns::ag_ui::{
+///     AgUiError, AgUiOptions, Interrupt, InterruptSource, ResumeEntry, ResumeOutcome,
+/// };
+/// use tokio::sync::broadcast;
+///
+/// /// A source with nothing ever parked.
+/// struct Nothing(broadcast::Sender<SessionId>);
+///
+/// impl InterruptSource for Nothing {
+///     fn interrupts(&self, _session_id: SessionId) -> Vec<Interrupt> {
+///         Vec::new()
+///     }
+///     fn subscribe(&self) -> broadcast::Receiver<SessionId> {
+///         self.0.subscribe()
+///     }
+///     fn resume(
+///         &self,
+///         _session_id: SessionId,
+///         _entries: &[ResumeEntry],
+///     ) -> Result<ResumeOutcome, AgUiError> {
+///         Ok(ResumeOutcome::NothingOpen)
+///     }
+/// }
+///
+/// let options = AgUiOptions::new().interrupts(Nothing(broadcast::channel(8).0));
+/// # let _ = options;
+/// ```
+pub trait InterruptSource: Send + Sync + 'static {
+    /// The interrupts open on `session_id`, oldest first. Empty when the
+    /// session waits on nothing.
+    fn interrupts(&self, session_id: SessionId) -> Vec<Interrupt>;
+
+    /// A feed that names a session each time a request parks on it. A run
+    /// re-reads [`interrupts`](Self::interrupts) on each notice for its
+    /// session (and when the feed lags), then ends with them.
+    fn subscribe(&self) -> broadcast::Receiver<SessionId>;
+
+    /// Apply a run's resume entries to `session_id`'s open interrupts.
+    ///
+    /// # Errors
+    ///
+    /// [`AgUiError::InvalidInput`] when an entry cannot be applied; nothing
+    /// is resolved then.
+    fn resume(
+        &self,
+        session_id: SessionId,
+        entries: &[ResumeEntry],
+    ) -> Result<ResumeOutcome, AgUiError>;
+}
+
+impl InterruptSource for InterruptGate {
+    fn interrupts(&self, session_id: SessionId) -> Vec<Interrupt> {
+        InterruptGate::interrupts(self, session_id)
+    }
+
+    fn subscribe(&self) -> broadcast::Receiver<SessionId> {
+        self.inner.parked_on.subscribe()
+    }
+
+    fn resume(
+        &self,
+        session_id: SessionId,
+        entries: &[ResumeEntry],
+    ) -> Result<ResumeOutcome, AgUiError> {
+        self.resume_entries(session_id, entries)
+    }
 }
 
 /// Removes a parked request when its waiting turn goes away.
@@ -965,6 +1099,7 @@ fn everruns_metadata(value: Value) -> everruns_ag_ui::Metadata {
 /// ```
 pub struct AgUiStream {
     inner: Pin<Box<dyn Stream<Item = Event> + Send>>,
+    sent: Option<SentMessage>,
 }
 
 impl std::fmt::Debug for AgUiStream {
@@ -996,6 +1131,37 @@ impl AgUiStream {
     pub async fn recv(&mut self) -> Option<Event> {
         self.next().await
     }
+
+    /// The user message this run sent, when it started or steered a turn.
+    /// `None` for a run that resumed a parked turn, re-asked open
+    /// interrupts, or finished empty.
+    ///
+    /// A host that tracks its sessions' turns (to cancel one, or to report
+    /// a session as active) reads the turn from here, since the run sent
+    /// the message itself.
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use everruns::ag_ui::{Message, RunAgentInput};
+    /// use everruns::{Agent, Engine, Model, SendDisposition};
+    ///
+    /// let agent = Agent::builder().instructions("Hi.").model(Model::simulated("ok")).build()?;
+    /// let session = Engine::new().create(agent);
+    /// let input = RunAgentInput {
+    ///     messages: vec![Message::user("m", "Hi")],
+    ///     ..RunAgentInput::default()
+    /// };
+    /// let run = session.ag_ui(input).await?;
+    /// let sent = run.sent().expect("a user message starts a turn");
+    /// assert_eq!(sent.disposition, SendDisposition::Started);
+    /// assert!(sent.wait().await?.success);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn sent(&self) -> Option<&SentMessage> {
+        self.sent.as_ref()
+    }
 }
 
 impl Stream for AgUiStream {
@@ -1019,7 +1185,7 @@ enum Start {
 struct RunState {
     session: Session,
     events: EventStream,
-    gate: Option<InterruptGate>,
+    gate: Option<Arc<dyn InterruptSource>>,
     parked: Option<broadcast::Receiver<SessionId>>,
     projector: Projector,
     /// Highest durable sequence seen, for recovering from lag.
@@ -1120,19 +1286,23 @@ impl Session {
         input: RunAgentInput,
         options: AgUiOptions,
     ) -> Result<AgUiStream, AgUiError> {
-        let AgUiOptions { policy, gate } = options;
+        let AgUiOptions {
+            policy,
+            interrupts: gate,
+        } = options;
         let session_id = self.session_id();
         // Subscribe before anything can happen, so no event of this run and
         // no park is missed.
         let events = self.events();
-        let parked = gate.as_ref().map(InterruptGate::subscribe);
+        let parked = gate.as_ref().map(|gate| gate.subscribe());
 
+        let mut sent = None;
         let start = if !input.resume.is_empty() {
             match &gate {
                 Some(gate) => match gate.resume(session_id, &input.resume)? {
-                    Resume::NothingParked => Start::Empty,
-                    Resume::StillOpen(interrupts) => Start::Interrupt(interrupts),
-                    Resume::Resumed => Start::Follow,
+                    ResumeOutcome::NothingOpen => Start::Empty,
+                    ResumeOutcome::StillOpen(interrupts) => Start::Interrupt(interrupts),
+                    ResumeOutcome::Resumed => Start::Follow,
                 },
                 None => {
                     tracing::warn!(
@@ -1160,7 +1330,7 @@ impl Session {
                 if text.trim().is_empty() {
                     return Err(invalid("the user message has no text"));
                 }
-                self.send(text.as_str()).await?;
+                sent = Some(self.send(text.as_str()).await?);
                 Start::Follow
             } else {
                 // AG-UI 1.0: an interrupt without an answer is not abandoned;
@@ -1191,6 +1361,7 @@ impl Session {
         let stream = futures::stream::once(async move { Event::RunStarted(started) }).chain(run);
         Ok(AgUiStream {
             inner: Box::pin(stream),
+            sent,
         })
     }
 }

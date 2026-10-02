@@ -2,6 +2,12 @@
 
 ## 2026-10-01
 
+* **serve speaks AG-UI.** `serve`'s `ag-ui` feature mounts
+  `POST /v1/e/{agent}/ag-ui`, the server's channel route shape, as a thin layer
+  over `Session::ag_ui_with`. The facade gained `InterruptSource`, so serve's
+  existing parked approvals and questions become interrupts and either API
+  answers them; `examples/serve/ag-ui` drives it with `@ag-ui/client`. See
+  [AG-UI Channel](integrations/ag-ui.md#serve).
 * **The framework serves AG-UI.** The `everruns` facade's `ag-ui` feature
   answers an AG-UI 1.0 request from any session with the shared projection,
   and an in-memory `InterruptGate` turns in-process `ask_user` and approval

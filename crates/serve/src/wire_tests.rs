@@ -898,3 +898,230 @@ async fn approvals_in_two_sessions_do_not_collide() {
     assert_eq!(still["status"], "waitingfortoolresults");
     assert_eq!(call(&still), call(&b));
 }
+
+/// `POST /v1/e/{agent}/ag-ui`: AG-UI 1.0 runs over the same host, with
+/// serve's approvals and questions as interrupts.
+#[cfg(feature = "ag-ui")]
+mod ag_ui {
+    use super::*;
+
+    fn run_input(thread: &str, run: &str, text: &str) -> Value {
+        json!({
+            "threadId": thread,
+            "runId": run,
+            "protocolVersion": "1.0",
+            "messages": [{ "id": format!("m-{run}"), "role": "user", "content": text }],
+        })
+    }
+
+    fn resume_input(thread: &str, run: &str, resume: Value) -> Value {
+        json!({ "threadId": thread, "runId": run, "messages": [], "resume": resume })
+    }
+
+    /// The `data:` payloads of one AG-UI run, after checking the SSE framing.
+    async fn run(server: &Server, agent: &str, body: Value) -> Vec<Value> {
+        let response = server.post(&format!("/v1/e/{agent}/ag-ui"), body).await;
+        assert_eq!(response.status(), 200);
+        assert!(
+            response.headers()["content-type"]
+                .to_str()
+                .unwrap()
+                .starts_with("text/event-stream")
+        );
+        let body = tokio::time::timeout(Duration::from_secs(10), response.text())
+            .await
+            .expect("the run ends")
+            .unwrap();
+        let events: Vec<Value> = body
+            .lines()
+            .filter_map(|line| line.strip_prefix("data:"))
+            .map(|data| serde_json::from_str(data.trim()).unwrap())
+            .collect();
+        assert_eq!(events.first().unwrap()["type"], "RUN_STARTED", "{events:?}");
+        let terminal = events
+            .iter()
+            .filter(|e| matches!(e["type"].as_str(), Some("RUN_FINISHED" | "RUN_ERROR")))
+            .count();
+        assert_eq!(terminal, 1, "{events:?}");
+        assert_eq!(events.last().unwrap()["type"], "RUN_FINISHED", "{events:?}");
+        events
+    }
+
+    fn text(events: &[Value]) -> String {
+        events
+            .iter()
+            .filter(|e| e["type"] == "TEXT_MESSAGE_CONTENT")
+            .filter_map(|e| e["delta"].as_str())
+            .collect()
+    }
+
+    fn outcome(events: &[Value]) -> &Value {
+        &events.last().unwrap()["outcome"]
+    }
+
+    #[tokio::test]
+    async fn a_run_streams_and_an_approval_interrupts_and_resumes() {
+        let host = Host::new(app(), Mode::Eval, None).unwrap();
+        let server = serve(host.clone()).await;
+
+        let first = run(&server, "tester", run_input("t1", "r1", "go")).await;
+        assert_eq!(first[0]["threadId"], "t1");
+        assert_eq!(first[0]["protocolVersion"], "1.0");
+        assert_eq!(text(&first), "shouted");
+        assert!(outcome(&first).is_null(), "{first:?}");
+        assert!(first.last().unwrap()["usage"].is_array(), "{first:?}");
+        let session = host.thread_session("ag-ui:tester", "t1").unwrap().unwrap();
+        assert_eq!(server.session(&session).await["agent_name"], "tester");
+
+        // The same thread continues the same session, and its next turn
+        // waits on an approval: the run ends with the interrupt.
+        let second = run(&server, "tester", run_input("t1", "r2", "again")).await;
+        assert_eq!(outcome(&second)["type"], "interrupt", "{second:?}");
+        let interrupt = &outcome(&second)["interrupts"][0];
+        assert_eq!(interrupt["reason"], "tool_approval");
+        assert_eq!(interrupt["metadata"]["everruns"]["tool"], "guarded");
+        let call = interrupt["id"].as_str().unwrap().to_string();
+        let waiting = server.session(&session).await;
+        assert_eq!(waiting["status"], "waitingfortoolresults");
+        assert_eq!(waiting["pending_approvals"][0]["tool_call_id"], call);
+
+        // A new message while it waits is asked the same interrupt again.
+        let asked = run(&server, "tester", run_input("t1", "r3", "hello?")).await;
+        assert_eq!(outcome(&asked)["interrupts"][0]["id"], call);
+
+        let resumed = run(
+            &server,
+            "tester",
+            resume_input(
+                "t1",
+                "r4",
+                json!([{ "interruptId": call, "status": "resolved", "payload": { "decision": "allow" } }]),
+            ),
+        )
+        .await;
+        assert!(outcome(&resumed).is_null(), "{resumed:?}");
+        assert_eq!(text(&resumed), "guarded done");
+        server.wait_until(&session, |s| s["status"] == "idle").await;
+        let events = server.wait_turns(&session, 2).await;
+        let ran = events
+            .iter()
+            .rev()
+            .find(|e| e["type"] == "tool.completed")
+            .unwrap();
+        assert_eq!(ran["data"]["tool_name"], "guarded");
+        assert_eq!(ran["data"]["success"], true);
+
+        // Another thread is another session.
+        run(&server, "tester", run_input("t2", "r1", "go")).await;
+        let other = host.thread_session("ag-ui:tester", "t2").unwrap().unwrap();
+        assert_ne!(other, session);
+    }
+
+    #[tokio::test]
+    async fn a_question_interrupt_can_be_answered_through_question_answers() {
+        let host = Host::new(app(), Mode::Eval, None).unwrap();
+        let server = serve(host.clone()).await;
+
+        let asked = run(&server, "asker", run_input("q1", "r1", "deploy")).await;
+        let interrupt = &outcome(&asked)["interrupts"][0];
+        assert_eq!(interrupt["reason"], "everruns.ask_user");
+        assert!(interrupt["responseSchema"].is_object(), "{interrupt}");
+        let call = interrupt["id"].as_str().unwrap().to_string();
+        let question = interrupt["metadata"]["everruns"]["questions"][0]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // One responder serves both APIs: the `/v1` route answers it.
+        let session = host.thread_session("ag-ui:asker", "q1").unwrap().unwrap();
+        let answered = server
+            .post(
+                &format!("/v1/sessions/{session}/question-answers"),
+                json!({ "tool_call_id": call, "answers": [{ "id": question, "selected": ["Staging"] }] }),
+            )
+            .await;
+        assert_eq!(answered.status(), 200);
+        server.wait_turns(&session, 1).await;
+
+        // Nothing is open now, so a resume finishes an empty run.
+        let empty = run(
+            &server,
+            "asker",
+            resume_input(
+                "q1",
+                "r2",
+                json!([{ "interruptId": call, "status": "cancelled" }]),
+            ),
+        )
+        .await;
+        assert_eq!(empty.len(), 2, "{empty:?}");
+    }
+
+    #[tokio::test]
+    async fn bad_input_is_a_400_and_an_unknown_agent_a_404() {
+        let host = Host::new(app(), Mode::Eval, None).unwrap();
+        let server = serve(host).await;
+        let post_raw = |body: &'static str| {
+            server
+                .client
+                .post(format!("{}/v1/e/tester/ag-ui", server.base))
+                .header("content-type", "application/json")
+                .body(body)
+                .send()
+        };
+
+        let malformed = post_raw("{not json").await.unwrap();
+        assert_eq!(malformed.status(), 400);
+        assert_eq!(
+            malformed.headers()["content-type"],
+            "application/problem+json"
+        );
+        let wrong_shape = post_raw(r#"{"threadId": 7}"#).await.unwrap();
+        assert_eq!(wrong_shape.status(), 400);
+
+        let no_thread = server
+            .post("/v1/e/tester/ag-ui", run_input("", "r1", "hi"))
+            .await;
+        assert_eq!(no_thread.status(), 400);
+        let no_message = server
+            .post(
+                "/v1/e/tester/ag-ui",
+                json!({ "threadId": "t", "runId": "r", "messages": [] }),
+            )
+            .await;
+        assert_eq!(no_message.status(), 400);
+        let problem: Value = no_message.json().await.unwrap();
+        assert_eq!(problem["status"], 400);
+        let assistant_last = server
+            .post(
+                "/v1/e/tester/ag-ui",
+                json!({ "threadId": "t", "runId": "r", "messages": [
+                    { "id": "a1", "role": "assistant", "content": "hi" }
+                ] }),
+            )
+            .await;
+        assert_eq!(assistant_last.status(), 400);
+
+        let unknown = server
+            .post("/v1/e/nobody/ag-ui", run_input("t", "r", "hi"))
+            .await;
+        assert_eq!(unknown.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn the_manifest_and_agent_card_list_the_endpoints() {
+        let manifest = app().manifest();
+        assert!(
+            manifest
+                .routes
+                .contains(&"POST /v1/e/tester/ag-ui".to_string()),
+            "{:?}",
+            manifest.routes
+        );
+        let host = Host::new(app(), Mode::Eval, None).unwrap();
+        let server = serve(host).await;
+        let card: Value = server.get("/v1/agent").await.json().await.unwrap();
+        assert_eq!(card["ag_ui"]["tester"], "/v1/e/tester/ag-ui");
+        assert_eq!(card["ag_ui"]["asker"], "/v1/e/asker/ag-ui");
+    }
+}

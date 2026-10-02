@@ -32,8 +32,9 @@ use everruns::ask_user::{
     Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, QuestionKind, Status,
 };
 use everruns::{
-    BashkitShell, FunctionTool, LocalConfig, SendDisposition, SessionEvent, SessionEventKind,
-    SessionId, ToolCall, ToolCallContext, ToolDefinition, ToolResponse, TurnHandle,
+    BashkitShell, FunctionTool, LocalConfig, SendDisposition, SentMessage, SessionEvent,
+    SessionEventKind, SessionId, ToolCall, ToolCallContext, ToolDefinition, ToolResponse,
+    TurnHandle,
 };
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot};
@@ -192,6 +193,9 @@ pub(crate) struct Host {
     /// Question sets already answered, for `409`.
     answered: Mutex<HashSet<Key>>,
     gateway: gateway::Env,
+    /// Names the session a request just parked on, for AG-UI runs.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) parked_on: broadcast::Sender<SessionId>,
     me: Weak<Host>,
 }
 
@@ -230,6 +234,8 @@ impl Host {
             questions: Mutex::new(HashMap::new()),
             answered: Mutex::new(HashSet::new()),
             gateway: gateway::Env::from_process(),
+            #[cfg(feature = "ag-ui")]
+            parked_on: broadcast::channel(64).0,
             me: me.clone(),
         }))
     }
@@ -242,6 +248,16 @@ impl Host {
 
     fn notify(&self, notice: Notice) {
         let _ = self.notices.send(notice);
+    }
+
+    /// A request parked on `session_id`: wake the AG-UI runs following it.
+    fn parked(&self, session_id: &str) {
+        #[cfg(feature = "ag-ui")]
+        if let Ok(id) = SessionId::parse(session_id) {
+            let _ = self.parked_on.send(id);
+        }
+        #[cfg(not(feature = "ag-ui"))]
+        let _ = session_id;
     }
 
     pub(crate) fn session_row(&self, id: &str) -> crate::Result<SessionRow> {
@@ -431,20 +447,8 @@ impl Host {
     pub(crate) async fn send(&self, id: &str, input: String) -> crate::Result<PendingTurn> {
         let live = self.live(id).await?;
         let sent = live.session.send(input.as_str()).await?;
-        let _ = self.store.touch(id, &now());
+        self.track(id, &live, &sent);
         let handle = sent.turn();
-        if matches!(sent.disposition, SendDisposition::Started) {
-            *lock(&live.active) = Some(handle.clone());
-            let me = self.me.clone();
-            let id = id.to_string();
-            let turn = handle.clone();
-            tokio::spawn(async move {
-                let result = turn.wait().await;
-                if let Some(host) = me.upgrade() {
-                    host.finish_turn(&id, &live, result).await;
-                }
-            });
-        }
         Ok(PendingTurn {
             message_id: sent.message_id.clone(),
             future: Box::pin(async move {
@@ -456,6 +460,68 @@ impl Host {
                 })
             }),
         })
+    }
+
+    /// Note a message accepted by `id`'s session: touch the catalog and, when
+    /// it started a turn, follow that turn (status, cancel, delivery).
+    fn track(&self, id: &str, live: &Arc<Live>, sent: &SentMessage) {
+        let _ = self.store.touch(id, &now());
+        if !matches!(sent.disposition, SendDisposition::Started) {
+            return;
+        }
+        let turn = sent.turn();
+        *lock(&live.active) = Some(turn.clone());
+        let me = self.me.clone();
+        let id = id.to_string();
+        let live = live.clone();
+        tokio::spawn(async move {
+            let result = turn.wait().await;
+            if let Some(host) = me.upgrade() {
+                host.finish_turn(&id, &live, result).await;
+            }
+        });
+    }
+
+    /// Answer one AG-UI request on `id`'s session. The run sends the user
+    /// message itself; the turn it starts is tracked like any other.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) async fn ag_ui(
+        &self,
+        id: &str,
+        input: everruns::ag_ui::RunAgentInput,
+        options: everruns::ag_ui::AgUiOptions,
+    ) -> crate::Result<everruns::ag_ui::AgUiStream> {
+        let live = self.live(id).await?;
+        let run = live
+            .session
+            .ag_ui_with(input, options)
+            .await
+            .map_err(|err| match err {
+                everruns::ag_ui::AgUiError::InvalidInput(why) => {
+                    anyhow::Error::from(ApiError::BadRequest(why))
+                }
+                other => anyhow::Error::from(other),
+            })?;
+        if let Some(sent) = run.sent() {
+            self.track(id, &live, sent);
+        }
+        Ok(run)
+    }
+
+    /// The session bound to a channel thread, if any.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) fn thread_session(
+        &self,
+        channel: &str,
+        thread: &str,
+    ) -> crate::Result<Option<String>> {
+        self.store.thread_session(channel, thread)
+    }
+
+    /// Bind a channel thread to a session.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) fn bind_thread(&self, channel: &str, thread: &str, session: &str) -> crate::Result {
+        self.store.bind_thread(channel, thread, session)
     }
 
     /// Channel delivery uses the turn's final response; no event is authored.
@@ -504,15 +570,25 @@ impl Host {
         tool_call_id: &str,
         approve: bool,
     ) -> crate::Result {
-        let pending =
-            { lock(&self.approvals).remove(&(session_id.to_string(), tool_call_id.to_string())) };
-        let Some(pending) = pending else {
-            return Err(ApiError::NotFound(format!("pending approval {tool_call_id}")).into());
-        };
         let decision = if approve {
             ApprovalDecision::Allow
         } else {
             ApprovalDecision::Reject
+        };
+        self.decide_approval(session_id, tool_call_id, decision)
+    }
+
+    /// Resolve a pending approval with any decision, `*_always` included.
+    pub(crate) fn decide_approval(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        decision: ApprovalDecision,
+    ) -> crate::Result {
+        let pending =
+            { lock(&self.approvals).remove(&(session_id.to_string(), tool_call_id.to_string())) };
+        let Some(pending) = pending else {
+            return Err(ApiError::NotFound(format!("pending approval {tool_call_id}")).into());
         };
         let _ = pending.tx.send(decision);
         Ok(())
@@ -883,6 +959,7 @@ impl ToolApprover for Gate {
             map: &host.approvals,
             key,
         };
+        host.parked(&view.session_id);
         host.notify(Notice::ApprovalRequested(view));
         rx.await.unwrap_or(ApprovalDecision::Cancelled)
     }
@@ -927,6 +1004,7 @@ impl AskUser for Gate {
             map: &host.questions,
             key,
         };
+        host.parked(&session_id);
         host.notify(Notice::QuestionAsked {
             session_id,
             tool_call_id,

@@ -100,6 +100,7 @@ ids as they are). You can instead point `SERVE_GATEWAY_URL` and
 |---|---|
 | [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
+| [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | The `ag-ui` feature: an agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 
 ## Project layout
 
@@ -150,6 +151,18 @@ typed connections, secrets and `start_session(...)`. Approvals are declared on
 the tool and enforced by the runtime; every agent also has the built-in
 `ask_user` tool.
 
+## AG-UI
+
+With the `ag-ui` feature, every top-level agent also serves
+[AG-UI](https://docs.ag-ui.com) 1.0 clients such as CopilotKit at
+`POST /v1/e/{agent}/ag-ui`, the route shape of an Everruns endpoint. Each
+AG-UI thread is one session, and pending approvals and `ask_user` questions
+become interrupts that the next run resumes.
+
+```toml
+everruns-serve = { version = "0.33", features = ["ag-ui"] }
+```
+
 ## Commands
 
 The commands are part of the app binary, because only the linked binary knows
@@ -177,7 +190,7 @@ what it registered.
 This PoC works end to end offline: discovery, the manifest, the
 server-compatible wire API (driven by the everruns Rust SDK in tests) with
 resumable SSE, approvals, `ask_user` answers, cancel, restart and resume,
-Slack and webhook channels, schedules, subagents, skills, sandbox selection,
+Slack and webhook channels, the AG-UI channel, schedules, subagents, skills, sandbox selection,
 and evals both in-process and remote.
 
 It does not have:

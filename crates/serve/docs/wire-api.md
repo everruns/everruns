@@ -36,6 +36,7 @@ client.messages().create(&session.id, "What was revenue last week?").await?;
 | `POST /v1/sessions/{id}/approvals/{tool_call_id}` (serve) | `{decision: "approve" \| "deny", note?}` | `{status, tool_call_id, session_status}`, `404` when nothing is pending |
 | `GET /v1/agent` (serve) | | agent card: agents, tools, skills, channels, schedules, version |
 | `POST /v1/channels/{name}` (serve) | the provider's webhook | whatever the channel answers |
+| `POST /v1/e/{agent}/ag-ui` (`ag-ui` feature) | AG-UI 1.0 `RunAgentInput` | SSE stream of AG-UI events, see [AG-UI](#ag-ui) |
 | `GET /health` (serve) | | `{status, build_id}` |
 | `POST /dev/schedules/{name}` (serve, `dev` only) | | runs a schedule now |
 
@@ -135,6 +136,30 @@ selection for a single-select question. `status: "declined"` is a finished
 refusal the model must not re-ask. Without `tool_call_id`, the one pending set
 is answered. Nothing pending is `404`; answering twice is `409`. serve stores
 no secrets, so `secret` questions cannot be answered.
+
+## AG-UI
+
+With the `ag-ui` cargo feature, every top-level agent also answers AG-UI 1.0
+clients (CopilotKit, `@ag-ui/client`) at `POST /v1/e/{agent}/ag-ui`, the route
+shape of the server's endpoint channel, so a front end moves between the two by
+base URL and id alone. The agent card lists the routes under `ag_ui`, and the
+manifest under `routes`.
+
+- **Threads.** Each AG-UI `threadId` maps to one session (created on its
+  first run, kept in the same thread map channels use), so it survives a
+  restart. A run sends only the last user message; the session owns the
+  conversation.
+- **Stream.** Unnamed `data:` SSE events, `RUN_STARTED` first and exactly one
+  `RUN_FINISHED` or `RUN_ERROR` last, with a `keepalive` comment every 15
+  seconds. The projection is the server's with the trusted policy: reasoning,
+  token usage and runtime errors are visible.
+- **Interrupts.** A pending approval (`tool_approval`) or `ask_user` question
+  (`everruns.ask_user`) ends the run with the interrupt outcome; the next run's
+  `resume` entries answer it and stream the rest of the turn. They are the same
+  pending requests the routes above answer, so either API can resolve them.
+- **Errors.** A body that is not a `RunAgentInput`, an empty `threadId`, or
+  input the run cannot use (no trailing user message, an entry that cannot be
+  applied) is `400`; an unknown agent or a subagent is `404`.
 
 ## Differences from the server
 

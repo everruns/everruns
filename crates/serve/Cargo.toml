@@ -35,6 +35,11 @@ categories = ["development-tools", "web-programming::http-server"]
 [lib]
 name = "serve"
 
+[features]
+# `POST /v1/e/{agent}/ag-ui`: serve every top-level agent to AG-UI 1.0 clients
+# (CopilotKit, `@ag-ui/client`) through `everruns::ag_ui`.
+ag-ui = ["everruns/ag-ui"]
+
 [dependencies]
 everruns = { workspace = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }
 everruns-serve-macros.workspace = true

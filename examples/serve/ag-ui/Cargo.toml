@@ -1,0 +1,25 @@
+# A serve app streamed to CopilotKit or any AG-UI 1.0 client. Runs offline.
+[package]
+name = "serve-example-ag-ui"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "ag-ui"
+path = "src/main.rs"
+
+[dependencies]
+# The `ag-ui` feature serves `POST /v1/e/{agent}/ag-ui` for every top-level agent.
+everruns-serve = { workspace = true, features = ["ag-ui"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[build-dependencies]
+everruns-serve-build.workspace = true
+
+[lints]
+workspace = true
