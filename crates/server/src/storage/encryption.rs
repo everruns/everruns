@@ -381,6 +381,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "refresh_token_encrypted",
         id_column: "id",
     },
+    // An A2A push config's receiver token and credentials.
+    EncryptedColumn {
+        table: "a2a_push_configs",
+        column: "secrets_encrypted",
+        id_column: "id",
+    },
     // The MCP Events client's webhook signing secret.
     EncryptedColumn {
         table: "mcp_event_subscriptions",
