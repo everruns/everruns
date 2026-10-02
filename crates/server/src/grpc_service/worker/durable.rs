@@ -6,6 +6,7 @@
 
 use super::support::*;
 use crate::grpc_service::*;
+use everruns_durable::{DurableAdmin, EventLog, SignalStore, TaskQueue, WorkerRegistry};
 
 impl WorkerServiceImpl {
     pub(crate) async fn handle_create_durable_workflow(

@@ -23,7 +23,6 @@ crates/core/src/tool_narration.rs
 crates/drivers/anthropic/src/driver.rs
 crates/drivers/llmsim/src/lib.rs
 crates/durable/src/persistence/memory.rs
-crates/durable/src/persistence/postgres.rs
 crates/durable/tests/postgres_integration_test.rs
 crates/engine/src/execution/act.rs
 crates/engine/src/execution/reason.rs

@@ -15,7 +15,7 @@ use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;
 use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
-use everruns_durable::InMemoryWorkflowEventStore;
+use everruns_durable::{InMemoryWorkflowEventStore, Schedules};
 use everruns_platform::SessionBinding;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;

@@ -1,5 +1,5 @@
 use super::*;
-use crate::persistence::InMemoryWorkflowEventStore;
+use crate::persistence::{EventLog, InMemoryWorkflowEventStore, TaskQueue, WorkerRegistry};
 use serde::{Deserialize, Serialize};
 
 // Test workflow implementation

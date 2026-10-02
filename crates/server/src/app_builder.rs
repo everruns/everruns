@@ -31,7 +31,7 @@ use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::{
     ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter, SharedErrorReporter,
 };
-use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
+use everruns_durable::{EventLog, PostgresWorkflowEventStore, TaskQueue, WorkflowEventStore};
 use everruns_host::observability::{BraintrustListener, OtelEventListener};
 use everruns_worker::{AgentRunner, DurableTaskNotifier, TaskWorker, TaskWorkerConfig};
 use serde::Serialize;

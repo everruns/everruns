@@ -30,7 +30,7 @@ use everruns_durable::bench::{
     ReportConfig, register_bench_worker,
 };
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+    EventLog, PostgresWorkflowEventStore, TaskDefinition, TaskQueue,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;

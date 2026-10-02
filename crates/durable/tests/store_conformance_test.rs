@@ -17,10 +17,11 @@ use std::time::Duration;
 
 use everruns_durable::persistence::{
     DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, InMemoryWorkflowEventStore, StoreError, TaskDefinition,
-    TaskFailureOutcome, TaskStatus, WorkerInfo, WorkflowEventStore,
+    TaskFailureOutcome, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_durable::reliability::RetryPolicy;
 use everruns_durable::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
+use everruns_durable::{DeadLetters, EventLog, SignalStore, TaskQueue, WorkerRegistry};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -119,6 +120,8 @@ conformance!(
     events_append_in_order_with_optimistic_concurrency,
     signals_are_consumed_once,
     dead_letters_can_be_requeued,
+    cancel_workflow_cancels_pending_tasks_once,
+    drained_workers_stop_claiming_until_resumed,
 );
 
 // --- helpers ---------------------------------------------------------------
@@ -592,4 +595,47 @@ async fn dead_letters_can_be_requeued<H: Harness>(h: H) {
     let requeued = h.store().requeue_from_dlq(entries[0].id).await.unwrap();
     assert_ne!(requeued, id);
     assert_eq!(claim(&h, &w, &ty, 1).await, vec![requeued]);
+}
+
+// --- cancellation, draining ----------------------------------------------------
+
+async fn cancel_workflow_cancels_pending_tasks_once<H: Harness>(h: H) {
+    let ty = activity_type();
+    let wf = workflow(&h).await;
+    let pending = enqueue(&h, task(Some(wf), &ty, "pending")).await;
+
+    h.store().cancel_workflow(wf).await.unwrap();
+    assert_eq!(
+        h.store().get_workflow_status(wf).await.unwrap(),
+        WorkflowStatus::Cancelled
+    );
+    assert_eq!(status(&h, pending).await, TaskStatus::Cancelled);
+
+    // A terminal workflow, or an unknown one, cannot be cancelled again.
+    for id in [wf, Uuid::now_v7()] {
+        let err = h.store().cancel_workflow(id).await.unwrap_err();
+        assert!(matches!(err, StoreError::WorkflowNotFound(_)));
+    }
+}
+
+async fn drained_workers_stop_claiming_until_resumed<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    enqueue(&h, task(None, &ty, "t")).await;
+
+    h.store().drain_worker(&w).await.unwrap();
+    assert!(claim(&h, &w, &ty, 1).await.is_empty());
+    let info = h
+        .store()
+        .list_workers(WorkerFilter::default())
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|info| info.id == w)
+        .expect("registered worker is listed");
+    assert_eq!(info.status, "draining");
+    assert!(!info.accepting_tasks);
+
+    h.store().resume_worker(&w).await.unwrap();
+    assert_eq!(claim(&h, &w, &ty, 1).await.len(), 1);
 }

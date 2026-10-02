@@ -12,10 +12,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use everruns_core::ExecutionContext;
 use everruns_durable::{
-    ActivityOptions, ClaimedTask, DurableExecution, HeartbeatResponse, StoreError, TaskDefinition,
-    TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore,
-    WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
-    record_activity_started, record_workflow_failed,
+    ActivityOptions, ClaimedTask, DurableExecution, EventLog, HeartbeatResponse, SignalStore,
+    StoreError, TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo, WorkerRegistry,
+    WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event,
+    record_activity_completed, record_activity_failed, record_activity_started,
+    record_workflow_failed,
 };
 use everruns_engine::{ActInput, ActPlan, TurnPlan};
 use everruns_host::{
@@ -293,7 +294,7 @@ where
     S: WorkflowEventStore,
 {
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
-        WorkflowEventStore::register_worker(self, worker).await
+        WorkerRegistry::register_worker(self, worker).await
     }
 
     async fn worker_heartbeat(
@@ -302,11 +303,11 @@ where
         current_load: usize,
         accepting_tasks: bool,
     ) -> Result<(), StoreError> {
-        WorkflowEventStore::worker_heartbeat(self, worker_id, current_load, accepting_tasks).await
+        WorkerRegistry::worker_heartbeat(self, worker_id, current_load, accepting_tasks).await
     }
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
-        WorkflowEventStore::deregister_worker(self, worker_id).await
+        WorkerRegistry::deregister_worker(self, worker_id).await
     }
 
     async fn claim_task(
@@ -315,7 +316,7 @@ where
         activity_types: &[String],
         max_tasks: usize,
     ) -> Result<Vec<ClaimedTask>, StoreError> {
-        WorkflowEventStore::claim_task(self, worker_id, activity_types, max_tasks).await
+        TaskQueue::claim_task(self, worker_id, activity_types, max_tasks).await
     }
 
     async fn heartbeat_task(
@@ -324,11 +325,11 @@ where
         worker_id: &str,
         details: Option<serde_json::Value>,
     ) -> Result<HeartbeatResponse, StoreError> {
-        WorkflowEventStore::heartbeat_task(self, task_id, worker_id, details).await
+        TaskQueue::heartbeat_task(self, task_id, worker_id, details).await
     }
 
     async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
-        WorkflowEventStore::get_workflow_status(self, workflow_id).await
+        EventLog::get_workflow_status(self, workflow_id).await
     }
 
     async fn record_activity_started(&self, task: &ClaimedTask, worker_id: &str) {
@@ -348,7 +349,7 @@ where
         worker_id: &str,
         output: serde_json::Value,
     ) -> Result<(), StoreError> {
-        WorkflowEventStore::complete_task(self, task.id, worker_id, output.clone()).await?;
+        TaskQueue::complete_task(self, task.id, worker_id, output.clone()).await?;
         record_activity_completed(self, task.workflow_id, task.activity_id.clone(), output).await;
         Ok(())
     }
@@ -359,12 +360,11 @@ where
         error: &str,
         retryable: bool,
     ) -> Result<TaskFailureOutcome, StoreError> {
-        let outcome =
-            match WorkflowEventStore::fail_task_with_retry(self, task.id, error, retryable).await {
-                Ok(outcome) => outcome,
-                Err(StoreError::TaskNotOwned(_)) => return Ok(TaskFailureOutcome::MovedToDlq),
-                Err(error) => return Err(error),
-            };
+        let outcome = match TaskQueue::fail_task_with_retry(self, task.id, error, retryable).await {
+            Ok(outcome) => outcome,
+            Err(StoreError::TaskNotOwned(_)) => return Ok(TaskFailureOutcome::MovedToDlq),
+            Err(error) => return Err(error),
+        };
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
         record_activity_failed(
             self,
@@ -376,8 +376,7 @@ where
         .await;
         if matches!(outcome, TaskFailureOutcome::MovedToDlq)
             && let Some(workflow_id) = task.workflow_id
-            && WorkflowEventStore::try_fail_workflow(self, workflow_id, WorkflowError::new(error))
-                .await?
+            && EventLog::try_fail_workflow(self, workflow_id, WorkflowError::new(error)).await?
         {
             record_workflow_failed(self, workflow_id, error.to_string()).await;
             return Ok(TaskFailureOutcome::ExhaustedRetries);
@@ -399,7 +398,7 @@ where
             options: ActivityOptions::default(),
         };
         append_event(self, workflow_id, event).await?;
-        WorkflowEventStore::enqueue_task(
+        TaskQueue::enqueue_task(
             self,
             TaskDefinition {
                 workflow_id: Some(workflow_id),
@@ -419,7 +418,7 @@ where
         output: Option<serde_json::Value>,
         error: Option<WorkflowError>,
     ) -> Result<(), StoreError> {
-        WorkflowEventStore::update_workflow_status(self, workflow_id, status, output, error).await
+        EventLog::update_workflow_status(self, workflow_id, status, output, error).await
     }
 
     async fn complete_workflow(
@@ -430,7 +429,7 @@ where
         error: Option<WorkflowError>,
     ) -> Result<(), StoreError> {
         everruns_durable::record_workflow_completed(self, workflow_id, event_output).await;
-        WorkflowEventStore::update_workflow_status(
+        EventLog::update_workflow_status(
             self,
             workflow_id,
             WorkflowStatus::Completed,
@@ -444,7 +443,7 @@ where
         &self,
         workflow_id: Uuid,
     ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
-        WorkflowEventStore::consume_pending_signals(self, workflow_id).await
+        SignalStore::consume_pending_signals(self, workflow_id).await
     }
 
     async fn consume_pending_signals_by_type(
@@ -452,7 +451,7 @@ where
         workflow_id: Uuid,
         signal_type: &str,
     ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
-        WorkflowEventStore::consume_pending_signals_by_type(self, workflow_id, signal_type).await
+        SignalStore::consume_pending_signals_by_type(self, workflow_id, signal_type).await
     }
 }
 
@@ -1570,6 +1569,7 @@ mod tests {
     use crate::unified_worker_test_adapters::NoopAdapters;
 
     use super::*;
+    use everruns_durable::DurableAdmin;
     use std::sync::atomic::AtomicBool;
 
     // ---- EVE-681: mid-turn task wake drain ----
@@ -1848,15 +1848,9 @@ mod tests {
             .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
             .await
             .unwrap();
-        WorkflowEventStore::update_workflow_status(
-            &store,
-            workflow_id,
-            WorkflowStatus::Running,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
+        EventLog::update_workflow_status(&store, workflow_id, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
         store
             .enqueue_task(TaskDefinition {
                 workflow_id: Some(workflow_id),
@@ -1868,9 +1862,9 @@ mod tests {
             .await
             .unwrap();
         let worker = everruns_durable::WorkerInfo::new("worker", ["reason"]);
-        let registered = WorkflowEventStore::register_worker(&store, worker).await;
+        let registered = WorkerRegistry::register_worker(&store, worker).await;
         registered.unwrap();
-        let claimed = WorkflowEventStore::claim_task(&store, "worker", &["reason".into()], 1).await;
+        let claimed = TaskQueue::claim_task(&store, "worker", &["reason".into()], 1).await;
         let task = claimed.unwrap().pop().unwrap();
 
         let outcome = TaskStore::fail_task_and_record(&store, &task, "terminal", false)
@@ -1879,7 +1873,7 @@ mod tests {
 
         assert!(matches!(outcome, TaskFailureOutcome::ExhaustedRetries));
         assert_eq!(
-            WorkflowEventStore::get_workflow_status(&store, workflow_id)
+            EventLog::get_workflow_status(&store, workflow_id)
                 .await
                 .unwrap(),
             WorkflowStatus::Failed

@@ -30,8 +30,8 @@ use everruns_durable::bench::{
     set_terminal_progress,
 };
 use everruns_durable::persistence::{
-    DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, PostgresWorkflowEventStore, TaskDefinition,
-    WorkflowEventStore,
+    DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, EventLog, PostgresWorkflowEventStore, TaskDefinition,
+    TaskQueue,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;

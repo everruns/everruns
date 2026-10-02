@@ -26,8 +26,10 @@ pub mod prelude {
     pub use crate::activity::{Activity, ActivityContext, ActivityError};
     pub use crate::engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
     pub use crate::persistence::{
-        ClaimedTask, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, StoreError,
-        TaskDefinition, TraceContext, WorkerInfo, WorkflowEventStore, WorkflowStatus,
+        CircuitBreakers, ClaimedTask, DeadLetters, DurableAdmin, EventLog,
+        InMemoryWorkflowEventStore, PostgresWorkflowEventStore, Schedules, SignalStore, StoreError,
+        TaskDefinition, TaskQueue, TraceContext, WorkerInfo, WorkerRegistry, WorkflowEventStore,
+        WorkflowStatus,
     };
     pub use crate::reliability::{CircuitBreakerConfig, RetryPolicy};
     pub use crate::scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
@@ -44,14 +46,15 @@ pub use engine::{
 };
 pub use execution::DurableExecution;
 pub use persistence::{
-    CircuitBreakerState, ClaimedTask, CreateScheduleRow, DeadTaskInfo, DlqEntry, DlqFilter,
-    HeartbeatResponse, InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore,
-    ReclaimResult, ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus,
-    ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo,
-    SealedTaskInfo, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter,
-    TaskInfo, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter, WorkerInfo,
-    WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended,
-    WorkflowStatus, no_progress_seal_threshold_from_env,
+    CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow, DeadLetters,
+    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, EventLog, HeartbeatResponse,
+    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, ReclaimResult,
+    ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter,
+    ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo, Schedules,
+    SealedTaskInfo, SignalStore, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome,
+    TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter,
+    WorkerInfo, WorkerRegistry, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter,
+    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus, no_progress_seal_threshold_from_env,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,

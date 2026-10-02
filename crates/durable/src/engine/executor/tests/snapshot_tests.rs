@@ -1,6 +1,7 @@
 //! Snapshot, bounded-replay and continue-as-new tests for the executor.
 
 use super::*;
+use crate::persistence::EventLog;
 
 // =================================================================
 // Snapshot-capable workflow for testing

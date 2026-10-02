@@ -14,7 +14,8 @@ use uuid::Uuid;
 
 use chrono::Utc;
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, StoreError, TaskDefinition, WorkerInfo, WorkflowEventStore,
+    EventLog, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskQueue, WorkerInfo,
+    WorkerRegistry,
 };
 use everruns_durable::workflow::{ActivityOptions, WorkflowEvent};
 

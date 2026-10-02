@@ -129,7 +129,7 @@ On startup or when re-enabling a schedule: if `catch_up_missed` is false, just a
 
 ## WorkflowEventStore Extensions
 
-The `WorkflowEventStore` trait is extended with schedule CRUD, scheduler claiming/triggering, execution tracking, and stats methods. See `crates/durable/src/persistence/store.rs` for the full trait definition.
+The `Schedules` store trait (part of the `WorkflowEventStore` umbrella) covers schedule CRUD, scheduler claiming/triggering, execution tracking, and stats methods. See `crates/durable/src/persistence/store.rs` for the full trait definition.
 
 ## Database Schema
 

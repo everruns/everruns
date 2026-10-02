@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::config::env_string_any;
 use everruns_durable::{
-    InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEvent, WorkflowEventStore,
-    WorkflowSignal, WorkflowStatus,
+    DurableAdmin, EventLog, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, SignalStore,
+    TaskQueue, WorkflowEvent, WorkflowSignal, WorkflowStatus,
 };
 pub use everruns_engine::TurnState as DurableTurnInput;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
@@ -868,6 +868,7 @@ fn runtime_to_grpc_status(status: WorkflowStatus) -> GrpcWorkflowStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_durable::WorkerRegistry;
 
     #[derive(Default)]
     struct RecordingTaskNotifier {

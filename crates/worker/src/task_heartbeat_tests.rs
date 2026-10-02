@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use everruns_durable::persistence::{
-    InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore, WorkflowStatus,
+    EventLog, InMemoryWorkflowEventStore, TaskDefinition, TaskQueue, WorkerRegistry, WorkflowStatus,
 };
 use everruns_durable::workflow::ActivityOptions;
 use tokio::sync::watch;
