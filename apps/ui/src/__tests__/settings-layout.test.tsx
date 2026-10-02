@@ -119,6 +119,7 @@ describe("SettingsLayout", () => {
     const profileLink = screen.getByRole("link", { name: /Account/i });
     const connectionsLink = screen.getByRole("link", { name: /Connections/i });
     const apiKeysLink = screen.getByRole("link", { name: /Personal access tokens/i });
+    const slackLink = screen.getByRole("link", { name: /Slack workspaces/i });
 
     expect(organizationLink).toHaveAttribute("href", "/settings/organization");
     expect(providersLink).toHaveAttribute("href", "/settings/providers");
@@ -127,6 +128,7 @@ describe("SettingsLayout", () => {
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
     expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
     expect(apiKeysLink).toHaveAttribute("href", "/settings/personal-access-tokens");
+    expect(slackLink).toHaveAttribute("href", "/settings/slack");
   });
 
   it("disables automatic prefetch for every Settings navigation link", () => {
@@ -136,7 +138,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(9);
+    expect(screen.getAllByRole("link")).toHaveLength(10);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }
