@@ -133,14 +133,14 @@ Never squash, rename, or delete existing migrations for a release. Confirm the s
 ## 8. Refresh lockfiles
 
 Every lockfile that resolves a workspace crate records the platform version, including the
-out-of-workspace ones — miss one and its `--locked` build fails against the new version.
+out-of-workspace ones — miss one and its `--locked` build fails against the new version. `cargo update --workspace` moves only the workspace crates; `cargo generate-lockfile` would re-resolve every dependency.
 
 ```bash
-cargo generate-lockfile
-for d in crates/everruns/tests/fixtures/external-consumer evals/generic \
-         evals/guardrail-calibration evals/platform-capability \
-         examples/weekend-concierge-host; do
-  (cd "$d" && cargo generate-lockfile)
+cargo update --workspace
+# Every other committed Cargo.lock is an out-of-workspace project. Discover them
+# rather than listing them: a hardcoded list missed examples/celld-engine in v0.34.2.
+for f in $(git ls-files '*Cargo.lock' | grep -v '^Cargo.lock$'); do
+  (cd "$(dirname "$f")" && cargo update --workspace && cargo metadata --locked --format-version 1 >/dev/null)
 done
 (cd apps/ui && pnpm install --lockfile-only)
 (cd apps/docs && pnpm install --lockfile-only)
