@@ -191,6 +191,31 @@ pub trait SessionFileSystem: Send + Sync {
 /// which falls back to `file_store` when no host installed one.
 pub struct RuntimeArtifactFileSystem(pub Arc<dyn SessionFileSystem>);
 
+// Kept beside the extension type so `tool_context.rs` stays under its
+// focused-contract size guard.
+impl crate::ToolContext {
+    /// Filesystem for artifacts the runtime writes on the session's behalf,
+    /// at paths the runtime chooses (`/.agent-runs/{run_id}`,
+    /// `/.tasks/{task_id}`).
+    ///
+    /// Uses the host's [`RuntimeArtifactFileSystem`](crate::session_files::RuntimeArtifactFileSystem)
+    /// when installed, re-keyed to the attached workspace and mount-resolved the
+    /// same way the engine prepares `file_store` for tool execution; otherwise
+    /// `file_store`. Never pass a model-chosen path to this store.
+    pub fn runtime_artifact_file_store(&self) -> Option<Arc<dyn SessionFileSystem>> {
+        match self
+            .extensions
+            .get::<crate::session_files::RuntimeArtifactFileSystem>()
+        {
+            Some(artifacts) => Some(crate::mount_fs::scoped_prompt_file_store(
+                artifacts.0.clone(),
+                self.workspace_id,
+            )),
+            None => self.file_store.clone(),
+        }
+    }
+}
+
 /// A [`SessionFileSystem`] decorator that pins every operation to a fixed
 /// workspace key, ignoring the per-call `session_id`.
 ///
