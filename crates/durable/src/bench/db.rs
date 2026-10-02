@@ -1,4 +1,4 @@
-//! Helpers shared by the PostgreSQL benchmarks.
+//! Helpers shared by the benchmarks.
 
 use chrono::Utc;
 
@@ -6,8 +6,8 @@ use crate::persistence::{WorkerInfo, WorkflowEventStore};
 
 /// Register a benchmark worker so the store lets it claim tasks.
 ///
-/// The PostgreSQL store only hands tasks to a registered, non-draining worker,
-/// so a benchmark that claims under an unregistered id spins on empty claims
+/// Both stores only hand tasks to a registered, non-draining worker, so a
+/// benchmark that claims under an unregistered id spins on empty claims
 /// forever.
 pub async fn register_bench_worker<S: WorkflowEventStore + ?Sized>(
     store: &S,

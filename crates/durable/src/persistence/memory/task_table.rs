@@ -1,0 +1,289 @@
+//! Task table for the in-memory store.
+//!
+//! Decision: the in-memory store keeps the indexes PostgreSQL gets from SQL, so
+//! a claim costs O(log n) in the pending set instead of a scan over every task
+//! ever created. Every status change goes through [`TaskTable::update`], which
+//! drops the task from the indexes before the change and re-adds it after, so
+//! the indexes cannot drift from the rows.
+
+use std::cmp::Reverse;
+use std::collections::{BTreeSet, HashMap, HashSet};
+
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use crate::persistence::store::{TaskDefinition, TaskStatus};
+
+/// One row of the in-memory task queue.
+pub(super) struct TaskState {
+    pub definition: TaskDefinition,
+    pub status: TaskStatus,
+    pub attempt: u32,
+    pub claimed_by: Option<String>,
+    pub last_error: Option<String>,
+    pub error_history: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub claimed_at: Option<DateTime<Utc>>,
+    /// Last proof of life from the claiming worker; reclaim compares it with
+    /// the stale threshold, like `durable_task_queue.heartbeat_at`.
+    pub heartbeat_at: Option<DateTime<Utc>>,
+    /// Earliest time a pending task may be claimed. Retries push it out by the
+    /// retry policy's backoff, like `durable_task_queue.visible_at`.
+    pub visible_at: DateTime<Utc>,
+    /// Forward-progress guard (EVE-534): progress token observed at the previous
+    /// reclaim, and consecutive no-progress recovery count. `None` token means
+    /// the task has not been reclaimed yet.
+    pub progress_token: Option<i64>,
+    pub no_progress_count: u32,
+}
+
+impl TaskState {
+    /// A fresh pending task, visible now.
+    pub fn pending(definition: TaskDefinition) -> Self {
+        let now = Utc::now();
+        Self {
+            definition,
+            status: TaskStatus::Pending,
+            attempt: 0,
+            claimed_by: None,
+            last_error: None,
+            error_history: vec![],
+            created_at: now,
+            claimed_at: None,
+            heartbeat_at: None,
+            visible_at: now,
+            progress_token: None,
+            no_progress_count: 0,
+        }
+    }
+
+    /// Return the task to the queue, claimable from `visible_at`.
+    pub fn release(&mut self, visible_at: DateTime<Utc>) {
+        self.status = TaskStatus::Pending;
+        self.claimed_by = None;
+        self.claimed_at = None;
+        self.heartbeat_at = None;
+        self.visible_at = visible_at;
+    }
+}
+
+/// PostgreSQL claim order: `ORDER BY priority DESC, visible_at`, then the
+/// time-ordered id so ties are FIFO.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct PendingKey {
+    priority: Reverse<i32>,
+    visible_at: DateTime<Utc>,
+    id: Uuid,
+}
+
+#[derive(Default)]
+pub(super) struct TaskTable {
+    rows: HashMap<Uuid, TaskState>,
+    /// Pending tasks per activity type, in claim order.
+    pending: HashMap<String, BTreeSet<PendingKey>>,
+    /// Pending task count per workflow; `None` counts standalone tasks.
+    pending_per_workflow: HashMap<Option<Uuid>, u32>,
+    claimed: HashSet<Uuid>,
+    by_workflow: HashMap<Uuid, Vec<Uuid>>,
+}
+
+impl TaskTable {
+    pub fn get(&self, id: &Uuid) -> Option<&TaskState> {
+        self.rows.get(id)
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &TaskState> {
+        self.rows.values()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Uuid, &TaskState)> {
+        self.rows.iter()
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn insert(&mut self, id: Uuid, task: TaskState) {
+        if let Some(workflow_id) = task.definition.workflow_id {
+            self.by_workflow.entry(workflow_id).or_default().push(id);
+        }
+        self.rows.insert(id, task);
+        self.index(id);
+    }
+
+    /// Change one task, keeping the indexes in step with its new state.
+    pub fn update<R>(&mut self, id: Uuid, change: impl FnOnce(&mut TaskState) -> R) -> Option<R> {
+        if !self.rows.contains_key(&id) {
+            return None;
+        }
+        self.unindex(id);
+        let result = self.rows.get_mut(&id).map(change);
+        self.index(id);
+        result
+    }
+
+    /// Ids of every task, in any state, that belongs to `workflow_id`.
+    pub fn ids_for_workflow(&self, workflow_id: Uuid) -> Vec<Uuid> {
+        self.by_workflow
+            .get(&workflow_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn claimed_ids(&self) -> Vec<Uuid> {
+        self.claimed.iter().copied().collect()
+    }
+
+    /// Pending tasks of one workflow, or of all standalone tasks for `None`.
+    pub fn pending_count(&self, workflow_id: Option<Uuid>) -> u32 {
+        self.pending_per_workflow
+            .get(&workflow_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub fn pending_total(&self) -> usize {
+        self.pending.values().map(BTreeSet::len).sum()
+    }
+
+    /// Up to `max` claimable tasks of the given types, in claim order.
+    pub fn claimable(
+        &self,
+        activity_types: &[String],
+        now: DateTime<Utc>,
+        max: usize,
+    ) -> Vec<Uuid> {
+        let mut keys: Vec<PendingKey> = Vec::new();
+        for activity_type in activity_types {
+            let Some(queue) = self.pending.get(activity_type) else {
+                continue;
+            };
+            // Priority sorts ahead of visibility, so a delayed high-priority
+            // retry can precede visible work: skip it rather than stop.
+            keys.extend(
+                queue
+                    .iter()
+                    .filter(|key| key.visible_at <= now && self.has_attempts_left(key.id))
+                    .take(max),
+            );
+        }
+        keys.sort();
+        keys.dedup();
+        keys.into_iter().take(max).map(|key| key.id).collect()
+    }
+
+    fn has_attempts_left(&self, id: Uuid) -> bool {
+        self.rows
+            .get(&id)
+            .is_some_and(|task| task.attempt < task.definition.options.retry_policy.max_attempts)
+    }
+
+    fn index(&mut self, id: Uuid) {
+        let Some(task) = self.rows.get(&id) else {
+            return;
+        };
+        match task.status {
+            TaskStatus::Pending => {
+                self.pending
+                    .entry(task.definition.activity_type.clone())
+                    .or_default()
+                    .insert(PendingKey {
+                        priority: Reverse(task.definition.options.priority),
+                        visible_at: task.visible_at,
+                        id,
+                    });
+                *self
+                    .pending_per_workflow
+                    .entry(task.definition.workflow_id)
+                    .or_default() += 1;
+            }
+            TaskStatus::Claimed => {
+                self.claimed.insert(id);
+            }
+            _ => {}
+        }
+    }
+
+    fn unindex(&mut self, id: Uuid) {
+        let Some(task) = self.rows.get(&id) else {
+            return;
+        };
+        match task.status {
+            TaskStatus::Pending => {
+                if let Some(queue) = self.pending.get_mut(&task.definition.activity_type) {
+                    queue.remove(&PendingKey {
+                        priority: Reverse(task.definition.options.priority),
+                        visible_at: task.visible_at,
+                        id,
+                    });
+                }
+                if let Some(count) = self
+                    .pending_per_workflow
+                    .get_mut(&task.definition.workflow_id)
+                {
+                    *count = count.saturating_sub(1);
+                }
+            }
+            TaskStatus::Claimed => {
+                self.claimed.remove(&id);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workflow::ActivityOptions;
+    use serde_json::json;
+
+    fn task(activity_type: &str, priority: i32) -> TaskState {
+        TaskState::pending(TaskDefinition {
+            workflow_id: None,
+            activity_id: "a".into(),
+            activity_type: activity_type.into(),
+            input: json!(null),
+            options: ActivityOptions {
+                priority,
+                ..ActivityOptions::default()
+            },
+        })
+    }
+
+    #[test]
+    fn claim_order_is_priority_then_fifo() {
+        let mut table = TaskTable::default();
+        let ids: Vec<Uuid> = (0..4).map(|_| Uuid::now_v7()).collect();
+        table.insert(ids[0], task("t", 0));
+        table.insert(ids[1], task("t", 5));
+        table.insert(ids[2], task("u", 0));
+        table.insert(ids[3], task("t", 5));
+
+        let types = ["t".to_string(), "u".to_string()];
+        let order = table.claimable(&types, Utc::now(), 10);
+        assert_eq!(order[..2], [ids[1], ids[3]]);
+        assert_eq!(order.len(), 4);
+        assert_eq!(table.claimable(&types, Utc::now(), 1), vec![ids[1]]);
+    }
+
+    #[test]
+    fn update_keeps_indexes_in_step() {
+        let mut table = TaskTable::default();
+        let id = Uuid::now_v7();
+        table.insert(id, task("t", 0));
+        assert_eq!(table.pending_count(None), 1);
+
+        table.update(id, |t| t.status = TaskStatus::Claimed);
+        assert_eq!(table.pending_count(None), 0);
+        assert_eq!(table.claimed_ids(), vec![id]);
+        assert!(table.claimable(&["t".into()], Utc::now(), 10).is_empty());
+
+        let later = Utc::now() + chrono::Duration::seconds(60);
+        table.update(id, |t| t.release(later));
+        assert!(table.claimed_ids().is_empty());
+        assert!(table.claimable(&["t".into()], Utc::now(), 10).is_empty());
+        assert_eq!(table.claimable(&["t".into()], later, 10), vec![id]);
+    }
+}

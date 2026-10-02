@@ -1867,11 +1867,11 @@ mod tests {
             })
             .await
             .unwrap();
-        let task = WorkflowEventStore::claim_task(&store, "worker", &["reason".to_string()], 1)
-            .await
-            .unwrap()
-            .pop()
-            .unwrap();
+        let worker = everruns_durable::WorkerInfo::new("worker", ["reason"]);
+        let registered = WorkflowEventStore::register_worker(&store, worker).await;
+        registered.unwrap();
+        let claimed = WorkflowEventStore::claim_task(&store, "worker", &["reason".into()], 1).await;
+        let task = claimed.unwrap().pop().unwrap();
 
         let outcome = TaskStore::fail_task_and_record(&store, &task, "terminal", false)
             .await

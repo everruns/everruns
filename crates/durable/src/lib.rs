@@ -27,7 +27,7 @@ pub mod prelude {
     pub use crate::engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
     pub use crate::persistence::{
         ClaimedTask, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, StoreError,
-        TaskDefinition, TraceContext, WorkflowEventStore, WorkflowStatus,
+        TaskDefinition, TraceContext, WorkerInfo, WorkflowEventStore, WorkflowStatus,
     };
     pub use crate::reliability::{CircuitBreakerConfig, RetryPolicy};
     pub use crate::scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};

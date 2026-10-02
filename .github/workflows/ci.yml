@@ -1369,7 +1369,7 @@ jobs:
 
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
-        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --features postgres-tests -- --test-threads=1
+        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --test store_conformance_test --features postgres-tests -- --test-threads=1
 
       - name: Run durable failpoint tests
         if: ${{ matrix.shard == 'durable' }}

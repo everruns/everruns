@@ -425,6 +425,51 @@ pub struct WorkerInfo {
     pub avg_task_duration_ms: Option<u64>,
 }
 
+impl WorkerInfo {
+    /// An active worker that accepts `activity_types`, ready for
+    /// [`WorkflowEventStore::register_worker`].
+    ///
+    /// Both stores hand tasks only to a registered worker that is not
+    /// draining, so register before claiming.
+    ///
+    /// ```
+    /// use everruns_durable::{InMemoryWorkflowEventStore, WorkerInfo, WorkflowEventStore};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), everruns_durable::StoreError> {
+    /// let store = InMemoryWorkflowEventStore::new();
+    /// store.register_worker(WorkerInfo::new("worker-1", ["send_email"])).await?;
+    /// let claimed = store.claim_task("worker-1", &["send_email".into()], 10).await?;
+    /// assert!(claimed.is_empty()); // registered, nothing queued yet
+    /// # Ok(()) }
+    /// ```
+    pub fn new<I, S>(id: impl Into<String>, activity_types: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let now = Utc::now();
+        Self {
+            id: id.into(),
+            worker_group: None,
+            activity_types: activity_types.into_iter().map(Into::into).collect(),
+            max_concurrency: 10,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: now,
+            last_heartbeat_at: now,
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        }
+    }
+}
+
 /// Snapshot of total system worker capacity for fair-share claiming.
 #[derive(Debug, Clone, Default)]
 pub struct CapacitySnapshot {

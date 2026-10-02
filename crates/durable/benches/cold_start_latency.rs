@@ -18,7 +18,7 @@ use tokio::runtime::Runtime;
 
 use everruns_durable::bench::{
     BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
-    ReportConfig,
+    ReportConfig, register_bench_worker,
 };
 use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
@@ -118,6 +118,7 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
 
         worker_handles.push(tokio::spawn(async move {
             let worker_name = format!("cold-start-worker-{}", worker_id);
+            register_bench_worker(store.as_ref(), &worker_name, "cold_start_activity").await;
 
             loop {
                 if shutdown.load(Ordering::SeqCst) {

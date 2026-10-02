@@ -39,6 +39,13 @@ async fn cancelled_workflow_fires_both_the_task_and_the_turn_cancel() {
         .await
         .unwrap();
     store
+        .register_worker(everruns_durable::WorkerInfo::new(
+            "worker-1",
+            Vec::<String>::new(),
+        ))
+        .await
+        .expect("register worker");
+    store
         .claim_task("worker-1", &["reason".to_string()], 1)
         .await
         .unwrap();

@@ -100,8 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .start_workflow::<Greet>(Input { name: "durable".into() }, None)
         .await?;
 
-    // A minimal worker loop: claim, execute, report back to the executor.
+    // A minimal worker: register, then claim, execute, report back.
     let types = ["fetch_greeting".to_string(), "shout".to_string()];
+    executor.store().register_worker(WorkerInfo::new("worker-1", types.clone())).await?;
     loop {
         let tasks = executor.store().claim_task("worker-1", &types, 10).await?;
         if tasks.is_empty() {
@@ -204,7 +205,7 @@ cargo test -p everruns-durable
 # PostgreSQL integration tests (DATABASE_URL, default port 9332, migrated)
 cargo test -p everruns-durable --features postgres-tests \
   --test postgres_integration_test --test postgres_repository_test \
-  --test heartbeat_cancel_test -- --test-threads=1
+  --test heartbeat_cancel_test --test store_conformance_test -- --test-threads=1
 
 # Failure injection: fail-rs failpoints inside the PostgreSQL store
 cargo test -p everruns-durable --features "failpoints,postgres-tests" \
@@ -218,6 +219,9 @@ cargo llvm-cov -p everruns-durable --features "failpoints,postgres-tests" \
   --no-fail-fast -- --test-threads=1
 ```
 
+`store_conformance_test` runs one set of cases against both stores, so the
+in-memory store stays a faithful stand-in for PostgreSQL: registered workers
+only, priority then FIFO claim order, retry backoff, stale-claim reclaim.
 `agent_reliability_test` drives whole workflows through worker crashes,
 control-plane restarts and database outages. All of these run in CI on the
 `durable` PostgreSQL shard. The examples in this README are compiled and run
