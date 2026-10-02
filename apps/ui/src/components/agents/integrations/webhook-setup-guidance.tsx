@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { CodeBlock } from "@/components/ui/code-block";
-import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+import { getInvocationSessionModeDisplayName } from "@/lib/endpoint-display";
 import { codingAgentPrompt, webhookSamples } from "@/lib/integration/snippets";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Globe, KeyRound } from "lucide-react";

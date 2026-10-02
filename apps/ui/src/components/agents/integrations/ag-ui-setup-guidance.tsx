@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
-import { getAgUiToolVisibilityDisplayName } from "@/lib/app-channels";
+import { getAgUiToolVisibilityDisplayName } from "@/lib/endpoint-display";
 import type { AgUiToolVisibility } from "@/lib/api/types";
 import { Globe } from "lucide-react";
 

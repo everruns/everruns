@@ -11,11 +11,11 @@ import { getSlackEndpointManifest, type SlackManifest } from "@/lib/api/agent-en
 import type {
   A2aChannelConfig,
   AgUiChannelConfig,
-  AppChannel,
+  AgentEndpoint,
   FcpChannelConfig,
   SlackChannelConfig,
 } from "@/lib/api/types";
-import { getEndpointLifecyclePresentation } from "@/lib/app-channels";
+import { getEndpointLifecyclePresentation } from "@/lib/endpoint-display";
 import { isPublicHttpsUrl } from "@/lib/public-origin";
 type SlackEndpointConfig = SlackChannelConfig & {
   agent_surface_enabled?: boolean;
@@ -44,7 +44,7 @@ function EndpointSetupGuidance({
 }: {
   agentName: string;
   agentDescription?: string | null;
-  channel: AppChannel;
+  channel: AgentEndpoint;
   configureHref?: string;
 }) {
   const router = useRouter();
@@ -183,7 +183,7 @@ export function EndpointDetailsPanel({
 }: {
   agentName: string;
   agentDescription?: string | null;
-  channel: AppChannel;
+  channel: AgentEndpoint;
   configureHref?: string;
 }) {
   return (

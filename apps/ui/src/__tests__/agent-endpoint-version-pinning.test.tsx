@@ -6,14 +6,14 @@ import type {
   Agent,
   AgentTrigger,
   AgentVersion,
-  AppChannel,
+  AgentEndpoint,
   OpenApiAppChannel,
 } from "@/lib/api/types";
 
 const update = jest.fn();
 const updateTrigger = jest.fn().mockResolvedValue({});
 let mockTrigger: AgentTrigger;
-let mockEndpoint: AppChannel;
+let mockEndpoint: AgentEndpoint;
 let mockFlagEnabled = true;
 
 const savedVersion = {
@@ -173,7 +173,7 @@ jest.mock("@/components/ui/select", () => {
 
 function endpoint(
   overrides: Partial<Pick<OpenApiAppChannel, "agent_version_policy" | "agent_version_id">> = {},
-): AppChannel {
+): AgentEndpoint {
   return {
     id: "appchan_123",
     channel_type: "webhook",
@@ -184,7 +184,7 @@ function endpoint(
     updated_at: "2026-10-01T00:00:00Z",
     agent_version_policy: "default",
     ...overrides,
-  } as AppChannel;
+  } as AgentEndpoint;
 }
 
 function renderEditor() {

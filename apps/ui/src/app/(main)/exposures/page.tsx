@@ -39,7 +39,7 @@ import {
   StatCard,
   StatGrid,
 } from "@/components/layout";
-import { getChannelTypeDisplayName } from "@/lib/app-channels";
+import { getEndpointTransportDisplayName } from "@/lib/endpoint-display";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
 
@@ -205,7 +205,7 @@ export default function ExposuresPage() {
               <SelectItem value="all">All transports</SelectItem>
               {transports.map((kind) => (
                 <SelectItem key={kind} value={kind}>
-                  {getChannelTypeDisplayName(kind)}
+                  {getEndpointTransportDisplayName(kind)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -252,7 +252,7 @@ export default function ExposuresPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">
-                          {getChannelTypeDisplayName(exposure.channel.channel_type)}
+                          {getEndpointTransportDisplayName(exposure.channel.channel_type)}
                         </span>
                         {exposure.isTrigger && <Badge variant="outline">trigger</Badge>}
                       </div>

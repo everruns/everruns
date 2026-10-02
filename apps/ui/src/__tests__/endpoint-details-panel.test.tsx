@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EndpointDetailsPanel } from "@/components/agents/integrations/endpoint-details-panel";
 import { getSlackEndpointManifest } from "@/lib/api/agent-endpoints";
-import type { AppChannel } from "@/lib/api/types";
+import type { AgentEndpoint } from "@/lib/api/types";
 
 const mockPush = jest.fn();
 
@@ -13,7 +13,7 @@ jest.mock("@/lib/api/agent-endpoints", () => ({
   getSlackEndpointManifest: jest.fn(),
 }));
 
-function channel(overrides: Partial<AppChannel>): AppChannel {
+function channel(overrides: Partial<AgentEndpoint>): AgentEndpoint {
   return {
     id: "appchan_123",
     channel_type: "slack",
