@@ -10,8 +10,9 @@
 integration plugin system:
 
 - `github`: host-facing tools for one pull request at a time (read it, read its
-  size-capped diff, keep one managed comment on it up to date). This is what a
-  pull request summarizer or reviewer agent uses.
+  size-capped diff, review it with inline comments, keep one managed comment on
+  it up to date) and for filing deduplicated findings as issues. This is what a
+  pull request reviewer or a scheduled security scanner uses.
 - `github_scout`: blueprint-only. It contributes the `github_scout` blueprint, a
   read-only repository-exploration scout whose private tools run only inside
   blueprint-backed child sessions.
@@ -28,7 +29,7 @@ use everruns_core::capabilities::Capability;
 use everruns_integrations_github::{GitHubCapability, GitHubScoutCapability};
 
 assert_eq!(GitHubCapability.id(), "github");
-assert_eq!(GitHubCapability.tools().len(), 3);
+assert_eq!(GitHubCapability.tools().len(), 5);
 assert_eq!(GitHubScoutCapability.id(), "github_scout");
 ```
 
@@ -44,7 +45,23 @@ assert_eq!(GitHubScoutCapability.id(), "github_scout");
   earlier under the same hidden marker, so an agent run on every push keeps a
   single summary comment current.
 
-All three authenticate as the session's `github` connection. For an agent with
+- `submit_github_pull_request_review`: one review (`COMMENT` or
+  `REQUEST_CHANGES`, never approve) with inline comments. Comments the agent
+  already posted on the pull request (same finding key) are skipped, comments
+  on lines outside the diff move into the review body, and a second review of
+  the same head commit is a no-op.
+- `upsert_github_issue`: files a finding as an issue keyed by a fingerprint.
+  An open issue for the same fingerprint is updated, a closed one is left
+  closed.
+- `create_github_pull_request` (only with `allow_pull_requests: true`): opens a
+  draft pull request from a branch already pushed to the same repository.
+
+Capability config (`GitHubConfig`), both off by default:
+
+- `allow_pull_requests`: offer `create_github_pull_request`.
+- `private_issues_only`: `upsert_github_issue` refuses public repositories.
+
+All of them authenticate as the session's `github` connection. For an agent with
 its own GitHub App, that is the App's installation, so comments appear as the
 agent's bot.
 

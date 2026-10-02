@@ -1236,11 +1236,7 @@ async fn import_from_example(
     state: &AppState,
     name: &str,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    use crate::seed::SEED_AGENTS;
-
-    let seed = SEED_AGENTS
-        .iter()
-        .find(|s| s.name == name)
+    let seed = crate::agent_templates::find_agent_example(name)
         .ok_or_else(|| ErrorResponse::not_found(&format!("agent example '{name}'")))?;
 
     // Check dev-only

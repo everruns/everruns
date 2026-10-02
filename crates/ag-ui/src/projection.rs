@@ -25,11 +25,15 @@
 // with `everruns-core`'s own data types. One state machine then serves the
 // server endpoint, `serve`, and the framework.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use everruns_core::events::{
-    OutputMessageCompletedData, OutputMessageDeltaData, ReasonItemData, TurnFailedData,
+    OutputMessageCompletedData, OutputMessageDeltaData, ReasonItemData, SessionTaskEventData,
+    TaskMessageEventData, TurnFailedData,
+};
+use everruns_core::session_task::{
+    SessionTask, SessionTaskState, TASK_KIND_SUBAGENT, TaskMessageDirection, TaskMessagePart,
 };
 use everruns_core::{ContentPart, RuntimeMessage};
 use everruns_provider::execution_phase::ExecutionPhase;
@@ -37,11 +41,21 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::{
-    Event, Interrupt, ReasoningMessageContentEvent, ReasoningMessageEndEvent,
-    ReasoningMessageStartEvent, ReasoningSpanEvent, RunErrorEvent, RunFinishedEvent,
-    RunFinishedOutcome, TextMessageContentEvent, TextMessageEndEvent, TextMessageStartEvent,
-    TokenUsage, ToolCall, ToolCallArgsEvent, ToolCallEndEvent, ToolCallStartEvent,
+    ActivitySnapshotEvent, BaseEvent, Event, Interrupt, Metadata, ReasoningMessageContentEvent,
+    ReasoningMessageEndEvent, ReasoningMessageStartEvent, ReasoningSpanEvent, RunErrorEvent,
+    RunFinishedEvent, RunFinishedOutcome, SubagentErrorEvent, SubagentFinishedEvent,
+    SubagentFinishedOutcome, SubagentStartedEvent, TextMessageContentEvent, TextMessageEndEvent,
+    TextMessageStartEvent, TokenUsage, ToolCall, ToolCallArgsEvent, ToolCallEndEvent,
+    ToolCallStartEvent,
 };
+
+/// The metadata key Everruns-specific run details ride under. `ag-ui` is
+/// reserved for the protocol.
+pub const METADATA_KEY: &str = "everruns";
+
+/// `activityType` of the activity a subagent reports: structured progress, and
+/// the note that it carries on in the background after the run ends.
+pub const SUBAGENT_ACTIVITY_TYPE: &str = "everruns.subagent";
 
 /// A failed turn, as handed to [`ProjectionPolicy::error`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -67,18 +81,31 @@ pub struct ProjectionPolicy {
     /// Report the run's token usage on its terminal event, summed per
     /// provider and model from `llm.generation`.
     pub usage_visible: bool,
+    /// Project the run's subagent tasks (`task.*` of kind `subagent`) as
+    /// `SUBAGENT_*`, with their output attributed by `subagentRunId`.
+    pub subagents_visible: bool,
+    /// Name the model in the run's `everruns` metadata. It is the model
+    /// `usage` would name, so public channels tie it to `usage_visible`.
+    pub model_visible: bool,
+    /// The session id to name in the run's `everruns` metadata, or `None` to
+    /// leave it out. Anonymous channels leave it out.
+    pub session_id: Option<String>,
     /// Maps a failed turn to its `RUN_ERROR`. Public channels sanitize here.
     pub error: ErrorProjection,
 }
 
 impl Default for ProjectionPolicy {
-    /// Trusted defaults: reasoning visible, no tool activity text, and the
-    /// runtime's error message and code passed through.
+    /// Trusted defaults: reasoning, usage, subagents and the model visible, no
+    /// tool activity text, no session id, and the runtime's error message and
+    /// code passed through.
     fn default() -> Self {
         Self {
             reasoning_visible: true,
             tool_activity_text: None,
             usage_visible: true,
+            subagents_visible: true,
+            model_visible: true,
+            session_id: None,
             error: Arc::new(|failure: &TurnFailure| RunErrorEvent {
                 code: failure.code.clone(),
                 ..RunErrorEvent::new(failure.message.clone())
@@ -93,6 +120,9 @@ impl std::fmt::Debug for ProjectionPolicy {
             .field("reasoning_visible", &self.reasoning_visible)
             .field("tool_activity_text", &self.tool_activity_text)
             .field("usage_visible", &self.usage_visible)
+            .field("subagents_visible", &self.subagents_visible)
+            .field("model_visible", &self.model_visible)
+            .field("session_id", &self.session_id)
             .finish_non_exhaustive()
     }
 }
@@ -123,6 +153,14 @@ pub struct Projector {
     next_reasoning_id: usize,
     /// Usage per (provider, model), ordered by that key so output is stable.
     usage: BTreeMap<(Option<String>, Option<String>), TokenUsage>,
+    /// The turn the run follows and the model it last called, for metadata.
+    turn_id: Option<String>,
+    model: Option<String>,
+    /// Subagent invocations started and not yet closed, in start order, with
+    /// whether each runs in the background.
+    open_subagents: Vec<(String, bool)>,
+    /// Every invocation this run announced, so a closed one is never reopened.
+    seen_subagents: HashSet<String>,
     finished: bool,
 }
 
@@ -149,8 +187,58 @@ impl Projector {
             tool_activity_shown: false,
             next_reasoning_id: 0,
             usage: BTreeMap::new(),
+            turn_id: None,
+            model: None,
+            open_subagents: Vec::new(),
+            seen_subagents: HashSet::new(),
             finished: false,
         }
+    }
+
+    /// Records the turn the run's events belong to, named in the run's
+    /// metadata. Callers pass it from the event envelope's context, which the
+    /// `(event_type, data)` input does not carry.
+    pub fn observe_turn(&mut self, turn_id: impl Into<String>) {
+        self.turn_id = Some(turn_id.into());
+    }
+
+    /// The run's metadata as known so far: an `everruns` object with
+    /// `sessionId` (when the policy names one), `turnId` (once observed) and
+    /// `model` (once called, when the policy shows it). `None` when empty.
+    /// The terminal event carries it; a caller can put it on `RUN_STARTED`.
+    ///
+    /// ```
+    /// use everruns_ag_ui::projection::{ProjectionPolicy, Projector};
+    /// use everruns_ag_ui::Event;
+    ///
+    /// let policy = ProjectionPolicy {
+    ///     session_id: Some("session-1".into()),
+    ///     ..ProjectionPolicy::default()
+    /// };
+    /// let mut projector = Projector::new("thread", "run", policy);
+    /// projector.observe_turn("turn-1");
+    /// projector.project("turn.completed", &serde_json::json!({}));
+    /// let Some(Event::RunFinished(finished)) = projector.drain().last() else { panic!() };
+    /// assert_eq!(
+    ///     serde_json::to_value(&finished.base.metadata).unwrap(),
+    ///     serde_json::json!({ "everruns": { "sessionId": "session-1", "turnId": "turn-1" } }),
+    /// );
+    /// ```
+    pub fn run_metadata(&self) -> Option<Metadata> {
+        let mut everruns = serde_json::Map::new();
+        let mut put = |key: &str, value: Option<&String>| {
+            if let Some(value) = value {
+                everruns.insert(key.to_string(), Value::String(value.clone()));
+            }
+        };
+        put("sessionId", self.policy.session_id.as_ref());
+        put("turnId", self.turn_id.as_ref());
+        put(
+            "model",
+            self.model.as_ref().filter(|_| self.policy.model_visible),
+        );
+        (!everruns.is_empty())
+            .then(|| Metadata::from_iter([(METADATA_KEY.to_string(), Value::Object(everruns))]))
     }
 
     /// Whether the run has ended (`RUN_FINISHED` or `RUN_ERROR` queued).
@@ -176,9 +264,13 @@ impl Projector {
             return;
         }
         self.close_all();
+        self.close_subagents();
         let mut error = error;
         if error.usage.is_none() {
             error.usage = self.usage_entries();
+        }
+        if error.base.metadata.is_none() {
+            error.base.metadata = self.run_metadata();
         }
         self.queue.push_back(Event::RunError(error));
         self.finished = true;
@@ -322,6 +414,16 @@ impl Projector {
                 }
             }
             "llm.generation" => self.record_usage(data),
+            "task.created" | "task.updated" if self.policy.subagents_visible => {
+                if let Some(data) = parse::<SessionTaskEventData>(data) {
+                    self.subagent_task(&data.task);
+                }
+            }
+            "task.message.received" if self.policy.subagents_visible => {
+                if let Some(data) = parse::<TaskMessageEventData>(data) {
+                    self.subagent_message(&data);
+                }
+            }
             "turn.completed" | "session.idled" => self.finish(None),
             // Cancellation is a deliberate terminal state, typically client
             // initiated, not a fault: 1.0 names it with the cancelled outcome.
@@ -342,7 +444,12 @@ impl Projector {
 
     fn finish(&mut self, outcome: Option<RunFinishedOutcome>) {
         self.close_all();
+        self.close_subagents();
         self.queue.push_back(Event::RunFinished(RunFinishedEvent {
+            base: BaseEvent {
+                metadata: self.run_metadata(),
+                ..BaseEvent::default()
+            },
             outcome,
             usage: self.usage_entries(),
             ..RunFinishedEvent::new(self.thread_id.clone(), self.run_id.clone())
@@ -357,6 +464,12 @@ impl Projector {
     /// cache counts as parts of it.
     fn record_usage(&mut self, data: &Value) {
         let metadata = &data["metadata"];
+        if let Some(model) = ["response_model", "model"]
+            .iter()
+            .find_map(|key| metadata.get(*key).and_then(Value::as_str))
+        {
+            self.model = Some(model.to_string());
+        }
         let Some(usage) = metadata.get("usage").filter(|usage| usage.is_object()) else {
             return;
         };
@@ -554,6 +667,178 @@ impl Projector {
             ReasoningMessageContentEvent::new(id, text),
         ));
         self.close_reasoning_message();
+    }
+
+    /// A subagent task's snapshot: announce a new invocation, close a
+    /// terminal one. Other task kinds, and a task first seen already settled
+    /// (one an earlier run started), are not this run's subagents.
+    fn subagent_task(&mut self, task: &SessionTask) {
+        if task.kind != TASK_KIND_SUBAGENT {
+            return;
+        }
+        if !self.seen_subagents.contains(&task.id) {
+            if task.state.is_terminal() {
+                return;
+            }
+            self.seen_subagents.insert(task.id.clone());
+            let background = task.spec.get("mode").and_then(Value::as_str) == Some("background");
+            self.open_subagents.push((task.id.clone(), background));
+            self.queue
+                .push_back(Event::SubagentStarted(SubagentStartedEvent {
+                    subagent_run_id: task.id.clone(),
+                    name: task.display_name.clone(),
+                    ..SubagentStartedEvent::default()
+                }));
+        }
+        if !task.state.is_terminal() {
+            return;
+        }
+        let Some(position) = self
+            .open_subagents
+            .iter()
+            .position(|(id, _)| *id == task.id)
+        else {
+            return;
+        };
+        self.open_subagents.remove(position);
+        let id = task.id.clone();
+        match task.state {
+            SessionTaskState::Succeeded => {
+                // The child's final answer: the parent stream sees it as the
+                // task's summary, never its transcript.
+                if let Some(summary) = task.summary.as_deref().filter(|s| !s.trim().is_empty()) {
+                    self.subagent_text(&id, &format!("{id}-summary"), summary);
+                }
+                self.queue
+                    .push_back(Event::SubagentFinished(SubagentFinishedEvent {
+                        subagent_run_id: id,
+                        ..SubagentFinishedEvent::default()
+                    }));
+            }
+            SessionTaskState::Canceled => {
+                self.queue
+                    .push_back(Event::SubagentError(SubagentErrorEvent {
+                        subagent_run_id: id,
+                        message: "Subagent canceled".to_string(),
+                        code: Some("cancelled".to_string()),
+                        ..SubagentErrorEvent::default()
+                    }));
+            }
+            _ => {
+                // Failures go through the policy's error mapping, so a public
+                // channel sanitizes a child's error as it does the run's.
+                let failure = task
+                    .error
+                    .as_ref()
+                    .map(|error| TurnFailure {
+                        message: error.message.clone(),
+                        code: Some(error.kind.clone()),
+                    })
+                    .unwrap_or_default();
+                let error = (self.policy.error)(&failure);
+                self.queue
+                    .push_back(Event::SubagentError(SubagentErrorEvent {
+                        subagent_run_id: id,
+                        message: error.message,
+                        code: error.code,
+                        ..SubagentErrorEvent::default()
+                    }));
+            }
+        }
+    }
+
+    /// A message a subagent posted to its parent: text becomes an attributed
+    /// assistant message, structured data an attributed activity snapshot.
+    fn subagent_message(&mut self, data: &TaskMessageEventData) {
+        let message = &data.message;
+        if message.direction != TaskMessageDirection::Outbound
+            || !self
+                .open_subagents
+                .iter()
+                .any(|(id, _)| *id == data.task_id)
+        {
+            return;
+        }
+        let text = message
+            .content
+            .iter()
+            .filter_map(|part| match part {
+                TaskMessagePart::Text { text } => Some(text.as_str()),
+                TaskMessagePart::Data { .. } => None,
+            })
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !text.is_empty() {
+            self.subagent_text(&data.task_id, &message.id, &text);
+        }
+        for (index, part) in message.content.iter().enumerate() {
+            if let TaskMessagePart::Data { data: value } = part {
+                let content = serde_json::Map::from_iter([("data".to_string(), value.clone())]);
+                self.queue
+                    .push_back(Event::ActivitySnapshot(ActivitySnapshotEvent {
+                        message_id: format!("{}-{index}", message.id),
+                        activity_type: SUBAGENT_ACTIVITY_TYPE.to_string(),
+                        content,
+                        subagent_run_id: Some(data.task_id.clone()),
+                        ..ActivitySnapshotEvent::default()
+                    }));
+            }
+        }
+    }
+
+    /// A complete assistant text message attributed to a subagent.
+    fn subagent_text(&mut self, subagent_run_id: &str, message_id: &str, text: &str) {
+        let attributed = Some(subagent_run_id.to_string());
+        self.queue
+            .push_back(Event::TextMessageStart(TextMessageStartEvent {
+                subagent_run_id: attributed.clone(),
+                ..TextMessageStartEvent::assistant(message_id)
+            }));
+        self.queue
+            .push_back(Event::TextMessageContent(TextMessageContentEvent {
+                subagent_run_id: attributed.clone(),
+                ..TextMessageContentEvent::new(message_id, text)
+            }));
+        self.queue
+            .push_back(Event::TextMessageEnd(TextMessageEndEvent {
+                subagent_run_id: attributed,
+                ..TextMessageEndEvent::new(message_id)
+            }));
+    }
+
+    /// A run may not end while a subagent invocation is open. A foreground
+    /// child ends inside its parent's turn, so one open here outlived a
+    /// cancelled or failed turn, or waits beside an interrupt. A background
+    /// child carries on after the run: an activity says so first. Either way
+    /// the segment ends `suspended`, which 1.0 defines as terminal for this
+    /// stream and not for the subagent; success or error would claim an
+    /// outcome nobody has seen yet.
+    fn close_subagents(&mut self) {
+        for (id, background) in std::mem::take(&mut self.open_subagents) {
+            if background {
+                let content = serde_json::Map::from_iter([(
+                    "state".to_string(),
+                    Value::String("running".to_string()),
+                )]);
+                self.queue
+                    .push_back(Event::ActivitySnapshot(ActivitySnapshotEvent {
+                        message_id: format!("{id}-background"),
+                        activity_type: SUBAGENT_ACTIVITY_TYPE.to_string(),
+                        content,
+                        subagent_run_id: Some(id.clone()),
+                        ..ActivitySnapshotEvent::default()
+                    }));
+            }
+            self.queue
+                .push_back(Event::SubagentFinished(SubagentFinishedEvent {
+                    subagent_run_id: id,
+                    outcome: Some(SubagentFinishedOutcome::Suspended {
+                        interrupt_ids: None,
+                    }),
+                    ..SubagentFinishedEvent::default()
+                }));
+        }
     }
 
     /// 1.0 fails a run that finishes with a message or span still open.

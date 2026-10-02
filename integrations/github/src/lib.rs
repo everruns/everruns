@@ -31,7 +31,10 @@
 //! ```
 
 mod client;
+mod fix_pull_requests;
+mod issues;
 mod pull_requests;
+mod reviews;
 mod tools;
 
 use everruns_capability::json_schema_for;
@@ -43,9 +46,12 @@ use everruns_core::capabilities::{
 use everruns_core::tools::Tool;
 use serde::{Deserialize, Serialize};
 
+use fix_pull_requests::CreateGitHubPullRequestTool;
+use issues::UpsertGitHubIssueTool;
 use pull_requests::{
     GetGitHubPullRequestDiffTool, GetGitHubPullRequestTool, UpsertGitHubCommentTool,
 };
+use reviews::SubmitGitHubReviewTool;
 use tools::{ReadGitHubFileTool, SearchGitHubCodeTool, SearchGitHubIssuesTool};
 
 /// Capability plugins this crate contributes to a hosted catalog.
@@ -65,9 +71,36 @@ pub const GITHUB_API_BASE: &str = "https://api.github.com";
 pub const GITHUB_CONNECTION_PROVIDER: &str = "github";
 pub const GITHUB_TOKEN_SECRET: &str = "GITHUB_TOKEN";
 
-/// Pull request tools authenticated as the session's `github` connection,
-/// which for an agent with its own GitHub App is that App's installation.
+/// Pull request, review and issue tools authenticated as the session's
+/// `github` connection, which for an agent with its own GitHub App is that
+/// App's installation.
 pub struct GitHubCapability;
+
+/// Per-agent settings for the `github` capability. Both default to off, so an
+/// agent that just lists `github` gets the least it can do.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+#[schemars(crate = "everruns_capability::schemars")]
+pub struct GitHubConfig {
+    /// Offer `create_github_pull_request`, so the agent can open (draft) pull
+    /// requests from branches it pushed. Pushing also needs the GitHub App's
+    /// Contents write permission.
+    #[schemars(title = "Open pull requests")]
+    pub allow_pull_requests: bool,
+    /// Refuse to file issues on public repositories, so findings such as
+    /// vulnerabilities are never disclosed in a public issue.
+    #[schemars(title = "File issues on private repositories only")]
+    pub private_issues_only: bool,
+}
+
+impl GitHubConfig {
+    fn parse(config: &serde_json::Value) -> Result<Self, String> {
+        if config.is_null() {
+            return Ok(Self::default());
+        }
+        serde_json::from_value(config.clone()).map_err(|e| format!("Invalid github config: {e}"))
+    }
+}
 
 impl Capability for GitHubCapability {
     fn id(&self) -> &str {
@@ -79,7 +112,7 @@ impl Capability for GitHubCapability {
     }
 
     fn description(&self) -> &str {
-        "Read GitHub pull requests and their diffs, and keep one comment per pull request up to date."
+        "Read GitHub pull requests and their diffs, review them with inline comments, keep one comment per pull request up to date, and file deduplicated issues."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -95,19 +128,41 @@ impl Capability for GitHubCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![
+        self.tools_with_config(&serde_json::Value::Null)
+    }
+
+    fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
+        // Invalid config is rejected on write (`validate_config`); anything that
+        // still fails to parse here gets the defaults, which are the safe side.
+        let config = GitHubConfig::parse(config).unwrap_or_default();
+        let mut tools: Vec<Box<dyn Tool>> = vec![
             Box::new(GetGitHubPullRequestTool),
             Box::new(GetGitHubPullRequestDiffTool),
             Box::new(UpsertGitHubCommentTool),
-        ]
+            Box::new(SubmitGitHubReviewTool),
+            Box::new(UpsertGitHubIssueTool::new(config.private_issues_only)),
+        ];
+        if config.allow_pull_requests {
+            tools.push(Box::new(CreateGitHubPullRequestTool));
+        }
+        tools
+    }
+
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(json_schema_for::<GitHubConfig>())
+    }
+
+    fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
+        GitHubConfig::parse(config).map(|_| ())
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
         vec![CapabilityLocalization::text(
             "uk",
             "GitHub",
-            "Читає pull request-и GitHub та їхні зміни й підтримує актуальним один коментар \
-             на кожному pull request-і.",
+            "Читає pull request-и GitHub та їхні зміни, рецензує їх із коментарями до рядків, \
+             підтримує актуальним один коментар на кожному pull request-і та створює issue \
+             без дублікатів.",
         )]
     }
 }
@@ -223,11 +278,60 @@ mod tests {
             vec![
                 "get_github_pull_request",
                 "get_github_pull_request_diff",
-                "upsert_github_comment"
+                "upsert_github_comment",
+                "submit_github_pull_request_review",
+                "upsert_github_issue"
             ]
         );
         assert!(cap.dependencies().is_empty());
         assert_ne!(cap.localized_description(Some("uk")), cap.description());
+    }
+
+    #[test]
+    fn pull_request_creation_is_opt_in() {
+        let names = |config: serde_json::Value| -> Vec<String> {
+            GitHubCapability
+                .tools_with_config(&config)
+                .iter()
+                .map(|t| t.name().to_string())
+                .collect()
+        };
+        let open = "create_github_pull_request".to_string();
+        assert!(!names(serde_json::Value::Null).contains(&open));
+        assert!(!names(serde_json::json!({})).contains(&open));
+        assert!(!names(serde_json::json!({"allow_pull_requests": false})).contains(&open));
+        assert!(names(serde_json::json!({"allow_pull_requests": true})).contains(&open));
+        // Unparseable config falls back to the safe defaults.
+        assert!(!names(serde_json::json!({"allow_pull_requests": "yes"})).contains(&open));
+    }
+
+    #[test]
+    fn config_is_validated_and_described() {
+        let cap = GitHubCapability;
+        assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
+        assert!(
+            cap.validate_config(
+                &serde_json::json!({"allow_pull_requests": true, "private_issues_only": true})
+            )
+            .is_ok()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"allow_pull_requests": 1}))
+                .is_err()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"push": true}))
+                .is_err()
+        );
+        let schema = cap.config_schema().expect("schema");
+        assert_eq!(
+            schema["properties"]["allow_pull_requests"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            schema["properties"]["private_issues_only"]["type"],
+            "boolean"
+        );
     }
 
     #[test]

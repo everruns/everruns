@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "AG-UI Channel"
-description: "AG-UI 1.0 inbound channel: wire types, runtime-event projection, and the 1.0 rules the stream keeps."
+description: "AG-UI 1.0 channel: wire types, runtime-event projection, the consumer pipeline, and the 1.0 rules each side keeps."
 tags:
   - everruns
   - integrations
@@ -12,12 +12,14 @@ tags:
 
 Implemented on AG-UI 1.0 for the endpoint `POST /v1/e/{endpoint_id}/ag-ui` and
 Public Chat (`POST /v1/e/{endpoint_id}/public-chat`), which reuses the same
-stream, including interrupts and resume, frontend tools and token usage. The
-framework serves the same protocol from any session behind the facade's `ag-ui`
-feature (see [Framework](#framework)), and `serve` mounts it at
-`POST /v1/e/{agent}/ag-ui` behind its own `ag-ui` feature (see [serve](#serve)),
-with the runnable `examples/serve/ag-ui` driven by `@ag-ui/client`. Subagents
-and the outbound client are planned follow-ups of the same upgrade.
+stream, including interrupts and resume, frontend tools, token usage,
+subagents, run metadata, and a capabilities declaration at
+`GET /v1/e/{endpoint_id}/ag-ui/capabilities`. The framework serves the same
+protocol from any session behind the facade's `ag-ui` feature (see
+[Framework](#framework)), and `serve` mounts it at `POST /v1/e/{agent}/ag-ui`
+behind its own `ag-ui` feature (see [serve](#serve)), with the runnable
+`examples/serve/ag-ui` driven by `@ag-ui/client`. The crate also has the
+consumer half (below), which outbound delegation builds on.
 
 ## Pieces
 
@@ -29,6 +31,10 @@ and the outbound client are planned follow-ups of the same upgrade.
 - **Projection**: `everruns_ag_ui::projection::Projector` (feature `core`)
   turns canonical runtime events into AG-UI events. It is transport-free so the
   server endpoint, the framework and `serve` share one projection.
+- **Consumer**: `everruns_ag_ui::consumer` decodes a producer's events,
+  enforces the 1.0 consumer rules and assembles a `RunResult`;
+  `ResumeBuilder` answers interrupts. The HTTP/SSE `client` (feature `client`)
+  feeds it. See [Consumer rules](#consumer-rules).
 - **Server adapter**: [`crates/server/src/api/ag_ui.rs`](../../crates/server/src/api/ag_ui.rs)
   validates input, runs the turn and feeds the session's events to the
   projector.
@@ -125,6 +131,33 @@ because every top-level agent is an endpoint and none is declared separately.
   characters of `[A-Za-z0-9-_.]` (TM-TENANT-009). Emitted assistant message ids
   are the runtime message UUID, so a client can correlate them with history.
 
+## Consumer rules
+
+When Everruns is the AG-UI client, the producer is untrusted, so the consumer
+holds it to the rules rather than repairing its stream:
+
+- **Processing model.** An unknown event type is dropped and an unknown union
+  member in an optional or list slot (outcome, content part, snapshot message,
+  JSON Patch op) is stripped, each with a warning; a known field with a
+  malformed value fails the stream.
+- **Sequencing.** The stream opens with `RUN_STARTED` (or `RUN_ERROR`); after a
+  terminal event only a new run may start; continuations need an open opener;
+  a run may not finish with a message, tool call, reasoning span, step or
+  subagent open; a continuation's `subagentRunId` must agree with its opener.
+  The `*_CHUNK` shorthand is expanded into triads first. A body that ends
+  inside a run is an error.
+- **Resume coverage.** A resume answers every open interrupt exactly once
+  (resolved or cancelled) and nothing else; `ResumeBuilder` refuses anything
+  less before it is sent.
+- **Bounded input.** The SSE reader caps one event's size (4 MiB by default).
+
+The rules are ported from the reference TypeScript client and tested against
+upstream's client conformance corpus, vendored under
+`crates/ag-ui/spec/1.0/conformance` (`tests/conformance.rs`): every stream the
+corpus accepts is accepted and every one it rejects is rejected for the same
+reason. Its warning, reducer and request assertions describe the TypeScript
+client's own state handling and are not checked.
+
 ## Interrupts and resume
 
 A parked turn becomes interrupts, built in
@@ -169,12 +202,54 @@ the interrupt with the calls streamed beside it. A run carrying resume entries
 resolves only those, and a frontend call left unanswered is closed as missing
 when the turn resumes. Answering both in one run is a known gap.
 
+## Subagents
+
+With `subagents_visible` (default off) a run projects its subagent tasks
+(`task.*` of kind `subagent`, what `spawn_agent` creates) as `SUBAGENT_*`, with
+`subagentRunId` set to the task id and `name` to its display name. The parent
+stream sees what crosses the task boundary, not the child transcript (see
+[session tasks](../runtime-resources/session-tasks.md)), so attribution
+covers that: text the child posts to its parent and its final summary become
+assistant text messages carrying `subagentRunId`, structured progress becomes
+an `everruns.subagent` activity. Child tool calls stay in the child session.
+A child that fails or is cancelled reports `SUBAGENT_ERROR`, its error passed
+through the run's error policy, so public endpoints sanitize it. The task spec
+(instructions, schemas) is never projected.
+
+A run never finishes with an invocation open. A foreground child ends inside
+its parent's turn; a background child that is still running when the run
+ends gets an `everruns.subagent` activity saying so, then every open segment
+closes with `SUBAGENT_FINISHED` and the `suspended` outcome, which 1.0 defines
+as terminal for the stream and not for the subagent. Success or error would
+claim an outcome nobody has seen. Its later completion belongs to whatever
+turn wakes the parent, not to this run.
+
+## Run metadata
+
+`RUN_STARTED`, `RUN_FINISHED` and `RUN_ERROR` carry `metadata.everruns`
+(the `ag-ui` key is the protocol's): `turnId` once the turn is known, `model`
+(the last model called) only when `usage_visible` is set, since usage already
+names it, and `sessionId` only for an identified caller on the AG-UI endpoint
+itself, never an anonymous or Public Chat visitor.
+
+## Capabilities
+
+`GET /v1/e/{endpoint_id}/ag-ui/capabilities` returns a 1.0 `AgentCapabilities`
+behind the same auth, gates and rate limit as a run
+([`ag_ui_capabilities.rs`](../../crates/server/src/api/ag_ui_capabilities.rs)).
+It is derived from the endpoint config only: identity (the endpoint name and
+description, `type: everruns`), streaming, client-provided tools, interrupts,
+and the opt-ins (reasoning, approvals, subagents, and usage under
+`custom.everruns`). The agent's own tools are not listed, and `multiAgent` is
+undeclared unless subagents are visible. The stream stays authoritative.
+
 ## Public endpoints
 
 Anonymous endpoints use a public projection policy: errors go through
 `PublicError` (see [public endpoints](../execution/public-endpoints.md)), tool
 activity uses only the endpoint's configured text. The decided policy for the
 1.0 additions: anonymous endpoints may receive `ask_user` interrupts, while
-approval interrupts (`tool_approval_interrupts`) and token usage
-(`usage_visible`) stay off unless the endpoint enables them. Public Chat keeps
-both off. See TM-TENANT-016 and TM-TOOL-052.
+approval interrupts (`tool_approval_interrupts`), token usage
+(`usage_visible`) and subagents (`subagents_visible`) stay off unless the
+endpoint enables them. Public Chat keeps all three off. See TM-TENANT-016,
+TM-TOOL-052 and TM-API-026.

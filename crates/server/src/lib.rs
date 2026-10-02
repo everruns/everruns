@@ -105,6 +105,7 @@ pub mod durable_seal;
 pub mod org_init;
 
 // Service seeding (default agents, providers, models)
+pub(crate) mod agent_templates;
 pub mod seed;
 
 // Session schedule poller

@@ -40,5 +40,5 @@ fn registry_includes_github_pull_request_tools() {
     let cap = registry
         .get("github")
         .expect("github capability should be registered");
-    assert_eq!(cap.tools().len(), 3);
+    assert_eq!(cap.tools().len(), 5);
 }

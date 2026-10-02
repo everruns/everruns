@@ -942,7 +942,9 @@ jobs:
           # registry. Live coverage runs in the dedicated ard.yml workflow.
           cargo test -p everruns-ard
           # ag-ui: AG-UI 1.0 wire types against the vendored upstream schema
-          # and fixture corpus. Pure, no network.
+          # and fixture corpus, the consumer against the upstream client
+          # conformance corpus, and the `client` feature against a local mock
+          # agent on 127.0.0.1. No external network.
           cargo test -p everruns-ag-ui --all-features
           # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.

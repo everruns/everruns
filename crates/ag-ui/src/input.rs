@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{Message, Metadata};
+use crate::{Message, Metadata, PROTOCOL_VERSION};
 
 /// The request body that starts a run.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -29,6 +29,21 @@ pub struct RunAgentInput {
     /// Answers to the interrupts of the run this one continues.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resume: Vec<ResumeEntry>,
+}
+
+impl RunAgentInput {
+    /// Declares [`PROTOCOL_VERSION`] as the consumer's version.
+    ///
+    /// ```
+    /// use everruns_ag_ui::RunAgentInput;
+    ///
+    /// let input = RunAgentInput::default().with_protocol_version();
+    /// assert_eq!(input.protocol_version.as_deref(), Some("1.0"));
+    /// ```
+    pub fn with_protocol_version(mut self) -> Self {
+        self.protocol_version = Some(PROTOCOL_VERSION.to_owned());
+        self
+    }
 }
 
 /// A frontend tool definition.

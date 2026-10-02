@@ -10,9 +10,32 @@
   contract, including what was inferred from the official SDK, is pinned in
   [OpenAI Responses WebSocket Transport](foundations/openai-responses-websocket.md);
   threat-model entry TM-LLM-045.
+* **PR Reviewer and Security Scanner templates.** Two agent examples carry a
+  guided setup (connect the agent's GitHub App, pick a repository, choose
+  settings, create the trigger) on the existing import path. The `github`
+  capability gains `submit_github_pull_request_review` (inline comments,
+  cannot approve, deterministic repeat suppression), `upsert_github_issue`
+  (fingerprint-keyed findings) and the opt-in `create_github_pull_request`,
+  with `allow_pull_requests` and `private_issues_only` settings the tools
+  enforce. See [GitHub review and security agent
+  templates](integrations/github-agent-templates.md) and TM-GHAPP-008 to 011.
 
 ## 2026-10-01
 
+* **Everruns can consume AG-UI streams.** `everruns-ag-ui` gained a consumer
+  pipeline (1.0 processing model, sequencing rules, chunk expansion, result
+  assembly, the resume coverage rule) and an HTTP/SSE client behind the
+  `client` feature, held to upstream's client conformance corpus. Recorded in
+  [AG-UI Channel](integrations/ag-ui.md#consumer-rules).
+* **AG-UI subagents, run metadata and capabilities.** With `subagents_visible`
+  (default off) subagent tasks stream as `SUBAGENT_*` keyed by task id, their
+  posted text and summary attributed by `subagentRunId`; segments still open
+  when a run ends close as `suspended`. Run events carry `metadata.everruns`
+  (turn, model with usage, session id for identified callers), and
+  `GET /v1/e/{endpoint_id}/ag-ui/capabilities` serves a 1.0
+  `AgentCapabilities` derived from the endpoint config. Recorded in
+  [AG-UI Channel](integrations/ag-ui.md#subagents) and threat-model entry
+  TM-API-026.
 * **serve speaks AG-UI.** `serve`'s `ag-ui` feature mounts
   `POST /v1/e/{agent}/ag-ui`, the server's channel route shape, as a thin layer
   over `Session::ag_ui_with`. The facade gained `InterruptSource`, so serve's

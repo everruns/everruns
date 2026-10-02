@@ -2221,9 +2221,12 @@ version = "0.33.0"
 dependencies = [
  "everruns-core",
  "everruns-provider",
+ "futures-util",
  "jsonschema",
+ "reqwest 0.13.5",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -3363,6 +3366,7 @@ dependencies = [
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-catalog",
+ "everruns-integrations-github",
  "everruns-integrations-typesafe",
  "everruns-integrations-web-fetch",
  "everruns-internal-protocol",
@@ -3386,6 +3390,7 @@ dependencies = [
  "hyper-util",
  "image",
  "inventory",
+ "jsonschema",
  "jsonwebtoken",
  "k256",
  "metrics",

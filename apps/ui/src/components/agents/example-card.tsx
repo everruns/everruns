@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Import } from "lucide-react";
-import type { AgentExample, Capability, CapabilityId } from "@/lib/api/types";
+import type { Capability, CapabilityId } from "@/lib/api/types";
+import type { GuidedAgentExample } from "@/lib/api/agent-examples";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
@@ -14,7 +15,7 @@ import {
 import { useLocale } from "@/providers/locale-provider";
 
 interface ExampleCardProps {
-  example: AgentExample;
+  example: GuidedAgentExample;
   allCapabilities?: Capability[];
   onImport: (name: string) => void;
   adopting?: boolean;
@@ -34,10 +35,19 @@ export function ExampleCard({
     <EntityCard
       title={example.display_name}
       headerActions={
-        example.dev_only && (
-          <Badge variant="outline" className="text-xs">
-            dev
-          </Badge>
+        (example.dev_only || example.setup) && (
+          <div className="flex gap-1">
+            {example.setup && (
+              <Badge variant="outline" className="text-xs">
+                guided setup
+              </Badge>
+            )}
+            {example.dev_only && (
+              <Badge variant="outline" className="text-xs">
+                dev
+              </Badge>
+            )}
+          </div>
         )
       }
       footer={

@@ -134,6 +134,10 @@ pub struct PullRequestFile {
     pub additions: u64,
     #[serde(default)]
     pub deletions: u64,
+    /// Unified diff hunks for the file. Absent for binary files and for
+    /// patches GitHub considers too large to inline.
+    #[serde(default)]
+    pub patch: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,6 +146,93 @@ pub struct IssueComment {
     pub html_url: String,
     #[serde(default)]
     pub body: Option<String>,
+}
+
+/// Author of a comment, review or issue. `kind` is GitHub's `type`
+/// (`User`, `Bot`, `Organization`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Author {
+    pub login: String,
+    #[serde(rename = "type", default)]
+    pub kind: String,
+}
+
+impl Author {
+    /// Whether a GitHub App (or another bot account) wrote this. People cannot
+    /// post as `Bot`, so a marker in a human's comment never counts as ours.
+    pub fn is_bot(&self) -> bool {
+        self.kind == "Bot"
+    }
+}
+
+/// An inline review comment on a pull request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewComment {
+    pub id: u64,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub user: Option<Author>,
+}
+
+/// A submitted pull request review.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Review {
+    pub id: u64,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub commit_id: Option<String>,
+    #[serde(default)]
+    pub html_url: Option<String>,
+    #[serde(default)]
+    pub user: Option<Author>,
+}
+
+/// An issue (or pull request, which the issues API also lists).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Issue {
+    pub number: u64,
+    pub html_url: String,
+    pub state: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub user: Option<Author>,
+    #[serde(default)]
+    pub pull_request: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Repository {
+    pub full_name: String,
+    #[serde(default)]
+    pub private: bool,
+    #[serde(default)]
+    pub visibility: Option<String>,
+    #[serde(default)]
+    pub default_branch: Option<String>,
+}
+
+impl Repository {
+    /// Public repositories expose every issue to the world.
+    pub fn is_public(&self) -> bool {
+        match self.visibility.as_deref() {
+            Some(visibility) => visibility == "public",
+            None => !self.private,
+        }
+    }
+}
+
+/// A created or existing pull request, as the create endpoint returns it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullRequestSummary {
+    pub number: u64,
+    pub html_url: String,
+    #[serde(default)]
+    pub draft: bool,
 }
 
 /// A diff cut to a byte budget on a UTF-8 boundary.
@@ -342,6 +433,164 @@ impl GitHubClient {
             )),
             None => Ok((self.create_issue_comment(repo, number, body).await?, true)),
         }
+    }
+
+    /// Every changed file with its patch, up to `max_pages` pages of 100.
+    pub async fn pull_request_files_with_patches(
+        &self,
+        repo: &str,
+        number: u64,
+        max_pages: u32,
+    ) -> Result<Vec<PullRequestFile>, String> {
+        self.get_pages(
+            &format!("{}/repos/{repo}/pulls/{number}/files", self.api_base),
+            max_pages,
+        )
+        .await
+    }
+
+    /// Inline review comments on a pull request, oldest first.
+    pub async fn review_comments(
+        &self,
+        repo: &str,
+        number: u64,
+        max_pages: u32,
+    ) -> Result<Vec<ReviewComment>, String> {
+        self.get_pages(
+            &format!("{}/repos/{repo}/pulls/{number}/comments", self.api_base),
+            max_pages,
+        )
+        .await
+    }
+
+    /// Submitted reviews on a pull request, oldest first.
+    pub async fn reviews(
+        &self,
+        repo: &str,
+        number: u64,
+        max_pages: u32,
+    ) -> Result<Vec<Review>, String> {
+        self.get_pages(
+            &format!("{}/repos/{repo}/pulls/{number}/reviews", self.api_base),
+            max_pages,
+        )
+        .await
+    }
+
+    /// Submit a review in one call (no pending state is left behind).
+    pub async fn create_review(
+        &self,
+        repo: &str,
+        number: u64,
+        review: &serde_json::Value,
+    ) -> Result<Review, String> {
+        let url = format!("{}/repos/{repo}/pulls/{number}/reviews", self.api_base);
+        let text = self
+            .send(
+                self.http.post(&url).json(review),
+                "application/vnd.github+json",
+            )
+            .await?;
+        parse_json(&text)
+    }
+
+    pub async fn repository(&self, repo: &str) -> Result<Repository, String> {
+        self.get_json(&format!("{}/repos/{repo}", self.api_base))
+            .await
+    }
+
+    /// Issues of every state, newest first, up to `max_pages` pages of 100.
+    /// The issues API also returns pull requests; callers filter them out.
+    pub async fn issues(&self, repo: &str, max_pages: u32) -> Result<Vec<Issue>, String> {
+        self.get_pages(
+            &format!(
+                "{}/repos/{repo}/issues?state=all&sort=created&direction=desc",
+                self.api_base
+            ),
+            max_pages,
+        )
+        .await
+    }
+
+    pub async fn create_issue(
+        &self,
+        repo: &str,
+        issue: &serde_json::Value,
+    ) -> Result<Issue, String> {
+        let url = format!("{}/repos/{repo}/issues", self.api_base);
+        let text = self
+            .send(
+                self.http.post(&url).json(issue),
+                "application/vnd.github+json",
+            )
+            .await?;
+        parse_json(&text)
+    }
+
+    pub async fn update_issue(
+        &self,
+        repo: &str,
+        number: u64,
+        issue: &serde_json::Value,
+    ) -> Result<Issue, String> {
+        let url = format!("{}/repos/{repo}/issues/{number}", self.api_base);
+        let text = self
+            .send(
+                self.http.patch(&url).json(issue),
+                "application/vnd.github+json",
+            )
+            .await?;
+        parse_json(&text)
+    }
+
+    /// Open pull requests whose head is `owner:branch`.
+    pub async fn open_pull_requests_from(
+        &self,
+        repo: &str,
+        head: &str,
+    ) -> Result<Vec<PullRequestSummary>, String> {
+        self.get_json(&format!(
+            "{}/repos/{repo}/pulls?state=open&head={}",
+            self.api_base,
+            encode_query(head)
+        ))
+        .await
+    }
+
+    pub async fn create_pull_request(
+        &self,
+        repo: &str,
+        pull: &serde_json::Value,
+    ) -> Result<PullRequestSummary, String> {
+        let url = format!("{}/repos/{repo}/pulls", self.api_base);
+        let text = self
+            .send(
+                self.http.post(&url).json(pull),
+                "application/vnd.github+json",
+            )
+            .await?;
+        parse_json(&text)
+    }
+
+    /// GET a list endpoint page by page (100 per page) until a short page or
+    /// `max_pages`.
+    async fn get_pages<T>(&self, url: &str, max_pages: u32) -> Result<Vec<T>, String>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        let separator = if url.contains('?') { '&' } else { '?' };
+        let mut items = Vec::new();
+        for page in 1..=max_pages.max(1) {
+            let batch: Vec<T> = self
+                .get_json(&format!("{url}{separator}per_page=100&page={page}"))
+                .await?;
+            let last = batch.len() < 100;
+            items.extend(batch);
+            if last {
+                break;
+            }
+        }
+        Ok(items)
     }
 
     async fn get_json<T>(&self, url: &str) -> Result<T, String>

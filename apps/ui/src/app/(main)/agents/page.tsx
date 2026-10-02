@@ -10,6 +10,7 @@ import {
   usePageTitle,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
+import { importedExampleLanding } from "@/lib/agent-template-setup";
 import Link from "next/link";
 import { NewAgentLink } from "@/components/agents/new-agent-link";
 import { Button } from "@/components/ui/button";
@@ -93,14 +94,14 @@ export default function AgentsPage() {
       setImportingName(name);
       try {
         const agent = await importExample.mutateAsync(name);
-        router.push(`/agents/${agent.id}`);
+        router.push(importedExampleLanding(examples, name, agent.id));
       } catch (err) {
         console.error("Failed to import example:", err);
       } finally {
         setImportingName(null);
       }
     },
-    [importExample, router],
+    [importExample, router, examples],
   );
 
   const counts = useMemo(() => {
