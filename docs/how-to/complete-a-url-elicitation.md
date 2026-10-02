@@ -188,4 +188,4 @@ end to end against your deployment.
 ## Related
 
 - [URL mode elicitation](/features/mcp-url-elicitation/)
-- [Consume events via SSE](/how-to/consume-events-via-sse/)
+- [Consume events via SSE](/how-to/stream-events/#with-raw-sse)

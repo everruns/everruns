@@ -105,7 +105,7 @@ for model in models::list(OpenAI::from_env()?).await? {
 }
 ```
 
-See [Model catalogs](https://docs.everruns.com/framework/model-catalogs/).
+See [Model catalogs](https://docs.everruns.com/framework/models-and-providers/).
 
 And when the answer is a number rather than prose — *does this hold, how severe
 is it, which of these* — ask for a judgment instead of parsing one out of text:
@@ -118,7 +118,7 @@ let spam = judge.probability("Is this message spam?", text).await?;
 ```
 
 The threshold stays in your code, so there is no written verdict to misparse.
-See [Direct decision](https://docs.everruns.com/framework/direct-decisions/).
+See [Direct decision](https://docs.everruns.com/framework/direct-model-calls/).
 
 ## Credentials come from your vendor's own variables
 
@@ -145,7 +145,7 @@ that declares nothing is never configured from the environment.
 This is for standalone, CLI, and development use. Server deployments resolve
 credentials from encrypted storage and read no environment variables — drivers
 only declare names, they never read them. See
-[Credentials](https://docs.everruns.com/framework/credentials/).
+[Credentials](https://docs.everruns.com/framework/models-and-providers/).
 
 ## Give agents tools and capabilities
 
@@ -172,7 +172,7 @@ let agent = Agent::builder()
 
 You can also define reusable capability packages in Rust or load open,
 configuration-driven capability references. See [Tools and
-macros](https://docs.everruns.com/framework/tools-and-macros/), [capability
+macros](https://docs.everruns.com/framework/agents/), [capability
 integrations](https://docs.everruns.com/framework/capability-integrations/),
 and [authoring advanced
 capabilities](https://docs.everruns.com/framework/advanced-capabilities/).
@@ -289,14 +289,14 @@ includes the exact command for each one.
 - [Agents](https://docs.everruns.com/framework/agents/)
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
-- [Model catalogs](https://docs.everruns.com/framework/model-catalogs/)
-- [Direct decision](https://docs.everruns.com/framework/direct-decisions/)
-- [Credentials](https://docs.everruns.com/framework/credentials/)
+- [Model catalogs](https://docs.everruns.com/framework/models-and-providers/)
+- [Direct decision](https://docs.everruns.com/framework/direct-model-calls/)
+- [Credentials](https://docs.everruns.com/framework/models-and-providers/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
-- [Persistence](https://docs.everruns.com/framework/persistence/)
+- [Persistence](https://docs.everruns.com/framework/sessions/)
 - [Workspaces and environments](https://docs.everruns.com/framework/workspaces-and-environments/)
-- [Custom providers](https://docs.everruns.com/framework/custom-providers/)
+- [Custom providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Custom backends](https://docs.everruns.com/framework/custom-backends/)
 - [API reference](https://docs.rs/everruns)
 

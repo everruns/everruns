@@ -59,4 +59,4 @@ The participant list is the source of truth for join and leave history. Join and
 
 - [Agent triggers](/features/agent-triggers/), proactive runs start sessions with the trigger's agent as host.
 - [Sub Agents capability](/capabilities/sub-agents/), foreground, background, and invite handoff modes.
-- [Core concepts](/explanation/concepts/), sessions, turns, and agents.
+- [Core concepts](/getting-started/concepts/), sessions, turns, and agents.

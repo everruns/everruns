@@ -100,7 +100,7 @@ pool, a web UI, and a remote API. It also publishes agents to Slack, web chat,
 A2A, webhooks, schedules, voice, HTTP, and MCP; manages organizations and
 permissions; and supports observation, budgeting, and evaluation.
 
-[Platform capabilities](https://docs.everruns.com/features/capabilities/) · [Apps and channels](https://docs.everruns.com/features/apps/) · [Durable execution](https://docs.everruns.com/explanation/durable-execution/) · [Observability](https://docs.everruns.com/observability/)
+[Platform capabilities](https://docs.everruns.com/features/capabilities/) · [Apps and channels](https://docs.everruns.com/features/endpoints/) · [Durable execution](https://docs.everruns.com/explanation/durable-execution/) · [Observability](https://docs.everruns.com/observability/)
 
 ## Documentation
 

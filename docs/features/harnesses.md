@@ -38,7 +38,7 @@ Precedence when a session starts, first match wins:
 
 So the same agent can be run on a different harness for one session without editing the agent, while changing it for good means updating the agent.
 
-For the design rationale (why three configuration layers exist), see [Concepts](/explanation/concepts/#why-three-configuration-layers-harness-agent-session).
+For the design rationale (why three configuration layers exist), see [Concepts](/getting-started/concepts/#runtimeagent).
 
 ## Built-in harnesses
 
@@ -84,4 +84,4 @@ A harness bundles more than a prompt, capabilities, MCP servers, a default model
 ## See also
 
 - [Built-in harnesses](/built-ins/harnesses/base/), reference for the shipped harnesses.
-- [Concepts](/explanation/concepts/), entity model.
+- [Concepts](/getting-started/concepts/), entity model.

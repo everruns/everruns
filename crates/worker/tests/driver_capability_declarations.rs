@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! The published provider table matches what the drivers actually register.
 //!
-//! `docs/framework/supported-providers.md` tells readers which drivers exist
+//! `docs/framework/models-and-providers.md` tells readers which drivers exist
 //! and what each one can power. That page is the answer to "can Everruns talk
 //! to X?", so a driver gaining a service, or a new driver landing unlisted, has
 //! to show up here rather than silently making the page wrong.
@@ -10,7 +10,7 @@ use everruns_provider::driver_registry::ServiceKind;
 use everruns_provider::provider::DriverId;
 use everruns_worker::adapters::create_driver_registry;
 
-/// The published table, in `docs/framework/supported-providers.md` order:
+/// The published table, in `docs/framework/models-and-providers.md` order:
 /// (driver, display name, services, offers OAuth).
 const PUBLISHED: &[(DriverId, &str, &[ServiceKind], bool)] = &[
     (
@@ -109,7 +109,7 @@ fn the_published_table_lists_every_registered_driver() {
     assert_eq!(
         registered, published,
         "a driver landed or was removed without updating \
-         docs/framework/supported-providers.md"
+         docs/framework/models-and-providers.md"
     );
 }
 
@@ -126,7 +126,7 @@ fn each_driver_powers_the_services_the_page_claims() {
         );
         assert_eq!(
             descriptor.services, *services,
-            "{id}'s services changed; docs/framework/supported-providers.md \
+            "{id}'s services changed; docs/framework/models-and-providers.md \
              claims {services:?}"
         );
         assert_eq!(

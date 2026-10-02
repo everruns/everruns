@@ -34,6 +34,12 @@ Both automatic mounts are read-write. The regular file tools and Workspace UI tr
 
 The `/memory/*` namespace is reserved. You cannot use it for caller-supplied initial files or for mounts configured through the public `memory` capability.
 
+## Workspace and Memory
+
+A session's **Workspace** at `/workspace` is its working area. Its files and its session SQL database belong to that session, and one session cannot see another's Workspace. **Memory** is the durable tier, and the only way files are shared across sessions.
+
+The mount configuration is captured when the session is created, so archiving or renaming a Memory later does not change what a running session mounted: an archived Memory surfaces an error rather than files silently disappearing. The same file tools read native and mounted paths, and a write to a read-only mount returns an error.
+
 ## Organization memory access
 
 Organization memories are created and managed through the Memory UI and `/v1/memories` API. Add the `memory` capability to select an active organization memory, its mount path, and its access mode.
@@ -43,10 +49,9 @@ Organization memories are created and managed through the Memory UI and `/v1/mem
 - Source-backed GitHub or Git memories are always read-only.
 - Agent- and user-scoped memories are server-managed and cannot be selected through `memory.mounts`.
 
-See [Memory model](/advanced/memory-model/) for the relationship between durable Memory and a session Workspace, or the [API reference](/api/) for current organization-memory schemas.
+See the [API reference](/api/) for current organization-memory schemas.
 
 ## See also
 
-- [Memory model](/advanced/memory-model/), Workspace and durable Memory architecture.
 - [Session participants](/features/session-participants/), host and guest agent behavior in shared sessions.
 - [File System capability](/capabilities/file-system/), tools that access session and mounted files.

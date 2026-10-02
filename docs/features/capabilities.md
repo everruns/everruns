@@ -16,7 +16,7 @@ Agents *compose* capabilities. Enable as many as you need; leave the rest disabl
 
 A bare tool registration is a function with a JSON schema. Capabilities exist because real tools need more than that. To use `bashkit_shell` effectively, the agent needs both the `bash` tool *and* the prompt fragment explaining the sandbox model *and* the session filesystem (a dependency). Capabilities bundle those concerns into one enable/disable unit.
 
-See [Why capabilities are first-class](/explanation/concepts/#why-capabilities-are-first-class) for the full rationale.
+See [Why capabilities are first-class](/getting-started/concepts/#capability) for the full rationale.
 
 ## Where capabilities come from
 
@@ -37,7 +37,7 @@ Capabilities can be attached at three layers, and the layers stack additively:
 - **Agent**: capabilities for this specific role.
 - **Session**: extras for this one conversation.
 
-See [Why three configuration layers](/explanation/concepts/#why-three-configuration-layers-harness-agent-session) for how the merge works.
+See [Why three configuration layers](/getting-started/concepts/#runtimeagent) for how the merge works.
 
 ## Browse the catalog
 
@@ -53,4 +53,4 @@ The full list of built-in capabilities, organised by category, lives in the refe
 
 ## See also
 
-- [Concepts](/explanation/concepts/), the entity model in full.
+- [Concepts](/getting-started/concepts/), the entity model in full.

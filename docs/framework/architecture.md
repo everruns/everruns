@@ -71,8 +71,8 @@ state lives and how work is scheduled.
   in PostgreSQL and recover across process or worker loss. Applications call it
   through the remote API or SDKs rather than configuring the facade Engine.
 
-See [Persistence](/framework/persistence/) and [Session History and
-Resume](/framework/session-history/) for the exact application lifecycle.
+See [Persistence](/framework/sessions/#persistence) and [Session History and
+Resume](/framework/sessions/#history-and-resume) for the exact application lifecycle.
 
 ## Extension boundaries
 

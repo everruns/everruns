@@ -45,7 +45,7 @@ before invoking sandbox tools.
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-integrations-daytona)
-- [Daytona integration](https://docs.everruns.com/integrations/daytona/)
+- [Daytona integration](https://docs.everruns.com/capabilities/daytona/)
 - [Daytona sandboxes capability](https://docs.everruns.com/capabilities/daytona/)
 - [Everruns documentation](https://docs.everruns.com)
 

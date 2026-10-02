@@ -28,6 +28,8 @@ Everruns runs every step as a **durable task**. Each task:
 - Has retry and timeout policies.
 - Heartbeats while running, so the control plane can detect a crashed worker.
 
+![Durable Execution Pipeline](../images/concepts/durable-execution-pipeline.svg)
+
 A turn is a small state machine over those tasks. The state lives in `durable_workflow_events`, an append-only event log just for the workflow engine. To replay a workflow, you load its events and feed them back into the state machine, same input, same decisions, same output.
 
 When a worker crashes mid-turn, the control plane sees the missed heartbeats, marks the in-flight task as failed, and re-queues it. Another worker picks it up. The application sees a momentary stall in the SSE stream, then it continues.

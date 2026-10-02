@@ -21,8 +21,7 @@ Each how-to here solves one concrete problem. They assume you already understand
 
 ## Running agents
 
-- [Stream events with the SDK](/how-to/stream-events/), consume the SSE stream from Python, with reconnection and event filtering.
-- [Consume events via raw SSE](/how-to/consume-events-via-sse/), when you don't want the SDK: curl, EventSource, or any HTTP client.
+- [Stream events](/how-to/stream-events/), consume the SSE stream from the Python SDK, or from curl, EventSource, or any HTTP client, with reconnection and event filtering.
 - [Complete a URL elicitation over the API](/how-to/complete-a-url-elicitation/), drive the pause-and-consent flow from your own client.
 - [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/), graceful failure paths, turn cancellation, retries.
 - [Orchestrate multi-agent pipelines](/how-to/orchestrate-multi-agent-pipelines/), chain sessions together.
@@ -30,15 +29,10 @@ Each how-to here solves one concrete problem. They assume you already understand
 
 ## Packaging and distribution
 
-- [Package an agent skill](/how-to/package-a-skill/), author a SKILL.md, bundle scripts and references.
-- [Publish a skill to the registry](/how-to/publish-a-skill-to-the-registry/), share skills across agents.
+- [Package and publish an agent skill](/how-to/package-a-skill/), author a SKILL.md, bundle scripts and references, and share it across agents through the registry.
 - [Publish an agent as a Slack app](/how-to/publish-to-slack/), deploy an agent to a Slack workspace.
 - [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/), connect GitHub and comment a summary on every pull request.
 - [Set up review and security agents](/how-to/set-up-review-and-security-agents/), review every pull request and scan a repository for vulnerabilities on a schedule, on any model.
-
-## Upgrading
-
-- [Migrate to 0.18](/how-to/migrate-to-0-18/), move Rust code off the `everruns-core` paths that changed, with a symbol-by-symbol table of where each type now lives.
 
 ## Operating
 

@@ -15,7 +15,7 @@ Read these when:
 
 ## Topics
 
-- [Core concepts](/explanation/concepts/), the entity model: harnesses, agents, sessions, capabilities, and how they compose into a runtime.
+- [Concepts](/getting-started/concepts/), a glossary of the entity model: harnesses, agents, sessions, capabilities, and how they compose into a runtime.
 - [The agentic loop](/explanation/agentic-loop/), the reason–act cycle, execution phases, and why turns are bounded.
 - [Architecture](/explanation/architecture/), control plane, workers, and the API-first design.
 - [Durable execution](/explanation/durable-execution/), why agents survive crashes, and the trade-offs of a PostgreSQL-backed engine.

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SLACK_GUIDE="$ROOT/docs/integrations/slack.md"
+SLACK_GUIDE="$ROOT/docs/capabilities/slack.md"
 
 required_guide_text=(
   'Select **Integrations**.'
@@ -68,7 +68,7 @@ if ! grep -Fq 'D->>D: Unregister delivery' "$message_flow_mmd" ||
   exit 1
 fi
 
-apps_guide="$ROOT/docs/features/apps.md"
+apps_guide="$ROOT/docs/features/endpoints.md"
 required_lifecycle_text=(
   'Draft ⇄ Live'
   'Draft → Disabled'
@@ -78,7 +78,7 @@ required_lifecycle_text=(
 
 for text in "${required_lifecycle_text[@]}"; do
   if ! grep -Fq "$text" "$apps_guide"; then
-    printf 'Apps compatibility guide omits an endpoint lifecycle transition: %s\n' "$text" >&2
+    printf 'Endpoints guide omits an endpoint lifecycle transition: %s\n' "$text" >&2
     exit 1
   fi
 done

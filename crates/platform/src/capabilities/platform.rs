@@ -38,12 +38,13 @@ Bash commands like `cat /workspace/docs/...`, `ls /workspace/docs/`, and
 `grep -r "pattern" /workspace/docs/` also work.
 
 Key sections:
-- /workspace/docs/getting-started/ — Introduction, concepts, architecture, Docker setup
-- /workspace/docs/features/ — SDK, CLI, UI, events, harnesses, capabilities, apps, skills
-- /workspace/docs/capabilities/ — Per-capability reference (file-system, bashkit-shell, web-fetch, etc.)
-- /workspace/docs/integrations/ — External integrations (Slack, Daytona, Browserless, etc.)
-- /workspace/docs/advanced/ — Budgets, compaction, embedding, network access, request signing
-- /workspace/docs/sre/ — Environment variables, admin container, runbooks
+- /workspace/docs/getting-started/ — Introduction, concepts, Docker setup, Everruns Cloud
+- /workspace/docs/features/ — SDK, CLI, UI, events, harnesses, capabilities, endpoints, skills
+- /workspace/docs/capabilities/ — Per-capability reference, including vendor integrations (Slack, Daytona, E2B, Browserless)
+- /workspace/docs/integrations/ — Vendor index and integrations without a capability page (Cursor, Sprites, TypeSafe, etc.)
+- /workspace/docs/explanation/ — Architecture, agentic loop, durable execution, events
+- /workspace/docs/advanced/ — Budgets, compaction, ID schema, network access, physical architecture, tool output pipeline
+- /workspace/docs/sre/ — Environment variables, admin container, request signing, runbooks
 
 When the user asks about Everruns features, configuration, or how things work,
 consult these docs before answering.

@@ -9,6 +9,8 @@ An "agent" is a loop, not a function call. This page explains the loop Everruns 
 
 ## Reason, then act
 
+![Agentic Loop](../images/concepts/agentic-loop.svg)
+
 Each **turn** is one iteration of:
 
 1. **Reason.** Send the full conversation history (system prompt + messages + previous tool results) to the LLM. The model either produces text or requests tool calls.

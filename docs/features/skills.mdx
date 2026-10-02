@@ -1,6 +1,6 @@
 ---
 title: Agent Skills
-description: Portable instruction packages following the agentskills.io open spec — progressive disclosure, bundled scripts, on-demand activation.
+description: Portable instruction packages following the agentskills.io open spec, from the session workspace or the organization-wide Skills Registry, loaded on demand.
 # See features/sdk.mdx: explicit slug needed so links-validator resolves this
 # symlinked .mdx page's route. Keep equal to the file-derived route.
 slug: features/skills
@@ -33,17 +33,53 @@ This keeps thousands of skills available to an agent without burning context on 
 | Source | Where they live | When to use |
 |---|---|---|
 | Workspace skills | `/.agents/skills/` in the session VFS | Project-specific skills; per-session experimentation |
-| Registry skills | Organization-wide via the [Skills Registry](/features/skills-registry/) | Shared across agents; managed via API |
+| Registry skills | Organization-wide, in the [Skills Registry](#skills-registry) | Shared across agents; managed via API |
 
-The built-in `skills` capability handles workspace discovery. Registry skills appear in the capability system as virtual capabilities (`skill:{uuid}`).
+The built-in `skills` capability handles discovery and activation for both. Registry skills appear in the capability system as virtual capabilities (`skill:{uuid}`) that mount the skill into `/.agents/skills/{name}/`, where the `skills` capability finds it alongside workspace skills.
+
+## Skills Registry
+
+The **Skills Registry** stores skills at the organization level. Registry skills persist across sessions and can be assigned to any agent like any other capability, with ID `skill:{uuid}`. The organization must have the `skills` feature enabled.
+
+### API surface
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v1/skills` | Create from SKILL.md |
+| POST | `/v1/skills/upload` | Create from ZIP archive |
+| GET | `/v1/skills` | List |
+| GET | `/v1/skills/usage` | How many agents and harnesses use each skill |
+| GET | `/v1/skills/{id}` | Get metadata |
+| GET | `/v1/skills/{id}/content` | Get full content |
+| PATCH | `/v1/skills/{id}` | Update |
+| DELETE | `/v1/skills/{id}` | Delete |
+| POST | `/v1/skills/validate` | Validate without creating |
+
+See the [API reference](/api/) for request and response schemas.
+
+### ID formats
+
+| Source | ID | Example |
+|---|---|---|
+| Registry | `skill:{uuid}` | `skill:550e8400-e29b-41d4-a716-446655440000` |
+| Workspace | Aggregated under `skills` capability | – |
+
+### Dependencies
+
+Registry skills automatically depend on `session_file_system` so bundled resources can be read after activation. You don't need to add it explicitly.
+
+### Security
+
+- Archive uploads are validated against path traversal, ZIP bombs, and size limits.
+- Skill instructions are returned as tool results, not injected into the system prompt, so they cannot bypass capability isolation.
+- Skill names are unique per organization.
+- Disabled skills are hidden from listings.
 
 ## Do something
 
-- [Package an agent skill](/how-to/package-a-skill/) — author a SKILL.md, bundle scripts.
-- [Publish a skill to the registry](/how-to/publish-a-skill-to-the-registry/) — share it.
+- [Package and publish an agent skill](/how-to/package-a-skill/): author a SKILL.md, bundle scripts, and share it through the registry.
 
 ## See also
 
-- [Agent Skills capability reference](/capabilities/agent-skills/) — tools, dependencies, config.
-- [Skills Registry](/features/skills-registry/) — the org-wide registry.
-- [SKILL.md format spec](https://agentskills.io/) — upstream open spec.
+- [Agent Skills capability reference](/capabilities/agent-skills/): tools, dependencies, config.
+- [SKILL.md format spec](https://agentskills.io/): upstream open spec.

@@ -13,7 +13,7 @@
 use everruns_provider::provider::DriverId;
 use everruns_worker::adapters::create_driver_registry;
 
-/// The published table, in `docs/framework/credentials.md` order.
+/// The published table, in `docs/framework/models-and-providers.md` credentials table order.
 const DECLARED: &[(DriverId, &[&str])] = &[
     (DriverId::OpenAI, &["OPENAI_API_KEY", "OPENAI_BASE_URL"]),
     (

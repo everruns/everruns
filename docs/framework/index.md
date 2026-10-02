@@ -26,7 +26,7 @@ println!("{}", turn.response);
 
 No database, server or worker is required: an agent runs inside your process.
 A model provider is: pick one from
-[Supported providers](/framework/supported-providers/), or use the
+[Supported providers](/framework/models-and-providers/#supported-providers), or use the
 [test simulator](/framework/testing-and-simulation/) when writing tests.
 
 ## Choose the right surface
@@ -46,33 +46,34 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 
 - [Quickstart](/framework/quickstart/), install the crate and run one turn against a live model provider.
 - [Architecture](/framework/architecture/), understand Agent, Engine, Session, and the shared immediate/durable execution kernel.
-- [Agents](/framework/agents/), instructions, files, workspaces, MCP, plugins, and context inspection.
-- [Workspace security](/framework/workspace-security/), configure portable read and write scopes with secure defaults.
-- [Workspaces and Environments](/framework/workspaces-and-environments/), bind sessions to isolated or explicitly shared backend-owned heads.
-- [Models and providers](/framework/models-and-providers/), the model/provider split and the open provider boundary.
-- [Supported providers](/framework/supported-providers/), every driver that ships today and what each one supports.
-- [Direct model calls](/framework/direct-model-calls/), one prompt and one answer without an agent.
-- [Direct decisions](/framework/direct-decisions/), a calibrated number rather than prose, without an agent.
-- [Model catalogs](/framework/model-catalogs/), ask a provider which models it offers and what each supports.
-- [Credentials](/framework/credentials/), each driver's own vendor-standard environment variables.
-- [Tools and macros](/framework/tools-and-macros/), typed function tools through `everruns::tool`.
-- [Sessions](/framework/sessions/), independent, multi-turn conversations.
-- [Session work and wakes](/framework/background-work/), immediate and scheduled work with explicit delivery and restart semantics.
-- [Session History and Resume](/framework/session-history/), bounded transcript pages and typed continuation.
-- [Events and cancellation](/framework/events-and-cancellation/), observe a live turn and stop work cooperatively.
+- [Upgrade notes](/framework/upgrade-notes/), the code changes each breaking release needs.
+
+## Core APIs
+
+- [Agents and tools](/framework/agents/), instructions, files, workspaces, MCP, plugins, context inspection, and typed function tools through `everruns::tool`.
+- [Models and providers](/framework/models-and-providers/), the model/provider split, every driver that ships today, each driver's environment variables, provider model catalogs, and custom providers.
+- [Direct calls and decisions](/framework/direct-model-calls/), one prompt and one answer without an agent, or a calibrated number rather than prose.
+- [Sessions](/framework/sessions/), independent multi-turn conversations, bounded history, typed resume, and engine-lifetime or crash-durable persistence.
+- [Events and cancellation](/framework/events-and-cancellation/), observe a live turn, stop work cooperatively, and record bounded canonical event envelopes.
+- [Workspaces and environments](/framework/workspaces-and-environments/), bind sessions to isolated or shared heads and configure read and write scopes with secure defaults.
 - [Lifecycle hooks](/framework/lifecycle-hooks/), run awaited application behavior at execution boundaries.
 - [Answer agent questions](/framework/ask-user/), implement `AskUser` so your application answers the agent's structured questions.
-- [Serve AG-UI](/framework/ag-ui/), stream a session to CopilotKit or any AG-UI 1.0 client from your own HTTP server.
-- [Canonical events](/framework/canonical-events/), render or record bounded canonical event envelopes.
-- [Persistence](/framework/persistence/), Engine-lifetime memory and crash-durable local state.
+- [Session work and wakes](/framework/background-work/), immediate and scheduled work with explicit delivery and restart semantics.
 
-## Extend and operate
+## Extend
 
-- [Custom providers](/framework/custom-providers/), attach a custom `ChatDriver` without changing a closed enum.
 - [Capabilities](/framework/advanced-capabilities/), configure the optional standard policy bundle and open references, or package typed tools with stable metadata and lifecycle context.
 - [Capability integrations](/framework/capability-integrations/), opt into filesystem, shell, web, Lua, and MCP implementation boundaries.
 - [Portable and hosted capabilities](/framework/capability-boundaries/), understand the Framework/Platform implementation boundary.
+- [Agent blueprints](/framework/agent-blueprints/), contribute a code-defined specialist agent from a capability.
 - [Custom backends](/framework/custom-backends/), cross into low-level host composition deliberately.
 - [Testing and simulation](/framework/testing-and-simulation/), deterministic tests without credentials.
 - [Runnable examples](/framework/examples/), complete programs maintained with the crate.
+
+## Expose and deploy
+
 - [Serve](/framework/serve/) (experimental), attribute macros, file-layout discovery and a manifest, served over the Everruns server `/v1` API.
+- [Serve AG-UI](/framework/ag-ui/), stream a session to CopilotKit or any AG-UI 1.0 client from your own HTTP server.
+- [A2A](/framework/a2a/), serve Framework agents to other agents over A2A 1.0, and delegate work to remote A2A agents.
+- [Serve on AgentCore](/framework/serve-agentcore/) (experimental), deploy a serve app to Amazon Bedrock AgentCore Runtime.
+- [Serve on celld](/framework/serve-celld/) (experimental), run a serve app durably on celld, self-hosted Durable Objects.
