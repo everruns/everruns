@@ -1205,15 +1205,15 @@ mod tests {
     /// Claim every pending `increment` task, sorted: the in-memory store does
     /// not claim in FIFO order.
     async fn claim_all(executor: &WorkflowExecutor<InMemoryWorkflowEventStore>) -> Vec<String> {
-        executor
-            .store()
+        let store = executor.store();
+        let worker = crate::WorkerInfo::new("test-worker", ["increment"]);
+        store.register_worker(worker).await.unwrap();
+        store
             .claim_task("test-worker", &["increment".to_string()], 100)
             .await
             .expect("should claim tasks")
             .into_iter()
             .map(|task| task.activity_id)
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
             .collect()
     }
 

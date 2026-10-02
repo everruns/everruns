@@ -105,6 +105,14 @@ See `crates/durable/src/engine/executor.rs` for `load_workflow_state()`, `unreco
 
 Workers claim tasks partitioned by `activity_type`. See `crates/durable/src/persistence/store.rs` for implementation.
 
+The in-memory store is the test double for PostgreSQL and must behave the same
+wherever a caller can tell: only a registered, non-draining worker claims;
+claims go by priority, then visibility time; retries wait out their backoff;
+reclaim honors the stale threshold; and a first claim records
+`ActivityStarted`. `crates/durable/tests/store_conformance_test.rs` runs one
+set of cases against both stores, so a difference fails CI instead of hiding
+behind green unit tests.
+
 ### Task Notifications
 
 Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS when available and PostgreSQL `NOTIFY` otherwise. Falls back to polling (10s) on disconnect.

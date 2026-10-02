@@ -924,6 +924,14 @@ mod tests {
             .expect("workflow info should exist");
         assert_eq!(info.status, WorkflowStatus::Running);
 
+        shared
+            .register_worker(everruns_durable::WorkerInfo::new(
+                "worker-1",
+                Vec::<String>::new(),
+            ))
+            .await
+            .expect("register worker");
+
         let claimed = shared
             .claim_task("worker-1", &["process_input".to_string()], 10)
             .await
@@ -1010,6 +1018,13 @@ mod tests {
             })
             .await
             .expect("enqueue task");
+        shared
+            .register_worker(everruns_durable::WorkerInfo::new(
+                "worker-1",
+                Vec::<String>::new(),
+            ))
+            .await
+            .expect("register worker");
         let claimed = shared
             .claim_task("worker-1", &["process_input".to_string()], 1)
             .await
@@ -1107,6 +1122,14 @@ mod tests {
                 .expect("status should load"),
             WorkflowStatus::Pending
         );
+
+        shared
+            .register_worker(everruns_durable::WorkerInfo::new(
+                "worker-1",
+                Vec::<String>::new(),
+            ))
+            .await
+            .expect("register worker");
 
         let claimed = shared
             .claim_task("worker-1", &["reason".to_string()], 10)
@@ -1206,6 +1229,14 @@ mod tests {
         assert_eq!(output["success"], false);
         assert_eq!(output["stop_reason"], "cancelled");
         assert_eq!(output["error"], "User requested cancellation");
+
+        shared
+            .register_worker(everruns_durable::WorkerInfo::new(
+                "worker-1",
+                Vec::<String>::new(),
+            ))
+            .await
+            .expect("register worker");
 
         let claimed = shared
             .claim_task("worker-1", &["reason".to_string()], 10)

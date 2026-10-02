@@ -13,6 +13,9 @@ use uuid::Uuid;
 use super::store::*;
 use crate::workflow::{WorkflowError, WorkflowEvent, WorkflowSignal};
 
+mod task_table;
+use task_table::{TaskState, TaskTable};
+
 /// Internal workflow state
 #[allow(dead_code)] // Fields stored for debugging/future use
 struct WorkflowState {
@@ -27,23 +30,6 @@ struct WorkflowState {
     started_at: Option<chrono::DateTime<chrono::Utc>>,
     completed_at: Option<chrono::DateTime<chrono::Utc>>,
     continued_as_new_id: Option<Uuid>,
-}
-
-/// Internal task state
-struct TaskState {
-    definition: TaskDefinition,
-    status: TaskStatus,
-    attempt: u32,
-    claimed_by: Option<String>,
-    last_error: Option<String>,
-    error_history: Vec<String>,
-    created_at: chrono::DateTime<chrono::Utc>,
-    claimed_at: Option<chrono::DateTime<chrono::Utc>>,
-    /// Forward-progress guard (EVE-534): progress token observed at the previous
-    /// reclaim, and consecutive no-progress recovery count. `None` token means
-    /// the task has not been reclaimed yet.
-    progress_token: Option<i64>,
-    no_progress_count: u32,
 }
 
 /// Circuit breaker state in memory
@@ -85,7 +71,7 @@ struct SnapshotMemState {
 /// ```
 pub struct InMemoryWorkflowEventStore {
     workflows: RwLock<HashMap<Uuid, WorkflowState>>,
-    tasks: RwLock<HashMap<Uuid, TaskState>>,
+    tasks: RwLock<TaskTable>,
     dlq: RwLock<HashMap<Uuid, DlqEntry>>,
     circuit_breakers: RwLock<HashMap<String, CircuitBreakerMemState>>,
     workers: RwLock<HashMap<String, WorkerInfo>>,
@@ -106,7 +92,7 @@ impl InMemoryWorkflowEventStore {
     pub fn new() -> Self {
         Self {
             workflows: RwLock::new(HashMap::new()),
-            tasks: RwLock::new(HashMap::new()),
+            tasks: RwLock::new(TaskTable::default()),
             dlq: RwLock::new(HashMap::new()),
             circuit_breakers: RwLock::new(HashMap::new()),
             workers: RwLock::new(HashMap::new()),
@@ -147,11 +133,17 @@ impl InMemoryWorkflowEventStore {
 
     /// Get the number of pending tasks
     pub fn pending_task_count(&self) -> usize {
-        self.tasks
-            .read()
-            .values()
-            .filter(|t| t.status == TaskStatus::Pending)
-            .count()
+        self.tasks.read().pending_total()
+    }
+
+    /// Make a claimed task look abandoned, so the next
+    /// [`reclaim_stale_tasks`](WorkflowEventStore::reclaim_stale_tasks) returns
+    /// it whatever the threshold. Stands in for a worker that stopped
+    /// heartbeating.
+    pub fn expire_claim(&self, task_id: Uuid) {
+        self.tasks.write().update(task_id, |task| {
+            task.heartbeat_at = Some(chrono::DateTime::<Utc>::MIN_UTC);
+        });
     }
 
     /// Get the number of DLQ entries
@@ -498,23 +490,19 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
         let mut tasks = self.tasks.write();
         if task.activity_id.starts_with("waiting_turn_resolution_")
-            && let Some((task_id, _)) = tasks.iter().find(|(_, existing)| {
-                existing.definition.workflow_id == task.workflow_id
-                    && existing.definition.activity_id == task.activity_id
+            && let Some(workflow_id) = task.workflow_id
+            && let Some(task_id) = tasks.ids_for_workflow(workflow_id).into_iter().find(|id| {
+                tasks
+                    .get(id)
+                    .is_some_and(|t| t.definition.activity_id == task.activity_id)
             })
         {
-            return Ok(*task_id);
+            return Ok(task_id);
         }
-        let task_id = Uuid::now_v7();
         // Check pending task limits
+        let pending_count = tasks.pending_count(task.workflow_id);
         if let Some(wf_id) = task.workflow_id {
             let limit = self.max_pending_tasks_per_workflow;
-            let pending_count = tasks
-                .values()
-                .filter(|t| {
-                    t.definition.workflow_id == Some(wf_id) && t.status == TaskStatus::Pending
-                })
-                .count() as u32;
             if pending_count >= limit {
                 return Err(StoreError::TaskQueueLimitExceeded {
                     workflow_id: wf_id,
@@ -522,68 +510,68 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                     limit,
                 });
             }
-        } else {
-            let limit = DEFAULT_MAX_PENDING_STANDALONE_TASKS;
-            let pending_count = tasks
-                .values()
-                .filter(|t| t.definition.workflow_id.is_none() && t.status == TaskStatus::Pending)
-                .count() as u32;
-            if pending_count >= limit {
-                return Err(StoreError::StandaloneTaskQueueLimitExceeded {
-                    current: pending_count,
-                    limit,
-                });
-            }
+        } else if pending_count >= DEFAULT_MAX_PENDING_STANDALONE_TASKS {
+            return Err(StoreError::StandaloneTaskQueueLimitExceeded {
+                current: pending_count,
+                limit: DEFAULT_MAX_PENDING_STANDALONE_TASKS,
+            });
         }
-        tasks.insert(
-            task_id,
-            TaskState {
-                definition: task,
-                status: TaskStatus::Pending,
-                attempt: 0,
-                claimed_by: None,
-                last_error: None,
-                error_history: vec![],
-                created_at: Utc::now(),
-                claimed_at: None,
-                progress_token: None,
-                no_progress_count: 0,
-            },
-        );
+        let task_id = Uuid::now_v7();
+        tasks.insert(task_id, TaskState::pending(task));
         Ok(task_id)
     }
+
     async fn claim_task(
         &self,
         worker_id: &str,
         activity_types: &[String],
         max_tasks: usize,
     ) -> Result<Vec<ClaimedTask>, StoreError> {
+        // Like PostgreSQL, only a registered worker that is not draining claims.
+        let may_claim = self
+            .workers
+            .read()
+            .get(worker_id)
+            .is_some_and(|w| w.status != "draining");
+        if !may_claim {
+            return Ok(vec![]);
+        }
+
+        let now = Utc::now();
         let mut tasks = self.tasks.write();
         let mut claimed = vec![];
-        for (task_id, task) in tasks.iter_mut() {
-            if claimed.len() >= max_tasks {
-                break;
-            }
-            // Check attempt < max_attempts to prevent infinite retries when workers panic
-            // without calling fail_task (mirroring PostgreSQL fix)
-            let max_attempts = task.definition.options.retry_policy.max_attempts;
-            if task.status == TaskStatus::Pending
-                && activity_types.contains(&task.definition.activity_type)
-                && task.attempt < max_attempts
-            {
-                task.status = TaskStatus::Claimed;
-                task.claimed_by = Some(worker_id.to_string());
-                task.claimed_at = Some(Utc::now());
-                task.attempt += 1;
-                claimed.push(ClaimedTask {
-                    id: *task_id,
-                    workflow_id: task.definition.workflow_id,
-                    activity_id: task.definition.activity_id.clone(),
-                    activity_type: task.definition.activity_type.clone(),
-                    input: task.definition.input.clone(),
-                    options: task.definition.options.clone(),
+        for task_id in tasks.claimable(activity_types, now, max_tasks) {
+            let task = tasks
+                .update(task_id, |task| {
+                    task.status = TaskStatus::Claimed;
+                    task.claimed_by = Some(worker_id.to_string());
+                    task.claimed_at = Some(now);
+                    task.heartbeat_at = Some(now);
+                    task.attempt += 1;
+                    ClaimedTask {
+                        id: task_id,
+                        workflow_id: task.definition.workflow_id,
+                        activity_id: task.definition.activity_id.clone(),
+                        activity_type: task.definition.activity_type.clone(),
+                        input: task.definition.input.clone(),
+                        options: task.definition.options.clone(),
+                        attempt: task.attempt,
+                        max_attempts: task.definition.options.retry_policy.max_attempts,
+                    }
+                })
+                .expect("claimable ids come from the table");
+            claimed.push(task);
+        }
+        drop(tasks);
+
+        // PostgreSQL records ActivityStarted on the first attempt only (EVE-639).
+        let mut workflows = self.workflows.write();
+        for task in claimed.iter().filter(|t| t.attempt == 1) {
+            if let Some(wf) = task.workflow_id.and_then(|id| workflows.get_mut(&id)) {
+                wf.events.push(WorkflowEvent::ActivityStarted {
+                    activity_id: task.activity_id.clone(),
                     attempt: task.attempt,
-                    max_attempts: task.definition.options.retry_policy.max_attempts,
+                    worker_id: worker_id.to_string(),
                 });
             }
         }
@@ -594,12 +582,26 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     async fn heartbeat_task(
         &self,
         task_id: Uuid,
-        _worker_id: &str,
+        worker_id: &str,
         _details: Option<serde_json::Value>,
     ) -> Result<HeartbeatResponse, StoreError> {
-        let tasks = self.tasks.read();
-        let missing = StoreError::TaskNotFound(task_id);
-        let workflow_id = tasks.get(&task_id).ok_or(missing)?.definition.workflow_id;
+        let mut tasks = self.tasks.write();
+        let owned = tasks.get(&task_id).is_some_and(|t| {
+            t.status == TaskStatus::Claimed && t.claimed_by.as_deref() == Some(worker_id)
+        });
+        if !owned {
+            // Reclaimed, finished or unknown: tell the worker to stop.
+            return Ok(HeartbeatResponse {
+                accepted: false,
+                should_cancel: true,
+            });
+        }
+        let workflow_id = tasks
+            .update(task_id, |t| {
+                t.heartbeat_at = Some(Utc::now());
+                t.definition.workflow_id
+            })
+            .flatten();
         drop(tasks); // one lock at a time
         let status = workflow_id.and_then(|id| self.workflows.read().get(&id).map(|w| w.status));
         Ok(HeartbeatResponse {
@@ -616,18 +618,15 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     ) -> Result<(), StoreError> {
         let mut tasks = self.tasks.write();
         let task = tasks
-            .get_mut(&task_id)
+            .get(&task_id)
             .ok_or(StoreError::TaskNotFound(task_id))?;
 
         // Verify the task is still claimed by this worker
-        if task.status != TaskStatus::Claimed {
-            return Err(StoreError::TaskNotOwned(task_id));
-        }
-        if task.claimed_by.as_deref() != Some(worker_id) {
+        if task.status != TaskStatus::Claimed || task.claimed_by.as_deref() != Some(worker_id) {
             return Err(StoreError::TaskNotOwned(task_id));
         }
 
-        task.status = TaskStatus::Completed;
+        tasks.update(task_id, |t| t.status = TaskStatus::Completed);
         Ok(())
     }
 
@@ -639,74 +638,70 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     ) -> Result<TaskFailureOutcome, StoreError> {
         let mut tasks = self.tasks.write();
         let task = tasks
-            .get_mut(&task_id)
+            .get(&task_id)
             .ok_or(StoreError::TaskNotFound(task_id))?;
-
-        task.error_history.push(error.to_string());
-        task.last_error = Some(error.to_string());
-
-        let max_attempts = task.definition.options.retry_policy.max_attempts;
-        if retryable && task.attempt < max_attempts {
-            // Requeue for retry
-            task.status = TaskStatus::Pending;
-            task.claimed_by = None;
-
-            let delay = task
-                .definition
-                .options
-                .retry_policy
-                .delay_for_attempt(task.attempt + 1);
-
-            Ok(TaskFailureOutcome::WillRetry {
-                next_attempt: task.attempt + 1,
-                delay,
-            })
-        } else {
-            // Move to DLQ
-            task.status = TaskStatus::Dead;
-            Ok(TaskFailureOutcome::MovedToDlq)
+        // A reclaimer already requeued or sealed it: leave its decision alone.
+        if task.status != TaskStatus::Claimed {
+            return Err(StoreError::TaskNotOwned(task_id));
         }
+
+        let outcome = tasks.update(task_id, |task| {
+            task.error_history.push(error.to_string());
+            task.last_error = Some(error.to_string());
+
+            let max_attempts = task.definition.options.retry_policy.max_attempts;
+            if retryable && task.attempt < max_attempts {
+                let delay = task
+                    .definition
+                    .options
+                    .retry_policy
+                    .delay_for_attempt(task.attempt + 1);
+                task.release(Utc::now() + chrono::Duration::from_std(delay).unwrap_or_default());
+                TaskFailureOutcome::WillRetry {
+                    next_attempt: task.attempt + 1,
+                    delay,
+                }
+            } else {
+                task.status = TaskStatus::Dead;
+                TaskFailureOutcome::MovedToDlq
+            }
+        });
+        Ok(outcome.expect("task exists"))
     }
 
     async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError> {
         {
             let tasks = self.tasks.read();
-            let has_claimed_task = tasks.values().any(|task| {
-                task.definition.workflow_id == Some(workflow_id)
-                    && task.status == TaskStatus::Claimed
+            let has_claimed_task = tasks.ids_for_workflow(workflow_id).iter().any(|id| {
+                tasks
+                    .get(id)
+                    .is_some_and(|t| t.status == TaskStatus::Claimed)
             });
             if has_claimed_task {
                 return Ok(false);
             }
         }
 
-        let mut workflows = self.workflows.write();
-        let workflow = workflows
-            .get_mut(&workflow_id)
-            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+        {
+            let mut workflows = self.workflows.write();
+            let workflow = workflows
+                .get_mut(&workflow_id)
+                .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
 
-        if workflow.status == WorkflowStatus::Running {
-            return Ok(false);
+            if workflow.status == WorkflowStatus::Running {
+                return Ok(false);
+            }
+
+            // Claim: set to Running, clear transient fields
+            workflow.status = WorkflowStatus::Running;
+            workflow.result = None;
+            workflow.error = None;
+            workflow.started_at = Some(chrono::Utc::now());
+            workflow.completed_at = None;
         }
-
-        // Claim: set to Running, clear transient fields
-        workflow.status = WorkflowStatus::Running;
-        workflow.result = None;
-        workflow.error = None;
-        workflow.started_at = Some(chrono::Utc::now());
-        workflow.completed_at = None;
-        drop(workflows);
 
         // Cancel stale pending tasks
-        let mut tasks = self.tasks.write();
-        for task in tasks.values_mut() {
-            if task.definition.workflow_id == Some(workflow_id)
-                && task.status == TaskStatus::Pending
-            {
-                task.status = TaskStatus::Cancelled;
-            }
-        }
-
+        self.cancel_pending_tasks_for_workflow(workflow_id).await?;
         Ok(true)
     }
 
@@ -716,13 +711,13 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     ) -> Result<u64, StoreError> {
         let mut tasks = self.tasks.write();
         let mut count = 0u64;
-        for task in tasks.values_mut() {
-            if task.definition.workflow_id == Some(workflow_id)
-                && task.status == TaskStatus::Pending
-            {
-                task.status = TaskStatus::Cancelled;
-                count += 1;
-            }
+        for id in tasks.ids_for_workflow(workflow_id) {
+            tasks.update(id, |task| {
+                if task.status == TaskStatus::Pending {
+                    task.status = TaskStatus::Cancelled;
+                    count += 1;
+                }
+            });
         }
         Ok(count)
     }
@@ -751,10 +746,10 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
     async fn reclaim_stale_tasks(
         &self,
-        _stale_threshold: Duration,
+        stale_threshold: Duration,
     ) -> Result<ReclaimResult, StoreError> {
-        // The in-memory store does not track heartbeats, so every currently
-        // claimed task with attempts remaining is treated as reclaimable. This
+        // A claimed task whose last heartbeat is older than the threshold is
+        // reclaimable, as in PostgreSQL. This also
         // mirrors the Postgres forward-progress guard (EVE-534) so unit tests
         // can exercise the seal decision without a database: derive each task's
         // progress token from the highest recorded event sequence for its
@@ -770,9 +765,8 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         // writes one on every (re)claim, so counting them would make the token
         // advance every cycle and defeat the seal guard. The token is the
         // highest sequence position of a NON-'activity_started' event (-1 => no
-        // progress events yet => token 0). The in-memory store happens not to
-        // write 'activity_started' on claim, but the derivation rule must still
-        // match so both stores agree and tests can replicate the Postgres flow.
+        // progress events yet => token 0). Both stores write 'activity_started'
+        // on a first claim.
         let highest_seq: HashMap<Uuid, i64> = {
             let workflows = self.workflows.read();
             workflows
@@ -795,88 +789,94 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let mut dead_tasks = Vec::new();
         let mut sealed_tasks = Vec::new();
 
+        let cutoff = Utc::now() - chrono::Duration::from_std(stale_threshold).unwrap_or_default();
         let mut tasks = self.tasks.write();
-        for (task_id, task) in tasks.iter_mut() {
-            if task.status != TaskStatus::Claimed {
-                continue;
-            }
-            let max_attempts = task.definition.options.retry_policy.max_attempts;
-            if task.attempt >= max_attempts {
-                task.status = TaskStatus::Dead;
-                let error = task.last_error.clone().unwrap_or_else(|| {
-                    "Worker became unresponsive after exhausting all retry attempts".to_string()
-                });
-                task.last_error = Some(error.clone());
-                dead_tasks.push(DeadTaskInfo {
-                    task_id: *task_id,
-                    workflow_id: task.definition.workflow_id,
-                    activity_id: task.definition.activity_id.clone(),
-                    activity_type: task.definition.activity_type.clone(),
-                    input: task.definition.input.clone(),
-                    last_error: Some(error),
-                });
-                continue;
-            }
+        let stale: Vec<Uuid> = tasks
+            .claimed_ids()
+            .into_iter()
+            .filter(|id| {
+                tasks
+                    .get(id)
+                    .is_some_and(|t| t.heartbeat_at.is_none_or(|at| at < cutoff))
+            })
+            .collect();
+        for task_id in stale {
+            tasks.update(task_id, |task| {
+                let task_id = &task_id;
+                let max_attempts = task.definition.options.retry_policy.max_attempts;
+                if task.attempt >= max_attempts {
+                    task.status = TaskStatus::Dead;
+                    let error = task.last_error.clone().unwrap_or_else(|| {
+                        "Worker became unresponsive after exhausting all retry attempts".to_string()
+                    });
+                    task.last_error = Some(error.clone());
+                    dead_tasks.push(DeadTaskInfo {
+                        task_id: *task_id,
+                        workflow_id: task.definition.workflow_id,
+                        activity_id: task.definition.activity_id.clone(),
+                        activity_type: task.definition.activity_type.clone(),
+                        input: task.definition.input.clone(),
+                        last_error: Some(error),
+                    });
+                    return;
+                }
 
-            let wf_id = task.definition.workflow_id;
+                let wf_id = task.definition.workflow_id;
 
-            // Standalone tasks (workflow_id IS NULL) have no workflow event
-            // stream, so the derived progress token is always 0 and the seal
-            // guard would DLQ them after N reclaims purely from missing workflow
-            // context. Exempt them: always treat as advanced (leave
-            // progress_token NULL, never increment no_progress_count) and
-            // re-queue to pending so they only DLQ via the max-attempts path
-            // above (EVE-534).
-            if wf_id.is_none() {
-                task.no_progress_count = 0;
-                task.status = TaskStatus::Pending;
-                task.claimed_by = None;
-                task.claimed_at = None;
-                reclaimed_ids.push(*task_id);
-                continue;
-            }
+                // Standalone tasks (workflow_id IS NULL) have no workflow event
+                // stream, so the derived progress token is always 0 and the seal
+                // guard would DLQ them after N reclaims purely from missing workflow
+                // context. Exempt them: always treat as advanced (leave
+                // progress_token NULL, never increment no_progress_count) and
+                // re-queue to pending so they only DLQ via the max-attempts path
+                // above (EVE-534).
+                if wf_id.is_none() {
+                    task.no_progress_count = 0;
+                    task.release(task.visible_at);
+                    reclaimed_ids.push(*task_id);
+                    return;
+                }
 
-            let cur_seq = wf_id
-                .and_then(|id| highest_seq.get(&id).copied())
-                .unwrap_or(-1);
-            let cur_token = cur_seq + 1; // -1 (no events) => token 0
+                let cur_seq = wf_id
+                    .and_then(|id| highest_seq.get(&id).copied())
+                    .unwrap_or(-1);
+                let cur_token = cur_seq + 1; // -1 (no events) => token 0
 
-            // A missing prior token is treated as the 0 baseline, so a turn that
-            // records nothing on its first attempt already counts as no-progress
-            // (mirrors the Postgres COALESCE(prev_token, 0) rule).
-            let prev = task.progress_token.unwrap_or(0);
-            let advanced = cur_token > prev;
+                // A missing prior token is treated as the 0 baseline, so a turn that
+                // records nothing on its first attempt already counts as no-progress
+                // (mirrors the Postgres COALESCE(prev_token, 0) rule).
+                let prev = task.progress_token.unwrap_or(0);
+                let advanced = cur_token > prev;
 
-            task.progress_token = Some(cur_token);
-            if advanced {
-                task.no_progress_count = 0;
-            } else {
-                task.no_progress_count += 1;
-            }
+                task.progress_token = Some(cur_token);
+                if advanced {
+                    task.no_progress_count = 0;
+                } else {
+                    task.no_progress_count += 1;
+                }
 
-            if task.no_progress_count >= threshold {
-                task.status = TaskStatus::Dead;
-                task.last_error = Some(format!(
-                    "Turn sealed: no forward progress across {} consecutive recoveries (EVE-534)",
-                    task.no_progress_count
-                ));
-                task.claimed_by = None;
-                task.claimed_at = None;
-                sealed_tasks.push(SealedTaskInfo {
-                    task_id: *task_id,
-                    workflow_id: wf_id,
-                    activity_id: task.definition.activity_id.clone(),
-                    activity_type: task.definition.activity_type.clone(),
-                    input: task.definition.input.clone(),
-                    reason: "no_progress".to_string(),
-                    no_progress_count: task.no_progress_count,
-                });
-            } else {
-                task.status = TaskStatus::Pending;
-                task.claimed_by = None;
-                task.claimed_at = None;
-                reclaimed_ids.push(*task_id);
-            }
+                if task.no_progress_count >= threshold {
+                    task.status = TaskStatus::Dead;
+                    task.last_error = Some(format!(
+                        "Turn sealed: no forward progress across {} consecutive recoveries (EVE-534)",
+                        task.no_progress_count
+                    ));
+                    task.claimed_by = None;
+                    task.claimed_at = None;
+                    sealed_tasks.push(SealedTaskInfo {
+                        task_id: *task_id,
+                        workflow_id: wf_id,
+                        activity_id: task.definition.activity_id.clone(),
+                        activity_type: task.definition.activity_type.clone(),
+                        input: task.definition.input.clone(),
+                        reason: "no_progress".to_string(),
+                        no_progress_count: task.no_progress_count,
+                    });
+                } else {
+                    task.release(task.visible_at);
+                    reclaimed_ids.push(*task_id);
+                }
+            });
         }
 
         Ok(ReclaimResult {
@@ -1008,24 +1008,13 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
         tasks.insert(
             task_id,
-            TaskState {
-                definition: TaskDefinition {
-                    workflow_id: entry.workflow_id,
-                    activity_id: entry.activity_id,
-                    activity_type: entry.activity_type,
-                    input: entry.input,
-                    options,
-                },
-                status: TaskStatus::Pending,
-                attempt: 0,
-                claimed_by: None,
-                last_error: None,
-                error_history: vec![],
-                created_at: Utc::now(),
-                claimed_at: None,
-                progress_token: None,
-                no_progress_count: 0,
-            },
+            TaskState::pending(TaskDefinition {
+                workflow_id: entry.workflow_id,
+                activity_id: entry.activity_id,
+                activity_type: entry.activity_type,
+                input: entry.input,
+                options,
+            }),
         );
 
         Ok(task_id)
@@ -1917,6 +1906,14 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
 #[cfg(test)]
 mod tests {
+    /// Register workers so the store lets them claim, as PostgreSQL requires.
+    fn register_workers(store: &InMemoryWorkflowEventStore, ids: &[&str]) {
+        let mut workers = store.workers.write();
+        for id in ids {
+            workers.insert(id.to_string(), WorkerInfo::new(*id, Vec::<String>::new()));
+        }
+    }
+
     use super::*;
     use crate::workflow::ActivityOptions;
 
@@ -2013,6 +2010,7 @@ mod tests {
     #[tokio::test]
     async fn test_task_lifecycle() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker-1"]);
         let workflow_id = Uuid::now_v7();
 
         store
@@ -2055,6 +2053,7 @@ mod tests {
     #[tokio::test]
     async fn test_task_retry() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker-1"]);
         let workflow_id = Uuid::now_v7();
 
         store
@@ -2124,6 +2123,7 @@ mod tests {
     async fn test_complete_task_wrong_worker_rejected() {
         // Scenario: Worker A claims task, Worker B tries to complete it
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker-A"]);
         let workflow_id = Uuid::now_v7();
 
         store
@@ -2172,6 +2172,7 @@ mod tests {
     async fn test_complete_task_already_completed_rejected() {
         // Scenario: Worker A completes task, then tries to complete again
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker-A"]);
         let workflow_id = Uuid::now_v7();
 
         store
@@ -2222,6 +2223,7 @@ mod tests {
         // 4. Worker B completes the task
         // 5. Worker A tries to complete (should be rejected)
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker-A", "worker-B"]);
         let workflow_id = Uuid::now_v7();
 
         store
@@ -2251,9 +2253,7 @@ mod tests {
         // (In real scenario, reclaim_stale_tasks would do this)
         {
             let mut tasks = store.tasks.write();
-            let task = tasks.get_mut(&task_id).unwrap();
-            task.status = TaskStatus::Pending;
-            task.claimed_by = None;
+            tasks.update(task_id, |task| task.release(chrono::Utc::now()));
         }
 
         // Step 3: Worker B claims the same task
@@ -2287,6 +2287,7 @@ mod tests {
         // End-to-end scenario testing the fix prevents duplicate atom scheduling
         // This simulates the full workflow that was causing duplicate atoms
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker-A", "worker-B"]);
         let workflow_id = Uuid::now_v7();
 
         store
@@ -2320,9 +2321,7 @@ mod tests {
         // Simulate: Worker A takes too long, task reclaimed
         {
             let mut tasks = store.tasks.write();
-            let task = tasks.get_mut(&task_id).unwrap();
-            task.status = TaskStatus::Pending;
-            task.claimed_by = None;
+            tasks.update(task_id, |task| task.release(chrono::Utc::now()));
         }
 
         // Worker B claims and completes
@@ -2694,6 +2693,7 @@ mod tests {
     #[tokio::test]
     async fn test_standalone_task_enqueue_and_claim() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker-1"]);
 
         // Enqueue standalone task (no workflow)
         let task_id = store
@@ -2796,6 +2796,7 @@ mod tests {
     #[tokio::test]
     async fn test_standalone_task_queue_limit() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker"]);
         let definition = TaskDefinition {
             workflow_id: None,
             activity_id: "standalone".into(),
@@ -2807,21 +2808,7 @@ mod tests {
         {
             let mut tasks = store.tasks.write();
             for _ in 0..DEFAULT_MAX_PENDING_STANDALONE_TASKS - 1 {
-                tasks.insert(
-                    Uuid::now_v7(),
-                    TaskState {
-                        definition: definition.clone(),
-                        status: TaskStatus::Pending,
-                        attempt: 0,
-                        claimed_by: None,
-                        last_error: None,
-                        error_history: Vec::new(),
-                        created_at: chrono::Utc::now(),
-                        claimed_at: None,
-                        progress_token: None,
-                        no_progress_count: 0,
-                    },
-                );
+                tasks.insert(Uuid::now_v7(), TaskState::pending(definition.clone()));
             }
         }
         store
@@ -3094,6 +3081,7 @@ mod tests {
     #[tokio::test]
     async fn test_system_health_task_counts() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["w1"]);
         let workflow_id = Uuid::now_v7();
         store
             .create_workflow(workflow_id, "test", serde_json::json!({}), None)
@@ -3157,6 +3145,7 @@ mod tests {
     #[tokio::test]
     async fn test_system_health_dlq_size() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["w1"]);
         let workflow_id = Uuid::now_v7();
         store
             .create_workflow(workflow_id, "test", serde_json::json!({}), None)
@@ -3338,6 +3327,7 @@ mod tests {
         // process-global env, which is flaky under parallel test execution.
         let threshold = DEFAULT_NO_PROGRESS_SEAL_THRESHOLD;
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["w1"]);
         let workflow_id = Uuid::now_v7();
         store
             .create_workflow(workflow_id, "seal_test", serde_json::json!({}), None)
@@ -3366,7 +3356,7 @@ mod tests {
             store
                 .append_events(
                     workflow_id,
-                    (cycle - 1) as i32,
+                    store.count_events(workflow_id).await.unwrap() as i32,
                     vec![WorkflowEvent::ActivityStarted {
                         activity_id: "reason_task".to_string(),
                         attempt: cycle,
@@ -3375,6 +3365,8 @@ mod tests {
                 )
                 .await
                 .unwrap();
+
+            store.expire_claim(task_id);
 
             let result = store
                 .reclaim_stale_tasks(Duration::from_secs(30))
@@ -3412,6 +3404,7 @@ mod tests {
     async fn test_progress_resets_no_progress_counter_in_memory() {
         // Relies on the default seal threshold (3); see note above re: env.
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["w1"]);
         let workflow_id = Uuid::now_v7();
         store
             .create_workflow(workflow_id, "progress_test", serde_json::json!({}), None)
@@ -3419,10 +3412,6 @@ mod tests {
             .unwrap();
         let task_id = enqueue_reason_task(&store, workflow_id, 50).await;
 
-        // events.len() before each cycle's appends. Each cycle appends two
-        // events (one 'activity_started' claim marker + one real progress
-        // event), so this grows by 2 per cycle.
-        let mut next_seq: i32 = 0;
         for cycle in 0..6u32 {
             let _ = store
                 .claim_task("w1", &["reason".to_string()], 1)
@@ -3434,7 +3423,7 @@ mod tests {
             store
                 .append_events(
                     workflow_id,
-                    next_seq,
+                    store.count_events(workflow_id).await.unwrap() as i32,
                     vec![WorkflowEvent::ActivityStarted {
                         activity_id: "reason_task".to_string(),
                         attempt: cycle,
@@ -3443,14 +3432,13 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            next_seq += 1;
             // ...but the turn also records a genuine progress event each cycle
             // (e.g. the activity completed), which MUST advance the token and
             // reset the no-progress counter so the turn is never sealed.
             store
                 .append_events(
                     workflow_id,
-                    next_seq,
+                    store.count_events(workflow_id).await.unwrap() as i32,
                     vec![WorkflowEvent::ActivityCompleted {
                         activity_id: "reason_task".to_string(),
                         result: serde_json::json!({"cycle": cycle}),
@@ -3458,7 +3446,8 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            next_seq += 1;
+
+            store.expire_claim(task_id);
 
             let result = store
                 .reclaim_stale_tasks(Duration::from_secs(30))
@@ -3481,6 +3470,7 @@ mod tests {
     #[tokio::test]
     async fn test_standalone_task_is_not_sealed_in_memory() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["w1"]);
         let options = ActivityOptions {
             // Generous max_attempts so attempt-exhaustion never fires within the
             // loop below; only the seal guard could end the task early.
@@ -3507,6 +3497,8 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(claimed.len(), 1, "cycle {cycle}: claimable");
+
+            store.expire_claim(task_id);
 
             let result = store
                 .reclaim_stale_tasks(Duration::from_secs(30))
@@ -3543,6 +3535,7 @@ mod tests {
     #[tokio::test]
     async fn deterministic_failure_bypasses_retries_and_releases_workflow() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker"]);
         let workflow_id = Uuid::now_v7();
         store
             .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
@@ -3618,6 +3611,7 @@ mod tests {
     #[tokio::test]
     async fn retryable_failure_keeps_workflow_running_before_final_attempt() {
         let store = InMemoryWorkflowEventStore::new();
+        register_workers(&store, &["worker"]);
         let workflow_id = Uuid::now_v7();
         store
             .create_workflow(workflow_id, "turn", serde_json::json!({}), None)

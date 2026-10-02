@@ -18,7 +18,7 @@ use tokio::runtime::Runtime;
 
 use everruns_durable::bench::{
     BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
-    ReportConfig, clear_terminal_progress, set_terminal_progress,
+    ReportConfig, clear_terminal_progress, register_bench_worker, set_terminal_progress,
 };
 use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
@@ -138,6 +138,7 @@ impl WorkflowScenario {
 
             handles.push(tokio::spawn(async move {
                 let worker_name = format!("worker-{}", worker_id);
+                register_bench_worker(store.as_ref(), &worker_name, &activity_type).await;
 
                 loop {
                     // Check if all workflows are done

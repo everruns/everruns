@@ -38,8 +38,6 @@ allowlist_reason() {
   case "$1" in
     everruns-server:test_harness)
       echo "shared TestServer helper module, not a standalone test target" ;;
-    everruns-durable:agent_reliability_test)
-      echo "end-to-end infrastructure-failure tests; needs PostgreSQL and a running worker" ;;
     everruns-llm-tests:tool_search_test)
       echo "requires OPENAI_API_KEY; belongs in a credentialed job, not the pure suite" ;;
     everruns-llm-tests:gpt_comparison_bench)
