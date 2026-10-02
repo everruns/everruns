@@ -11,6 +11,8 @@ description: Run bash commands on the machine hosting the agent, bounded by a ke
 | **Features** | `file_system` (enables the Workspace tab) |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/), backed by a real directory |
 
+**Availability:** Framework (embedder) only. Not available in self-hosted Platform or Everruns Cloud.
+
 Run bash commands as real child processes on the machine the agent is running
 on. Unlike [Bashkit Shell](/capabilities/bashkit-shell/), the toolchain is real:
 compilers, package managers and test runners work. A kernel policy bounds what

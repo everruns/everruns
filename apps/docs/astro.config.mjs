@@ -365,15 +365,6 @@ export default defineConfig({
                         { label: "User Hooks", slug: "capabilities/user-hooks" },
                       ],
                     },
-                    {
-                      label: "Demo",
-                      collapsed: true,
-                      items: [
-                        { label: "Fake Warehouse", slug: "capabilities/fake-warehouse" },
-                        { label: "Fake AWS", slug: "capabilities/fake-aws" },
-                        { label: "Fake CRM", slug: "capabilities/fake-crm" },
-                      ],
-                    },
                   ],
                 },
               ],
@@ -638,7 +629,6 @@ export default defineConfig({
             "ecosystem/**",
             "integrations/**",
             "event-reference",
-            "capabilities/fake-*",
             "capabilities/platform-management",
           ],
         }),

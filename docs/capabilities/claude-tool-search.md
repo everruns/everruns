@@ -80,7 +80,7 @@ With `claude_tool_search` alone, those transports also send full schemas; pair w
 {
   "capabilities": [
     {
-      "capability_ref": "claude_tool_search",
+      "ref": "claude_tool_search",
       "config": { "threshold": 10 }
     }
   ]

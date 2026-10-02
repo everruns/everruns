@@ -5,8 +5,6 @@ sidebar:
   order: 95
 ---
 
-# Tool Approval
-
 | | |
 |---|---|
 | **ID** | `tool_approval` |

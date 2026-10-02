@@ -66,7 +66,7 @@ When the capability is enabled but the model doesn't support tool_search, the fe
 {
   "capabilities": [
     {
-      "capability_ref": "openai_tool_search",
+      "ref": "openai_tool_search",
       "config": { "threshold": 10 }
     }
   ]

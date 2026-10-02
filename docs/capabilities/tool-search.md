@@ -83,12 +83,15 @@ The activation threshold defaults to 15 tools (`DEFAULT_TOOL_SEARCH_THRESHOLD`).
 
 ```json
 {
-  "capabilities": {
-    "tool_search": {
-      "threshold": 20,
-      "never_defer": ["read_file", "write_file", "edit_file", "list_directory", "grep_files", "bash"]
+  "capabilities": [
+    {
+      "ref": "tool_search",
+      "config": {
+        "threshold": 20,
+        "never_defer": ["read_file", "write_file", "edit_file", "list_directory", "grep_files", "bash"]
+      }
     }
-  }
+  ]
 }
 ```
 

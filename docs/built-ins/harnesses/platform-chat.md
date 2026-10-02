@@ -27,11 +27,19 @@ catalog.
 | Capability | What it provides |
 |------------|-----------------|
 | [Platform](/capabilities/platform/) | `discover`, read-only `query`, and mutating `execute` over the authoritative Everruns command catalog |
+| BTW | Ephemeral side-question command for the current session |
+| Human Intent | Model-authored narration for each tool call, rendered in the chat UI |
+| [Current Time](/capabilities/current-time/) | Grounds relative-time questions such as "which sessions ran today" |
+| [Message Metadata](/capabilities/message-metadata/) | Message timestamp annotations |
+| [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | Prefers parallel calls so multi-view inspection runs in one pass |
+| [Task Management](/capabilities/task-management/) | Shows multi-step platform mutations as progress in the thread |
+| Prompt Caching | Caches the large system prompt across turns |
+| [Tool Call Repair](/capabilities/tool-call-repair/) | Repairs malformed tool calls |
+| Loop detection | Stops repeated command/discovery cycles |
+| Error disclosure | Returns actionable command failures to the operator (`detailed` mode) |
+| [Context Compaction](/advanced/compaction/) | Bounds long management conversations |
 | [Ask User](/capabilities/ask-user/) | Ask the operator 1–4 structured questions, or collect a credential, and wait for the answer |
 | Soft Approval | Prompt-level gate asking permission before a destructive, irreversible, or outward-facing action |
-| Loop detection | Stops repeated command/discovery cycles |
-| Error disclosure | Returns actionable command failures to the operator |
-| Compaction | Bounds long management conversations |
 
 Platform Chat discovers current command names and schemas before acting. It
 uses `query` for inspection, `execute` only for requested mutations, and then
