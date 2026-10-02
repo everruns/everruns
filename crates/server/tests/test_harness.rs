@@ -244,9 +244,9 @@ impl TestServer {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_platform::AgentEndpointId;
         use everruns_provider::typed_id::{AppId, HarnessId, PrincipalId};
-        use everruns_server::domains::apps::queries::prepare_channel_storage;
+        use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
         use everruns_server::storage::models::{
-            CreateAppChannelRow, CreateAppRow, CreatePrincipalRow,
+            CreateAppRow, CreateLegacyAliasEndpointRow, CreatePrincipalRow,
         };
         use uuid::Uuid;
 
@@ -317,9 +317,9 @@ impl TestServer {
             .await
             .expect("create fixture App");
         self.db
-            .create_app_channel(
+            .create_legacy_alias_endpoint(
                 app.id,
-                CreateAppChannelRow {
+                CreateLegacyAliasEndpointRow {
                     public_id: AgentEndpointId::new().to_string(),
                     channel_type: channel_type.to_string(),
                     channel_config: prepared.channel_config,
@@ -385,8 +385,8 @@ impl TestServer {
     ) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_platform::AgentEndpointId;
-        use everruns_server::domains::apps::queries::prepare_channel_storage;
-        use everruns_server::storage::models::CreateAppChannelRow;
+        use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
+        use everruns_server::storage::models::CreateLegacyAliasEndpointRow;
 
         let app = self
             .db
@@ -398,9 +398,9 @@ impl TestServer {
             .expect("prepare endpoint config");
         let endpoint = self
             .db
-            .create_app_channel(
+            .create_legacy_alias_endpoint(
                 app.id,
-                CreateAppChannelRow {
+                CreateLegacyAliasEndpointRow {
                     public_id: AgentEndpointId::new().to_string(),
                     channel_type: channel_type.to_string(),
                     channel_config: prepared.channel_config,
@@ -426,19 +426,19 @@ impl TestServer {
     }
 
     pub async fn set_endpoint_status(&self, endpoint_public_id: &str, status: &str) -> Value {
-        use everruns_server::storage::models::UpdateAppChannel;
+        use everruns_server::storage::models::UpdateEndpointByIdRow;
 
         let endpoint = self
             .db
-            .get_app_channel_by_public_id(endpoint_public_id)
+            .get_endpoint_row_by_public_id(endpoint_public_id)
             .await
             .expect("get fixture endpoint")
             .expect("fixture endpoint exists");
         let endpoint = self
             .db
-            .update_app_channel(
+            .update_endpoint_by_id(
                 endpoint.id,
-                UpdateAppChannel {
+                UpdateEndpointByIdRow {
                     enabled: Some(status != "disabled"),
                     status: Some(status.to_string()),
                     ..Default::default()
@@ -448,7 +448,7 @@ impl TestServer {
             .expect("update fixture endpoint")
             .expect("fixture endpoint exists");
         serde_json::to_value(
-            everruns_server::domains::apps::queries::channel_row_to_channel(
+            everruns_server::domains::agent_endpoints::queries::channel_row_to_channel(
                 self.encryption.as_ref(),
                 endpoint,
             ),
@@ -462,14 +462,14 @@ impl TestServer {
         channel_config: Value,
     ) -> Value {
         use everruns_durable::UpdateField;
-        use everruns_server::domains::apps::queries::{
+        use everruns_server::domains::agent_endpoints::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };
-        use everruns_server::storage::models::UpdateAppChannel;
+        use everruns_server::storage::models::UpdateEndpointByIdRow;
 
         let endpoint = self
             .db
-            .get_app_channel_by_public_id(endpoint_public_id)
+            .get_endpoint_row_by_public_id(endpoint_public_id)
             .await
             .expect("get fixture endpoint")
             .expect("fixture endpoint exists");
@@ -489,9 +489,9 @@ impl TestServer {
             .expect("prepare endpoint config");
         let endpoint = self
             .db
-            .update_app_channel(
+            .update_endpoint_by_id(
                 endpoint.id,
-                UpdateAppChannel {
+                UpdateEndpointByIdRow {
                     channel_config: Some(prepared.channel_config),
                     channel_config_encrypted: UpdateField::from_option(
                         prepared.channel_config_encrypted,
@@ -505,7 +505,7 @@ impl TestServer {
             .expect("update fixture endpoint")
             .expect("fixture endpoint exists");
         serde_json::to_value(
-            everruns_server::domains::apps::queries::channel_row_to_channel(
+            everruns_server::domains::agent_endpoints::queries::channel_row_to_channel(
                 self.encryption.as_ref(),
                 endpoint,
             ),

@@ -26,7 +26,7 @@ A **public endpoint** is an HTTP endpoint that accepts unauthenticated traffic a
 
 Any new public endpoint MUST be added to this table and MUST follow the rules below. Existing endpoints that pre-date this contract may not yet route every error path through `PublicError`; aligning them is tracked separately and applies whenever those endpoints stream payload-phase errors to the caller.
 
-The `/v1/e/{endpoint_id}/...` routes are canonical. Existing `/v1/apps/{app_id}/...` routes are permanent aliases. Alias resolution uses the endpoint's frozen `legacy_app_public_id`; traffic serving does not read `apps` or `app_channels`.
+The `/v1/e/{endpoint_id}/...` routes are canonical. Existing `/v1/apps/{app_id}/...` routes are permanent aliases. Alias resolution uses the endpoint's frozen `legacy_alias_id`; traffic serving does not read `apps` or `app_channels`.
 
 ## Mandatory Behavior
 

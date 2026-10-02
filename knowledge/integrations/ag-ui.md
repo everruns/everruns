@@ -55,8 +55,54 @@ one AG-UI run per request over the session's live event stream and the shared
 errors visible), because the developer owns both ends.
 
 - **Input.** The session owns the conversation, so a run sends only the last
-  user message. Earlier messages, `state`, `context`, `forwardedProps` and
-  frontend tools are not read; the host maps `threadId` to a session.
+  user message, or the trailing `tool` messages that answer parked frontend
+  calls. Earlier messages are read only to seed a new thread (below);
+  `state` and `forwardedProps` are not read.
+- **Threads.** `AgUiThreads` resolves `threadId` to a session through a
+  pluggable `ThreadStore` (in-memory, or `SqliteThreadStore` behind `local`):
+  create on first sight, reopen through `Engine::attach` after a restart. The
+  store holds only thread key to session id; durability needs both a durable
+  store and a backend that keeps sessions (`LocalConfig`). An entry whose
+  session the backend no longer has gets a new session, seeded. Resolution is
+  serialized per `AgUiThreads` so two first runs cannot create two sessions.
+  Thread ids are bounded like the server's (1 to 128 of `[A-Za-z0-9-_.]`),
+  and `run_in` scopes them to a host-chosen caller id, because a thread id is
+  client input (TM-TENANT-017).
+- **History seeding.** `AgUiOptions::seed_history` (set by `AgUiThreads` for
+  a thread it creates) records the input's user and assistant messages before
+  its user message as canonical `input.message` / `output.message.completed`
+  events, the events history is projected from, before the run subscribes and
+  sends. It runs in the session actor and only while the session has no
+  message, so a retry never duplicates history. Same role filter as the
+  server's `seed_history` except that `system`/`developer` messages are never
+  seeded (TM-LLM-020); bounded to the newest 256 messages and 512 KiB
+  (TM-DOS-045).
+- **Frontend tools.** Same semantics as the server's
+  ([Frontend tools](#frontend-tools)), with the same bounds and `mcp_`
+  refusal: each run sets its `tools` as the session record's client-side
+  tools (latest set wins), a call to one parks the turn, the run streams it
+  through the shared `Projector::park` and ends with `pendingToolCallIds`, and
+  the next run's trailing results continue the same turn. The in-process
+  runtime used to end a turn at a client-side pause and drop its resume state;
+  it now keeps that state per session (`InProcessRuntime::parked_tool_calls`,
+  `resume_steerable_turn`), in memory, so a process exit leaves the calls
+  unanswered. A plain client-side call pauses only when the session's
+  `setup_connection` hint says the client answers pauses
+  (`everruns_engine::act_pauses_turn`), so the facade sets that hint while the
+  session has frontend tools. A run that sees the calls requested ends only
+  once the turn has recorded the park, so the next run always finds it.
+  Lifecycle turn-start handlers do not run again for the resumed half;
+  completion handlers run at the park and again at the end.
+- **Trusted instructions, opt-in.** `AgUiOptions::input_instructions` is for
+  a host that authenticates whoever posts the input (OpenBot runs its
+  coworkers this way): each run's `system` and `developer` messages, then its
+  `context` entries, become that run's instructions, and such messages may
+  trail the user message. They ride the session record's `system_prompt`,
+  the additive session layer appended after the agent's instructions, which
+  the runtime re-reads at every turn and model call: the latest run's set
+  wins, a run with none clears it, and nothing lands in the transcript. Off
+  by default, where the run ignores them and a trailing one is refused, the
+  same trust boundary the server keeps for public callers (TM-LLM-020).
 - **Interrupts without a durable park.** In-process `ask_user` and approvals
   block the turn on a responder instead of parking it, so the facade ships
   `InterruptGate`, a responder for both that parks each request in memory
@@ -66,11 +112,23 @@ errors visible), because the developer owns both ends.
   match the server's: validate every entry before applying any, re-interrupt
   on a missing entry or a new message, ignore unknown ids. Approval
   interrupts are always client-answerable here (`tool_approval`); there is no
-  operator. A process exit cancels a parked turn.
-- **No HTTP server dependency.** The facade adds only `everruns-ag-ui`; an
-  axum handler is a few lines over the returned stream, kept as the
-  `ag_ui_axum` example and the public `framework/ag-ui` page rather than a
-  helper.
+  operator. A process exit leaves a parked turn unfinished in the log;
+  `Session::resume_interrupted_turn` runs its waiting calls again after a
+  restart, so they park on the gate anew.
+- **HTTP handler, opt-in.** `ag-ui` adds only `everruns-ag-ui`; the
+  `ag-ui-axum` feature adds `AgUiHandler` and `sse_response`
+  ([`crates/everruns/src/ag_ui/handler.rs`](../../crates/everruns/src/ag_ui/handler.rs)),
+  so a host on another server never compiles axum. The handler authorizes,
+  resolves the thread through `AgUiThreads`, runs with host-set
+  `AgUiOptions`, and streams SSE with the server's framing (unnamed `data:`
+  events, a `keepalive` comment every 15 seconds). The authorizer is a
+  constructor argument, so an open endpoint is an explicit `Unauthenticated`;
+  `StaticToken` compares in constant time (TM-AUTH-030), and an authorizer's
+  `AgUiCaller::scoped` scopes threads to the caller (TM-TENANT-017). Failures
+  before the stream are statuses (401 before the body is read, 400 for bad
+  input, 500 logged with a fixed message), never details. serve frames its
+  own route with `sse_response` but resolves threads and authorizes its own
+  way.
 
 - **Host interrupt sources.** `InterruptSource` is the seam between a run
   and whatever parks requests: it lists a session's open interrupts, names
@@ -93,11 +151,14 @@ because every top-level agent is an endpoint and none is declared separately.
   later; AG-UI streams in the response.
 - **Threads.** One session per (agent, `threadId`), kept in the thread map
   channels use under channel key `ag-ui:{agent}`, so a thread survives a
-  restart.
+  restart. serve keeps that map rather than `AgUiThreads` because its sessions
+  live in its own catalog, and sets `seed_history` on a thread's first run.
 - **Interrupts.** serve's own parked approvals and questions, through
   `InterruptSource`: an interrupt can be answered by a `resume` entry, by
   `/question-answers` or by `/approvals/{tool_call_id}`, and the reverse.
-  They live in memory, like every serve park.
+  They live in memory, like every serve park, and come back after a restart
+  because serve resumes a turn its old process left waiting on a person
+  (see [serve](../framework/serve.md)).
 - **Policy.** Trusted: reasoning, usage and runtime errors visible, because
   the developer owns both ends. A public deployment puts serve behind its own
   auth, as with every serve route.

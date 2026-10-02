@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::config::env_string_any;
 use everruns_durable::{
-    InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEvent, WorkflowEventStore,
-    WorkflowSignal, WorkflowStatus,
+    DurableAdmin, EventLog, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, SignalStore,
+    TaskQueue, WorkflowEvent, WorkflowSignal, WorkflowStatus,
 };
 pub use everruns_engine::TurnState as DurableTurnInput;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
@@ -188,13 +188,7 @@ impl DurableStoreBackend for GrpcDurableStore {
     ) -> Result<Uuid> {
         GrpcDurableStore::create_workflow(self, workflow_id, workflow_type, input.clone()).await?;
         let _ = self
-            .append_events(
-                workflow_id,
-                0,
-                vec![WorkflowEvent::WorkflowStarted {
-                    input: input.clone(),
-                }],
-            )
+            .append_events(workflow_id, 0, vec![WorkflowEvent::started(input.clone())])
             .await?;
         let task_id = GrpcDurableStore::enqueue_task(
             self,
@@ -311,10 +305,10 @@ impl DurableStoreBackend for DirectDurableStore {
         self.store
             .enqueue_task(everruns_durable::TaskDefinition {
                 workflow_id: Some(workflow_id),
+                options: crate::durable_turn::activity_options_for(&activity_id),
                 activity_id,
                 activity_type,
                 input,
-                options: Default::default(),
             })
             .await
             .map_err(Into::into)
@@ -374,7 +368,7 @@ impl DurableStoreBackend for DirectDurableStore {
 
     async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> Result<bool> {
         self.store
-            .try_claim_workflow_for_new_turn(workflow_id)
+            .try_start_new_run(workflow_id)
             .await
             .map_err(Into::into)
     }
@@ -448,10 +442,10 @@ impl DurableStoreBackend for InMemoryDurableStore {
         self.store
             .enqueue_task(everruns_durable::TaskDefinition {
                 workflow_id: Some(workflow_id),
+                options: crate::durable_turn::activity_options_for(&activity_id),
                 activity_id,
                 activity_type,
                 input,
-                options: Default::default(),
             })
             .await
             .map_err(Into::into)
@@ -470,13 +464,7 @@ impl DurableStoreBackend for InMemoryDurableStore {
             .await?;
         let _ = self
             .store
-            .append_events(
-                workflow_id,
-                0,
-                vec![WorkflowEvent::WorkflowStarted {
-                    input: input.clone(),
-                }],
-            )
+            .append_events(workflow_id, 0, vec![WorkflowEvent::started(input.clone())])
             .await?;
         let task_id = self
             .store
@@ -532,7 +520,7 @@ impl DurableStoreBackend for InMemoryDurableStore {
 
     async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> Result<bool> {
         self.store
-            .try_claim_workflow_for_new_turn(workflow_id)
+            .try_start_new_run(workflow_id)
             .await
             .map_err(Into::into)
     }
@@ -701,7 +689,7 @@ impl AgentRunner for DurableRunner {
                 }
                 Ok(false) => {
                     let signal = WorkflowSignal::new(
-                        everruns_durable::signal_types::USER_MESSAGE,
+                        crate::durable_turn::USER_MESSAGE,
                         serde_json::json!({
                             "input_message_id": input_message_id.to_string(),
                             "org_id": org_id,
@@ -793,7 +781,7 @@ impl AgentRunner for DurableRunner {
         if let Err(error) = store
             .enqueue_task(
                 workflow_id,
-                format!("waiting_turn_resolution_{resolution_id}"),
+                crate::durable_turn::waiting_turn_resolution_activity_id(resolution_id),
                 "reason".to_string(),
                 input_json,
             )
@@ -880,6 +868,7 @@ fn runtime_to_grpc_status(status: WorkflowStatus) -> GrpcWorkflowStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_durable::WorkerRegistry;
 
     #[derive(Default)]
     struct RecordingTaskNotifier {
@@ -990,10 +979,7 @@ mod tests {
             .await
             .expect("signals should load");
         assert_eq!(signals.len(), 1);
-        assert_eq!(
-            signals[0].signal_type,
-            everruns_durable::signal_types::USER_MESSAGE
-        );
+        assert_eq!(signals[0].signal_type, crate::durable_turn::USER_MESSAGE);
     }
 
     #[tokio::test]
@@ -1051,10 +1037,7 @@ mod tests {
             .await
             .expect("signals should load");
         assert_eq!(signals.len(), 1);
-        assert_eq!(
-            signals[0].signal_type,
-            everruns_durable::signal_types::USER_MESSAGE
-        );
+        assert_eq!(signals[0].signal_type, crate::durable_turn::USER_MESSAGE);
 
         let additional_claimed = shared
             .claim_task("worker-2", &["process_input".to_string()], 10)

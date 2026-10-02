@@ -10,7 +10,7 @@
 use everruns_provider::driver_registry::DriverConfig;
 use everruns_provider::error::{AgentLoopError, Result};
 
-const DEFAULT_REGION: &str = "us-east-1";
+pub(crate) const DEFAULT_REGION: &str = "us-east-1";
 
 #[derive(Clone)]
 pub struct BedrockCredential {

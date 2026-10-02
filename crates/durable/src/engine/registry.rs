@@ -35,6 +35,17 @@ pub trait AnyWorkflow: Send + Sync {
     /// Called when a timer fires
     fn on_timer_fired(&mut self, timer_id: &str) -> Vec<WorkflowAction>;
 
+    /// Called when a child workflow completes
+    fn on_child_workflow_completed(&mut self, child_id: &str, result: Value)
+    -> Vec<WorkflowAction>;
+
+    /// Called when a child workflow fails
+    fn on_child_workflow_failed(
+        &mut self,
+        child_id: &str,
+        error: &WorkflowError,
+    ) -> Vec<WorkflowAction>;
+
     /// Called when a signal is received
     fn on_signal(&mut self, signal: &WorkflowSignal) -> Vec<WorkflowAction>;
 
@@ -54,6 +65,11 @@ pub trait AnyWorkflow: Send + Sync {
     fn serialize_state(&self) -> Option<Vec<u8>> {
         None
     }
+}
+
+/// Erase a concrete workflow's type, for callers that already hold one.
+pub(crate) fn wrap<W: Workflow>(workflow: W) -> Box<dyn AnyWorkflow> {
+    Box::new(WorkflowWrapper { inner: workflow })
 }
 
 /// Wrapper to implement AnyWorkflow for any Workflow
@@ -84,6 +100,22 @@ impl<W: Workflow> AnyWorkflow for WorkflowWrapper<W> {
 
     fn on_timer_fired(&mut self, timer_id: &str) -> Vec<WorkflowAction> {
         self.inner.on_timer_fired(timer_id)
+    }
+
+    fn on_child_workflow_completed(
+        &mut self,
+        child_id: &str,
+        result: Value,
+    ) -> Vec<WorkflowAction> {
+        self.inner.on_child_workflow_completed(child_id, result)
+    }
+
+    fn on_child_workflow_failed(
+        &mut self,
+        child_id: &str,
+        error: &WorkflowError,
+    ) -> Vec<WorkflowAction> {
+        self.inner.on_child_workflow_failed(child_id, error)
     }
 
     fn on_signal(&mut self, signal: &WorkflowSignal) -> Vec<WorkflowAction> {

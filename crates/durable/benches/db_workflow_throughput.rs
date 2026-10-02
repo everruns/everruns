@@ -11,6 +11,8 @@
 //!   cargo bench -p everruns-durable --bench db_workflow_throughput
 //!   cargo bench -p everruns-durable --bench db_workflow_throughput -- --save
 //!   cargo bench -p everruns-durable --bench db_workflow_throughput -- --save --moniker ci-4cpu-8gb
+//!   cargo bench -p everruns-durable --bench db_workflow_throughput -- --smoke
+//!   cargo bench -p everruns-durable --bench db_workflow_throughput -- --smoke --summary out.jsonl
 
 use std::env;
 use std::sync::Arc;
@@ -22,11 +24,11 @@ use sqlx::PgPool;
 use tokio::runtime::Runtime;
 
 use everruns_durable::bench::{
-    BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
+    BenchOptions, BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore,
     ReportConfig, clear_terminal_progress, register_bench_worker, set_terminal_progress,
 };
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+    EventLog, PostgresWorkflowEventStore, TaskDefinition, TaskQueue,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;
@@ -408,37 +410,8 @@ async fn run_db_workflow_test(
     metrics
 }
 
-/// CLI options parsed from arguments
-struct CliOptions {
-    save_checkpoint: bool,
-    moniker: Option<String>,
-}
-
-fn parse_args() -> CliOptions {
-    let args: Vec<String> = env::args().collect();
-    let mut opts = CliOptions {
-        save_checkpoint: false,
-        moniker: None,
-    };
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--save" => opts.save_checkpoint = true,
-            "--moniker" if i + 1 < args.len() => {
-                opts.moniker = Some(args[i + 1].clone());
-                i += 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    opts
-}
-
 fn main() {
-    let opts = parse_args();
+    let opts = BenchOptions::from_args();
     let rt = Runtime::new().unwrap();
 
     // Connect to PostgreSQL
@@ -458,66 +431,80 @@ fn main() {
     println!("  - Workers claim and execute tasks, advancing workflows");
     println!("  - Real PostgreSQL persistence for production-like metrics");
 
+    let bench = "db_workflow_throughput";
+
     // Reduced task counts compared to in-memory due to DB overhead
     // Scenario 1: Small scale (baseline)
+    let name = "db_small_10wf_10steps";
     let small = rt.block_on(run_db_workflow_test(
         pool.clone(),
-        "db_small_10wf_10steps",
-        10,    // workflows
-        10,    // steps per workflow (100 total tasks)
-        10,    // workers
-        false, // no execution simulation
+        name,
+        opts.pick(10, 3), // workflows
+        opts.pick(10, 3), // steps per workflow
+        opts.pick(10, 2), // workers
+        false,
     ));
+    opts.record(bench, name, &small);
 
     // Scenario 2: Medium scale
+    let name = "db_medium_50wf_20steps";
     let medium = rt.block_on(run_db_workflow_test(
         pool.clone(),
-        "db_medium_50wf_20steps",
-        50, // workflows
-        20, // steps per workflow (1,000 total tasks)
-        50, // workers
+        name,
+        opts.pick(50, 4), // workflows
+        opts.pick(20, 4), // steps per workflow
+        opts.pick(50, 3), // workers
         false,
     ));
+    opts.record(bench, name, &medium);
 
     // Scenario 3: Target scale (reduced from in-memory)
+    let name = "db_target_100wf_50steps";
     let target = rt.block_on(run_db_workflow_test(
         pool.clone(),
-        "db_target_100wf_50steps",
-        100, // workflows
-        50,  // steps per workflow (5,000 total tasks)
-        100, // workers
+        name,
+        opts.pick(100, 5), // workflows
+        opts.pick(50, 5),  // steps per workflow
+        opts.pick(100, 4), // workers
         false,
     ));
+    opts.record(bench, name, &target);
 
-    // Scenario 4: Target scale with execution simulation
+    // Scenario 4: Target scale with execution simulation (1-10ms per task)
+    let name = "db_target_100wf_50steps_exec";
     let target_exec = rt.block_on(run_db_workflow_test(
         pool.clone(),
-        "db_target_100wf_50steps_exec",
-        100,  // workflows
-        50,   // steps per workflow
-        100,  // workers
-        true, // simulate execution (1-10ms per task)
+        name,
+        opts.pick(100, 5), // workflows
+        opts.pick(50, 5),  // steps per workflow
+        opts.pick(100, 4), // workers
+        true,
     ));
+    opts.record(bench, name, &target_exec);
 
     // Scenario 5: High parallelism (more workflows, fewer steps)
+    let name = "db_parallel_500wf_10steps";
     let high_parallel = rt.block_on(run_db_workflow_test(
         pool.clone(),
-        "db_parallel_500wf_10steps",
-        500, // workflows
-        10,  // steps per workflow (5,000 total tasks)
-        200, // workers
+        name,
+        opts.pick(500, 5), // workflows
+        opts.pick(10, 4),  // steps per workflow
+        opts.pick(200, 4), // workers
         false,
     ));
+    opts.record(bench, name, &high_parallel);
 
     // Scenario 6: Deep workflows (fewer workflows, many steps)
+    let name = "db_deep_20wf_100steps";
     let deep = rt.block_on(run_db_workflow_test(
         pool.clone(),
-        "db_deep_20wf_100steps",
-        20,  // workflows
-        100, // steps per workflow (2,000 total tasks)
-        50,  // workers
+        name,
+        opts.pick(20, 2),  // workflows
+        opts.pick(100, 5), // steps per workflow
+        opts.pick(50, 2),  // workers
         false,
     ));
+    opts.record(bench, name, &deep);
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("                    Summary");
@@ -538,12 +525,20 @@ fn main() {
     );
 
     for (name, m, wf_count) in [
-        ("db_small_10wf_10steps", &small, 10),
-        ("db_medium_50wf_20steps", &medium, 50),
-        ("db_target_100wf_50steps", &target, 100),
-        ("db_target_100wf_50steps_exec", &target_exec, 100),
-        ("db_parallel_500wf_10steps", &high_parallel, 500),
-        ("db_deep_20wf_100steps", &deep, 20),
+        ("db_small_10wf_10steps", &small, opts.pick(10, 3)),
+        ("db_medium_50wf_20steps", &medium, opts.pick(50, 4)),
+        ("db_target_100wf_50steps", &target, opts.pick(100, 5)),
+        (
+            "db_target_100wf_50steps_exec",
+            &target_exec,
+            opts.pick(100, 5),
+        ),
+        (
+            "db_parallel_500wf_10steps",
+            &high_parallel,
+            opts.pick(500, 5),
+        ),
+        ("db_deep_20wf_100steps", &deep, opts.pick(20, 2)),
     ] {
         let task_throughput = m.tasks_completed.throughput();
         let wf_throughput = wf_count as f64 / m.elapsed().as_secs_f64();
@@ -558,35 +553,34 @@ fn main() {
         );
     }
 
-    // Generate HTML reports for key scenarios
-    println!("\n📊 Generating HTML reports...");
+    // Generate HTML reports for key scenarios (skipped in smoke mode)
+    if !opts.smoke {
+        println!("\n📊 Generating HTML reports...");
 
-    let report_config = ReportConfig {
-        title: "Workflow Throughput Benchmark (PostgreSQL)".to_string(),
-        filename_prefix: Some("db_workflow_throughput".to_string()),
-        ..Default::default()
-    };
+        let report_config = ReportConfig {
+            title: "Workflow Throughput Benchmark (PostgreSQL)".to_string(),
+            filename_prefix: Some("db_workflow_throughput".to_string()),
+            ..Default::default()
+        };
 
-    for (name, m) in [
-        ("db_target_100wf_50steps", &target),
-        ("db_target_100wf_50steps_exec", &target_exec),
-        ("db_parallel_500wf_10steps", &high_parallel),
-    ] {
-        let report = BenchmarkReport::new(report_config.clone());
-        match report.generate(m) {
-            Ok(path) => println!("   ✅ {}: {}", name, path),
-            Err(e) => println!("   ❌ {}: {}", name, e),
+        for (name, m) in [
+            ("db_target_100wf_50steps", &target),
+            ("db_target_100wf_50steps_exec", &target_exec),
+            ("db_parallel_500wf_10steps", &high_parallel),
+        ] {
+            let report = BenchmarkReport::new(report_config.clone());
+            match report.generate(m) {
+                Ok(path) => println!("   ✅ {}: {}", name, path),
+                Err(e) => println!("   ❌ {}: {}", name, e),
+            }
         }
     }
 
     // Save checkpoints for historical comparison (only with --save flag)
-    if opts.save_checkpoint {
+    if opts.save_checkpoint && !opts.smoke {
         println!("\n💾 Saving checkpoints...");
 
-        let env = match &opts.moniker {
-            Some(m) => EnvironmentInfo::detect_with_moniker(m),
-            None => EnvironmentInfo::detect(),
-        };
+        let env = opts.environment();
         let store = CheckpointStore::new(format!(
             "{}/benches/checkpoints",
             env!("CARGO_MANIFEST_DIR")

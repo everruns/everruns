@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "a2a-client-lf"
-version = "0.1.17"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1da8f6ca9f460fc47231a78165abec30e9ab60886a6c62c599b6055f7f5429cc"
+checksum = "ce0a91ba20a4c3406fd7161afb9aa9c29b9b2541ebf0a9d571368354b4059daf"
 dependencies = [
  "a2a-lf",
  "a2a-pb",
@@ -15,9 +15,8 @@ dependencies = [
  "bytes",
  "futures",
  "pin-project-lite",
- "reqwest 0.12.28",
+ "reqwest",
  "rustls",
- "rustls-pemfile",
  "semver",
  "serde",
  "serde_json",
@@ -25,14 +24,13 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "uuid",
- "webpki-roots 1.0.9",
 ]
 
 [[package]]
 name = "a2a-lf"
-version = "0.3.1"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b24d0f12bb1205e7ff85edbac2ea34aedd028f31dfebe8628e3aae4a66c200bd"
+checksum = "f7f132f3efbe23ffda546c5b24d065e7743981a28698f50a1803086b27ad9f9f"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -44,9 +42,9 @@ dependencies = [
 
 [[package]]
 name = "a2a-pb"
-version = "0.1.8"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e44fccf50ee3f44badfb7861e9b9d1e7af7f276b970762b25eb5911b9f03c0b"
+checksum = "88dce304b61df41018fbdf3f6e46d6b0832c09c2c422cd40d812eb2e07e68185"
 dependencies = [
  "a2a-lf",
  "chrono",
@@ -65,25 +63,26 @@ dependencies = [
 
 [[package]]
 name = "a2a-server-lf"
-version = "0.3.1"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5027f0f4919b0fea22831bd75521974efdf4561658c3df768d9a84dbe8313062"
+checksum = "8785556fe5031fcaa08ade5863265824164270b297810a57c10d6729ff5e26d3"
 dependencies = [
  "a2a-lf",
  "a2a-pb",
  "async-trait",
  "axum",
+ "axum-server",
  "chrono",
  "futures",
  "hyper",
- "reqwest 0.12.28",
+ "reqwest",
  "rustls",
  "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
  "tower",
- "tower-http 0.6.11",
+ "tower-http 0.7.1",
  "tracing",
  "uuid",
 ]
@@ -412,6 +411,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "aws-config"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8d7b388a9fc3a6db15a5ec778c38b354eff1364882c94d08e0252f7a47dcaa4"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-sdk-sso",
+ "aws-sdk-ssooidc",
+ "aws-sdk-sts",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "hex",
+ "http",
+ "sha1 0.10.7",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "zeroize",
+]
+
+[[package]]
 name = "aws-credential-types"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -497,6 +527,82 @@ dependencies = [
  "fastrand",
  "http",
  "http-body-util",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
+name = "aws-sdk-sso"
+version = "1.114.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12be2f9c8eef7f5fc919c96d538e629698469a02b4cb75408b26b1bd984ebe79"
+dependencies = [
+ "arc-swap",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
+name = "aws-sdk-ssooidc"
+version = "1.116.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7645db8724ea3b82fdccfb67e1b0f637c9d8ab0e7ef29d84884d8d8d73f805d"
+dependencies = [
+ "arc-swap",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
+name = "aws-sdk-sts"
+version = "1.119.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03e490aa904849b38e770922faac779dd245f5cf8be81f19065acf18d276e4ad"
+dependencies = [
+ "arc-swap",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-query",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema",
+ "aws-smithy-types",
+ "aws-smithy-xml",
+ "aws-types",
+ "fastrand",
+ "http",
  "regex-lite",
  "tracing",
 ]
@@ -612,6 +718,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-smithy-query"
+version = "0.62.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1d1d71f6562be974caa85442ecd90194c40fdb5df045f182a6c2e872ce95056"
+dependencies = [
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema",
+ "aws-smithy-types",
+ "aws-smithy-xml",
+ "urlencoding",
+]
+
+[[package]]
 name = "aws-smithy-runtime"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -699,6 +818,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-smithy-xml"
+version = "0.62.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b932c8d6dc127fc980eecd78f8694ae9b9551b69a93a7def2a199c1c0033daf"
+dependencies = [
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema",
+ "aws-smithy-types",
+ "xmlparser",
+]
+
+[[package]]
 name = "aws-types"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -721,6 +852,7 @@ checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
 dependencies = [
  "axum-core",
  "axum-macros",
+ "base64 0.22.1",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -739,8 +871,10 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
+ "sha1 0.10.7",
  "sync_wrapper",
  "tokio",
+ "tokio-tungstenite 0.29.0",
  "tower",
  "tower-layer",
  "tower-service",
@@ -803,6 +937,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "axum-server"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1df331683d982a0b9492b38127151e6453639cd34926eb9c07d4cd8c6d22bfc"
+dependencies = [
+ "arc-swap",
+ "bytes",
+ "either",
+ "fs-err",
+ "http",
+ "http-body",
+ "hyper",
+ "hyper-util",
+ "pin-project-lite",
+ "rustls",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tower-service",
 ]
 
 [[package]]
@@ -869,12 +1025,12 @@ dependencies = [
  "os_display",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "serde",
  "serde_json",
  "serde_yaml_ng",
- "sha1",
+ "sha1 0.11.0",
  "sha2 0.11.0",
  "thiserror 2.0.21",
  "tokio",
@@ -2183,6 +2339,7 @@ dependencies = [
  "cron",
  "everruns-ag-ui",
  "everruns-anthropic",
+ "everruns-bedrock",
  "everruns-builtins",
  "everruns-capability",
  "everruns-core",
@@ -2211,6 +2368,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
+ "tower",
  "tracing",
  "trybuild",
  "uuid",
@@ -2225,7 +2383,7 @@ dependencies = [
  "everruns-provider",
  "futures-util",
  "jsonschema",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2240,7 +2398,7 @@ dependencies = [
  "eventsource-stream",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2258,7 +2416,7 @@ dependencies = [
  "everruns-host",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2282,6 +2440,8 @@ name = "everruns-bedrock"
 version = "0.33.0"
 dependencies = [
  "async-trait",
+ "aws-config",
+ "aws-credential-types",
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.23.1",
@@ -2341,7 +2501,7 @@ dependencies = [
  "hostname",
  "ignore",
  "notify",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2452,8 +2612,6 @@ dependencies = [
  "chrono",
  "cron",
  "everruns-core",
- "everruns-engine",
- "everruns-provider",
  "fail",
  "hostname",
  "indicatif",
@@ -2505,7 +2663,7 @@ dependencies = [
  "chrono",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2566,7 +2724,7 @@ dependencies = [
  "eventsource-stream",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2607,7 +2765,7 @@ dependencies = [
  "opentelemetry_sdk",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "seccompiler",
  "serde",
  "serde_json",
@@ -2678,7 +2836,7 @@ dependencies = [
  "everruns-llmsim",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2698,13 +2856,13 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "futures-util",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "rustls-native-certs",
  "serde",
  "serde_json",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.30.0",
  "tracing",
  "wiremock",
 ]
@@ -2739,7 +2897,7 @@ dependencies = [
  "everruns-core",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2758,7 +2916,7 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "inventory",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
@@ -2781,13 +2939,13 @@ dependencies = [
  "futures-util",
  "hickory-resolver",
  "http",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "rustls-native-certs",
  "serde",
  "serde_json",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.30.0",
  "tracing",
  "urlencoding",
 ]
@@ -2815,7 +2973,7 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2840,7 +2998,7 @@ dependencies = [
  "http-body",
  "prost",
  "protox",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -2881,7 +3039,7 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2913,7 +3071,7 @@ dependencies = [
  "everruns-core",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2932,7 +3090,7 @@ dependencies = [
  "everruns-core",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2949,7 +3107,7 @@ dependencies = [
  "everruns-core",
  "everruns-openrouter",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2964,7 +3122,7 @@ dependencies = [
  "everruns-core",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2979,7 +3137,7 @@ dependencies = [
  "everruns-core",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2998,7 +3156,7 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "inventory",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -3117,7 +3275,7 @@ dependencies = [
  "chrono",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3156,7 +3314,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3180,7 +3338,7 @@ dependencies = [
  "chrono",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3196,7 +3354,7 @@ dependencies = [
  "chrono",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3232,7 +3390,7 @@ dependencies = [
  "include_dir",
  "inventory",
  "jsonschema",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -3263,7 +3421,7 @@ dependencies = [
  "http",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "serde",
  "serde_json",
@@ -3271,7 +3429,7 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.21",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.30.0",
  "tracing",
  "url",
  "utoipa",
@@ -3302,7 +3460,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "getrandom 0.4.3",
- "reqwest 0.13.5",
+ "reqwest",
  "secrecy",
  "serde",
  "serde_json",
@@ -3330,7 +3488,7 @@ dependencies = [
  "hex",
  "hmac",
  "inventory",
- "reqwest 0.13.5",
+ "reqwest",
  "rusqlite",
  "schemars",
  "serde",
@@ -3339,6 +3497,26 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml",
+ "uuid",
+]
+
+[[package]]
+name = "everruns-serve-agentcore"
+version = "0.33.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "everruns",
+ "everruns-serve",
+ "futures-util",
+ "reqwest",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "tower",
  "uuid",
 ]
 
@@ -3422,7 +3600,7 @@ dependencies = [
  "prost-types",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_html_form 0.4.1",
@@ -3438,7 +3616,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-stream",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.30.0",
  "tonic",
  "tower",
  "tower-http 0.7.1",
@@ -3498,7 +3676,7 @@ dependencies = [
  "everruns-core",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -3547,7 +3725,7 @@ dependencies = [
  "everruns-provider",
  "mimalloc",
  "prost-types",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",
@@ -3631,7 +3809,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "rand 0.10.3",
- "reqwest 0.13.5",
+ "reqwest",
  "schemars",
  "serde",
  "serde_json",
@@ -3827,6 +4005,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "fs-err"
+version = "3.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b91aa448ca50d7e79433bdf3ee8d99215430d2ec02ade5aefab2a073a1822e8a"
+dependencies = [
+ "autocfg",
+ "tokio",
 ]
 
 [[package]]
@@ -4372,7 +4560,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -5847,7 +6034,7 @@ dependencies = [
  "percent-encoding",
  "quick-xml",
  "rand 0.10.3",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls-pki-types",
  "serde",
  "serde_json",
@@ -5908,7 +6095,7 @@ dependencies = [
  "bytes",
  "http",
  "opentelemetry",
- "reqwest 0.13.5",
+ "reqwest",
 ]
 
 [[package]]
@@ -5924,7 +6111,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
- "reqwest 0.13.5",
+ "reqwest",
  "thiserror 2.0.21",
  "tokio",
 ]
@@ -7075,49 +7262,6 @@ checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 
 [[package]]
 name = "reqwest"
-version = "0.12.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "encoding_rs",
- "futures-core",
- "futures-util",
- "h2",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-util",
- "js-sys",
- "log",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "rustls",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sync_wrapper",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tower",
- "tower-http 0.6.11",
- "tower-service",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-streams 0.4.2",
- "web-sys",
- "webpki-roots 1.0.9",
-]
-
-[[package]]
-name = "reqwest"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
@@ -7158,7 +7302,7 @@ dependencies = [
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams 0.5.0",
+ "wasm-streams",
  "web-sys",
 ]
 
@@ -7299,15 +7443,6 @@ dependencies = [
  "rustls-pki-types",
  "schannel",
  "security-framework",
-]
-
-[[package]]
-name = "rustls-pemfile"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50"
-dependencies = [
- "rustls-pki-types",
 ]
 
 [[package]]
@@ -7685,6 +7820,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "serve-example-agentcore"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-agentcore",
+ "everruns-serve-build",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "serve-example-agentcore-workspace"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-agentcore",
+ "everruns-serve-build",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "serve-example-hello"
 version = "0.1.0"
 dependencies = [
@@ -7705,6 +7864,17 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "sha1"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -8118,7 +8288,7 @@ dependencies = [
  "log",
  "percent-encoding",
  "serde",
- "sha1",
+ "sha1 0.11.0",
  "sha2 0.11.0",
  "sqlx-core",
  "thiserror 2.0.21",
@@ -8606,6 +8776,18 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite 0.29.0",
+]
+
+[[package]]
+name = "tokio-tungstenite"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
@@ -8617,7 +8799,7 @@ dependencies = [
  "rustls-pki-types",
  "tokio",
  "tokio-rustls",
- "tungstenite",
+ "tungstenite 0.30.0",
 ]
 
 [[package]]
@@ -9017,6 +9199,22 @@ dependencies = [
 
 [[package]]
 name = "tungstenite"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c01152af293afb9c7c2a57e4b559c5620b421f6d133261c60dd2d0cdb38e6b8"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.9.5",
+ "sha1 0.10.7",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "tungstenite"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e48ac77174b19c110a50ab2128b24215ac9cb40e0e12e093fb602d175c569d22"
@@ -9029,7 +9227,7 @@ dependencies = [
  "rand 0.10.3",
  "rustls",
  "rustls-pki-types",
- "sha1",
+ "sha1 0.11.0",
  "thiserror 2.0.21",
 ]
 
@@ -9380,19 +9578,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23f0c9c52aa7cd7d77769a4cfe2a9adb1b331f489a41d912ce14513d5ab995c6"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "wasm-streams"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
-dependencies = [
- "futures-util",
- "js-sys",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
@@ -9885,6 +10070,12 @@ dependencies = [
  "libc",
  "rustix",
 ]
+
+[[package]]
+name = "xmlparser"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 
 [[package]]
 name = "yoke"

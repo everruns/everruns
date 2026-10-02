@@ -119,6 +119,11 @@ openrouter = ["dep:everruns-openrouter"]
 # `providers::anthropic::Anthropic` and `providers::gemini::Gemini`.
 anthropic = ["dep:everruns-anthropic"]
 gemini = ["dep:everruns-gemini"]
+# AWS Bedrock (`providers::bedrock::Bedrock`): static keys or the AWS default
+# credential chain (IAM roles: ECS/AgentCore container credentials, instance
+# profile, SSO/profile, env). Pulls in the AWS SDK and aws-config, so it is its
+# own opt-in rather than part of any default.
+bedrock = ["dep:everruns-bedrock", "everruns-bedrock/default-credentials"]
 # Typed decision: the TypeSafe-backed `DecisionsService` behind
 # `Decisions`, re-exported so one import reaches both halves.
 typesafe = ["dep:everruns-integrations-typesafe"]
@@ -129,6 +134,10 @@ typesafe = ["dep:everruns-integrations-typesafe"]
 # `ask_user` and tool approvals. Off by default; it adds only the
 # transport-free `everruns-ag-ui` crate, never an HTTP server.
 ag-ui = ["builtins", "dep:everruns-ag-ui", "dep:futures", "dep:serde"]
+# A ready-made axum handler for `ag-ui` (`everruns::ag_ui::AgUiHandler`):
+# authorizer, thread resolution, SSE framing and keepalive. A separate opt-in
+# so `ag-ui` alone stays free of an HTTP server dependency.
+ag-ui-axum = ["ag-ui", "dep:axum"]
 otel = ["everruns-host/otel"]
 braintrust = ["everruns-host/braintrust"]
 
@@ -157,6 +166,7 @@ everruns-openai = { workspace = true, optional = true }
 everruns-openrouter = { workspace = true, optional = true }
 everruns-anthropic = { workspace = true, optional = true }
 everruns-gemini = { workspace = true, optional = true }
+everruns-bedrock = { workspace = true, optional = true }
 # Client + framework surface only: the workspace dependency leaves the crate's
 # `hosted` feature off, so enabling `typesafe` on the facade does not drag in
 # everruns-platform. Guarded by scripts/lib/check-portable-builtins-isolation.sh.
@@ -164,6 +174,8 @@ everruns-integrations-typesafe = { workspace = true, optional = true }
 # AG-UI wire types plus the transport-free projection the server and `serve`
 # share. Activated by `ag-ui`.
 everruns-ag-ui = { workspace = true, optional = true, features = ["core"] }
+# The `AgUiHandler` route and SSE response. Activated by `ag-ui-axum`.
+axum = { workspace = true, optional = true }
 async-trait.workspace = true
 uuid.workspace = true
 base64.workspace = true
@@ -197,10 +209,9 @@ tracing.workspace = true
 # (e.g. everruns-test-support) reach crates.io.
 everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
 everruns-test-support = { path = "../test-support", features = ["fixtures"] }
-tokio = { workspace = true, features = ["macros", "net", "process", "rt-multi-thread", "time"] }
-# The `ag_ui_axum` example mounts `Session::ag_ui` on an HTTP route. A dev
-# dependency only: the facade itself carries no HTTP server.
-axum = { workspace = true }
+tokio = { workspace = true, features = ["macros", "net", "process", "rt-multi-thread", "time", "test-util"] }
+# `ServiceExt::oneshot` drives the `ag-ui-axum` router in tests.
+tower = { workspace = true, features = ["util"] }
 serde = { workspace = true }
 # Stream consumption in the direct-completion tests and example.
 futures = { workspace = true }
@@ -214,7 +225,7 @@ name = "ask_user"
 
 [[example]]
 name = "ag_ui_axum"
-required-features = ["ag-ui"]
+required-features = ["ag-ui-axum"]
 
 [[example]]
 name = "workspace_policy"

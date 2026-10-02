@@ -2,6 +2,43 @@
 
 ## 2026-10-02
 
+* **Parked approvals and questions survive a restart.** A turn waiting on a
+  person blocks inside its act, so a killed process leaves it in the log
+  without an end. `Session::interrupted_turn` reports such a turn from the
+  log, and `Session::resume_interrupted_turn` runs its unfinished calls again
+  in the same turn, which asks again under the same tool call ids. serve
+  resumes it when a session comes back, only when every unfinished call waits
+  on a person, so an ungated tool is never re-run. See
+  [serve](framework/serve.md) and [AG-UI Channel](integrations/ag-ui.md).
+
+* **`everruns-durable` is a generic engine.** It no longer depends on any
+  `everruns-*` crate or knows about agents and turns. `DurableExecution` and
+  the turn conventions (`user_message` signal, idempotent waiting-turn
+  resolution tasks) moved to the worker; the store's new-run claim is
+  `EventLog::try_start_new_run`; dedupe is the generic
+  `ActivityOptions::dedupe_by_activity_id`. Wire strings, SQL effects and task
+  ids are unchanged. See
+  [Durable Execution Engine](operations/durable-execution-engine.md).
+* **`everruns-durable` joins the crates.io publish set.** The crate ships its
+  own idempotent PostgreSQL schema, applied by
+  `PostgresWorkflowEventStore::migrate`, so it no longer depends on the server
+  migrations to be usable; a CI drift test keeps the two identical for the
+  durable tables. Bench support moved behind a `bench` feature. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#persistence).
+* **Ready-made AG-UI route.** The facade's `ag-ui-axum` feature adds
+  `everruns::ag_ui::AgUiHandler`: a required pluggable authorizer
+  (`StaticToken`, `Unauthenticated`, closures), thread resolution through
+  `AgUiThreads` scoped to the caller, and SSE with the server's framing and
+  15-second keepalive; serve frames its route with the shared
+  `sse_response`. See [AG-UI Channel](integrations/ag-ui.md#framework) and
+  TM-AUTH-030.
+* **AG-UI threads in the framework.** `everruns::ag_ui::AgUiThreads` maps
+  `threadId` to a session through a pluggable `ThreadStore` (in-memory, or
+  SQLite behind `local`), so a host keeps a thread across restarts, and a
+  thread's first run seeds the client's earlier user and assistant messages
+  as history (`AgUiOptions::seed_history`, also used by serve). See
+  [AG-UI Channel](integrations/ag-ui.md#framework); TM-TENANT-017 and
+  TM-DOS-045.
 * **Opt-in Responses WebSocket transport.** The OpenAI driver can stream a
   call over OpenAI's Responses WebSocket mode (`openai/websocket` driver
   option, or `OpenAIChatDriver::with_websocket_transport`) on `api.openai.com`,

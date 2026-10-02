@@ -7,6 +7,8 @@
 //!   cargo bench -p everruns-durable --bench workflow_throughput
 //!   cargo bench -p everruns-durable --bench workflow_throughput -- --save
 //!   cargo bench -p everruns-durable --bench workflow_throughput -- --save --moniker ci-4cpu-8gb
+//!   cargo bench -p everruns-durable --bench workflow_throughput -- --smoke
+//!   cargo bench -p everruns-durable --bench workflow_throughput -- --smoke --summary out.jsonl
 
 use std::env;
 use std::sync::Arc;
@@ -17,11 +19,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tokio::runtime::Runtime;
 
 use everruns_durable::bench::{
-    BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
+    BenchOptions, BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore,
     ReportConfig, clear_terminal_progress, register_bench_worker, set_terminal_progress,
 };
 use everruns_durable::persistence::{
-    InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+    EventLog, InMemoryWorkflowEventStore, TaskDefinition, TaskQueue,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;
@@ -352,37 +354,8 @@ async fn run_workflow_test(
     metrics
 }
 
-/// CLI options parsed from arguments
-struct CliOptions {
-    save_checkpoint: bool,
-    moniker: Option<String>,
-}
-
-fn parse_args() -> CliOptions {
-    let args: Vec<String> = env::args().collect();
-    let mut opts = CliOptions {
-        save_checkpoint: false,
-        moniker: None,
-    };
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--save" => opts.save_checkpoint = true,
-            "--moniker" if i + 1 < args.len() => {
-                opts.moniker = Some(args[i + 1].clone());
-                i += 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    opts
-}
-
 fn main() {
-    let opts = parse_args();
+    let opts = BenchOptions::from_args();
     let rt = Runtime::new().unwrap();
 
     println!("═══════════════════════════════════════════════════════════");
@@ -393,59 +366,73 @@ fn main() {
     println!("  - Each workflow has many sequential steps (activities)");
     println!("  - Workers claim and execute tasks, advancing workflows");
 
+    let bench = "workflow_throughput";
+
     // Scenario 1: Small scale (baseline)
+    let name = "small_10wf_10steps";
     let small = rt.block_on(run_workflow_test(
-        "small_10wf_10steps",
-        10,    // workflows
-        10,    // steps per workflow (100 total tasks)
-        10,    // workers
-        false, // no execution simulation
+        name,
+        opts.pick(10, 3), // workflows
+        opts.pick(10, 3), // steps per workflow
+        opts.pick(10, 2), // workers
+        false,
     ));
+    opts.record(bench, name, &small);
 
     // Scenario 2: Medium scale
+    let name = "medium_100wf_50steps";
     let medium = rt.block_on(run_workflow_test(
-        "medium_100wf_50steps",
-        100, // workflows
-        50,  // steps per workflow (5,000 total tasks)
-        50,  // workers
+        name,
+        opts.pick(100, 4), // workflows
+        opts.pick(50, 4),  // steps per workflow
+        opts.pick(50, 3),  // workers
         false,
     ));
+    opts.record(bench, name, &medium);
 
     // Scenario 3: Target scale (1000 workflows x 100 steps)
+    let name = "target_1000wf_100steps";
     let target = rt.block_on(run_workflow_test(
-        "target_1000wf_100steps",
-        1000, // workflows
-        100,  // steps per workflow (100,000 total tasks)
-        100,  // workers
+        name,
+        opts.pick(1000, 5), // workflows
+        opts.pick(100, 5),  // steps per workflow
+        opts.pick(100, 4),  // workers
         false,
     ));
+    opts.record(bench, name, &target);
 
-    // Scenario 4: Target scale with execution simulation
+    // Scenario 4: Target scale with execution simulation (1-10ms per task)
+    let name = "target_1000wf_100steps_exec";
     let target_exec = rt.block_on(run_workflow_test(
-        "target_1000wf_100steps_exec",
-        1000, // workflows
-        100,  // steps per workflow
-        100,  // workers
-        true, // simulate execution (1-10ms per task)
+        name,
+        opts.pick(1000, 5), // workflows
+        opts.pick(100, 5),  // steps per workflow
+        opts.pick(100, 4),  // workers
+        true,
     ));
+    opts.record(bench, name, &target_exec);
 
     // Scenario 5: High parallelism (more workflows, fewer steps)
+    let name = "parallel_5000wf_20steps";
     let high_parallel = rt.block_on(run_workflow_test(
-        "parallel_5000wf_20steps",
-        5000, // workflows
-        20,   // steps per workflow (100,000 total tasks)
-        200,  // workers
+        name,
+        opts.pick(5000, 5), // workflows
+        opts.pick(20, 4),   // steps per workflow
+        opts.pick(200, 4),  // workers
         false,
     ));
+    opts.record(bench, name, &high_parallel);
 
     // Scenario 6: Deep workflows (fewer workflows, many steps)
+    let name = "deep_100wf_500steps";
     let deep = rt.block_on(run_workflow_test(
-        "deep_100wf_500steps",
-        100, // workflows
-        500, // steps per workflow (50,000 total tasks)
-        50,  // workers
+        name,
+        opts.pick(100, 2), // workflows
+        opts.pick(500, 5), // steps per workflow
+        opts.pick(50, 2),  // workers
         false,
     ));
+    opts.record(bench, name, &deep);
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("                    Summary");
@@ -466,12 +453,20 @@ fn main() {
     );
 
     for (name, m, wf_count) in [
-        ("small_10wf_10steps", &small, 10),
-        ("medium_100wf_50steps", &medium, 100),
-        ("target_1000wf_100steps", &target, 1000),
-        ("target_1000wf_100steps_exec", &target_exec, 1000),
-        ("parallel_5000wf_20steps", &high_parallel, 5000),
-        ("deep_100wf_500steps", &deep, 100),
+        ("small_10wf_10steps", &small, opts.pick(10, 3)),
+        ("medium_100wf_50steps", &medium, opts.pick(100, 4)),
+        ("target_1000wf_100steps", &target, opts.pick(1000, 5)),
+        (
+            "target_1000wf_100steps_exec",
+            &target_exec,
+            opts.pick(1000, 5),
+        ),
+        (
+            "parallel_5000wf_20steps",
+            &high_parallel,
+            opts.pick(5000, 5),
+        ),
+        ("deep_100wf_500steps", &deep, opts.pick(100, 2)),
     ] {
         let task_throughput = m.tasks_completed.throughput();
         let wf_throughput = wf_count as f64 / m.elapsed().as_secs_f64();
@@ -486,35 +481,34 @@ fn main() {
         );
     }
 
-    // Generate HTML reports for key scenarios
-    println!("\n📊 Generating HTML reports...");
+    // Generate HTML reports for key scenarios (skipped in smoke mode)
+    if !opts.smoke {
+        println!("\n📊 Generating HTML reports...");
 
-    let report_config = ReportConfig {
-        title: "Workflow Throughput Benchmark".to_string(),
-        filename_prefix: Some("workflow_throughput".to_string()),
-        ..Default::default()
-    };
+        let report_config = ReportConfig {
+            title: "Workflow Throughput Benchmark".to_string(),
+            filename_prefix: Some("workflow_throughput".to_string()),
+            ..Default::default()
+        };
 
-    for (name, m) in [
-        ("target_1000wf_100steps", &target),
-        ("target_1000wf_100steps_exec", &target_exec),
-        ("parallel_5000wf_20steps", &high_parallel),
-    ] {
-        let report = BenchmarkReport::new(report_config.clone());
-        match report.generate(m) {
-            Ok(path) => println!("   ✅ {}: {}", name, path),
-            Err(e) => println!("   ❌ {}: {}", name, e),
+        for (name, m) in [
+            ("target_1000wf_100steps", &target),
+            ("target_1000wf_100steps_exec", &target_exec),
+            ("parallel_5000wf_20steps", &high_parallel),
+        ] {
+            let report = BenchmarkReport::new(report_config.clone());
+            match report.generate(m) {
+                Ok(path) => println!("   ✅ {}: {}", name, path),
+                Err(e) => println!("   ❌ {}: {}", name, e),
+            }
         }
     }
 
     // Save checkpoints for historical comparison (only with --save flag)
-    if opts.save_checkpoint {
+    if opts.save_checkpoint && !opts.smoke {
         println!("\n💾 Saving checkpoints...");
 
-        let env = match &opts.moniker {
-            Some(m) => EnvironmentInfo::detect_with_moniker(m),
-            None => EnvironmentInfo::detect(),
-        };
+        let env = opts.environment();
         let store = CheckpointStore::new(format!(
             "{}/benches/checkpoints",
             env!("CARGO_MANIFEST_DIR")

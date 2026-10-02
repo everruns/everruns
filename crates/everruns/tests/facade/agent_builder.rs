@@ -86,7 +86,7 @@ fn reserved_mcp_name_delimiter_is_a_typed_error() {
 
 // --- backends(): caller-provided host backends replace the in-memory defaults ---------------------
 mod custom_backends {
-    use everruns::{Agent, BuildError, Engine, HostBackends, Model};
+    use everruns::{Agent, Engine, HostBackends, Model};
     use everruns_host::{
         EventLog, EventReadLimit, EventReadRequest, EventReader, InMemoryEventLog,
     };
@@ -173,6 +173,6 @@ mod custom_backends {
             .local(everruns::LocalConfig::new(dir))
             .build()
             .expect_err("conflict");
-        assert_eq!(err, BuildError::ConflictingBackends);
+        assert_eq!(err, everruns::BuildError::ConflictingBackends);
     }
 }

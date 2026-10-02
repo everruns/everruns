@@ -2,11 +2,11 @@
 // Decision: PostgreSQL-backed, split into per-entity modules (EVE-100).
 
 mod agent_check_rules;
+mod agent_endpoints;
 mod agent_health_checks;
 mod agent_mcp_secret_bindings;
 mod agent_triggers;
 mod agents;
-mod app_channels;
 mod apps;
 mod audit_logs;
 mod auth;
@@ -15,6 +15,7 @@ mod compaction_checkpoints;
 mod virtual_user_connections;
 mod virtual_users;
 pub use budgets::BudgetSubjectLookup;
+mod a2a_push_configs;
 mod agent_trigger_mcp_subscriptions;
 mod declarative_capabilities;
 mod evals;

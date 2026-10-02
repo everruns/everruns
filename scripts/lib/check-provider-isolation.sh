@@ -135,8 +135,19 @@ done
 # Credential-specific only: `everruns_<driver>::from_env(` is a provider
 # constructor, while unrelated `Type::from_env` helpers (deployment feature
 # flags) are not credential resolution and stay allowed.
-ENV_CREDENTIAL_PATTERN='(EnvCredentialProvider|provider_from_env|everruns_[a-z_]+::from_env[[:space:]]*\()'
-SERVER_DIRS=(crates/server/src crates/platform/src)
+# The AWS default credential chain (everruns-bedrock `default-credentials`:
+# `BedrockAuth::default_chain`, `provider_from_default_chain`, the facade's
+# `Bedrock::default_chain`) is ambient-credential resolution too: on a server
+# it would sign tenant calls with the host's own IAM identity.
+ENV_CREDENTIAL_PATTERN='(EnvCredentialProvider|provider_from_env|everruns_[a-z_]+::from_env[[:space:]]*\(|default_chain[[:space:]]*\()'
+SERVER_DIRS=(crates/server/src crates/platform/src crates/worker/src)
+for manifest in crates/server/Cargo.toml crates/platform/Cargo.toml crates/worker/Cargo.toml; do
+  if matches=$(grep -nE 'default-credentials|everruns/bedrock' "$manifest" 2>/dev/null); then
+    echo "$manifest must not enable the AWS default credential chain:"
+    echo "$matches"
+    FAILED=1
+  fi
+done
 for dir in "${SERVER_DIRS[@]}"; do
   if matches=$(grep -rnE "$ENV_CREDENTIAL_PATTERN" "$dir" --include='*.rs' 2>/dev/null); then
     echo "Server/platform code must not resolve credentials from the environment:"

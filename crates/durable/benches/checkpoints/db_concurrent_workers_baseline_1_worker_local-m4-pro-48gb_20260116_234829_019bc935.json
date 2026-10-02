@@ -13,7 +13,7 @@
   "config": null,
   "metrics": {
     "name": "db_baseline_1_worker",
-    "elapsed_ms": 21743,
+    "elapsed_ms": 2230,
     "schedule_to_start": {
       "samples_micros": [
         648526,
@@ -3040,7 +3040,7 @@
     },
     "tasks_completed": {
       "total": 1000,
-      "elapsed_ms": 21748,
+      "elapsed_ms": 2230,
       "timeseries": [
         [
           0,
@@ -3482,5 +3482,5 @@
     "custom": {}
   },
   "tags": [],
-  "notes": null
+  "notes": "Converted 2026-10-02: histograms compacted to 1000 quantiles; elapsed_ms re-derived from the timeseries (the original was measured at save time, after later scenarios ran)."
 }

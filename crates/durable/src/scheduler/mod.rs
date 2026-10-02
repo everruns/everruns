@@ -158,7 +158,7 @@ impl DurableScheduler {
                 }
                 _ = poll_interval.tick() => {
                     if let Err(e) = self.process_due_schedules().await {
-                        everruns_core::log_database_failure(
+                        crate::persistence::log_database_failure(
                             "durable.scheduler.poll",
                             "failed to process due schedules",
                             &e.to_string(),
@@ -324,9 +324,7 @@ impl DurableScheduler {
             .await?;
 
         // Append WorkflowStarted event
-        let start_event = WorkflowEvent::WorkflowStarted {
-            input: schedule.target_input.clone(),
-        };
+        let start_event = WorkflowEvent::started(schedule.target_input.clone());
 
         self.store
             .append_events(workflow_id, 0, vec![start_event])
@@ -426,7 +424,7 @@ impl DurableScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{CreateScheduleRow, InMemoryWorkflowEventStore};
+    use crate::persistence::{CreateScheduleRow, InMemoryWorkflowEventStore, Schedules};
     use serde_json::Value;
 
     #[tokio::test]

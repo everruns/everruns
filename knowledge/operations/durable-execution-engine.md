@@ -12,10 +12,15 @@ tags:
 
 Custom PostgreSQL-backed durable execution engine for workflow orchestration with automatic retries, circuit breakers, and distributed task execution.
 
-Agent turns use `everruns-durable::DurableExecution`, the checkpointed driver
-for `everruns-engine::Execution`. The durable crate owns persistence, retries,
-and activity scheduling; it does not own a second copy of atom or turn
-semantics.
+`everruns-durable` is a generic engine: workflows, activities, tasks, signals,
+and schedules, with no `everruns-*` dependency (enforced by
+`scripts/lib/check-durable-isolation.sh`). Agent semantics live above it. Turns
+use the worker's `DurableExecution`, the checkpointed driver for
+`everruns-engine::Execution`; the worker's `durable_turn` module owns the
+turn-level conventions (the `user_message` signal, idempotent waiting-turn
+resolution tasks via `ActivityOptions::dedupe_by_activity_id`); and the server
+turns a sealed task into `turn.sealed`. The durable crate owns persistence,
+retries, and activity scheduling.
 
 ## Goals
 
@@ -61,6 +66,8 @@ semantics.
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+`WorkflowEventStore` is an umbrella over focused traits (`EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`), blanket-implemented, so a component can bound on only the slice it needs (a worker: `TaskQueue + SignalStore + WorkerRegistry`). Store methods have no silently-succeeding defaults; both stores implement every method, and only derived defaults (for example `count_events` via `load_events`) remain. See `crates/durable/src/persistence/store.rs`.
+
 ## Requirements
 
 ### Core Abstractions
@@ -68,13 +75,13 @@ semantics.
 1. **Workflow** - Deterministic state machine driven by events
    - Unique type identifier
    - Input/Output types (serializable)
-   - Event handlers: `on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_signal`
+   - Event handlers: `on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_child_workflow_completed`, `on_child_workflow_failed`, `on_signal`
 
 2. **WorkflowAction** - Actions a workflow can request
    - `ScheduleActivity` - Queue activity with retry policy, timeouts, priority
-   - `StartTimer` - Delayed execution
+   - `StartTimer` - Delayed execution (fires once, after its duration)
    - `CompleteWorkflow` / `FailWorkflow` - Terminal states
-   - `ScheduleChildWorkflow` - Nested workflows
+   - `ScheduleChildWorkflow` - Nested workflows; the parent hears the child's outcome
    - `CancelActivity` - Cancel pending work
 
 3. **Activity** - Unit of work that may fail and be retried
@@ -85,9 +92,62 @@ semantics.
 4. **WorkflowSignal** - External signals to running workflows
    - Types: `cancel`, `shutdown`, custom
 
+### Timers and Child Workflows
+
+Timers and child workflows are tasks on the ordinary queue, claimed by a worker
+registered for `SYSTEM_ACTIVITY_TYPES` that calls
+`WorkflowExecutor::run_system_tasks`. A timer is a task held back by
+`ActivityOptions::start_delay`; both stores honor that delay, and the store
+conformance suite checks it. Starting a child and reporting its outcome to the
+parent are tasks too. The queue already gives crash survival and retry, and a
+task keeps the executor from re-entering a parent while that parent's own
+actions are still being applied, which would race its optimistic sequence.
+
+Delivery is at least once, so each step is idempotent: a timer fires once per
+`TimerStarted`, a child's UUID is v5 of the parent UUID and the parent's id for
+the child, and a parent records each child's outcome once. A child knows its
+parent from the `parent` field of its `WorkflowStarted` event. A child whose
+type is not registered fails the parent with code `child_not_started`.
+
+Known gaps: a crash between recording a child's terminal status and enqueueing
+its result leaves the parent waiting, and cancelling a child does not notify
+the parent. Agent turns in Everruns do not use timers or child workflows yet:
+workers talk to the store over gRPC, which exposes only the task operations, and
+turns are driven by the worker's `DurableExecution` checkpoints rather than
+replay.
+
 ### Persistence
 
-All tables prefixed with `durable_` to avoid conflicts. See `crates/server/migrations/002_durable_execution.sql` for the full schema DDL.
+All tables prefixed with `durable_` to avoid conflicts. The schema has two
+owners that must stay identical:
+
+- **Server migrations** (`crates/server/migrations/`, starting at
+  `002_durable_execution.sql`) create and evolve the tables for the Everruns
+  control plane, versioned and immutable like every other server table.
+- **The crate's own schema** (`crates/durable/schema/postgres.sql`), applied by
+  `PostgresWorkflowEventStore::migrate`, lets a crates.io user of
+  `everruns-durable` create the tables without the server. It is one idempotent
+  script (CREATE ... IF NOT EXISTS, CREATE OR REPLACE for trigger functions and
+  triggers, counter seeding with ON CONFLICT DO NOTHING) run in a single
+  transaction under an advisory lock, uses only built-in PostgreSQL 14+
+  functions (its `uuidv7()` fallback avoids pgcrypto), and creates objects in
+  the first `search_path` schema. Against a server-migrated database it changes
+  nothing. Schema changes append idempotent statements rather than versioned
+  migrations, because the crate cannot own a migration history in a database
+  whose durable tables the server already manages.
+
+`crates/durable/tests/schema_drift_test.rs` (durable CI shard) applies the crate
+schema to a scratch PostgreSQL schema and compares tables, columns, defaults,
+constraints, indexes, triggers, trigger-function bodies, sequences and seeded
+counter rows with the server-migrated database, and checks that `migrate` is a
+no-op over server migrations. A server migration that touches a durable table
+therefore updates `schema/postgres.sql` in the same change. The one deliberate
+difference is `durable_tool_results`, which belongs to the server's tool-call
+idempotency storage and is never touched by the crate.
+
+`everruns-durable` is part of the crates.io publish set. Its benchmark support
+module and bench binaries sit behind the off-by-default `bench` feature, and
+bench checkpoints are excluded from the package.
 
 Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `continued_as_new`.
 

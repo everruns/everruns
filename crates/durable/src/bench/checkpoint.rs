@@ -201,9 +201,11 @@ impl CheckpointStore {
         self.ensure_dir()?;
 
         let path = self.directory.join(checkpoint.filename());
+        let mut compact = checkpoint.clone();
+        compact.metrics.compact();
         let file = fs::File::create(&path)?;
         let writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(writer, checkpoint)?;
+        serde_json::to_writer_pretty(writer, &compact)?;
 
         // Return absolute path for display
         let absolute = path.canonicalize().unwrap_or(path);

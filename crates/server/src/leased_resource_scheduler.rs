@@ -136,7 +136,7 @@ fn next_trigger() -> Result<chrono::DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_durable::{CreateScheduleRow, InMemoryWorkflowEventStore};
+    use everruns_durable::{CreateScheduleRow, InMemoryWorkflowEventStore, Schedules};
 
     async fn list_cleanup_schedules(
         store: &InMemoryWorkflowEventStore,

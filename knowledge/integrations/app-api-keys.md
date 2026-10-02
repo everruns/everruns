@@ -21,7 +21,7 @@ The canonical routes are endpoint-scoped:
 - `GET /v1/e/{endpoint_id}/sessions/{session_id}`
 - `POST /v1/e/{endpoint_id}/sessions/{session_id}/cancel`
 
-The existing `/v1/apps/{legacy_app_id}/api/{endpoint_id}/...` forms remain permanent aliases. Alias resolution uses `agent_endpoints.legacy_app_public_id`; neither route form reads `apps` or `app_channels` while serving traffic.
+The existing `/v1/apps/{legacy_app_id}/api/{endpoint_id}/...` forms remain permanent aliases. Alias resolution uses `agent_endpoints.legacy_alias_id`; neither route form reads `apps` or `app_channels` while serving traffic.
 
 ## Credential and confinement contract
 

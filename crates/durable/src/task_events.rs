@@ -246,7 +246,7 @@ pub async fn record_workflow_cancelled<S: WorkflowEventStore>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::InMemoryWorkflowEventStore;
+    use crate::persistence::{EventLog, InMemoryWorkflowEventStore};
     use std::sync::Arc;
 
     async fn workflow(store: &InMemoryWorkflowEventStore) -> Uuid {

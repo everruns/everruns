@@ -12,6 +12,8 @@
 //!   cargo bench -p everruns-durable --bench db_cold_start_latency
 //!   cargo bench -p everruns-durable --bench db_cold_start_latency -- --save
 //!   cargo bench -p everruns-durable --bench db_cold_start_latency -- --save --moniker ci-4cpu-8gb
+//!   cargo bench -p everruns-durable --bench db_cold_start_latency -- --smoke
+//!   cargo bench -p everruns-durable --bench db_cold_start_latency -- --smoke --summary out.jsonl
 
 use std::env;
 use std::sync::Arc;
@@ -24,11 +26,11 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 use everruns_durable::bench::{
-    BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
+    BenchOptions, BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore,
     ReportConfig, register_bench_worker,
 };
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+    EventLog, PostgresWorkflowEventStore, TaskDefinition, TaskQueue,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;
@@ -433,37 +435,8 @@ async fn cleanup_workflow(pool: &PgPool, workflow_id: Uuid) {
         .ok();
 }
 
-/// CLI options parsed from arguments
-struct CliOptions {
-    save_checkpoint: bool,
-    moniker: Option<String>,
-}
-
-fn parse_args() -> CliOptions {
-    let args: Vec<String> = env::args().collect();
-    let mut opts = CliOptions {
-        save_checkpoint: false,
-        moniker: None,
-    };
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--save" => opts.save_checkpoint = true,
-            "--moniker" if i + 1 < args.len() => {
-                opts.moniker = Some(args[i + 1].clone());
-                i += 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    opts
-}
-
 fn main() {
-    let opts = parse_args();
+    let opts = BenchOptions::from_args();
     let rt = Runtime::new().unwrap();
 
     // Connect to PostgreSQL
@@ -481,25 +454,29 @@ fn main() {
     println!("\nCompares polling vs push-based notification approaches.");
     println!("This is what users experience when sending a message to an idle agent.\n");
 
+    let bench = "db_cold_start_latency";
+
     // Scenario 1: Polling fallback using the current worker default.
     let polling = rt.block_on(run_cold_start_scenario(
         pool.clone(),
         ColdStartConfig {
-            iterations: 20,
+            iterations: opts.pick(20, 3),
             worker_count: 1,
             check_interval: Duration::from_millis(10),
             name: "polling_10ms".to_string(),
         },
     ));
+    opts.record(bench, "polling_10ms", &polling);
 
     // Scenario 2: Push-based notifications
     let push = rt.block_on(run_push_notification_scenario(
         pool.clone(),
         PushNotificationConfig {
-            iterations: 20,
+            iterations: opts.pick(20, 3),
             name: "push_notifications".to_string(),
         },
     ));
+    opts.record(bench, "push_notifications", &push);
 
     // Summary comparison
     println!("\n═══════════════════════════════════════════════════════════");
@@ -555,29 +532,28 @@ fn main() {
         );
     }
 
-    // Generate HTML report for push notifications (the primary metric)
-    println!("\n📊 Generating HTML report...");
+    // Generate HTML report for push notifications (the primary metric); skipped in smoke mode
+    if !opts.smoke {
+        println!("\n📊 Generating HTML report...");
 
-    let report_config = ReportConfig {
-        title: "Cold-Start Latency Benchmark (PostgreSQL)".to_string(),
-        filename_prefix: Some("db_cold_start".to_string()),
-        ..Default::default()
-    };
+        let report_config = ReportConfig {
+            title: "Cold-Start Latency Benchmark (PostgreSQL)".to_string(),
+            filename_prefix: Some("db_cold_start".to_string()),
+            ..Default::default()
+        };
 
-    let report = BenchmarkReport::new(report_config);
-    match report.generate(&push) {
-        Ok(path) => println!("   ✅ {}", path),
-        Err(e) => println!("   ❌ {}", e),
+        let report = BenchmarkReport::new(report_config);
+        match report.generate(&push) {
+            Ok(path) => println!("   ✅ {}", path),
+            Err(e) => println!("   ❌ {}", e),
+        }
     }
 
     // Save checkpoint
-    if opts.save_checkpoint {
+    if opts.save_checkpoint && !opts.smoke {
         println!("\n💾 Saving checkpoint...");
 
-        let env = match &opts.moniker {
-            Some(m) => EnvironmentInfo::detect_with_moniker(m),
-            None => EnvironmentInfo::detect(),
-        };
+        let env = opts.environment();
         let store = CheckpointStore::new(format!(
             "{}/benches/checkpoints",
             env!("CARGO_MANIFEST_DIR")

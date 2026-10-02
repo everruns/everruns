@@ -235,6 +235,8 @@ async fn get_session(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Value>> {
+    // After a restart, a turn waiting on a person shows as waiting again.
+    host.wake(&id).await;
     Ok(Json(session_json(&host, &id)?))
 }
 
@@ -354,6 +356,8 @@ async fn approval(
     Json(body): Json<ApprovalBody>,
 ) -> ApiResult<Json<Value>> {
     host.session_row(&id)?;
+    // After a restart, the approval is pending again once the session is.
+    host.session(&id).await?;
     let approve = matches!(body.decision, DecisionKind::Approve);
     host.resolve_approval(&id, &tool_call_id, approve)?;
     Ok(Json(json!({
@@ -400,6 +404,8 @@ async fn question_answers(
     Json(body): Json<QuestionAnswersBody>,
 ) -> ApiResult<Json<Value>> {
     host.session_row(&id)?;
+    // After a restart, the question is pending again once the session is.
+    host.session(&id).await?;
     let status = match body.status {
         SubmittedStatus::Answered => Status::Answered,
         SubmittedStatus::Declined => Status::Declined,

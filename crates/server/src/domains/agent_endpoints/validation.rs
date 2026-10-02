@@ -1,4 +1,4 @@
-use crate::domains::apps::invocation::{cron_min_interval_seconds, normalize_cron_expression};
+use super::invocation::{cron_min_interval_seconds, normalize_cron_expression};
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::storage::password::hash_password;
 use everruns_platform::app::{ScheduleChannelConfig, WebhookChannelConfig};

@@ -1,11 +1,11 @@
 // Frozen App compatibility types.
 //
-// Storage row types remain for archival reads and compatibility fixtures.
+// The App storage row remains for archival reads and compatibility fixtures.
 
 use serde::Deserialize;
 use utoipa::IntoParams;
 
-pub use crate::storage::models::{AppChannelRow, AppRow};
+pub use crate::storage::models::AppRow;
 
 /// Query parameters for deprecated archival App listings.
 #[derive(Debug, Clone, Deserialize, IntoParams)]

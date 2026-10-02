@@ -109,7 +109,7 @@ Each agent endpoint has a stable endpoint ID. Canonical ingress routes use
 - Public Chat: `GET /public-chat/config` and `POST /public-chat`.
 
 Existing `/v1/apps/{app_id}/...` routes are permanent aliases. They resolve
-from endpoint-owned `legacy_app_public_id` and never read `apps` or
+from endpoint-owned `legacy_alias_id` and never read `apps` or
 `app_channels`. Channel-less aliases resolve the only live endpoint of the
 requested type. They return `409 Conflict` when multiple live endpoints match,
 with a detail that directs the caller to the endpoint-scoped URL.

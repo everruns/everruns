@@ -1065,6 +1065,15 @@ path must be one of them; there is no third option and no fallback between them.
 | 1 | **Server / tenant** | org-scoped agent + embedding execution | encrypted DB row, decrypted by the resolver | **Never** |
 | 2 | **Standalone / dev / CLI** | `just start-dev`, examples, CLI tools, embedders | a `CredentialProvider` the caller injects | only via `EnvCredentialProvider`, constructed explicitly by that caller |
 
+Path 2 has one ambient-identity variant: Bedrock's opt-in `default-credentials`
+feature (`BedrockAuth::default_chain`, the facade's `Bedrock::default_chain`,
+serve's `bedrock/<model-id>` route) hands credential resolution to the AWS SDK's
+default chain, so a standalone host runs on its IAM role (AgentCore Runtime
+execution role, ECS task role, instance profile). It is still caller-selected,
+never a fallback, and `scripts/lib/check-provider-isolation.sh` keeps it out of
+server, platform, and worker code and manifests: on a multi-tenant host it would
+sign tenant calls with the platform's own AWS identity.
+
 ```
                          credentials for a driver
                                    │

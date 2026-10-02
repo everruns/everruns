@@ -39,7 +39,7 @@ pub struct IngressEndpointRow {
     pub endpoint_id: Uuid,
     pub endpoint_public_id: String,
     pub legacy_app_id: Option<Uuid>,
-    pub legacy_app_public_id: Option<String>,
+    pub legacy_alias_id: Option<String>,
     pub org_id: i64,
     pub agent_id: Uuid,
     pub agent_public_id: String,

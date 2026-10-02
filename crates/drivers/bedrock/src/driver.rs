@@ -58,6 +58,29 @@ impl BedrockAuth {
         let credential = BedrockCredential::from_driver_config(config)?;
         Ok(Self::new(credential))
     }
+
+    /// Authenticate through the AWS default credential chain instead of static
+    /// keys: environment, shared profile and SSO, web identity, ECS/AgentCore
+    /// container credentials, then the EC2 instance profile.
+    ///
+    /// Region is `region` when given, else `AWS_REGION`, else
+    /// `AWS_DEFAULT_REGION`, else `us-east-1`. Sync and I/O-free: the chain is
+    /// built on the first request. Standalone hosts only; org-scoped server
+    /// paths use [`from_config`](Self::from_config).
+    ///
+    /// ```no_run
+    /// use everruns_bedrock::BedrockAuth;
+    ///
+    /// let auth = BedrockAuth::default_chain(Some("us-west-2".to_string()));
+    /// # let _ = auth;
+    /// ```
+    #[cfg(feature = "default-credentials")]
+    pub fn default_chain(region: Option<String>) -> Self {
+        let region = crate::default_chain::resolve_region(region, |name| std::env::var(name).ok());
+        Self {
+            client: crate::default_chain::build_client(region),
+        }
+    }
 }
 
 impl std::fmt::Debug for BedrockAuth {
@@ -101,6 +124,17 @@ pub fn provider(
         .auth(BedrockAuth::new(credential))
 }
 
+/// Ready-to-use AWS Bedrock provider on the AWS default credential chain. See
+/// [`BedrockAuth::default_chain`] for the chain and region resolution.
+#[cfg(feature = "default-credentials")]
+pub fn provider_from_default_chain(
+    id: impl Into<everruns_provider::ProviderKey>,
+    region: Option<String>,
+) -> everruns_provider::Provider {
+    everruns_provider::Provider::new(id, BedrockChatDriver::new())
+        .auth(BedrockAuth::default_chain(region))
+}
+
 /// Build the AWS Bedrock runtime client from typed credentials. Called once per
 /// driver construction, not per request.
 fn build_client(credential: &BedrockCredential) -> Client {
@@ -117,6 +151,25 @@ fn build_client(credential: &BedrockCredential) -> Client {
         .region(Region::new(credential.region.clone()))
         .build();
     Client::from_conf(config)
+}
+
+/// Render an AWS SDK error with its cause. `SdkError`'s own Display is only
+/// "service error" / "dispatch failure"; the operator and the error-kind
+/// classifier need the AWS exception code and message (AccessDeniedException
+/// for a role without `bedrock:InvokeModelWithResponseStream`,
+/// ValidationException for a bad model id) or, for non-service failures such as
+/// missing credentials, the source chain. The raw HTTP response is left out.
+fn describe_sdk_error<E, R>(error: &aws_sdk_bedrockruntime::error::SdkError<E, R>) -> String
+where
+    E: std::error::Error + aws_sdk_bedrockruntime::error::ProvideErrorMetadata + 'static,
+    R: std::fmt::Debug,
+{
+    use aws_sdk_bedrockruntime::error::ProvideErrorMetadata;
+    match (error.code(), error.message()) {
+        (Some(code), Some(message)) => format!("{code}: {message}"),
+        (Some(code), None) => code.to_string(),
+        _ => aws_smithy_types::error::display::DisplayErrorContext(error).to_string(),
+    }
 }
 
 /// Register the Bedrock driver with the given registry.
@@ -248,7 +301,7 @@ impl ChatDriver for BedrockChatDriver {
         req = req.inference_config(inference_cfg);
 
         let response = req.send().await.map_err(|e| {
-            let msg = error_chain(&e);
+            let msg = describe_sdk_error(&e);
             if is_too_large(&msg) {
                 AgentLoopError::request_too_large(msg)
             } else {
@@ -315,12 +368,7 @@ impl ChatDriver for BedrockChatDriver {
                                 let result: Result<Vec<ToolCall>> = ordered
                                     .into_iter()
                                     .map(|(_, ptc)| {
-                                        let arguments = serde_json::from_str(&ptc.input_json)
-                                            .map_err(|e| {
-                                                AgentLoopError::llm(format!(
-                                                    "invalid Bedrock tool arguments JSON: {e}"
-                                                ))
-                                            })?;
+                                        let arguments = tool_arguments(&ptc.input_json)?;
                                         Ok(ToolCall {
                                             id: ptc.id,
                                             name: ptc.name,
@@ -765,30 +813,6 @@ fn json_to_document(value: Value) -> Document {
 // Error classification
 // ============================================================================
 
-/// Render an AWS SDK error with its source chain.
-///
-/// `SdkError`'s `Display` is a bare category — a failed `ConverseStream` reads
-/// only "service error", and the reason (`AccessDeniedException`,
-/// `ValidationException`, the model id, the message) lives in the sources
-/// behind it. Formatting with `{e}` alone throws that away, leaving an error
-/// nothing can be diagnosed from, and `LlmErrorKind::from_error_text` nothing
-/// to classify.
-fn error_chain(error: &dyn std::error::Error) -> String {
-    let mut rendered = error.to_string();
-    let mut source = error.source();
-    while let Some(cause) = source {
-        let text = cause.to_string();
-        // Skip a link that only repeats what is already rendered; the SDK
-        // wraps some errors in a same-message layer.
-        if !text.is_empty() && !rendered.contains(&text) {
-            rendered.push_str(": ");
-            rendered.push_str(&text);
-        }
-        source = cause.source();
-    }
-    rendered
-}
-
 fn is_too_large(msg: &str) -> bool {
     let lower = msg.to_lowercase();
     lower.contains("too long")
@@ -803,8 +827,30 @@ fn is_too_large(msg: &str) -> bool {
 // Tests
 // ============================================================================
 
+/// Parse a streamed tool call's accumulated input. Bedrock sends no
+/// `toolUse` delta at all for a call with no arguments, so an empty input is
+/// the empty object, not a parse error.
+fn tool_arguments(input_json: &str) -> Result<Value> {
+    if input_json.trim().is_empty() {
+        return Ok(Value::Object(Default::default()));
+    }
+    serde_json::from_str(input_json)
+        .map_err(|e| AgentLoopError::llm(format!("invalid Bedrock tool arguments JSON: {e}")))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tool_call_without_input_deltas_has_empty_object_arguments() {
+        assert_eq!(super::tool_arguments("").unwrap(), serde_json::json!({}));
+        assert_eq!(super::tool_arguments("  ").unwrap(), serde_json::json!({}));
+        assert_eq!(
+            super::tool_arguments(r#"{"a":1}"#).unwrap(),
+            serde_json::json!({"a": 1})
+        );
+        assert!(super::tool_arguments("{").is_err());
+    }
+
     #[test]
     fn registered_descriptor_declares_aws_credential_fields() {
         let mut registry = DriverRegistry::new();
@@ -1028,6 +1074,49 @@ mod tests {
             requests[0].body_json::<Value>().unwrap(),
             serde_json::json!({"messages":[{"role":"assistant","content":[{"toolUse":{"toolUseId":"exact-id","name":"inspect","input":arguments}}]}],"inferenceConfig":{"temperature":0.25,"maxTokens":32}})
         );
+    }
+
+    #[tokio::test]
+    async fn service_errors_carry_the_aws_exception_code_and_message() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .insert_header("x-amzn-errortype", "AccessDeniedException")
+                    .insert_header("content-type", "application/json")
+                    .set_body_json(serde_json::json!({
+                        "message": "User is not authorized to perform: bedrock:InvokeModelWithResponseStream"
+                    })),
+            )
+            .mount(&server)
+            .await;
+        let client = Client::from_conf(
+            BedrockConfigBuilder::new()
+                .behavior_version(BehaviorVersion::latest())
+                .region(Region::new("us-east-1"))
+                .credentials_provider(Credentials::new("a", "s", None, None, "test"))
+                .endpoint_url(server.uri())
+                .build(),
+        );
+        let service = everruns_provider::Provider::new("bedrock", BedrockChatDriver::new())
+            .auth(BedrockAuth { client });
+        let error = service
+            .chat_completion(
+                vec![Message::text(MessageRole::User, "hi")],
+                &LlmCallConfig::new("model"),
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains(
+                "AccessDeniedException: User is not authorized to perform: bedrock:InvokeModelWithResponseStream"
+            ),
+            "{error}"
+        );
+        assert!(!error.contains("raw:"), "raw HTTP response leaked: {error}");
     }
 
     #[test]

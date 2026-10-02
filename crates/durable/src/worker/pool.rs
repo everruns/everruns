@@ -203,7 +203,7 @@ pub type ActivityHandler = Arc<
 /// use std::time::Duration;
 /// use everruns_durable::{
 ///     ActivityOptions, InMemoryWorkflowEventStore, TaskDefinition, TaskStatus, WorkerPool,
-///     WorkerPoolConfig, WorkflowEventStore,
+///     TaskQueue, WorkerPoolConfig,
 /// };
 /// use serde_json::json;
 ///
@@ -579,7 +579,7 @@ impl WorkerPool {
                         }
                     }
                     Err(e) => {
-                        everruns_core::log_database_failure(
+                        crate::persistence::log_database_failure(
                             "durable.worker.poll",
                             "worker poll failed",
                             &e.to_string(),
@@ -619,7 +619,7 @@ impl WorkerPool {
                             && !backpressure.is_resource_pressured();
 
                         if let Err(e) = store.worker_heartbeat(&worker_id, load, accepting).await {
-                            everruns_core::log_database_failure(
+                            crate::persistence::log_database_failure(
                                 "durable.worker.heartbeat",
                                 "worker heartbeat failed",
                                 &e.to_string(),
@@ -745,22 +745,22 @@ impl WorkerPool {
                                     }
                                 }
 
-                                // Sealed turns (forward-progress guard, EVE-534): the task
-                                // was marked dead -> DLQ for making no progress across N
+                                // Sealed tasks (no-progress guard, EVE-534): the task was
+                                // marked dead -> DLQ for making no progress across N
                                 // recoveries. Record a non-retryable ActivityFailed and mark
-                                // the workflow terminal so no further atoms are scheduled. The
-                                // user-facing `turn.sealed` event is emitted by the control
-                                // plane reclaim loop (see crates/server durable_seal).
+                                // the workflow terminal so no further activities are
+                                // scheduled. Anything domain-specific a seal means is up to
+                                // the application consuming `ReclaimResult::sealed_tasks`.
                                 for sealed in &result.sealed_tasks {
                                     info!(
                                         task_id = %sealed.task_id,
                                         workflow_id = ?sealed.workflow_id,
                                         reason = %sealed.reason,
                                         no_progress_count = sealed.no_progress_count,
-                                        "Sealing non-progressing turn"
+                                        "Sealing non-progressing task"
                                     );
                                     let error_msg = format!(
-                                        "turn sealed: no_progress ({} recoveries)",
+                                        "task sealed: no_progress ({} recoveries)",
                                         sealed.no_progress_count
                                     );
                                     crate::task_events::record_activity_failed(
@@ -784,7 +784,7 @@ impl WorkerPool {
                                 }
                             }
                             Err(e) => {
-                                everruns_core::log_database_failure(
+                                crate::persistence::log_database_failure(
                                     "durable.worker.reclaim_stale",
                                     "stale task reclamation failed",
                                     &e.to_string(),
@@ -848,6 +848,7 @@ mod duration_millis {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::TaskQueue;
 
     #[test]
     fn test_default_config() {

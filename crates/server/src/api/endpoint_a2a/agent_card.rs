@@ -4,6 +4,14 @@
 // path: the card is built from the endpoint's stored config and the request's
 // own URI, and its only contract with the rest of the channel is the security
 // scheme it advertises for the auth policy that channel actually enforces.
+//
+// Design Decision: one card serves A2A 1.0 and 0.3 clients, the union shape
+// a2a-go's `a2acompat/a2av0` producer publishes. 1.0 clients read
+// `supportedInterfaces` (one JSONRPC interface per protocol version, same URL),
+// `securityRequirements` and the wrapped `securitySchemes`; 0.3 clients read
+// the top-level `url` / `protocolVersion` / `preferredTransport`, `security`,
+// and the flat OpenAPI `type` fields of the same schemes. Each side ignores the
+// other's fields.
 // See `knowledge/integrations/a2a-channel.md`.
 
 use axum::{
@@ -14,8 +22,8 @@ use axum::{
 use serde_json::{Value, json};
 
 use super::{
-    A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_JSONRPC, A2A_PROTOCOL_VERSION, EndpointA2aState,
-    endpoint_app_id, internal_error, not_found,
+    A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_JSONRPC, EndpointA2aState, endpoint_app_id,
+    internal_error, not_found,
 };
 use crate::api::a2a_signing::A2A_SIGNATURE_HEADER;
 use crate::api::common::ErrorResponse;
@@ -122,25 +130,30 @@ async fn agent_card(
         .or_else(|| app.description.clone())
         .unwrap_or_default();
 
-    let (security_schemes, security) = a2a_security_for_config(&config, channel.auth.as_deref());
+    let (security_schemes, requirements) =
+        a2a_security_for_config(&config, channel.auth.as_deref());
+    // Streaming is only supported on session_per_invocation channels.
+    // Shared-session channels reject it because events cannot be safely
+    // correlated across concurrent callers.
+    let streaming = config.session_mode == everruns_platform::app::SessionBinding::Ephemeral;
+    let interfaces: Vec<Value> = super::wire::SUPPORTED_VERSIONS
+        .iter()
+        .map(|version| {
+            json!({
+                "url": endpoint,
+                "protocolBinding": A2A_PROTOCOL_BINDING_JSONRPC,
+                "protocolVersion": version,
+            })
+        })
+        .collect();
     let card = json!({
         "name": name,
         "description": description,
         "version": A2A_AGENT_VERSION,
-        "supportedInterfaces": [
-            {
-                "url": endpoint,
-                "protocolBinding": A2A_PROTOCOL_BINDING_JSONRPC,
-                "protocolVersion": A2A_PROTOCOL_VERSION,
-            }
-        ],
+        "supportedInterfaces": interfaces,
         "capabilities": {
-            // Streaming is only supported on session_per_invocation channels.
-            // Shared-session channels reject message/stream because events
-            // cannot be safely correlated across concurrent callers.
-            "streaming": config.session_mode == everruns_platform::app::SessionBinding::Ephemeral,
-            "pushNotifications": false,
-            "stateTransitionHistory": false,
+            "streaming": streaming,
+            "pushNotifications": true,
         },
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],
@@ -153,11 +166,68 @@ async fn agent_card(
             }
         ],
         "securitySchemes": security_schemes,
-        "securityRequirements": security,
+        "securityRequirements": v1_security_requirements(&requirements),
+        // A2A 0.3 fields, for clients that predate `supportedInterfaces`.
+        "url": endpoint,
+        "protocolVersion": "0.3.0",
+        "preferredTransport": A2A_PROTOCOL_BINDING_JSONRPC,
+        "security": requirements,
     });
     Ok(Json(card))
 }
 
+/// 0.3 / OpenAPI requirements (`[{"scheme": ["scope"]}]`) in the 1.0 shape
+/// (`[{"schemes": {"scheme": ["scope"]}}]`).
+///
+/// Design Decision: scopes stay a bare array rather than ProtoJSON's
+/// `{"list": [...]}` wrapper. Every 1.0 parser we tested accepts the array
+/// (a2a-python, the a2a-lf Rust SDK, a2a-go >= 2.6), while a2a-go 2.5 (the
+/// official `a2a` CLI) rejects the wrapper and the Rust SDK rejects the empty
+/// `{}` form outright.
+fn v1_security_requirements(requirements: &Value) -> Value {
+    let Some(requirements) = requirements.as_array() else {
+        return json!([]);
+    };
+    Value::Array(
+        requirements
+            .iter()
+            .filter_map(Value::as_object)
+            .map(|requirement| json!({ "schemes": requirement }))
+            .collect(),
+    )
+}
+
+/// One security scheme in both shapes: the 1.0 wrapper object and the 0.3
+/// flat OpenAPI fields.
+fn union_scheme(v1_wrapper: &str, v1: Value, v0_3: Value) -> Value {
+    let mut scheme = v0_3;
+    if let Some(obj) = scheme.as_object_mut() {
+        obj.insert(v1_wrapper.to_string(), v1);
+    }
+    scheme
+}
+
+fn http_scheme(scheme: &str) -> Value {
+    union_scheme(
+        "httpAuthSecurityScheme",
+        json!({ "scheme": scheme }),
+        json!({ "type": "http", "scheme": scheme }),
+    )
+}
+
+fn oidc_scheme(url: &str) -> Value {
+    union_scheme(
+        "openIdConnectSecurityScheme",
+        json!({ "openIdConnectUrl": url }),
+        json!({ "type": "openIdConnect", "openIdConnectUrl": url }),
+    )
+}
+
+const HMAC_DESCRIPTION: &str =
+    "HMAC-SHA256 over v0:{timestamp}:{channel_scope}:{body}; pair with X-Everruns-A2A-Timestamp";
+
+/// The channel's security schemes and its requirements in the 0.3 / OpenAPI
+/// shape; [`v1_security_requirements`] derives the 1.0 shape from them.
 fn a2a_security_for_config(
     config: &everruns_platform::A2aChannelConfig,
     auth: Option<&everruns_platform::EndpointAuthConfig>,
@@ -175,13 +245,20 @@ fn a2a_security_for_config(
         if let Value::Object(map) = &mut schemes {
             map.insert(
                 "everrunsHmacSignature".to_string(),
-                json!({
-                    "apiKeySecurityScheme": {
+                union_scheme(
+                    "apiKeySecurityScheme",
+                    json!({
                         "location": "header",
                         "name": A2A_SIGNATURE_HEADER,
-                        "description": "HMAC-SHA256 over v0:{timestamp}:{channel_scope}:{body}; pair with X-Everruns-A2A-Timestamp",
-                    }
-                }),
+                        "description": HMAC_DESCRIPTION,
+                    }),
+                    json!({
+                        "type": "apiKey",
+                        "in": "header",
+                        "name": A2A_SIGNATURE_HEADER,
+                        "description": HMAC_DESCRIPTION,
+                    }),
+                ),
             );
         }
         if let Value::Array(arr) = &mut requirements {
@@ -198,13 +275,13 @@ fn a2a_security_for_config(
 fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (Value, Value) {
     let Some(auth) = auth else {
         return (
-            json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
+            json!({ "apiKey": http_scheme("bearer") }),
             json!([{ "apiKey": [] }]),
         );
     };
     match (&auth.mode, auth.provider.as_ref()) {
         (everruns_platform::EndpointAuthMode::HttpBasic, _) => (
-            json!({ "httpBasic": { "httpAuthSecurityScheme": { "scheme": "basic" } } }),
+            json!({ "httpBasic": http_scheme("basic") }),
             json!([{ "httpBasic": [] }]),
         ),
         (
@@ -212,11 +289,7 @@ fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (V
             Some(everruns_platform::EndpointAuthProviderConfig::GoogleOidc { .. }),
         ) => (
             json!({
-                "googleOidc": {
-                    "openIdConnectSecurityScheme": {
-                        "openIdConnectUrl": "https://accounts.google.com/.well-known/openid-configuration"
-                    }
-                }
+                "googleOidc": oidc_scheme("https://accounts.google.com/.well-known/openid-configuration")
             }),
             json!([{ "googleOidc": auth.requirements.scopes.clone() }]),
         ),
@@ -229,13 +302,7 @@ fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (V
                 issuer.trim_end_matches('/')
             );
             (
-                json!({
-                    "oidc": {
-                        "openIdConnectSecurityScheme": {
-                            "openIdConnectUrl": discovery
-                        }
-                    }
-                }),
+                json!({ "oidc": oidc_scheme(&discovery) }),
                 json!([{ "oidc": auth.requirements.scopes.clone() }]),
             )
         }
@@ -243,16 +310,18 @@ fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (V
         // introspection-only channel has no token URL to publish, so advertise
         // generic bearer auth rather than fabricating an unusable OAuth flow.
         (everruns_platform::EndpointAuthMode::OAuth2Introspection, _) => (
-            json!({ "oauth2Bearer": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
+            json!({ "oauth2Bearer": http_scheme("bearer") }),
             json!([{ "oauth2Bearer": auth.requirements.scopes.clone() }]),
         ),
         (everruns_platform::EndpointAuthMode::Mtls, _) => (
-            json!({ "mtls": { "mtlsSecurityScheme": {} } }),
+            json!({
+                "mtls": union_scheme("mtlsSecurityScheme", json!({}), json!({ "type": "mutualTLS" }))
+            }),
             json!([{ "mtls": [] }]),
         ),
         (everruns_platform::EndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
         _ => (
-            json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
+            json!({ "apiKey": http_scheme("bearer") }),
             json!([{ "apiKey": [] }]),
         ),
     }
@@ -303,5 +372,30 @@ mod tests {
         assert_eq!(requirements, json!([{ "oauth2Bearer": ["app:invoke"] }]));
         serde_json::from_value::<std::collections::HashMap<String, a2a::SecurityScheme>>(schemes)
             .expect("securitySchemes should parse as linked A2A security schemes");
+    }
+
+    #[test]
+    fn security_requirements_render_in_both_versions() {
+        let requirements = json!([{ "apiKey": [] }, { "oidc": ["read", "write"] }]);
+        assert_eq!(
+            v1_security_requirements(&requirements),
+            json!([
+                { "schemes": { "apiKey": [] } },
+                { "schemes": { "oidc": ["read", "write"] } }
+            ])
+        );
+    }
+
+    #[test]
+    fn union_schemes_parse_as_1_0_schemes_and_keep_0_3_fields() {
+        let schemes = json!({
+            "apiKey": http_scheme("bearer"),
+            "oidc": oidc_scheme("https://issuer.test/.well-known/openid-configuration"),
+        });
+        assert_eq!(schemes["apiKey"]["type"], "http");
+        assert_eq!(schemes["apiKey"]["scheme"], "bearer");
+        assert_eq!(schemes["oidc"]["type"], "openIdConnect");
+        serde_json::from_value::<std::collections::HashMap<String, a2a::SecurityScheme>>(schemes)
+            .expect("union schemes should parse as A2A 1.0 security schemes");
     }
 }

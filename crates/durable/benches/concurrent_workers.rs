@@ -7,6 +7,8 @@
 //!   cargo bench -p everruns-durable --bench concurrent_workers
 //!   cargo bench -p everruns-durable --bench concurrent_workers -- --save
 //!   cargo bench -p everruns-durable --bench concurrent_workers -- --save --moniker ci-4cpu-8gb
+//!   cargo bench -p everruns-durable --bench concurrent_workers -- --smoke
+//!   cargo bench -p everruns-durable --bench concurrent_workers -- --smoke --summary out.jsonl
 
 use std::env;
 use std::sync::Arc;
@@ -18,12 +20,12 @@ use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 
 use everruns_durable::bench::{
-    ActivityDuration, BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore,
-    EnvironmentInfo, ReportConfig, clear_terminal_progress, register_bench_worker,
+    ActivityDuration, BenchOptions, BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport,
+    CheckpointStore, ReportConfig, clear_terminal_progress, register_bench_worker,
     set_terminal_progress,
 };
 use everruns_durable::persistence::{
-    InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+    EventLog, InMemoryWorkflowEventStore, TaskDefinition, TaskQueue,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;
@@ -277,37 +279,8 @@ async fn run_scenario(
     metrics
 }
 
-/// CLI options parsed from arguments
-struct CliOptions {
-    save_checkpoint: bool,
-    moniker: Option<String>,
-}
-
-fn parse_args() -> CliOptions {
-    let args: Vec<String> = env::args().collect();
-    let mut opts = CliOptions {
-        save_checkpoint: false,
-        moniker: None,
-    };
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--save" => opts.save_checkpoint = true,
-            "--moniker" if i + 1 < args.len() => {
-                opts.moniker = Some(args[i + 1].clone());
-                i += 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    opts
-}
-
 fn main() {
-    let opts = parse_args();
+    let opts = BenchOptions::from_args();
 
     // Raise per-workflow queue limit before creating the runtime (set_var is
     // unsafe in Rust 2024 because other threads may read env concurrently).
@@ -323,21 +296,74 @@ fn main() {
     println!("           Durable Execution Engine Load Test");
     println!("═══════════════════════════════════════════════════════════");
 
+    let bench = "concurrent_workers";
+
     // Scenario 1: Baseline - single worker, no execution simulation
-    let baseline = rt.block_on(run_scenario("baseline_1_worker", 10_000, 1, false));
+    let name = "baseline_1_worker";
+    let baseline = rt.block_on(run_scenario(name, opts.pick(10_000, 50), 1, false));
+    opts.record(bench, name, &baseline);
 
     // Scenario 2: Worker scaling (no execution)
-    let scale_10 = rt.block_on(run_scenario("scale_10_workers", 10_000, 10, false));
-    let scale_50 = rt.block_on(run_scenario("scale_50_workers", 10_000, 50, false));
-    let scale_100 = rt.block_on(run_scenario("scale_100_workers", 10_000, 100, false));
+    let name = "scale_10_workers";
+    let scale_10 = rt.block_on(run_scenario(
+        name,
+        opts.pick(10_000, 50),
+        opts.pick(10, 2),
+        false,
+    ));
+    opts.record(bench, name, &scale_10);
+    let name = "scale_50_workers";
+    let scale_50 = rt.block_on(run_scenario(
+        name,
+        opts.pick(10_000, 50),
+        opts.pick(50, 3),
+        false,
+    ));
+    opts.record(bench, name, &scale_50);
+    let name = "scale_100_workers";
+    let scale_100 = rt.block_on(run_scenario(
+        name,
+        opts.pick(10_000, 50),
+        opts.pick(100, 4),
+        false,
+    ));
+    opts.record(bench, name, &scale_100);
 
     // Scenario 3: Realistic execution (with simulated I/O wait)
-    let realistic_10 = rt.block_on(run_scenario("realistic_10_workers", 1_000, 10, true));
-    let realistic_50 = rt.block_on(run_scenario("realistic_50_workers", 1_000, 50, true));
-    let realistic_100 = rt.block_on(run_scenario("realistic_100_workers", 1_000, 100, true));
+    let name = "realistic_10_workers";
+    let realistic_10 = rt.block_on(run_scenario(
+        name,
+        opts.pick(1_000, 20),
+        opts.pick(10, 2),
+        true,
+    ));
+    opts.record(bench, name, &realistic_10);
+    let name = "realistic_50_workers";
+    let realistic_50 = rt.block_on(run_scenario(
+        name,
+        opts.pick(1_000, 20),
+        opts.pick(50, 3),
+        true,
+    ));
+    opts.record(bench, name, &realistic_50);
+    let name = "realistic_100_workers";
+    let realistic_100 = rt.block_on(run_scenario(
+        name,
+        opts.pick(1_000, 20),
+        opts.pick(100, 4),
+        true,
+    ));
+    opts.record(bench, name, &realistic_100);
 
     // Scenario 4: High volume burst
-    let burst = rt.block_on(run_scenario("burst_50k_tasks", 50_000, 100, false));
+    let name = "burst_50k_tasks";
+    let burst = rt.block_on(run_scenario(
+        name,
+        opts.pick(50_000, 100),
+        opts.pick(100, 4),
+        false,
+    ));
+    opts.record(bench, name, &burst);
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("                    Summary");
@@ -375,36 +401,35 @@ fn main() {
         );
     }
 
-    // Generate HTML reports
-    println!("\n📊 Generating HTML reports...");
+    // Generate HTML reports (skipped in smoke mode)
+    if !opts.smoke {
+        println!("\n📊 Generating HTML reports...");
 
-    let report_config = ReportConfig {
-        title: "Durable Execution Benchmark".to_string(),
-        filename_prefix: Some("concurrent_workers".to_string()),
-        ..Default::default()
-    };
+        let report_config = ReportConfig {
+            title: "Durable Execution Benchmark".to_string(),
+            filename_prefix: Some("concurrent_workers".to_string()),
+            ..Default::default()
+        };
 
-    for (name, m) in [
-        ("baseline_1_worker", &baseline),
-        ("scale_100_workers", &scale_100),
-        ("realistic_100_workers", &realistic_100),
-        ("burst_50k_tasks", &burst),
-    ] {
-        let report = BenchmarkReport::new(report_config.clone());
-        match report.generate(m) {
-            Ok(path) => println!("   ✅ {}: {}", name, path),
-            Err(e) => println!("   ❌ {}: {}", name, e),
+        for (name, m) in [
+            ("baseline_1_worker", &baseline),
+            ("scale_100_workers", &scale_100),
+            ("realistic_100_workers", &realistic_100),
+            ("burst_50k_tasks", &burst),
+        ] {
+            let report = BenchmarkReport::new(report_config.clone());
+            match report.generate(m) {
+                Ok(path) => println!("   ✅ {}: {}", name, path),
+                Err(e) => println!("   ❌ {}: {}", name, e),
+            }
         }
     }
 
     // Save checkpoints for historical comparison (only with --save flag)
-    if opts.save_checkpoint {
+    if opts.save_checkpoint && !opts.smoke {
         println!("\n💾 Saving checkpoints...");
 
-        let env = match &opts.moniker {
-            Some(m) => EnvironmentInfo::detect_with_moniker(m),
-            None => EnvironmentInfo::detect(),
-        };
+        let env = opts.environment();
         let store = CheckpointStore::new(format!(
             "{}/benches/checkpoints",
             env!("CARGO_MANIFEST_DIR")

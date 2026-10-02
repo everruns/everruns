@@ -77,7 +77,10 @@ curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"
 ```
 
 To use a real model, set `OPENROUTER_API_KEY`, or point `SERVE_GATEWAY_URL`
-and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway.
+and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway. With serve's
+`bedrock` feature, `bedrock/<model-id>` models (for example
+`bedrock/us.anthropic.claude-sonnet-4-6`) call Amazon Bedrock on the AWS
+default credential chain whenever `AWS_REGION` is set.
 
 | Example | Shows |
 | --- | --- |
@@ -176,8 +179,10 @@ import { HttpAgent } from "@ag-ui/client";
 const agent = new HttpAgent({ url: "http://localhost:3000/v1/e/analyst/ag-ui" });
 ```
 
-Each AG-UI `threadId` maps to one session, which survives a restart. A run
-sends only the input's last user message and streams the turn as AG-UI events,
+Each AG-UI `threadId` maps to one session, which survives a restart. A
+thread's first run records the input's earlier user and assistant messages as
+the new session's history; after that, a run sends only the input's last user
+message. Each run streams the turn as AG-UI events,
 with reasoning, token usage and errors visible. A tool approval or an
 [`ask_user`](/framework/ask-user/) question ends the run with an interrupt
 (`tool_approval` or `everruns.ask_user`), and the next run's `resume` entries
@@ -188,7 +193,11 @@ agent `404`. The agent card lists each agent's route under `ag_ui`. See
 [Serve AG-UI](/framework/ag-ui/) for the event and interrupt shapes.
 
 Sessions survive a restart: the binary rebuilds each agent and resumes the
-session from the local store. A session pinned to a different build gets
+session from the local store. A turn the old process left waiting on an
+approval or an `ask_user` question waits again: the call runs again, so the
+request is pending once more under the same tool call id, and answering it
+finishes the turn. A turn cut off while a tool executed is not re-run. A
+session pinned to a different build gets
 `409 Conflict` with an `x-serve-build` header, so a host can route it to the
 build that owns it.
 
@@ -197,10 +206,22 @@ build that owns it.
 
 ## Limitations
 
-- Pending approvals and questions are held in memory and do not survive a restart.
+- After a restart, an approval answered "always" before it is asked again, and a
+  request parked by a subagent is lost.
 - A deny note is not passed to the model.
 - There is no OCI build, cloud deploy, or Postgres or NATS adapter.
 - The server's agent, harness, workspace and tool-result routes are not served.
+
+## Amazon Bedrock AgentCore
+
+[`everruns-serve-agentcore`](https://docs.rs/everruns-serve-agentcore) runs a
+serve app on AgentCore Runtime. Replace `serve::start` with
+`serve_agentcore::start` in `main`. With no command, the binary then serves
+AgentCore's contract on port 8080: `GET /ping` and `POST /invocations`, which
+takes an AG-UI `RunAgentInput` or `{"prompt": "..."}` and streams AG-UI
+events. serve's own commands keep working. See
+[Serve on AgentCore](/framework/serve-agentcore/) for deployment, persistence on
+session storage, tools and models.
 
 The full guide, wire reference and hosting contract live next to the crate in
 [`crates/serve/docs`](https://github.com/everruns/everruns/tree/main/crates/serve/docs).

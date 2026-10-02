@@ -57,6 +57,17 @@ impl TaskState {
         }
     }
 
+    /// A newly enqueued task: claimable once its `start_delay` has passed.
+    pub fn scheduled(definition: TaskDefinition) -> Self {
+        let mut task = Self::pending(definition);
+        if let Some(delay) = task.definition.options.start_delay {
+            let delay = chrono::Duration::from_std(delay).unwrap_or(chrono::Duration::MAX);
+            task.visible_at =
+                (task.visible_at.checked_add_signed(delay)).unwrap_or(DateTime::<Utc>::MAX_UTC);
+        }
+        task
+    }
+
     /// Return the task to the queue, claimable from `visible_at`.
     pub fn release(&mut self, visible_at: DateTime<Utc>) {
         self.status = TaskStatus::Pending;

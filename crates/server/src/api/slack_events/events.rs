@@ -263,13 +263,14 @@ pub(crate) async fn handle_slack_event(
                 let mut updated_config = slack_config.clone();
                 updated_config.webhook_verified_at = Some(Utc::now());
                 if let Ok(config_json) = serde_json::to_value(&updated_config)
-                    && let Err(e) = crate::domains::apps::queries::update_channel_config_unscoped(
-                        &state.db,
-                        state.encryption.as_ref(),
-                        slack_channel_internal_id,
-                        &config_json,
-                    )
-                    .await
+                    && let Err(e) =
+                        crate::domains::agent_endpoints::queries::update_channel_config_unscoped(
+                            &state.db,
+                            state.encryption.as_ref(),
+                            slack_channel_internal_id,
+                            &config_json,
+                        )
+                        .await
                 {
                     tracing::warn!(app_id = %app_id, error = %e, "Failed to record webhook verification");
                 }
@@ -433,7 +434,7 @@ pub(crate) async fn handle_slack_event(
                     updated_config.first_message_received_at = Some(Utc::now());
                     if let Ok(config_json) = serde_json::to_value(&updated_config)
                         && let Err(e) =
-                            crate::domains::apps::queries::update_channel_config_unscoped(
+                            crate::domains::agent_endpoints::queries::update_channel_config_unscoped(
                                 &state.db,
                                 state.encryption.as_ref(),
                                 slack_channel_internal_id,

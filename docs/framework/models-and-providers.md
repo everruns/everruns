@@ -43,6 +43,28 @@ same shape, and `openrouter` adds `OpenRouter`:
 | `gemini` | `Gemini` | `GEMINI_API_KEY` or `GOOGLE_API_KEY`, `GEMINI_BASE_URL` |
 | `openrouter` | `OpenRouter` | `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` |
 
+The `bedrock` feature adds `Bedrock`, which takes either static keys or the AWS
+default credential chain, so a process with an IAM role (an ECS task, an EC2
+instance profile, an Amazon Bedrock AgentCore Runtime execution role) needs no
+keys. The model id is a Bedrock model id or inference profile:
+
+```rust
+use everruns::{Model, providers::bedrock::Bedrock};
+
+// Static keys.
+let model = Model::new(
+    "us.anthropic.claude-sonnet-4-6",
+    Bedrock::new("AKIA...", "secret", "us-east-1"),
+);
+
+// The AWS default chain. Region: `.region(..)`, else AWS_REGION, else
+// AWS_DEFAULT_REGION, else us-east-1.
+let model = Model::new(
+    "us.anthropic.claude-sonnet-4-6",
+    Bedrock::default_chain().region("us-east-1"),
+);
+```
+
 `from_env` is not OpenAI-specific: every driver declares the variables its own
 vendor SDK reads, and each driver crate exposes the same entry point. See
 [Credentials](/framework/credentials/) for the per-driver table.

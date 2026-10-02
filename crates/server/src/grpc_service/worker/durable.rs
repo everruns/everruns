@@ -6,6 +6,7 @@
 
 use super::support::*;
 use crate::grpc_service::*;
+use everruns_durable::{DurableAdmin, EventLog, SignalStore, TaskQueue, WorkerRegistry};
 
 impl WorkerServiceImpl {
     pub(crate) async fn handle_create_durable_workflow(
@@ -148,9 +149,10 @@ impl WorkerServiceImpl {
             .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
             .unwrap_or_else(|| serde_json::json!({}));
 
-        // For now, use default activity options
-        // TODO: Map proto options to ActivityOptions when needed
-        let options = ActivityOptions::default();
+        // Proto options are not mapped yet. Turn semantics the engine needs
+        // (idempotent waiting-turn resolution) derive from the activity id, so
+        // workers of any version get the same enqueue behavior.
+        let options = everruns_worker::durable_turn::activity_options_for(&task_def.activity_id);
 
         let event = WorkflowEvent::ActivityScheduled {
             activity_id: task_def.activity_id.clone(),

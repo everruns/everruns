@@ -144,3 +144,15 @@ store.cleanup(10)?;
 - **High E2E with low S2S**: Execution or completion overhead
 - **P99 >> P50**: High variance, check for contention or GC pauses
 - **Throughput plateau**: Hit CPU or I/O bottleneck
+
+## CI Baseline
+
+`baseline.jsonl` holds one summary line per scenario from a full run on GitHub's
+`ubuntu-latest` runners (moniker `github-ubuntu-latest`). The weekly
+`durable-bench.yml` workflow compares each run with it and fails when a
+scenario's throughput drops by more than 30%. To refresh it, download the
+`durable-bench-memory` and `durable-bench-postgres` artifacts of a trusted run
+on `main` and concatenate their `summary.jsonl` files into this file.
+
+The `realistic_*` scenarios simulate activity latency, so their throughput
+measures the simulated work rather than the engine.

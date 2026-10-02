@@ -128,6 +128,7 @@ impl StorageBackend {
     }
 }
 
+mod a2a_push_configs;
 mod agent_trigger_mcp_subscriptions;
 mod harnesses_sessions;
 mod identity;

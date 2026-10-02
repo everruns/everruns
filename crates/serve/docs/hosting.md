@@ -65,3 +65,21 @@ It is the same binary. Set `PORT`, and either `SERVE_DATA_DIR` or
 conversation and the durable event log the wire API serves) and serve's
 session catalog live in SQLite under that path; Postgres and NATS adapters are
 future work. Run it with `start`.
+
+## Hosting targets
+
+A platform with its own container contract gets a hosting target: a crate of
+its own that boots the app through `serve::Server` (the same boot as `start`),
+merges `Server::router()` (the `/v1` wire API) with the platform's routes, and
+hands every other command back to `serve::start`. serve itself does not change
+per platform.
+
+`Server::builder(app, mode)` adds what a target may supply: `.data_dir(dir)`
+(nothing persists without one) and `.microvm(f)`, the adapter
+`[sandbox] kind = "microvm"` uses when each session already runs in its own
+machine. Without an adapter, `microvm` falls back to bashkit, so the same
+`serve.toml` is safe under `dev`.
+
+| Target | Crate | Contract |
+|---|---|---|
+| Amazon Bedrock AgentCore Runtime | [`everruns-serve-agentcore`](../../serve-agentcore) | `GET /ping` (`Healthy`, or `HealthyBusy` while a turn runs), `POST /invocations` (AG-UI `RunAgentInput` or `{"prompt": ...}`, streamed as AG-UI SSE), port 8080, arm64 image. Boots on the first non-ping request, on session storage (`/mnt/workspace`) when mounted; `microvm` is a host shell in the session workspace. See [`examples/serve/agentcore`](../../../examples/serve/agentcore) and [`examples/serve/agentcore-workspace`](../../../examples/serve/agentcore-workspace). |

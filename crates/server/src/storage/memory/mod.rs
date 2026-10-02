@@ -7,13 +7,14 @@
 //
 // Split into per-entity modules for maintainability (EVE-99).
 
+mod a2a_push_configs;
 mod agent_check_rules;
+mod agent_endpoints;
 mod agent_health_checks;
 mod agent_mcp_secret_bindings;
 mod agent_trigger_mcp_subscriptions;
 mod agent_triggers;
 mod agents;
-mod app_channels;
 mod apps;
 mod audit_logs;
 mod auth;
@@ -92,6 +93,7 @@ type RuntimeInvocationAuthority = (
 type ConnectionSetupState = (String, Vec<u8>, DateTime<Utc>);
 
 use super::IngressEndpointRow;
+use super::a2a_push_configs::A2aPushConfigRow;
 use super::agent_trigger_deliveries::AgentTriggerDeliveryRow;
 use super::github_app_rows::GitHubAppRow;
 use super::mcp_event_subscriptions::*;
@@ -204,8 +206,8 @@ pub struct InMemoryDatabase {
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
     apps: RwLock<HashMap<Uuid, AppRow>>,
-    // App channels (distribution channels per app)
-    app_channels: RwLock<HashMap<Uuid, AppChannelRow>>,
+    // Agent endpoint rows, keyed by internal id (App-linked compatibility path)
+    endpoint_rows: RwLock<HashMap<Uuid, AgentEndpointRow>>,
     ingress_endpoints: RwLock<HashMap<Uuid, IngressEndpointRow>>,
     // Organization-scoped runtime accounts
     pub(super) virtual_users: RwLock<HashMap<VirtualUserId, VirtualUserRow>>,
@@ -226,6 +228,7 @@ pub struct InMemoryDatabase {
     org_feature_flags: RwLock<HashMap<i64, HashMap<String, bool>>>,
     org_slack_connections: RwLock<HashMap<uuid::Uuid, OrgSlackConnectionRow>>,
     mcp_event_subscriptions: RwLock<HashMap<String, McpEventSubscriptionRow>>,
+    a2a_push_configs: RwLock<Vec<A2aPushConfigRow>>,
     // Generations billed before their usage arrived (EVE-1145).
     usage_generations: RwLock<HashMap<Uuid, late_generation_usage::MemoryUsageGeneration>>,
     agent_trigger_mcp_subscriptions: RwLock<
@@ -382,7 +385,7 @@ impl Default for InMemoryDatabase {
             session_task_messages: RwLock::new(Vec::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
-            app_channels: RwLock::new(HashMap::new()),
+            endpoint_rows: RwLock::new(HashMap::new()),
             ingress_endpoints: RwLock::new(HashMap::new()),
             virtual_users: RwLock::new(HashMap::new()),
             virtual_user_bindings: RwLock::new(HashMap::new()),
@@ -398,6 +401,7 @@ impl Default for InMemoryDatabase {
             org_feature_flags: RwLock::new(HashMap::new()),
             org_slack_connections: RwLock::new(HashMap::new()),
             mcp_event_subscriptions: RwLock::new(HashMap::new()),
+            a2a_push_configs: RwLock::new(Vec::new()),
             usage_generations: RwLock::new(HashMap::new()),
             agent_trigger_mcp_subscriptions: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),

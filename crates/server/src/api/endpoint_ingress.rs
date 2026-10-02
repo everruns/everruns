@@ -50,7 +50,7 @@ pub struct IngressContext {
     pub public_id: AppId,
     pub internal_id: Uuid,
     pub historical_app_id: Option<Uuid>,
-    legacy_app_public_id: Option<String>,
+    legacy_alias_id: Option<String>,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
@@ -68,7 +68,14 @@ pub struct IngressContext {
 
 impl IngressContext {
     pub fn matches_legacy_app_id(&self, legacy_app_id: &str) -> bool {
-        self.legacy_app_public_id.as_deref() == Some(legacy_app_id)
+        match self.legacy_alias_id.as_deref() {
+            Some(legacy) => legacy == legacy_app_id,
+            // An endpoint created through `/v1/agents/{id}/endpoints` never had
+            // an App. Its canonical `/v1/e/{endpoint_id}` routes pass the
+            // synthetic `public_id` derived from the endpoint, which must match
+            // or every such endpoint answers 404.
+            None => self.public_id.to_string() == legacy_app_id,
+        }
     }
 }
 
@@ -79,7 +86,7 @@ impl IngressContext {
             public_id: AppId::from_seed(1),
             internal_id: Uuid::nil(),
             historical_app_id: Some(Uuid::nil()),
-            legacy_app_public_id: Some(AppId::from_seed(1).to_string()),
+            legacy_alias_id: Some(AppId::from_seed(1).to_string()),
             org_id: 1,
             name: name.to_string(),
             description: description.map(str::to_string),
@@ -227,7 +234,7 @@ pub(crate) fn row_to_ingress(
         legacy_auth.map(endpoint_auth_fail_closed)
     };
     let app_public_id = row
-        .legacy_app_public_id
+        .legacy_alias_id
         .as_deref()
         .and_then(|value| value.parse().ok())
         .unwrap_or_else(|| AppId::from_uuid(row.endpoint_id));
@@ -235,7 +242,7 @@ pub(crate) fn row_to_ingress(
         public_id: app_public_id,
         internal_id: row.legacy_app_id.unwrap_or(row.endpoint_id),
         historical_app_id: row.legacy_app_id,
-        legacy_app_public_id: row.legacy_app_public_id,
+        legacy_alias_id: row.legacy_alias_id,
         org_id: row.org_id,
         name: row.agent_name,
         description: row.agent_description,

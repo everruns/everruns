@@ -21,85 +21,100 @@ visible, and a failure carries the runtime's message.
 
 ## Mount it on axum
 
-Map each AG-UI `threadId` to a session, and turn each event into an SSE frame:
+The `ag-ui-axum` feature adds `AgUiHandler`, a ready-made route:
+
+```bash
+cargo add everruns --features ag-ui-axum
+```
 
 ```rust
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::sync::{Arc, Mutex};
-
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
-use axum::response::{IntoResponse, Response};
-use axum::routing::post;
-use axum::{Json, Router};
-use everruns::ag_ui::{AgUiError, AgUiOptions, InterruptGate, RunAgentInput};
-use everruns::{Agent, Engine, OpenAI, Session};
-use futures::StreamExt;
-
-#[derive(Clone)]
-struct App {
-    engine: Engine,
-    gate: InterruptGate,
-    threads: Arc<Mutex<HashMap<String, Session>>>,
-}
-
-impl App {
-    fn session(&self, thread_id: &str) -> Result<Session, Box<dyn std::error::Error>> {
-        let mut threads = self.threads.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(session) = threads.get(thread_id) {
-            return Ok(session.clone());
-        }
-        let agent = Agent::builder()
-            .instructions("You are a helpful assistant.")
-            .provider(OpenAI::from_env()?)
-            .model("gpt-5.6-terra")
-            .ask_user(self.gate.clone())
-            .approver(self.gate.clone())
-            .build()?;
-        let session = self.engine.create(agent);
-        threads.insert(thread_id.to_string(), session.clone());
-        Ok(session)
-    }
-}
-
-async fn ag_ui(State(app): State<App>, Json(input): Json<RunAgentInput>) -> Response {
-    let session = match app.session(&input.thread_id) {
-        Ok(session) => session,
-        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response(),
-    };
-    match session.ag_ui_with(input, AgUiOptions::new().gate(app.gate.clone())).await {
-        Ok(run) => {
-            let events = run.map(|event| {
-                Ok::<_, Infallible>(SseEvent::default().json_data(&event).unwrap_or_default())
-            });
-            Sse::new(events).keep_alive(KeepAlive::default()).into_response()
-        }
-        Err(AgUiError::InvalidInput(why)) => (StatusCode::BAD_REQUEST, why).into_response(),
-        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response(),
-    }
-}
+use axum::Router;
+use everruns::ag_ui::{AgUiHandler, AgUiOptions, AgUiThreads, InterruptGate, StaticToken};
+use everruns::{Agent, Engine, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let app = App {
-        engine: Engine::new(),
-        gate: InterruptGate::new(),
-        threads: Arc::default(),
-    };
-    let router = Router::new().route("/ag-ui", post(ag_ui)).with_state(app);
+    let gate = InterruptGate::new();
+    let agent = Agent::builder()
+        .instructions("You are a helpful assistant.")
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
+        .ask_user(gate.clone())
+        .approver(gate.clone())
+        .build()?;
+    let handler = AgUiHandler::new(
+        AgUiThreads::new(Engine::new(), agent),
+        StaticToken::bearer(std::env::var("AG_UI_TOKEN")?),
+    )
+    .options(AgUiOptions::new().gate(gate));
+    let router = Router::new().route("/ag-ui", handler.route());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
     axum::serve(listener, router).await?;
     Ok(())
 }
 ```
 
-The crate's `ag_ui_axum` example is the same server on the offline simulated
+Each request is authorized, its `threadId` resolved to a session with
+`AgUiThreads` (the first run of a thread creates one from your agent, later
+runs reopen it), and the run streamed as server-sent events: one unnamed
+`data: <json>` event per AG-UI event and a `: keepalive` comment every 15
+seconds. Everything that can fail does so before the stream opens:
+
+| Status | When |
+|---|---|
+| `401` | The authorizer refuses the request. The body is not read. |
+| `400` | The body is not a `RunAgentInput`, the `threadId` is invalid, or the run cannot use the input. |
+| `500` | The thread store or the session failed. The detail is logged, not returned. |
+
+Errors are `application/problem+json`. Once the stream is open, a failure is
+the run's own `RUN_ERROR`. Request bodies are capped by axum's default 2 MB
+limit.
+
+### Authorization
+
+`AgUiHandler::new` takes an authorizer, so an open endpoint is a choice you
+write down:
+
+- `StaticToken::bearer(token)` accepts `Authorization: Bearer <token>`, and
+  `StaticToken::header(name, token)` a custom header. Tokens are compared in
+  constant time; a refusal carries `WWW-Authenticate: Bearer` for the bearer
+  form.
+- `Unauthenticated` accepts everything: for local development, or behind a
+  proxy that already authenticates.
+- Any `Fn(&HeaderMap) -> Result<AgUiCaller, Unauthorized>`, or your own
+  `AgUiAuthorizer` implementation when the check needs to await.
+
+The authorizer returns an `AgUiCaller`. `AgUiCaller::scoped(user_id)` gives
+each caller its own threads, so one user cannot continue another's
+conversation by sending its `threadId`:
+
+```rust
+use axum::http::HeaderMap;
+use everruns::ag_ui::{AgUiCaller, Unauthorized};
+
+// Your proxy has verified the user and set this header.
+let by_user = |headers: &HeaderMap| {
+    headers
+        .get("x-user-id")
+        .and_then(|value| value.to_str().ok())
+        .map(AgUiCaller::scoped)
+        .ok_or_else(Unauthorized::new)
+};
+let handler = AgUiHandler::new(threads, by_user);
+```
+
+### Your own route
+
+On another HTTP server, or to resolve sessions yourself, call
+`Session::ag_ui_with` (or `AgUiThreads::run`) and frame the stream. With
+`ag-ui-axum`, `sse_response(run)` does the framing; without it, each event is
+`serde_json::to_string(&event)` in a `data:` line.
+
+The crate's `ag_ui_axum` example is the handler on the offline simulated
 model:
 
 ```bash
-cargo run -p everruns --features ag-ui --example ag_ui_axum
+cargo run -p everruns --features ag-ui-axum --example ag_ui_axum
 ```
 
 Point any AG-UI client at the route:
@@ -107,8 +122,65 @@ Point any AG-UI client at the route:
 ```ts
 import { HttpAgent } from "@ag-ui/client";
 
-const agent = new HttpAgent({ url: "http://127.0.0.1:3000/ag-ui" });
+const agent = new HttpAgent({
+  url: "http://127.0.0.1:3000/ag-ui",
+  headers: { Authorization: `Bearer ${token}` },
+});
 ```
+
+## Threads across restarts
+
+`AgUiThreads::new` keeps its thread map in memory. To keep threads when the
+process restarts, keep both halves on disk: the sessions, with an agent on the
+`local` backend, and the map, with `SqliteThreadStore` (both need the `local`
+feature):
+
+```rust
+use everruns::ag_ui::{AgUiThreads, SqliteThreadStore};
+use everruns::{Agent, Engine, LocalConfig, OpenAI};
+
+let config = LocalConfig::new("/var/lib/my-app");
+let agent = Agent::builder()
+    .instructions("You are a helpful assistant.")
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
+    .local(config.clone())
+    .build()?;
+let threads = AgUiThreads::with_store(Engine::new(), agent, SqliteThreadStore::local(&config)?);
+```
+
+After a restart the next run of a thread reopens its session, history
+included. Implement `ThreadStore` to keep the map in your own database
+instead.
+
+A thread id is chosen by the client, and anyone who knows one continues that
+conversation. When one server serves several users, scope threads to the
+authenticated caller: `AgUiCaller::scoped` does it in `AgUiHandler`, and
+`run_in` on your own route:
+
+```rust
+let run = app.threads.run_in(&user_id, input, options).await?;
+```
+
+Thread ids must be 1 to 128 characters of `[A-Za-z0-9-_.]`; anything else is
+`AgUiError::InvalidInput`.
+
+## History the client already has
+
+A client such as CopilotKit keeps the conversation and sends all of it with
+every run. When a thread is new to the server, for example after a restart
+without a durable backend, `AgUiThreads` records the input's earlier user and
+assistant messages as the new session's history before the run's user message,
+so the agent picks up where the conversation was. Once the session has
+history, the earlier messages are not read again: the session's own
+conversation wins.
+
+Only user and assistant text is seeded (an assistant's tool calls as text);
+`tool`, `system`, `developer`, activity and reasoning messages are not. The
+most recent 256 messages and 512 KiB of text are kept. On a session you
+resolve yourself, turn it on with `AgUiOptions::seed_history(true)` for a
+thread's first run. The client writes these messages, assistant turns
+included, so treat them as no more trusted than the user message.
 
 ## Questions and approvals become interrupts
 
@@ -134,8 +206,11 @@ it does when a new message arrives while one is open. An entry that cannot be
 applied returns `AgUiError::InvalidInput` before the stream opens, and nothing
 is resolved.
 
-Parked requests live in memory. If the process exits, the waiting turn ends
-cancelled.
+Parked requests live in memory. If the process exits, the waiting turn is left
+unfinished in the session's log; after a restart,
+`Session::resume_interrupted_turn` runs its waiting calls again, so they park
+on the gate anew and a client's resume run can answer them (see
+[session history](/framework/session-history/)).
 
 ## Policy
 
@@ -156,10 +231,51 @@ let options = AgUiOptions::new().policy(ProjectionPolicy {
 ## What a run reads from the input
 
 The session owns the conversation, so only the last message is sent, and it
-must be a user message (its text parts). Earlier messages, `state`, `context`,
-`forwardedProps`, and frontend `tools` are not read; frontend tools are a
-planned addition. `RUN_STARTED` carries `protocolVersion: "1.0"` only when the
-request declared a version, so pre-1.0 clients see the stream they expect.
+must be a user message (its text parts), unless the run carries frontend tool
+results (below). Earlier messages are read only to seed a new thread (above);
+`state` and `forwardedProps` are not read. `RUN_STARTED` carries `protocolVersion: "1.0"` only when the request
+declared a version, so pre-1.0 clients see the stream they expect.
+
+## Frontend tools
+
+The input's `tools` are tools your page runs, such as a confirmation dialog or
+a navigation action. Each run makes them the session's client-side tools, so
+send them on every run; the latest set wins. When the model calls one, the
+turn parks and the run streams the call as `TOOL_CALL_START`, `TOOL_CALL_ARGS`
+and `TOOL_CALL_END` with its name and arguments, then finishes in success with
+`outcome.pendingToolCallIds`.
+
+Run the calls in the page, then post the next run with their results as
+trailing `tool` messages (`toolCallId` set, `content` the result, `error` for
+a failure). The same turn continues and the run streams the rest of it. A
+result for a call that is not parked is ignored. Until every parked call has a
+result, nothing is recorded and the run reports the calls again, as it does
+when a new user message arrives instead.
+
+Definitions are bounded: at most 64 tools, names matching
+`^[A-Za-z0-9_-]{1,64}$`, descriptions up to 4096 characters, parameter
+schemas up to 16 KiB, results up to 256 KiB. Names starting with `mcp_` are
+refused. Parked calls live in memory: if the process exits, they stay
+unanswered.
+
+`system` and `developer` messages and `context` entries are ignored by
+default, and a system message after the user message is refused. If your
+server authenticates whoever posts the input, you can let each run carry
+instructions:
+
+```rust
+use everruns::ag_ui::AgUiOptions;
+
+let options = AgUiOptions::new().input_instructions(true);
+```
+
+Each run's system and developer messages, in order, then its context entries,
+are then appended to the agent's instructions for that run. They may appear
+anywhere in `messages`, including after the user message, which stays the
+run's input. The next run replaces them with its own, and a run with none
+clears them; they never enter the conversation history. Leave this off for
+callers you do not trust: these messages carry the authority of the system
+prompt.
 
 A [serve](/framework/serve/#ag-ui-and-copilotkit) app gets this route built
 in with its `ag-ui` feature, at `/v1/e/{agent}/ag-ui`. For a hosted agent with

@@ -62,45 +62,193 @@
 //! # What the input carries
 //!
 //! The [`Session`] owns the conversation, so a run sends only the input's
-//! last message, which must be a user message's text. Earlier messages,
-//! `state`, `context`, `forwardedProps` and frontend `tools` are not read.
-//! Map `threadId` to a session yourself (one session per thread); the run
-//! does not check it.
+//! last message, which must be a user message's text, or the trailing
+//! `tool` messages that answer its frontend tool calls (below). Earlier
+//! messages, `state` and `forwardedProps` are not read, and neither are
+//! `system` and `developer` messages or `context` unless the host trusts
+//! them (below). The run does not read `threadId`: [`AgUiThreads`] maps
+//! each thread to a session (one per thread, kept in a [`ThreadStore`]), or
+//! map them yourself. A thread's first run can carry the client's earlier
+//! messages into the new session with [`AgUiOptions::seed_history`].
+//!
+//! # Frontend tools
+//!
+//! The input's `tools` are tools the client runs. Each run sets them as the
+//! session's client-side tools, so the latest set wins. When the model calls
+//! one, the turn parks: the run streams `TOOL_CALL_START`/`ARGS`/`END` with
+//! the call's name and arguments under the assistant message that made it,
+//! and finishes in success with `pendingToolCallIds` (or with the interrupt
+//! outcome, the calls beside it, when an interrupt is open too). The next
+//! run's trailing `tool` messages are the results: they continue the same
+//! turn, and the run streams the rest of it. A result for a call that is not
+//! parked is ignored and logged; while a parked call has no result, nothing
+//! is recorded and the run reports the calls again, as it does when a new
+//! user message arrives instead. Definitions are bounded (64 tools, names
+//! `^[A-Za-z0-9_-]{1,64}$`, 4096-character descriptions, 16 KiB schemas,
+//! 256 KiB results) and the reserved `mcp_` prefix is refused. Parked calls
+//! live in memory: a process exit leaves them unanswered.
+//!
+//! ```
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use everruns::ag_ui::wire::RunFinishedOutcome;
+//! use everruns::ag_ui::{Event, Message, RunAgentInput};
+//! use everruns::{Agent, Engine, LlmSimConfig, Model, ToolCall};
+//! use futures::StreamExt;
+//!
+//! let model = Model::simulated_with_config(
+//!     LlmSimConfig::fixed("Done.").with_tool_call_sequence(vec![
+//!         vec![ToolCall {
+//!             id: "call_1".into(),
+//!             name: "confirm".into(),
+//!             arguments: serde_json::json!({}),
+//!         }],
+//!         vec![],
+//!     ]),
+//! );
+//! let agent = Agent::builder().instructions("Confirm first.").model(model).build()?;
+//! let session = Engine::new().create(agent);
+//! let tools = vec![serde_json::from_value(serde_json::json!({
+//!     "name": "confirm",
+//!     "description": "Ask the person to confirm.",
+//! }))?];
+//!
+//! let first = RunAgentInput {
+//!     messages: vec![Message::user("m1", "Deploy.")],
+//!     tools: tools.clone(),
+//!     ..RunAgentInput::default()
+//! };
+//! let events: Vec<Event> = session.ag_ui(first).await?.collect().await;
+//! let Some(Event::RunFinished(finished)) = events.last() else { panic!() };
+//! assert_eq!(
+//!     finished.outcome,
+//!     Some(RunFinishedOutcome::Success {
+//!         pending_tool_call_ids: Some(vec!["call_1".into()]),
+//!     })
+//! );
+//!
+//! let second = RunAgentInput {
+//!     messages: vec![serde_json::from_value(serde_json::json!({
+//!         "id": "t1", "role": "tool", "toolCallId": "call_1", "content": "yes",
+//!     }))?],
+//!     tools,
+//!     ..RunAgentInput::default()
+//! };
+//! let events: Vec<Event> = session.ag_ui(second).await?.collect().await;
+//! assert!(events.iter().any(|event| matches!(event, Event::TextMessageContent(_))));
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Trusted instructions
+//!
+//! A host that owns both ends, or authenticates whoever posts the input, can
+//! let each run carry instructions with [`AgUiOptions::input_instructions`].
+//! The run's `system` and `developer` messages, then its `context` entries,
+//! become additional system instructions for that run, after the agent's
+//! own; the next run replaces them with its own (or none). Such messages may
+//! sit anywhere in `messages`, including after the user message, which stays
+//! the run's input. Leave it off for a caller you do not trust: these
+//! messages speak with the system prompt's authority.
+//!
+//! ```
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use everruns::ag_ui::{AgUiOptions, Message, RunAgentInput, wire};
+//! use everruns::{Agent, Engine, Model};
+//! use futures::StreamExt;
+//!
+//! let agent = Agent::builder()
+//!     .instructions("Be brief.")
+//!     .model(Model::simulated("ok"))
+//!     .build()?;
+//! let session = Engine::new().create(agent);
+//! let input = RunAgentInput {
+//!     messages: vec![
+//!         Message::user("m1", "Hi"),
+//!         Message::System(wire::TextOnlyMessage {
+//!             id: "s1".into(),
+//!             content: "You are the release coworker.".into(),
+//!             ..Default::default()
+//!         }),
+//!     ],
+//!     ..RunAgentInput::default()
+//! };
+//! let options = AgUiOptions::new().input_instructions(true);
+//! let _events: Vec<_> = session.ag_ui_with(input, options).await?.collect().await;
+//! assert!(session.inspect().await?.instructions.contains("release coworker"));
+//! # Ok(())
+//! # }
+//! ```
 
 // Decision: an in-process responder blocks the turn rather than parking it
 // durably, so interrupts need a host-side bridge. `InterruptGate` is that
 // bridge, built like `serve`'s gate: it parks each request under (session,
 // tool call id) until a resume entry answers it. The turn stays alive in the
 // process between the interrupted run and the resuming one; a process restart
-// cancels it, which the runtime records as a cancelled turn.
+// leaves it unfinished in the log, and `Session::resume_interrupted_turn` runs
+// its waiting calls again so they park on the gate anew.
 //
 // Decision: `InterruptSource` is the seam between a run and whatever parks
 // requests. `serve` implements it over the pending approvals and questions
 // its `/v1` API already answers, so one responder serves both APIs and an
 // AG-UI client and a `/question-answers` caller see the same request.
 //
-// Decision: no axum handler here. The facade carries no HTTP server
-// dependency, and the handler is five lines over `AgUiStream` (see the public
-// docs page `framework/ag-ui`).
+// Decision: `ag-ui` carries no HTTP server dependency. The ready-made axum
+// route (`AgUiHandler`, `sse_response`) sits behind `ag-ui-axum`, in
+// `ag_ui/handler.rs`.
+//
+// Decision: frontend tools are the session's client-side tools, as on the
+// server. The in-process runtime parks a turn on a call to one and keeps its
+// resume state (`InProcessRuntime::resume_steerable_turn`), so the next run's
+// results continue the same turn instead of starting one with a synthetic
+// message. A run that sees the calls requested waits for the turn to record
+// the park before it ends, so the next run always finds it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
+use everruns_ag_ui::{Tool as WireTool, ToolCall as WireToolCall};
+use everruns_core::events::{ToolCallRequestedData, ToolCompletedData};
+use everruns_core::message::ContentPart;
+use everruns_host::ParkedToolCalls;
+use everruns_provider::tool_types::ClientSideTool;
 use futures::{Stream, StreamExt};
-use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::{broadcast, oneshot, watch};
 
 use crate::approval::{ApprovalDecision, ToolApprover};
 use crate::ask_user::{
     Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, QuestionKind, Status,
 };
+use crate::session::SessionOverrides;
 use crate::{
     EventStream, EventStreamError, RunError, SentMessage, Session, SessionId, ToolCall,
     ToolDefinition,
+};
+
+mod frontend_tools;
+#[cfg(feature = "ag-ui-axum")]
+mod handler;
+mod seed;
+mod shapes;
+mod threads;
+
+use frontend_tools::{frontend_definitions, trailing_results};
+
+#[cfg(feature = "ag-ui-axum")]
+pub use handler::{
+    AgUiAuthorizer, AgUiCaller, AgUiHandler, SSE_KEEPALIVE, StaticToken, Unauthenticated,
+    Unauthorized, sse_response,
+};
+pub use shapes::{approval_decision, approval_interrupt, question_interrupt, question_outcome};
+#[cfg(feature = "local")]
+pub use threads::SqliteThreadStore;
+pub use threads::{
+    AgUiThreads, InMemoryThreadStore, ThreadError, ThreadSession, ThreadStore, ThreadStoreError,
 };
 
 pub use everruns_ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure};
@@ -165,6 +313,8 @@ pub enum AgUiError {
     InvalidInput(String),
     /// The session refused the message.
     Run(RunError),
+    /// [`AgUiThreads`] could not resolve the thread to a session.
+    Thread(ThreadError),
 }
 
 impl std::fmt::Display for AgUiError {
@@ -172,6 +322,7 @@ impl std::fmt::Display for AgUiError {
         match self {
             Self::InvalidInput(why) => write!(f, "invalid AG-UI input: {why}"),
             Self::Run(error) => write!(f, "{error}"),
+            Self::Thread(error) => write!(f, "{error}"),
         }
     }
 }
@@ -181,6 +332,7 @@ impl std::error::Error for AgUiError {
         match self {
             Self::InvalidInput(_) => None,
             Self::Run(error) => Some(error),
+            Self::Thread(error) => Some(error),
         }
     }
 }
@@ -212,6 +364,8 @@ fn invalid(why: impl Into<String>) -> AgUiError {
 pub struct AgUiOptions {
     policy: ProjectionPolicy,
     interrupts: Option<Arc<dyn InterruptSource>>,
+    input_instructions: bool,
+    seed_history: bool,
 }
 
 impl std::fmt::Debug for AgUiOptions {
@@ -219,6 +373,8 @@ impl std::fmt::Debug for AgUiOptions {
         f.debug_struct("AgUiOptions")
             .field("policy", &self.policy)
             .field("interrupts", &self.interrupts.is_some())
+            .field("input_instructions", &self.input_instructions)
+            .field("seed_history", &self.seed_history)
             .finish()
     }
 }
@@ -282,6 +438,79 @@ impl AgUiOptions {
         self.interrupts = Some(Arc::new(source));
         self
     }
+
+    /// Trust the input's `system` and `developer` messages and `context`
+    /// entries as instructions for the run. Off by default.
+    ///
+    /// When on, every run sets the session's run instructions from its own
+    /// input: those messages in order, then the context entries, appended
+    /// after the agent's instructions. A run that carries none clears the
+    /// previous run's. System and developer messages may appear anywhere in
+    /// `messages`, including after the user message the run sends. The
+    /// instructions stay on the session until the next run replaces them, so
+    /// a turn started with [`Session::send`] in between sees them too.
+    ///
+    /// Turn it on only when the host authenticates whoever posts the input:
+    /// these messages carry the system prompt's authority, so an untrusted
+    /// caller could rewrite the agent's rules. When off, they are ignored and
+    /// a message after the user message is refused.
+    ///
+    /// ```
+    /// let options = everruns::ag_ui::AgUiOptions::new().input_instructions(true);
+    /// # let _ = options;
+    /// ```
+    pub fn input_instructions(mut self, trusted: bool) -> Self {
+        self.input_instructions = trusted;
+        self
+    }
+
+    /// Record the input's earlier user and assistant messages as the
+    /// session's prior history when it has none yet. Off by default;
+    /// [`AgUiThreads`] turns it on for each thread it creates. Messages
+    /// before the run's user message are recorded in order (assistant tool
+    /// calls as text; `tool`, `system`, `developer`, activity and reasoning
+    /// messages never), keeping the newest 256 and 512 KiB. They are client
+    /// text, assistant turns included: no more trusted than the user message.
+    ///
+    /// ```
+    /// let options = everruns::ag_ui::AgUiOptions::new().seed_history(true);
+    /// # let _ = options;
+    /// ```
+    pub fn seed_history(mut self, seed: bool) -> Self {
+        self.seed_history = seed;
+        self
+    }
+}
+
+/// A run's trusted instructions: its `system` and `developer` messages in
+/// order, then its `context` entries. `None` when it carries none.
+fn input_instructions(input: &RunAgentInput) -> Option<String> {
+    let mut parts: Vec<String> = input
+        .messages
+        .iter()
+        .filter_map(|message| match message {
+            Message::System(message) | Message::Developer(message) => Some(message.content.trim()),
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+        .collect();
+    let context: Vec<String> = input
+        .context
+        .iter()
+        .filter(|entry| !entry.value.trim().is_empty())
+        .map(|entry| match entry.description.trim() {
+            "" => entry.value.trim().to_string(),
+            description => format!("{description}:\n{}", entry.value.trim()),
+        })
+        .collect();
+    if !context.is_empty() {
+        parts.push(format!(
+            "Context from the application:\n\n{}",
+            context.join("\n\n")
+        ));
+    }
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
 // --- Interrupt gate -----------------------------------------------------------
@@ -671,395 +900,6 @@ impl ToolApprover for InterruptGate {
     }
 }
 
-// --- Interrupt and answer shapes ------------------------------------------------
-
-/// The interrupt an `ask_user` question set becomes.
-///
-/// Its id is the tool call id. A set with a `secret` question gets
-/// [`SECRET_REASON`] and no schema; any other gets [`ASK_USER_REASON`], the
-/// questions as prose in `message`, the questions themselves under
-/// `metadata.everruns.questions`, and a `responseSchema` for the answer.
-///
-/// ```
-/// use everruns::ag_ui::{ASK_USER_REASON, question_interrupt};
-/// use everruns::ask_user::Question;
-///
-/// let questions: Vec<Question> = serde_json::from_value(serde_json::json!([{
-///     "id": "target",
-///     "header": "Target",
-///     "question": "Where should I deploy?",
-///     "options": [
-///         { "label": "Staging", "description": "Safe" },
-///         { "label": "Production", "description": "Live" },
-///     ],
-/// }]))?;
-/// let interrupt = question_interrupt("call_1", &questions);
-/// assert_eq!(interrupt.id, "call_1");
-/// assert_eq!(interrupt.reason, ASK_USER_REASON);
-/// assert!(interrupt.response_schema.is_some());
-/// # Ok::<(), serde_json::Error>(())
-/// ```
-pub fn question_interrupt(tool_call_id: &str, questions: &[Question]) -> Interrupt {
-    let secret = questions
-        .iter()
-        .any(|question| question.kind == QuestionKind::Secret);
-    let message = questions
-        .iter()
-        .map(|question| question.question.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let mut interrupt = Interrupt {
-        message: Some(message),
-        ..Interrupt::new(
-            tool_call_id,
-            if secret {
-                SECRET_REASON
-            } else {
-                ASK_USER_REASON
-            },
-        )
-    };
-    if !secret {
-        interrupt.response_schema = as_object(answer_schema(tool_call_id, questions));
-        interrupt.metadata = Some(everruns_metadata(json!({ "questions": questions })));
-    }
-    interrupt
-}
-
-/// The interrupt a tool call waiting on approval becomes.
-///
-/// Its id and `toolCallId` are the call's id; `metadata.everruns` carries the
-/// tool name and arguments so the client can show what it approves.
-///
-/// ```
-/// use everruns::ToolCall;
-/// use everruns::ag_ui::{TOOL_APPROVAL_REASON, approval_interrupt};
-///
-/// let call = ToolCall {
-///     id: "call_1".into(),
-///     name: "deploy".into(),
-///     arguments: serde_json::json!({ "env": "production" }),
-/// };
-/// let interrupt = approval_interrupt(&call);
-/// assert_eq!(interrupt.reason, TOOL_APPROVAL_REASON);
-/// assert_eq!(interrupt.tool_call_id.as_deref(), Some("call_1"));
-/// ```
-pub fn approval_interrupt(call: &ToolCall) -> Interrupt {
-    Interrupt {
-        message: Some(format!("Allow the agent to run {}?", call.name)),
-        tool_call_id: Some(call.id.clone()),
-        response_schema: as_object(json!({
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["decision"],
-            "properties": {
-                "decision": {
-                    "enum": ["allow", "allow_always", "reject", "reject_always"],
-                    "description": "`*_always` applies to every later call of this tool in the session.",
-                },
-            },
-        })),
-        metadata: Some(everruns_metadata(json!({
-            "tool": call.name,
-            "arguments": call.arguments,
-        }))),
-        ..Interrupt::new(call.id.clone(), TOOL_APPROVAL_REASON)
-    }
-}
-
-/// The question-answers body an `ask_user` resume entry carries.
-#[derive(Deserialize)]
-struct QuestionAnswers {
-    #[serde(default)]
-    tool_call_id: Option<String>,
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    answers: Vec<SubmittedAnswer>,
-}
-
-#[derive(Deserialize)]
-struct SubmittedAnswer {
-    id: String,
-    #[serde(default)]
-    selected: Vec<String>,
-    #[serde(default)]
-    other_text: Option<String>,
-}
-
-/// The [`Outcome`] a resume entry answers an `ask_user` interrupt with.
-///
-/// An abandoned entry declines the set. A resolved entry's payload is the
-/// question-answers body the interrupt's `responseSchema` describes, checked
-/// against the questions asked: every question answered once, only offered
-/// options, one selection on a single-select question. A credential is never
-/// accepted.
-///
-/// ```
-/// use everruns::ag_ui::{ResumeEntry, ResumeStatus, question_outcome};
-/// use everruns::ask_user::{Question, Status};
-///
-/// let questions: Vec<Question> = serde_json::from_value(serde_json::json!([{
-///     "id": "target",
-///     "header": "Target",
-///     "question": "Where should I deploy?",
-///     "options": [
-///         { "label": "Staging", "description": "Safe" },
-///         { "label": "Production", "description": "Live" },
-///     ],
-/// }]))?;
-/// let entry = ResumeEntry {
-///     interrupt_id: "call_1".into(),
-///     status: ResumeStatus::Resolved,
-///     payload: Some(serde_json::json!({
-///         "answers": [{ "id": "target", "selected": ["Staging"] }],
-///     })),
-///     metadata: None,
-/// };
-/// let outcome = question_outcome(&entry, "call_1", &questions)?;
-/// assert_eq!(outcome.status, Status::Answered);
-/// assert_eq!(outcome.answers[0].selected, ["Staging"]);
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-///
-/// # Errors
-///
-/// [`AgUiError::InvalidInput`] when the payload is missing, malformed, names
-/// another question set, or does not answer the questions asked.
-pub fn question_outcome(
-    entry: &ResumeEntry,
-    tool_call_id: &str,
-    questions: &[Question],
-) -> Result<Outcome, AgUiError> {
-    let declined = Outcome {
-        status: Status::Declined,
-        answered_by: AnsweredBy::User,
-        answers: Vec::new(),
-    };
-    if entry.status == ResumeStatus::Cancelled {
-        return Ok(declined);
-    }
-    if questions
-        .iter()
-        .any(|question| question.kind == QuestionKind::Secret)
-    {
-        return Err(invalid(
-            "a credential cannot be sent over AG-UI; abandon the interrupt instead",
-        ));
-    }
-    let payload = entry
-        .payload
-        .clone()
-        .ok_or_else(|| invalid("a resolved entry needs a payload"))?;
-    let body: QuestionAnswers = serde_json::from_value(payload)
-        .map_err(|error| invalid(format!("invalid ask_user answer: {error}")))?;
-    if body
-        .tool_call_id
-        .as_deref()
-        .is_some_and(|id| id != tool_call_id)
-    {
-        return Err(invalid("the answer names a different question set"));
-    }
-    match body.status.as_deref() {
-        None | Some("answered") => {}
-        Some("declined") => return Ok(declined),
-        Some(other) => return Err(invalid(format!("unknown answer status {other:?}"))),
-    }
-    let answers: Vec<Answer> = body
-        .answers
-        .into_iter()
-        .map(|answer| Answer {
-            id: answer.id,
-            selected: answer.selected,
-            other_text: answer.other_text,
-            secret_ref: None,
-        })
-        .collect();
-    validate_answers(questions, &answers).map_err(AgUiError::InvalidInput)?;
-    Ok(Outcome {
-        status: Status::Answered,
-        answered_by: AnsweredBy::User,
-        answers,
-    })
-}
-
-/// The decision a resume entry answers a tool-approval interrupt with.
-///
-/// An abandoned entry rejects the call; a resolved one reads
-/// `payload.decision`.
-///
-/// ```
-/// use everruns::ag_ui::{ResumeEntry, ResumeStatus, approval_decision};
-/// use everruns::approval::ApprovalDecision;
-///
-/// let entry = ResumeEntry {
-///     interrupt_id: "call_1".into(),
-///     status: ResumeStatus::Resolved,
-///     payload: Some(serde_json::json!({ "decision": "allow" })),
-///     metadata: None,
-/// };
-/// assert_eq!(approval_decision(&entry)?, ApprovalDecision::Allow);
-/// # Ok::<(), everruns::ag_ui::AgUiError>(())
-/// ```
-///
-/// # Errors
-///
-/// [`AgUiError::InvalidInput`] when a resolved entry has no known decision.
-pub fn approval_decision(entry: &ResumeEntry) -> Result<ApprovalDecision, AgUiError> {
-    if entry.status == ResumeStatus::Cancelled {
-        return Ok(ApprovalDecision::Reject);
-    }
-    let decision = entry
-        .payload
-        .as_ref()
-        .and_then(|payload| payload.get("decision"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| invalid("a tool approval needs a decision"))?;
-    match decision {
-        "allow" => Ok(ApprovalDecision::Allow),
-        "allow_always" => Ok(ApprovalDecision::AllowAlways),
-        "reject" => Ok(ApprovalDecision::Reject),
-        "reject_always" => Ok(ApprovalDecision::RejectAlways),
-        other => Err(invalid(format!("unknown decision {other:?}"))),
-    }
-}
-
-/// The JSON Schema of an `ask_user` answer: the same shape the Everruns
-/// server advertises for its question-answers request.
-fn answer_schema(tool_call_id: &str, questions: &[Question]) -> Value {
-    let answers: Vec<Value> = questions
-        .iter()
-        .map(|question| {
-            let mut properties = serde_json::Map::new();
-            properties.insert(
-                "id".to_string(),
-                json!({ "const": question.id.clone().unwrap_or_default() }),
-            );
-            if question.kind == QuestionKind::Text {
-                properties.insert(
-                    "other_text".to_string(),
-                    json!({ "type": "string", "description": "The free-form answer." }),
-                );
-                return json!({
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["id", "other_text"],
-                    "properties": properties,
-                    "description": question.question,
-                });
-            }
-            let labels: Vec<&str> = question
-                .options
-                .iter()
-                .map(|option| option.label.as_str())
-                .collect();
-            let mut selected = json!({ "type": "array", "items": { "enum": labels } });
-            if !question.multi_select
-                && let Some(object) = selected.as_object_mut()
-            {
-                object.insert("maxItems".to_string(), json!(1));
-            }
-            properties.insert("selected".to_string(), selected);
-            if question.allow_other {
-                properties.insert(
-                    "other_text".to_string(),
-                    json!({
-                        "type": ["string", "null"],
-                        "description": "Free text, when none of the options fit.",
-                    }),
-                );
-            }
-            json!({
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["id"],
-                "properties": properties,
-                "description": question.question,
-            })
-        })
-        .collect();
-    json!({
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["answers"],
-        "properties": {
-            "tool_call_id": { "const": tool_call_id },
-            "status": {
-                "enum": ["answered", "declined"],
-                "default": "answered",
-                "description": "`declined` is a finished decision the agent must not re-ask.",
-            },
-            "answers": {
-                "type": "array",
-                "minItems": answers.len(),
-                "maxItems": answers.len(),
-                "description": "One answer per asked question, in any order.",
-                "items": { "oneOf": answers },
-            },
-        },
-    })
-}
-
-/// Every question answered once, with offered options only, as the Everruns
-/// server checks a question-answers request.
-fn validate_answers(questions: &[Question], answers: &[Answer]) -> Result<(), String> {
-    for answer in answers {
-        if !questions
-            .iter()
-            .any(|question| question.id.as_deref() == Some(answer.id.as_str()))
-        {
-            return Err(format!("no question with id {:?} was asked", answer.id));
-        }
-    }
-    for question in questions {
-        let id = question.id.as_deref().unwrap_or_default();
-        let mut matching = answers.iter().filter(|answer| answer.id == id);
-        let answer = matching
-            .next()
-            .ok_or_else(|| format!("question {id:?} was not answered"))?;
-        if matching.next().is_some() {
-            return Err(format!("question {id:?} was answered more than once"));
-        }
-        for label in &answer.selected {
-            if !question.options.iter().any(|option| &option.label == label) {
-                return Err(format!(
-                    "question {id:?} was not asked with option {label:?}"
-                ));
-            }
-        }
-        let other = answer
-            .other_text
-            .as_deref()
-            .map(str::trim)
-            .filter(|text| !text.is_empty());
-        if other.is_some() && question.kind != QuestionKind::Text && !question.allow_other {
-            return Err(format!("question {id:?} does not allow free text"));
-        }
-        if answer.selected.is_empty() && other.is_none() {
-            return Err(format!("question {id:?} has no selection and no free text"));
-        }
-        if !question.multi_select && answer.selected.len() > 1 {
-            return Err(format!("question {id:?} is single-select"));
-        }
-    }
-    Ok(())
-}
-
-fn as_object(value: Value) -> Option<serde_json::Map<String, Value>> {
-    match value {
-        Value::Object(map) => Some(map),
-        _ => None,
-    }
-}
-
-/// Our keys go under `everruns`; `ag-ui` is reserved for the protocol.
-fn everruns_metadata(value: Value) -> everruns_ag_ui::Metadata {
-    let mut metadata = everruns_ag_ui::Metadata::new();
-    metadata.insert("everruns".to_string(), value);
-    metadata
-}
-
 // --- The run ------------------------------------------------------------------
 
 /// The events of one AG-UI run: `RUN_STARTED`, the projected run, and
@@ -1174,10 +1014,11 @@ impl Stream for AgUiStream {
 
 /// How the run begins, decided before the stream opens.
 enum Start {
-    /// A message started or steered a turn; stream it.
+    /// A message started or steered a turn, or results resumed one; stream
+    /// it.
     Follow,
-    /// The run ends at once with these interrupts.
-    Interrupt(Vec<Interrupt>),
+    /// The run ends at once with these frontend calls and interrupts.
+    Park(Vec<WireToolCall>, Vec<Interrupt>),
     /// Nothing to run: finish empty.
     Empty,
 }
@@ -1190,6 +1031,12 @@ struct RunState {
     projector: Projector,
     /// Highest durable sequence seen, for recovering from lag.
     last_sequence: Option<i32>,
+    /// This run's frontend tool names.
+    frontend: HashSet<String>,
+    /// The session's parked client-side calls, updated as each turn ends.
+    parked_calls: watch::Receiver<Option<ParkedToolCalls>>,
+    /// Frontend calls the turn requested, waiting for it to park on them.
+    awaiting: Option<Vec<WireToolCall>>,
 }
 
 impl Session {
@@ -1236,11 +1083,16 @@ impl Session {
     /// AG-UI run.
     ///
     /// Without resume entries, the input's last message must be a user
-    /// message; its text starts a turn, or steers the running one. With
+    /// message (system and developer messages after it are skipped when
+    /// [`AgUiOptions::input_instructions`] is on); its text starts a turn,
+    /// or steers the running one. With
     /// resume entries and a [gate](AgUiOptions::gate), the entries answer the
     /// session's open interrupts and the run streams the rest of the parked
     /// turn. A run that would start while interrupts are open, or a resume
     /// that leaves one unanswered, ends at once with the interrupts again.
+    /// The input's `tools` become the session's frontend tools, and trailing
+    /// `tool` messages answer the calls to them the turn parked on (see
+    /// [Frontend tools](crate::ag_ui#frontend-tools)).
     ///
     /// `RUN_STARTED` carries `protocolVersion: "1.0"` only when the input
     /// declared a version, so a pre-1.0 client sees the stream it expects.
@@ -1278,9 +1130,10 @@ impl Session {
     /// # Errors
     ///
     /// [`AgUiError::InvalidInput`] when the input has neither a trailing user
-    /// message nor resume entries, or an entry cannot be applied (nothing is
-    /// resolved then); [`AgUiError::Run`] when the session refuses the
-    /// message.
+    /// message nor resume entries nor trailing tool results, a frontend tool
+    /// definition or result is out of bounds, or an entry cannot be applied
+    /// (nothing is resolved then); [`AgUiError::Run`] when the session
+    /// refuses the message.
     pub async fn ag_ui_with(
         &self,
         input: RunAgentInput,
@@ -1289,19 +1142,100 @@ impl Session {
         let AgUiOptions {
             policy,
             interrupts: gate,
+            input_instructions: trusted,
+            seed_history,
         } = options;
         let session_id = self.session_id();
+        let frontend_tools = frontend_definitions(&input.tools)?;
+        let frontend: HashSet<String> = input.tools.iter().map(|tool| tool.name.clone()).collect();
+        let results = trailing_results(&input.messages);
+        // A resuming run (AG-UI 1.0) answers the interrupts or frontend tool
+        // calls that ended the last one and starts no new turn, so it needs
+        // no trailing user message.
+        let resuming = !input.resume.is_empty() || !results.is_empty();
+        // A trusted run's system and developer messages are instructions,
+        // not the conversation: the input is the last message of any other
+        // role.
+        let trigger = if !resuming {
+            let last = input.messages.iter().rposition(|message| {
+                !(trusted && matches!(message, Message::System(_) | Message::Developer(_)))
+            });
+            Some(match last.map(|index| (index, &input.messages[index])) {
+                Some((index, Message::User(message))) => (index, message.content.to_text()),
+                Some(_) => return Err(invalid("the final AG-UI message must have role=user")),
+                None => {
+                    return Err(invalid(
+                        "messages must contain at least one user message, or resume entries",
+                    ));
+                }
+            })
+        } else {
+            None
+        };
+        // The consumer sends its frontend tools on every run, so the session
+        // takes the latest set; a session that never had any is left alone.
+        let client_tools =
+            (!frontend_tools.is_empty() || self.had_client_tools()).then_some(frontend_tools);
+        if trusted || client_tools.is_some() {
+            self.override_record(SessionOverrides {
+                instructions: trusted.then(|| input_instructions(&input)),
+                client_tools,
+            })
+            .await?;
+        }
+        // Seed before subscribing, so the seeded history is not streamed as
+        // this run's output, and before the user message is sent.
+        if seed_history && let Some((index, _)) = &trigger {
+            let earlier = seed::seed_messages(&input.messages[..*index]);
+            if !earlier.is_empty() && !self.seed_history(earlier).await? {
+                tracing::debug!(
+                    session_id = %session_id,
+                    "AG-UI session already has history; not seeding"
+                );
+            }
+        }
         // Subscribe before anything can happen, so no event of this run and
         // no park is missed.
         let events = self.events();
         let parked = gate.as_ref().map(|gate| gate.subscribe());
+        let parked_calls = self.watch_parked_tool_calls();
+        let open_interrupts = || {
+            gate.as_ref()
+                .map(|gate| gate.interrupts(session_id))
+                .unwrap_or_default()
+        };
 
         let mut sent = None;
-        let start = if !input.resume.is_empty() {
+        let start = if let Some((_, text)) = trigger {
+            let open = open_interrupts();
+            let pending = self.pending_frontend_calls(&frontend);
+            if open.is_empty() && pending.is_empty() {
+                if text.trim().is_empty() {
+                    return Err(invalid("the user message has no text"));
+                }
+                sent = Some(self.send(text.as_str()).await?);
+                Start::Follow
+            } else {
+                // AG-UI 1.0: an interrupt without an answer is not abandoned;
+                // ask again instead of running past it. A parked frontend
+                // call without a result is reported again the same way.
+                Start::Park(pending, open)
+            }
+        } else if input.resume.is_empty() {
+            self.submit_frontend_results(&frontend, results, open_interrupts)
+                .await?
+        } else {
+            if !results.is_empty() {
+                // A run carrying resume entries resolves only those.
+                tracing::warn!(
+                    session_id = %session_id,
+                    "AG-UI tool messages beside resume entries; ignoring them"
+                );
+            }
             match &gate {
                 Some(gate) => match gate.resume(session_id, &input.resume)? {
                     ResumeOutcome::NothingOpen => Start::Empty,
-                    ResumeOutcome::StillOpen(interrupts) => Start::Interrupt(interrupts),
+                    ResumeOutcome::StillOpen(interrupts) => Start::Park(Vec::new(), interrupts),
                     ResumeOutcome::Resumed => Start::Follow,
                 },
                 None => {
@@ -1312,31 +1246,6 @@ impl Session {
                     Start::Empty
                 }
             }
-        } else {
-            let text = match input.messages.last() {
-                Some(Message::User(message)) => message.content.to_text(),
-                Some(_) => return Err(invalid("the final AG-UI message must have role=user")),
-                None => {
-                    return Err(invalid(
-                        "messages must contain at least one user message, or resume entries",
-                    ));
-                }
-            };
-            let open = gate
-                .as_ref()
-                .map(|gate| gate.interrupts(session_id))
-                .unwrap_or_default();
-            if open.is_empty() {
-                if text.trim().is_empty() {
-                    return Err(invalid("the user message has no text"));
-                }
-                sent = Some(self.send(text.as_str()).await?);
-                Start::Follow
-            } else {
-                // AG-UI 1.0: an interrupt without an answer is not abandoned;
-                // ask again instead of running past it.
-                Start::Interrupt(open)
-            }
         };
 
         let mut started = RunStartedEvent::new(input.thread_id.clone(), input.run_id.clone());
@@ -1346,7 +1255,7 @@ impl Session {
         let mut projector = Projector::new(input.thread_id, input.run_id, policy);
         match start {
             Start::Follow => {}
-            Start::Interrupt(interrupts) => projector.interrupt(interrupts),
+            Start::Park(calls, interrupts) => projector.park(calls, interrupts),
             Start::Empty => projector.project("turn.completed", &Value::Null),
         }
         let state = RunState {
@@ -1356,6 +1265,9 @@ impl Session {
             parked,
             projector,
             last_sequence: None,
+            frontend,
+            parked_calls,
+            awaiting: None,
         };
         let run = futures::stream::unfold(state, next_event);
         let stream = futures::stream::once(async move { Event::RunStarted(started) }).chain(run);
@@ -1384,7 +1296,31 @@ async fn next_event(mut state: RunState) -> Option<(Event, RunState)> {
                 Err(EventStreamError::Lagged { .. }) => state.recover().await,
             },
             () = parked_on(&mut state.parked, session_id) => state.interrupt_if_parked(),
+            () = parked_with(&mut state.parked_calls, state.awaiting.as_deref()) => {
+                state.park_frontend_calls();
+            }
         }
+    }
+}
+
+/// Resolves once the session has parked on every call in `awaiting`, which
+/// it records as the turn ends. Pending while nothing is awaited.
+async fn parked_with(
+    parked: &mut watch::Receiver<Option<ParkedToolCalls>>,
+    awaiting: Option<&[WireToolCall]>,
+) {
+    let Some(calls) = awaiting else {
+        return std::future::pending().await;
+    };
+    let covered = parked.wait_for(|parked| {
+        parked.as_ref().is_some_and(|parked| {
+            calls
+                .iter()
+                .all(|call| parked.tool_calls.iter().any(|made| made.id == call.id))
+        })
+    });
+    if covered.await.is_err() {
+        std::future::pending::<()>().await;
     }
 }
 
@@ -1414,7 +1350,47 @@ impl RunState {
             .get("data")
             .cloned()
             .unwrap_or(Value::Null);
+        // Calls to this run's frontend tools are the consumer's to run: the
+        // turn parks on them and the run ends naming them, once it has.
+        if event.event_type() == "tool.call_requested" {
+            let calls: Vec<WireToolCall> = serde_json::from_value::<ToolCallRequestedData>(data)
+                .map(|requested| {
+                    requested
+                        .tool_calls
+                        .into_iter()
+                        .filter(|call| self.frontend.contains(&call.name))
+                        .map(|call| {
+                            WireToolCall::function(call.id, call.name, call.arguments.to_string())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if !calls.is_empty() {
+                self.awaiting = Some(calls);
+            }
+            return;
+        }
         self.projector.project(event.event_type(), &data);
+    }
+
+    /// The turn parked on the frontend calls it requested: flush what it
+    /// emitted, then end the run with them, beside any open interrupt.
+    fn park_frontend_calls(&mut self) {
+        let Some(calls) = self.awaiting.take() else {
+            return;
+        };
+        while let Ok(Some(event)) = self.events.try_recv() {
+            self.project(&event);
+            if self.projector.is_finished() {
+                return;
+            }
+        }
+        let interrupts = self
+            .gate
+            .as_ref()
+            .map(|gate| gate.interrupts(self.session.session_id()))
+            .unwrap_or_default();
+        self.projector.park(calls, interrupts);
     }
 
     /// The run fell behind the live feed: replay the durable log after the

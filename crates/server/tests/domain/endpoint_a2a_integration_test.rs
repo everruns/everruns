@@ -96,7 +96,7 @@ async fn publish_app(server: &TestServer, app_id: &str) {
     server.set_app_endpoints_live(app_id, true).await;
 }
 #[tokio::test]
-async fn a2a_legacy_app_channel_mismatch_is_not_found() {
+async fn a2a_legacy_alias_endpoint_mismatch_is_not_found() {
     let server = TestServer::in_memory().await;
     let (app_a, _) = create_app_with_a2a(&server, "a2a-mismatch-a", "{{a2a.text}}").await;
     let (app_b, key_b) = create_app_with_a2a(&server, "a2a-mismatch-b", "{{a2a.text}}").await;
@@ -305,7 +305,7 @@ fn a2a_agent_card(endpoint: &str) -> Value {
         ],
         "capabilities": {
             "streaming": false,
-            "pushNotifications": false,
+            "pushNotifications": true,
             "stateTransitionHistory": false
         },
         "defaultInputModes": ["text/plain"],
@@ -629,12 +629,12 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
 
-    // tasks/resubscribe is not supported (sentinel for unhandled method).
+    // No extended card is configured: ExtendedAgentCardNotConfiguredError.
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
         "id": "x",
-        "method": "tasks/resubscribe",
-        "params": { "id": "task-1" }
+        "method": "agent/getAuthenticatedExtendedCard",
+        "params": {}
     }))
     .unwrap();
     let response: Value = server
@@ -650,7 +650,7 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(response["error"]["code"], -32601);
+    assert_eq!(response["error"]["code"], -32007);
 
     // Empty parts.
     let body = serde_json::to_vec(&json!({
@@ -739,7 +739,7 @@ async fn a2a_message_stream_rejects_shared_session_channels() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(response["error"]["code"], -32600);
+    assert_eq!(response["error"]["code"], -32004);
     assert!(
         response["error"]["message"]
             .as_str()
@@ -1244,7 +1244,7 @@ async fn a2a_tasks_get_structured_result_not_leaked_cross_channel() {
 /// second cancel returns the already-canceled task without a new state
 /// transition.
 #[tokio::test]
-async fn a2a_tasks_cancel_terminates_task_idempotently() {
+async fn a2a_tasks_cancel_terminates_task_once() {
     let server = TestServer::in_memory().await;
     let (app, api_key) = create_app_with_a2a(&server, "a2a-tasks-cancel", "{{a2a.text}}").await;
     let app_id = app["id"].as_str().unwrap();
@@ -1304,8 +1304,8 @@ async fn a2a_tasks_cancel_terminates_task_idempotently() {
     assert_eq!(first["result"]["status"]["state"], "canceled");
     assert_eq!(first["result"]["id"], task_id);
 
-    // Idempotence: a second cancel sees a terminal state and returns the
-    // same task shape without re-cancelling. tasks/get also reports
+    // A second cancel finds a finished task: TaskNotCancelable (spec
+    // 3.1.5), with no re-cancel. tasks/get still reports
     // canceled.
     let second: Value = server
         .request_raw(
@@ -1320,7 +1320,7 @@ async fn a2a_tasks_cancel_terminates_task_idempotently() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(second["result"]["status"]["state"], "canceled");
+    assert_eq!(second["error"]["code"], -32002, "{second}");
 
     let get_body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",

@@ -14,7 +14,10 @@
 //!   top-level agent is an endpoint, and none is declared separately.
 //! - One session per (agent, AG-UI `threadId`), kept in the same thread map
 //!   channels use (channel key `ag-ui:{agent}`), so a thread survives a
-//!   restart like a Slack thread does.
+//!   restart like a Slack thread does. serve keeps its own map rather than
+//!   `everruns::ag_ui::AgUiThreads` because its sessions live in its own
+//!   catalog; it shares the seeding: a thread's first run records the
+//!   input's earlier messages as the new session's history.
 //! - Interrupts are serve's own pending approvals and questions, read and
 //!   answered through `everruns::ag_ui::InterruptSource`. One responder
 //!   serves both APIs: a request an AG-UI run interrupted on can be answered
@@ -22,31 +25,27 @@
 //! - The trusted projection policy (reasoning, usage and runtime errors
 //!   visible): the developer owns both ends of a serve app. A public
 //!   deployment puts it behind its own auth, as with every serve route.
-//! - SSE framing matches the server's AG-UI route: unnamed `data:` events and
-//!   a `keepalive` comment every 15 seconds.
+//! - SSE framing is the facade's `sse_response`, which matches the server's
+//!   AG-UI route: unnamed `data:` events and a `keepalive` comment every 15
+//!   seconds. The facade's `AgUiHandler` is not used: serve resolves threads
+//!   and authorizes requests its own way.
 
-use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use everruns::SessionId;
 use everruns::ag_ui::{
     AgUiError, AgUiOptions, Interrupt, InterruptSource, ResumeEntry, ResumeOutcome, RunAgentInput,
-    approval_decision, approval_interrupt, question_interrupt, question_outcome,
+    approval_decision, approval_interrupt, question_interrupt, question_outcome, sse_response,
 };
 use everruns::approval::ApprovalDecision;
 use everruns::ask_user::Outcome;
-use futures::StreamExt;
 use serde_json::json;
 use tokio::sync::broadcast;
 
 use crate::host::{ApiError, Host, NewSession};
-
-const KEEPALIVE: Duration = Duration::from_secs(15);
 
 /// The route of `agent`'s AG-UI endpoint.
 pub(crate) fn route(agent: &str) -> String {
@@ -65,7 +64,13 @@ pub(crate) async fn run(
     Path(agent): Path<String>,
     body: Bytes,
 ) -> Response {
-    match start(&host, &agent, &body).await {
+    respond(&host, &agent, &body).await
+}
+
+/// One AG-UI run for `agent` from a raw `RunAgentInput` body: the stream, or
+/// the problem the route would answer. Shared with [`crate::Server::ag_ui`].
+pub(crate) async fn respond(host: &Arc<Host>, agent: &str, body: &[u8]) -> Response {
+    match start(host, agent, body).await {
         Ok(response) => response,
         Err(err) => crate::server::Failure::from(err).into_response(),
     }
@@ -77,26 +82,25 @@ async fn start(host: &Arc<Host>, agent: &str, body: &[u8]) -> crate::Result<Resp
     if input.thread_id.trim().is_empty() {
         return Err(ApiError::BadRequest("threadId is required".into()).into());
     }
-    let session = thread_session(host, agent, &input.thread_id).await?;
-    let options = AgUiOptions::new().interrupts(HostInterrupts { host: host.clone() });
+    let (session, created) = thread_session(host, agent, &input.thread_id).await?;
+    // A thread's first run carries a client's earlier messages into the new
+    // session, as the server's endpoint does.
+    let options = AgUiOptions::new()
+        .interrupts(HostInterrupts { host: host.clone() })
+        .seed_history(created);
     let run = host.ag_ui(&session, input, options).await?;
-    let events = run.map(|event| {
-        let data = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
-        Ok::<_, Infallible>(SseEvent::default().data(data))
-    });
-    Ok(Sse::new(events)
-        .keep_alive(KeepAlive::new().interval(KEEPALIVE).text("keepalive"))
-        .into_response())
+    Ok(sse_response(run))
 }
 
-/// The session behind `agent`'s AG-UI thread, created on its first run.
-async fn thread_session(host: &Host, agent: &str, thread: &str) -> crate::Result<String> {
+/// The session behind `agent`'s AG-UI thread, created on its first run, and
+/// whether this call created it.
+async fn thread_session(host: &Host, agent: &str, thread: &str) -> crate::Result<(String, bool)> {
     if host.app.agent(agent).is_none_or(|entry| entry.sub) {
         return Err(ApiError::NotFound(format!("agent {agent}")).into());
     }
     let channel = thread_channel(agent);
     if let Some(session) = host.thread_session(&channel, thread)? {
-        return Ok(session);
+        return Ok((session, false));
     }
     let session = host
         .create_session(NewSession {
@@ -106,7 +110,7 @@ async fn thread_session(host: &Host, agent: &str, thread: &str) -> crate::Result
         })
         .await?;
     host.bind_thread(&channel, thread, &session)?;
-    Ok(session)
+    Ok((session, true))
 }
 
 /// serve's pending approvals and questions, as AG-UI interrupts.

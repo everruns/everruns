@@ -19,11 +19,11 @@ use utoipa::ToSchema;
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
+use crate::domains::agent_endpoints::{WebhookInvocationRequest, invoke_endpoint_webhook};
 use crate::domains::agent_triggers::events::TriggerEventOutcome;
 use crate::domains::agent_triggers::{
     WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger,
 };
-use crate::domains::apps::{WebhookInvocationRequest, invoke_webhook_app_channel};
 use crate::domains::common::{CommandError, CommandErrorKind};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -200,7 +200,7 @@ async fn invoke_webhook(
         .map_err(internal_error)?
     {
         let legacy_alias_matches = match app_id.as_deref() {
-            Some(app_id) => trigger.execution_app_public_id.as_deref() == Some(app_id),
+            Some(app_id) => trigger.legacy_alias_id.as_deref() == Some(app_id),
             None => true,
         };
         if !legacy_alias_matches {
@@ -293,13 +293,13 @@ async fn invoke_webhook(
     let request_headers = flatten_headers(&headers);
     let request_id = req_id.map(|axum::Extension(id)| id.0);
 
-    let result = invoke_webhook_app_channel(
+    let result = invoke_endpoint_webhook(
         &state.db,
         state.encryption.as_ref(),
         &state.session_service,
         &state.message_service,
         WebhookInvocationRequest {
-            app_id,
+            legacy_app_id: app_id,
             channel_id,
             body,
             json_payload,
@@ -346,7 +346,7 @@ async fn invoke_trigger_webhook(
         return Err(not_found());
     }
 
-    let config_value = crate::domains::apps::queries::decrypt_channel_config(
+    let config_value = crate::domains::agent_endpoints::queries::decrypt_channel_config(
         state.encryption.as_ref(),
         trigger.config_encrypted.as_deref(),
         &trigger.config,

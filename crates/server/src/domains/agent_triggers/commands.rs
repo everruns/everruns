@@ -14,11 +14,11 @@ use super::webhook;
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
-use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
-use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
-use crate::domains::apps::invocation::{
+use crate::domains::agent_endpoints::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
 };
+use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
+use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
@@ -135,8 +135,11 @@ fn prepare_trigger_config(
     config: &impl serde::Serialize,
 ) -> Result<(Value, Option<Vec<u8>>), CommandError> {
     let config = serde_json::to_value(config).map_err(|e| CommandError::internal(e.into()))?;
-    crate::domains::apps::queries::prepare_channel_config(ctx.encryption.as_ref(), &config)
-        .map_err(classify_anyhow)
+    crate::domains::agent_endpoints::queries::prepare_channel_config(
+        ctx.encryption.as_ref(),
+        &config,
+    )
+    .map_err(classify_anyhow)
 }
 
 /// Count currently-enabled triggers in an org (for the per-org cap). Uses the
@@ -490,10 +493,10 @@ impl Command for CreateAgentTrigger {
                 execution_resolved_owner_user_id: None,
                 execution_virtual_user_id: None,
                 execution_app_id: None,
-                execution_app_public_id: None,
-                execution_app_name: None,
-                execution_agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
-                execution_agent_version_id: version.and_then(|version| version.version_id),
+                legacy_alias_id: None,
+                legacy_alias_name: None,
+                agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
+                agent_version_id: version.and_then(|version| version.version_id),
             })
             .await
             .map_err(classify_anyhow)?;
@@ -811,10 +814,8 @@ impl Command for UpdateAgentTriggerCmd {
                     config: Some(config),
                     config_encrypted,
                     enabled: Some(new_enabled),
-                    execution_agent_version_policy: version
-                        .as_ref()
-                        .map(VersionSelection::policy_str),
-                    execution_agent_version_id: version
+                    agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
+                    agent_version_id: version
                         .map_or(everruns_durable::UpdateField::Unchanged, |version| {
                             everruns_durable::UpdateField::from_option(version.version_id)
                         }),
@@ -991,7 +992,7 @@ impl Command for TriggerAgentTriggerNow {
 inventory::submit! { CommandDescriptor::of::<TriggerAgentTriggerNow>() }
 
 // ============================================================================
-// invoke_agent_trigger — execution activity (mirrors invoke_scheduled_app_channel)
+// invoke_agent_trigger — execution activity (mirrors invoke_scheduled_legacy_alias_endpoint)
 // ============================================================================
 
 #[derive(Debug, Clone)]
@@ -1137,7 +1138,7 @@ pub(super) async fn resolve_trigger_execution_context(
             virtual_user_id: trigger.execution_virtual_user_id,
             app_id: trigger.execution_app_id,
             agent_version_policy: stored_version_selection(trigger).policy,
-            agent_version_id: trigger.execution_agent_version_id,
+            agent_version_id: trigger.agent_version_id,
         });
     }
 
@@ -1163,7 +1164,7 @@ pub(super) async fn resolve_trigger_execution_context(
         // Native triggers carry their own version selection (EVE-1139); a NULL
         // policy on an older row means the agent's default version.
         agent_version_policy: stored_version_selection(trigger).policy,
-        agent_version_id: trigger.execution_agent_version_id,
+        agent_version_id: trigger.agent_version_id,
     })
 }
 
@@ -1172,11 +1173,11 @@ pub(super) async fn resolve_trigger_execution_context(
 fn stored_version_selection(trigger: &AgentTriggerRow) -> VersionSelection {
     VersionSelection {
         policy: trigger
-            .execution_agent_version_policy
+            .agent_version_policy
             .as_deref()
             .map(everruns_platform::AgentVersionPolicy::from)
             .unwrap_or_default(),
-        version_id: trigger.execution_agent_version_id,
+        version_id: trigger.agent_version_id,
     }
 }
 

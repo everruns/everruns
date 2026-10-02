@@ -229,7 +229,7 @@ async fn test_encrypted_legacy_auth_without_encryption_denies_anonymous_ingress(
     let channel_id = app.channels[0].public_id.to_string();
     let row = server
         .db
-        .get_app_channel_by_public_id(&channel_id)
+        .get_endpoint_row_by_public_id(&channel_id)
         .await
         .unwrap()
         .unwrap();
@@ -275,7 +275,7 @@ async fn assert_malformed_legacy_auth_denies_anonymous_ingress(encrypted: bool) 
     let channel_id = app.channels[0].public_id.to_string();
     let row = server
         .db
-        .get_app_channel_by_public_id(&channel_id)
+        .get_endpoint_row_by_public_id(&channel_id)
         .await
         .unwrap()
         .unwrap();

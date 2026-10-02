@@ -24,10 +24,11 @@ use uuid::Uuid;
 
 use everruns_durable::persistence::{
     Pagination, PostgresWorkflowEventStore, TaskDefinition, TaskFilter, TaskStatus, WorkerFilter,
-    WorkerInfo, WorkflowEventStore, WorkflowFilter, WorkflowStatus,
+    WorkerInfo, WorkflowFilter, WorkflowStatus,
 };
 use everruns_durable::reliability::{CircuitBreakerConfig, CircuitState};
 use everruns_durable::workflow::ActivityOptions;
+use everruns_durable::{CircuitBreakers, DurableAdmin, EventLog, TaskQueue, WorkerRegistry};
 use std::time::Duration;
 
 /// Get test database URL from environment or use default

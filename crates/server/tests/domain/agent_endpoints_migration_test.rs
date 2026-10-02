@@ -32,7 +32,7 @@ use everruns_platform::EndpointTransport;
 use everruns_provider::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
-use everruns_server::domains::apps::{hash_a2a_api_key, hash_app_api_key};
+use everruns_server::domains::agent_endpoints::{hash_a2a_api_key, hash_endpoint_api_key};
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
 use everruns_worker::{RunnerBackend, create_runner_with_backend};
@@ -117,7 +117,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         &fixture,
         EndpointTransport::ApiEndpoint,
         json!({
-            "api_key_hash": hash_app_api_key(api_key),
+            "api_key_hash": hash_endpoint_api_key(api_key),
             "api_key_prefix": "evr_app_test...",
             "session_mode": "session_per_invocation"
         }),
@@ -551,8 +551,8 @@ async fn seed_migrated_webhook_trigger(pool: &PgPool, fixture: &Fixture, token: 
         "INSERT INTO agent_triggers (
              id, org_id, agent_id, trigger_type, ingress_id, config, enabled,
              execution_harness_id, execution_owner_principal_id, execution_app_id,
-             execution_app_public_id, execution_app_name,
-             execution_agent_version_policy, execution_agent_version_id
+             legacy_alias_id, legacy_alias_name,
+             agent_version_policy, agent_version_id
          )
          SELECT $1, app.org_id, app.agent_id, 'webhook', $2, $3, true,
                 app.harness_id, app.owner_principal_id, app.id, app.public_id, app.name,
@@ -582,7 +582,7 @@ async fn seed_ingress_endpoint(
     let endpoint_public_id = format!("appchan_{}", hex32());
     sqlx::query(
         "INSERT INTO agent_endpoints (
-             id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+             id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
              channel_config, enabled, status, agent_version_policy, owner_principal_id
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, true, 'live', 'default', $8)",
@@ -844,7 +844,7 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     let endpoint_id = Uuid::now_v7();
     let endpoint_public_id = format!("appchan_{}", hex32());
     sqlx::query(
-        "INSERT INTO agent_endpoints (id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+        "INSERT INTO agent_endpoints (id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
                                       channel_config, enabled, status, agent_version_policy,
                                       owner_principal_id)
          VALUES ($1, $2, $3, $4, $5, 'slack', '{}'::jsonb, true, 'live', 'default', $6)",
@@ -1165,9 +1165,9 @@ async fn endpoint_creation_requires_the_app_to_have_an_agent() {
         .expect("clear agent");
 
     let result = db
-        .create_app_channel(
+        .create_legacy_alias_endpoint(
             fixture.app_id,
-            everruns_server::storage::CreateAppChannelRow {
+            everruns_server::storage::CreateLegacyAliasEndpointRow {
                 public_id: format!("appchan_{}", hex32()),
                 channel_type: "slack".to_string(),
                 channel_config: serde_json::json!({}),
@@ -1203,9 +1203,9 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
 
     // Disabling must drive the derived status to 'disabled'.
     let updated = db
-        .update_app_channel(
+        .update_endpoint_by_id(
             fixture.endpoint_id,
-            everruns_server::storage::UpdateAppChannel {
+            everruns_server::storage::UpdateEndpointByIdRow {
                 channel_config: Some(serde_json::json!({"team_id": "T1"})),
                 enabled: Some(false),
                 ..Default::default()
@@ -1230,9 +1230,9 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
     assert_eq!(status, "disabled");
 
     // Re-enabling does not infer lifecycle from the frozen App row.
-    db.update_app_channel(
+    db.update_endpoint_by_id(
         fixture.endpoint_id,
-        everruns_server::storage::UpdateAppChannel {
+        everruns_server::storage::UpdateEndpointByIdRow {
             enabled: Some(true),
             ..Default::default()
         },
@@ -1248,9 +1248,9 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
         .expect("read status");
     assert_eq!(status, "disabled");
 
-    db.update_app_channel(
+    db.update_endpoint_by_id(
         fixture.endpoint_id,
-        everruns_server::storage::UpdateAppChannel {
+        everruns_server::storage::UpdateEndpointByIdRow {
             status: Some("live".to_string()),
             ..Default::default()
         },
@@ -1285,7 +1285,7 @@ async fn deleting_an_endpoint_removes_it_from_the_view() {
     let fixture = seed(&pool, "endpoint-delete", "published").await;
 
     assert!(
-        db.delete_app_channel(fixture.endpoint_id)
+        db.delete_endpoint_by_id(fixture.endpoint_id)
             .await
             .expect("delete endpoint")
     );

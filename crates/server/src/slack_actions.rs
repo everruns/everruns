@@ -599,7 +599,8 @@ pub async fn serve_rpc(
 mod tests {
     use super::*;
     use crate::storage::models::{
-        CreateAppChannelRow, CreateAppRow, CreateHarnessRow, CreateSessionRow, UpdateAppChannel,
+        CreateAppRow, CreateHarnessRow, CreateLegacyAliasEndpointRow, CreateSessionRow,
+        UpdateEndpointByIdRow,
     };
     use everruns_platform::slack_action::SlackActionInvoker;
     use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
@@ -718,9 +719,9 @@ mod tests {
             let public_id = format!("appchan_{}", Uuid::now_v7().simple());
             let channel = self
                 .db
-                .create_app_channel(
+                .create_legacy_alias_endpoint(
                     app.id,
-                    CreateAppChannelRow {
+                    CreateLegacyAliasEndpointRow {
                         public_id: public_id.clone(),
                         channel_type: channel_type.to_string(),
                         channel_config: json!({
@@ -739,9 +740,9 @@ mod tests {
 
             // A new endpoint starts `draft`; publish it so it accepts traffic.
             self.db
-                .update_app_channel(
+                .update_endpoint_by_id(
                     channel.id,
-                    UpdateAppChannel {
+                    UpdateEndpointByIdRow {
                         status: Some("live".to_string()),
                         ..Default::default()
                     },
@@ -921,9 +922,9 @@ mod tests {
             .await;
         fixture
             .db
-            .update_app_channel(
+            .update_endpoint_by_id(
                 endpoint_id,
-                UpdateAppChannel {
+                UpdateEndpointByIdRow {
                     status: Some("disabled".to_string()),
                     ..Default::default()
                 },
@@ -952,9 +953,9 @@ mod tests {
             .await;
         fixture
             .db
-            .update_app_channel(
+            .update_endpoint_by_id(
                 endpoint_id,
-                UpdateAppChannel {
+                UpdateEndpointByIdRow {
                     channel_config: Some(json!({
                         "signing_secret": "s",
                         "bot_token": "xoxb-secret",

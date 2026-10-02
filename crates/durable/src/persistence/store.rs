@@ -1,4 +1,4 @@
-//! WorkflowEventStore trait definition
+//! Store trait definitions: focused traits plus the `WorkflowEventStore` umbrella
 
 use std::time::Duration;
 
@@ -221,38 +221,38 @@ pub struct DeadTaskInfo {
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
-    /// Serialized task input used to recover session/turn context.
+    /// Serialized task input, so the application can recover its own context.
     pub input: serde_json::Value,
     pub last_error: Option<String>,
 }
 
-/// Information about a task that was sealed during stale reclamation because the
-/// turn made no forward progress across `N` consecutive recoveries (EVE-534).
+/// Information about a task that the no-progress guard sealed during stale
+/// reclamation: its workflow recorded no new event across `N` consecutive
+/// recoveries, so retrying it again would only crash-loop (EVE-534).
 ///
 /// A sealed task is terminal and non-retryable: the reclaim path marks it dead
-/// (routing it to the DLQ) instead of returning it to `pending`. Consumers turn
-/// this into a `turn.sealed` event and an appropriate session status.
+/// (routing it to the DLQ) instead of returning it to `pending`. What a seal
+/// means to the application (a user-facing event, a status change) is decided
+/// by the consumer of [`ReclaimResult::sealed_tasks`].
 #[derive(Debug, Clone)]
 pub struct SealedTaskInfo {
     pub task_id: Uuid,
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
-    /// The task's serialized input. Consumers parse session context (session_id,
-    /// turn_id, org_id, input_message_id) from it to emit the user-facing
-    /// `turn.sealed` and `session.idled` events.
+    /// The task's serialized input, so consumers can recover their own context
+    /// for whatever a seal means to them.
     pub input: serde_json::Value,
-    /// Stable seal-reason wire string (always `"no_progress"` here; budget seals
-    /// are decided in the worker turn loop, not during reclaim).
+    /// Stable seal-reason wire string (always `"no_progress"` here: the reclaim
+    /// path's only seal is the no-progress guard).
     pub reason: String,
     /// Number of consecutive no-progress recoveries that triggered the seal.
     pub no_progress_count: u32,
 }
 
 /// Default number of consecutive no-progress recoveries before a task is sealed.
-/// Mirrors `everruns_core::turn::DEFAULT_NO_PROGRESS_SEAL_THRESHOLD` but is
-/// duplicated here to avoid a dependency from `everruns-durable` on
-/// `everruns-core`. See EVE-534.
+/// Override with `DURABLE_NO_PROGRESS_SEAL_THRESHOLD`; see
+/// [`no_progress_seal_threshold_from_env`]. EVE-534.
 pub const DEFAULT_NO_PROGRESS_SEAL_THRESHOLD: u32 = 3;
 
 /// Read the no-progress seal threshold from the environment, falling back to
@@ -427,13 +427,13 @@ pub struct WorkerInfo {
 
 impl WorkerInfo {
     /// An active worker that accepts `activity_types`, ready for
-    /// [`WorkflowEventStore::register_worker`].
+    /// [`WorkerRegistry::register_worker`].
     ///
     /// Both stores hand tasks only to a registered worker that is not
     /// draining, so register before claiming.
     ///
     /// ```
-    /// use everruns_durable::{InMemoryWorkflowEventStore, WorkerInfo, WorkflowEventStore};
+    /// use everruns_durable::{InMemoryWorkflowEventStore, TaskQueue, WorkerInfo, WorkerRegistry};
     ///
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), everruns_durable::StoreError> {
@@ -558,16 +558,18 @@ pub struct WorkflowSnapshot {
     pub created_at: DateTime<Utc>,
 }
 
-/// Store for workflow events and task queue
+/// Workflow lifecycle and the append-only event log.
 ///
-/// This trait defines the interface for persisting workflow state.
-/// Implementations must be thread-safe and support concurrent access.
+/// Covers workflow creation and status, optimistic-concurrency event appends,
+/// replay loads, replay snapshots, terminal transitions (fail, cancel,
+/// continue-as-new) and the atomic new-run claim. This is the core of the
+/// engine: anything that executes or replays a workflow needs it.
+///
+/// Every method must be implemented explicitly except the derived ones
+/// (`count_events`, `count_events_after`, `load_events_after`), which are
+/// correct but materialize history; stores should override them for efficiency.
 #[async_trait]
-pub trait WorkflowEventStore: Send + Sync + 'static {
-    // =========================================================================
-    // Workflow Operations
-    // =========================================================================
-
+pub trait EventLog: Send + Sync + 'static {
     /// Create a new workflow instance
     async fn create_workflow(
         &self,
@@ -626,7 +628,7 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         workflow_id: Uuid,
         after_sequence: i32,
     ) -> Result<Vec<(i32, WorkflowEvent)>, StoreError> {
-        // Default: filter from load_events (implementations should override for efficiency)
+        // Derived: filter from load_events (implementations should override for efficiency)
         let all = self.load_events(workflow_id).await?;
         Ok(all
             .into_iter()
@@ -634,37 +636,27 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
             .collect())
     }
 
-    // =========================================================================
-    // Snapshot Operations (for replay checkpointing)
-    // =========================================================================
-
     /// Save a workflow state snapshot at the given sequence number.
     ///
     /// The snapshot_data is opaque bytes (typically JSON-serialized workflow state).
     /// Implementations should use UPSERT semantics for idempotency.
     async fn save_snapshot(
         &self,
-        _workflow_id: Uuid,
-        _sequence_num: i32,
-        _snapshot_data: Vec<u8>,
-    ) -> Result<(), StoreError> {
-        Ok(()) // Default no-op for stores that don't support snapshots
-    }
+        workflow_id: Uuid,
+        sequence_num: i32,
+        snapshot_data: Vec<u8>,
+    ) -> Result<(), StoreError>;
 
     /// Load the latest snapshot for a workflow, if any.
     ///
     /// Returns None if no snapshots exist for this workflow.
     async fn load_latest_snapshot(
         &self,
-        _workflow_id: Uuid,
-    ) -> Result<Option<WorkflowSnapshot>, StoreError> {
-        Ok(None) // Default: no snapshots
-    }
+        workflow_id: Uuid,
+    ) -> Result<Option<WorkflowSnapshot>, StoreError>;
 
     /// Delete all snapshots for a workflow (cleanup on workflow deletion).
-    async fn delete_snapshots(&self, _workflow_id: Uuid) -> Result<(), StoreError> {
-        Ok(()) // Default no-op
-    }
+    async fn delete_snapshots(&self, workflow_id: Uuid) -> Result<(), StoreError>;
 
     /// Update workflow status
     async fn update_workflow_status(
@@ -686,10 +678,47 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         error: crate::workflow::WorkflowError,
     ) -> Result<bool, StoreError>;
 
-    // =========================================================================
-    // Task Queue Operations
-    // =========================================================================
+    /// Atomically start a new run of a long-lived workflow, unless one is
+    /// already active.
+    ///
+    /// A workflow instance can be reused for successive runs (for example one
+    /// per inbound request). This transitions it from any terminal status (or
+    /// pending) back to Running and clears its result, error and timestamps.
+    /// Returns true if the claim succeeded, false if a run is still active:
+    /// the workflow is Running or one of its tasks is claimed by a worker.
+    ///
+    /// Also cancels any stale pending tasks left by the previous run, in the
+    /// same atomic operation. Safe under horizontal scaling: only one caller
+    /// wins the claim.
+    async fn try_start_new_run(&self, workflow_id: Uuid) -> Result<bool, StoreError>;
 
+    /// Cancel a workflow
+    async fn cancel_workflow(&self, workflow_id: Uuid) -> Result<(), StoreError>;
+
+    /// Continue a workflow as a new workflow (history rollover).
+    ///
+    /// Creates a new workflow from the given snapshot state, marks the old
+    /// workflow as `ContinuedAsNew` with a reference to the new workflow,
+    /// and archives (deletes) old event history and snapshots.
+    ///
+    /// Returns the new workflow ID.
+    async fn continue_as_new(
+        &self,
+        old_workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        snapshot_data: Vec<u8>,
+    ) -> Result<Uuid, StoreError>;
+}
+
+/// Activity task queue: enqueue, claim, heartbeat and settle tasks.
+///
+/// Needed by workers (claim/heartbeat/complete/fail), by the engine that
+/// schedules activities (enqueue, cancel pending) and by the stale-task
+/// reaper (`reclaim_stale_tasks`). `fail_task` is derived from
+/// `fail_task_with_retry`; everything else must be implemented explicitly.
+#[async_trait]
+pub trait TaskQueue: Send + Sync + 'static {
     /// Enqueue an activity task
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError>;
 
@@ -741,26 +770,12 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         retryable: bool,
     ) -> Result<TaskFailureOutcome, StoreError>;
 
-    /// Atomically claim a workflow for a new turn.
-    ///
-    /// Transitions the workflow from any terminal status (or pending) to Running
-    /// in a single atomic operation. Returns true if the claim succeeded,
-    /// false if the workflow is Running (an active turn owns it).
-    ///
-    /// Also cancels any stale pending tasks as part of the atomic operation.
-    /// This is safe for horizontal scaling — only one caller wins the claim.
-    async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError>;
-
     /// Cancel all pending (unclaimed) tasks for a workflow.
     ///
     /// Returns the number of tasks cancelled. Does NOT affect claimed or
     /// completed tasks — only pending ones still in the queue.
-    async fn cancel_pending_tasks_for_workflow(
-        &self,
-        _workflow_id: Uuid,
-    ) -> Result<u64, StoreError> {
-        Ok(0)
-    }
+    async fn cancel_pending_tasks_for_workflow(&self, workflow_id: Uuid)
+    -> Result<u64, StoreError>;
 
     /// Get task info by ID
     async fn get_task(&self, task_id: Uuid) -> Result<TaskInfo, StoreError>;
@@ -771,10 +786,21 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         stale_threshold: Duration,
     ) -> Result<ReclaimResult, StoreError>;
 
-    // =========================================================================
-    // Signal Operations
-    // =========================================================================
+    /// List tasks with filtering and pagination
+    async fn list_tasks(
+        &self,
+        filter: TaskFilter,
+        pagination: Pagination,
+    ) -> Result<Vec<TaskInfo>, StoreError>;
+}
 
+/// Per-workflow signal inbox.
+///
+/// Needed by the engine to deliver and consume signals (application
+/// messages, cancellation, timers). `consume_pending_signals` has a non-atomic derived
+/// default; stores should override it with an atomic implementation.
+#[async_trait]
+pub trait SignalStore: Send + Sync + 'static {
     /// Send a signal to a workflow
     async fn send_signal(
         &self,
@@ -797,8 +823,8 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
 
     /// Atomically get and consume all pending signals for a workflow.
     ///
-    /// Default implementation calls `get_pending_signals` + `mark_signals_processed`,
-    /// but stores should override with an atomic implementation to avoid races.
+    /// The derived default calls `get_pending_signals` + `mark_signals_processed`,
+    /// which is not atomic; stores should override it to avoid races.
     async fn consume_pending_signals(
         &self,
         workflow_id: Uuid,
@@ -817,47 +843,50 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         workflow_id: Uuid,
         signal_type: &str,
     ) -> Result<Vec<WorkflowSignal>, StoreError>;
+}
 
-    // =========================================================================
-    // Worker Registry Operations (optional, default no-op)
-    // =========================================================================
-
+/// Worker registration, liveness and capacity.
+///
+/// Needed by workers (register, heartbeat, capacity snapshot for fair-share
+/// claiming, deregister) and by operators (list, drain, resume). A worker
+/// process needs only `TaskQueue + SignalStore + WorkerRegistry`.
+#[async_trait]
+pub trait WorkerRegistry: Send + Sync + 'static {
     /// Register a worker
-    async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
-        Ok(())
-    }
+    async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError>;
 
     /// Update worker heartbeat and load
     async fn worker_heartbeat(
         &self,
-        _worker_id: &str,
-        _current_load: usize,
-        _accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
+        worker_id: &str,
+        current_load: usize,
+        accepting_tasks: bool,
+    ) -> Result<(), StoreError>;
 
     /// Get all active workers
-    async fn list_workers(&self, _filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError> {
-        Ok(vec![])
-    }
+    async fn list_workers(&self, filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError>;
 
     /// Deregister a worker and reclaim all tasks claimed by it
     /// Returns the number of tasks that were reclaimed
-    async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {
-        Ok(0)
-    }
+    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError>;
 
     /// Get a snapshot of total system worker capacity.
     /// Used by workers to compute fair-share claim limits.
-    async fn get_capacity_snapshot(&self) -> Result<CapacitySnapshot, StoreError> {
-        Ok(CapacitySnapshot::default())
-    }
+    async fn get_capacity_snapshot(&self) -> Result<CapacitySnapshot, StoreError>;
 
-    // =========================================================================
-    // Dead Letter Queue Operations
-    // =========================================================================
+    /// Drain a worker (set status to draining, stop accepting new tasks)
+    async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError>;
 
+    /// Resume a draining worker (set status back to active, start accepting new tasks)
+    async fn resume_worker(&self, worker_id: &str) -> Result<(), StoreError>;
+}
+
+/// Dead letter queue for tasks that exhausted their retries.
+///
+/// Needed by the task-failure path (`move_to_dlq`) and by operators who
+/// inspect and requeue dead tasks.
+#[async_trait]
+pub trait DeadLetters: Send + Sync + 'static {
     /// Move task to DLQ
     async fn move_to_dlq(
         &self,
@@ -874,60 +903,175 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         filter: DlqFilter,
         pagination: Pagination,
     ) -> Result<Vec<DlqEntry>, StoreError>;
+}
 
-    // =========================================================================
-    // Circuit Breaker Operations (FUTURE FEATURE - optional, default no-op)
-    // =========================================================================
-    // These operations are implemented in PostgresWorkflowEventStore but not yet
-    // used in production. The DistributedCircuitBreaker struct in reliability/
-    // is ready for integration when needed.
-    // TODO: Integrate with LLM calls and external tool executions.
-
+/// Persistent circuit breaker state shared across workers.
+///
+/// Backs `DistributedCircuitBreaker` in `reliability/` and the admin
+/// force-open/close operations. Not yet wired into production call paths.
+#[async_trait]
+pub trait CircuitBreakers: Send + Sync + 'static {
     /// Create a circuit breaker
     async fn create_circuit_breaker(
         &self,
-        _key: &str,
-        _config: &crate::reliability::CircuitBreakerConfig,
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
+        key: &str,
+        config: &crate::reliability::CircuitBreakerConfig,
+    ) -> Result<(), StoreError>;
 
     /// Get circuit breaker state
     async fn get_circuit_breaker(
         &self,
-        _key: &str,
-    ) -> Result<Option<CircuitBreakerState>, StoreError> {
-        Ok(None)
-    }
+        key: &str,
+    ) -> Result<Option<CircuitBreakerState>, StoreError>;
 
     /// Update circuit breaker state
     async fn update_circuit_breaker(
         &self,
-        _key: &str,
-        _state: crate::reliability::CircuitState,
-        _failure_count: u32,
-        _success_count: u32,
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
+        key: &str,
+        state: crate::reliability::CircuitState,
+        failure_count: u32,
+        success_count: u32,
+    ) -> Result<(), StoreError>;
 
-    // =========================================================================
-    // Utility Operations (optional, default no-op)
-    // =========================================================================
+    /// List all circuit breakers
+    async fn list_circuit_breakers(&self) -> Result<Vec<CircuitBreakerState>, StoreError>;
 
+    /// Force a circuit breaker to open (admin operation)
+    async fn force_open_circuit_breaker(&self, key: &str) -> Result<(), StoreError>;
+
+    /// Force a circuit breaker to close (admin operation)
+    async fn force_close_circuit_breaker(&self, key: &str) -> Result<(), StoreError>;
+
+    /// Delete a circuit breaker (reset to default)
+    async fn delete_circuit_breaker(&self, key: &str) -> Result<(), StoreError>;
+}
+
+/// Cron/interval schedules, their executions and scheduler instances.
+///
+/// Needed by the `DurableScheduler` component (claim due schedules, record
+/// executions, instance heartbeats) and by the schedule management API.
+#[async_trait]
+pub trait Schedules: Send + Sync + 'static {
+    /// Create a new schedule
+    async fn create_schedule(&self, schedule: CreateScheduleRow) -> Result<Uuid, StoreError>;
+
+    /// Get a schedule by ID
+    async fn get_schedule(&self, id: Uuid) -> Result<ScheduleRow, StoreError>;
+
+    /// List schedules with filtering and pagination
+    async fn list_schedules(
+        &self,
+        filter: ScheduleFilter,
+        pagination: Pagination,
+    ) -> Result<Vec<ScheduleRow>, StoreError>;
+
+    /// Count schedules matching filter
+    async fn count_schedules(&self, filter: ScheduleFilter) -> Result<u64, StoreError>;
+
+    /// Update a schedule
+    async fn update_schedule(&self, id: Uuid, _update: UpdateSchedule) -> Result<(), StoreError>;
+
+    /// Delete a schedule
+    async fn delete_schedule(&self, id: Uuid) -> Result<(), StoreError>;
+
+    /// Claim due schedules for processing (uses SKIP LOCKED for multi-instance)
+    /// Returns schedules with next_trigger_at <= now
+    async fn claim_due_schedules(
+        &self,
+        scheduler_id: &str,
+        limit: u32,
+    ) -> Result<Vec<ScheduleRow>, StoreError>;
+
+    /// Update next trigger time after successful trigger
+    async fn update_next_trigger(&self, id: Uuid, _next: DateTime<Utc>) -> Result<(), StoreError>;
+
+    /// Skip a schedule trigger (e.g., max_concurrent reached)
+    async fn skip_schedule_trigger(&self, id: Uuid) -> Result<(), StoreError>;
+
+    /// Release a claimed schedule (e.g., on scheduler shutdown)
+    async fn release_schedule(&self, id: Uuid) -> Result<(), StoreError>;
+
+    /// Create a schedule execution record
+    async fn create_schedule_execution(
+        &self,
+        schedule_id: Uuid,
+        scheduled_at: DateTime<Utc>,
+    ) -> Result<Uuid, StoreError>;
+
+    /// Get a schedule execution by ID
+    async fn get_schedule_execution(&self, id: Uuid) -> Result<ScheduleExecutionRow, StoreError>;
+
+    /// Complete a schedule execution successfully
+    async fn complete_schedule_execution(
+        &self,
+        execution_id: Uuid,
+        target_id: Uuid,
+        is_workflow: bool,
+    ) -> Result<(), StoreError>;
+
+    /// Fail a schedule execution
+    async fn fail_schedule_execution(
+        &self,
+        execution_id: Uuid,
+        error: &str,
+    ) -> Result<(), StoreError>;
+
+    /// Skip a schedule execution
+    async fn skip_schedule_execution(
+        &self,
+        execution_id: Uuid,
+        reason: &str,
+    ) -> Result<(), StoreError>;
+
+    /// List executions for a schedule
+    async fn list_schedule_executions(
+        &self,
+        filter: ScheduleExecutionFilter,
+        pagination: Pagination,
+    ) -> Result<Vec<ScheduleExecutionRow>, StoreError>;
+
+    /// Count running executions for a schedule (for max_concurrent check)
+    async fn count_running_executions(&self, schedule_id: Uuid) -> Result<u32, StoreError>;
+
+    /// Get schedule statistics
+    async fn get_schedule_stats(&self, schedule_id: Uuid) -> Result<ScheduleStats, StoreError>;
+
+    /// Register a scheduler instance
+    async fn register_scheduler_instance(
+        &self,
+        instance: SchedulerInstanceInfo,
+    ) -> Result<(), StoreError>;
+
+    /// Update scheduler instance heartbeat
+    async fn heartbeat_scheduler_instance(
+        &self,
+        instance_id: &str,
+        schedules_processed: u64,
+    ) -> Result<(), StoreError>;
+
+    /// List scheduler instances
+    async fn list_scheduler_instances(&self) -> Result<Vec<SchedulerInstanceInfo>, StoreError>;
+
+    /// Deregister a scheduler instance
+    async fn deregister_scheduler_instance(&self, instance_id: &str) -> Result<(), StoreError>;
+}
+
+/// Read-mostly dashboard and admin queries across workflows and system health.
+///
+/// Needed by the HTTP API and operator tooling. Workers and the engine do not
+/// need it. It requires [`EventLog`] because `get_workflow_events` and `count_workflow_events` have derived
+/// defaults over `EventLog::load_events`; stores should override them.
+#[async_trait]
+pub trait DurableAdmin: EventLog + Send + Sync + 'static {
     /// Count active (non-terminal) workflows
-    async fn count_active_workflows(&self) -> Result<i64, StoreError> {
-        Ok(0)
-    }
+    async fn count_active_workflows(&self) -> Result<i64, StoreError>;
 
     /// List workflows with filtering and pagination
     async fn list_workflows(
         &self,
-        _filter: WorkflowFilter,
-        _pagination: Pagination,
-    ) -> Result<Vec<WorkflowInfoExtended>, StoreError> {
-        Ok(vec![])
-    }
+        filter: WorkflowFilter,
+        pagination: Pagination,
+    ) -> Result<Vec<WorkflowInfoExtended>, StoreError>;
 
     /// Direct lookup of a single workflow by id, returning the same
     /// `WorkflowInfoExtended` shape as `list_workflows`. Returns `Ok(None)`
@@ -936,116 +1080,18 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// EVE-455: API handlers must use this method instead of scanning the
     /// first page of `list_workflows`, which silently returns 404 for any
     /// workflow older than the page once a deployment crosses the page
-    /// limit. The default implementation falls back to the old scan with
-    /// a 1000-row cap so older external impls continue to compile, but
-    /// every backend in this crate overrides it with a direct id lookup.
+    /// limit. Implementations must do a direct id lookup.
     async fn get_workflow_extended(
         &self,
         workflow_id: Uuid,
-    ) -> Result<Option<WorkflowInfoExtended>, StoreError> {
-        let workflows = self
-            .list_workflows(
-                WorkflowFilter::default(),
-                Pagination {
-                    offset: 0,
-                    limit: 1000,
-                },
-            )
-            .await?;
-        Ok(workflows.into_iter().find(|w| w.id == workflow_id))
-    }
-
-    /// List tasks with filtering and pagination
-    async fn list_tasks(
-        &self,
-        _filter: TaskFilter,
-        _pagination: Pagination,
-    ) -> Result<Vec<TaskInfo>, StoreError> {
-        Ok(vec![])
-    }
-
-    /// List all circuit breakers
-    async fn list_circuit_breakers(&self) -> Result<Vec<CircuitBreakerState>, StoreError> {
-        Ok(vec![])
-    }
-
-    /// Force a circuit breaker to open (admin operation)
-    async fn force_open_circuit_breaker(&self, _key: &str) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Force a circuit breaker to close (admin operation)
-    async fn force_close_circuit_breaker(&self, _key: &str) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Delete a circuit breaker (reset to default)
-    async fn delete_circuit_breaker(&self, _key: &str) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Drain a worker (set status to draining, stop accepting new tasks)
-    async fn drain_worker(&self, _worker_id: &str) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Resume a draining worker (set status back to active, start accepting new tasks)
-    async fn resume_worker(&self, _worker_id: &str) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Get system health summary
-    async fn get_system_health(&self) -> Result<SystemHealth, StoreError> {
-        Ok(SystemHealth {
-            total_workers: 0,
-            active_workers: 0,
-            workers_accepting: 0,
-            total_capacity: 0,
-            current_load: 0,
-            pending_tasks: 0,
-            claimed_tasks: 0,
-            completed_tasks: 0,
-            failed_tasks: 0,
-            started_tasks: 0,
-            running_workflows: 0,
-            pending_workflows: 0,
-            completed_workflows: 0,
-            failed_workflows: 0,
-            started_workflows: 0,
-            dlq_size: 0,
-        })
-    }
-
-    /// Cancel a workflow
-    async fn cancel_workflow(&self, _workflow_id: Uuid) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Continue a workflow as a new workflow (history rollover).
-    ///
-    /// Creates a new workflow from the given snapshot state, marks the old
-    /// workflow as `ContinuedAsNew` with a reference to the new workflow,
-    /// and archives (deletes) old event history and snapshots.
-    ///
-    /// Returns the new workflow ID.
-    async fn continue_as_new(
-        &self,
-        _old_workflow_id: Uuid,
-        _workflow_type: &str,
-        _input: serde_json::Value,
-        _snapshot_data: Vec<u8>,
-    ) -> Result<Uuid, StoreError> {
-        Err(StoreError::Database(
-            "continue_as_new not supported by this store".to_string(),
-        ))
-    }
+    ) -> Result<Option<WorkflowInfoExtended>, StoreError>;
 
     /// Get workflow events
     async fn get_workflow_events(
         &self,
         workflow_id: Uuid,
     ) -> Result<Vec<WorkflowEventInfo>, StoreError> {
-        // Default implementation uses load_events
+        // Derived from load_events
         let events = self.load_events(workflow_id).await?;
         Ok(events
             .into_iter()
@@ -1067,168 +1113,45 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(events.len() as i64)
     }
 
-    // =========================================================================
-    // Schedule Operations (optional, default no-op)
-    // =========================================================================
+    /// Get system health summary
+    async fn get_system_health(&self) -> Result<SystemHealth, StoreError>;
+}
 
-    /// Create a new schedule
-    async fn create_schedule(&self, _schedule: CreateScheduleRow) -> Result<Uuid, StoreError> {
-        Ok(Uuid::nil())
-    }
+/// Umbrella for a complete durable store.
+///
+/// Combines every focused store trait. It is blanket-implemented for any type
+/// that implements all of them, so `Arc<dyn WorkflowEventStore>` and
+/// `T: WorkflowEventStore` keep working and the supertrait methods are callable
+/// through it. Consumers that need only a slice should bound on the focused
+/// trait instead: a worker needs `TaskQueue + SignalStore + WorkerRegistry`.
+pub trait WorkflowEventStore:
+    EventLog
+    + TaskQueue
+    + SignalStore
+    + WorkerRegistry
+    + DeadLetters
+    + CircuitBreakers
+    + Schedules
+    + DurableAdmin
+    + Send
+    + Sync
+    + 'static
+{
+}
 
-    /// Get a schedule by ID
-    async fn get_schedule(&self, _id: Uuid) -> Result<ScheduleRow, StoreError> {
-        Err(StoreError::ScheduleNotFound(Uuid::nil()))
-    }
-
-    /// List schedules with filtering and pagination
-    async fn list_schedules(
-        &self,
-        _filter: ScheduleFilter,
-        _pagination: Pagination,
-    ) -> Result<Vec<ScheduleRow>, StoreError> {
-        Ok(vec![])
-    }
-
-    /// Count schedules matching filter
-    async fn count_schedules(&self, _filter: ScheduleFilter) -> Result<u64, StoreError> {
-        Ok(0)
-    }
-
-    /// Update a schedule
-    async fn update_schedule(&self, _id: Uuid, _update: UpdateSchedule) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Delete a schedule
-    async fn delete_schedule(&self, _id: Uuid) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    // =========================================================================
-    // Scheduler Operations (for DurableScheduler component)
-    // =========================================================================
-
-    /// Claim due schedules for processing (uses SKIP LOCKED for multi-instance)
-    /// Returns schedules with next_trigger_at <= now
-    async fn claim_due_schedules(
-        &self,
-        _scheduler_id: &str,
-        _limit: u32,
-    ) -> Result<Vec<ScheduleRow>, StoreError> {
-        Ok(vec![])
-    }
-
-    /// Update next trigger time after successful trigger
-    async fn update_next_trigger(&self, _id: Uuid, _next: DateTime<Utc>) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Skip a schedule trigger (e.g., max_concurrent reached)
-    async fn skip_schedule_trigger(&self, _id: Uuid) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Release a claimed schedule (e.g., on scheduler shutdown)
-    async fn release_schedule(&self, _id: Uuid) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    // =========================================================================
-    // Schedule Execution Operations
-    // =========================================================================
-
-    /// Create a schedule execution record
-    async fn create_schedule_execution(
-        &self,
-        _schedule_id: Uuid,
-        _scheduled_at: DateTime<Utc>,
-    ) -> Result<Uuid, StoreError> {
-        Ok(Uuid::nil())
-    }
-
-    /// Get a schedule execution by ID
-    async fn get_schedule_execution(&self, _id: Uuid) -> Result<ScheduleExecutionRow, StoreError> {
-        Err(StoreError::ScheduleExecutionNotFound(Uuid::nil()))
-    }
-
-    /// Complete a schedule execution successfully
-    async fn complete_schedule_execution(
-        &self,
-        _execution_id: Uuid,
-        _target_id: Uuid,
-        _is_workflow: bool,
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Fail a schedule execution
-    async fn fail_schedule_execution(
-        &self,
-        _execution_id: Uuid,
-        _error: &str,
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Skip a schedule execution
-    async fn skip_schedule_execution(
-        &self,
-        _execution_id: Uuid,
-        _reason: &str,
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// List executions for a schedule
-    async fn list_schedule_executions(
-        &self,
-        _filter: ScheduleExecutionFilter,
-        _pagination: Pagination,
-    ) -> Result<Vec<ScheduleExecutionRow>, StoreError> {
-        Ok(vec![])
-    }
-
-    /// Count running executions for a schedule (for max_concurrent check)
-    async fn count_running_executions(&self, _schedule_id: Uuid) -> Result<u32, StoreError> {
-        Ok(0)
-    }
-
-    /// Get schedule statistics
-    async fn get_schedule_stats(&self, _schedule_id: Uuid) -> Result<ScheduleStats, StoreError> {
-        Ok(ScheduleStats::default())
-    }
-
-    // =========================================================================
-    // Scheduler Instance Operations
-    // =========================================================================
-
-    /// Register a scheduler instance
-    async fn register_scheduler_instance(
-        &self,
-        _instance: SchedulerInstanceInfo,
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Update scheduler instance heartbeat
-    async fn heartbeat_scheduler_instance(
-        &self,
-        _instance_id: &str,
-        _schedules_processed: u64,
-    ) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// List scheduler instances
-    async fn list_scheduler_instances(&self) -> Result<Vec<SchedulerInstanceInfo>, StoreError> {
-        Ok(vec![])
-    }
-
-    /// Deregister a scheduler instance
-    async fn deregister_scheduler_instance(&self, _instance_id: &str) -> Result<(), StoreError> {
-        Ok(())
-    }
+impl<T> WorkflowEventStore for T where
+    T: EventLog
+        + TaskQueue
+        + SignalStore
+        + WorkerRegistry
+        + DeadLetters
+        + CircuitBreakers
+        + Schedules
+        + DurableAdmin
+        + Send
+        + Sync
+        + 'static
+{
 }
 
 /// Circuit breaker state

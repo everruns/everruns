@@ -218,6 +218,7 @@ opt-in.
 | Feature | Adds |
 | --- | --- |
 | `openai` | OpenAI Responses API provider configuration |
+| `bedrock` | AWS Bedrock provider configuration: static keys, or the AWS default credential chain for IAM roles |
 | `typesafe` | TypeSafe decisions provider and the `jev` capability |
 | `bashkit` | Sandboxed shell execution |
 | `web-fetch` | HTTP content fetching |
@@ -228,6 +229,7 @@ opt-in.
 | `local` | Durable local sessions, work, schedules, and Git workspace heads |
 | `a2a` | Outbound Agent2Agent delegation; includes `local` |
 | `ag-ui` | Serve a session to AG-UI 1.0 clients (CopilotKit, `@ag-ui/client`) with `Session::ag_ui` |
+| `ag-ui-axum` | `ag-ui` plus `AgUiHandler`, a ready-made axum route with an authorizer, thread resolution and SSE framing |
 
 Combine features as needed:
 

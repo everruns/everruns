@@ -21,16 +21,14 @@ parse_bench_args() {
   done
 }
 
+# Runs each named bench. The db mode used to call the in-memory list too, so
+# `just durable bench-db` never touched PostgreSQL.
 run_benchmarks() {
-  echo ""
-  echo "Running concurrent_workers..."
-  cargo bench -p everruns-durable --bench concurrent_workers -- $SAVE_ARG $MONIKER_ARG
-  echo ""
-  echo "Running workflow_throughput..."
-  cargo bench -p everruns-durable --bench workflow_throughput -- $SAVE_ARG $MONIKER_ARG
-  echo ""
-  echo "Running cold_start_latency..."
-  cargo bench -p everruns-durable --bench cold_start_latency -- $SAVE_ARG $MONIKER_ARG
+  for bench in "$@"; do
+    echo ""
+    echo "Running $bench..."
+    cargo bench -p everruns-durable --features bench --bench "$bench" -- $SAVE_ARG $MONIKER_ARG
+  done
   echo ""
 }
 
@@ -45,7 +43,7 @@ case "$cmd" in
       echo "📊 Running durable execution benchmarks..."
     fi
 
-    run_benchmarks
+    run_benchmarks concurrent_workers workflow_throughput cold_start_latency
 
     if [ -n "$SAVE_ARG" ]; then
       echo "✅ Benchmarks complete with checkpoints saved!"
@@ -94,11 +92,11 @@ case "$cmd" in
       fi
     fi
 
-    # Set DATABASE_URL for benchmarks
-    export BENCHMARK_DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    # The db benches read DATABASE_URL.
+    export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 
     echo "2️⃣  Running benchmarks against PostgreSQL..."
-    run_benchmarks
+    run_benchmarks db_concurrent_workers db_workflow_throughput db_cold_start_latency
 
     if [ -n "$SAVE_ARG" ]; then
       echo "✅ PostgreSQL benchmarks complete with checkpoints saved!"

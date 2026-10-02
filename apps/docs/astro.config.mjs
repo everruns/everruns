@@ -215,7 +215,10 @@ export default defineConfig({
                 },
                 {
                   label: "Experimental",
-                  items: [{ label: "Serve", slug: "framework/serve" }],
+                  items: [
+                    { label: "Serve", slug: "framework/serve" },
+                    { label: "Serve on AgentCore", slug: "framework/serve-agentcore" },
+                  ],
                 },
                 {
                   label: "Examples",

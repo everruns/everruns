@@ -27,6 +27,11 @@ use crate::hooks::{
 use crate::observers::ObserverDispatcher;
 use crate::{Agent, Harness, SessionEnvironmentError};
 
+mod interrupted;
+
+pub use interrupted::InterruptedTurn;
+use interrupted::ResumedTurn;
+
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
 /// Open one with [`Engine::create`](crate::Engine::create). The first
@@ -70,12 +75,25 @@ pub(crate) struct SessionInner {
     environment: OnceLock<everruns_host::Environment>,
     environment_gate: tokio::sync::Mutex<()>,
     commands: OnceCell<mpsc::Sender<Command>>,
+    /// The client-side tool calls the last turn parked on. Updated before
+    /// the turn's completion is published, so a waiter that saw the turn
+    /// end reads its parked calls.
+    parked_calls: watch::Sender<Option<everruns_host::ParkedToolCalls>>,
+    /// Whether a run gave the session client-side tools that no later run
+    /// has cleared.
+    #[cfg(feature = "ag-ui")]
+    client_tools_declared: std::sync::atomic::AtomicBool,
 }
 
 /// Bounds commands accepted while the actor is busy and deferred inspection or
 /// next-turn work retained while a turn reaches its terminal boundary.
 // THREAT[TM-DOS-036]: never turn slow model execution into an unbounded mailbox.
 const SESSION_COMMAND_CAPACITY: usize = 64;
+
+/// The session hint under which the runtime pauses a turn on a client-side
+/// tool call (see [`SessionOverrides::client_tools`]).
+#[cfg(feature = "ag-ui")]
+const CLIENT_ANSWERS_PAUSES_HINT: &str = "setup_connection";
 
 impl Session {
     pub(crate) fn from_inner(inner: Arc<SessionInner>) -> Self {
@@ -108,6 +126,9 @@ impl Session {
                 environment: OnceLock::new(),
                 environment_gate: tokio::sync::Mutex::new(()),
                 commands: OnceCell::new(),
+                parked_calls: watch::Sender::new(None),
+                #[cfg(feature = "ag-ui")]
+                client_tools_declared: std::sync::atomic::AtomicBool::new(false),
             }),
         };
         if let Some(harness) = session.inner.execution.harness_snapshot() {
@@ -397,6 +418,100 @@ impl Session {
         result.await.map_err(|_| RunError::SessionClosed)?
     }
 
+    /// Replace this session's run-scoped record fields before a run.
+    ///
+    /// Ordered with sends: an override issued before a send applies to the
+    /// turn that send starts, and mid-turn it applies from the running turn's
+    /// next model call. The record is rewritten after the runtime is built,
+    /// because building it seeds the record afresh.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) async fn override_record(
+        &self,
+        overrides: SessionOverrides,
+    ) -> Result<(), RunError> {
+        let declared = overrides
+            .client_tools
+            .as_ref()
+            .map(|tools| !tools.is_empty());
+        let (response, result) = oneshot::channel();
+        self.command_sender()
+            .await?
+            .send(Command::Override {
+                overrides,
+                response,
+            })
+            .await
+            .map_err(|_| RunError::SessionClosed)?;
+        result.await.map_err(|_| RunError::SessionClosed)??;
+        if let Some(declared) = declared {
+            self.inner
+                .client_tools_declared
+                .store(declared, std::sync::atomic::Ordering::SeqCst);
+        }
+        Ok(())
+    }
+
+    /// Whether the session holds client-side tools a run gave it.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) fn had_client_tools(&self) -> bool {
+        self.inner
+            .client_tools_declared
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// The client-side tool calls the session's last turn parked on, if it
+    /// parked and has not been resumed or superseded since.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) fn parked_tool_calls(&self) -> Option<everruns_host::ParkedToolCalls> {
+        self.inner.parked_calls.borrow().clone()
+    }
+
+    /// A feed of [`parked_tool_calls`](Self::parked_tool_calls), updated
+    /// before each turn's completion is published.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) fn watch_parked_tool_calls(
+        &self,
+    ) -> watch::Receiver<Option<everruns_host::ParkedToolCalls>> {
+        self.inner.parked_calls.subscribe()
+    }
+
+    /// Continue the turn parked on client-side tool calls with their
+    /// results. Returns once the turn is running again; follow it on the
+    /// event stream.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) async fn resume_tool_results(
+        &self,
+        results: Vec<everruns_core::events::ToolCompletedData>,
+    ) -> Result<(), RunError> {
+        let (response, result) = oneshot::channel();
+        self.command_sender()
+            .await?
+            .send(Command::Resume { results, response })
+            .await
+            .map_err(|_| RunError::SessionClosed)?;
+        result.await.map_err(|_| RunError::SessionClosed)?
+    }
+
+    /// Record `messages` as the session's prior conversation when it has
+    /// none yet. Returns whether they were recorded: a session that already
+    /// holds history, or is running a turn, is left as it is.
+    #[cfg(feature = "ag-ui")]
+    pub(crate) async fn seed_history(
+        &self,
+        messages: Vec<everruns_core::RuntimeMessage>,
+    ) -> Result<bool, RunError> {
+        if messages.is_empty() {
+            return Ok(false);
+        }
+        let (response, result) = oneshot::channel();
+        self.command_sender()
+            .await?
+            .send(Command::Seed { messages, response })
+            .await
+            .map_err(|_| RunError::SessionClosed)?;
+        result.await.map_err(|_| RunError::SessionClosed)?
+    }
+
     async fn send_internal(
         &self,
         input: InputMessage,
@@ -459,6 +574,56 @@ enum Command {
         turn_id: TurnId,
         response: oneshot::Sender<bool>,
     },
+    Interrupted {
+        response: oneshot::Sender<Result<Option<InterruptedTurn>, RunError>>,
+    },
+    ResumeInterrupted {
+        response: oneshot::Sender<Result<Option<ResumedTurn>, RunError>>,
+    },
+    #[cfg(feature = "ag-ui")]
+    Override {
+        overrides: SessionOverrides,
+        response: oneshot::Sender<Result<(), RunError>>,
+    },
+    #[cfg(feature = "ag-ui")]
+    Resume {
+        results: Vec<everruns_core::events::ToolCompletedData>,
+        response: oneshot::Sender<Result<(), RunError>>,
+    },
+    #[cfg(feature = "ag-ui")]
+    Seed {
+        messages: Vec<everruns_core::RuntimeMessage>,
+        response: oneshot::Sender<Result<bool, RunError>>,
+    },
+}
+
+/// How a driven turn begins.
+enum TurnEntry {
+    /// A new input starts it.
+    Input(Box<AcceptedTurnInput>),
+    /// A turn a process exit cut off runs its unfinished tool calls again.
+    Interrupted,
+    /// Client-side tool results continue a parked one.
+    #[cfg(feature = "ag-ui")]
+    Resume(Vec<everruns_core::events::ToolCompletedData>),
+}
+
+/// Session record fields a run replaces for itself (see
+/// [`Session::override_record`]). `None` leaves a field as it is.
+// Decision: run-scoped instructions ride the session record's own
+// `system_prompt`, the additive session layer of the effective system prompt,
+// rather than a message in the transcript: the record is re-read at every turn
+// and model call, so the latest run's value wins and nothing accumulates in
+// history.
+#[cfg(feature = "ag-ui")]
+#[derive(Debug, Default)]
+pub(crate) struct SessionOverrides {
+    /// The session layer of the system prompt; `Some(None)` clears it.
+    pub(crate) instructions: Option<Option<String>>,
+    /// The session's client-side tools, replacing any set before. A
+    /// non-empty set also declares that the client answers a pause, so a
+    /// turn parks on a call to one instead of running past it.
+    pub(crate) client_tools: Option<Vec<everruns_provider::tool_types::ToolDefinition>>,
 }
 
 struct ActorSentMessage {
@@ -485,6 +650,7 @@ struct SessionActor {
     runtime: Option<InProcessRuntime>,
     agent_started: bool,
     deferred: VecDeque<Command>,
+    parked_calls: watch::Sender<Option<everruns_host::ParkedToolCalls>>,
 }
 
 impl SessionActor {
@@ -500,6 +666,7 @@ impl SessionActor {
             runtime: None,
             agent_started: false,
             deferred: VecDeque::new(),
+            parked_calls: inner.parked_calls.clone(),
         }
     }
 
@@ -532,8 +699,161 @@ impl SessionActor {
                 Command::Cancel { response, .. } => {
                     let _ = response.send(false);
                 }
+                Command::Interrupted { response } => {
+                    let _ = response.send(self.interrupted_turn().await);
+                }
+                Command::ResumeInterrupted { response } => {
+                    if !self.resume_interrupted(response, &mut commands).await {
+                        break;
+                    }
+                }
+                #[cfg(feature = "ag-ui")]
+                Command::Override {
+                    overrides,
+                    response,
+                } => {
+                    let _ = response.send(self.apply_overrides(overrides).await);
+                }
+                #[cfg(feature = "ag-ui")]
+                Command::Resume { results, response } => {
+                    if !self.resume_turn(results, response, &mut commands).await {
+                        break;
+                    }
+                }
+                #[cfg(feature = "ag-ui")]
+                Command::Seed { messages, response } => {
+                    let _ = response.send(self.seed_history(messages).await);
+                }
             }
         }
+    }
+
+    /// Continue the turn parked on client-side tool calls. Lifecycle
+    /// turn-start handlers do not run again: it is the same turn.
+    #[cfg(feature = "ag-ui")]
+    async fn resume_turn(
+        &mut self,
+        results: Vec<everruns_core::events::ToolCompletedData>,
+        response: oneshot::Sender<Result<(), RunError>>,
+        commands: &mut mpsc::Receiver<Command>,
+    ) -> bool {
+        let parked = self
+            .runtime
+            .as_ref()
+            .and_then(|runtime| runtime.parked_tool_calls(self.session_id));
+        let Some(parked) = parked else {
+            let _ = response.send(Err(AgentLoopError::store(format!(
+                "session {} has no turn waiting for tool results",
+                self.session_id
+            ))
+            .into()));
+            return true;
+        };
+        let _ = response.send(Ok(()));
+        self.hook_state.begin_turn();
+        let (completion_tx, _) = watch::channel(TurnCompletion::Pending);
+        self.drive_turn(
+            TurnEntry::Resume(results),
+            parked.turn_id,
+            TurnSteering::new(),
+            completion_tx,
+            commands,
+        )
+        .await
+    }
+
+    /// Append `messages` as canonical history events, user messages as
+    /// `input.message` and assistant ones as `output.message.completed`, the
+    /// events history is projected from. Only while the session has no
+    /// message yet, so a retried or replayed seed never duplicates history.
+    #[cfg(feature = "ag-ui")]
+    async fn seed_history(
+        &mut self,
+        messages: Vec<everruns_core::RuntimeMessage>,
+    ) -> Result<bool, RunError> {
+        use everruns_core::events::{
+            EventContext, EventRequest, InputMessageData, OutputMessageCompletedData,
+        };
+        use everruns_core::message::RuntimeMessageRole;
+
+        self.ensure_runtime().await?;
+        let backends = self
+            .execution
+            .backends()
+            .await
+            .map_err(crate::agent::BackendInitError::into_agent_loop)?;
+        let page = everruns_host::EventHistory::new(backends.host.event_log.clone())
+            .read_page(everruns_host::EventHistoryReadRequest::new(
+                self.session_id,
+                everruns_host::EventHistoryReadLimit::new(1)
+                    .map_err(|error| AgentLoopError::store(error.to_string()))?,
+            ))
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        if !page.messages.is_empty() {
+            return Ok(false);
+        }
+        let emitter = self
+            .runtime
+            .as_ref()
+            .expect("runtime built above")
+            .host_event_emitter();
+        for message in messages {
+            let request = match message.role {
+                RuntimeMessageRole::Agent => EventRequest::new(
+                    self.session_id,
+                    EventContext::empty(),
+                    OutputMessageCompletedData::new(message),
+                ),
+                _ => EventRequest::new(
+                    self.session_id,
+                    EventContext::empty(),
+                    InputMessageData::new(message),
+                ),
+            };
+            emitter.emit(request).await?;
+        }
+        Ok(true)
+    }
+
+    #[cfg(feature = "ag-ui")]
+    async fn apply_overrides(&mut self, overrides: SessionOverrides) -> Result<(), RunError> {
+        self.ensure_runtime().await?;
+        let backends = self
+            .execution
+            .backends()
+            .await
+            .map_err(crate::agent::BackendInitError::into_agent_loop)?;
+        let store = &backends.host.session_store;
+        let mut record = store.get_session(self.session_id).await?.ok_or_else(|| {
+            AgentLoopError::store(format!("session not found: {}", self.session_id))
+        })?;
+        if let Some(instructions) = overrides.instructions {
+            record.system_prompt = instructions;
+        }
+        if let Some(tools) = overrides.client_tools {
+            // A plain client-side call parks the turn only when the session
+            // declares its client can answer a pause, which the runtime
+            // reads from the `setup_connection` hint (see
+            // `everruns_engine::act_pauses_turn`). Declare it while the
+            // session has client-side tools; without them nothing would
+            // answer the pause.
+            let hints = record.hints.get_or_insert_with(Default::default);
+            if tools.is_empty() {
+                hints.remove(CLIENT_ANSWERS_PAUSES_HINT);
+            } else {
+                hints.insert(CLIENT_ANSWERS_PAUSES_HINT.to_string(), true.into());
+            }
+            if hints.is_empty() {
+                record.hints = None;
+            }
+            record.tools = tools;
+        }
+        // Read-modify-write without a store-level lock: the actor serializes
+        // overrides, a running turn is not polled while one applies, and the
+        // in-process runtime keeps no status in the record.
+        store.add_session(record).await?;
+        Ok(())
     }
 
     async fn start_turn(
@@ -574,8 +894,14 @@ impl SessionActor {
             HookRun::Completed(Ok(())) => {}
         }
 
-        self.drive_turn(input, turn_id, steering, completion_tx, commands)
-            .await
+        self.drive_turn(
+            TurnEntry::Input(Box::new(input)),
+            turn_id,
+            steering,
+            completion_tx,
+            commands,
+        )
+        .await
     }
 
     async fn prepare_turn(
@@ -615,16 +941,39 @@ impl SessionActor {
 
     async fn drive_turn(
         &mut self,
-        input: AcceptedTurnInput,
+        entry: TurnEntry,
         turn_id: TurnId,
         steering: TurnSteering,
         completion: watch::Sender<TurnCompletion>,
         commands: &mut mpsc::Receiver<Command>,
     ) -> bool {
         let runtime = self.runtime.as_ref().expect("runtime built above").clone();
+        // The turn this drives parks anew or not at all.
+        self.parked_calls.send_replace(None);
         let (outcome, cancelled) = {
-            let run = runtime.run_steerable_turn(self.session_id, input, turn_id, steering.clone());
-            tokio::pin!(run);
+            let mut run: std::pin::Pin<
+                Box<
+                    dyn Future<Output = everruns_provider::error::Result<everruns_host::TurnResult>>
+                        + Send
+                        + '_,
+                >,
+            > = match entry {
+                TurnEntry::Input(input) => Box::pin(runtime.run_steerable_turn(
+                    self.session_id,
+                    *input,
+                    turn_id,
+                    steering.clone(),
+                )),
+                TurnEntry::Interrupted => {
+                    Box::pin(runtime.resume_interrupted_turn(self.session_id, steering.clone()))
+                }
+                #[cfg(feature = "ag-ui")]
+                TurnEntry::Resume(results) => Box::pin(runtime.resume_steerable_turn(
+                    self.session_id,
+                    results,
+                    steering.clone(),
+                )),
+            };
             let mut cancelled = false;
             let outcome = loop {
                 tokio::select! {
@@ -658,6 +1007,27 @@ impl SessionActor {
                         }
                         Some(Command::Inspect { response }) => {
                             self.deferred.push_back(Command::Inspect { response });
+                        }
+                        // A running turn is not interrupted, whatever the log says.
+                        Some(Command::Interrupted { response }) => {
+                            let _ = response.send(Ok(None));
+                        }
+                        Some(Command::ResumeInterrupted { response }) => {
+                            let _ = response.send(Ok(None));
+                        }
+                        #[cfg(feature = "ag-ui")]
+                        Some(Command::Override { overrides, response }) => {
+                            let _ = response.send(self.apply_overrides(overrides).await);
+                        }
+                        // Nothing parks while a turn runs; answer once it ends.
+                        #[cfg(feature = "ag-ui")]
+                        Some(Command::Resume { results, response }) => {
+                            self.deferred.push_back(Command::Resume { results, response });
+                        }
+                        // A running turn means the session has a conversation.
+                        #[cfg(feature = "ag-ui")]
+                        Some(Command::Seed { response, .. }) => {
+                            let _ = response.send(Ok(false));
                         }
                         Some(Command::Cancel { turn_id: requested, response }) => {
                             if requested == turn_id {
@@ -705,6 +1075,10 @@ impl SessionActor {
             }
             (Ok(()), Err(error)) => Err(error),
         };
+        // Before the completion: whoever saw the turn end sees what it
+        // parked on.
+        self.parked_calls
+            .send_replace(runtime.parked_tool_calls(self.session_id));
         let _ = completion.send(TurnCompletion::Ready(result));
         true
     }

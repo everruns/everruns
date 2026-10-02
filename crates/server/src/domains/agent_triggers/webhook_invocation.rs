@@ -6,7 +6,7 @@
 use super::commands::{WebhookCompatibilityContext, parse_agent_id};
 use super::events;
 use super::queries as q;
-use crate::domains::apps::invocation::render_message_template;
+use crate::domains::agent_endpoints::invocation::render_message_template;
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -62,11 +62,11 @@ pub async fn invoke_webhook_agent_trigger(
     let webhook_context = if trigger_row.execution_app_id.is_some() {
         Some(WebhookCompatibilityContext {
             app_public_id: trigger_row
-                .execution_app_public_id
+                .legacy_alias_id
                 .clone()
                 .ok_or_else(|| CommandError::not_found("App channel"))?,
             app_name: trigger_row
-                .execution_app_name
+                .legacy_alias_name
                 .clone()
                 .ok_or_else(|| CommandError::not_found("App channel"))?,
             ingress_id: req.ingress_id.clone(),

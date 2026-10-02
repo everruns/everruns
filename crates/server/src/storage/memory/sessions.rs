@@ -907,6 +907,38 @@ impl InMemoryDatabase {
         Ok(result.into_iter().next())
     }
 
+    pub async fn list_sessions_by_tags(
+        &self,
+        org_id: i64,
+        tags: &[String],
+        activities: &[everruns_platform::SessionActivity],
+        updated_after: Option<DateTime<Utc>>,
+        after: Option<(DateTime<Utc>, Uuid)>,
+        limit: u32,
+    ) -> Result<(Vec<SessionRow>, u32)> {
+        let mut matched: Vec<SessionRow> = self
+            .sessions
+            .read()
+            .values()
+            .filter(|s| {
+                s.org_id == org_id
+                    && s.archived_at.is_none()
+                    && tags.iter().all(|tag| s.tags.contains(tag))
+                    && updated_after.is_none_or(|at| s.updated_at >= at)
+                    && (activities.is_empty() || activities.contains(&session_activity(s)))
+            })
+            .cloned()
+            .collect();
+        let total = matched.len() as u32;
+        matched.sort_by_key(|s| std::cmp::Reverse((s.updated_at, s.id.uuid())));
+        let page = matched
+            .into_iter()
+            .filter(|s| after.is_none_or(|cursor| (s.updated_at, s.id.uuid()) < cursor))
+            .take(limit as usize)
+            .collect();
+        Ok((page, total))
+    }
+
     /// Find a single app-owned session matching ALL given tags within an org.
     pub async fn find_app_session_by_tags(
         &self,

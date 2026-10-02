@@ -55,8 +55,10 @@ Framework adaptation or any host application.
   execution, store-backed snapshot/context loading, lifecycle and dependency
   probing, provider/driver resolution, command completion, runtime seeding
   helpers, reusable host-phase composition, and lifecycle-effect application.
-- `everruns-durable` owns the checkpointed `DurableExecution` driver and
-  persistence/retry machinery.
+- `everruns-durable` is a generic durable-execution engine (persistence,
+  retries, task queue, schedules) with no agent or turn semantics and no
+  `everruns-*` dependency. `everruns-worker` owns the checkpointed
+  `DurableExecution` driver and the turn conventions layered on durable tasks.
 - `everruns-server` and `everruns-worker` remain control-plane and durable
   execution hosts. They adapt host effects and durable scheduling while owning worker
   polling, retries, and process boundaries.

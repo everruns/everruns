@@ -22,9 +22,7 @@ crates/core/src/skill.rs
 crates/core/src/tool_narration.rs
 crates/drivers/anthropic/src/driver.rs
 crates/drivers/llmsim/src/lib.rs
-crates/durable/src/engine/executor.rs
 crates/durable/src/persistence/memory.rs
-crates/durable/src/persistence/postgres.rs
 crates/durable/tests/postgres_integration_test.rs
 crates/engine/src/execution/act.rs
 crates/engine/src/execution/reason.rs
@@ -47,7 +45,6 @@ crates/provider/src/openresponses_types.rs
 crates/server/src/api/agents.rs
 crates/server/src/api/common.rs
 crates/server/src/api/durable.rs
-crates/server/src/api/endpoint_a2a.rs
 crates/server/src/api/mcp_endpoint/mod.rs
 crates/server/src/api/sessions.rs
 crates/server/src/api/voice.rs

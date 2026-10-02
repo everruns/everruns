@@ -1,7 +1,7 @@
 //! A cancelled workflow reaches the worker that still owns its task (EVE-1134).
 //!
 //! The heartbeat used to report `should_cancel` only when the claim was lost,
-//! so a running activity never learned that its turn was cancelled. Ownership
+//! so a running activity never learned its workflow was cancelled. Ownership
 //! loss stays distinguishable: it is the only case with `accepted == false`.
 //!
 //! The PostgreSQL case runs with `--features postgres-tests` against a
@@ -14,6 +14,7 @@ use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_durable::workflow::ActivityOptions;
+use everruns_durable::{EventLog, TaskQueue, WorkerRegistry};
 
 async fn cancelled_turn_reaches_the_owning_worker(store: &impl WorkflowEventStore) {
     let workflow_id = Uuid::now_v7();
@@ -44,7 +45,7 @@ async fn cancelled_turn_reaches_the_owning_worker(store: &impl WorkflowEventStor
         .await
         .unwrap();
     assert!(live.accepted);
-    assert!(!live.should_cancel, "a running turn is not cancelled");
+    assert!(!live.should_cancel, "a running workflow is not cancelled");
 
     store
         .update_workflow_status(workflow_id, WorkflowStatus::Cancelled, None, None)
@@ -55,7 +56,7 @@ async fn cancelled_turn_reaches_the_owning_worker(store: &impl WorkflowEventStor
         .await
         .unwrap();
     assert!(cancelled.accepted, "the worker still owns the task");
-    assert!(cancelled.should_cancel, "the turn was cancelled");
+    assert!(cancelled.should_cancel, "the workflow was cancelled");
 }
 
 #[tokio::test]

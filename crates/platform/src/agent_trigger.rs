@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 // schedule channels share one shape. Do not duplicate these.
 use crate::app::default_invocation_binding;
 use everruns_core::channel::SessionBinding;
-use everruns_provider::typed_id::{AgentId, AppChannelId, TriggerId};
+use everruns_provider::typed_id::{AgentEndpointId, AgentId, TriggerId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -294,7 +294,7 @@ pub struct AgentTrigger {
     /// Stable HTTP ingress identifier for trigger types that accept requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
-    pub ingress_id: Option<AppChannelId>,
+    pub ingress_id: Option<AgentEndpointId>,
     /// Type-specific configuration (parsed via typed accessors).
     pub config: serde_json::Value,
     /// Whether the trigger is currently active.

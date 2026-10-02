@@ -122,9 +122,13 @@ POST /v1/sessions/{id}/approvals/{tool_call_id} {"decision":"approve"}
 ```
 
 The runtime tells the model only that the call was rejected; a `note` is not
-passed on. Cancelling the turn drops its pending approvals. In this PoC they
-do not survive a restart. There is no canonical event for a pending approval:
-clients find it on the session (and `dev` prints it with a ready `curl`).
+passed on. Cancelling the turn drops its pending approvals. After a restart,
+the first request that touches the session (reading it included) finds the
+turn the old process left waiting and runs the waiting call again, so the
+approval is pending once more under the same `tool_call_id`; pending
+questions come back the same way. There is no canonical event for a pending
+approval: clients find it on the session (and `dev` prints it with a ready
+`curl`).
 
 ## Questions (`ask_user`)
 

@@ -25,8 +25,8 @@ use uuid::Uuid;
 
 use everruns_durable::engine::{ExecutorConfig, WorkflowExecutor};
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, StoreError, TaskDefinition, WorkerInfo, WorkflowEventStore,
-    WorkflowStatus,
+    EventLog, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskQueue, WorkerInfo,
+    WorkerRegistry, WorkflowStatus,
 };
 use everruns_durable::reliability::{CircuitBreakerConfig, DistributedCircuitBreaker};
 use everruns_durable::workflow::{
@@ -778,11 +778,7 @@ async fn test_db_failure_during_event_append_rolls_back() {
     fail::cfg("postgres_append_events_after_insert", "return").unwrap();
 
     let result = store
-        .append_events(
-            workflow_id,
-            0,
-            vec![WorkflowEvent::WorkflowStarted { input: json!({}) }],
-        )
+        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
         .await;
     assert!(result.is_err());
 
@@ -794,11 +790,7 @@ async fn test_db_failure_during_event_append_rolls_back() {
 
     // Recovery: same operation now succeeds
     let seq = store
-        .append_events(
-            workflow_id,
-            0,
-            vec![WorkflowEvent::WorkflowStarted { input: json!({}) }],
-        )
+        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
         .await
         .unwrap();
     assert_eq!(seq, 1);
@@ -820,11 +812,7 @@ async fn test_db_failure_during_event_load_recovers() {
 
     // Write some events successfully
     store
-        .append_events(
-            workflow_id,
-            0,
-            vec![WorkflowEvent::WorkflowStarted { input: json!({}) }],
-        )
+        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
         .await
         .unwrap();
 

@@ -236,8 +236,54 @@ pub(crate) fn is_missing_tool_output_continuation_error(error: &AgentLoopError) 
         return false;
     }
     let message = error.to_string().to_ascii_lowercase();
+    let identifies_response_chain = message.contains("previous_response")
+        || message.contains("previous response")
+        || message.contains("referenced response");
+    let reports_missing_chain = message.contains("not found")
+        || message.contains("expired")
+        || message.contains("no longer")
+        || message.contains("does not exist");
+
     message.contains("no tool output found for function call")
         || message.contains("no tool call found for function call output")
-        || message.contains("previous_response_not_found")
-        || (message.contains("previous response") && message.contains("not found"))
+        || (identifies_response_chain && reports_missing_chain)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_missing_tool_output_continuation_error;
+    use crate::error::AgentLoopError;
+
+    #[test]
+    fn classifies_expired_or_missing_response_chain_errors() {
+        for message in [
+            "referenced response not found or expired",
+            "previous_response_id not found",
+        ] {
+            let error = AgentLoopError::llm_http(400, message, message);
+            assert!(
+                is_missing_tool_output_continuation_error(&error),
+                "expected continuation error for {message:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unrelated_or_non_invalid_request_errors() {
+        let unauthorized = AgentLoopError::llm_http(
+            401,
+            "referenced response not found or expired",
+            "referenced response not found or expired",
+        );
+        assert!(!is_missing_tool_output_continuation_error(&unauthorized));
+
+        let reasoning_required = AgentLoopError::llm_http(
+            400,
+            "reasoning is mandatory for this model",
+            "reasoning is mandatory for this model",
+        );
+        assert!(!is_missing_tool_output_continuation_error(
+            &reasoning_required
+        ));
+    }
 }

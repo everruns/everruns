@@ -104,5 +104,5 @@
     "custom": {}
   },
   "tags": [],
-  "notes": null
+  "notes": "Converted 2026-10-02: histograms compacted to 1000 quantiles; elapsed_ms re-derived from the timeseries (the original was measured at save time, after later scenarios ran)."
 }

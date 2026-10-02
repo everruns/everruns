@@ -1,24 +1,48 @@
 # everruns-durable
 
-> PostgreSQL-backed durable execution engine for Everruns: event-sourced
-> workflows, a claimable task queue, retries, circuit breakers and schedules.
+> PostgreSQL-backed durable execution engine for Everruns: event-sourced workflows, a claimable task queue, retries, circuit breakers and schedules.
+
+[![Crates.io](https://img.shields.io/crates/v/everruns-durable.svg)](https://crates.io/crates/everruns-durable)
+[![Documentation](https://docs.rs/everruns-durable/badge.svg)](https://docs.rs/everruns-durable)
+[![License](https://img.shields.io/crates/l/everruns-durable.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-durable` keeps work alive across crashes and restarts. State lives in
 PostgreSQL, workers claim tasks with `SELECT ... FOR UPDATE SKIP LOCKED`, and
 anything a dead worker held is reclaimed and retried. It needs no
 infrastructure beyond PostgreSQL.
 
-It is an internal crate of the [Everruns](https://everruns.com) workspace
-(`publish = false`). The control plane and workers use it to keep long-running
-agent turns progressing.
+It is a focused crate in the [Everruns](https://everruns.com) ecosystem. The
+Everruns control plane and workers use it to keep long-running agent turns
+progressing, and it works on its own for any workflow or job queue that should
+survive restarts.
+
+```sh
+cargo add everruns-durable
+```
+
+## What It Provides
+
+- Event-sourced, deterministic workflows (`Workflow`, `WorkflowExecutor`) with
+  replay, snapshots, timers, child workflows, signals and `continue_as_new`
+- A PostgreSQL task queue with priorities, `SKIP LOCKED` claiming, heartbeats,
+  stale-claim reclamation and a dead letter queue
+- Retry policies, timeouts and distributed circuit breakers
+- A worker pool with bounded concurrency and backpressure
+- Cron and interval schedules with leader-safe claiming
+- A self-contained PostgreSQL schema (`PostgresWorkflowEventStore::migrate`)
+  and an in-memory store for tests
+
+The crate is a generic engine: it knows workflows, activities, tasks, signals
+and schedules, and depends on no other Everruns crate. It has no notion of
+agents, sessions or turns.
 
 ## How Everruns uses it
 
-Agent turns run on the task queue directly. The worker claims `reason` and
-`act` tasks, advances the turn through `DurableExecution`, the checkpointed
-driver for the shared `everruns-engine::Execution` contract, and enqueues the
-next task. This crate owns persistence, retries and scheduling; turn semantics
-stay in `everruns-engine`.
+Agent turns run on the task queue directly. The Everruns worker claims `reason`
+and `act` tasks, advances the turn through its own checkpointed driver for the
+shared `everruns-engine::Execution` contract, and enqueues the next task. This
+crate owns persistence, retries and scheduling; turn semantics, signal payloads
+and what a sealed task means to a session live in the worker and server.
 
 The general-purpose workflow engine (`WorkflowExecutor` over the
 `Workflow` trait) is the other half of the crate: deterministic state
@@ -128,14 +152,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 | Piece | Role |
 | --- | --- |
-| `Workflow` | Deterministic state machine. Handlers (`on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_signal`) return `WorkflowAction`s. |
+| `Workflow` | Deterministic state machine. Handlers (`on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_child_workflow_completed`, `on_child_workflow_failed`, `on_signal`) return `WorkflowAction`s. |
 | `WorkflowEvent` | Append-only history. Replaying it rebuilds workflow state after a crash. |
 | `WorkflowExecutor` | Starts workflows, appends events, replays history and applies the actions it has not recorded yet, so re-processing is idempotent. Optional snapshots bound replay cost; `continue_as_new` rolls over long histories. |
-| `WorkflowEventStore` | Storage contract: event log, task queue, workers, DLQ, circuit breakers, schedules. `PostgresWorkflowEventStore` for production, `InMemoryWorkflowEventStore` for tests and benches. |
+| `WorkflowEventStore` | Umbrella storage contract, blanket-implemented over focused traits: `EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`. A worker needs only `TaskQueue + SignalStore + WorkerRegistry`. No method silently succeeds by default, so a new store must implement each one. `PostgresWorkflowEventStore` for production, `InMemoryWorkflowEventStore` for tests and benches. |
 | `TaskDefinition` / `ClaimedTask` | A queued activity. `workflow_id: None` makes it a standalone queue task. |
 | `WorkerPool` | Polls for tasks, runs registered handlers with bounded concurrency, heartbeats, reclaims stale work and applies backpressure. |
 | `DurableScheduler` | Cron and interval schedules that start workflows or tasks, with leader-safe claiming. |
-| `DurableExecution` | Checkpointed driver of `everruns-engine` turns. |
+
+### Timers and child workflows
+
+`WorkflowAction::timer` fires `on_timer_fired` once its duration has passed.
+`WorkflowAction::child_workflow` starts a registered workflow type and reports
+its outcome to `on_child_workflow_completed` or `on_child_workflow_failed`.
+
+Both run as the engine's own tasks on the ordinary queue, so they survive a
+crash and retry like any activity. Something has to claim them: register a
+worker for `SYSTEM_ACTIVITY_TYPES` and call `run_system_tasks` in a loop.
+
+```rust,ignore
+let engine = WorkerInfo::new("engine-1", SYSTEM_ACTIVITY_TYPES);
+executor.store().register_worker(engine).await?;
+loop {
+    if executor.run_system_tasks("engine-1", 100).await? == 0 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+```
+
+A child's id is derived from its parent and the id the parent gave it, so a
+retried start never creates a second child. The rustdoc of
+`WorkflowExecutor::run_system_tasks` has a runnable example.
 
 ## Reliability
 
@@ -179,22 +226,31 @@ The rest of the toolkit:
 
 ## Running against PostgreSQL
 
-The schema lives in the server's migrations (`durable_*` tables):
-
-```sh
-sqlx migrate run --source crates/server/migrations
-```
-
-Then build the store from a pool:
+The crate ships its own schema: the `durable_*` tables, their indexes, and the
+trigger functions behind worker wake-ups and health counters. Apply it with
+`PostgresWorkflowEventStore::migrate` before building the store. It is
+idempotent, runs in one transaction, and serializes concurrent callers on an
+advisory lock, so calling it on every start-up is safe. It needs PostgreSQL 14
+or newer and no extensions. Objects are created in the first schema of the
+connection's `search_path`.
 
 ```rust,no_run
-use everruns_durable::PostgresWorkflowEventStore;
+use everruns_durable::prelude::*;
 
-# async fn connect() -> Result<(), sqlx::Error> {
-let pool = sqlx::PgPool::connect("postgres://localhost/everruns").await?;
-let store = PostgresWorkflowEventStore::new(pool);
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let pool = sqlx::PgPool::connect("postgres://localhost/my_app").await?;
+PostgresWorkflowEventStore::migrate(&pool).await?;
+
+let mut executor = WorkflowExecutor::new(PostgresWorkflowEventStore::new(pool));
+# let _ = &mut executor;
 # Ok(()) }
 ```
+
+If your application manages schema with its own migration tool, copy
+`PostgresWorkflowEventStore::SCHEMA_SQL` into a migration instead. A database
+whose durable tables were created by the Everruns server migrations already
+matches this schema, and `migrate` leaves it unchanged; a CI drift test keeps
+the two in step.
 
 ## Testing
 
@@ -202,10 +258,12 @@ let store = PostgresWorkflowEventStore::new(pool);
 # Unit tests, in-memory store (no database)
 cargo test -p everruns-durable
 
-# PostgreSQL integration tests (DATABASE_URL, default port 9332, migrated)
+# PostgreSQL integration tests (DATABASE_URL, default port 9332, migrated
+# with the server migrations, which schema_drift_test compares against)
 cargo test -p everruns-durable --features postgres-tests \
   --test postgres_integration_test --test postgres_repository_test \
-  --test heartbeat_cancel_test --test store_conformance_test -- --test-threads=1
+  --test heartbeat_cancel_test --test store_conformance_test \
+  --test schema_drift_test -- --test-threads=1
 
 # Failure injection: fail-rs failpoints inside the PostgreSQL store
 cargo test -p everruns-durable --features "failpoints,postgres-tests" \
@@ -231,14 +289,26 @@ as doctests.
 
 ```sh
 just durable bench                 # in-memory store
-just durable bench-db              # PostgreSQL store
+just durable bench-db              # PostgreSQL store (DATABASE_URL)
 just durable bench --save my-box   # also write a checkpoint for comparison
 ```
 
-Each run writes an HTML report to `target/benchmark-reports/`. Scenarios cover
-worker scaling (1 to 100 workers, burst load), workflow throughput (many
-workflows with many sequential steps) and cold-start latency. Saved
-checkpoints live in `benches/checkpoints/`.
+Scenarios cover worker scaling (1 to 100 workers, burst load), workflow
+throughput (many workflows with many sequential steps) and cold-start latency.
+Each run writes HTML reports to `crates/durable/target/benchmark-reports/`.
+
+The bench binaries and the `bench` support module need the `bench` feature,
+which the commands above enable. Every bench takes the same flags: `--smoke` runs each scenario at a tiny scale,
+and `--summary <file>` appends one JSON line per scenario.
+
+- **Pull requests** run every bench with `--smoke` on the `durable` CI shard, so
+  a broken bench fails the change that broke it.
+- **Weekly**, the `Durable Benchmarks` workflow runs them at full scale and
+  compares throughput with `benches/baseline.jsonl`, failing on a drop of more
+  than 30%. Refresh the baseline from a trusted run's `summary.jsonl`
+  artifacts when a change is expected.
+- **Checkpoints** in `benches/checkpoints/` keep compact history (1000-point
+  quantile sketches, not raw samples).
 
 ## Feature flags
 
@@ -246,11 +316,12 @@ checkpoints live in `benches/checkpoints/`.
 | --- | --- |
 | `postgres-tests` | Compiles the tests that need a live PostgreSQL. |
 | `failpoints` | Enables `fail-rs` failpoints in the PostgreSQL store. Zero cost when off. |
+| `bench` | Builds the benchmark support module and bench binaries. Not a supported API. |
 
 ## Documentation
 
 - [Durable execution](https://docs.everruns.com/explanation/durable-execution/)
-- Design of record: `knowledge/operations/durable-execution-engine.md`
+- [API reference](https://docs.rs/everruns-durable)
 
 ## License
 

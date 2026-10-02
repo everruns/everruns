@@ -11,7 +11,7 @@ use crate::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
 pub use everruns_core::channel::SessionBinding;
 use everruns_core::principal::PrincipalSummary;
 use everruns_provider::typed_id::{
-    AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId, VirtualUserId,
+    AgentEndpointId, AgentId, AgentVersionId, AppId, HarnessId, PrincipalId, VirtualUserId,
 };
 
 #[cfg(feature = "openapi")]
@@ -279,7 +279,7 @@ pub struct AgentEndpoint {
     /// External identifier (appchan_<32-hex>). Shown as "id" in API.
     #[serde(rename = "id")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "appchan_01933b5a000070008000000000000001"))]
-    pub public_id: AppChannelId,
+    pub public_id: AgentEndpointId,
     /// Internal UUID primary key. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
@@ -454,7 +454,7 @@ impl App {
     }
 
     /// Find a channel by its public ID.
-    pub fn channel_by_id(&self, id: &AppChannelId) -> Option<&AgentEndpoint> {
+    pub fn channel_by_id(&self, id: &AgentEndpointId) -> Option<&AgentEndpoint> {
         self.channels.iter().find(|ch| ch.public_id == *id)
     }
 }
@@ -1271,7 +1271,7 @@ mod tests {
 
     fn test_channel(channel_type: EndpointTransport, config: serde_json::Value) -> AgentEndpoint {
         AgentEndpoint {
-            public_id: AppChannelId::from_uuid(Uuid::nil()),
+            public_id: AgentEndpointId::from_uuid(Uuid::nil()),
             internal_id: Uuid::nil(),
             channel_type,
             channel_config: config,
@@ -1286,7 +1286,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_channel_slack_config_valid() {
+    fn test_endpoint_slack_config_valid() {
         let ch = test_channel(
             EndpointTransport::Slack,
             serde_json::json!({"signing_secret": "sec", "bot_token": "tok"}),
@@ -1296,7 +1296,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_channel_slack_config_invalid_json() {
+    fn test_endpoint_slack_config_invalid_json() {
         let ch = test_channel(
             EndpointTransport::Slack,
             serde_json::json!({"signing_secret": 42}),
@@ -1321,7 +1321,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_channel_ag_ui_config_valid() {
+    fn test_endpoint_ag_ui_config_valid() {
         let config = serde_json::json!({"anonymous": true});
         let ch = test_channel(EndpointTransport::AgUi, config);
         let config = ch.ag_ui_config().unwrap();
@@ -1337,7 +1337,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_channel_fcp_config_defaults() {
+    fn test_endpoint_fcp_config_defaults() {
         let ch = test_channel(EndpointTransport::Fcp, serde_json::json!({}));
         let config = ch.fcp_config().unwrap();
         assert!(config.anonymous);
@@ -1361,7 +1361,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_channel_schedule_config_valid() {
+    fn test_endpoint_schedule_config_valid() {
         let ch = test_channel(
             EndpointTransport::Schedule,
             serde_json::json!({
@@ -1387,7 +1387,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_channel_webhook_config_valid() {
+    fn test_endpoint_webhook_config_valid() {
         let ch = test_channel(
             EndpointTransport::Webhook,
             serde_json::json!({
@@ -1468,7 +1468,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_channel_a2a_config_valid() {
+    fn test_endpoint_a2a_config_valid() {
         let ch = test_channel(
             EndpointTransport::A2a,
             serde_json::json!({
@@ -1561,7 +1561,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_channel_public_chat_config_valid() {
+    fn test_endpoint_public_chat_config_valid() {
         let ch = test_channel(
             EndpointTransport::PublicChat,
             serde_json::json!({"anonymous": true}),

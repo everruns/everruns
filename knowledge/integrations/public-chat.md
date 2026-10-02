@@ -51,7 +51,7 @@ The permanent compatibility aliases are:
 - `GET /v1/apps/{legacy_app_id}/public-chat/config`
 - `POST /v1/apps/{legacy_app_id}/public-chat`
 
-Aliases resolve from `agent_endpoints.legacy_app_public_id`. They do not read `apps` or
+Aliases resolve from `agent_endpoints.legacy_alias_id`. They do not read `apps` or
 `app_channels`. Canonical and alias routes apply the same tenant, liveness, authentication,
 rate-limit, Turnstile, and error behavior.
 

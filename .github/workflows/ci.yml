@@ -172,6 +172,7 @@ jobs:
               # that runs it and prove nothing.
               - 'scripts/lib/check-agent-record-isolation.sh'
               - 'scripts/lib/check-core-kernel-dependencies.sh'
+              - 'scripts/lib/check-durable-isolation.sh'
               - 'scripts/lib/check-hosted-capability-isolation.sh'
               - 'scripts/lib/check-observability-isolation.sh'
               - 'scripts/lib/check-provider-isolation.sh'
@@ -263,7 +264,6 @@ jobs:
               - 'apps/ui/src/lib/api/budgets.ts'
               - 'crates/server/src/api/budgets.rs'
               - 'crates/server/src/domains/agent_endpoints/**'
-              - 'crates/server/src/domains/apps/invocation.rs'
               - 'crates/server/src/domains/budgets/**'
               - 'crates/server/src/storage/repositories/budgets.rs'
               - 'crates/server/migrations/027_app_budgets.sql'
@@ -449,6 +449,7 @@ jobs:
           cargo check --locked --all-features \
             -p everruns-builtins \
             -p everruns-core \
+            -p everruns-durable \
             -p everruns-openai \
             -p everruns-anthropic \
             -p everruns-turbopuffer \
@@ -460,6 +461,7 @@ jobs:
             -p everruns-serve \
             -p everruns-serve-build \
             -p everruns-serve-macros \
+            -p everruns-serve-agentcore \
             -p everruns-ag-ui \
             -p everruns
 
@@ -633,6 +635,25 @@ jobs:
 
       - name: Check core kernel dependencies
         run: bash scripts/lib/check-core-kernel-dependencies.sh
+
+  # Architecture guard: everruns-durable is a generic durable-execution engine
+  # with no everruns-* normal or build dependency; agent/turn semantics live in
+  # the worker and server.
+  durable-isolation:
+    name: Durable Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check durable isolation
+        run: bash scripts/lib/check-durable-isolation.sh
 
   # Public API/semver guard (EVE-906): rustdoc JSON records the complete
   # published core surface while source and documentation ratchets reject
@@ -881,8 +902,10 @@ jobs:
             -p everruns-framework-support-agent -p everruns-bashkit-repo-agent \
             -p everruns-foreman-agent -p everruns-example-demo \
             -p everruns-serve -p everruns-serve-macros -p everruns-serve-build \
+            -p everruns-serve-agentcore \
             -p serve-example-hello -p serve-example-revenue-analyst \
-            -p serve-example-ag-ui
+            -p serve-example-ag-ui -p serve-example-agentcore \
+            -p serve-example-agentcore-workspace
           for example in support-agent everruns-support-agent coding-review-agent research-agent incident-commander-agent bashkit-repo-agent foreman-agent; do
             unexpected="$(find "examples/$example" -mindepth 1 -maxdepth 1 \
               ! -name .gitignore ! -name Cargo.toml ! -name README.md \
@@ -1373,11 +1396,22 @@ jobs:
 
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
-        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --test store_conformance_test --features postgres-tests -- --test-threads=1
+        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --test store_conformance_test --test timers_and_children_test --test schema_drift_test --features postgres-tests -- --test-threads=1
 
       - name: Run durable failpoint tests
         if: ${{ matrix.shard == 'durable' }}
         run: cargo test -p everruns-durable --test failure_injection_test --test agent_reliability_test --features "failpoints,postgres-tests" -- --test-threads=1
+
+      # Every bench at a tiny scale, so a broken bench fails the PR that broke
+      # it. Full runs are weekly in durable-bench.yml. `cargo test` runs the
+      # harness=false bench binaries in the test profile with these arguments.
+      - name: Run durable bench smoke
+        if: ${{ matrix.shard == 'durable' }}
+        run: >-
+          cargo test -p everruns-durable --features bench
+          --bench concurrent_workers --bench workflow_throughput --bench cold_start_latency
+          --bench db_concurrent_workers --bench db_workflow_throughput --bench db_cold_start_latency
+          -- --smoke
 
   # Slack live API tests — split out of the `durable` integration shard (EVE-1039).
   #

@@ -17,10 +17,11 @@ use std::time::Duration;
 
 use everruns_durable::persistence::{
     DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, InMemoryWorkflowEventStore, StoreError, TaskDefinition,
-    TaskFailureOutcome, TaskStatus, WorkerInfo, WorkflowEventStore,
+    TaskFailureOutcome, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_durable::reliability::RetryPolicy;
 use everruns_durable::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
+use everruns_durable::{DeadLetters, EventLog, SignalStore, TaskQueue, WorkerRegistry};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -105,6 +106,7 @@ conformance!(
     claims_by_priority_then_fifo,
     claim_respects_max_tasks,
     retry_waits_for_backoff,
+    delayed_tasks_wait_for_their_start_delay,
     non_retryable_failure_is_dead,
     exhausted_retries_are_dead,
     only_the_owner_completes,
@@ -114,10 +116,15 @@ conformance!(
     heartbeat_reports_ownership,
     first_claim_records_activity_started,
     pending_tasks_per_workflow_are_capped,
+    dedupe_enqueue_returns_the_existing_task,
+    dedupe_replay_is_exempt_from_the_pending_cap,
+    concurrent_dedupe_enqueues_agree_on_one_task,
     cancel_pending_leaves_claimed_tasks,
     events_append_in_order_with_optimistic_concurrency,
     signals_are_consumed_once,
     dead_letters_can_be_requeued,
+    cancel_workflow_cancels_pending_tasks_once,
+    drained_workers_stop_claiming_until_resumed,
 );
 
 // --- helpers ---------------------------------------------------------------
@@ -257,6 +264,22 @@ async fn retry_waits_for_backoff<H: Harness>(h: H) {
         claim(&h, &w, &ty, 1).await.is_empty(),
         "a task waiting out its backoff is not claimable"
     );
+}
+
+async fn delayed_tasks_wait_for_their_start_delay<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    let later = ActivityOptions::default().with_start_delay(Duration::from_millis(300));
+    let delayed = enqueue(&h, with_options(task(None, &ty, "later"), later)).await;
+    let now = enqueue(&h, task(None, &ty, "now")).await;
+
+    assert_eq!(
+        claim(&h, &w, &ty, 2).await,
+        vec![now],
+        "the delayed task is not due"
+    );
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(claim(&h, &w, &ty, 2).await, vec![delayed]);
 }
 
 async fn non_retryable_failure_is_dead<H: Harness>(h: H) {
@@ -460,6 +483,82 @@ async fn pending_tasks_per_workflow_are_capped<H: Harness>(h: H) {
     enqueue(&h, task(Some(wf), &ty, "fits-now")).await;
 }
 
+fn dedupe(task: TaskDefinition) -> TaskDefinition {
+    with_options(
+        task,
+        ActivityOptions::default().with_dedupe_by_activity_id(),
+    )
+}
+
+async fn dedupe_enqueue_returns_the_existing_task<H: Harness>(h: H) {
+    let ty = activity_type();
+    let wf = workflow(&h).await;
+    let first = enqueue(&h, dedupe(task(Some(wf), &ty, "resume-1"))).await;
+    assert_eq!(
+        enqueue(&h, dedupe(task(Some(wf), &ty, "resume-1"))).await,
+        first
+    );
+
+    // In any status, not only while pending.
+    let w = worker(&h, &ty).await;
+    assert_eq!(claim(&h, &w, &ty, 1).await, vec![first]);
+    h.store().complete_task(first, &w, json!(1)).await.unwrap();
+    assert_eq!(
+        enqueue(&h, dedupe(task(Some(wf), &ty, "resume-1"))).await,
+        first
+    );
+
+    // Scoped to the workflow and opt-in per task.
+    let other = workflow(&h).await;
+    assert_ne!(
+        enqueue(&h, dedupe(task(Some(other), &ty, "resume-1"))).await,
+        first
+    );
+    let plain = enqueue(&h, task(Some(wf), &ty, "plain")).await;
+    assert_ne!(enqueue(&h, task(Some(wf), &ty, "plain")).await, plain);
+
+    // Standalone tasks have no workflow to dedupe within.
+    let standalone = enqueue(&h, dedupe(task(None, &ty, "solo"))).await;
+    assert_ne!(
+        enqueue(&h, dedupe(task(None, &ty, "solo"))).await,
+        standalone
+    );
+}
+
+async fn dedupe_replay_is_exempt_from_the_pending_cap<H: Harness>(h: H) {
+    let ty = activity_type();
+    let wf = workflow(&h).await;
+    let resume = enqueue(&h, dedupe(task(Some(wf), &ty, "resume"))).await;
+    for i in 1..DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW {
+        enqueue(&h, task(Some(wf), &ty, &format!("t{i}"))).await;
+    }
+    assert_eq!(
+        enqueue(&h, dedupe(task(Some(wf), &ty, "resume"))).await,
+        resume
+    );
+    let err = h
+        .store()
+        .enqueue_task(dedupe(task(Some(wf), &ty, "new-resume")))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::TaskQueueLimitExceeded { .. }));
+}
+
+async fn concurrent_dedupe_enqueues_agree_on_one_task<H: Harness>(h: H) {
+    // The schema ships a unique index over these ids (server migration 143),
+    // so PostgreSQL settles the race in the database, not only in the
+    // pre-insert check.
+    let ty = activity_type();
+    let wf = workflow(&h).await;
+    let id = format!("waiting_turn_resolution_{}", Uuid::now_v7());
+    let enqueue_one = || h.store().enqueue_task(dedupe(task(Some(wf), &ty, &id)));
+    let (a, b, c, d) = tokio::join!(enqueue_one(), enqueue_one(), enqueue_one(), enqueue_one());
+    let a = a.expect("enqueue");
+    for other in [b, c, d] {
+        assert_eq!(other.expect("enqueue"), a);
+    }
+}
+
 async fn cancel_pending_leaves_claimed_tasks<H: Harness>(h: H) {
     let ty = activity_type();
     let w = worker(&h, &ty).await;
@@ -575,4 +674,47 @@ async fn dead_letters_can_be_requeued<H: Harness>(h: H) {
     let requeued = h.store().requeue_from_dlq(entries[0].id).await.unwrap();
     assert_ne!(requeued, id);
     assert_eq!(claim(&h, &w, &ty, 1).await, vec![requeued]);
+}
+
+// --- cancellation, draining ----------------------------------------------------
+
+async fn cancel_workflow_cancels_pending_tasks_once<H: Harness>(h: H) {
+    let ty = activity_type();
+    let wf = workflow(&h).await;
+    let pending = enqueue(&h, task(Some(wf), &ty, "pending")).await;
+
+    h.store().cancel_workflow(wf).await.unwrap();
+    assert_eq!(
+        h.store().get_workflow_status(wf).await.unwrap(),
+        WorkflowStatus::Cancelled
+    );
+    assert_eq!(status(&h, pending).await, TaskStatus::Cancelled);
+
+    // A terminal workflow, or an unknown one, cannot be cancelled again.
+    for id in [wf, Uuid::now_v7()] {
+        let err = h.store().cancel_workflow(id).await.unwrap_err();
+        assert!(matches!(err, StoreError::WorkflowNotFound(_)));
+    }
+}
+
+async fn drained_workers_stop_claiming_until_resumed<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    enqueue(&h, task(None, &ty, "t")).await;
+
+    h.store().drain_worker(&w).await.unwrap();
+    assert!(claim(&h, &w, &ty, 1).await.is_empty());
+    let info = h
+        .store()
+        .list_workers(WorkerFilter::default())
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|info| info.id == w)
+        .expect("registered worker is listed");
+    assert_eq!(info.status, "draining");
+    assert!(!info.accepting_tasks);
+
+    h.store().resume_worker(&w).await.unwrap();
+    assert_eq!(claim(&h, &w, &ty, 1).await.len(), 1);
 }
