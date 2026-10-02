@@ -1,0 +1,53 @@
+# Docker Compose quickstart smoke.
+#
+# Runs scripts/smoke-docker-compose.sh, which follows
+# docs/getting-started/docker-compose.md step by step (secrets, .env, up,
+# sign in, personal access token, agent, session, message, completed turn).
+#
+# It runs published images, not PR-built ones: CI binaries cannot run in the
+# distroless base (see docker/Dockerfile.prebuilt), and the guide tells readers
+# to pull published images anyway. So PRs that change the compose file, the
+# guide, or the script are checked against `latest`, every release is checked
+# right after its images publish, and a daily run catches drift from either.
+name: Compose Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to test (default: latest)'
+        required: false
+        type: string
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_run:
+    workflows: ['Docker Publish']
+    types: [completed]
+  pull_request:
+    paths:
+      - 'examples/docker-compose-full.yaml'
+      - 'docs/getting-started/docker-compose.md'
+      - 'scripts/smoke-docker-compose.sh'
+      - '.github/workflows/compose-smoke.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Compose Quickstart Smoke
+    runs-on: ubuntu-latest
+    # After Docker Publish, only test runs that published release images.
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run Compose quickstart
+        env:
+          EVERRUNS_TAG: ${{ inputs.tag || 'latest' }}
+        run: scripts/smoke-docker-compose.sh

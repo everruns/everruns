@@ -24,11 +24,26 @@ struct Args {
     /// Disable automatic database migrations on startup
     #[arg(long)]
     no_migrations: bool,
+
+    /// Probe GET /health on HTTP_ADDR and exit 0 when healthy (for container healthchecks)
+    #[arg(long)]
+    health_check: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+
+    if args.health_check {
+        let addr = ServerConfig::from_env().addr;
+        match everruns_server::health_probe::probe(&addr, std::time::Duration::from_secs(3)) {
+            Ok(()) => std::process::exit(0),
+            Err(err) => {
+                eprintln!("health check failed: {err}");
+                std::process::exit(1);
+            }
+        }
+    }
 
     // Initialize telemetry (guard must stay alive for the lifetime of the application)
     let mut telemetry_config = TelemetryConfig::from_env();

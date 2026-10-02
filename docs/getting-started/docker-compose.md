@@ -179,6 +179,16 @@ docker compose down -v
 
 ## Troubleshooting
 
+### Check Service Health
+
+```bash
+docker compose ps
+```
+
+`server` should report `healthy`. Its healthcheck runs `everruns-server --health-check`,
+which calls `/health` inside the container. Images released before that flag existed
+always show `unhealthy` even when the API works; check `curl http://localhost:9300/health` instead.
+
 ### Database Connection Issues
 
 If services fail to connect to PostgreSQL:
