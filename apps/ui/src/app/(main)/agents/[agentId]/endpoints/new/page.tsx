@@ -13,7 +13,7 @@ import {
   buildChannelConfig,
   ChannelForm,
   ChannelFormSummary,
-  ChannelTypePicker,
+  EndpointTransportPicker,
   getDefaultChannelFormState,
   isChannelFormValid,
 } from "@/components/apps/channel-form";
@@ -162,7 +162,7 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
                 <CardTitle>1. Endpoint type</CardTitle>
               </CardHeader>
               <CardContent>
-                <ChannelTypePicker
+                <EndpointTransportPicker
                   value={formState.kind}
                   onChange={(kind) => setFormState(getDefaultChannelFormState(kind))}
                 />

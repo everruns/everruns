@@ -6,7 +6,7 @@ import { ChannelForm, getDefaultChannelFormState } from "@/components/apps/chann
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
 import type { SlackInstallCapability, SlackWorkspace } from "@/lib/api/agent-endpoints";
 import { classifySlackConfigToken } from "@/components/slack/slack-workspaces";
-import type { Agent, AppChannel } from "@/lib/api/types";
+import type { Agent, AgentEndpoint } from "@/lib/api/types";
 
 const push = jest.fn();
 const replace = jest.fn();
@@ -96,7 +96,7 @@ jest.mock("@/lib/api/agent-endpoints", () => ({
   beginSlackInstall: jest.fn(),
 }));
 
-function slackEndpoint(): AppChannel {
+function slackEndpoint(): AgentEndpoint {
   return {
     id: "appchan_123",
     channel_type: "slack",
@@ -147,7 +147,7 @@ describe("Slack endpoint first run", () => {
     mockWorkspaces = [workspace("T1", "Acme")];
     (beginSlackInstall as jest.Mock).mockImplementation(() => new Promise(() => undefined));
     createEndpoint.mockImplementation(
-      (_request: unknown, options: { onSuccess: (endpoint: AppChannel) => void }) =>
+      (_request: unknown, options: { onSuccess: (endpoint: AgentEndpoint) => void }) =>
         options.onSuccess(slackEndpoint()),
     );
   });

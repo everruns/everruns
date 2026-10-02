@@ -474,7 +474,7 @@ export interface PreviewHarnessRequest {
 // From legacy app-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
 
-export type ChannelType =
+export type EndpointTransport =
   | "slack"
   | "ag_ui"
   | "schedule"
@@ -520,7 +520,7 @@ export type AgUiToolVisibility = "none" | "generic" | "narrated";
 
 export type AgentVersionPolicy = "default" | "latest" | "pinned";
 
-export type AppEndpointAuthMode =
+export type EndpointAuthMode =
   | "anonymous"
   | "shared_secret"
   | "api_key"
@@ -530,7 +530,7 @@ export type AppEndpointAuthMode =
   | "http_basic"
   | "mtls";
 
-export interface AppEndpointAuthRequirements {
+export interface EndpointAuthRequirements {
   audiences?: string[];
   scopes?: string[];
   claims?: Record<string, unknown>;
@@ -539,7 +539,7 @@ export interface AppEndpointAuthRequirements {
   domains?: string[];
 }
 
-export type AppEndpointAuthProviderConfig =
+export type EndpointAuthProviderConfig =
   | {
       type: "google_oidc";
       client_id: string;
@@ -574,10 +574,10 @@ export type AppEndpointAuthProviderConfig =
       proxy_secret_configured?: boolean;
     };
 
-export interface AppEndpointAuthConfig {
-  mode: AppEndpointAuthMode;
-  provider?: AppEndpointAuthProviderConfig;
-  requirements?: AppEndpointAuthRequirements;
+export interface EndpointAuthConfig {
+  mode: EndpointAuthMode;
+  provider?: EndpointAuthProviderConfig;
+  requirements?: EndpointAuthRequirements;
 }
 
 export interface SlackChannelConfig {
@@ -627,7 +627,7 @@ export interface AgUiChannelConfig {
   /** Text shown while tools are running when tool_visibility is "generic". */
   generic_tool_text?: string;
   reasoning_summary_visible?: boolean;
-  auth?: AppEndpointAuthConfig;
+  auth?: EndpointAuthConfig;
 }
 
 export interface ScheduleChannelConfig {
@@ -649,7 +649,7 @@ export interface WebhookChannelConfig {
  *
  * Minimal text-first ingress. FCP intentionally runs its own auth stack —
  * anonymous + an optional shared bearer token — and does not accept the
- * inline `AppEndpointAuthConfig` modes used by AG-UI and A2A.
+ * inline `EndpointAuthConfig` modes used by AG-UI and A2A.
  */
 export interface FcpChannelConfig {
   anonymous?: boolean;
@@ -690,7 +690,7 @@ export interface A2aChannelConfig {
    * the global API limit still applies.
    */
   rate_limit_per_minute?: number;
-  auth?: AppEndpointAuthConfig;
+  auth?: EndpointAuthConfig;
   /**
    * Optional shared HMAC signing secret. Plaintext is **write-only** and
    * only sent on a PATCH that intends to rotate / set the secret;
@@ -736,15 +736,15 @@ export interface PublicChatChannelConfig {
   rate_limit_per_minute?: number;
   tool_visibility?: AgUiToolVisibility;
   generic_tool_text?: string;
-  auth?: AppEndpointAuthConfig;
+  auth?: EndpointAuthConfig;
   branding?: PublicChatBranding;
   captcha?: PublicChatCaptchaConfig;
 }
 
-export interface AppChannel {
+export interface AgentEndpoint {
   id: string;
-  channel_type: ChannelType;
-  auth?: AppEndpointAuthConfig;
+  channel_type: EndpointTransport;
+  auth?: EndpointAuthConfig;
   channel_config:
     | SlackChannelConfig
     | AgUiChannelConfig
@@ -780,7 +780,7 @@ export interface App {
   resolved_owner_user_id?: string | null;
   owner?: PrincipalSummary | null;
   effective_owner?: PrincipalSummary | null;
-  channels: AppChannel[];
+  channels: AgentEndpoint[];
   status: AppStatus;
   published_at: string | null;
   created_at: string;

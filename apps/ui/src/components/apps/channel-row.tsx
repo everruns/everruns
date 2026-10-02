@@ -25,16 +25,19 @@ import { CronLabel } from "@/components/apps/cron-label";
 import { MiniTimeline, type TimelineBin } from "@/components/apps/mini-timeline";
 import type {
   AgUiChannelConfig,
-  AppChannel,
-  ChannelType,
+  AgentEndpoint,
+  EndpointTransport,
   PublicChatChannelConfig,
   ScheduleChannelConfig,
   SlackChannelConfig,
   WebhookChannelConfig,
 } from "@/lib/api/types";
-import { getChannelTypeDisplayName, getEndpointLifecyclePresentation } from "@/lib/app-channels";
+import {
+  getEndpointTransportDisplayName,
+  getEndpointLifecyclePresentation,
+} from "@/lib/endpoint-display";
 
-function iconFor(kind: ChannelType) {
+function iconFor(kind: EndpointTransport) {
   switch (kind) {
     case "schedule":
       return CalendarClock;
@@ -62,7 +65,7 @@ function relativeTime(value?: string | null): string {
   return formatter.format(Math.round(seconds / 86400), "day");
 }
 
-function channelName(channel: AppChannel): string {
+function channelName(channel: AgentEndpoint): string {
   if (channel.channel_type === "schedule") {
     const config = channel.channel_config as ScheduleChannelConfig;
     return config.message?.trim() || "Scheduled invocation";
@@ -78,10 +81,10 @@ function channelName(channel: AppChannel): string {
     const config = channel.channel_config as PublicChatChannelConfig;
     return config.branding?.display_name?.trim() || "Public Chat";
   }
-  return getChannelTypeDisplayName(channel.channel_type);
+  return getEndpointTransportDisplayName(channel.channel_type);
 }
 
-function channelSubline(channel: AppChannel): React.ReactNode {
+function channelSubline(channel: AgentEndpoint): React.ReactNode {
   const { description } = getEndpointLifecyclePresentation(channel);
 
   if (channel.channel_type === "schedule") {
@@ -95,13 +98,13 @@ function channelSubline(channel: AppChannel): React.ReactNode {
   const lastInvokedAt = channel.last_invoked_at ?? null;
   return (
     <>
-      {getChannelTypeDisplayName(channel.channel_type)} · {relativeTime(lastInvokedAt)} ·{" "}
+      {getEndpointTransportDisplayName(channel.channel_type)} · {relativeTime(lastInvokedAt)} ·{" "}
       {description}
     </>
   );
 }
 
-function detailText(channel: AppChannel): string {
+function detailText(channel: AgentEndpoint): string {
   if (channel.channel_type === "schedule") {
     const config = channel.channel_config as ScheduleChannelConfig;
     return `Session mode: ${config.session_mode ?? "shared_session"}`;
@@ -151,7 +154,7 @@ export function ChannelRow({
   configureHref,
   timeline = [],
 }: {
-  channel: AppChannel;
+  channel: AgentEndpoint;
   expanded: boolean;
   onToggle: () => void;
   onRunNow?: () => void;
@@ -201,7 +204,9 @@ export function ChannelRow({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate font-medium">{channelName(channel)}</p>
-                <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
+                <Badge variant="outline">
+                  {getEndpointTransportDisplayName(channel.channel_type)}
+                </Badge>
                 <Badge variant={isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel)}</p>

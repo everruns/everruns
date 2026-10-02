@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { CodeBlock, type CodeBlockSample } from "@/components/ui/code-block";
-import type { AppChannel, ChannelType } from "@/lib/api/types";
+import type { AgentEndpoint, EndpointTransport } from "@/lib/api/types";
 
 /// The endpoint-scoped ingress path for each transport (EVE-1000). These are
 /// addressed by the endpoint's own public id, which is why the snippet here can
@@ -12,7 +12,7 @@ import type { AppChannel, ChannelType } from "@/lib/api/types";
 /// `null` means the transport has no inbound URL a caller dials: a schedule
 /// fires on its own, and Slack is reached through the Slack app rather than by
 /// the operator.
-function ingressPath(kind: ChannelType, channelId: string): string | null {
+function ingressPath(kind: EndpointTransport, channelId: string): string | null {
   switch (kind) {
     case "webhook":
       return `/v1/e/${channelId}/webhook`;
@@ -31,7 +31,7 @@ function ingressPath(kind: ChannelType, channelId: string): string | null {
   }
 }
 
-function describe(kind: ChannelType): string {
+function describe(kind: EndpointTransport): string {
   switch (kind) {
     case "slack":
       return "Point your Slack app's Event Subscriptions request URL here.";
@@ -54,7 +54,7 @@ function describe(kind: ChannelType): string {
 /// show generic snippets, because at the agent level there is no single URL —
 /// an agent reachable through Slack and a webhook has two. Here there is
 /// exactly one, so the snippet is the real thing.
-export function EndpointUsePanel({ channel }: { channel: AppChannel }) {
+export function EndpointUsePanel({ channel }: { channel: AgentEndpoint }) {
   const path = ingressPath(channel.channel_type, channel.id);
 
   const samples = useMemo<CodeBlockSample[]>(() => {

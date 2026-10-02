@@ -9,7 +9,7 @@ import {
   A2aAgentCard,
   A2aAgentCardPreview,
 } from "@/components/agents/integrations/a2a-agent-card-preview";
-import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+import { getInvocationSessionModeDisplayName } from "@/lib/endpoint-display";
 import { a2aSamples, codingAgentPrompt } from "@/lib/integration/snippets";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, Globe, KeyRound, RefreshCw } from "lucide-react";

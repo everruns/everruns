@@ -28,7 +28,7 @@ export const DEFAULT_VERSION_SELECTION: AgentVersionSelection = {
 type VersionSelectionFields = Pick<OpenApiAppChannel, "agent_version_policy" | "agent_version_id">;
 
 /// Read an endpoint's or trigger's stored selection. Takes any record because
-/// the hand-written `AppChannel` UI type predates these fields; the generated
+/// the hand-written `AgentEndpoint` UI type predates these fields; the generated
 /// schema is the source of their shape.
 export function versionSelectionOf(value: object): AgentVersionSelection {
   const fields = value as VersionSelectionFields;

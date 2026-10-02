@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
-import type { Agent, AppChannel } from "@/lib/api/types";
+import type { Agent, AgentEndpoint } from "@/lib/api/types";
 
 const mockUseFeatureFlag = jest.fn();
 const mockCanAgent = jest.fn();
@@ -23,7 +23,7 @@ jest.mock("@/hooks/use-agent-endpoints", () => ({
           status: "live",
           created_at: "2026-09-19T00:00:00Z",
           updated_at: "2026-09-19T00:00:00Z",
-        } satisfies AppChannel,
+        } satisfies AgentEndpoint,
       },
     ],
     isLoading: false,
@@ -53,7 +53,7 @@ jest.mock("@/components/apps/channel-row", () => ({
 }));
 
 jest.mock("@/components/agents/integrations/endpoint-details-panel", () => ({
-  EndpointDetailsPanel: ({ channel }: { channel: AppChannel }) => (
+  EndpointDetailsPanel: ({ channel }: { channel: AgentEndpoint }) => (
     <div data-testid={`endpoint-details-${channel.id}`} />
   ),
 }));

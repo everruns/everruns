@@ -1,7 +1,7 @@
 import type {
   AgUiToolVisibility,
-  AppChannel,
-  ChannelType,
+  AgentEndpoint,
+  EndpointTransport,
   InvocationSessionMode,
   SessionStrategy,
   SlackReplyMode,
@@ -14,7 +14,7 @@ export interface EndpointLifecyclePresentation {
 }
 
 export function getEndpointLifecyclePresentation(
-  channel: Pick<AppChannel, "enabled" | "status">,
+  channel: Pick<AgentEndpoint, "enabled" | "status">,
 ): EndpointLifecyclePresentation {
   if (!channel.enabled) {
     return { label: "disabled", description: "Paused", isLive: false };
@@ -25,7 +25,7 @@ export function getEndpointLifecyclePresentation(
   return { label: "draft", description: "Draft — not accepting traffic", isLive: false };
 }
 
-export function getChannelTypeDisplayName(channelType: ChannelType): string {
+export function getEndpointTransportDisplayName(channelType: EndpointTransport): string {
   switch (channelType) {
     case "ag_ui":
       return "AG-UI";

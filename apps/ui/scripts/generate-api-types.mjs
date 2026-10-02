@@ -16,6 +16,18 @@ const schemaTypesPath = resolve(uiRoot, "src/lib/api/schema-types.ts");
 const legacyTypesPaths = ["legacy-api-types.ts", "mcp-server-types.ts", "runtime-account-types.ts"].map((file) =>
   resolve(uiRoot, "src/lib/api", file),
 );
+// OpenAPI schemas still carrying App-era component names whose hand-maintained
+// UI type was renamed (EVE-1131). Only the `OpenApi*` alias is emitted for them,
+// so the bare App-era name does not reappear next to the UI type. Drop an entry
+// once the server renames the component.
+const renamedLegacySchemas = new Map([
+  ["AppChannel", "AgentEndpoint"],
+  ["AppEndpointAuthConfig", "EndpointAuthConfig"],
+  ["AppEndpointAuthMode", "EndpointAuthMode"],
+  ["AppEndpointAuthProviderConfig", "EndpointAuthProviderConfig"],
+  ["AppEndpointAuthRequirements", "EndpointAuthRequirements"],
+  ["ChannelType", "EndpointTransport"],
+]);
 const check = process.argv.includes("--check");
 
 const spec = JSON.parse(readFileSync(specPath, "utf8"));
@@ -48,6 +60,12 @@ function exportedLegacyTypeNames() {
     for (const match of source.matchAll(/^export\s+(?:interface|type|enum)\s+(\w+)/gm)) {
       names.add(match[1]);
     }
+  }
+  for (const [schemaName, uiName] of renamedLegacySchemas) {
+    if (!names.has(uiName)) {
+      throw new Error(`${schemaName} is mapped to missing hand-maintained UI type ${uiName}`);
+    }
+    names.add(schemaName);
   }
   return names;
 }
