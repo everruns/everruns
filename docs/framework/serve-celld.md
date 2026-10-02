@@ -85,3 +85,13 @@ The example runs without a container engine too: its external cell reaches a ser
 process by URL. Its end-to-end test kills the serve process mid-turn and then the
 celld node itself, and checks that the conversation comes back whole. See the
 [example README](https://github.com/everruns/everruns/tree/main/examples/serve/celld).
+
+## The engine inside the cell
+
+A second, experimental shape runs no container at all: the engine is compiled to
+WebAssembly and runs inside the Durable Object, writing every event to the cell's
+own SQLite. A turn advances one engine step at a time (one model call, or one batch
+of tool calls), and each step commits in one transaction, so losing a node costs at
+most the step that was running. It ships as an example, not a crate, and has one
+built-in tool. See the
+[engine cell example](https://github.com/everruns/everruns/tree/main/examples/celld-engine).

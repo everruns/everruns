@@ -1,0 +1,36 @@
+[package]
+name = "celld-engine-cell"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The everruns engine running inside a celld Durable Object, compiled to wasm32"
+
+# Standalone: the Durable Object builds only for wasm32-unknown-unknown with
+# worker-build, and its `worker` dependency has no place in the main workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+async-trait = "0.1"
+everruns-capability = { path = "../../crates/capability", default-features = false }
+everruns-core = { path = "../../crates/core", default-features = false }
+everruns-engine = { path = "../../crates/engine", default-features = false }
+everruns-provider = { path = "../../crates/provider", default-features = false }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+worker = "0.8.7"
+
+[dev-dependencies]
+tokio = { version = "1.50", features = ["macros", "rt"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

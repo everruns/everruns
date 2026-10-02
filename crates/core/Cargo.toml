@@ -67,6 +67,8 @@ cron = "0.17"
 # `everruns-host/observability`; core carries no exporter dependencies.
 # Guard: scripts/lib/check-observability-isolation.sh.
 tracing.workspace = true
+# std time on native, the host clock on wasm32-unknown-unknown.
+web-time = "1"
 
 # Encoding
 base64.workspace = true

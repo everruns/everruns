@@ -628,6 +628,32 @@ jobs:
       - name: Check provider isolation
         run: bash scripts/lib/check-provider-isolation.sh
 
+  # Portability guard: the execution kernel builds for wasm32-unknown-unknown,
+  # and the engine-in-a-celld-cell example builds and passes its tests.
+  wasm-portability:
+    name: Wasm Portability Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            examples/celld-engine -> target
+
+      - name: Check wasm portability
+        run: bash scripts/lib/check-wasm-portability.sh
+
   # Architecture guard (EVE-903): core defaults are empty and its shipped
   # dependency tree excludes concrete TLS, HTTP, process, database,
   # interpreter, exporter, OpenAPI, and structural-parser implementations.
@@ -2771,6 +2797,7 @@ jobs:
       - file-size
       - log-error-field
       - lint-floor
+      - wasm-portability
       - unit-test
       - worker-test
       - shell-test

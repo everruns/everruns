@@ -54,7 +54,8 @@ tree-sitter-rust
 tree-sitter-typescript
 url
 utoipa
-uuid'
+uuid
+web-time'
 ACTUAL_NORMAL=$(printf '%s' "$CORE_PACKAGE" | jq -r '.dependencies[] | select((.kind // "normal") == "normal") | .name' | sort -u)
 if [ "$ACTUAL_NORMAL" != "$EXPECTED_NORMAL" ]; then
   fail "everruns-core direct dependency set changed; re-audit every entry and update this guard intentionally:"

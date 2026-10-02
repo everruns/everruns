@@ -9,3 +9,4 @@
 * [Documentation and Examples](documentation-and-examples.md) - The maintained public learning path and runnable-example contract.
 * [API Stability](api-stability.md) - Stable versus alpha markers, promises, and the marking convention.
 * [serve (experimental)](serve.md) - Why the experimental serve crates pair Topcoat's API shape with eve's hosting model, and what is still open.
+* [The Execution Kernel in a JavaScript Isolate](wasm-kernel.md) - Why provider, core and engine build for wasm32, how time and tasks port, and the step-commit model of the celld engine cell.

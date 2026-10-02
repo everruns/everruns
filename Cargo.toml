@@ -87,6 +87,8 @@ exclude = [
     "research/infinity_context",
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
+    # wasm32-only Durable Object, built with worker-build.
+    "examples/celld-engine",
     "evals/platform-capability",
     "evals/generic",
     "evals/guardrail-calibration",

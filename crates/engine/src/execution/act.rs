@@ -33,7 +33,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Instant;
+use web_time::Instant;
 
 use super::ExecutionContext;
 use super::act_hooks::{self, PostActHook};
@@ -66,17 +66,17 @@ use uuid::Uuid;
 /// before the task completes. Tokio detaches a bare [`tokio::task::JoinHandle`]
 /// on drop, but tool execution must not outlive Act cancellation.
 struct AbortOnDropJoinHandle<T> {
-    handle: tokio::task::JoinHandle<T>,
+    handle: everruns_provider::rt::JoinHandle<T>,
 }
 
 impl<T> AbortOnDropJoinHandle<T> {
-    fn new(handle: tokio::task::JoinHandle<T>) -> Self {
+    fn new(handle: everruns_provider::rt::JoinHandle<T>) -> Self {
         Self { handle }
     }
 }
 
 impl<T> Future for AbortOnDropJoinHandle<T> {
-    type Output = std::result::Result<T, tokio::task::JoinError>;
+    type Output = std::result::Result<T, everruns_provider::rt::JoinError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.handle).poll(cx)
@@ -1600,7 +1600,7 @@ where
             let call = execution_tool_call.clone();
             let def = tool_def.clone();
             let ctx = tool_context.clone();
-            match AbortOnDropJoinHandle::new(tokio::spawn(async move {
+            match AbortOnDropJoinHandle::new(everruns_provider::rt::spawn(async move {
                 executor.execute_with_context(&call, &def, &ctx).await
             }))
             .await

@@ -134,9 +134,11 @@ runtime.
   SQLite through the backup API) and observable (boot id, busy). The
   supervising Durable Object holds the snapshot and a journal of mutating
   requests, and replays the journal into a fresh container. Turn-level, not
-  event-level: the engine does not build for wasm32 yet, so it cannot run in
-  the cell and write each event there. Session creation is not journaled,
-  because serve mints the id, so it is acknowledged only after a snapshot.
+  event-level: a replayed turn repeats its model and tool calls. Session
+  creation is not journaled, because serve mints the id, so it is
+  acknowledged only after a snapshot. Running the engine inside the cell,
+  with step-level durability, is the other shape: see
+  [The Execution Kernel in a JavaScript Isolate](wasm-kernel.md).
 
 ## Rejected
 

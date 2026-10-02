@@ -118,10 +118,10 @@ impl LlmRetryConfig {
 /// attempt that cannot finish within the strict budget.
 pub fn reserve_retry_wait(
     config: &LlmRetryConfig,
-    started_at: &mut Option<tokio::time::Instant>,
+    started_at: &mut Option<crate::rt::Instant>,
     wait: Duration,
 ) -> Option<Duration> {
-    let started = *started_at.get_or_insert_with(tokio::time::Instant::now);
+    let started = *started_at.get_or_insert_with(crate::rt::Instant::now);
     let remaining = config.max_retry_elapsed.checked_sub(started.elapsed())?;
     (wait < remaining).then_some(wait)
 }
@@ -129,7 +129,7 @@ pub fn reserve_retry_wait(
 /// Remaining wall-clock retry budget after recovery has started.
 pub fn remaining_retry_time(
     config: &LlmRetryConfig,
-    started_at: Option<tokio::time::Instant>,
+    started_at: Option<crate::rt::Instant>,
 ) -> Option<Duration> {
     started_at.and_then(|started| config.max_retry_elapsed.checked_sub(started.elapsed()))
 }
