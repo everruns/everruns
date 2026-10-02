@@ -460,9 +460,10 @@ fn cloudflare_credential_schema() -> CredentialFormSchema {
         instructions_markdown:
             "Create an API token with the **Account > Workers AI > Read** permission in the \
              [Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens), and enter \
-             the account id it belongs to. Models are named `provider/model` \
-             (`openai/gpt-6-luna`, `anthropic/claude-opus-5`) or, for Workers AI, \
-             `@cf/author/model` — those also need a gateway name."
+             the account id it belongs to. Workers AI models (`@cf/author/model`) are \
+             discovered automatically and also need a gateway name; third-party models \
+             (`openai/gpt-6-luna`, `anthropic/claude-opus-5`) are not listed by the API, \
+             so add those by id."
                 .to_string(),
     }
 }

@@ -9,7 +9,8 @@
 //! Cloudflare reaches two kinds of model over one account, and the id says
 //! which: `@cf/...` runs on Workers AI and draws on the account's own
 //! allocation, while `vendor/model` is routed to that upstream vendor and
-//! billed to the Cloudflare account.
+//! billed to the Cloudflare account. Only the Workers AI half is discoverable,
+//! so this also shows `list_models` alongside the direct calls.
 //!
 //! Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (and optionally
 //! `CLOUDFLARE_AI_GATEWAY_ID` to pin a named gateway), then:
@@ -43,6 +44,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // path; a server resolves credentials from storage instead. The endpoint is
     // derived from the account id, so there is no base URL to assemble here.
     let provider = cloudflare::from_env("cloudflare")?;
+
+    // Discovery covers the Workers AI half of the catalog: Cloudflare lists its
+    // `@cf/` models with the context window and tool-calling support it
+    // advertises. Third-party models are never listed — which ones an account
+    // reaches depends on what it can bill — so those are used by id alone.
+    if let Some(models) = provider.list_models().await? {
+        println!("discovered {} Workers AI chat models:", models.len());
+        for m in models.iter().take(3) {
+            let context = m
+                .discovered_profile
+                .as_ref()
+                .and_then(|p| p.limits.as_ref())
+                .map(|l| l.context);
+            println!("  {} (context: {context:?})", m.model_id);
+        }
+        println!();
+    }
 
     // A model id bound to the provider that serves it.
     let model = Model::new(model_id.clone(), provider);
