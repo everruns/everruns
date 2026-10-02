@@ -9,6 +9,7 @@
 //   high SSE concurrency (50+ streams over single HTTP/2 connection). We set
 //   2MB stream windows, 16MB connection windows, and enable adaptive flow control.
 
+use crate::api::endpoint_a2a::A2aPushListener;
 use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
 use crate::direct_worker_adapters::DirectWorkerAdapters;
@@ -629,11 +630,6 @@ impl ServerAppBuilder {
         // Phase 4: Event listeners & domain/infra helpers
         // =====================================================================
         let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
-        // Approvals are org-level accountability, not session trivia: a granted
-        // approval outlives the session it was spoken in and has to be
-        // answerable to by actor. See knowledge/execution/soft-approval.md.
-        let approval_audit_listener: Arc<dyn EventListener> =
-            Arc::new(services::ApprovalAuditListener::new(db.clone()));
         let mcp_events =
             services::McpEventsService::shared(&db, &encryption, &host_composition, &auth_state);
         let mcp_event_triggers = crate::domains::agent_triggers::McpEventTriggers::shared(
@@ -646,8 +642,10 @@ impl ServerAppBuilder {
             Arc::new(OtelEventListener::new()),
             Arc::new(services::UsageTrackingListener::new(db.clone())),
             budget_service.clone(),
-            approval_audit_listener,
+            // Approvals outlive their session: knowledge/execution/soft-approval.md.
+            Arc::new(services::ApprovalAuditListener::new(db.clone())),
             mcp_events.listener(),
+            A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
         ];
         // Run summaries (EVE-867). Registered only when a utility LLM is
         // configured, so the OSS default adds no listener at all rather than one

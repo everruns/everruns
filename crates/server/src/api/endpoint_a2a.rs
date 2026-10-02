@@ -51,7 +51,9 @@ use crate::storage::{EncryptionService, StorageBackend};
 // (discovery, no request path) and the `ask_user` projection (EVE-1062).
 // `agent_card` is `pub` so `openapi.rs` can name its documented handlers.
 pub mod agent_card;
+pub use push::A2aPushListener;
 pub(crate) mod ask_user;
+mod push;
 mod stream;
 mod task_view;
 mod tasks;
@@ -219,16 +221,6 @@ fn normalize_a2a_method(method: &str) -> &str {
 /// §5.4), so a client learns why rather than seeing a bare "method not found".
 fn unsupported_operation(method: &str) -> Option<(i32, &'static str)> {
     match method {
-        "CreateTaskPushNotificationConfig"
-        | "GetTaskPushNotificationConfig"
-        | "ListTaskPushNotificationConfigs"
-        | "DeleteTaskPushNotificationConfig"
-        | "tasks/pushNotificationConfig/set"
-        | "tasks/pushNotificationConfig/get"
-        | "tasks/pushNotificationConfig/list"
-        | "tasks/pushNotificationConfig/delete" => {
-            Some((-32003, "Push notifications are not supported"))
-        }
         "GetExtendedAgentCard" | "agent/getAuthenticatedExtendedCard" => {
             Some((-32007, "No extended Agent Card is configured"))
         }
@@ -411,10 +403,14 @@ async fn invoke_a2a(
             tasks::handle_subscribe(&state, auth, parsed, rpc_id, version).await
         }
         other => {
+            if let Some(method) = push::push_method(other) {
+                return push::handle(&state, auth, method, parsed, rpc_id, version).await;
+            }
             let (code, message) = unsupported_operation(other).unwrap_or((
                 -32601,
                 "Method not found (supported: SendMessage, SendStreamingMessage, GetTask, \
-                 CancelTask, ListTasks, SubscribeToTask, and their 0.3 names)",
+                 CancelTask, ListTasks, SubscribeToTask, the push notification config \
+                 methods, and their 0.3 names)",
             ));
             (StatusCode::OK, rpc_error(rpc_id, code, message)).into_response()
         }
@@ -765,6 +761,10 @@ async fn handle_message_send(
         WireVersion::V1_0 => !flag("returnImmediately").unwrap_or(false),
         WireVersion::V0_3 => flag("blocking").unwrap_or(false),
     };
+    let push_config = match push::send_config(configuration) {
+        Ok(config) => config,
+        Err(msg) => return (StatusCode::OK, rpc_error(rpc_id, -32602, msg)).into_response(),
+    };
 
     // Subscribe before dispatch so a blocking call cannot miss the event that
     // settles its own turn.
@@ -773,6 +773,8 @@ async fn handle_message_send(
     > = Arc::new(tokio::sync::Mutex::new(None));
     let hook_slot = subscription_slot.clone();
     let event_delivery = state.event_delivery.clone();
+    let (db, encryption, org_id) = (state.db.clone(), state.encryption.clone(), auth.org_id);
+    let version = ctx.version;
     let request_id = ctx.req_id.map(|axum::Extension(id)| id.0);
     let result = match invoke_endpoint_a2a_with_hook(
         &state.db,
@@ -792,6 +794,19 @@ async fn handle_message_send(
         },
         request_id,
         move |session_id| async move {
+            // Registered before dispatch, so the turn cannot settle unseen.
+            if let Some(config) = push_config {
+                push::store_config(
+                    &db,
+                    encryption.as_ref(),
+                    org_id,
+                    session_id,
+                    version,
+                    &config,
+                )
+                .await
+                .map_err(crate::domains::common::CommandError::internal)?;
+            }
             if blocking {
                 let subscription = event_delivery
                     .subscribe(session_id.uuid())

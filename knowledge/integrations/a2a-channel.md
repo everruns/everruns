@@ -51,9 +51,9 @@ References:
 ## Non-Goals
 
 1. The full A2A method surface. The endpoint supports send, streaming send,
-   get task, list tasks, subscribe to task, and cancel task. Push
-   notifications and the extended Agent Card answer the A2A error for an
-   unsupported operation (`-32003`, `-32007`) rather than `-32601`.
+   get task, list tasks, subscribe to task, cancel task, and push
+   notification configs. The extended Agent Card answers `-32007` rather
+   than `-32601`.
 2. Persistent per-task identity beyond the session lifecycle. Tasks are
    identified by the underlying session id (`task_id == contextId`); a
    shared session reuses the same task id across follow-up messages.
@@ -208,7 +208,7 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | 400  |, | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
 | 200  | `-32601`      | Method not found (not an A2A method) |
-| 200  | `-32003` / `-32004` / `-32007` | A defined A2A operation this endpoint does not offer (push notifications / subscribing to a terminal task, streaming on a shared-session endpoint / extended card) |
+| 200  | `-32004` / `-32007` | A defined A2A operation this endpoint does not offer (subscribing to a terminal task, streaming on a shared-session endpoint / extended card) |
 | 200  | `-32002`      | `CancelTask` on a task that already finished |
 | 200  | `-32009`      | `A2A-Version` names a version this endpoint does not speak |
 | 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id, an `ask_user` answer that does not match what was asked) |
@@ -338,6 +338,29 @@ emits until the turn ends. It subscribes to session events before reading
 the task, so nothing that lands in between is lost. A task already in a
 terminal state answers `-32004 UnsupportedOperationError`, per §3.1.6.
 
+### Push notifications
+
+The four config methods (`CreateTaskPushNotificationConfig`, `Get…`,
+`List…`, `Delete…`; 0.3 `tasks/pushNotificationConfig/set|get|list|delete`)
+manage webhooks on a task, and a `SendMessage` can register one up front in
+`configuration.taskPushNotificationConfig` (0.3 `pushNotificationConfig`).
+Configs live with the session and are dropped with it, at most ten per task,
+reached only through a task the calling channel owns (TM-A2A-012).
+
+When the task settles (completed, failed, canceled, or parked on a question
+as `input-required`) every config gets one POST whose body is the full task:
+`{ "task": … }` with `Content-Type: application/a2a+json` in 1.0, a bare
+`Task` in 0.3. One POST carries the state and the answer artifacts, so the
+receiver needs no follow-up `GetTask`. The client's `token` arrives as
+`X-A2A-Notification-Token` and `authentication` as
+`Authorization: {scheme} {credentials}`; both are stored encrypted and never
+echoed back by Get or List.
+
+Delivery runs on the replica that persisted the settling event, with two
+retries, and stops on a 4xx other than 429. There is no durable outbox, so a
+replica that dies mid-retry drops that notification; `GetTask` remains the
+source of truth. URLs must be public `https` (TM-A2A-015).
+
 Reusing the session id as the task id is acceptable for the in-channel
 contract because:
 
@@ -422,7 +445,7 @@ otherwise `404`. Card shape:
   ],
   "capabilities": {
     "streaming": true,
-    "pushNotifications": false,
+    "pushNotifications": true,
     "stateTransitionHistory": false
   },
   "defaultInputModes":  ["text/plain"],
