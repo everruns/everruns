@@ -8,7 +8,7 @@ severe is this complaint? Which queue does this ticket belong in?* A chat model
 answers those in prose, so the call site ends up with a prompt asking for JSON,
 a parser, and a fallback for when the parse fails.
 
-A decisions answers them as numbers instead, and the decision stays in your
+A decision service answers them as numbers instead, and the decision stays in your
 code.
 
 This is the counterpart to [direct model calls](/framework/direct-model-calls/):
@@ -191,8 +191,8 @@ let outcome = service
 
 That surface is the contract itself: every question type and the full
 `DecisionOutcome`, including usage, with nothing defaulted for you.
-Implementing `DecisionsService` is also how a different decisions — another
-vendor, or a fine-tuned local model — plugs into the same `Decisions`,
+Implementing `DecisionsService` is also how a different decision service (another
+vendor, or a fine-tuned local model) plugs into the same `Decisions`,
 guardrails included.
 
 ## Choosing a model
@@ -304,7 +304,7 @@ from the state you pass it, and is not a way to classify without a provider. It
 exists so tests and examples can assert on the code around a decision
 without a network call or an API key.
 
-Real work always goes through a decisions service — `TypeSafeAI` above, or
+Real work always goes through a decision service: `TypeSafeAI` above, or
 your own `DecisionsService`.
 
 ```rust
@@ -320,11 +320,11 @@ assert!(p > 0.9);
 ```
 
 Because the answer is fixed, a simulated decision proves your threshold
-logic runs — never that a real decisions would return that number.
+logic runs — never that a real decision service would return that number.
 
 The runnable version of this page is
 [`direct_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_decisions.rs).
 It uses the stub by default so it runs with no key; pass `--live` (with
 `--features typesafe` and `TYPESAFE_API_KEY` set) to send the same questions to a
-real decisions. [`agent_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_decisions.rs)
+real decision service. [`agent_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_decisions.rs)
 does the same for the agent path.

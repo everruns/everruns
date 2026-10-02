@@ -65,11 +65,11 @@ live under `src/resources/`. Read-write access is explicit—the default workspa
 policy is read-only.
 
 ```rust
-pub fn build(api_key: String, workspace: &Path) -> Result<Agent, BuildError> {
+pub fn build(provider: impl Into<Provider>, workspace: &Path) -> Result<Agent, BuildError> {
     Agent::builder()
         .name("bashkit-repo-agent")
         .instructions(include_str!("resources/instructions.md"))
-        .provider(OpenAI::new(api_key))
+        .provider(provider)
         .model(MODEL)
         .max_iterations(12)
         .workspace(workspace)
@@ -85,7 +85,8 @@ The shared observer displays a bounded shell timeline and waits for a successful
 turn. The host then verifies the mounted files itself.
 
 ```rust
-let agent = agent::build(api_key, &workspace)?;
+// OPENAI_API_KEY, declared by the OpenAI driver itself.
+let agent = agent::build(everruns::OpenAI::from_env()?, &workspace)?;
 let engine = Engine::new();
 let session = engine.create(agent);
 

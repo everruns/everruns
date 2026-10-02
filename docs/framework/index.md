@@ -22,7 +22,7 @@ println!("{}", turn.response);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-No database, server or worker is required — an agent runs inside your process.
+No database, server or worker is required: an agent runs inside your process.
 A model provider is: pick one from
 [Supported providers](/framework/supported-providers/), or use the
 [test simulator](/framework/testing-and-simulation/) when writing tests.
@@ -34,14 +34,15 @@ A model provider is: pick one from
 | **Framework** | Rust applications that build and run agents in process through `everruns` |
 | **Advanced host crates** | Low-level execution-host composition through `everruns-host` and focused siblings |
 | **SDKs** | Remote clients that call a running Everruns server |
-| **Platform** | The control plane, server, workers, UI, and durable deployment |
+| **Platform (self-hosted)** | The control plane, server, workers, UI, and durable deployment you run yourself, for example with [Docker Compose](/getting-started/docker-compose/) |
+| **Everruns Cloud** | The hosted Platform at [app.everruns.com](https://app.everruns.com), with a built-in model provider and a starter credit; bring-your-own keys are optional |
 
 Normal library users should start with the Framework. Hosts that must replace
 storage or orchestration cross into [custom backends](/framework/custom-backends/).
 
 ## Start here
 
-- [Quickstart](/framework/quickstart/), install the crate and run an offline agent.
+- [Quickstart](/framework/quickstart/), install the crate and run one turn against a live model provider.
 - [Architecture](/framework/architecture/), understand Agent, Engine, Session, and the shared immediate/durable execution kernel.
 - [Agents](/framework/agents/), instructions, files, workspaces, MCP, plugins, and context inspection.
 - [Workspace security](/framework/workspace-security/), configure portable read and write scopes with secure defaults.
@@ -49,7 +50,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Models and providers](/framework/models-and-providers/), the model/provider split and the open provider boundary.
 - [Supported providers](/framework/supported-providers/), every driver that ships today and what each one supports.
 - [Direct model calls](/framework/direct-model-calls/), one prompt and one answer without an agent.
-- [Direct decision](/framework/direct-decisions/), a calibrated number rather than prose, without an agent.
+- [Direct decisions](/framework/direct-decisions/), a calibrated number rather than prose, without an agent.
 - [Model catalogs](/framework/model-catalogs/), ask a provider which models it offers and what each supports.
 - [Credentials](/framework/credentials/), each driver's own vendor-standard environment variables.
 - [Tools and macros](/framework/tools-and-macros/), typed function tools through `everruns::tool`.

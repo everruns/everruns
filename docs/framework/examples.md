@@ -9,7 +9,7 @@ contains the maintained public examples. Each imports the `everruns` facade.
 ## Complete agents
 
 The root-level [`examples`](https://github.com/everruns/everruns/tree/main/examples)
-catalog contains six Framework walkthroughs. Each folder includes the program,
+catalog contains eight Framework walkthroughs. Each folder includes the program,
 instructions, fixtures where applicable, and recording scripts. Run them from a
 repository checkout: their dependencies point to the workspace crates.
 
@@ -37,13 +37,17 @@ in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/a
 | Example | Provider and model | What it does |
 | --- | --- | --- |
 | [Bashkit Repo Agent](/framework/examples/bashkit-repo-agent/) | OpenAI `gpt-5.6-terra` | Cuts a release in a real repository with the sandboxed Bashkit shell as its only tool, then verifies the result on disk. |
-| [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine decisions questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
+| [Host Shell Agent](/framework/examples/host-shell-agent/) | OpenAI `gpt-5.6-terra` | Fixes a failing Rust test suite by compiling and running it through real processes inside a kernel-enforced boundary. |
+| [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine decision questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
 
 ## Core crate catalog
 
 | Example | Demonstrates | Command |
 | --- | --- | --- |
 | [`capability_configuration.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/capability_configuration.rs) | Typed Compaction and ToolSearch, a code-defined Definition, and a dynamic third-party reference through one entrypoint | `cargo run -p everruns --example capability_configuration` |
+| [`model_catalog.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/model_catalog.rs) | Listing a provider's models, reading their metadata, and running the selection | `cargo run -p everruns --example model_catalog` |
+| [`ask_user.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/ask_user.rs) | Structured questions answered by a host responder, and the unattended defaults path, fully offline | `cargo run -p everruns --example ask_user` |
+| [`ag_ui_axum.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/ag_ui_axum.rs) | An AG-UI 1.0 run served over axum | `cargo run -p everruns --features ag-ui-axum --example ag_ui_axum` |
 | [`workspace_policy.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_policy.rs) | Safe workspace scopes and trusted starter files, fully offline | `cargo run -p everruns --example workspace_policy` |
 | [`direct_llm.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_llm.rs) | One-shot, builder, and streamed model calls with no agent, fully offline | `cargo run -p everruns --example direct_llm` |
 | [`direct_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_decisions.rs) | Typed questions and calibrated answers with no agent, fully offline | `cargo run -p everruns --example direct_decisions` |

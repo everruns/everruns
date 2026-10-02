@@ -1,11 +1,11 @@
 ---
 title: Foreman
-description: A decisions supervising a coding agent it never has to stop.
+description: A decision service supervising a coding agent it never has to stop.
 ---
 
 [Browse the complete example](https://github.com/everruns/everruns/tree/main/examples/foreman-agent).
 
-A fast decisions watching a slow coding agent, and a policy in ordinary Rust
+A fast decision service watching a slow coding agent, and a policy in ordinary Rust
 deciding what to do about the numbers. A Framework port of
 [thruwire/foreman](https://github.com/thruwire/foreman), which placed
 [TypeSafe's Jev](https://docs.typesafe.ai/introduction) above a Codex worker and
@@ -16,7 +16,7 @@ asked whether semantic supervision can run *while* the work happens.
 ## What you learn
 
 How to run a worker session and observe it at the same time: a
-[`Decisions`](/framework/examples/) turning bounded evidence into nine
+[`Decisions`](/framework/direct-decisions/) turning bounded evidence into nine
 probabilities in one request, and a deterministic policy that owns every
 threshold, every limit, and the closed vocabulary of things the supervisor may
 do.
@@ -42,7 +42,7 @@ a decision are answered independently and in parallel.
 
 ## What it may do about them
 
-The decisions only estimates. The policy decides, safety and hard limits
+The decision service only estimates. The policy decides, safety and hard limits
 before productivity: escalate when a person is needed or the iteration ceiling
 is reached, stop a worker that is off track or stuck, retry once after a stop,
 finish when the completion thresholds hold and verification is resolved, start
@@ -58,12 +58,12 @@ untracked paths a diff cannot show, recent session events, verification
 results, and the previous assessment and decision. An unbounded observation
 would make supervision as slow as the work it is watching.
 
-That snapshot goes to the decisions's service on every reading, so a bounded
+That snapshot goes to the decision service on every reading, so a bounded
 slice of the repository leaves the machine on every run — point `--repo` at a
 private repository only if that is acceptable for it. `demo` works on a fixture
 it materializes itself, so it carries nothing of yours. The repository content in
-an observation is also untrusted input to the decisions, and that it can only
-produce a number is the point: the decisions never names an action, and every
+an observation is also untrusted input to the decision service, and that it can only
+produce a number is the point: the decision service never names an action, and every
 action the policy can take is in one readable file.
 
 ## Run it
@@ -75,7 +75,7 @@ cargo run -p everruns-foreman-agent --bin foreman -- demo
 foreman run --repo ./my-project --job "Add rate limiting, and test it."
 ```
 
-Both are real runs — same worker, same decisions, same credentials. The only
+Both are real runs — same worker, same decision service, same credentials. The only
 difference is who chose the repository and the job:
 
 | Command | Repository | Job | Needs |

@@ -1,8 +1,6 @@
 ---
 title: Configure and author capabilities
 description: Use one open AgentBuilder capability entrypoint for typed built-ins, dynamic references, and code-defined packages.
-sidebar:
-  order: 1
 ---
 
 Every agent capability enters through `AgentBuilder::capability`. The method

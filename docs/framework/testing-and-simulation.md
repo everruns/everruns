@@ -72,5 +72,4 @@ Advanced hosts depend on `everruns-llmsim` with its `host` feature for
 changing model selection; `.llm_sim_as_default(...)` explicitly selects it
 when no default was already configured. Use `everruns-test-support` only for
 testing/demo helpers such as its in-memory agentic loop, writable fixtures,
-test doubles, and fake capabilities. The test-support simulator re-exports
-exist only as a 0.18 migration bridge for 0.17 import paths.
+test doubles, and fake capabilities.

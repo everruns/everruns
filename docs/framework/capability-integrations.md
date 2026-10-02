@@ -22,6 +22,11 @@ execution or network surface.
 | `lua` | No | `everruns-integrations-lua` | Vendored Lua 5.4 sandbox; also requires `FEATURE_LUA=true` at runtime |
 | `mcp` | No | `everruns-mcp` | Remote HTTP MCP through the host egress contract |
 | `mcp-stdio` | No | `everruns-mcp` | Adds local-process MCP servers and implies `mcp` |
+| `host-shell` | No | `everruns-host` | `bash` tool over real host processes, bounded by a kernel policy; implies `host-compute` |
+| `duckduckgo` | No | `everruns-integrations-duckduckgo` | DuckDuckGo web search through the host egress contract |
+| `a2a` | No | `everruns-platform` | Outbound A2A delegation to remote agents; implies `local` |
+| `otel` | No | `everruns-host` | OpenTelemetry exporter; see [Observability](/observability/) |
+| `braintrust` | No | `everruns-host` | Braintrust exporter; see [Observability](/observability/) |
 
 The default is offline: the filesystem capability can only use the
 session-filesystem implementation supplied by the host. Shell, web, Lua, MCP,
@@ -29,7 +34,7 @@ and local-process transports require explicit features.
 
 ```toml
 [dependencies]
-everruns = { version = "0.17", features = ["bashkit", "web-fetch"] }
+everruns = { version = "0.34", features = ["bashkit", "web-fetch"] }
 ```
 
 Enabling an implementation does not activate it on every agent. Add the
@@ -70,8 +75,8 @@ runtime registry through `everruns_host::runtime_capability_registry()`:
 
 ```toml
 [dependencies]
-everruns-core = "0.17"
-everruns-host = { version = "0.17", features = ["filesystem", "web-fetch"] }
+everruns-core = "0.34"
+everruns-host = { version = "0.34", features = ["filesystem", "web-fetch"] }
 ```
 
 ```rust

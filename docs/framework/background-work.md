@@ -5,8 +5,6 @@ sidebar:
   order: 3
 ---
 
-# Session work and wakes
-
 `everruns::work` lets an application request and handle work owned by a session
 without importing runtime registries, platform stores, or task-kind constants.
 The application chooses its own work kinds and JSON payloads.

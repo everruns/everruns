@@ -50,11 +50,11 @@ cargo run -p everruns-support-agent -- --interactive
 The agent definition lives in `src/agent.rs`; `main.rs` only handles input and runs the session. The prompt and bundled data live under `src/resources/`. Tools supply evidence; the model chooses how to use it.
 
 ```rust
-pub fn build(api_key: String) -> Result<Agent, BuildError> {
+pub fn build(provider: impl Into<Provider>) -> Result<Agent, BuildError> {
     Agent::builder()
         .name("support-agent")
         .instructions(include_str!("resources/instructions.md"))
-        .provider(OpenAI::new(api_key))
+        .provider(provider)
         .model(MODEL)
         .max_iterations(12)
         .tool(tools::lookup_customer())
@@ -68,7 +68,8 @@ pub fn build(api_key: String) -> Result<Agent, BuildError> {
 The Framework interaction stays readable in `main.rs`. The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
 
 ```rust
-let agent = agent::build(api_key)?;
+// OPENAI_API_KEY, declared by the OpenAI driver itself.
+let agent = agent::build(everruns::OpenAI::from_env()?)?;
 let engine = Engine::new();
 let session = engine.create(agent);
 

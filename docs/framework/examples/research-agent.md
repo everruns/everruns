@@ -42,15 +42,24 @@ cargo run -p everruns-research-agent -- "Compare retry guarantees in Temporal Ac
 This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
 
 ```rust
-let agent = Agent::builder()
-    .name("research-agent")
-    .instructions(include_str!("instructions.md"))
-    .provider(everruns_openrouter::provider("openrouter", api_key))
-    .model(MODEL)
-    .max_iterations(12)
-    .capability(BraveSearch::from_env()?)
-    .capability(everruns::WebFetch::new())
-    .build()?;
+let agent = bound_external_calls(
+    Agent::builder()
+        .name("research-agent")
+        .instructions(include_str!("instructions.md"))
+        .provider(everruns_openrouter::from_env("openrouter")?)
+        .model(MODEL),
+)
+.capability(BraveSearch::from_env()?)
+.capability(everruns::WebFetch::new())
+.build()?;
+
+// Search and fetched pages are untrusted model input. Keep one injected result from
+// multiplying paid provider requests or scheduling a batch of outbound calls.
+fn bound_external_calls(builder: AgentBuilder) -> AgentBuilder {
+    builder
+        .max_iterations(MAX_ITERATIONS)
+        .parallel_tool_calls(false)
+}
 ```
 
 ## Send, observe, and wait
@@ -102,7 +111,7 @@ Narrow the research question and source policy, add an evidence store if results
 
 ## Boundaries
 
-Requires both OpenRouter and Brave Search credentials plus outbound HTTPS. Search and fetch can fail; twelve agent iterations cap the loop, not the bill. Word limits are instructions, not a hard output validator. This is a small research workflow, not an exhaustive literature review.
+Requires both OpenRouter and Brave Search credentials plus outbound HTTPS. Search and fetch can fail; six agent iterations cap the loop, not the bill. Word limits are instructions, not a hard output validator. This is a small research workflow, not an exhaustive literature review.
 
 ## Source map
 

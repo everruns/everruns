@@ -110,3 +110,7 @@ assert!(!turn.success);
 Cancellation is cooperative. Cancelling drops the in-flight turn future and
 tears down tool work through the same runtime path; it does not kill the host
 process or provide an independent transaction boundary.
+
+## Observability
+
+To export these events as traces, see [Observability](/observability/).
