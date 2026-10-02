@@ -6,6 +6,8 @@
 
 #[cfg(feature = "a2a")]
 pub mod a2a_delegation;
+#[cfg(feature = "ag-ui")]
+pub mod ag_ui_delegation;
 pub mod agent_handoff;
 pub mod background_execution;
 pub mod citation_retrieval;
@@ -31,8 +33,8 @@ pub mod user_hooks;
 pub mod util;
 
 pub use everruns_core::capabilities::{
-    A2A_AGENT_DELEGATION_CAPABILITY_ID, AGENT_RUN_KEY_PREFIX, DelegationTargetProvider,
-    SPAWN_AGENT_CONCURRENCY_CLASS,
+    A2A_AGENT_DELEGATION_CAPABILITY_ID, AG_UI_DELEGATION_CAPABILITY_ID, AGENT_RUN_KEY_PREFIX,
+    DelegationTargetProvider, SPAWN_AGENT_CONCURRENCY_CLASS,
 };
 pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
@@ -41,6 +43,8 @@ pub(crate) use everruns_core::capabilities::{
 
 #[cfg(feature = "a2a")]
 pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
+#[cfg(feature = "ag-ui")]
+pub use ag_ui_delegation::{AgUiAgentTaskExecutor, AgUiDelegationCapability, SpawnAgUiAgentTool};
 pub use agent_handoff::{
     AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, SpawnAgentHandoffTool,
 };
@@ -165,6 +169,8 @@ pub fn register_hosted_capabilities(
         registry.register(AgentHandoffCapability);
         #[cfg(feature = "a2a")]
         registry.register(A2aAgentDelegationCapability);
+        #[cfg(feature = "ag-ui")]
+        registry.register(AgUiDelegationCapability);
     }
     // First channel adapter to implement `Capability::tools()` (EVE-1024). It
     // is inert outside a Slack-originated session: the invoker seam resolves
@@ -258,10 +264,11 @@ mod tests {
         assert!(!capability.pre_tool_use_hooks().is_empty());
     }
 
-    // The `a2a` Cargo feature is the only thing that puts outbound A2A delegation
-    // in the registry; without it the build carries no A2A client at all.
+    // The `a2a` and `ag-ui` Cargo features are the only things that put outbound
+    // A2A / AG-UI delegation in the registry; without them the build carries no
+    // client for that protocol at all.
     #[test]
-    fn a2a_delegation_registration_follows_the_a2a_feature() {
+    fn external_delegation_registration_follows_the_cargo_features() {
         if std::env::var("FEATURE_AGENT_DELEGATION").is_ok() {
             // A deployment override decides delegation registration here, not the
             // Cargo feature under test.
@@ -275,6 +282,10 @@ mod tests {
         assert_eq!(
             registry.has(everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID),
             cfg!(feature = "a2a"),
+        );
+        assert_eq!(
+            registry.has(everruns_core::capabilities::AG_UI_DELEGATION_CAPABILITY_ID),
+            cfg!(feature = "ag-ui"),
         );
     }
 

@@ -46,7 +46,7 @@ fn unified_spawn_agent_narration_names_the_agent() {
 
 #[test]
 fn unified_spawn_agent_rejects_subagent_fields_for_configured_targets() {
-    for target_type in ["agent", "external_a2a"] {
+    for target_type in ["agent", "external_a2a", "external_ag_ui"] {
         let arguments = serde_json::json!({
             "target": { "type": target_type, "id": "actual-target" },
             "blueprint": "decoy-target"
@@ -800,4 +800,47 @@ async fn test_collect_capabilities_with_configs_no_filter_providers() {
 
     assert!(collected.message_filter_providers.is_empty());
     assert!(!collected.has_message_filters());
+}
+
+/// An `external_ag_ui` provider is advertised, opens the tool to the world,
+/// and gets the same external-target refusals as `external_a2a`.
+#[tokio::test]
+async fn unified_spawn_agent_advertises_and_guards_external_ag_ui() {
+    let tool = UnifiedSpawnAgentTool::new(vec![DelegationTargetProvider {
+        target_type: "external_ag_ui",
+        tool: Box::new(StubSubagentSpawnTool),
+    }]);
+    assert_eq!(tool.target_types(), vec!["external_ag_ui"]);
+    assert_eq!(
+        tool.parameters_schema()["properties"]["target"]["oneOf"][0]["required"],
+        serde_json::json!(["type", "id"])
+    );
+    assert_eq!(tool.hints().open_world, Some(true));
+
+    let ctx = crate::tool_context::ToolContext::new(SessionId::new());
+    for (extra, needle) in [
+        (
+            serde_json::json!({ "lifetime": "detached" }),
+            "not external_ag_ui",
+        ),
+        (
+            serde_json::json!({ "message_schema": { "type": "object" } }),
+            "message_schema is not supported for external_ag_ui",
+        ),
+    ] {
+        let mut arguments = serde_json::json!({
+            "name": "Partner",
+            "instructions": "x",
+            "target": { "type": "external_ag_ui", "id": "partner" },
+        });
+        if let (Some(arguments), Some(extra)) = (arguments.as_object_mut(), extra.as_object()) {
+            arguments.extend(extra.clone());
+        }
+        match tool.execute_with_context(arguments, &ctx).await {
+            crate::tools::ToolExecutionResult::ToolError(message) => {
+                assert!(message.contains(needle), "{message}")
+            }
+            other => panic!("expected a tool error containing {needle}, got {other:?}"),
+        }
+    }
 }

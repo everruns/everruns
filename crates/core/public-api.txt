@@ -102,6 +102,7 @@ everruns_core::budget::BudgetToolResponse	struct
 everruns_core::capabilities	module
 everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID	constant
 everruns_core::capabilities::AGENT_RUN_KEY_PREFIX	constant
+everruns_core::capabilities::AG_UI_DELEGATION_CAPABILITY_ID	constant
 everruns_core::capabilities::Capability	trait
 everruns_core::capabilities::Capability::commands	function
 everruns_core::capabilities::Capability::execute_command	function
@@ -1390,6 +1391,7 @@ everruns_core::session_task::SessionTaskUpdate	struct
 everruns_core::session_task::TASK_KIND_AGENT_HANDOFF	constant
 everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL	constant
 everruns_core::session_task::TASK_KIND_EXTERNAL_AGENT	constant
+everruns_core::session_task::TASK_KIND_EXTERNAL_AG_UI	constant
 everruns_core::session_task::TASK_KIND_MONITOR	constant
 everruns_core::session_task::TASK_KIND_SESSION	constant
 everruns_core::session_task::TASK_KIND_SUBAGENT	constant

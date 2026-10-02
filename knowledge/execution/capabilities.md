@@ -114,9 +114,9 @@ gate. It is distinct from subagents and blueprints because the target is a
 normal Agent resource, not inherited runtime config and not a code-defined
 template. See [agent-handoff.md](../runtime-resources/agent-handoff.md).
 
-Both `agent_handoff` and `a2a_agent_delegation` are gated behind the
+`agent_handoff`, `a2a_agent_delegation` and `ag_ui_delegation` are gated behind the
 `agent_delegation` feature flag (experimental, auto-enabled in dev, off in prod).
-When the flag is off, neither capability is registered and neither appears in the
+When the flag is off, none of them is registered and none appears in the
 capability picker. Enable via `FEATURE_AGENT_DELEGATION=true` or use a
 `DeploymentGrade::Dev` environment. See `knowledge/security/feature-flags.md` and EVE-506.
 

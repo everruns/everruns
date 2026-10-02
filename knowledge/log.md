@@ -14,6 +14,15 @@
 
 ## 2026-10-01
 
+* **Everruns agents can delegate to external AG-UI agents.** The
+  `ag_ui_delegation` capability (behind `everruns-platform`'s `ag-ui` feature,
+  on in the product build) adds `spawn_agent` target `external_ag_ui` for agents
+  listed in its config. Each delegation is an `external_ag_ui` session task: a
+  remote interrupt parks it in `awaiting_input`, `message_task` answers with a
+  resuming run, `cancel_task` closes the stream, and a stream lost with its
+  worker fails as orphaned. Recorded in
+  [AG-UI Capability](integrations/ag-ui-capability.md), threat-model entries
+  TM-AGENT-030 to TM-AGENT-032.
 * **Everruns can consume AG-UI streams.** `everruns-ag-ui` gained a consumer
   pipeline (1.0 processing model, sequencing rules, chunk expansion, result
   assembly, the resume coverage rule) and an HTTP/SSE client behind the

@@ -16,6 +16,7 @@
 * [AG-UI Channel](ag-ui.md) - AG-UI 1.0 channel: wire types, runtime-event projection, the consumer pipeline, and the 1.0 rules each side keeps.
 * [A2A Channel](a2a-channel.md) - A2A inbound channel.
 * [A2A Capability](a2a-capability.md) - A2A outbound delegation capability.
+* [AG-UI Capability](ag-ui-capability.md) - AG-UI outbound delegation: configured external AG-UI agents as spawn_agent targets backed by session tasks.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
 * [Slack Integration Modernization](slack-modernization.md) - Gap analysis of the Slack channel against the current Slack agent platform, with a prioritized set of improvements.
