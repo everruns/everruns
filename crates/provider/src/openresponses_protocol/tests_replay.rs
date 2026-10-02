@@ -159,7 +159,7 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
         .respond_with(ResponseTemplate::new(400).set_body_json(json!({
             "error": {
                 "type": "invalid_request_error",
-                "message": "No tool output found for function call call_1"
+                "message": "referenced response not found or expired"
             }
         })))
         .expect(1)
