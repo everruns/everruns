@@ -7,6 +7,14 @@
 // in-memory engine after a restart) is replaced by a new session, seeded from
 // the client's copy of the conversation.
 //
+// Decision: the threads hold every session they resolve. The engine keeps
+// only a weak handle to a live session, and between runs nobody else holds
+// one: the host answered the last request and dropped its stream. A turn
+// parked across that gap, on a frontend tool call or an interrupt, lives in
+// the session, so dropping it lost the turn and the next run answered
+// nothing. A handle is small next to the conversation the backend already
+// keeps for every thread.
+//
 // Decision: resolution is serialized by one lock per `AgUiThreads`, so two
 // first runs of a thread cannot create two sessions. Resolving is a store
 // read plus, at most, an attach; the run itself happens outside the lock.
@@ -412,6 +420,8 @@ struct ThreadsInner {
     agent: Agent,
     store: Arc<dyn ThreadStore>,
     resolving: tokio::sync::Mutex<()>,
+    /// Every session resolved so far, so a parked turn outlives its run.
+    live: Mutex<HashMap<SessionId, Session>>,
 }
 
 impl std::fmt::Debug for AgUiThreads {
@@ -455,6 +465,7 @@ impl AgUiThreads {
                 agent,
                 store: Arc::new(store),
                 resolving: tokio::sync::Mutex::new(()),
+                live: Mutex::default(),
             }),
         }
     }
@@ -539,8 +550,15 @@ impl AgUiThreads {
         let inner = &self.inner;
         let _resolving = inner.resolving.lock().await;
         if let Some(session_id) = inner.store.get(key).await? {
+            if let Some(session) = lock(&inner.live).get(&session_id).cloned() {
+                return Ok(ThreadSession {
+                    session,
+                    created: false,
+                });
+            }
             match self.reopen(session_id).await {
                 Ok(session) => {
+                    lock(&inner.live).insert(session_id, session.clone());
                     return Ok(ThreadSession {
                         session,
                         created: false,
@@ -557,6 +575,7 @@ impl AgUiThreads {
         }
         let session = inner.engine.create(inner.agent.clone());
         inner.store.bind(key, session.session_id()).await?;
+        lock(&inner.live).insert(session.session_id(), session.clone());
         Ok(ThreadSession {
             session,
             created: true,

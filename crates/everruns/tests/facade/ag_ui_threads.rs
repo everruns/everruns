@@ -5,12 +5,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use everruns::ag_ui::wire::RunFinishedOutcome;
 use everruns::ag_ui::{
-    AgUiError, AgUiOptions, AgUiThreads, Event, InMemoryThreadStore, Message, RunAgentInput,
-    ThreadStore, wire,
+    AgUiError, AgUiOptions, AgUiThreads, Event, InMemoryThreadStore, InterruptGate, Message,
+    ResumeEntry, ResumeStatus, RunAgentInput, ThreadStore, wire,
 };
-use everruns::{Agent, Engine, MessageRole, Model, Session};
+use everruns::{Agent, Engine, LlmSimConfig, MessageRole, Model, Session, ToolCall};
 use futures::StreamExt;
+use serde_json::json;
 
 fn agent() -> Agent {
     Agent::builder()
@@ -264,6 +266,138 @@ async fn a_lost_session_is_replaced_and_seeded() {
         texts,
         ["My name is Ada.", "Hello.", "What is my name?", "Hello."]
     );
+}
+
+// Between runs nobody but the threads holds a thread's session: the host
+// answered the last request and dropped its stream. A turn parked across that
+// gap, on a frontend tool or an interrupt, must still be there for the next.
+
+fn confirming_agent(gate: Option<&InterruptGate>) -> Agent {
+    let (name, arguments) = match gate {
+        Some(_) => (
+            "ask_user",
+            json!({ "questions": [{
+                "header": "Target",
+                "question": "Where should I deploy?",
+                "options": [
+                    { "label": "Staging", "description": "Safe", "default": true },
+                    { "label": "Production", "description": "Live" }
+                ]
+            }] }),
+        ),
+        None => ("confirm", json!({ "what": "deploy" })),
+    };
+    let model = Model::simulated_with_config(
+        LlmSimConfig::fixed("Deploying.").with_tool_call_sequence(vec![
+            vec![ToolCall {
+                id: "call_1".to_string(),
+                name: name.to_string(),
+                arguments,
+            }],
+            vec![],
+        ]),
+    );
+    let mut builder = Agent::builder().instructions("Confirm first.").model(model);
+    if let Some(gate) = gate {
+        builder = builder.ask_user(gate.clone());
+    }
+    builder.build().expect("valid agent")
+}
+
+fn text(events: &[Event]) -> String {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Event::TextMessageContent(content) => Some(content.delta.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_turn_parked_on_a_frontend_tool_survives_between_runs() {
+    let threads = AgUiThreads::new(Engine::new(), confirming_agent(None));
+    let tools: Vec<wire::Tool> = vec![
+        serde_json::from_value(json!({
+            "name": "confirm",
+            "description": "Ask the person to confirm in the page.",
+            "parameters": { "type": "object", "properties": { "what": { "type": "string" } } },
+        }))
+        .unwrap(),
+    ];
+    let first = run(
+        &threads,
+        RunAgentInput {
+            tools: tools.clone(),
+            ..input("t", vec![Message::user("u1", "Deploy.")])
+        },
+    )
+    .await;
+    assert!(
+        first.iter().any(
+            |event| matches!(event, Event::ToolCallStart(start) if start.tool_call_id == "call_1")
+        ),
+        "{first:?}"
+    );
+
+    let result: Message = serde_json::from_value(json!({
+        "id": "r1", "role": "tool", "toolCallId": "call_1", "content": "{\"confirmed\":true}",
+    }))
+    .unwrap();
+    let second = run(
+        &threads,
+        RunAgentInput {
+            tools,
+            ..input("t", vec![Message::user("u1", "Deploy."), result])
+        },
+    )
+    .await;
+    assert_eq!(text(&second), "Deploying.", "{second:?}");
+}
+
+#[tokio::test]
+async fn a_turn_parked_on_an_interrupt_survives_between_runs() {
+    let gate = InterruptGate::new();
+    let threads = AgUiThreads::new(Engine::new(), confirming_agent(Some(&gate)));
+    let options = || AgUiOptions::new().gate(gate.clone());
+    let first: Vec<Event> = threads
+        .run(input("t", vec![Message::user("u1", "Deploy.")]), options())
+        .await
+        .unwrap()
+        .collect()
+        .await;
+    let interrupt = first
+        .iter()
+        .find_map(|event| match event {
+            Event::RunFinished(finished) => match &finished.outcome {
+                Some(RunFinishedOutcome::Interrupt { interrupts }) => interrupts.first().cloned(),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("an interrupt");
+    let question =
+        interrupt.metadata.as_ref().expect("questions")["everruns"]["questions"][0]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+    let resume = RunAgentInput {
+        resume: vec![ResumeEntry {
+            interrupt_id: interrupt.id.clone(),
+            status: ResumeStatus::Resolved,
+            payload: Some(json!({ "answers": [{ "id": question, "selected": ["Production"] }] })),
+            metadata: None,
+        }],
+        ..input("t", vec![])
+    };
+    let second: Vec<Event> = tokio::time::timeout(
+        Duration::from_secs(10),
+        threads.run(resume, options()).await.unwrap().collect(),
+    )
+    .await
+    .expect("run ends");
+    assert_eq!(text(&second), "Deploying.", "{second:?}");
 }
 
 #[cfg(feature = "local")]
