@@ -661,10 +661,11 @@ impl InMemoryDatabase {
 
     pub async fn mark_llm_generation_reconciliation_failed(
         &self,
-        _id: uuid::Uuid,
-        _retry_after_seconds: i32,
+        id: uuid::Uuid,
+        retry_after_seconds: i32,
     ) -> Result<()> {
-        // In-memory backend has no persisted generations to reconcile
+        // Only generations with pending late usage are kept in memory.
+        self.delay_pending_usage_generation(id, retry_after_seconds);
         Ok(())
     }
 

@@ -8,6 +8,22 @@
   messages resume the turn. Recorded in
   [AG-UI Channel](integrations/ag-ui.md#frontend-tools), threat-model entry
   TM-DOS-044 and the updated TM-LLM-020.
+* **Agents can wake on MCP events (EVE-1121, inbound half).** An `mcp_event`
+  trigger subscribes, through MCP Events, to an event on one of the agent's own
+  MCP servers with that attachment's credential, and keeps the subscription in
+  step with the trigger: a fresh encrypted secret on create, enable and change,
+  a periodic refresh before `refreshBefore`, unsubscribe on disable and delete.
+  Signed deliveries to `/v1/e/{ingress_id}/mcp-events` feed the shared trigger
+  event pipeline; anything not live answers `410`. Behind `mcp_events`.
+  TM-TRIGGER-005. See [MCP Events](integrations/mcp-events.md#inbound-mcp-event-triggers).
+* **Computer use phase 2 (EVE-1133).** [Computer use](execution/computer-use.md)
+  now swaps the `computer` function tool for OpenAI's native `computer` tool
+  and Anthropic's `computer_toolset_20260801` on models that have them,
+  through a provider-neutral driver option, with execution unchanged. Calls
+  that type, press Enter, navigate, or carry provider safety checks pass a
+  hard per-call approval gate in hosted sessions, built on the
+  [tool approval](execution/tool-approval.md) gate; one answer carries a call
+  through both gates. The session UI shows result screenshots as thumbnails.
 * **AG-UI runs interrupt and resume.** A turn parked on `ask_user` or a tool
   approval ends its AG-UI run with the 1.0 interrupt outcome, and
   `RunAgentInput.resume` answers it through the shared resolvers. Approvals

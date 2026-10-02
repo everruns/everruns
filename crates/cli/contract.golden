@@ -27,14 +27,14 @@ agents health-checks trigger	--agent-id!
 agents import	--capabilities --default-model-id --description --display-name --harness-id --harness-name --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools
 agents list	
 agents preview	--capabilities --mcp-servers --system-prompt --tools
-agents triggers create	--agent-id! --auth --cron-expression --enabled --event-id-template --filter --github-events... --message! --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-type
+agents triggers create	--agent-id! --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-type
 agents triggers delete	--agent-id! --trigger-id!
 agents triggers deliveries list	--agent-id! --limit --trigger-id!
 agents triggers get	--agent-id! --trigger-id!
 agents triggers list	--agent-id! --include-archived
 agents triggers runs list	--agent-id! --trigger-id!
 agents triggers trigger	--agent-id! --trigger-id!
-agents triggers update	--agent-id! --auth --cron-expression --enabled --event-id-template --filter --github-events... --message --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-id!
+agents triggers update	--agent-id! --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable <agent_id>
 agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents versions create	--agent! --change-kind --summary

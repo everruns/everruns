@@ -1,15 +1,7 @@
-//! Test harness for in-process server testing with PostgreSQL
-//!
-//! This module provides a TestServer that allows running integration tests
-//! against the full API without starting a TCP listener. Uses tower's
-//! `oneshot` method for making requests directly to the router.
-//!
-//! Usage:
-//! ```ignore
-//! let server = TestServer::new().await;
-//! let response = server.post("/v1/agents", json!({"name": "Test"})).await;
-//! assert_eq!(response.status(), 201);
-//! ```
+//! Test harness for in-process server testing: `TestServer` runs integration
+//! tests against the full API without a TCP listener, sending requests straight
+//! to the router with tower's `oneshot`, e.g.
+//! `TestServer::new().await.post("/v1/agents", json!({"name": "Test"})).await`.
 
 // Allow unused code - this is a test utility module and not all
 // functions/methods are used by all tests
@@ -98,6 +90,37 @@ pub struct TestServer {
     /// Outbound MCP Events, wired to `webhooks` instead of the network.
     pub mcp_events: Arc<services::mcp_events::McpEventsService>,
     pub webhooks: Arc<WebhookReceiver>,
+    /// Inbound MCP Events (`mcp_event` triggers), wired to `mcp_servers`.
+    pub mcp_event_triggers: Arc<everruns_server::domains::agent_triggers::McpEventTriggers>,
+    pub mcp_servers: Arc<McpServerSlot>,
+}
+
+/// Stands in for the MCP servers `mcp_event` triggers subscribe on: requests
+/// go to the fake a test installs, and fail while none is.
+#[derive(Default)]
+pub struct McpServerSlot(pub parking_lot::RwLock<Option<Arc<dyn everruns_core::EgressService>>>);
+
+#[async_trait::async_trait]
+impl everruns_core::EgressService for McpServerSlot {
+    async fn send(
+        &self,
+        request: everruns_core::EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+        let server = self.0.read().clone();
+        let Some(server) = server else {
+            return Err(everruns_core::EgressError::Transport(
+                "no MCP server".into(),
+            ));
+        };
+        server.send(request).await
+    }
+
+    async fn send_stream(
+        &self,
+        _request: everruns_core::EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+        Err(everruns_core::EgressError::Transport("no streaming".into()))
+    }
 }
 
 /// Stands in for MCP Events callback URLs: answers verification challenges
@@ -687,12 +710,9 @@ impl TestServer {
         feature_flags.environments = true;
         feature_flags.mcp_events = true;
 
-        // Org-effective flags are `system && org-opt-in`, so opt the default
-        // test org into the experimental flags whose runtime gates now consult
-        // the org-effective flags used by integration tests. Without this those gates reject requests in tests
-        // even though the system flags are on. Deliberately scoped to these flags —
-        // e.g. `notifications` is left off so tests asserting its default-off
-        // org state still hold.
+        // Org-effective flags are `system && org-opt-in`, so opt the default test org
+        // into the experimental flags integration tests exercise. Deliberately scoped:
+        // `notifications` stays off so tests asserting its default-off state still hold.
         let org_flag_overrides: std::collections::HashMap<String, bool> = [
             "evals",
             "skills",
@@ -721,6 +741,16 @@ impl TestServer {
         // `AuthState::system_feature_flags` (defaults to `FeatureFlags::current()`).
         // Point it at the harness's system flags so the gates above see them on.
         let auth_state = auth_state.with_system_feature_flags(feature_flags.clone());
+        let mcp_servers = Arc::new(McpServerSlot::default());
+        let mcp_event_triggers = Arc::new(
+            everruns_server::domains::agent_triggers::McpEventTriggers::new(
+                db.clone(),
+                encryption.clone(),
+                mcp_servers.clone(),
+                auth_config.base_url.clone(),
+                feature_flags.clone(),
+            ),
+        );
 
         // Create module-specific states
         let sessions_state = api::sessions::AppState::with_host_composition(
@@ -975,7 +1005,8 @@ impl TestServer {
             auth_state.clone(),
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
-        );
+        )
+        .with_mcp_event_triggers(mcp_event_triggers.clone());
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
             encryption.clone(),
@@ -992,7 +1023,8 @@ impl TestServer {
             feature_flags.notifications,
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
-        );
+        )
+        .with_mcp_event_triggers(mcp_event_triggers.clone());
         let endpoint_a2a_state = api::endpoint_a2a::EndpointA2aState::new(
             db.clone(),
             encryption.clone(),
@@ -1199,6 +1231,8 @@ impl TestServer {
             seed_chat_harness_id,
             mcp_events,
             webhooks,
+            mcp_event_triggers,
+            mcp_servers,
         }
     }
 

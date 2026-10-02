@@ -532,8 +532,10 @@ pub(crate) fn is_subagent_event(provider_event: &Value) -> bool {
 
 /// OpenAI reports cached tokens inside `input_tokens`; Everruns keeps disjoint
 /// buckets (see [`TokenUsage`]), so the cached subset is subtracted here. The
-/// provider usage is best-effort and may be null, which is not zero.
-pub(crate) fn usage_from(turn: &Value) -> Option<TokenUsage> {
+/// provider usage is best-effort and may be null, which is not zero. Public
+/// so the server's late-usage reconciler (EVE-1145) reads a turn resource
+/// exactly as the driver does.
+pub fn usage_from(turn: &Value) -> Option<TokenUsage> {
     let usage = turn.get("usage").filter(|usage| !usage.is_null())?;
     let count = |pointer: &str| {
         usage
@@ -553,6 +555,12 @@ pub(crate) fn usage_from(turn: &Value) -> Option<TokenUsage> {
 
 /// Default Agents API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+
+/// Metadata key on an Agents API `llm.generation` naming the Everruns
+/// provider whose credentials ran the turn, so usage the provider fills late
+/// is read back with those same credentials (EVE-1145).
+pub const GENERATION_PROVIDER_ID: &str = "everruns_provider_id";
+
 /// Beta header value the Agents API requires on every request.
 pub const BETA_HEADER: &str = "agents=v1";
 /// Page size for item, turn, and session listings.

@@ -7,6 +7,7 @@
 
 use super::events;
 use super::github;
+use super::mcp_event;
 use super::queries as q;
 use super::types::{AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
 use super::webhook;
@@ -398,11 +399,13 @@ impl Command for CreateAgentTrigger {
 
         // GitHub events always carry a subject (repository, pull request).
         let has_subject = req.trigger_type == AgentTriggerType::GitHub
-            || req.trigger_type == AgentTriggerType::Webhook
-                && req
-                    .subject_template
-                    .as_deref()
-                    .is_some_and(|template| !template.trim().is_empty());
+            || matches!(
+                req.trigger_type,
+                AgentTriggerType::Webhook | AgentTriggerType::McpEvent
+            ) && req
+                .subject_template
+                .as_deref()
+                .is_some_and(|template| !template.trim().is_empty());
         events::validate_trigger_binding(req.session_mode, has_subject)?;
         webhook::require_publication_permission(ctx, req.trigger_type, req.enabled)?;
         let trigger_id = TriggerId::new();
@@ -453,6 +456,12 @@ impl Command for CreateAgentTrigger {
             AgentTriggerType::GitHub => {
                 (None, github::create_config(ctx, &agent, &req).await?, None)
             }
+            // The ingress id names the MCP server's callback for this trigger.
+            AgentTriggerType::McpEvent => (
+                Some(AppChannelId::from_uuid(trigger_id.uuid()).to_string()),
+                mcp_event::create_config(ctx, &agent, &req).await?,
+                None,
+            ),
         };
         let row = ctx
             .db
@@ -480,6 +489,9 @@ impl Command for CreateAgentTrigger {
             .map_err(classify_anyhow)?;
 
         sync_agent_trigger_binding(ctx, &row).await?;
+        if req.trigger_type == AgentTriggerType::McpEvent {
+            mcp_event::after_create(ctx, &row).await?;
+        }
         // Re-read so the response carries the persisted durable_schedule_id.
         let row = q::get_by_id(&ctx.db, ctx.org_id(), row.id)
             .await?
@@ -683,9 +695,10 @@ impl Command for UpdateAgentTriggerCmd {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentTrigger, CommandError> {
-        let (_, existing) =
+        let (agent, existing) =
             resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
         let req = self.req;
+        let mut resubscribe = false;
 
         let trigger = q::row_to_trigger(
             existing.clone(),
@@ -763,6 +776,12 @@ impl Command for UpdateAgentTriggerCmd {
                 prepare_trigger_config(ctx, &config)?
             }
             AgentTriggerType::GitHub => (github::update_config(&trigger, &req)?, None),
+            AgentTriggerType::McpEvent => {
+                let (config, changed) =
+                    mcp_event::update_config(ctx, &agent, &trigger, &req).await?;
+                resubscribe = changed;
+                (config, None)
+            }
         };
 
         let row = ctx
@@ -787,6 +806,8 @@ impl Command for UpdateAgentTriggerCmd {
             } else {
                 remove_agent_trigger_binding(ctx, &row).await?;
             }
+        } else if trigger.trigger_type == AgentTriggerType::McpEvent {
+            mcp_event::after_update(ctx, &existing, &row, resubscribe).await?;
         }
         let row = q::get_by_id(&ctx.db, ctx.org_id(), row.id)
             .await?
@@ -833,6 +854,9 @@ impl Command for DeleteAgentTrigger {
         let (_, trigger) = resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
         // Tear down the binding first so a fire cannot race the archive.
         remove_agent_trigger_binding(ctx, &trigger).await?;
+        if trigger.trigger_type == AgentTriggerType::McpEvent.to_string() {
+            mcp_event::deactivate(ctx, &trigger).await;
+        }
         let deleted = ctx
             .db
             .delete_agent_trigger(ctx.org_id(), trigger.id)

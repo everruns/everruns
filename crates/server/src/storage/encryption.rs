@@ -387,6 +387,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "secret_encrypted",
         id_column: "id",
     },
+    // The signing secret Everruns hands an MCP server for an mcp_event trigger.
+    EncryptedColumn {
+        table: "agent_trigger_mcp_subscriptions",
+        column: "secret_encrypted",
+        id_column: "trigger_id",
+    },
     // Pending native calls contain private arguments and tool results.
     EncryptedColumn {
         table: "native_async_checkpoints",

@@ -133,9 +133,18 @@ resolved by the generic client-tool timeout.
 - The gate's in-memory "always" cache is skipped for the durable approver, so a
   long-lived worker serving many sessions does not grow it without bound.
 
+## Capability-owned gates
+
+A capability can contribute this same gate with a policy of its own, so a call
+it considers risky is held whether or not the agent enables `tool_approval`.
+Computer use does (per action, see [computer use](computer-use.md#safety)).
+When two durable gates hold one call, one one-off answer carries it through
+both: the approver remembers, briefly and in process, the one-off answer it
+just consumed for that call id, so the second gate does not ask again. A
+different call, or the model's next identical call (a new id), still needs its
+own answer.
+
 ## Not covered yet
 
 - MCP Apps, Slack and A2A surfaces do not render approval cards; those sessions
   can still be answered through the API.
-- Per-action gating for computer use (`action_requires_approval`) is a policy on
-  top of this gate and ships with the computer use work.

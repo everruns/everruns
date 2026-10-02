@@ -9,6 +9,7 @@ pub mod commands;
 pub mod deliveries;
 pub mod events;
 pub mod github;
+pub mod mcp_event;
 pub mod queries;
 pub mod types;
 pub mod webhook;
@@ -16,4 +17,5 @@ pub mod webhook_invocation;
 
 pub use commands::*;
 pub use deliveries::*;
+pub use mcp_event::McpEventTriggers;
 pub use webhook_invocation::{WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger};

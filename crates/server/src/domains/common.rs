@@ -499,17 +499,16 @@ pub struct Ctx {
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     pub fallback_harness_name: Option<String>,
-    /// Outbound HTTP boundary. Used by commands that make sanctioned egress
-    /// calls (e.g. plugin sync/fetch from GitHub or a URL source).
+    /// Outbound HTTP boundary for sanctioned egress (e.g. plugin sync from GitHub or a URL).
     pub egress_service: Option<Arc<dyn EgressService>>,
-    /// System utility LLM for sanctioned internal analysis tasks
-    /// (knowledge/operations/utility-llm.md). Not a user-configurable model surface.
+    /// System utility LLM for internal analysis (knowledge/operations/utility-llm.md).
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
     /// Agent health check service (knowledge/evaluation/agent-checks.md, tier-3).
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
-    /// Per-org/per-user resource caps enforced in create paths (harnesses,
-    /// agents, sessions). Resolved from env so SaaS plan overrides apply across
-    /// every entry path (HTTP/MCP/gRPC). Tests may override the fields directly.
+    /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
+    pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
+    /// Per-org/per-user resource caps enforced in create paths (harnesses, agents, sessions).
+    /// Resolved from env so SaaS plan overrides apply across every entry path (HTTP/MCP/gRPC).
     pub resource_limits: crate::server::ResourceLimitsConfig,
 }
 
@@ -565,6 +564,7 @@ impl Ctx {
             egress_service: None,
             utility_llm_service: None,
             health_check_service: None,
+            mcp_event_triggers: None,
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }
     }

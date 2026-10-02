@@ -11,6 +11,7 @@
 
 pub mod agent_store;
 pub mod agent_trigger_deliveries;
+pub mod agent_trigger_mcp_subscriptions;
 pub mod agents_api_store;
 pub mod backend;
 pub mod blob_store;
@@ -21,6 +22,7 @@ pub mod encryption;
 pub mod github_app_rows;
 pub mod harness_store;
 mod ingress;
+pub mod late_generation_usage;
 pub mod leased_resource_store;
 pub mod mcp_catalog;
 pub mod mcp_event_subscriptions;
@@ -64,6 +66,7 @@ pub use encryption::{
 };
 pub use harness_store::{DbHarnessStore, create_db_harness_store};
 pub use ingress::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
+pub use late_generation_usage::*;
 pub use leased_resource_store::{
     DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
 };

@@ -225,8 +225,8 @@ pub use vector_store::{
 // Hosted control-plane orchestration records (EVE-841).
 pub use agent_trigger::{
     AgentTrigger, AgentTriggerDelivery, AgentTriggerType, GitHubTriggerConfig,
-    ScheduleTriggerConfig, TriggerDeliveryStatus, TriggerEventFilter, TriggerFilterCondition,
-    WebhookTriggerConfig,
+    McpEventTriggerConfig, ScheduleTriggerConfig, TriggerDeliveryStatus, TriggerEventFilter,
+    TriggerFilterCondition, WebhookTriggerConfig,
 };
 pub use everruns_core::channel::SessionBinding;
 

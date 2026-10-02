@@ -306,7 +306,7 @@ impl BudgetService {
     #[allow(clippy::too_many_arguments)]
     async fn process_llm_generation(
         &self,
-        event: &Event,
+        source: GenerationSource,
         model: Option<&str>,
         provider: Option<&str>,
         input_tokens: i64,
@@ -318,12 +318,12 @@ impl BudgetService {
         cost_unknown_components: &[String],
     ) {
         // Get session to find subject hierarchy
-        let session = match self.db.get_session_unscoped(event.session_id).await {
+        let session = match self.db.get_session_unscoped(source.session_id).await {
             Ok(Some(s)) => s,
             Ok(None) => {
                 error!(
                     "Session not found for budget tracking: {}",
-                    event.session_id
+                    source.session_id
                 );
                 return;
             }
@@ -333,7 +333,7 @@ impl BudgetService {
             }
         };
 
-        let session_public_id = event.session_id.to_string();
+        let session_public_id = source.session_id.to_string();
         let scope = match self
             .scope_from_session(&session, &session_public_id, None)
             .await
@@ -341,7 +341,7 @@ impl BudgetService {
             Ok(scope) => scope,
             Err(error) => {
                 error!(
-                    session_id = %event.session_id,
+                    session_id = %source.session_id,
                     error = %error,
                     "Failed to resolve session scope for budget tracking"
                 );
@@ -359,7 +359,7 @@ impl BudgetService {
             Err(e) => {
                 error!(
                     "Failed to fetch budgets for session {}: {}",
-                    event.session_id, e
+                    source.session_id, e
                 );
                 return;
             }
@@ -383,20 +383,16 @@ impl BudgetService {
             cache_read_tokens,
             cache_creation_tokens,
         );
-        // Only persisted events have a sequence allocated by the events table.
-        // Synthetic listener inputs preserve traceability via source_id but must
-        // not write an FK to usage_journal.event_id.
-        let event_id = event.sequence.map(|_| event.id.uuid());
         let journal = match self
             .db
             .create_usage_journal_entry(CreateUsageJournalRow {
                 org_id: session.org_id,
                 kind: "llm_generation".to_string(),
-                source_type: Some("event".to_string()),
-                source_id: Some(event.id.to_string()),
-                event_id,
+                source_type: Some(source.source_type.to_string()),
+                source_id: Some(source.source_id.clone()),
+                event_id: source.event_id,
                 session_id: scope.session_id,
-                turn_id: event.context.turn_id.as_ref().map(|id| id.uuid()),
+                turn_id: source.turn_id,
                 user_id: scope.user_id,
                 principal_id: scope.principal_id,
                 agent_id: scope.agent_id,
@@ -423,7 +419,7 @@ impl BudgetService {
             Ok(journal) => journal,
             Err(error) => {
                 error!(
-                    session_id = %event.session_id,
+                    session_id = %source.session_id,
                     error = %error,
                     "Failed to create usage journal row for llm generation"
                 );
@@ -462,7 +458,7 @@ impl BudgetService {
                 amount: debit,
                 meter_source: "llm_tokens".into(),
                 ref_type: Some("llm_generation".into()),
-                ref_id: Some(event.id.uuid()),
+                ref_id: Some(source.ref_id),
                 description: model.map(|m| format!("{} tokens on {}", total_tokens, m)),
                 rating_metadata: Some(serde_json::json!({
                     "ruleset_version": "v1",
@@ -534,6 +530,45 @@ impl BudgetService {
                 }
             }
         }
+    }
+
+    /// Meter usage a provider reported after its generation was billed as an
+    /// explicit unknown (late Agents API usage, EVE-1145). Only the late
+    /// tokens are metered: what the generation's event already debited (its
+    /// priced components) is not charged again. The journal is keyed to the
+    /// generation record, whose unique `(source_type, source_id)` index admits
+    /// it once on PostgreSQL, so a repeated call debits nothing more.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn meter_late_usage(
+        &self,
+        session_id: SessionId,
+        generation_id: uuid::Uuid,
+        turn_id: Option<uuid::Uuid>,
+        event_id: Option<uuid::Uuid>,
+        model: Option<&str>,
+        provider: Option<&str>,
+        usage: &crate::storage::LateGenerationUsage,
+    ) {
+        self.process_llm_generation(
+            GenerationSource {
+                session_id,
+                source_type: LATE_USAGE_SOURCE,
+                source_id: generation_id.to_string(),
+                event_id: None,
+                turn_id,
+                ref_id: event_id.unwrap_or(generation_id),
+            },
+            model,
+            provider,
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cache_read_tokens,
+            usage.cache_creation_tokens,
+            usage.estimated_cost_usd,
+            None,
+            &[],
+        )
+        .await;
     }
 
     pub(crate) fn metered_total_tokens(
@@ -804,7 +839,7 @@ impl EventListener for BudgetService {
         };
 
         self.process_llm_generation(
-            event,
+            GenerationSource::from_event(event),
             Some(data.metadata.model.as_str()),
             data.metadata.provider.as_deref(),
             meter.input_tokens,
@@ -830,6 +865,41 @@ impl EventListener for BudgetService {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/// Journal `source_type` of late usage applied to a generation record.
+pub(crate) const LATE_USAGE_SOURCE: &str = "llm_generation_late_usage";
+
+/// What a metered generation is journaled against. An `llm.generation` event
+/// is one source; usage applied to its record later (late Agents API usage,
+/// EVE-1145) is another, journaled under its own source so the two never
+/// collide on the journal's unique `(source_type, source_id)` and
+/// `(kind, event_id)` indexes.
+pub(crate) struct GenerationSource {
+    pub session_id: SessionId,
+    pub source_type: &'static str,
+    pub source_id: String,
+    /// FK to the persisted event, when there is one.
+    pub event_id: Option<uuid::Uuid>,
+    pub turn_id: Option<uuid::Uuid>,
+    /// Ledger `ref_id` (`ref_type` is `llm_generation`).
+    pub ref_id: uuid::Uuid,
+}
+
+impl GenerationSource {
+    fn from_event(event: &Event) -> Self {
+        Self {
+            session_id: event.session_id,
+            source_type: "event",
+            source_id: event.id.to_string(),
+            // Only persisted events have a sequence allocated by the events
+            // table. Synthetic listener inputs preserve traceability via
+            // source_id but must not write an FK to usage_journal.event_id.
+            event_id: event.sequence.map(|_| event.id.uuid()),
+            turn_id: event.context.turn_id.as_ref().map(|id| id.uuid()),
+            ref_id: event.id.uuid(),
+        }
+    }
+}
 
 /// What one `llm.generation` meters.
 #[derive(Debug, PartialEq)]

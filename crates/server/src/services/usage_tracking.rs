@@ -43,7 +43,14 @@ impl EventListener for UsageTrackingListener {
         let usage = match &data.metadata.usage {
             Some(u) => u,
             None => {
-                // No usage data, nothing to track
+                // No usage data. An Agents API turn billed before the provider
+                // reported its usage is recorded as pending, for the late
+                // usage reconciler to apply (EVE-1145); anything else has
+                // nothing to track.
+                if let Err(e) = super::agents_api_usage::record_pending(&self.db, event, data).await
+                {
+                    error!(error = %e, "Failed to record pending Agents API usage");
+                }
                 return;
             }
         };

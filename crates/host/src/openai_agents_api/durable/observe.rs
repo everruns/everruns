@@ -34,7 +34,9 @@ use everruns_provider::openai_hosted_tools::{hosted_call_price_usd, hosted_call_
 use serde_json::Value;
 
 use super::{Recorded, Run, is_terminal_status};
-use crate::openai_agents_api::{AgentsApiEnvironment, AgentsApiError, usage_from};
+use crate::openai_agents_api::{
+    AgentsApiEnvironment, AgentsApiError, GENERATION_PROVIDER_ID, usage_from,
+};
 
 /// Tool name of a provider subagent run on `tool.hosted_call`.
 pub(super) const SUBAGENT_TOOL: &str = "subagent";
@@ -596,7 +598,18 @@ impl Run<'_> {
         };
         data.metadata.response_id = id_of(provider_turn).map(str::to_string);
         let data = data.with_cost_components(components);
-        self.event(item_id, EventData::LlmGeneration(data))
+        let mut event = self.event(item_id, EventData::LlmGeneration(data));
+        // Usage still unknown here is read back later with these credentials
+        // (EVE-1145); the id names the provider, never its key.
+        if let (Some(Value::Object(metadata)), Some(provider_id)) =
+            (event.metadata.as_mut(), self.request.provider_key.as_ref())
+        {
+            metadata.insert(
+                GENERATION_PROVIDER_ID.to_string(),
+                Value::String(provider_id.clone()),
+            );
+        }
+        event
     }
 }
 
