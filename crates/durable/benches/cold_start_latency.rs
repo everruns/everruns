@@ -23,7 +23,7 @@ use everruns_durable::bench::{
     ReportConfig, register_bench_worker,
 };
 use everruns_durable::persistence::{
-    InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+    EventLog, InMemoryWorkflowEventStore, TaskDefinition, TaskQueue,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;

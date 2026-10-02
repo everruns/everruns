@@ -3064,7 +3064,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_health_with_in_memory_store() {
-        use everruns_durable::InMemoryWorkflowEventStore;
+        use everruns_durable::prelude::*;
 
         let store = Arc::new(InMemoryWorkflowEventStore::new());
 
@@ -3118,8 +3118,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_health_with_in_memory_store_full_scenario() {
-        use everruns_durable::workflow::ActivityOptions;
-        use everruns_durable::{InMemoryWorkflowEventStore, TaskDefinition};
+        use everruns_durable::prelude::*;
 
         let store = Arc::new(InMemoryWorkflowEventStore::new());
 

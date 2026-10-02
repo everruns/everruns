@@ -25,8 +25,8 @@ use uuid::Uuid;
 
 use everruns_durable::engine::{ExecutorConfig, WorkflowExecutor};
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, StoreError, TaskDefinition, WorkerInfo, WorkflowEventStore,
-    WorkflowStatus,
+    EventLog, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskQueue, WorkerInfo,
+    WorkerRegistry, WorkflowStatus,
 };
 use everruns_durable::reliability::{CircuitBreakerConfig, DistributedCircuitBreaker};
 use everruns_durable::workflow::{

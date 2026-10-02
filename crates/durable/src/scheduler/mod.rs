@@ -424,7 +424,7 @@ impl DurableScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{CreateScheduleRow, InMemoryWorkflowEventStore};
+    use crate::persistence::{CreateScheduleRow, InMemoryWorkflowEventStore, Schedules};
     use serde_json::Value;
 
     #[tokio::test]

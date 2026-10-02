@@ -14,6 +14,7 @@ use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_durable::workflow::ActivityOptions;
+use everruns_durable::{EventLog, TaskQueue, WorkerRegistry};
 
 async fn cancelled_turn_reaches_the_owning_worker(store: &impl WorkflowEventStore) {
     let workflow_id = Uuid::now_v7();

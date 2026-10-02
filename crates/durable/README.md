@@ -131,7 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `Workflow` | Deterministic state machine. Handlers (`on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_child_workflow_completed`, `on_child_workflow_failed`, `on_signal`) return `WorkflowAction`s. |
 | `WorkflowEvent` | Append-only history. Replaying it rebuilds workflow state after a crash. |
 | `WorkflowExecutor` | Starts workflows, appends events, replays history and applies the actions it has not recorded yet, so re-processing is idempotent. Optional snapshots bound replay cost; `continue_as_new` rolls over long histories. |
-| `WorkflowEventStore` | Storage contract: event log, task queue, workers, DLQ, circuit breakers, schedules. `PostgresWorkflowEventStore` for production, `InMemoryWorkflowEventStore` for tests and benches. |
+| `WorkflowEventStore` | Umbrella storage contract, blanket-implemented over focused traits: `EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`. A worker needs only `TaskQueue + SignalStore + WorkerRegistry`. No method silently succeeds by default, so a new store must implement each one. `PostgresWorkflowEventStore` for production, `InMemoryWorkflowEventStore` for tests and benches. |
 | `TaskDefinition` / `ClaimedTask` | A queued activity. `workflow_id: None` makes it a standalone queue task. |
 | `WorkerPool` | Polls for tasks, runs registered handlers with bounded concurrency, heartbeats, reclaims stale work and applies backpressure. |
 | `DurableScheduler` | Cron and interval schedules that start workflows or tasks, with leader-safe claiming. |

@@ -17,9 +17,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use everruns_durable::persistence::{
-    DEFAULT_NO_PROGRESS_SEAL_THRESHOLD, DlqFilter, Pagination, PostgresWorkflowEventStore,
-    StoreError, TaskDefinition, TaskFailureOutcome, TaskStatus, TraceContext, WorkerFilter,
-    WorkerInfo, WorkflowEventStore, WorkflowStatus,
+    DEFAULT_NO_PROGRESS_SEAL_THRESHOLD, DeadLetters, DlqFilter, EventLog, Pagination,
+    PostgresWorkflowEventStore, SignalStore, StoreError, TaskDefinition, TaskFailureOutcome,
+    TaskQueue, TaskStatus, TraceContext, WorkerFilter, WorkerInfo, WorkerRegistry, WorkflowStatus,
 };
 use everruns_durable::reliability::RetryPolicy;
 use everruns_durable::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};

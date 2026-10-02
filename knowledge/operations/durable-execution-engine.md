@@ -61,6 +61,8 @@ semantics.
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+`WorkflowEventStore` is an umbrella over focused traits (`EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`), blanket-implemented, so a component can bound on only the slice it needs (a worker: `TaskQueue + SignalStore + WorkerRegistry`). Store methods have no silently-succeeding defaults; both stores implement every method, and only derived defaults (for example `count_events` via `load_events`) remain. See `crates/durable/src/persistence/store.rs`.
+
 ## Requirements
 
 ### Core Abstractions

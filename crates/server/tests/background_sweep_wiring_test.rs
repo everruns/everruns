@@ -6,7 +6,7 @@
 
 use chrono::Utc;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore, WorkflowStatus};
+use everruns_durable::{EventLog, PostgresWorkflowEventStore, WorkflowStatus};
 use everruns_platform::SessionSource;
 use everruns_provider::typed_id::{MessageId, PrincipalId, SessionId};
 use everruns_server::app_builder::{ServerAppBuilder, ServerContext};

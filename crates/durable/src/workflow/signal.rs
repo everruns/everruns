@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 /// # Example
 ///
 /// ```
-/// use everruns_durable::{InMemoryWorkflowEventStore, WorkflowEventStore, WorkflowSignal};
+/// use everruns_durable::{EventLog, InMemoryWorkflowEventStore, SignalStore, WorkflowSignal};
 /// use serde_json::json;
 ///
 /// # #[tokio::main(flavor = "current_thread")]

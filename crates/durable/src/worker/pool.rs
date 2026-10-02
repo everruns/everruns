@@ -203,7 +203,7 @@ pub type ActivityHandler = Arc<
 /// use std::time::Duration;
 /// use everruns_durable::{
 ///     ActivityOptions, InMemoryWorkflowEventStore, TaskDefinition, TaskStatus, WorkerPool,
-///     WorkerPoolConfig, WorkflowEventStore,
+///     TaskQueue, WorkerPoolConfig,
 /// };
 /// use serde_json::json;
 ///
@@ -848,6 +848,7 @@ mod duration_millis {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::TaskQueue;
 
     #[test]
     fn test_default_config() {

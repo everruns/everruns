@@ -138,7 +138,7 @@ fn next_trigger() -> Result<chrono::DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_durable::InMemoryWorkflowEventStore;
+    use everruns_durable::{InMemoryWorkflowEventStore, Schedules};
 
     async fn list_reaper_schedules(
         store: &InMemoryWorkflowEventStore,
