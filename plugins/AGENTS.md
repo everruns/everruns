@@ -16,8 +16,8 @@ per-host manifests (Claude `.claude-plugin/`, Codex `.codex-plugin/`, Cursor
 
 - The plugin `name` and `version` must match across the root `plugin.json` and
   all three host manifests (`.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/`).
-- The MCP endpoint default lives in `.mcp.json` (`EVERUNS_MCP_URL`, falling back
-  to `https://app.everruns.com/mcp`); `mcp.json` pins the production URL.
+- The MCP endpoint lives in `.mcp.json` (`https://app.everruns.com/mcp`), which
+  all three hosts read; `mcp.json` pins the same production URL.
 - The skill directory (`skills/<name>/SKILL.md`) must declare matching
   frontmatter `name` and `description`.
 - Marketplace registration lives in `.claude-plugin/marketplace.json`,

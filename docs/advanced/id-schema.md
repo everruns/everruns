@@ -5,7 +5,7 @@ sidebar:
   order: 40
 ---
 
-Every resource in the Everruns API, agents, sessions, skills, knowledge bases, and so on, is identified by a **prefixed public ID**. The prefix tells you at a glance what kind of resource you are looking at; the suffix is an opaque 32-character token.
+Every resource in the Everruns API (agents, sessions, skills, knowledge bases, and so on) is identified by a **prefixed public ID**. The prefix tells you at a glance what kind of resource you are looking at; the suffix is an opaque 32-character token.
 
 This pattern was popularized by Stripe (`cus_`, `sub_`, `pi_`). Treat the suffix as a meaningless string, do not parse it, sort by it, or infer information from it. The only guarantees the API makes about an ID are its format, its uniqueness within an organization, and its stability over the lifetime of the resource.
 

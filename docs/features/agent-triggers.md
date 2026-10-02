@@ -3,9 +3,16 @@ title: Agent Triggers
 description: Run an agent proactively on a recurring schedule, choose session reuse, test it immediately, and inspect recent outcomes.
 ---
 
-Agent triggers let an Agent start work on its own schedule. A trigger belongs to one Agent, runs on that Agent's Harness, and sends a configured message when it fires. It does not require an inbound endpoint.
+Agent triggers let an Agent start work without a user message. A trigger belongs to one Agent, runs on that Agent's Harness, and sends a configured message when it fires.
 
-Schedule triggers are the only trigger type currently available.
+| `trigger_type` | Fires when | Set up |
+|---|---|---|
+| `schedule` | A cron expression matches | This page |
+| `webhook` | An external system calls the trigger's token-authenticated URL | API (`token`, optional `filter`, `rate_limit_per_minute`) |
+| `github` | A GitHub event reaches the Agent's GitHub App, such as a pull request | [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/) |
+| `mcp_event` | One of the Agent's MCP servers emits a subscribed event | [MCP Events](/features/mcp/) |
+
+The rest of this page covers schedule triggers.
 
 ## Create a trigger in the UI
 
@@ -47,7 +54,7 @@ Agent triggers are managed below `/v1/agents/{agent_id}/triggers`:
 | `POST` | `/v1/agents/{agent_id}/triggers/{trigger_id}/trigger` | Run it now |
 | `GET` | `/v1/agents/{agent_id}/triggers/{trigger_id}/runs` | List recent outcomes |
 
-Create requests accept `cron_expression`, `timezone`, `session_mode`, `message`, and `enabled`. See the [API reference](/api/) for current request and response schemas.
+Schedule create requests accept `trigger_type: "schedule"`, `cron_expression`, `timezone`, `session_mode`, `message`, and `enabled`. `GET /v1/agents/{agent_id}/triggers/{trigger_id}/deliveries` lists recent deliveries, including ones that were filtered out or deduplicated. See the [API reference](/api/) for current request and response schemas.
 
 ## Migrated App Schedules
 
