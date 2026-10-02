@@ -86,6 +86,18 @@ impl ParkedCalls {
         }
     }
 
+    /// Whether the call is a question or an approval, answered by a resume
+    /// entry rather than by a frontend tool result.
+    pub(crate) fn claims(&self, call_id: &str) -> bool {
+        self.questions
+            .as_ref()
+            .is_some_and(|pending| pending.tool_call_id == call_id)
+            || self
+                .approvals
+                .iter()
+                .any(|approval| approval.request_call_id == call_id)
+    }
+
     /// The interrupts this batch ends the run with. Empty when it waits on
     /// nothing AG-UI can name (a client-side tool, for example).
     pub(crate) fn interrupts(&self, config: &AgUiChannelConfig) -> Vec<Interrupt> {
@@ -187,9 +199,12 @@ fn everruns_metadata(value: Value) -> everruns_ag_ui::Metadata {
 pub(crate) enum ResumeOutcome {
     /// The session was not parked: the entries answer nothing.
     NothingParked,
-    /// Some interrupt has no entry: nothing was resolved, the run interrupts
-    /// again with all of them.
-    StillOpen(Vec<Interrupt>),
+    /// Some interrupt or frontend tool call has no answer: nothing was
+    /// resolved, and the run ends asking for all of them again.
+    StillOpen {
+        tool_calls: Vec<everruns_ag_ui::ToolCall>,
+        interrupts: Vec<Interrupt>,
+    },
     /// Every interrupt was resolved and the turn resumed. Its events carry
     /// this input message id, when the parked event recorded one.
     Resumed { input_message_id: Option<String> },
@@ -268,7 +283,10 @@ pub(crate) async fn resume(
         .iter()
         .any(|interrupt| !by_id.contains_key(interrupt.id.as_str()))
     {
-        return Ok(ResumeOutcome::StillOpen(interrupts));
+        return Ok(ResumeOutcome::StillOpen {
+            tool_calls: Vec::new(),
+            interrupts,
+        });
     }
 
     // Validate every entry before resolving any, so a bad approval cannot

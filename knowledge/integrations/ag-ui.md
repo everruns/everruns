@@ -12,8 +12,8 @@ tags:
 
 Implemented on AG-UI 1.0 for the endpoint `POST /v1/e/{endpoint_id}/ag-ui` and
 Public Chat (`POST /v1/e/{endpoint_id}/public-chat`), which reuses the same
-stream, including interrupts and resume and token usage. Frontend tools,
-subagents and the outbound client are planned follow-ups of the same upgrade.
+stream, including interrupts and resume, frontend tools and token usage.
+Subagents and the outbound client are planned follow-ups of the same upgrade.
 
 ## Pieces
 
@@ -40,7 +40,8 @@ subagents and the outbound client are planned follow-ups of the same upgrade.
   including cancellation and failure. 1.0 fails a run that leaves one open.
 - **Outcomes.** A completed turn finishes with no outcome (success), a
   cancelled turn with `outcome: { type: "cancelled" }`, a turn parked on a
-  question or an approval with the interrupt outcome, a failed turn with
+  question or an approval with the interrupt outcome, a turn parked only on
+  frontend tool calls with success and `pendingToolCallIds`, a failed turn with
   `RUN_ERROR`. Nothing follows the terminal event.
 - **Usage.** When the endpoint sets `usage_visible`, `RUN_FINISHED` and
   `RUN_ERROR` carry the run's token usage summed per provider and model from
@@ -73,8 +74,30 @@ entry naming no open interrupt is ignored and logged, an interrupt with no
 entry is never treated as abandoned (the run interrupts again and resolves
 nothing), and an entry that cannot be applied is refused before the stream
 opens. Abandoning a question declines it; abandoning an approval rejects the
-call. Client-side tool calls do not interrupt; they are the frontend-tools
-follow-up.
+call. Frontend tool calls do not interrupt; see below.
+
+## Frontend tools
+
+`RunAgentInput.tools` become the session's client-side tools, the same kind
+the session API declares, so the turn parks on a call to one
+([`ag_ui_frontend_tools.rs`](../../crates/server/src/api/ag_ui_frontend_tools.rs)).
+The consumer sends its tools on every run and the session takes the latest
+set. A parked call to one of the run's frontend tools streams as
+`TOOL_CALL_START`/`ARGS`/`END` under the assistant message that made it, with
+its real name and arguments whatever the endpoint's tool visibility, because
+the consumer runs it. With no interrupt beside it the run finishes in success
+with `pendingToolCallIds`. The next run's trailing `tool` messages are the
+results: they land on the waiting-turn resolution the tool-results endpoint
+uses, and the run streams the resumed turn. Results for calls that are not
+parked are ignored and logged; while a parked frontend call has no result,
+nothing is recorded and the run reports the calls again. No other `tool`
+message is used or seeded into history (TM-LLM-020). Definitions are bounded
+and the `mcp_` prefix is refused (TM-DOS-044, TM-CLIENT-004).
+
+A batch that parks on both a frontend call and a question or approval ends in
+the interrupt with the calls streamed beside it. A run carrying resume entries
+resolves only those, and a frontend call left unanswered is closed as missing
+when the turn resumes. Answering both in one run is a known gap.
 
 ## Public endpoints
 

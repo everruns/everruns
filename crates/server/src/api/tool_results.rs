@@ -163,48 +163,8 @@ pub async fn submit_tool_results(
         // to resume Platform Chat and must bind to its persisted owner too.
         return Err(ErrorResponse::not_found("Session"));
     }
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let event_message_id = MessageId::from_uuid(session_id.uuid());
-
     let accepted = req.tool_results.len();
-    let events = req
-        .tool_results
-        .iter()
-        .map(|client_result| {
-            let tool_result = if let Some(ref error) = client_result.error {
-                ToolCompletedData::failure(
-                    client_result.tool_call_id.clone(),
-                    String::new(),
-                    "error".to_string(),
-                    error.clone(),
-                    None,
-                )
-            } else {
-                let result_content = client_result
-                    .result
-                    .as_ref()
-                    .map(|result| vec![ContentPart::tool_result_text(result)])
-                    .unwrap_or_default();
-                ToolCompletedData::success(
-                    client_result.tool_call_id.clone(),
-                    String::new(),
-                    result_content,
-                    None,
-                )
-            };
-            EventRequest::new(
-                session_id,
-                EventContext::turn(turn_id, event_message_id),
-                tool_result,
-            )
-        })
-        .collect();
-    let plan = WaitingTurnResolutionPlan {
-        kind: "tool_results".to_string(),
-        events,
-        session_values: Vec::new(),
-        response: serde_json::json!({ "accepted": accepted }),
-    };
+    let plan = tool_results_plan(session_id, &req.tool_results);
     let claim = match state
         .db
         .claim_waiting_turn(org.org_id, session_id, plan)
@@ -241,6 +201,53 @@ pub async fn submit_tool_results(
     Ok(Json(
         result.log_internal_error_json("resolve client tool results")?,
     ))
+}
+
+/// The waiting-turn resolution that records client tool results, shared with
+/// the AG-UI endpoint, whose consumer sends them as `tool` messages.
+pub(crate) fn tool_results_plan(
+    session_id: SessionId,
+    tool_results: &[ClientToolResult],
+) -> WaitingTurnResolutionPlan {
+    let turn_id = TurnId::from_uuid(session_id.uuid());
+    let event_message_id = MessageId::from_uuid(session_id.uuid());
+    let events = tool_results
+        .iter()
+        .map(|client_result| {
+            let tool_result = if let Some(ref error) = client_result.error {
+                ToolCompletedData::failure(
+                    client_result.tool_call_id.clone(),
+                    String::new(),
+                    "error".to_string(),
+                    error.clone(),
+                    None,
+                )
+            } else {
+                let result_content = client_result
+                    .result
+                    .as_ref()
+                    .map(|result| vec![ContentPart::tool_result_text(result)])
+                    .unwrap_or_default();
+                ToolCompletedData::success(
+                    client_result.tool_call_id.clone(),
+                    String::new(),
+                    result_content,
+                    None,
+                )
+            };
+            EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, event_message_id),
+                tool_result,
+            )
+        })
+        .collect();
+    WaitingTurnResolutionPlan {
+        kind: "tool_results".to_string(),
+        events,
+        session_values: Vec::new(),
+        response: serde_json::json!({ "accepted": tool_results.len() }),
+    }
 }
 
 #[cfg(test)]

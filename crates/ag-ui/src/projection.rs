@@ -40,7 +40,7 @@ use crate::{
     Event, Interrupt, ReasoningMessageContentEvent, ReasoningMessageEndEvent,
     ReasoningMessageStartEvent, ReasoningSpanEvent, RunErrorEvent, RunFinishedEvent,
     RunFinishedOutcome, TextMessageContentEvent, TextMessageEndEvent, TextMessageStartEvent,
-    TokenUsage,
+    TokenUsage, ToolCall, ToolCallArgsEvent, ToolCallEndEvent, ToolCallStartEvent,
 };
 
 /// A failed turn, as handed to [`ProjectionPolicy::error`].
@@ -108,6 +108,9 @@ pub struct Projector {
     assistant_message_id: Option<String>,
     assistant_content_started: bool,
     assistant_emitted_delta: bool,
+    /// The last assistant message that carried tool calls rather than an
+    /// answer: the parent of any frontend tool call the run stops on.
+    tool_call_message_id: Option<String>,
     /// The open reasoning span and reasoning message, if any.
     reasoning_span: Option<String>,
     reasoning_message: Option<String>,
@@ -137,6 +140,7 @@ impl Projector {
             assistant_message_id: None,
             assistant_content_started: false,
             assistant_emitted_delta: false,
+            tool_call_message_id: None,
             reasoning_span: None,
             reasoning_message: None,
             span_opened_by_tools: false,
@@ -185,10 +189,62 @@ impl Projector {
     /// it carries the answers. An empty list does nothing, because an
     /// interrupt outcome with nothing to answer is invalid.
     pub fn interrupt(&mut self, interrupts: Vec<Interrupt>) {
-        if self.finished || interrupts.is_empty() {
+        self.park(Vec::new(), interrupts);
+    }
+
+    /// Ends the run where the turn parked on its consumer.
+    ///
+    /// Frontend tool calls stream as `TOOL_CALL_START`/`ARGS`/`END` under the
+    /// assistant message that made them. With interrupts the run ends with
+    /// the interrupt outcome; with only tool calls it is a success naming
+    /// them in `pendingToolCallIds`, and the consumer's next run carries
+    /// their results as `tool` messages. Both empty does nothing.
+    ///
+    /// ```
+    /// use everruns_ag_ui::projection::{ProjectionPolicy, Projector};
+    /// use everruns_ag_ui::{Event, RunFinishedOutcome, ToolCall};
+    ///
+    /// let mut projector = Projector::new("thread", "run", ProjectionPolicy::default());
+    /// projector.park(vec![ToolCall::function("call-1", "confirm", "{}")], Vec::new());
+    /// let events: Vec<Event> = projector.drain().collect();
+    /// assert!(matches!(events[0], Event::ToolCallStart(_)));
+    /// let Some(Event::RunFinished(finished)) = events.last() else { panic!() };
+    /// assert_eq!(
+    ///     finished.outcome,
+    ///     Some(RunFinishedOutcome::Success {
+    ///         pending_tool_call_ids: Some(vec!["call-1".to_string()]),
+    ///     })
+    /// );
+    /// ```
+    pub fn park(&mut self, tool_calls: Vec<ToolCall>, interrupts: Vec<Interrupt>) {
+        if self.finished || (tool_calls.is_empty() && interrupts.is_empty()) {
             return;
         }
-        self.finish(Some(RunFinishedOutcome::Interrupt { interrupts }));
+        self.close_all();
+        let parent = self.tool_call_message_id.clone();
+        let mut pending = Vec::with_capacity(tool_calls.len());
+        for call in tool_calls {
+            let mut start = ToolCallStartEvent::new(call.id.clone(), call.function.name);
+            start.parent_message_id = parent.clone();
+            self.queue.push_back(Event::ToolCallStart(start));
+            if !call.function.arguments.is_empty() {
+                self.queue
+                    .push_back(Event::ToolCallArgs(ToolCallArgsEvent::new(
+                        call.id.clone(),
+                        call.function.arguments,
+                    )));
+            }
+            self.queue
+                .push_back(Event::ToolCallEnd(ToolCallEndEvent::new(call.id.clone())));
+            pending.push(call.id);
+        }
+        self.finish(Some(if interrupts.is_empty() {
+            RunFinishedOutcome::Success {
+                pending_tool_call_ids: Some(pending),
+            }
+        } else {
+            RunFinishedOutcome::Interrupt { interrupts }
+        }));
     }
 
     /// Projects one runtime event, given its dotted type and JSON `data`.
@@ -349,6 +405,7 @@ impl Projector {
             // Commentary before tools: close its text message so the final
             // answer can open its own without ending the run early.
             self.close_assistant_text();
+            self.tool_call_message_id = Some(message.id.uuid().to_string());
             return;
         }
         let message_id = self.ensure_assistant_message(message.id.uuid().to_string());

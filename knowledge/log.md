@@ -2,6 +2,12 @@
 
 ## 2026-10-01
 
+* **AG-UI frontend tools.** `RunAgentInput.tools` become the session's
+  client-side tools; a parked call to one streams to the consumer and ends the
+  run in success with `pendingToolCallIds`, and the next run's trailing `tool`
+  messages resume the turn. Recorded in
+  [AG-UI Channel](integrations/ag-ui.md#frontend-tools), threat-model entry
+  TM-DOS-044 and the updated TM-LLM-020.
 * **Agents can wake on MCP events (EVE-1121, inbound half).** An `mcp_event`
   trigger subscribes, through MCP Events, to an event on one of the agent's own
   MCP servers with that attachment's credential, and keeps the subscription in

@@ -260,3 +260,90 @@ fn interrupt_closes_open_messages_and_ends_the_run() {
         "an interrupted run reports its usage"
     );
 }
+
+#[test]
+fn frontend_tool_calls_stream_under_their_message_and_end_in_success() {
+    let mut projector = Projector::new("t", "r", policy());
+    let carrier = MessageId::new();
+    let call = everruns_provider::tool_types::ToolCall {
+        id: "call_1".into(),
+        name: "confirm".into(),
+        arguments: json!({ "text": "ok?" }),
+    };
+    projector.project("output.message.delta", &delta(carrier, "Checking."));
+    projector.project(
+        "output.message.completed",
+        &serde_json::to_value(OutputMessageCompletedData::new(
+            RuntimeMessage::assistant_with_tools("Checking.", vec![call]).with_id(carrier),
+        ))
+        .unwrap(),
+    );
+    assert!(
+        !projector.is_finished(),
+        "a tool-call carrier is not the answer"
+    );
+    projector.park(
+        vec![everruns_ag_ui::ToolCall::function(
+            "call_1",
+            "confirm",
+            r#"{"text":"ok?"}"#,
+        )],
+        Vec::new(),
+    );
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    assert_eq!(
+        types(&events[events.len() - 4..]),
+        [
+            "TOOL_CALL_START",
+            "TOOL_CALL_ARGS",
+            "TOOL_CALL_END",
+            "RUN_FINISHED"
+        ]
+    );
+    let Some(Event::ToolCallStart(start)) =
+        events.iter().find(|e| e.event_type() == "TOOL_CALL_START")
+    else {
+        panic!("expected TOOL_CALL_START");
+    };
+    assert_eq!(start.tool_call_name, "confirm");
+    assert_eq!(
+        start.parent_message_id.as_deref(),
+        Some(carrier.uuid().to_string().as_str())
+    );
+    let Some(Event::RunFinished(finished)) = events.last() else {
+        panic!("expected RUN_FINISHED");
+    };
+    assert_eq!(
+        finished.outcome,
+        Some(RunFinishedOutcome::Success {
+            pending_tool_call_ids: Some(vec!["call_1".to_string()]),
+        })
+    );
+}
+
+#[test]
+fn frontend_tool_calls_beside_an_interrupt_end_in_the_interrupt() {
+    let mut projector = Projector::new("t", "r", policy());
+    projector.park(
+        vec![everruns_ag_ui::ToolCall::function("call_2", "confirm", "")],
+        vec![everruns_ag_ui::Interrupt::new(
+            "call_1",
+            "everruns.ask_user",
+        )],
+    );
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    assert_eq!(
+        types(&events),
+        ["TOOL_CALL_START", "TOOL_CALL_END", "RUN_FINISHED"],
+        "empty arguments send no TOOL_CALL_ARGS"
+    );
+    let Some(Event::RunFinished(finished)) = events.last() else {
+        panic!("expected RUN_FINISHED");
+    };
+    assert!(matches!(
+        finished.outcome,
+        Some(RunFinishedOutcome::Interrupt { .. })
+    ));
+}

@@ -1146,14 +1146,14 @@ pub struct UpdateSession {
     pub status: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    pub tools: Option<serde_json::Value>,
 }
 
 // ============================================
 // Event models (source of truth for messages)
 // ============================================
-//
-// Messages are stored as events with type "message.*"
-// The events table is the sole source of truth for conversation data.
+// Messages are stored as events with type "message.*"; the events table is
+// the sole source of truth for conversation data.
 
 #[derive(Debug, Clone, FromRow)]
 pub struct EventRow {

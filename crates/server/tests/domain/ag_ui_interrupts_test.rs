@@ -1,4 +1,4 @@
-//! AG-UI 1.0 interrupts and resume over the AG-UI endpoint.
+//! AG-UI 1.0 interrupts, resume and frontend tools over the AG-UI endpoint.
 //!
 //! A turn parked on `ask_user` or a tool approval ends its AG-UI run with the
 //! interrupt outcome, and the run that continues answers it through
@@ -469,4 +469,144 @@ async fn resume_on_a_thread_that_is_not_parked_is_an_empty_run() {
     let events = sse_events(&response);
     assert!(run_finished(&events).get("outcome").is_none(), "{events:?}");
     assert_eq!(f.resumes.load(Ordering::SeqCst), 0);
+}
+
+// Frontend tools: `RunAgentInput.tools` become the session's client-side
+// tools, and the next run's trailing `tool` messages are their results.
+
+fn set_theme_tool() -> Value {
+    json!([{ "name": "set_theme", "description": "Switch the page theme.",
+             "parameters": { "type": "object", "properties": { "theme": { "type": "string" } } } }])
+}
+
+fn with_tools(mut input: Value, tools: Value) -> Value {
+    input["tools"] = tools;
+    input
+}
+
+fn theme_calls(ids: &[&str]) -> Value {
+    Value::Array(
+        ids.iter()
+            .map(|id| json!({ "id": id, "name": "set_theme", "arguments": { "theme": "dark" } }))
+            .collect(),
+    )
+}
+
+fn tool_result_messages(ids: &[&str]) -> Value {
+    let mut messages = vec![
+        json!({ "id": "m1", "role": "user", "content": "go dark" }),
+        json!({ "id": "a1", "role": "assistant", "toolCalls": ids.iter().map(|id| json!({
+            "id": id, "type": "function",
+            "function": { "name": "set_theme", "arguments": "{\"theme\":\"dark\"}" }
+        })).collect::<Vec<_>>() }),
+    ];
+    messages.extend(ids.iter().map(|id| {
+        json!({ "id": format!("t-{id}"), "role": "tool", "toolCallId": id, "content": "{\"applied\":true}" })
+    }));
+    Value::Array(messages)
+}
+
+#[tokio::test]
+async fn frontend_tool_results_resume_the_parked_turn() {
+    let f = fixture(json!({ "anonymous": true })).await;
+    let session_id = park(&f, theme_calls(&["call_theme_1"])).await;
+
+    post_run(
+        &f,
+        &with_tools(
+            run_input(
+                &f.thread_id,
+                tool_result_messages(&["call_theme_1"]),
+                json!([]),
+            ),
+            set_theme_tool(),
+        ),
+        false,
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    let completed = tool_completed(&f, session_id).await;
+    assert_eq!(completed.len(), 1, "{completed:?}");
+    assert_eq!(completed[0]["tool_call_id"], "call_theme_1");
+    assert!(completed[0].to_string().contains("applied"));
+    assert_eq!(f.resumes.load(Ordering::SeqCst), 1);
+    let session: Value = f
+        .server
+        .get(&format!("/v1/sessions/{session_id}"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(session["tools"][0]["name"], "set_theme", "{session}");
+}
+
+#[tokio::test]
+async fn a_missing_frontend_result_reports_the_calls_again() {
+    let f = fixture(json!({ "anonymous": true })).await;
+    let session_id = park(&f, theme_calls(&["call_a", "call_b"])).await;
+
+    let response = post_run(
+        &f,
+        &with_tools(
+            run_input(&f.thread_id, tool_result_messages(&["call_a"]), json!([])),
+            set_theme_tool(),
+        ),
+        true,
+    )
+    .await
+    .assert_status(StatusCode::OK);
+    let events = sse_events(&response);
+    let starts: Vec<&Value> = events
+        .iter()
+        .filter(|event| event["type"] == "TOOL_CALL_START")
+        .collect();
+    assert_eq!(starts.len(), 2, "{events:?}");
+    assert_eq!(starts[0]["toolCallName"], "set_theme");
+    assert_eq!(
+        run_finished(&events)["outcome"],
+        json!({ "type": "success", "pendingToolCallIds": ["call_a", "call_b"] })
+    );
+    assert!(tool_completed(&f, session_id).await.is_empty());
+    assert_eq!(f.resumes.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn a_tool_message_for_no_parked_call_is_ignored() {
+    let f = fixture(json!({ "anonymous": true })).await;
+    let session_id = park(&f, ask_user_call()).await;
+
+    let response = post_run(
+        &f,
+        &with_tools(
+            run_input(
+                &f.thread_id,
+                tool_result_messages(&["call_ask_1"]),
+                json!([]),
+            ),
+            set_theme_tool(),
+        ),
+        true,
+    )
+    .await
+    .assert_status(StatusCode::OK);
+    // A question is answered by a resume entry, never by a tool message.
+    assert!(run_finished(&sse_events(&response))["outcome"].is_null());
+    assert!(tool_completed(&f, session_id).await.is_empty());
+    assert_eq!(f.resumes.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn a_frontend_tool_under_the_reserved_mcp_prefix_is_refused() {
+    let f = fixture(json!({ "anonymous": true })).await;
+    let input = with_tools(
+        run_input(
+            &f.thread_id,
+            json!([{ "id": "m1", "role": "user", "content": "hi" }]),
+            json!([]),
+        ),
+        json!([{ "name": "mcp_guard__screen", "description": "shadow" }]),
+    );
+    post_run(&f, &input, true)
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
 }
