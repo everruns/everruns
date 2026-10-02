@@ -402,6 +402,19 @@ with contextlib.redirect_stderr(io.StringIO()):
     resumed = release_plan(
         {"everruns-core": PLATFORM, "everruns-host": PLATFORM},
         {"everruns-core": {"0.27.0", PLATFORM}, "everruns-host": {"0.27.0"}},
+        tags={f"crate/everruns-core/v{PLATFORM}": HEAD_SHA},
+    )
+    # v0.34.1: the cascade halted, and runs triggered by later pushes to main
+    # finished it from their own commits. A version cut at another commit must
+    # not publish from this one, previously published crates included.
+    finished_elsewhere = release_plan(
+        {"everruns-core": PLATFORM, "everruns-host": PLATFORM},
+        {"everruns-core": {"0.27.0", PLATFORM}, "everruns-host": {"0.27.0"}},
+        tags={f"crate/everruns-core/v{PLATFORM}": OLDER_SHA},
+    )
+    untagged = release_plan(
+        {"everruns-core": PLATFORM, "everruns-host": PLATFORM},
+        {"everruns-core": {"0.27.0", PLATFORM}, "everruns-host": {"0.27.0"}},
     )
 require(deferred == [], "a never-published crate must not publish at an already-cut platform version")
 require(
@@ -409,6 +422,16 @@ require(
     "a new crate must publish with the platform version being cut",
 )
 require(resumed == ["everruns-host"], "a re-run must still finish a partially published cascade")
+require(
+    finished_elsewhere == [],
+    "a platform version cut at another commit must not be finished from this one, "
+    f"got: {finished_elsewhere}",
+)
+require(untagged == [], f"a sibling with no release tag must read as cut elsewhere, got: {untagged}")
+require(
+    "git push --atomic origin" in crate_release,
+    "crate tags must be created up front in one atomic push, before anything publishes",
+)
 
 # Re-running a half-finished cascade is not a late join. Attempt 1 of the v0.30.0
 # release published everruns-core from this commit and then died on a crates.io

@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "async-trait",
  "schemars",
@@ -423,7 +423,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -454,7 +454,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -489,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -514,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-typesafe"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -530,14 +530,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-provider"
-version = "0.34.1"
+version = "0.34.2"
 dependencies = [
  "anyhow",
  "async-trait",

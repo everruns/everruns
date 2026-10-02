@@ -29,8 +29,11 @@ grep -q "'.github/workflows/publish-crates.yml'" "$WORKFLOW" \
   || failures+=("crate-release paths must include publish-crates.yml")
 
 # --- Behavioural: extract the real tag-resolution snippet and run it. -------
-SNIPPET="$(awk '/^ *EXISTING=""$/{f=1} f&&/^ *# gh workflow run does not/{exit} f' \
+# The snippet is the body of the up-front tagging loop: from EXISTING="" to the
+# loop's `done`. New tags are queued in NEW_TAGS for one atomic push after it.
+SNIPPET="$(awk '/^ *EXISTING=""$/{f=1} f&&/^ *done$/{exit} f' \
   "$WORKFLOW" | sed -e 's/^            //')"
+grep -q 'NEW_TAGS+=' <<<"$SNIPPET" || failures+=("new tags must be queued for the atomic push, not pushed one by one")
 grep -q 'EXISTING=' <<<"$SNIPPET" || failures+=("could not extract the tag-resolution snippet")
 
 WORK="$(mktemp -d)"
@@ -56,7 +59,7 @@ run_snippet() { # $1 = SHA this release is publishing from
     cd "$WORK"
     set +e
     PKG=pkg TAG="crate/pkg/v1.0.0" SHA="$1" GITHUB_REPOSITORY=o/r \
-      bash -c "set -euo pipefail; $SNIPPET" 2>&1
+      bash -c "set -euo pipefail; NEW_TAGS=(); $SNIPPET" 2>&1
     echo "EXIT=$?"
   )
 }

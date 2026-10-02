@@ -94,27 +94,24 @@ jobs:
               if pkg["version"] not in existing[name]
           }
 
-          # A crate that has never been published cannot join a platform version
-          # that was already cut. Its internal pins name that version, and the
-          # siblings published at it came from the older commit, so `cargo
-          # publish`'s verification build compiles the new crate against stale
-          # dependency source and fails -- which is how
-          # everruns-integrations-typesafe 0.28.0 broke after #3666 flipped it
-          # from `publish = false` mid-cycle. Defer it to the next platform
-          # version, where every crate publishes from one commit again.
+          # A platform version is published from one commit. Once any sibling is
+          # on crates.io at this version from another commit, a run here must not
+          # finish the cascade: it would publish the rest from a different tree
+          # under the same version. v0.34.1 did exactly that -- runs triggered by
+          # later pushes to main picked up a halted cascade and shipped 16 crates
+          # from one newer commit and `everruns` from another. Never-published
+          # crates were already held back for the same reason (their verification
+          # build compiles against the older siblings, which broke
+          # everruns-integrations-typesafe 0.28.0); now everything is.
           #
-          # "Already cut" means cut at some *earlier* commit, which is not the
-          # same question as "is any sibling already at this version". Every
-          # publish is anchored by a crate/<name>/v<version> tag, so a sibling
-          # at this version whose tag names this same commit is proof the cut is
-          # ours: an earlier attempt of this very cascade published it from this
-          # tree, and a new crate joining it compiles against fresh source.
-          #
-          # Asking the weaker question read a resumed cascade as a late join: on
-          # the v0.30.0 re-run the siblings published by attempt 1 made every
-          # never-published crate look late, so everruns-integrations-openrouter
-          # was deferred and everruns-platform -- still in the plan, still
-          # pinning it at 0.30.0 -- could not resolve it and failed to package.
+          # "Another commit" is decided by release tags, not by "is any sibling
+          # already at this version". Every publish is anchored by a
+          # crate/<name>/v<version> tag, so a sibling whose tag names this commit
+          # is an earlier attempt of this very cascade, which a re-run here must
+          # finish -- new crates included (v0.30.0 deferred openrouter on a re-run
+          # and broke everruns-platform when this was asked the weaker way).
+          # The remedy for a version cut elsewhere is to re-run Crate Release on
+          # the commit its tags name, or to cut the next version.
           head = os.environ.get("GITHUB_SHA", "")
 
           def release_tag_commit(name: str, version: str) -> str:
@@ -129,49 +126,22 @@ jobs:
                   return ""
 
           # Absent a tag, or absent GITHUB_SHA, provenance cannot be established
-          # and the conservative reading -- cut earlier -- is the one that holds.
-          cut_earlier = any(
+          # and the conservative reading -- cut elsewhere -- is the one that holds.
+          cut_elsewhere = any(
               pkg["version"] in existing[name]
               and not (head and release_tag_commit(name, pkg["version"]) == head)
               for name, pkg in published.items()
           )
 
-          if cut_earlier:
-              deferred = {n for n in to_release if not existing[n]}
-              for name in sorted(deferred):
+          if cut_elsewhere and to_release:
+              for name in sorted(to_release):
                   print(
-                      f"::notice::{name} {to_release[name]} is new and this platform "
-                      f"version is already cut; it joins the next one",
+                      f"::notice::{name} {to_release[name]} is held back: this platform "
+                      f"version was cut at another commit, so finish it there or "
+                      f"release it with the next version",
                       file=sys.stderr,
                   )
-
-              # A deferral has to carry across dependency edges. A dependant pins
-              # the deferred crate at exactly this version, so `cargo package`
-              # cannot resolve it from the index; leaving it in the plan only
-              # tags it and then halts the cascade on a failure decided here.
-              while True:
-                  stranded = sorted(
-                      name
-                      for name in to_release
-                      if name not in deferred
-                      and any(
-                          dep["name"] in deferred
-                          for dep in published[name]["dependencies"]
-                          if dep.get("kind") in (None, "normal", "build")
-                      )
-                  )
-                  if not stranded:
-                      break
-                  for name in stranded:
-                      print(
-                          f"::notice::{name} {to_release[name]} pins a crate held back "
-                          f"to the next platform version; it joins that one too",
-                          file=sys.stderr,
-                      )
-                  deferred.update(stranded)
-
-              for name in deferred:
-                  del to_release[name]
+              to_release = {}
 
           # Topologically sort the release set so dependencies publish first.
           deps = {
@@ -234,27 +204,34 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           count=$(jq 'length' release-plan.json)
-          for i in $(seq 0 $((count - 1))); do
-            PKG=$(jq -r ".[$i].package" release-plan.json)
-            VER=$(jq -r ".[$i].version" release-plan.json)
-            TAG=$(jq -r ".[$i].tag" release-plan.json)
-            echo "::group::Release $PKG $VER ($TAG)"
 
-            # Create the tag on GitHub's infrastructure (the Actions token can push
-            # tags; a hand push cannot). A tag that already exists is reused and
-            # never moved: it is the trusted provenance anchor for this package's
-            # publish, which Publish Crate checks out from and validates against
-            # the expected SHA before the crates.io token is used. Moving it would
-            # let a published artifact stop matching the tag that names it.
-            #
-            # The plan only contains versions absent from crates.io, so a tag here
-            # that points somewhere else is the residue of an attempt that tagged
-            # and then failed to publish. It pins this package to that older commit
-            # permanently, and no re-run can clear it. Fail here, where the remedy
-            # is one command, rather than dispatching a run whose head is the stale
-            # commit -- the correlation selector rejects it on headSha and the
-            # controller then misreports it as "did not start", which is both wrong
-            # and four minutes slower.
+          # Create every tag in the plan up front, in one atomic push, before
+          # anything publishes. GitHub refuses a GITHUB_TOKEN push of a ref whose
+          # tree has different workflow files from the default branch ("refusing
+          # to allow a GitHub App to create or update workflow ... without
+          # `workflows` permission"). Tagging one crate per step, an hour into a
+          # cascade, failed as soon as any PR touching .github/workflows merged
+          # to main -- twice during v0.34.1. Pushed straight after the release
+          # commit lands, the tags all exist before main can move, a re-run here
+          # only reuses them, and if the push is refused nothing has published.
+          #
+          # Tags are created on GitHub's infrastructure (the Actions token can
+          # push tags; a hand push cannot). A tag that already exists is reused
+          # and never moved: it is the trusted provenance anchor for this
+          # package's publish, which Publish Crate checks out from and validates
+          # against the expected SHA before the crates.io token is used. Moving
+          # it would let a published artifact stop matching the tag that names it.
+          #
+          # The plan only contains versions absent from crates.io, so a tag that
+          # points somewhere else is the residue of an attempt that tagged and
+          # then failed to publish. It pins this package to that older commit
+          # permanently, and no re-run can clear it. Fail here, where the remedy
+          # is one command, rather than dispatching a run whose head is the stale
+          # commit -- the correlation selector rejects it on headSha and the
+          # controller then misreports it as "did not start".
+          NEW_TAGS=()
+          for i in $(seq 0 $((count - 1))); do
+            TAG=$(jq -r ".[$i].tag" release-plan.json)
             EXISTING=""
             if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
               EXISTING="$(git rev-list -n 1 "$TAG^{commit}")"
@@ -264,15 +241,25 @@ jobs:
             fi
             if [ -n "$EXISTING" ]; then
               if [ "$EXISTING" != "$SHA" ]; then
-                echo "::error::Tag $TAG exists at $EXISTING but this release is $SHA. A previous attempt tagged $PKG and did not publish it. Release tags are the trusted publish anchor and are never moved, so delete the stale tag and re-run Crate Release: gh api -X DELETE repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"
+                echo "::error::Tag $TAG exists at $EXISTING but this release is $SHA. A previous attempt tagged it and did not publish it. Release tags are the trusted publish anchor and are never moved, so delete the stale tag and re-run Crate Release: gh api -X DELETE repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"
                 exit 1
               fi
               echo "Tag $TAG already exists at $SHA; reusing"
             else
               git tag "$TAG" "$SHA"
-              git push origin "refs/tags/$TAG:refs/tags/$TAG"
-              echo "Created and pushed $TAG"
+              NEW_TAGS+=("refs/tags/$TAG:refs/tags/$TAG")
             fi
+          done
+          if [ "${#NEW_TAGS[@]}" -gt 0 ]; then
+            git push --atomic origin "${NEW_TAGS[@]}"
+            echo "Created and pushed ${#NEW_TAGS[@]} tag(s)"
+          fi
+
+          for i in $(seq 0 $((count - 1))); do
+            PKG=$(jq -r ".[$i].package" release-plan.json)
+            VER=$(jq -r ".[$i].version" release-plan.json)
+            TAG=$(jq -r ".[$i].tag" release-plan.json)
+            echo "::group::Release $PKG $VER ($TAG)"
 
             # gh workflow run does not return a run ID. Give this dispatch a
             # controller-unique identity, then accept only a workflow run whose
