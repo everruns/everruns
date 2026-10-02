@@ -33,7 +33,10 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 // page — and it is what lets the UI link straight into the
                 // agent in Slack. Everything else in the object stays withheld.
                 if let Some(app_id) = provisioned.get("app_id").and_then(Value::as_str) {
-                    map.insert("slack_app_id".to_string(), Value::String(app_id.to_string()));
+                    map.insert(
+                        "slack_app_id".to_string(),
+                        Value::String(app_id.to_string()),
+                    );
                 }
             }
             for (key, flag) in [

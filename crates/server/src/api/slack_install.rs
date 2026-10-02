@@ -190,7 +190,11 @@ fn pick_workspace(
     requested: Option<String>,
 ) -> Result<Option<String>, SlackProvisioningError> {
     match requested {
-        Some(team_id) if rows.iter().any(|row| row.team_id.as_deref() == Some(&team_id)) => {
+        Some(team_id)
+            if rows
+                .iter()
+                .any(|row| row.team_id.as_deref() == Some(&team_id)) =>
+        {
             Ok(Some(team_id))
         }
         Some(_) => Err(SlackProvisioningError::WorkspaceNotConnected),
@@ -393,9 +397,7 @@ async fn begin_install(
     // changed choice reaps the old app and creates a fresh one.
     let (reusable, stale) = match config.provisioned_app.take() {
         Some(existing)
-            if existing.team_id.is_none()
-                || team_id.is_none()
-                || existing.team_id == team_id =>
+            if existing.team_id.is_none() || team_id.is_none() || existing.team_id == team_id =>
         {
             (Some(existing), None)
         }
@@ -809,7 +811,10 @@ mod tests {
                 connection_error_response(SlackProvisioningError::Rejected(code.to_string()));
             assert_eq!(status, StatusCode::BAD_REQUEST, "{code}");
             let rendered = serde_json::to_string(&body).unwrap();
-            assert!(rendered.contains("configuration refresh token"), "{rendered}");
+            assert!(
+                rendered.contains("configuration refresh token"),
+                "{rendered}"
+            );
             assert!(rendered.contains(code), "{rendered}");
             assert!(!rendered.contains("app creation"), "{rendered}");
         }

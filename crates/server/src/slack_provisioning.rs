@@ -234,7 +234,10 @@ impl SlackApiProvisioner {
         }
     }
 
-    async fn token_for_request(&self, row: OrgSlackConnectionRow) -> SlackProvisioningResult<String> {
+    async fn token_for_request(
+        &self,
+        row: OrgSlackConnectionRow,
+    ) -> SlackProvisioningResult<String> {
         if row
             .access_token_expires_at
             .is_some_and(|expiry| expiry > chrono::Utc::now() + ROTATE_BEFORE_EXPIRY)
@@ -390,7 +393,11 @@ impl SlackApiProvisioner {
         Ok(())
     }
 
-    async fn mark_reconnect(&self, id: Uuid, claimed_generation: i64) -> SlackProvisioningResult<()> {
+    async fn mark_reconnect(
+        &self,
+        id: Uuid,
+        claimed_generation: i64,
+    ) -> SlackProvisioningResult<()> {
         self.db
             .mark_org_slack_reconnect_required(id, claimed_generation)
             .await
@@ -471,7 +478,6 @@ impl SlackApiProvisioner {
             })
     }
 }
-
 
 #[derive(Deserialize)]
 struct RotateResponse {
@@ -613,7 +619,11 @@ mod tests {
         )
     }
 
-    fn stored(org_id: i64, team_id: &str, expires_in: chrono::Duration) -> UpsertOrgSlackConnection {
+    fn stored(
+        org_id: i64,
+        team_id: &str,
+        expires_in: chrono::Duration,
+    ) -> UpsertOrgSlackConnection {
         let encryption = encryption();
         UpsertOrgSlackConnection {
             org_id,
@@ -661,9 +671,11 @@ mod tests {
             .await;
         Mock::given(method("POST"))
             .and(path("/auth.test"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"ok": true, "team": "Acme", "team_id": "T0123"}),
-            ))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"ok": true, "team": "Acme", "team_id": "T0123"}),
+                ),
+            )
             .mount(&server)
             .await;
         let (provisioner, _db) = provisioner(&server);
@@ -687,8 +699,9 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/auth.test"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({"ok": false, "error": "not_allowed_token_type"})),
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"ok": false, "error": "not_allowed_token_type"}),
+                ),
             )
             .mount(&server)
             .await;
@@ -759,7 +772,10 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/apps.manifest.create"))
-            .and(wiremock::matchers::header("authorization", "Bearer access-T2"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer access-T2",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "ok": true,
                 "app_id": "A2",

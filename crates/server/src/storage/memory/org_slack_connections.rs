@@ -189,11 +189,7 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        assert!(
-            !db.delete_org_slack_connection(42, theirs.id)
-                .await
-                .unwrap()
-        );
+        assert!(!db.delete_org_slack_connection(42, theirs.id).await.unwrap());
         assert_eq!(db.list_org_slack_connections(41).await.unwrap().len(), 1);
         assert_eq!(db.list_org_slack_connections(42).await.unwrap().len(), 1);
     }
@@ -271,7 +267,11 @@ mod tests {
             .team_id = None;
 
         let due = db.list_due_org_slack_connections(Utc::now()).await.unwrap();
-        assert_eq!(due.len(), 1, "unidentified rows rotate regardless of expiry");
+        assert_eq!(
+            due.len(),
+            1,
+            "unidentified rows rotate regardless of expiry"
+        );
 
         let claimed = db
             .claim_org_slack_connection_rotation(row.id, row.token_generation)
