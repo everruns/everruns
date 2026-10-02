@@ -50,10 +50,12 @@
 
 use std::ffi::OsString;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::anyhow;
-use axum::body::Bytes;
-use axum::extract::State;
+use axum::body::{Body, Bytes};
+use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -61,6 +63,8 @@ use axum::{Json, Router};
 use clap::Parser;
 use serde_json::{Value, json};
 use serve::{App, Mode, Server};
+use tokio::sync::OnceCell;
+use tower::ServiceExt;
 
 /// The header AgentCore Runtime sets on every request, naming the session
 /// (and so the microVM) it routed to.
@@ -68,6 +72,10 @@ pub const SESSION_HEADER: &str = "x-amzn-bedrock-agentcore-runtime-session-id";
 
 /// The port the AgentCore HTTP and AG-UI protocol contracts require.
 pub const PORT: u16 = 8080;
+
+/// Where serve-agentcore looks for AgentCore session storage when
+/// `SERVE_DATA_DIR` is not set: the mount path the AgentCore docs use.
+pub const SESSION_STORAGE: &str = "/mnt/workspace";
 
 /// The `agentcore` command line.
 #[derive(Parser, Debug)]
@@ -87,6 +95,104 @@ struct Cli {
     dev: bool,
 }
 
+/// How [`router`] boots the app.
+#[derive(Clone, Debug)]
+pub struct Options {
+    /// serve's mode: [`Mode::Start`] in production.
+    pub mode: Mode,
+    /// The agent `/invocations` runs; the app's default agent when `None`.
+    pub agent: Option<String>,
+    /// Where serve keeps its session log. `None` resolves on the first
+    /// request (see [`Storage::resolve`]).
+    pub data_dir: Option<PathBuf>,
+    /// The root of the `[sandbox] kind = "microvm"` workspace. `None`
+    /// resolves with the data dir.
+    pub workspace: Option<PathBuf>,
+}
+
+impl Options {
+    /// Production defaults: `start` mode, everything else resolved.
+    pub fn new(mode: Mode) -> Self {
+        Self {
+            mode,
+            agent: None,
+            data_dir: None,
+            workspace: None,
+        }
+    }
+}
+
+/// Where a booted app keeps its state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Storage {
+    /// serve's SQLite session log.
+    pub data_dir: PathBuf,
+    /// The microVM workspace: the shell's working directory and the root
+    /// of the file tools.
+    pub workspace: PathBuf,
+    /// Whether this survives the microVM stopping.
+    pub persistent: bool,
+}
+
+impl Storage {
+    /// Resolve where state lives, in order:
+    ///
+    /// 1. `SERVE_DATA_DIR` or `DATABASE_URL` (serve's own settings), with the
+    ///    workspace in `SERVE_WORKSPACE` or beside it. Taken as persistent:
+    ///    the operator chose it.
+    /// 2. AgentCore session storage mounted at [`SESSION_STORAGE`]: the log
+    ///    in `/mnt/workspace/.serve`, the workspace at `/mnt/workspace`.
+    /// 3. Otherwise a temporary directory, lost when the microVM stops.
+    ///
+    /// Resolved on the first request, not at boot: AgentCore mounts session
+    /// storage only once the session is invoked.
+    pub fn resolve(options: &Options) -> serve::Result<Self> {
+        let workspace_env = std::env::var_os("SERVE_WORKSPACE").map(PathBuf::from);
+        let explicit = options.data_dir.clone().map(Ok).or_else(|| {
+            (env_set("SERVE_DATA_DIR") || env_set("DATABASE_URL")).then(serve::data_dir)
+        });
+        if let Some(data_dir) = explicit {
+            let data_dir = data_dir?;
+            let workspace = options
+                .workspace
+                .clone()
+                .or(workspace_env)
+                .unwrap_or_else(|| data_dir.join("workspace"));
+            return Ok(Self {
+                data_dir,
+                workspace,
+                persistent: true,
+            });
+        }
+        let mount = Path::new(SESSION_STORAGE);
+        if mount.is_dir() {
+            return Ok(Self {
+                data_dir: mount.join(".serve"),
+                workspace: options
+                    .workspace
+                    .clone()
+                    .or(workspace_env)
+                    .unwrap_or_else(|| mount.to_path_buf()),
+                persistent: true,
+            });
+        }
+        let scratch = std::env::temp_dir().join("serve-agentcore");
+        Ok(Self {
+            data_dir: scratch.join(".serve"),
+            workspace: options
+                .workspace
+                .clone()
+                .or(workspace_env)
+                .unwrap_or_else(|| scratch.join("workspace")),
+            persistent: false,
+        })
+    }
+}
+
+fn env_set(name: &str) -> bool {
+    std::env::var_os(name).is_some_and(|value| !value.is_empty())
+}
+
 /// Run the app: with no command, or with `agentcore`, serve the AgentCore
 /// Runtime contract; any other command is serve's (see [`serve::start`]).
 pub async fn start(app: App) -> serve::Result {
@@ -99,24 +205,77 @@ pub async fn start(app: App) -> serve::Result {
         Some(_) => return serve::start(app).await,
     }
     let cli = Cli::parse_from(args);
-    let mode = if cli.dev { Mode::Dev } else { Mode::Start };
-    let server = Server::new(app, mode, Some(serve::data_dir()?))?;
-    let agent = agent(&server, cli.agent)?;
+    let mut options = Options::new(if cli.dev { Mode::Dev } else { Mode::Start });
+    options.agent = cli.agent;
+    let name = app.name().to_string();
+    let (router, agent) = router(app, options.clone())?;
 
     let addr = SocketAddr::from(([0, 0, 0, 0], cli.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!(
-        "serve-agentcore · {} · build {} · agent {agent} · {mode:?} · listening on {addr}",
-        server.app().name(),
-        server.build_id(),
+        "serve-agentcore · {name} · agent {agent} · {:?} · listening on {addr}",
+        options.mode
     );
-    server.spawn_schedules();
-    axum::serve(listener, router(&server, agent))
+    axum::serve(listener, router)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await?;
     Ok(())
+}
+
+/// The AgentCore contract around `app`: `/ping`, `/invocations`, and serve's
+/// `/v1` wire API. Returns the router and the agent `/invocations` runs.
+///
+/// The app is checked at once (secrets in `start`, every agent resolved), but
+/// the server that keeps state boots on the first request other than
+/// `/ping`, once AgentCore has mounted session storage.
+pub fn router(app: App, options: Options) -> serve::Result<(Router, String)> {
+    // A throwaway in-memory boot: fails fast on a bad app, names the agent.
+    let probe = boot(app.clone(), &options, None)?;
+    let agent = agent(&probe, options.agent.clone())?;
+    drop(probe);
+    let target = Target {
+        app,
+        options: Arc::new(options),
+        agent: agent.clone(),
+        booted: Arc::new(OnceCell::new()),
+    };
+    let router = Router::new()
+        .route("/ping", get(ping))
+        .route("/invocations", post(invocations))
+        .fallback(forward)
+        .with_state(target);
+    Ok((router, agent))
+}
+
+/// Boot serve with the microVM adapter. `storage: None` boots in memory.
+fn boot(app: App, options: &Options, storage: Option<&Storage>) -> serve::Result<Server> {
+    let workspace = storage
+        .map(|storage| storage.workspace.clone())
+        .or_else(|| options.workspace.clone())
+        .unwrap_or_else(|| PathBuf::from(SESSION_STORAGE));
+    let mut builder =
+        Server::builder(app, options.mode).microvm(move |agent| microvm(agent, &workspace));
+    if let Some(storage) = storage {
+        builder = builder.data_dir(storage.data_dir.clone());
+    }
+    builder.build()
+}
+
+/// `[sandbox] kind = "microvm"` on AgentCore: a real shell and file tools
+/// over the session's workspace.
+///
+/// Decision: no kernel containment inside the microVM. AgentCore gives every
+/// session its own microVM and sanitizes it afterwards, so the VM is the
+/// boundary, the same one Harness and the AgentCore Code Interpreter rely
+/// on. A second, in-VM policy would only stop the agent installing packages
+/// in its own sandbox.
+fn microvm(agent: everruns::AgentBuilder, workspace: &Path) -> everruns::AgentBuilder {
+    agent
+        .workspace(workspace)
+        .workspace_policy(everruns::WorkspacePolicy::read_write())
+        .capability(everruns::HostShell::new().containment(everruns::ContainmentMode::FullAccess))
 }
 
 /// The agent `/invocations` runs: `requested` when it names a top-level
@@ -148,34 +307,50 @@ fn agent(server: &Server, requested: Option<String>) -> serve::Result<String> {
 
 #[derive(Clone)]
 struct Target {
-    server: Server,
+    app: App,
+    options: Arc<Options>,
     agent: String,
+    booted: Arc<OnceCell<Booted>>,
 }
 
-/// The AgentCore contract (`/ping`, `/invocations`) for `agent`, merged with
-/// serve's `/v1` wire API.
-pub fn router(server: &Server, agent: String) -> Router {
-    let target = Target {
-        server: server.clone(),
-        agent,
-    };
-    let contract = Router::new()
-        .route("/ping", get(ping))
-        .route("/invocations", post(invocations))
-        .with_state(target);
-    server.router().merge(contract)
+struct Booted {
+    server: Server,
+    wire: Router,
+}
+
+impl Target {
+    /// The stateful server, booted on first use.
+    async fn booted(&self) -> Result<&Booted, Response> {
+        self.booted
+            .get_or_try_init(|| async {
+                let storage = Storage::resolve(&self.options)?;
+                if !storage.persistent {
+                    eprintln!(
+                        "serve-agentcore: no session storage at {SESSION_STORAGE} and no SERVE_DATA_DIR; \
+                         sessions live in {} and are lost when the microVM stops",
+                        storage.data_dir.display()
+                    );
+                }
+                std::fs::create_dir_all(&storage.data_dir)?;
+                let server = boot(self.app.clone(), &self.options, Some(&storage))?;
+                server.spawn_schedules();
+                let wire = server.router();
+                Ok::<_, serve::Error>(Booted { server, wire })
+            })
+            .await
+            .map_err(|err| problem(StatusCode::INTERNAL_SERVER_ERROR, format!("{err:#}")))
+    }
 }
 
 /// `GET /ping`. No `time_of_last_update`: AgentCore tracks status changes
 /// itself, and a timestamp that moves on every ping would keep an idle
-/// session alive until its maximum lifetime.
+/// session alive until its maximum lifetime. Never boots the server.
 async fn ping(State(target): State<Target>) -> Json<Value> {
-    let status = if target.server.busy() {
-        "HealthyBusy"
-    } else {
-        "Healthy"
-    };
-    Json(json!({ "status": status }))
+    let busy = target
+        .booted
+        .get()
+        .is_some_and(|booted| booted.server.busy());
+    Json(json!({ "status": if busy { "HealthyBusy" } else { "Healthy" } }))
 }
 
 /// `POST /invocations`: one AG-UI run of the target agent.
@@ -184,9 +359,24 @@ async fn invocations(State(target): State<Target>, headers: HeaderMap, body: Byt
         .get(SESSION_HEADER)
         .and_then(|value| value.to_str().ok())
         .filter(|value| !value.is_empty());
-    match run_agent_input(&body, session) {
-        Ok(input) => target.server.ag_ui(&target.agent, &input).await,
-        Err(why) => problem(StatusCode::BAD_REQUEST, why),
+    let input = match run_agent_input(&body, session) {
+        Ok(input) => input,
+        Err(why) => return problem(StatusCode::BAD_REQUEST, why),
+    };
+    match target.booted().await {
+        Ok(booted) => booted.server.ag_ui(&target.agent, &input).await,
+        Err(response) => response,
+    }
+}
+
+/// Everything else: serve's `/v1` wire API and `/health`.
+async fn forward(State(target): State<Target>, request: Request<Body>) -> Response {
+    match target.booted().await {
+        Ok(booted) => match booted.wire.clone().oneshot(request).await {
+            Ok(response) => response,
+            Err(never) => match never {},
+        },
+        Err(response) => response,
     }
 }
 

@@ -114,6 +114,14 @@ runtime.
   to `serve::start`. `/ping` reports busy only while a turn runs, not while it
   waits on a person, so a parked session can go idle instead of billing until
   its maximum lifetime.
+- **AgentCore boots lazily and trusts the microVM.** Session storage is mounted
+  only once an invocation arrives, so the target answers `/ping` without
+  storage and opens the SQLite log on the first other request
+  (`/mnt/workspace/.serve` when mounted, else a warned-about temp dir). For
+  `sandbox = "microvm"` it supplies a host shell rooted at the session
+  workspace through `ServerBuilder::microvm`: the per-session microVM is the
+  isolation boundary, and stacking bashkit inside it would only remove real
+  tools.
 
 ## Rejected
 

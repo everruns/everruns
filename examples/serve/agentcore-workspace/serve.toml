@@ -1,0 +1,6 @@
+name = "agentcore-workspace"
+
+# On AgentCore: a real shell and file tools in the session's microVM, rooted
+# at the session storage mount. Under `dev` and `eval`: bashkit stands in.
+[sandbox]
+kind = "microvm"

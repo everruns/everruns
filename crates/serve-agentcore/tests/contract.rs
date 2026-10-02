@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use serve::prelude::*;
-use serve::{Mode, Server, sim};
-use serve_agentcore::{SESSION_HEADER, router};
+use serve::{Mode, sim};
+use serve_agentcore::{Options, SESSION_HEADER, router};
 
 /// Calls the slow tool, then replies.
 #[agent(default)]
@@ -30,16 +30,29 @@ async fn slow() -> Result<&'static str> {
     Ok("done")
 }
 
-async fn boot() -> String {
+struct Booted {
+    base: String,
+    _dir: tempfile::TempDir,
+}
+
+async fn boot_in(dir: &std::path::Path) -> String {
     let app = App::builder().discover().build();
     assert!(app.errors().is_empty(), "{:?}", app.errors());
-    let server = Server::new(app, Mode::Eval, None).unwrap();
-    let agent = server.default_agent().unwrap();
+    let mut options = Options::new(Mode::Eval);
+    options.data_dir = Some(dir.join("data"));
+    options.workspace = Some(dir.join("workspace"));
+    let (app, agent) = router(app, options).unwrap();
+    assert_eq!(agent, "assistant");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
-    let app = router(&server, agent);
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     base
+}
+
+async fn boot() -> Booted {
+    let dir = tempfile::tempdir().unwrap();
+    let base = boot_in(dir.path()).await;
+    Booted { base, _dir: dir }
 }
 
 async fn ping(client: &reqwest::Client, base: &str) -> String {
@@ -64,7 +77,8 @@ fn events(body: &str) -> Vec<Value> {
 
 #[tokio::test]
 async fn prompt_invocation_streams_ag_ui_and_ping_tracks_the_turn() {
-    let base = boot().await;
+    let booted = boot().await;
+    let base = booted.base.clone();
     let client = reqwest::Client::new();
     assert_eq!(ping(&client, &base).await, "Healthy");
 
@@ -122,7 +136,8 @@ async fn prompt_invocation_streams_ag_ui_and_ping_tracks_the_turn() {
 
 #[tokio::test]
 async fn invocation_without_a_thread_or_session_is_a_problem() {
-    let base = boot().await;
+    let booted = boot().await;
+    let base = booted.base.clone();
     let response = reqwest::Client::new()
         .post(format!("{base}/invocations"))
         .json(&json!({ "prompt": "hi" }))
@@ -140,7 +155,8 @@ async fn invocation_without_a_thread_or_session_is_a_problem() {
 
 #[tokio::test]
 async fn serve_wire_api_is_still_served() {
-    let base = boot().await;
+    let booted = boot().await;
+    let base = booted.base.clone();
     let health: Value = reqwest::get(format!("{base}/health"))
         .await
         .unwrap()
@@ -155,4 +171,82 @@ async fn serve_wire_api_is_still_served() {
         .await
         .unwrap();
     assert_eq!(card["agents"][0]["name"], "assistant");
+}
+
+#[tokio::test]
+async fn ping_answers_before_anything_boots_and_storage_opens_on_first_use() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = boot_in(dir.path()).await;
+    let client = reqwest::Client::new();
+    assert_eq!(ping(&client, &base).await, "Healthy");
+    // AgentCore mounts session storage only at the first invocation, so a
+    // health check must not create the store.
+    assert!(!dir.path().join("data").exists());
+
+    reqwest::get(format!("{base}/health")).await.unwrap();
+    assert!(dir.path().join("data").join("serve.db").exists());
+}
+
+#[tokio::test]
+async fn sessions_survive_a_microvm_restart_on_the_same_storage() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = reqwest::Client::new();
+
+    let first = boot_in(dir.path()).await;
+    let session: Value = client
+        .post(format!("{first}/v1/sessions"))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let id = session["id"].as_str().unwrap().to_string();
+    let message =
+        json!({ "message": { "role": "user", "content": [{ "type": "text", "text": "hi" }] } });
+    let sent = client
+        .post(format!("{first}/v1/sessions/{id}/messages"))
+        .json(&message)
+        .send()
+        .await
+        .unwrap();
+    assert!(sent.status().is_success(), "{}", sent.status());
+    // Wait for the turn to finish so its events are durable.
+    let mut done = false;
+    for _ in 0..100 {
+        let view: Value = client
+            .get(format!("{first}/v1/sessions/{id}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        if view["status"] == "idle" {
+            done = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+    assert!(done, "the first turn never finished");
+
+    // A new process on the same storage: what a resumed AgentCore session is.
+    let second = boot_in(dir.path()).await;
+    let events: Value = client
+        .get(format!("{second}/v1/sessions/{id}/events"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let kinds: Vec<&str> = events["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|event| event["type"].as_str())
+        .collect();
+    assert!(kinds.contains(&"input.message"), "{kinds:?}");
+    assert!(kinds.contains(&"output.message.completed"), "{kinds:?}");
 }

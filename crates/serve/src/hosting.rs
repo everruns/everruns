@@ -14,6 +14,10 @@
 //! - [`Server::new`] boots exactly like `dev` and `start`: `start` refuses
 //!   missing secrets, and every agent is resolved once so a bad model or tool
 //!   schema fails at boot rather than on the first request.
+//! - A target that runs each session in its own microVM supplies the
+//!   `[sandbox] kind = "microvm"` adapter ([`ServerBuilder::microvm`]). Apps
+//!   do not change: the same `serve.toml` gets bashkit under `dev` and the
+//!   real machine under the target.
 //! - Experimental, like the rest of serve.
 
 use std::path::PathBuf;
@@ -25,17 +29,45 @@ use axum::Router;
 use crate::app::{App, Mode};
 use crate::host::Host;
 
-/// A booted serve host, for a hosting target to wrap.
-#[derive(Clone)]
-pub struct Server {
-    pub(crate) host: Arc<Host>,
+/// What a hosting target supplies for `[sandbox] kind = "microvm"`: it adds
+/// the shell and filesystem to each agent as it is built. Without one,
+/// `microvm` falls back to bashkit.
+pub type MicroVm = Arc<dyn Fn(everruns::AgentBuilder) -> everruns::AgentBuilder + Send + Sync>;
+
+/// Builder for [`Server`].
+#[must_use]
+pub struct ServerBuilder {
+    app: App,
+    mode: Mode,
+    data_dir: Option<PathBuf>,
+    microvm: Option<MicroVm>,
 }
 
-impl Server {
-    /// Boot `app` in `mode`, persisting under `data_dir` (`None` keeps
-    /// everything in memory). Fails when `mode` is [`Mode::Start`] and a
-    /// declared secret is unset, or when an agent does not resolve.
-    pub fn new(app: App, mode: Mode, data_dir: Option<PathBuf>) -> crate::Result<Self> {
+impl ServerBuilder {
+    /// Persist under `dir`. Without it everything stays in memory.
+    pub fn data_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.data_dir = Some(dir.into());
+        self
+    }
+
+    /// The `[sandbox] kind = "microvm"` adapter. See [`MicroVm`].
+    pub fn microvm(
+        mut self,
+        f: impl Fn(everruns::AgentBuilder) -> everruns::AgentBuilder + Send + Sync + 'static,
+    ) -> Self {
+        self.microvm = Some(Arc::new(f));
+        self
+    }
+
+    /// Boot. Fails when the mode is [`Mode::Start`] and a declared secret is
+    /// unset, or when an agent does not resolve.
+    pub fn build(self) -> crate::Result<Server> {
+        let Self {
+            app,
+            mode,
+            data_dir,
+            microvm,
+        } = self;
         if !app.errors().is_empty() {
             bail!(
                 "{} problem(s) found during discovery: {}",
@@ -48,11 +80,43 @@ impl Server {
             bail!("missing secrets: {}", missing.join(", "));
         }
         let host = Host::new(app.clone(), mode, data_dir)?;
+        if let Some(microvm) = microvm {
+            host.set_microvm(microvm);
+        }
         // Resolve every agent once so a bad model or tool schema fails at boot.
         for agent in &app.inner.agents {
             host.build_agent(agent, None, false)?;
         }
-        Ok(Self { host })
+        Ok(Server { host })
+    }
+}
+
+/// A booted serve host, for a hosting target to wrap.
+#[derive(Clone)]
+pub struct Server {
+    pub(crate) host: Arc<Host>,
+}
+
+impl Server {
+    /// Start building a server for `app` in `mode`.
+    pub fn builder(app: App, mode: Mode) -> ServerBuilder {
+        ServerBuilder {
+            app,
+            mode,
+            data_dir: None,
+            microvm: None,
+        }
+    }
+
+    /// Boot `app` in `mode`, persisting under `data_dir` (`None` keeps
+    /// everything in memory). Shorthand for [`Server::builder`].
+    pub fn new(app: App, mode: Mode, data_dir: Option<PathBuf>) -> crate::Result<Self> {
+        let builder = Self::builder(app, mode);
+        match data_dir {
+            Some(dir) => builder.data_dir(dir),
+            None => builder,
+        }
+        .build()
     }
 
     /// The app this server runs.

@@ -33,12 +33,16 @@ everruns-serve = { workspace = true, features = ["ag-ui"] }
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
+# `HostShell` for `[sandbox] kind = "microvm"`: the session's microVM is the boundary.
+everruns = { workspace = true, features = ["host-shell"] }
 serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }
+tower.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 reqwest.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

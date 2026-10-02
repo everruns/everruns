@@ -74,6 +74,7 @@ members = [
     "examples/demo-support",
     "examples/serve/ag-ui",
     "examples/serve/agentcore",
+    "examples/serve/agentcore-workspace",
     "examples/serve/hello",
     "examples/serve/revenue-analyst",
 ]

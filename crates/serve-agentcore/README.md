@@ -56,12 +56,25 @@ serve's own.
 |---|---|
 | `PORT` | Listen port, default `8080` (AgentCore requires 8080) |
 | `SERVE_AGENTCORE_AGENT` | The agent `/invocations` runs, default the app's default agent |
-| `SERVE_DATA_DIR` | Where serve keeps its SQLite session log. Point it at the runtime's session storage mount so sessions survive microVM stop and resume |
+| `SERVE_DATA_DIR`, `DATABASE_URL` | Where serve keeps its SQLite session log. Default: the runtime's session storage at `/mnt/workspace/.serve` when mounted, else a temporary directory |
+| `SERVE_WORKSPACE` | The agent's workspace. Default: `/mnt/workspace` when mounted |
 | `SERVE_GATEWAY_URL`, `SERVE_GATEWAY_KEY` | serve's model gateway. An AgentCore Gateway inference endpoint (`https://<gateway>/inference/v1`) works here, with targets named after providers (`anthropic`, `openai`) so serve's `provider/model` ids route as-is |
+
+AgentCore mounts session storage only when an invocation arrives, so `/ping` answers
+without touching storage and the server boots on the first other request.
+
+## Tools and sandbox
+
+`#[tool]`s and MCP connections (including an AgentCore Gateway) work as in any serve
+app. With `[sandbox] kind = "microvm"`, each agent gets a real shell and file tools in
+the session's workspace: the microVM is the isolation boundary. Under `dev` and `eval`
+the same setting falls back to the bashkit virtual shell.
 
 AgentCore requires an `arm64` Linux image. The
 [agentcore example](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore)
-has a Dockerfile and deploy steps.
+has a Dockerfile and deploy steps; the
+[agentcore-workspace example](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore-workspace)
+adds the microVM shell, an approval tool and an `@ag-ui/client` script.
 
 ## Limits
 
@@ -69,11 +82,13 @@ has a Dockerfile and deploy steps.
 - `ask_user` and approvals park the turn without keeping the session busy, so AgentCore
   may stop the microVM after its idle timeout. serve's pending approvals do not survive
   a restart yet.
+- Not yet integrated: AgentCore Memory, Code Interpreter, Browser and Identity.
 - Schedules run in-process, which on AgentCore only fires while a session's microVM is up.
   Use EventBridge to call `InvokeAgentRuntime` instead.
 
 ## Documentation
 
+- [Serve on AgentCore guide](https://docs.everruns.com/framework/serve-agentcore/)
 - [Serve overview](https://docs.everruns.com/framework/serve/)
 - [`everruns-serve` API reference](https://docs.rs/everruns-serve)
 - [API reference](https://docs.rs/everruns-serve-agentcore)

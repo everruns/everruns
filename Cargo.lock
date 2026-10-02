@@ -3331,10 +3331,13 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "everruns",
  "everruns-serve",
  "reqwest 0.13.5",
  "serde_json",
+ "tempfile",
  "tokio",
+ "tower",
  "uuid",
 ]
 
@@ -7681,6 +7684,18 @@ dependencies = [
 
 [[package]]
 name = "serve-example-agentcore"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-agentcore",
+ "everruns-serve-build",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "serve-example-agentcore-workspace"
 version = "0.1.0"
 dependencies = [
  "everruns-serve",

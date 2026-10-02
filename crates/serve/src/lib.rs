@@ -89,7 +89,7 @@ pub use config::{AppConfig, SandboxKind};
 pub use connection::{McpServer, Secret};
 pub use cx::{Cx, DeliveryTarget, StartSession};
 pub use eval::{EvalCx, EvalReport, EvalResult, OnApproval, TurnCheck, TurnRecord};
-pub use hosting::{Server, data_dir};
+pub use hosting::{MicroVm, Server, ServerBuilder, data_dir};
 pub use manifest::Manifest;
 
 pub use serve_macros::{agent, channel, connection, eval, schedule, tool};

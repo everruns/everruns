@@ -209,9 +209,9 @@ serve app on AgentCore Runtime. Replace `serve::start` with
 `serve_agentcore::start` in `main`. With no command, the binary then serves
 AgentCore's contract on port 8080: `GET /ping` and `POST /invocations`, which
 takes an AG-UI `RunAgentInput` or `{"prompt": "..."}` and streams AG-UI
-events. serve's own commands keep working. The
-[agentcore example](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore)
-has an arm64 Dockerfile and deploy steps.
+events. serve's own commands keep working. See
+[Serve on AgentCore](/framework/serve-agentcore/) for deployment, persistence on
+session storage, tools and models.
 
 The full guide, wire reference and hosting contract live next to the crate in
 [`crates/serve/docs`](https://github.com/everruns/everruns/tree/main/crates/serve/docs).

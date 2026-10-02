@@ -4,6 +4,8 @@ A [serve](../../../crates/serve) app packaged for
 [Amazon Bedrock AgentCore Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-agui-protocol-contract.html)
 with [serve-agentcore](../../../crates/serve-agentcore). The app is ordinary serve
 code; only `main` changes, from `serve::start` to `serve_agentcore::start`.
+The full guide is [Serve on AgentCore](https://docs.everruns.com/framework/serve-agentcore/);
+[agentcore-workspace](../agentcore-workspace) adds a shell in the microVM and approvals.
 
 ## Try the contract locally
 
@@ -39,9 +41,11 @@ protocol forwards from CopilotKit or `@ag-ui/client`.
    ```
 
 2. Create the runtime with the AG-UI protocol (or `HTTP` for plain
-   `{"prompt": ...}` callers). `SERVE_GATEWAY_URL` routes the model; an AgentCore
-   Gateway inference endpoint works, with targets named after providers
-   (`anthropic`, `openai`) so `anthropic/claude-sonnet-5` routes as-is:
+   `{"prompt": ...}` callers) and [session storage](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-persistent-filesystems.html),
+   so a session's conversation survives the microVM stopping after its idle
+   timeout. `SERVE_GATEWAY_URL` routes the model; an AgentCore Gateway inference
+   endpoint works, with targets named after providers (`anthropic`, `openai`) so
+   `anthropic/claude-sonnet-5` routes as-is:
 
    ```sh
    aws bedrock-agentcore-control create-agent-runtime \
@@ -50,14 +54,14 @@ protocol forwards from CopilotKit or `@ag-ui/client`.
      --role-arn "$EXECUTION_ROLE_ARN" \
      --network-configuration networkMode=PUBLIC \
      --protocol-configuration serverProtocol=AGUI \
+     --filesystem-configurations '[{"sessionStorage":{"mountPath":"/mnt/workspace"}}]' \
      --environment-variables "SERVE_GATEWAY_URL=$GATEWAY_URL/inference/v1,SERVE_GATEWAY_KEY=$GATEWAY_TOKEN"
    ```
 
-3. Optional: add [session storage](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-persistent-filesystems.html)
-   to the runtime and set `SERVE_DATA_DIR` to its mount path, so serve's session log
-   survives the microVM stopping after its idle timeout.
+   serve finds the mount on the first invocation and keeps its session log in
+   `/mnt/workspace/.serve`.
 
-4. Invoke it with any AG-UI client, or:
+3. Invoke it with any AG-UI client, or:
 
    ```sh
    aws bedrock-agentcore invoke-agent-runtime \
