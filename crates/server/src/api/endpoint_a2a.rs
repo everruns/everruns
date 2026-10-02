@@ -54,6 +54,7 @@ pub mod agent_card;
 pub(crate) mod ask_user;
 mod stream;
 mod task_view;
+mod tasks;
 mod wire;
 
 use wire::WireVersion;
@@ -68,6 +69,8 @@ const METHOD_MESSAGE_SEND: &str = "message/send";
 const METHOD_MESSAGE_STREAM: &str = "message/stream";
 const METHOD_TASKS_GET: &str = "tasks/get";
 const METHOD_TASKS_CANCEL: &str = "tasks/cancel";
+const METHOD_TASKS_LIST: &str = "tasks/list";
+const METHOD_TASKS_SUBSCRIBE: &str = "tasks/resubscribe";
 // A2A 1.0 names the same operations in PascalCase (spec §9.4). Both spellings
 // map to the same audited handlers; the response shape follows the negotiated
 // wire version, not the spelling.
@@ -75,6 +78,8 @@ const METHOD_MESSAGE_SEND_V1: &str = "SendMessage";
 const METHOD_MESSAGE_STREAM_V1: &str = "SendStreamingMessage";
 const METHOD_TASKS_GET_V1: &str = "GetTask";
 const METHOD_TASKS_CANCEL_V1: &str = "CancelTask";
+const METHOD_TASKS_LIST_V1: &str = "ListTasks";
+const METHOD_TASKS_SUBSCRIBE_V1: &str = "SubscribeToTask";
 
 #[derive(Clone)]
 pub struct EndpointA2aState {
@@ -204,6 +209,8 @@ fn normalize_a2a_method(method: &str) -> &str {
         METHOD_MESSAGE_STREAM | METHOD_MESSAGE_STREAM_V1 => METHOD_MESSAGE_STREAM,
         METHOD_TASKS_GET | METHOD_TASKS_GET_V1 => METHOD_TASKS_GET,
         METHOD_TASKS_CANCEL | METHOD_TASKS_CANCEL_V1 => METHOD_TASKS_CANCEL,
+        METHOD_TASKS_LIST | METHOD_TASKS_LIST_V1 => METHOD_TASKS_LIST,
+        METHOD_TASKS_SUBSCRIBE | METHOD_TASKS_SUBSCRIBE_V1 => METHOD_TASKS_SUBSCRIBE,
         other => other,
     }
 }
@@ -221,9 +228,6 @@ fn unsupported_operation(method: &str) -> Option<(i32, &'static str)> {
         | "tasks/pushNotificationConfig/list"
         | "tasks/pushNotificationConfig/delete" => {
             Some((-32003, "Push notifications are not supported"))
-        }
-        "ListTasks" | "SubscribeToTask" | "tasks/list" | "tasks/resubscribe" => {
-            Some((-32004, "This operation is not supported"))
         }
         "GetExtendedAgentCard" | "agent/getAuthenticatedExtendedCard" => {
             Some((-32007, "No extended Agent Card is configured"))
@@ -402,11 +406,15 @@ async fn invoke_a2a(
         METHOD_MESSAGE_STREAM => handle_message_stream(&state, auth, parsed, rpc_id, ctx).await,
         METHOD_TASKS_GET => handle_tasks_get(&state, auth, parsed, rpc_id, version).await,
         METHOD_TASKS_CANCEL => handle_tasks_cancel(&state, auth, parsed, rpc_id, version).await,
+        METHOD_TASKS_LIST => tasks::handle_list_tasks(&state, auth, parsed, rpc_id, version).await,
+        METHOD_TASKS_SUBSCRIBE => {
+            tasks::handle_subscribe(&state, auth, parsed, rpc_id, version).await
+        }
         other => {
             let (code, message) = unsupported_operation(other).unwrap_or((
                 -32601,
                 "Method not found (supported: SendMessage, SendStreamingMessage, GetTask, \
-                 CancelTask, and their 0.3 names)",
+                 CancelTask, ListTasks, SubscribeToTask, and their 0.3 names)",
             ));
             (StatusCode::OK, rpc_error(rpc_id, code, message)).into_response()
         }
@@ -964,20 +972,19 @@ async fn handle_tasks_cancel(
         Err(rejection) => return rejection.into_response_with(rpc_id),
     };
 
-    // Cancelling a terminal task is idempotent: it returns the task in its
-    // terminal state without re-cancelling.
-    let current = match derive_task_state_from_events(&state.db, session.id).await {
-        Ok(label) => label,
-        Err(err) => return internal_error(err).into_response(),
-    };
-    let label = if matches!(current, "completed" | "canceled" | "failed") {
-        current
-    } else {
-        if let Err(err) = cancel_a2a_session_turn(state, session.id).await {
-            return internal_error(err).into_response();
+    // A finished task cannot be canceled (spec §3.1.5): TaskNotCancelable.
+    match derive_task_state_from_events(&state.db, session.id).await {
+        Ok(current) if tasks::is_terminal(current) => {
+            return RpcRejection(-32002, "Task cannot be canceled: it has already finished")
+                .into_response_with(rpc_id);
         }
-        "canceled"
-    };
+        Ok(_) => {}
+        Err(err) => return internal_error(err).into_response(),
+    }
+    if let Err(err) = cancel_a2a_session_turn(state, session.id).await {
+        return internal_error(err).into_response();
+    }
+    let label = "canceled";
     let task = build_task_json(session.id, label, None);
     (
         StatusCode::OK,
@@ -1194,6 +1201,7 @@ async fn handle_message_stream(
             session_id,
             frontend_url: state.frontend_url.clone(),
             version: ctx.version,
+            initial_task: build_task_json(result.session_id, "working", None),
         },
         sse_guard,
     )
