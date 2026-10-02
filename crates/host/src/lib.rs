@@ -143,8 +143,8 @@ pub use in_process_execution::InProcessExecution;
 pub use process_command::ProcessCommandExecutor;
 pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
 pub use runtime::{
-    AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, TurnResult,
-    TurnSteering, TurnSteeringPushError, in_process_internal_org_id,
+    AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, ParkedToolCalls,
+    TurnResult, TurnSteering, TurnSteeringPushError, in_process_internal_org_id,
 };
 pub use runtime_context::{
     StoreTurnContextResolver, assemble_turn_context, assemble_turn_context_from_snapshot,

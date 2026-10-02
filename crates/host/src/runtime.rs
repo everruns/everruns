@@ -28,7 +28,7 @@ use everruns_core::capabilities::{
 };
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::events::{
-    Event, EventContext, EventRequest, InputMessageData, SessionStartedData,
+    Event, EventContext, EventRequest, InputMessageData, SessionStartedData, ToolCompletedData,
 };
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::lifecycle_hooks::UserPromptDecision;
@@ -283,6 +283,45 @@ pub struct CapabilityDelta {
     pub active: bool,
     /// Whether prompt, tool, hook, command, or MCP surfaces must be refreshed.
     pub surfaces_dirty: bool,
+}
+
+/// The client-side tool calls a turn parked on, as
+/// [`InProcessRuntime::parked_tool_calls`] reports them.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct ParkedToolCalls {
+    /// The parked turn; [`InProcessRuntime::resume_steerable_turn`] continues it.
+    pub turn_id: TurnId,
+    /// The calls the turn waits on, in the order the model made them.
+    pub tool_calls: Vec<everruns_provider::tool_types::ToolCall>,
+}
+
+/// A turn waiting for client-side tool results, with the engine state its
+/// next step resumes from.
+struct ParkedTurn {
+    calls: ParkedToolCalls,
+    resume: TurnState,
+}
+
+type ParkedTurns = Arc<Mutex<std::collections::HashMap<SessionId, ParkedTurn>>>;
+
+fn lock_parked(
+    parked: &ParkedTurns,
+) -> std::sync::MutexGuard<'_, std::collections::HashMap<SessionId, ParkedTurn>> {
+    parked
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// What the plan loop of one turn needs from its entry step.
+struct TurnDrive {
+    session_id: SessionId,
+    org_id: i64,
+    turn_id: TurnId,
+    input_message_id: MessageId,
+    harness_id: everruns_provider::typed_id::HarnessId,
+    agent_id: Option<AgentId>,
+    workspace_id: everruns_provider::typed_id::WorkspaceId,
 }
 
 /// Summarize a terminal engine plan into the public [`TurnResult`].
@@ -846,6 +885,7 @@ impl InProcessRuntimeBuilder {
             #[cfg(feature = "mcp")]
             mcp_discovery_cache: Arc::new(crate::mcp_cache::McpDiscoveryCache::new()),
             plugin_warnings: self.plugin_warnings,
+            parked_turns: ParkedTurns::default(),
         };
         for session in &self.sessions {
             runtime.ensure_session_started(session).await?;
@@ -908,6 +948,9 @@ pub struct InProcessRuntime {
     /// Non-fatal warnings collected during plugin compilation (see
     /// [`InProcessRuntimeBuilder::with_plugin_dir`]).
     plugin_warnings: Vec<String>,
+    /// Turns parked on client-side tool calls, by session. In memory only:
+    /// a process restart drops them, and their calls stay unanswered.
+    parked_turns: ParkedTurns,
 }
 
 impl InProcessRuntime {
@@ -1272,7 +1315,124 @@ impl InProcessRuntime {
             HostFacts::default(),
         );
         crate::turn_strategy::perform_effects(self, org_id, session_id, transition.effects).await?;
-        let mut plan = transition.plan;
+        // A new turn supersedes one parked on client-side tool calls; its
+        // calls stay unanswered in history.
+        self.take_parked_turn(session_id);
+        self.drive_turn_plan(
+            TurnDrive {
+                session_id,
+                org_id,
+                turn_id,
+                input_message_id: input_message.id,
+                harness_id: snapshot.harness_id,
+                agent_id: snapshot.agent_id,
+                workspace_id: snapshot.workspace_id,
+            },
+            execution,
+            transition.plan,
+            steering,
+        )
+        .await
+    }
+
+    /// The client-side tool calls `session_id`'s last turn parked on, if it
+    /// parked and has not been resumed or superseded since.
+    ///
+    /// A turn whose model calls a client-side tool (a
+    /// [`ToolDefinition::ClientSide`](everruns_provider::tool_types::ToolDefinition::ClientSide)
+    /// on the session) pauses when the session's `setup_connection` hint
+    /// says its client can answer, and [`run_steerable_turn`](Self::run_steerable_turn)
+    /// returns. The calls wait here until
+    /// [`resume_steerable_turn`](Self::resume_steerable_turn) delivers their
+    /// results, or a new turn starts.
+    pub fn parked_tool_calls(&self, session_id: SessionId) -> Option<ParkedToolCalls> {
+        lock_parked(&self.parked_turns)
+            .get(&session_id)
+            .map(|parked| parked.calls.clone())
+    }
+
+    /// Continue the turn `session_id` parked on client-side tool calls,
+    /// recording `results` as their outcomes first.
+    ///
+    /// The results land under the parked turn, as a hosted runtime records
+    /// them for its tool-results endpoint, and the turn's next model call
+    /// sees them. Pass one result per parked call: a call left without one
+    /// stays unanswered in history. Steering works as in
+    /// [`run_steerable_turn`](Self::run_steerable_turn).
+    ///
+    /// # Errors
+    ///
+    /// A store error when no turn of `session_id` is parked, or the results
+    /// cannot be recorded.
+    pub async fn resume_steerable_turn(
+        &self,
+        session_id: SessionId,
+        results: Vec<ToolCompletedData>,
+        steering: TurnSteering,
+    ) -> Result<TurnResult> {
+        let parked = self.take_parked_turn(session_id).ok_or_else(|| {
+            AgentLoopError::store(format!(
+                "session {session_id} has no turn waiting for tool results"
+            ))
+        })?;
+        let snapshot = self.resolved_execution_snapshot(session_id).await?;
+        let turn_id = parked.calls.turn_id;
+        let input_message_id = parked.resume.input_message_id;
+        for result in results {
+            self.event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::turn(turn_id, input_message_id),
+                    result,
+                ))
+                .await?;
+        }
+        let drive = TurnDrive {
+            session_id,
+            org_id: parked.resume.org_id,
+            turn_id,
+            input_message_id,
+            harness_id: snapshot.harness_id,
+            agent_id: snapshot.agent_id,
+            workspace_id: snapshot.workspace_id,
+        };
+        let plan = TurnPlan::ScheduleReason(parked.resume.clone());
+        self.drive_turn_plan(
+            drive,
+            InProcessExecution::new(parked.resume),
+            plan,
+            steering,
+        )
+        .await
+    }
+
+    fn take_parked_turn(&self, session_id: SessionId) -> Option<ParkedTurn> {
+        lock_parked(&self.parked_turns).remove(&session_id)
+    }
+
+    /// The engine-planned loop of one turn, from the plan its entry step
+    /// (a new input, or a resume after tool results) produced.
+    async fn drive_turn_plan(
+        &self,
+        drive: TurnDrive,
+        mut execution: InProcessExecution,
+        mut plan: TurnPlan,
+        steering: TurnSteering,
+    ) -> Result<TurnResult> {
+        let TurnDrive {
+            session_id,
+            org_id,
+            turn_id,
+            input_message_id,
+            harness_id,
+            agent_id,
+            workspace_id,
+        } = drive;
+        let base_context = |exec: bool| {
+            let context = ExecutionContext::new(session_id, turn_id, input_message_id)
+                .with_workspace_id(workspace_id);
+            if exec { context.next_exec() } else { context }
+        };
 
         // Host-side bookkeeping for the returned `TurnResult`. These are
         // summaries of what the host executed, not inputs to any decision.
@@ -1280,6 +1440,8 @@ impl InProcessRuntime {
         let mut tool_calls_count: usize = 0;
         let mut last_response = String::new();
         let mut pending_prompt_message_ids = Vec::new();
+        // The client-side calls the last act left for the caller to run.
+        let mut client_tool_calls = Vec::new();
 
         loop {
             match plan {
@@ -1297,15 +1459,15 @@ impl InProcessRuntime {
                     // first iteration (between-turn fallback).
                     prompt_message_ids.extend(self.drain_and_inject_wakes(session_id).await?);
                     if state.iteration == 1 {
-                        prompt_message_ids.insert(0, input_message.id);
+                        prompt_message_ids.insert(0, input_message_id);
                     }
                     let reason_result = execute_reason_activity_with_prompt_messages(
                         self,
                         org_id,
                         ReasonInput {
                             context: base_context(true),
-                            harness_id: snapshot.harness_id,
-                            agent_id: snapshot.agent_id,
+                            harness_id,
+                            agent_id,
                             org_id,
                             mcp_tool_definitions: vec![],
                             previous_response_id: state.previous_response_id.clone(),
@@ -1375,6 +1537,7 @@ impl InProcessRuntime {
                 TurnPlan::ScheduleAct(act_plan) => {
                     tool_calls_count += act_plan.input.tool_calls.len();
                     let act_result = execute_act_activity(self, act_plan.input).await?;
+                    client_tool_calls.clone_from(&act_result.client_tool_calls);
                     let outcome = crate::turn_strategy::act_outcome(&act_result);
                     let ask_user_calls = crate::turn_strategy::pending_ask_user_calls(&act_result);
                     let hints = crate::turn_strategy::resolve_pause_hints(
@@ -1413,13 +1576,25 @@ impl InProcessRuntime {
                         tool_calls_count,
                     ));
                 }
-                // The in-process runtime has no external tool-result delivery
-                // path, so a pause resolves the turn here. The session has
-                // already been marked `waiting_for_tool_results` by the effect.
-                TurnPlan::WaitForToolResults { .. } => {
+                // A pause returns the turn to the caller, who runs the parked
+                // client-side calls and continues it with
+                // `resume_steerable_turn`; the resume state waits here until
+                // then. The session has already been marked
+                // `waiting_for_tool_results` by the effect.
+                TurnPlan::WaitForToolResults { resume } => {
                     steering.close();
                     self.append_accepted_inputs(session_id, turn_id, steering.drain())
                         .await?;
+                    lock_parked(&self.parked_turns).insert(
+                        session_id,
+                        ParkedTurn {
+                            calls: ParkedToolCalls {
+                                turn_id,
+                                tool_calls: std::mem::take(&mut client_tool_calls),
+                            },
+                            resume,
+                        },
+                    );
                     return Ok(finish_turn(
                         turn_id,
                         TurnStopReason::EndTurn,
