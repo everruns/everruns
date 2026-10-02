@@ -22,5 +22,6 @@
 * [Slack Agent Actions](slack-agent-actions.md) - Why Slack approvals, task progress, and the second-identity problem are one missing capability.
 * [Slack One-Click Install](slack-one-click-install.md) - What a live PoC established about creating per-agent Slack apps programmatically.
 * [Per-agent GitHub Apps](github-apps.md) - One-click GitHub App per agent identity: one installation for GitHub tools, MCP and events.
+* [GitHub review and security agent templates](github-agent-templates.md) - PR Reviewer and Security Scanner: guided agent examples, deterministic repeat suppression, settings the tools enforce.
 * [Plugins](plugins.md) - Plugin host: marketplaces and cross-host plugin packages installed as capabilities.
 * [Model Router Specification](model-router.md) - Model Routers.

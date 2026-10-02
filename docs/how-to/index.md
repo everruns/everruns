@@ -31,6 +31,7 @@ Each how-to here solves one concrete problem. They assume you already understand
 - [Publish a skill to the registry](/how-to/publish-a-skill-to-the-registry/), share skills across agents.
 - [Publish an agent as a Slack app](/how-to/publish-to-slack/), deploy an agent to a Slack workspace.
 - [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/), connect GitHub and comment a summary on every pull request.
+- [Set up review and security agents](/how-to/set-up-review-and-security-agents/), review every pull request and scan a repository for vulnerabilities on a schedule, on any model.
 
 ## Upgrading
 
