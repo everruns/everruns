@@ -45,6 +45,7 @@ jest.mock("@/hooks/use-policies", () => ({
 jest.mock("@/hooks/use-agents", () => ({
   useResumeAgentExposures: () => ({ mutate: jest.fn(), isPending: false }),
   useSuspendAgentExposures: () => ({ mutate: jest.fn(), isPending: false }),
+  useAgentVersions: () => ({ data: [], isLoading: false }),
 }));
 
 jest.mock("@/components/apps/channel-row", () => ({

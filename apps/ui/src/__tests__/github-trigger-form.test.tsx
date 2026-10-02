@@ -9,8 +9,12 @@ jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_1/triggers/new",
   useSearchParams: () => new URLSearchParams("type=github"),
 }));
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlag: () => false,
+}));
 jest.mock("@/hooks/use-agents", () => ({
   useAgent: () => ({ data: { id: "agent_1", name: "Reviewer" }, isLoading: false }),
+  useAgentVersions: () => ({ data: [], isLoading: false }),
 }));
 jest.mock("@/hooks/use-agent-triggers", () => ({
   useAgentTriggers: () => ({ data: [], isLoading: false }),

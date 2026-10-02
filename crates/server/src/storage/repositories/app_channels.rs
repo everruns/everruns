@@ -267,6 +267,8 @@ impl Database {
                 auth_encrypted = CASE WHEN $10 THEN $11 ELSE ae.auth_encrypted END,
                 enabled = COALESCE($12, ae.enabled),
                 status = COALESCE($13, ae.status),
+                agent_version_policy = COALESCE($14, ae.agent_version_policy),
+                agent_version_id = CASE WHEN $15 THEN $16 ELSE ae.agent_version_id END,
                 updated_at = NOW()
             FROM agents AS agent
             WHERE agent.org_id = $1 AND agent.id = $2
@@ -286,6 +288,9 @@ impl Database {
         .bind(input.auth_encrypted.into_value())
         .bind(input.enabled)
         .bind(&input.status)
+        .bind(&input.agent_version_policy)
+        .bind(input.agent_version_id.is_changed())
+        .bind(input.agent_version_id.into_value())
         .execute(&self.pool)
         .await?;
         self.get_agent_endpoint(org_id, agent_id, public_id).await

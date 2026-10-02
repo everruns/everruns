@@ -123,6 +123,12 @@ impl InMemoryDatabase {
         if let Some(status) = input.status {
             row.status = status;
         }
+        if let Some(policy) = input.execution_agent_version_policy {
+            row.execution_agent_version_policy = Some(policy);
+        }
+        input
+            .execution_agent_version_id
+            .apply(&mut row.execution_agent_version_id);
         row.updated_at = Self::now();
         Ok(Some(row.clone()))
     }

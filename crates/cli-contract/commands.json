@@ -480,6 +480,19 @@
         "required": true
       },
       {
+        "field": "agent_version_id",
+        "long": "agent-version-id",
+        "kind": "string",
+        "required": false,
+        "help": "Version to run when `agent_version_policy` is `pinned`."
+      },
+      {
+        "field": "agent_version_policy",
+        "long": "agent-version-policy",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "channel_config",
         "long": "channel-config",
         "kind": "json",
@@ -672,6 +685,19 @@
         "long": "agent-id",
         "kind": "string",
         "required": true
+      },
+      {
+        "field": "agent_version_id",
+        "long": "agent-version-id",
+        "kind": "string",
+        "required": false,
+        "help": "Version to pin."
+      },
+      {
+        "field": "agent_version_policy",
+        "long": "agent-version-policy",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "channel_config",
@@ -1144,6 +1170,19 @@
         "help": "Owning agent's prefixed public identifier."
       },
       {
+        "field": "agent_version_id",
+        "long": "agent-version-id",
+        "kind": "string",
+        "required": false,
+        "help": "Version to run when `agent_version_policy` is `pinned`."
+      },
+      {
+        "field": "agent_version_policy",
+        "long": "agent-version-policy",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "auth",
         "long": "auth",
         "kind": "json",
@@ -1451,6 +1490,19 @@
         "long": "agent-id",
         "kind": "string",
         "required": true
+      },
+      {
+        "field": "agent_version_id",
+        "long": "agent-version-id",
+        "kind": "string",
+        "required": false,
+        "help": "Version to pin."
+      },
+      {
+        "field": "agent_version_policy",
+        "long": "agent-version-policy",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "auth",

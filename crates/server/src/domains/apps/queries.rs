@@ -255,6 +255,8 @@ pub fn channel_row_to_channel(
         auth,
         enabled: row.enabled,
         status: EndpointStatus::from(row.status.as_str()),
+        agent_version_policy: AgentVersionPolicy::Default,
+        agent_version_id: None,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
@@ -327,6 +329,8 @@ pub async fn row_to_app(
                 } else {
                     EndpointStatus::Draft
                 },
+                agent_version_policy: AgentVersionPolicy::Default,
+                agent_version_id: None,
                 created_at: row.created_at,
                 updated_at: row.updated_at,
             }]
@@ -339,6 +343,17 @@ pub async fn row_to_app(
             .map(|ch| channel_row_to_channel(encryption, ch))
             .collect()
     };
+    // The frozen App carried one version selection for all of its channels.
+    let agent_version_policy = AgentVersionPolicy::from(row.agent_version_policy.as_str());
+    let agent_version_id = row.agent_version_id.map(AgentVersionId::from_uuid);
+    let channels: Vec<AppChannel> = channels
+        .into_iter()
+        .map(|mut channel| {
+            channel.agent_version_policy = agent_version_policy.clone();
+            channel.agent_version_id = agent_version_id;
+            channel
+        })
+        .collect();
     let owner = match db.get_principal(org_id, row.owner_principal_id).await {
         Ok(row) => row
             .map(row_to_principal)
@@ -379,8 +394,8 @@ pub async fn row_to_app(
         description: row.description,
         harness_id,
         agent_id,
-        agent_version_policy: AgentVersionPolicy::from(row.agent_version_policy.as_str()),
-        agent_version_id: row.agent_version_id.map(AgentVersionId::from_uuid),
+        agent_version_policy,
+        agent_version_id,
         virtual_user_id: row.virtual_user_id.map(VirtualUserId::from_uuid),
         owner_principal_id: row.owner_principal_id,
         resolved_owner_user_id: row.resolved_owner_user_id,

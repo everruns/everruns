@@ -40,6 +40,16 @@ import {
   PageFooter,
   BackLink,
 } from "@/components/layout";
+import {
+  AgentVersionPolicyField,
+  DEFAULT_VERSION_SELECTION,
+  isVersionSelectionValid,
+  sameVersionSelection,
+  useShowVersionSelection,
+  versionSelectionOf,
+  versionSelectionRequest,
+  type AgentVersionSelection,
+} from "@/components/agents/agent-version-policy-field";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
 /// Full-page trigger editor, matching the endpoint editors rather than the
@@ -66,6 +76,15 @@ export default function AgentTriggerPage({
   const searchParams = useSearchParams();
 
   const trigger = isNew ? undefined : triggers.find((candidate) => candidate.id === triggerId);
+  const storedVersion = trigger ? versionSelectionOf(trigger) : DEFAULT_VERSION_SELECTION;
+  const [versionSelection, setVersionSelection] =
+    useState<AgentVersionSelection>(DEFAULT_VERSION_SELECTION);
+  const showVersion = useShowVersionSelection(storedVersion);
+  // Send the selection only when it changed, so an unrelated save never
+  // rewrites a pin (EVE-1139).
+  const versionRequest = sameVersionSelection(versionSelection, storedVersion)
+    ? {}
+    : versionSelectionRequest(versionSelection);
   const returnHref = `/agents/${agentId}?tab=integrations`;
   const isGithub = trigger
     ? trigger.trigger_type === "github"
@@ -73,6 +92,7 @@ export default function AgentTriggerPage({
 
   useEffect(() => {
     if (!trigger) return;
+    setVersionSelection(versionSelectionOf(trigger));
     if (trigger.trigger_type === "github") {
       const config = trigger.config as unknown as {
         events?: string[];
@@ -116,6 +136,7 @@ export default function AgentTriggerPage({
               session_mode: githubForm.session_mode,
               message: githubForm.message,
               enabled: githubForm.enabled,
+              ...versionRequest,
             },
           });
         } else {
@@ -126,6 +147,7 @@ export default function AgentTriggerPage({
             session_mode: githubForm.session_mode,
             message: githubForm.message,
             enabled: githubForm.enabled,
+            ...versionRequest,
           });
         }
         router.push(returnHref);
@@ -141,9 +163,12 @@ export default function AgentTriggerPage({
     setError(null);
     try {
       if (trigger) {
-        await updateTrigger.mutateAsync({ triggerId: trigger.id, request: form });
+        await updateTrigger.mutateAsync({
+          triggerId: trigger.id,
+          request: { ...form, ...versionRequest },
+        });
       } else {
-        await createTrigger.mutateAsync(form);
+        await createTrigger.mutateAsync({ ...form, ...versionRequest });
       }
       router.push(returnHref);
     } catch (caught) {
@@ -169,7 +194,9 @@ export default function AgentTriggerPage({
   const agentName = getDisplayName(agent);
   const title = isNew ? "New trigger" : "Trigger";
   const enabled = isGithub ? githubForm.enabled : form.enabled;
-  const formValid = isGithub ? isGitHubFormValid(githubForm) : isTriggerFormValid(form);
+  const formValid =
+    (isGithub ? isGitHubFormValid(githubForm) : isTriggerFormValid(form)) &&
+    isVersionSelectionValid(versionSelection);
 
   return (
     <PageContainer>
@@ -264,6 +291,21 @@ export default function AgentTriggerPage({
           </PageMain>
 
           <PageRail>
+            {showVersion && (
+              <Card className="h-fit">
+                <CardHeader>
+                  <CardTitle>Agent version</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <AgentVersionPolicyField
+                    agentId={agentId}
+                    value={versionSelection}
+                    onChange={setVersionSelection}
+                    idPrefix="trigger-agent-version"
+                  />
+                </CardContent>
+              </Card>
+            )}
             {trigger && (
               <Card className="h-fit border-destructive/50">
                 <CardHeader>

@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub use crate::agent_version_policy::AgentVersionPolicy;
 use crate::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
 pub use everruns_core::channel::SessionBinding;
 use everruns_core::principal::PrincipalSummary;
@@ -80,41 +81,6 @@ impl From<&str> for EndpointStatus {
             "live" => EndpointStatus::Live,
             "disabled" => EndpointStatus::Disabled,
             _ => EndpointStatus::Draft,
-        }
-    }
-}
-
-/// How an App resolves the Agent version it runs.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[cfg_attr(feature = "openapi", schema(example = "pinned"))]
-#[serde(rename_all = "lowercase")]
-pub enum AgentVersionPolicy {
-    /// Resolve the agent's default_version_id at session creation/invocation time.
-    #[default]
-    Default,
-    /// Resolve the newest agent_versions row for the app's agent.
-    Latest,
-    /// Use the app's pinned agent_version_id.
-    Pinned,
-}
-
-impl std::fmt::Display for AgentVersionPolicy {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AgentVersionPolicy::Default => write!(f, "default"),
-            AgentVersionPolicy::Latest => write!(f, "latest"),
-            AgentVersionPolicy::Pinned => write!(f, "pinned"),
-        }
-    }
-}
-
-impl From<&str> for AgentVersionPolicy {
-    fn from(s: &str) -> Self {
-        match s {
-            "latest" => AgentVersionPolicy::Latest,
-            "pinned" => AgentVersionPolicy::Pinned,
-            _ => AgentVersionPolicy::Default,
         }
     }
 }
@@ -332,6 +298,13 @@ pub struct AgentEndpoint {
     /// is retained for the App API's existing shape.
     #[serde(default)]
     pub status: EndpointStatus,
+    /// Which Agent version sessions started through this endpoint run.
+    #[serde(default)]
+    pub agent_version_policy: AgentVersionPolicy,
+    /// Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
+    pub agent_version_id: Option<AgentVersionId>,
     /// Timestamp when this channel was created.
     pub created_at: DateTime<Utc>,
     /// Timestamp when this channel was last updated.
@@ -1305,6 +1278,8 @@ mod tests {
             auth: None,
             enabled: true,
             status: EndpointStatus::Live,
+            agent_version_policy: AgentVersionPolicy::Default,
+            agent_version_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

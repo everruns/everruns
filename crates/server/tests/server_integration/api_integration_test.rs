@@ -12,6 +12,7 @@
 
 mod agents;
 mod apps;
+mod endpoint_version_pinning;
 mod files_misc;
 mod harnesses;
 mod providers_models;

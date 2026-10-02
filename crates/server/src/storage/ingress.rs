@@ -30,6 +30,8 @@ pub struct UpdateAgentEndpointRow {
     pub auth_encrypted: UpdateField<Vec<u8>>,
     pub enabled: Option<bool>,
     pub status: Option<String>,
+    pub agent_version_policy: Option<String>,
+    pub agent_version_id: UpdateField<Uuid>,
 }
 /// Endpoint-owned values required to serve ingress without archival App reads.
 #[derive(Debug, Clone, FromRow)]

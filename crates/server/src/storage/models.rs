@@ -2696,69 +2696,6 @@ pub struct NewSessionTaskMessageRow {
 // ============================================
 
 // ============================================
-// Agent trigger models (agent-owned invocation triggers)
-// ============================================
-
-#[derive(Debug, Clone, FromRow)]
-pub struct AgentTriggerRow {
-    pub id: TriggerId,
-    pub org_id: i64,
-    pub agent_id: AgentId,
-    pub trigger_type: String,
-    pub ingress_id: Option<String>,
-    pub config: serde_json::Value,
-    pub config_encrypted: Option<Vec<u8>>,
-    pub enabled: bool,
-    pub durable_schedule_id: Option<Uuid>,
-    pub execution_harness_id: Option<HarnessId>,
-    pub execution_owner_principal_id: Option<PrincipalId>,
-    pub execution_resolved_owner_user_id: Option<Uuid>,
-    pub execution_virtual_user_id: Option<VirtualUserId>,
-    pub execution_app_id: Option<Uuid>,
-    pub execution_app_public_id: Option<String>,
-    pub execution_app_name: Option<String>,
-    pub execution_agent_version_policy: Option<String>,
-    pub execution_agent_version_id: Option<AgentVersionId>,
-    pub status: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub archived_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateAgentTriggerRow {
-    pub org_id: i64,
-    pub id: TriggerId,
-    pub agent_id: AgentId,
-    pub trigger_type: String,
-    pub ingress_id: Option<String>,
-    pub config: serde_json::Value,
-    pub config_encrypted: Option<Vec<u8>>,
-    pub enabled: bool,
-    pub durable_schedule_id: Option<Uuid>,
-    pub execution_harness_id: Option<HarnessId>,
-    pub execution_owner_principal_id: Option<PrincipalId>,
-    pub execution_resolved_owner_user_id: Option<Uuid>,
-    pub execution_virtual_user_id: Option<VirtualUserId>,
-    pub execution_app_id: Option<Uuid>,
-    pub execution_app_public_id: Option<String>,
-    pub execution_app_name: Option<String>,
-    pub execution_agent_version_policy: Option<String>,
-    pub execution_agent_version_id: Option<AgentVersionId>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct UpdateAgentTrigger {
-    pub trigger_type: Option<String>,
-    pub config: Option<serde_json::Value>,
-    pub config_encrypted: Option<Vec<u8>>,
-    pub enabled: Option<bool>,
-    pub durable_schedule_id: UpdateField<Uuid>,
-    pub status: Option<String>,
-}
-
-// ============================================
 // App models (deployable agent+harness bundles)
 // ============================================
 
@@ -3786,5 +3723,7 @@ pub struct InstallCompactionCheckpointRow {
     pub payload_encrypted: Vec<u8>,
 }
 
+mod agent_triggers;
 mod virtual_users;
+pub use agent_triggers::*;
 pub use virtual_users::*;

@@ -50,6 +50,7 @@ pub mod vector_store;
 // are persisted/API records not consumed during a turn. Turn-consumed neutral
 // values (`DeploymentGrade`, `SessionSchedule` and its store) stay in core.
 pub mod agent_trigger;
+pub mod agent_version_policy;
 pub mod app;
 
 // The seam a Slack-native capability acts through; the Slack endpoint row it

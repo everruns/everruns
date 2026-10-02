@@ -5123,6 +5123,13 @@ export interface components {
        */
       agent_id: string;
       /**
+       * @description Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
+       * @example agentver_01933b5a00007000800000000000001
+       */
+      agent_version_id?: string | null;
+      /** @description Which Agent version sessions started by this trigger run. */
+      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
+      /**
        * Format: date-time
        * @description Archive timestamp.
        */
@@ -5302,7 +5309,8 @@ export interface components {
       to_version_id: components["schemas"]["agentverId"];
     };
     /**
-     * @description How an App resolves the Agent version it runs.
+     * @description How an exposure (endpoint or trigger; formerly the App) resolves the
+     *     Agent version its sessions run.
      * @example pinned
      * @enum {string}
      */
@@ -5489,6 +5497,13 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
+      /**
+       * @description Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
+       * @example agentver_01933b5a00007000800000000000001
+       */
+      agent_version_id?: string | null;
+      /** @description Which Agent version sessions started through this endpoint run. */
+      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
       auth?: components["schemas"]["AppEndpointAuthConfig"] | null;
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
@@ -6796,6 +6811,13 @@ export interface components {
     };
     /** @description Request to create an ingress endpoint owned by an Agent. */
     CreateAgentEndpointRequest: {
+      /**
+       * @description Version to run when `agent_version_policy` is `pinned`. Must be a saved
+       *     version of this agent.
+       * @example agentver_01933b5a00007000800000000000001
+       */
+      agent_version_id?: string | null;
+      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Transport-specific endpoint configuration. */
       channel_config?: unknown;
       /** @description Transport used by the endpoint. */
@@ -6945,6 +6967,13 @@ export interface components {
     };
     /** @description Request to create a trigger on an agent. */
     CreateAgentTriggerRequest: {
+      /**
+       * @description Version to run when `agent_version_policy` is `pinned`. Must be a saved
+       *     version of this agent.
+       * @example agentver_01933b5a00007000800000000000001
+       */
+      agent_version_id?: string | null;
+      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Shared endpoint auth is not supported by webhook triggers. */
       auth?: unknown;
       /**
@@ -18262,6 +18291,12 @@ export interface components {
     TurnWaitStatus: "completed" | "failed" | "timeout";
     /** @description Request to update an ingress endpoint owned by an Agent. */
     UpdateAgentEndpointRequest: {
+      /**
+       * @description Version to pin. Only valid with policy `pinned`.
+       * @example agentver_01933b5a00007000800000000000001
+       */
+      agent_version_id?: string | null;
+      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Replacement transport-specific endpoint configuration. */
       channel_config?: unknown;
       /** @description Whether the endpoint can accept ingress traffic. */
@@ -18399,6 +18434,12 @@ export interface components {
      *     preserved from the stored config.
      */
     UpdateAgentTriggerRequest: {
+      /**
+       * @description Version to pin. Only valid with policy `pinned`.
+       * @example agentver_01933b5a00007000800000000000001
+       */
+      agent_version_id?: string | null;
+      agent_version_policy?: components["schemas"]["AgentVersionPolicy"] | null;
       /** @description Shared endpoint auth is not supported by webhook triggers. */
       auth?: unknown;
       /** @description Replacement cron expression. */

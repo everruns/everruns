@@ -1887,6 +1887,16 @@
     "description": "Create an ingress endpoint for an agent.",
     "input_schema": {
       "$defs": {
+        "AgentVersionPolicy": {
+          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
+          "enum": [
+            "default",
+            "latest",
+            "pinned"
+          ],
+          "example": "pinned",
+          "type": "string"
+        },
         "ChannelType": {
           "description": "Supported channel types for app distribution.",
           "enum": [
@@ -1905,6 +1915,25 @@
         "CreateAgentEndpointRequest": {
           "description": "Request to create an ingress endpoint owned by an Agent.",
           "properties": {
+            "agent_version_id": {
+              "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
+              "example": "agentver_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "agent_version_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentVersionPolicy",
+                  "description": "Which Agent version sessions started through this endpoint run.\nOmitted means `default` (the agent's default version)."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "channel_config": {
               "description": "Transport-specific endpoint configuration."
             },
@@ -1963,9 +1992,38 @@
           ],
           "type": "string"
         },
+        "AgentVersionPolicy": {
+          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
+          "enum": [
+            "default",
+            "latest",
+            "pinned"
+          ],
+          "example": "pinned",
+          "type": "string"
+        },
         "CreateAgentTriggerRequest": {
           "description": "Request to create a trigger on an agent.",
           "properties": {
+            "agent_version_id": {
+              "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
+              "example": "agentver_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "agent_version_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentVersionPolicy",
+                  "description": "Which Agent version sessions started by this trigger run. Omitted means\n`default` (the agent's default version)."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "auth": {
               "description": "Shared endpoint auth is not supported by webhook triggers."
             },
@@ -15901,9 +15959,38 @@
     "description": "Update an agent ingress endpoint.",
     "input_schema": {
       "$defs": {
+        "AgentVersionPolicy": {
+          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
+          "enum": [
+            "default",
+            "latest",
+            "pinned"
+          ],
+          "example": "pinned",
+          "type": "string"
+        },
         "UpdateAgentEndpointRequest": {
           "description": "Request to update an ingress endpoint owned by an Agent.",
           "properties": {
+            "agent_version_id": {
+              "description": "Version to pin. Only valid with policy `pinned`.",
+              "example": "agentver_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "agent_version_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentVersionPolicy",
+                  "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "channel_config": {
               "description": "Replacement transport-specific endpoint configuration."
             },
@@ -15952,6 +16039,16 @@
     "description": "Update an agent trigger. Only provided fields change.",
     "input_schema": {
       "$defs": {
+        "AgentVersionPolicy": {
+          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
+          "enum": [
+            "default",
+            "latest",
+            "pinned"
+          ],
+          "example": "pinned",
+          "type": "string"
+        },
         "SessionBinding": {
           "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
@@ -16001,6 +16098,25 @@
         "UpdateAgentTriggerRequest": {
           "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
           "properties": {
+            "agent_version_id": {
+              "description": "Version to pin. Only valid with policy `pinned`.",
+              "example": "agentver_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "agent_version_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentVersionPolicy",
+                  "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "auth": {
               "description": "Shared endpoint auth is not supported by webhook triggers."
             },

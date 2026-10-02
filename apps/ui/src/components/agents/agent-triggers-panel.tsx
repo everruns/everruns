@@ -33,6 +33,10 @@ import {
   getWebhookTriggerConfig,
   TriggerSetupGuidance,
 } from "@/components/agents/integrations/trigger-setup-guidance";
+import {
+  AgentVersionSelectionBadge,
+  versionSelectionOf,
+} from "@/components/agents/agent-version-policy-field";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -173,6 +177,10 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                       <Badge variant={trigger.enabled ? "default" : "outline"}>
                         {trigger.enabled ? "Enabled" : "Disabled"}
                       </Badge>
+                      <AgentVersionSelectionBadge
+                        agentId={agentId}
+                        selection={versionSelectionOf(trigger)}
+                      />
                     </div>
                     <p className="text-sm text-muted-foreground">{config.message}</p>
                     {isGithub && (

@@ -3828,23 +3828,8 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
     assert_eq!(created.agent_id, agent_id);
 
     // Config round-trips into the typed core accessor.
-    let trigger = everruns_platform::AgentTrigger {
-        id: created.id,
-        agent_id: created.agent_id,
-        trigger_type: created.trigger_type.as_str().into(),
-        ingress_id: created
-            .ingress_id
-            .as_deref()
-            .map(str::parse)
-            .transpose()
-            .expect("valid ingress ID"),
-        config: created.config.clone(),
-        enabled: created.enabled,
-        created_at: created.created_at,
-        updated_at: created.updated_at,
-        archived_at: created.archived_at,
-        deleted_at: created.deleted_at,
-    };
+    let trigger =
+        crate::domains::agent_triggers::queries::row_to_trigger(created.clone(), agent_id, None);
     let schedule = trigger.schedule_config().unwrap();
     assert_eq!(schedule.cron_expression, "0 0 * * * *");
     assert_eq!(schedule.message, "hello");

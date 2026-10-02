@@ -111,7 +111,10 @@ pub struct IngressEndpoint {
 }
 
 impl IngressEndpoint {
-    pub fn into_channel(self) -> AppChannel {
+    /// Render the endpoint for the API. The version selection lives on the
+    /// ingress context, so it is copied from there; surfacing it is what lets an
+    /// org see that an exposure is pinned (EVE-1139).
+    pub fn into_channel(self, context: &IngressContext) -> AppChannel {
         AppChannel {
             public_id: self.public_id,
             internal_id: self.internal_id,
@@ -120,6 +123,8 @@ impl IngressEndpoint {
             enabled: self.enabled,
             status: self.status,
             auth: self.auth,
+            agent_version_policy: context.agent_version_policy.clone(),
+            agent_version_id: context.agent_version_id,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }

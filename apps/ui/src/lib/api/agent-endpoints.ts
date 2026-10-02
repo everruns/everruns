@@ -1,15 +1,20 @@
 import { api } from "./client";
-import type { AppChannel, ChannelType } from "./types";
+import type { AgentVersionPolicy, AppChannel, ChannelType } from "./types";
 
 export interface CreateAgentEndpointRequest {
   channel_type: ChannelType;
   channel_config: unknown;
   enabled: boolean;
+  agent_version_policy?: AgentVersionPolicy;
+  agent_version_id?: string;
 }
 
 export interface UpdateAgentEndpointRequest {
   channel_config?: unknown;
   enabled?: boolean;
+  /** `pinned` needs `agent_version_id`; `default`/`latest` clear the pin. */
+  agent_version_policy?: AgentVersionPolicy;
+  agent_version_id?: string;
 }
 
 export interface TriggerAgentEndpointResult {
