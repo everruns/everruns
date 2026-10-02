@@ -12,8 +12,10 @@ tags:
 
 Implemented on AG-UI 1.0 for the endpoint `POST /v1/e/{endpoint_id}/ag-ui` and
 Public Chat (`POST /v1/e/{endpoint_id}/public-chat`), which reuses the same
-stream, including interrupts and resume, frontend tools and token usage.
-Subagents and the outbound client are planned follow-ups of the same upgrade.
+stream, including interrupts and resume, frontend tools and token usage. The
+framework serves the same protocol from any session behind the facade's `ag-ui`
+feature (see [Framework](#framework)). Subagents and the outbound client are
+planned follow-ups of the same upgrade.
 
 ## Pieces
 
@@ -28,6 +30,32 @@ Subagents and the outbound client are planned follow-ups of the same upgrade.
 - **Server adapter**: [`crates/server/src/api/ag_ui.rs`](../../crates/server/src/api/ag_ui.rs)
   validates input, runs the turn and feeds the session's events to the
   projector.
+
+## Framework
+
+The `everruns` facade's opt-in `ag-ui` feature adds `Session::ag_ui` and
+`ag_ui_with` ([`crates/everruns/src/ag_ui.rs`](../../crates/everruns/src/ag_ui.rs)):
+one AG-UI run per request over the session's live event stream and the shared
+`Projector`, with the trusted policy by default (reasoning, usage and runtime
+errors visible), because the developer owns both ends.
+
+- **Input.** The session owns the conversation, so a run sends only the last
+  user message. Earlier messages, `state`, `context`, `forwardedProps` and
+  frontend tools are not read; the host maps `threadId` to a session.
+- **Interrupts without a durable park.** In-process `ask_user` and approvals
+  block the turn on a responder instead of parking it, so the facade ships
+  `InterruptGate`, a responder for both that parks each request in memory
+  under (session, call id), the same shape as `serve`'s gate. A park ends the
+  run with the interrupt outcome; the resuming run's entries complete the
+  waiting responder and stream the rest of the same turn. The producer rules
+  match the server's: validate every entry before applying any, re-interrupt
+  on a missing entry or a new message, ignore unknown ids. Approval
+  interrupts are always client-answerable here (`tool_approval`); there is no
+  operator. A process exit cancels a parked turn.
+- **No HTTP server dependency.** The facade adds only `everruns-ag-ui`; an
+  axum handler is a few lines over the returned stream, kept as the
+  `ag_ui_axum` example and the public `framework/ag-ui` page rather than a
+  helper.
 
 ## Rules the stream keeps
 

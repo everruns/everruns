@@ -59,6 +59,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Events and cancellation](/framework/events-and-cancellation/), observe a live turn and stop work cooperatively.
 - [Lifecycle hooks](/framework/lifecycle-hooks/), run awaited application behavior at execution boundaries.
 - [Answer agent questions](/framework/ask-user/), implement `AskUser` so your application answers the agent's structured questions.
+- [Serve AG-UI](/framework/ag-ui/), stream a session to CopilotKit or any AG-UI 1.0 client from your own HTTP server.
 - [Canonical events](/framework/canonical-events/), render or record bounded canonical event envelopes.
 - [Persistence](/framework/persistence/), Engine-lifetime memory and crash-durable local state.
 

@@ -227,6 +227,7 @@ opt-in.
 | `mcp-stdio` | Local-process MCP servers, plus HTTP MCP |
 | `local` | Durable local sessions, work, schedules, and Git workspace heads |
 | `a2a` | Outbound Agent2Agent delegation; includes `local` |
+| `ag-ui` | Serve a session to AG-UI 1.0 clients (CopilotKit, `@ag-ui/client`) with `Session::ag_ui` |
 
 Combine features as needed:
 

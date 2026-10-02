@@ -120,6 +120,11 @@ openrouter = ["dep:everruns-openrouter"]
 typesafe = ["dep:everruns-integrations-typesafe"]
 # Framework observability is opt-in. Each feature enables only its host
 # exporter and leaves default and no-default builds offline.
+# Serve an AG-UI 1.0 run from any session (`everruns::ag_ui`): the protocol
+# types, the shared runtime-event projection, and an interrupt gate for
+# `ask_user` and tool approvals. Off by default; it adds only the
+# transport-free `everruns-ag-ui` crate, never an HTTP server.
+ag-ui = ["builtins", "dep:everruns-ag-ui", "dep:futures", "dep:serde"]
 otel = ["everruns-host/otel"]
 braintrust = ["everruns-host/braintrust"]
 
@@ -150,6 +155,9 @@ everruns-openrouter = { workspace = true, optional = true }
 # `hosted` feature off, so enabling `typesafe` on the facade does not drag in
 # everruns-platform. Guarded by scripts/lib/check-portable-builtins-isolation.sh.
 everruns-integrations-typesafe = { workspace = true, optional = true }
+# AG-UI wire types plus the transport-free projection the server and `serve`
+# share. Activated by `ag-ui`.
+everruns-ag-ui = { workspace = true, optional = true, features = ["core"] }
 async-trait.workspace = true
 uuid.workspace = true
 base64.workspace = true
@@ -183,7 +191,10 @@ tracing.workspace = true
 # (e.g. everruns-test-support) reach crates.io.
 everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
 everruns-test-support = { path = "../test-support", features = ["fixtures"] }
-tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "time"] }
+tokio = { workspace = true, features = ["macros", "net", "process", "rt-multi-thread", "time"] }
+# The `ag_ui_axum` example mounts `Session::ag_ui` on an HTTP route. A dev
+# dependency only: the facade itself carries no HTTP server.
+axum = { workspace = true }
 serde = { workspace = true }
 # Stream consumption in the direct-completion tests and example.
 futures = { workspace = true }
@@ -194,6 +205,10 @@ wiremock = "0.6"
 
 [[example]]
 name = "ask_user"
+
+[[example]]
+name = "ag_ui_axum"
+required-features = ["ag-ui"]
 
 [[example]]
 name = "workspace_policy"

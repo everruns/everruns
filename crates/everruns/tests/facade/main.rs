@@ -12,6 +12,7 @@
 //! Run one module: `cargo test -p everruns --all-features --test facade <module>::`
 
 mod advanced_capabilities;
+mod ag_ui;
 mod agent_builder;
 mod application_parity;
 mod ask_user;

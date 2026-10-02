@@ -44,6 +44,11 @@
 extern crate self as everruns;
 
 // --- Value-first agent description and execution -------------------------
+/// Serve a session over AG-UI 1.0.
+///
+/// Stability: alpha — may change without a major bump; see [`stability`].
+#[cfg(feature = "ag-ui")]
+pub mod ag_ui;
 mod agent;
 mod agent_state;
 /// Stability: alpha — may change without a major bump; see [`stability`].

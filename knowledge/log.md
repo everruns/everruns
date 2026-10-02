@@ -2,6 +2,11 @@
 
 ## 2026-10-01
 
+* **The framework serves AG-UI.** The `everruns` facade's `ag-ui` feature
+  answers an AG-UI 1.0 request from any session with the shared projection,
+  and an in-memory `InterruptGate` turns in-process `ask_user` and approval
+  waits into interrupts that `RunAgentInput.resume` answers. See
+  [AG-UI Channel](integrations/ag-ui.md#framework).
 * **AG-UI frontend tools.** `RunAgentInput.tools` become the session's
   client-side tools; a parked call to one streams to the consumer and ends the
   run in success with `pendingToolCallIds`, and the next run's trailing `tool`
