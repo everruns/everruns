@@ -112,7 +112,36 @@ turns are driven by `DurableExecution` checkpoints rather than replay.
 
 ### Persistence
 
-All tables prefixed with `durable_` to avoid conflicts. See `crates/server/migrations/002_durable_execution.sql` for the full schema DDL.
+All tables prefixed with `durable_` to avoid conflicts. The schema has two
+owners that must stay identical:
+
+- **Server migrations** (`crates/server/migrations/`, starting at
+  `002_durable_execution.sql`) create and evolve the tables for the Everruns
+  control plane, versioned and immutable like every other server table.
+- **The crate's own schema** (`crates/durable/schema/postgres.sql`), applied by
+  `PostgresWorkflowEventStore::migrate`, lets a crates.io user of
+  `everruns-durable` create the tables without the server. It is one idempotent
+  script (CREATE ... IF NOT EXISTS, CREATE OR REPLACE for trigger functions and
+  triggers, counter seeding with ON CONFLICT DO NOTHING) run in a single
+  transaction under an advisory lock, uses only built-in PostgreSQL 14+
+  functions (its `uuidv7()` fallback avoids pgcrypto), and creates objects in
+  the first `search_path` schema. Against a server-migrated database it changes
+  nothing. Schema changes append idempotent statements rather than versioned
+  migrations, because the crate cannot own a migration history in a database
+  whose durable tables the server already manages.
+
+`crates/durable/tests/schema_drift_test.rs` (durable CI shard) applies the crate
+schema to a scratch PostgreSQL schema and compares tables, columns, defaults,
+constraints, indexes, triggers, trigger-function bodies, sequences and seeded
+counter rows with the server-migrated database, and checks that `migrate` is a
+no-op over server migrations. A server migration that touches a durable table
+therefore updates `schema/postgres.sql` in the same change. The one deliberate
+difference is `durable_tool_results`, which belongs to the server's tool-call
+idempotency storage and is never touched by the crate.
+
+`everruns-durable` is part of the crates.io publish set. Its benchmark support
+module and bench binaries sit behind the off-by-default `bench` feature, and
+bench checkpoints are excluded from the package.
 
 Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `continued_as_new`.
 

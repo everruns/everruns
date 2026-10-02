@@ -2,6 +2,12 @@
 
 ## 2026-10-02
 
+* **`everruns-durable` joins the crates.io publish set.** The crate ships its
+  own idempotent PostgreSQL schema, applied by
+  `PostgresWorkflowEventStore::migrate`, so it no longer depends on the server
+  migrations to be usable; a CI drift test keeps the two identical for the
+  durable tables. Bench support moved behind a `bench` feature. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#persistence).
 * **Ready-made AG-UI route.** The facade's `ag-ui-axum` feature adds
   `everruns::ag_ui::AgUiHandler`: a required pluggable authorizer
   (`StaticToken`, `Unauthenticated`, closures), thread resolution through

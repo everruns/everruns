@@ -27,7 +27,7 @@ run_benchmarks() {
   for bench in "$@"; do
     echo ""
     echo "Running $bench..."
-    cargo bench -p everruns-durable --bench "$bench" -- $SAVE_ARG $MONIKER_ARG
+    cargo bench -p everruns-durable --features bench --bench "$bench" -- $SAVE_ARG $MONIKER_ARG
   done
   echo ""
 }

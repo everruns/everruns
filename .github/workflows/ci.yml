@@ -449,6 +449,7 @@ jobs:
           cargo check --locked --all-features \
             -p everruns-builtins \
             -p everruns-core \
+            -p everruns-durable \
             -p everruns-openai \
             -p everruns-anthropic \
             -p everruns-turbopuffer \
@@ -1375,7 +1376,7 @@ jobs:
 
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
-        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --test store_conformance_test --test timers_and_children_test --features postgres-tests -- --test-threads=1
+        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --test store_conformance_test --test timers_and_children_test --test schema_drift_test --features postgres-tests -- --test-threads=1
 
       - name: Run durable failpoint tests
         if: ${{ matrix.shard == 'durable' }}
@@ -1387,7 +1388,7 @@ jobs:
       - name: Run durable bench smoke
         if: ${{ matrix.shard == 'durable' }}
         run: >-
-          cargo test -p everruns-durable
+          cargo test -p everruns-durable --features bench
           --bench concurrent_workers --bench workflow_throughput --bench cold_start_latency
           --bench db_concurrent_workers --bench db_workflow_throughput --bench db_cold_start_latency
           -- --smoke
