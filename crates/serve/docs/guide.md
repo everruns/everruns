@@ -61,7 +61,13 @@ fn analyst() -> Agent {
 - **Model strings** are `provider/model`, and the host's gateway resolves them.
   Locally, the resolution order is `SERVE_GATEWAY_URL`, then
   `OPENROUTER_API_KEY`, then `OPENAI_API_KEY` (for `openai/…` models only).
-  If none is set, `dev` and `eval` fall back to the agent's `.offline(...)`
+  `bedrock/<model-id>` (for example `bedrock/us.anthropic.claude-sonnet-4-6`,
+  a Bedrock model id or inference profile) goes straight to Amazon Bedrock,
+  ahead of the gateway, when `AWS_REGION` or `AWS_DEFAULT_REGION` is set and
+  serve is built with its `bedrock` feature (on by default in
+  `everruns-serve-agentcore`). Credentials come from the AWS default chain:
+  an IAM role (AgentCore or ECS task role, instance profile), SSO or a profile,
+  or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. If none is set, `dev` and `eval` fall back to the agent's `.offline(...)`
   script, or to an echo simulator. `"sim"` always uses the simulator.
 - **Instructions** come from `md!("…")`, a file under `agent/` that is
   compiled in and, in `dev`, re-read from disk for every new session. Without

@@ -4,7 +4,8 @@
 //! stays fully offline — no provider crate, no Reqwest edge. Enable the `openai`
 //! feature to configure OpenAI-backed models through [`openai::OpenAI`],
 //! `openrouter` for [`openrouter::OpenRouter`], `anthropic` for
-//! `anthropic::Anthropic`, or `gemini` for `gemini::Gemini`.
+//! `anthropic::Anthropic`, `gemini` for `gemini::Gemini`, or `bedrock` for
+//! `bedrock::Bedrock` (static AWS keys or the AWS default credential chain).
 //!
 //! When an application does not care *which* vendor it reaches — a script, a
 //! test harness, a tool that runs on whoever's machine — [`from_env`] picks the
@@ -14,6 +15,8 @@ use std::fmt;
 
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
+#[cfg(feature = "bedrock")]
+pub mod bedrock;
 #[cfg(feature = "gemini")]
 pub mod gemini;
 #[cfg(feature = "openai")]

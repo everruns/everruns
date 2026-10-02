@@ -119,6 +119,11 @@ openrouter = ["dep:everruns-openrouter"]
 # `providers::anthropic::Anthropic` and `providers::gemini::Gemini`.
 anthropic = ["dep:everruns-anthropic"]
 gemini = ["dep:everruns-gemini"]
+# AWS Bedrock (`providers::bedrock::Bedrock`): static keys or the AWS default
+# credential chain (IAM roles: ECS/AgentCore container credentials, instance
+# profile, SSO/profile, env). Pulls in the AWS SDK and aws-config, so it is its
+# own opt-in rather than part of any default.
+bedrock = ["dep:everruns-bedrock", "everruns-bedrock/default-credentials"]
 # Typed decision: the TypeSafe-backed `DecisionsService` behind
 # `Decisions`, re-exported so one import reaches both halves.
 typesafe = ["dep:everruns-integrations-typesafe"]
@@ -161,6 +166,7 @@ everruns-openai = { workspace = true, optional = true }
 everruns-openrouter = { workspace = true, optional = true }
 everruns-anthropic = { workspace = true, optional = true }
 everruns-gemini = { workspace = true, optional = true }
+everruns-bedrock = { workspace = true, optional = true }
 # Client + framework surface only: the workspace dependency leaves the crate's
 # `hosted` feature off, so enabling `typesafe` on the facade does not drag in
 # everruns-platform. Guarded by scripts/lib/check-portable-builtins-isolation.sh.

@@ -5,8 +5,10 @@
 # - A crate of its own on serve's public hosting seam (`serve::Server`), not a
 #   serve feature: the platform contract (`/ping`, `/invocations`, port 8080)
 #   stays out of serve, and the next target is another sibling crate.
-# - No AWS SDK dependency: AgentCore Runtime talks plain HTTP to the
-#   container, and authentication happens in front of it.
+# - No AWS SDK in the hosting path: AgentCore Runtime talks plain HTTP to the
+#   container, and authentication happens in front of it. The AWS SDK arrives
+#   only through serve's default-on `bedrock` feature, for model calls: an
+#   AgentCore app names `bedrock/<model-id>` and runs on the execution role.
 # - Experimental (Alpha): published as `everruns-serve-agentcore` at the
 #   platform version, with no compatibility promise.
 
@@ -27,6 +29,13 @@ categories = ["development-tools", "web-programming::http-server"]
 
 [lib]
 name = "serve_agentcore"
+
+[features]
+# `bedrock/<model-id>` models on the runtime's execution role (serve's
+# `bedrock` feature). Default because AgentCore always runs with an AWS role
+# and region; disable default features to drop the AWS SDK.
+default = ["bedrock"]
+bedrock = ["everruns-serve/bedrock"]
 
 [dependencies]
 everruns-serve = { workspace = true, features = ["ag-ui"] }

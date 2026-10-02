@@ -77,7 +77,10 @@ curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"
 ```
 
 To use a real model, set `OPENROUTER_API_KEY`, or point `SERVE_GATEWAY_URL`
-and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway.
+and `SERVE_GATEWAY_KEY` at any OpenAI-compatible gateway. With serve's
+`bedrock` feature, `bedrock/<model-id>` models (for example
+`bedrock/us.anthropic.claude-sonnet-4-6`) call Amazon Bedrock on the AWS
+default credential chain whenever `AWS_REGION` is set.
 
 | Example | Shows |
 | --- | --- |

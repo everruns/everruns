@@ -39,6 +39,11 @@ name = "serve"
 # `POST /v1/e/{agent}/ag-ui`: serve every top-level agent to AG-UI 1.0 clients
 # (CopilotKit, `@ag-ui/client`) through `everruns::ag_ui`.
 ag-ui = ["everruns/ag-ui-axum"]
+# `bedrock/<model-id>` models: Amazon Bedrock on the AWS default credential
+# chain (an IAM role, ECS/AgentCore container credentials, instance profile,
+# SSO/profile, env), routed when AWS_REGION or AWS_DEFAULT_REGION is set. Off by
+# default because it pulls in the AWS SDK; serve-agentcore turns it on.
+bedrock = ["everruns/bedrock"]
 
 [dependencies]
 everruns = { workspace = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }

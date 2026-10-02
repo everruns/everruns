@@ -265,6 +265,7 @@ everruns-openai = { path = "crates/drivers/openai", version = "0.33.0" }
 everruns-openrouter = { path = "crates/drivers/openrouter", version = "0.33.0" }
 everruns-anthropic = { path = "crates/drivers/anthropic", version = "0.33.0" }
 everruns-gemini = { path = "crates/drivers/gemini", version = "0.33.0" }
+everruns-bedrock = { path = "crates/drivers/bedrock", version = "0.33.0" }
 everruns = { path = "crates/everruns", version = "0.33.0" }
 everruns-macros = { path = "crates/macros", version = "0.33.0" }
 everruns-serve = { path = "crates/serve", version = "0.33.0" }

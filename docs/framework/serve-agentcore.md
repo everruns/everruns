@@ -188,7 +188,26 @@ point `DATABASE_URL` at storage you own, such as an S3 Files or EFS mount
 
 ## Models
 
-serve routes `provider/model` ids through its gateway. Set `SERVE_GATEWAY_URL`
+Name a Bedrock model as `bedrock/<model-id>`, where the rest is a Bedrock model
+id or inference profile:
+
+```rust
+Agent::builder()
+    .model("bedrock/us.anthropic.claude-sonnet-4-6")
+```
+
+When `AWS_REGION` or `AWS_DEFAULT_REGION` is set, serve calls Amazon Bedrock
+directly with the runtime's execution role: no keys in the image or the
+environment. Credentials come from the AWS default chain, which on AgentCore is
+the execution role's container credentials, and refresh before they expire.
+The role needs `bedrock:InvokeModelWithResponseStream` on the model; for a
+cross-region inference profile such as `us.…`, on the profile and on the
+foundation model in each region it routes to. Pass the region in
+`--environment-variables` if the runtime does not already provide it. This
+route is serve's `bedrock` feature, on by default in `everruns-serve-agentcore`;
+`default-features = false` drops it and the AWS SDK.
+
+Other `provider/model` ids go through serve's gateway. Set `SERVE_GATEWAY_URL`
 to an AgentCore Gateway inference endpoint (`https://<gateway>/inference/v1`)
 with targets named after providers (`anthropic`, `openai`), and
 `anthropic/claude-sonnet-5` routes as-is. Provider API keys then stay in the
@@ -203,6 +222,7 @@ Gateway's credential providers instead of the runtime's environment.
 | `SERVE_DATA_DIR`, `DATABASE_URL` | Where the session log lives. Default: session storage when mounted |
 | `SERVE_WORKSPACE` | The agent's workspace. Default: the session storage mount |
 | `SERVE_GATEWAY_URL`, `SERVE_GATEWAY_KEY` | serve's model gateway |
+| `AWS_REGION`, `AWS_DEFAULT_REGION` | Region for `bedrock/<model-id>` models, which run on the execution role |
 
 ## Compared with other AgentCore agents
 
@@ -227,9 +247,10 @@ Gateway's credential providers instead of the runtime's environment.
   idle timeout (15 minutes by default).
 - `#[schedule]`s run in-process, so they only fire while a session's microVM
   is up. Use EventBridge to call `InvokeAgentRuntime` on a schedule instead.
-- The Bedrock model driver takes static keys only. Route models through an
-  AgentCore Gateway, or another gateway, rather than relying on the runtime's
-  IAM role.
+- Only `bedrock/…` models use the runtime's execution role. Other providers
+  need the gateway or their own keys. The role must allow
+  `bedrock:InvokeModelWithResponseStream`; a missing permission surfaces as an
+  `AccessDeniedException` on the first turn.
 
 ## Reference
 

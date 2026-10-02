@@ -238,10 +238,13 @@ pub mod __macro_support {
 // The default facade build stays offline; provider modules compile only when
 // their feature is enabled. `openai` adds `providers::openai::OpenAI`,
 // `openrouter` adds `providers::openrouter::OpenRouter`, `anthropic` adds
-// `providers::anthropic::Anthropic`, `gemini` adds `providers::gemini::Gemini`.
+// `providers::anthropic::Anthropic`, `gemini` adds `providers::gemini::Gemini`,
+// `bedrock` adds `providers::bedrock::Bedrock`.
 pub mod providers;
 #[cfg(feature = "anthropic")]
 pub use providers::anthropic::{Anthropic, AnthropicError};
+#[cfg(feature = "bedrock")]
+pub use providers::bedrock::Bedrock;
 #[cfg(feature = "gemini")]
 pub use providers::gemini::{Gemini, GeminiError};
 #[cfg(feature = "openai")]

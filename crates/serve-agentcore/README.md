@@ -60,6 +60,7 @@ serve's own.
 | `SERVE_DATA_DIR`, `DATABASE_URL` | Where serve keeps its SQLite session log. Default: the runtime's session storage at `/mnt/workspace/.serve` when mounted, else a temporary directory |
 | `SERVE_WORKSPACE` | The agent's workspace. Default: `/mnt/workspace` when mounted |
 | `SERVE_GATEWAY_URL`, `SERVE_GATEWAY_KEY` | serve's model gateway. An AgentCore Gateway inference endpoint (`https://<gateway>/inference/v1`) works here, with targets named after providers (`anthropic`, `openai`) so serve's `provider/model` ids route as-is |
+| `AWS_REGION`, `AWS_DEFAULT_REGION` | Region for `bedrock/<model-id>` models (for example `bedrock/us.anthropic.claude-sonnet-4-6`). When set, those models call Amazon Bedrock directly with the runtime's execution role, ahead of the gateway. The role needs `bedrock:InvokeModelWithResponseStream`. Disable the default `bedrock` feature to drop the AWS SDK |
 
 AgentCore mounts session storage only when an invocation arrives, so `/ping` answers
 without touching storage and the server boots on the first other request.
