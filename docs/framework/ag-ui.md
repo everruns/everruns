@@ -21,12 +21,12 @@ visible, and a failure carries the runtime's message.
 
 ## Mount it on axum
 
-Map each AG-UI `threadId` to a session, and turn each event into an SSE frame:
+`AgUiThreads` maps each AG-UI `threadId` to a session: the first run of a
+thread creates one from your agent, later runs reopen it. Turn each event into
+an SSE frame:
 
 ```rust
-use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::{Arc, Mutex};
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -34,42 +34,19 @@ use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
-use everruns::ag_ui::{AgUiError, AgUiOptions, InterruptGate, RunAgentInput};
-use everruns::{Agent, Engine, OpenAI, Session};
+use everruns::ag_ui::{AgUiError, AgUiOptions, AgUiThreads, InterruptGate, RunAgentInput};
+use everruns::{Agent, Engine, OpenAI};
 use futures::StreamExt;
 
 #[derive(Clone)]
 struct App {
-    engine: Engine,
+    threads: AgUiThreads,
     gate: InterruptGate,
-    threads: Arc<Mutex<HashMap<String, Session>>>,
-}
-
-impl App {
-    fn session(&self, thread_id: &str) -> Result<Session, Box<dyn std::error::Error>> {
-        let mut threads = self.threads.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(session) = threads.get(thread_id) {
-            return Ok(session.clone());
-        }
-        let agent = Agent::builder()
-            .instructions("You are a helpful assistant.")
-            .provider(OpenAI::from_env()?)
-            .model("gpt-5.6-terra")
-            .ask_user(self.gate.clone())
-            .approver(self.gate.clone())
-            .build()?;
-        let session = self.engine.create(agent);
-        threads.insert(thread_id.to_string(), session.clone());
-        Ok(session)
-    }
 }
 
 async fn ag_ui(State(app): State<App>, Json(input): Json<RunAgentInput>) -> Response {
-    let session = match app.session(&input.thread_id) {
-        Ok(session) => session,
-        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response(),
-    };
-    match session.ag_ui_with(input, AgUiOptions::new().gate(app.gate.clone())).await {
+    let options = AgUiOptions::new().gate(app.gate.clone());
+    match app.threads.run(input, options).await {
         Ok(run) => {
             let events = run.map(|event| {
                 Ok::<_, Infallible>(SseEvent::default().json_data(&event).unwrap_or_default())
@@ -83,10 +60,17 @@ async fn ag_ui(State(app): State<App>, Json(input): Json<RunAgentInput>) -> Resp
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let gate = InterruptGate::new();
+    let agent = Agent::builder()
+        .instructions("You are a helpful assistant.")
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
+        .ask_user(gate.clone())
+        .approver(gate.clone())
+        .build()?;
     let app = App {
-        engine: Engine::new(),
-        gate: InterruptGate::new(),
-        threads: Arc::default(),
+        threads: AgUiThreads::new(Engine::new(), agent),
+        gate,
     };
     let router = Router::new().route("/ag-ui", post(ag_ui)).with_state(app);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
@@ -109,6 +93,59 @@ import { HttpAgent } from "@ag-ui/client";
 
 const agent = new HttpAgent({ url: "http://127.0.0.1:3000/ag-ui" });
 ```
+
+## Threads across restarts
+
+`AgUiThreads::new` keeps its thread map in memory. To keep threads when the
+process restarts, keep both halves on disk: the sessions, with an agent on the
+`local` backend, and the map, with `SqliteThreadStore` (both need the `local`
+feature):
+
+```rust
+use everruns::ag_ui::{AgUiThreads, SqliteThreadStore};
+use everruns::{Agent, Engine, LocalConfig, OpenAI};
+
+let config = LocalConfig::new("/var/lib/my-app");
+let agent = Agent::builder()
+    .instructions("You are a helpful assistant.")
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
+    .local(config.clone())
+    .build()?;
+let threads = AgUiThreads::with_store(Engine::new(), agent, SqliteThreadStore::local(&config)?);
+```
+
+After a restart the next run of a thread reopens its session, history
+included. Implement `ThreadStore` to keep the map in your own database
+instead.
+
+A thread id is chosen by the client, and anyone who knows one continues that
+conversation. When one server serves several users, scope threads to the
+authenticated caller with `run_in`:
+
+```rust
+let run = app.threads.run_in(&user_id, input, options).await?;
+```
+
+Thread ids must be 1 to 128 characters of `[A-Za-z0-9-_.]`; anything else is
+`AgUiError::InvalidInput`.
+
+## History the client already has
+
+A client such as CopilotKit keeps the conversation and sends all of it with
+every run. When a thread is new to the server, for example after a restart
+without a durable backend, `AgUiThreads` records the input's earlier user and
+assistant messages as the new session's history before the run's user message,
+so the agent picks up where the conversation was. Once the session has
+history, the earlier messages are not read again: the session's own
+conversation wins.
+
+Only user and assistant text is seeded (an assistant's tool calls as text);
+`tool`, `system`, `developer`, activity and reasoning messages are not. The
+most recent 256 messages and 512 KiB of text are kept. On a session you
+resolve yourself, turn it on with `AgUiOptions::seed_history(true)` for a
+thread's first run. The client writes these messages, assistant turns
+included, so treat them as no more trusted than the user message.
 
 ## Questions and approvals become interrupts
 
@@ -157,8 +194,8 @@ let options = AgUiOptions::new().policy(ProjectionPolicy {
 
 The session owns the conversation, so only the last message is sent, and it
 must be a user message (its text parts), unless the run carries frontend tool
-results (below). Earlier messages, `state`, and `forwardedProps` are not
-read. `RUN_STARTED` carries `protocolVersion: "1.0"` only when the request
+results (below). Earlier messages are read only to seed a new thread (above);
+`state` and `forwardedProps` are not read. `RUN_STARTED` carries `protocolVersion: "1.0"` only when the request
 declared a version, so pre-1.0 clients see the stream they expect.
 
 ## Frontend tools
