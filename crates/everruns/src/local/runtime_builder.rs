@@ -36,6 +36,11 @@ pub fn local_capability_registry() -> everruns_core::CapabilityRegistry {
     // answered through the server API. A local host has no such endpoint and
     // supplies its own in-process approver through the agent builder instead.
     registry.unregister("tool_approval");
+    // Decision: delegation is registered regardless of `FEATURE_AGENT_DELEGATION`.
+    // That flag is the hosted product's experimental gate. In the framework the
+    // opt-in is the Cargo feature (`a2a`, ...) plus the developer adding the
+    // capability ref to an agent in code; an unattached capability is inert.
+    everruns_platform::capabilities::register_agent_delegation_capabilities(&mut registry);
     everruns_host::compose_runtime_capability_registry(registry)
 }
 
@@ -193,5 +198,19 @@ mod tests {
                 "local registry is missing `{capability_id}`"
             );
         }
+    }
+
+    /// The framework opt-in for delegation is the Cargo feature plus a
+    /// capability ref, not the hosted `FEATURE_AGENT_DELEGATION` flag. The
+    /// assertion holds whatever that variable is set to, so the test reads no
+    /// environment it does not control.
+    #[test]
+    fn local_registry_registers_compiled_delegation_without_the_hosted_flag() {
+        let registry = local_capability_registry();
+        assert!(registry.has("agent_handoff"));
+        assert_eq!(
+            registry.has(everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID),
+            cfg!(feature = "a2a"),
+        );
     }
 }

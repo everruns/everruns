@@ -43,6 +43,43 @@ const DEFAULT_WRITE_BLOCKLIST: &[&str] = &[
     ".gradle",
 ];
 
+/// Wrap a runtime's session filesystem in the model-facing `policy`, and give
+/// tools a sibling store for runtime-owned artifacts.
+///
+/// Decision: runtime-owned artifacts (delegated-run records under
+/// `/.agent-runs`, structured task results under `/.tasks`) are written through
+/// that sibling store, not through `policy`. The policy says what the model's
+/// file tools may do; a read-only default must not make `spawn_agent` fail to
+/// record its own result, and widening the policy for those roots would also
+/// let the model's file tools forge the records. The sibling store is confined
+/// to the artifact roots ([`WorkspacePolicy::runtime_artifacts`]) and reaches
+/// capability code only as the
+/// [`RuntimeArtifactFileSystem`](everruns_core::session_files::RuntimeArtifactFileSystem)
+/// tool-context extension, read through
+/// `ToolContext::runtime_artifact_file_store` with runtime-chosen paths.
+pub(crate) fn apply_workspace_policy(
+    file_store: Arc<dyn SessionFileSystem>,
+    policy: WorkspacePolicy,
+    backends: &mut crate::HostBackends,
+) -> Arc<dyn SessionFileSystem> {
+    let artifacts: Arc<dyn SessionFileSystem> = Arc::new(PolicyFileStore::new(
+        file_store.clone(),
+        WorkspacePolicy::runtime_artifacts(),
+    ));
+    let embedder = backends.tool_context_extensions_factory.take();
+    backends.tool_context_extensions_factory = Some(Arc::new(move |org_id, session_id| {
+        let mut extensions = embedder
+            .as_ref()
+            .map(|factory| factory(org_id, session_id))
+            .unwrap_or_default();
+        extensions.insert(Arc::new(
+            everruns_core::session_files::RuntimeArtifactFileSystem(artifacts.clone()),
+        ));
+        extensions
+    }));
+    Arc::new(PolicyFileStore::new(file_store, policy))
+}
+
 /// Apply a backend-independent [`WorkspacePolicy`] to a session filesystem.
 ///
 /// Every model-driven read, listing, search, write, create, and delete flows

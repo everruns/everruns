@@ -430,7 +430,7 @@ pub(crate) async fn result_value_for_task(
         .flatten()?;
     declared_result_schema(&task)?;
     let result_path = task.result_path.as_deref()?;
-    let file_store = context.file_store.as_ref()?;
+    let file_store = context.runtime_artifact_file_store()?;
     let file = file_store
         .read_file(context.workspace_fs_key(), result_path)
         .await
@@ -463,7 +463,8 @@ pub(crate) async fn write_task_result_value(
     task_id: &str,
     value: &Value,
 ) -> everruns_provider::error::Result<Option<String>> {
-    let Some(file_store) = context.file_store.as_ref() else {
+    // Runtime-owned record: see `ToolContext::runtime_artifact_file_store`.
+    let Some(file_store) = context.runtime_artifact_file_store() else {
         return Ok(None);
     };
     let path = task_result_path(task_id);

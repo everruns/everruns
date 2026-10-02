@@ -1333,6 +1333,7 @@ everruns_core::session_file::bound_grep_matches	function
 everruns_core::session_file::build_grep_search_result	function
 everruns_core::session_file::merge_grep_search_results	function
 everruns_core::session_files	module
+everruns_core::session_files::RuntimeArtifactFileSystem	struct
 everruns_core::session_files::SessionFileSystem	trait
 everruns_core::session_files::SessionFileSystem::display_root	function
 everruns_core::session_files::SessionFileSystem::grep_files	function
@@ -1585,6 +1586,8 @@ everruns_core::tool_context::ReasoningEffortHandle	struct
 everruns_core::tool_context::ReasoningEffortHandle::set	function
 everruns_core::tool_context::ToolContext	struct
 everruns_core::tool_context::ToolContext::cancellation	struct_field
+everruns_core::tool_context::ToolContext::file_store	struct_field
+everruns_core::tool_context::ToolContext::runtime_artifact_file_store	function
 everruns_core::tool_context::ToolContext::with_extension	function
 everruns_core::tool_context::ToolContextExtensions	struct
 everruns_core::tool_context::ToolContextService	enum

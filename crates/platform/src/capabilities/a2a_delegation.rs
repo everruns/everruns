@@ -946,7 +946,7 @@ async fn write_result_artifact(context: &ToolContext, record: &mut AgentRunRecor
         return Ok(());
     }
 
-    let Some(file_store) = &context.file_store else {
+    let Some(file_store) = context.runtime_artifact_file_store() else {
         return Ok(());
     };
     let dir = format!("/.agent-runs/{}", record.run_id);

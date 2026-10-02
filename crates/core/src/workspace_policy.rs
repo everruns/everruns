@@ -35,6 +35,11 @@ const DEFAULT_WRITE_DENY_COMPONENTS: &[&str] = &[
     ".gradle",
 ];
 
+/// Workspace roots the runtime writes its own records under: delegated-run
+/// records (`/.agent-runs/{run_id}`) and structured task results
+/// (`/.tasks/{task_id}`). See `WorkspacePolicy::runtime_artifacts`.
+const RUNTIME_ARTIFACT_ROOTS: &[&str] = &[".agent-runs", ".tasks"];
+
 /// A validated, composable workspace access policy.
 ///
 /// [`Default`] is intentionally read-only: ordinary non-hidden files are
@@ -148,6 +153,35 @@ impl WorkspacePolicy {
                     .map(|component| (*component).to_string())
                     .collect(),
                 hidden: vec![PolicyPath(vec![".agents".to_string()])],
+                sensitive: Vec::new(),
+                recursive_delete: false,
+            }],
+        }
+    }
+
+    /// Policy for the store the runtime persists its own artifacts through
+    /// (see [`crate::session_files::RuntimeArtifactFileSystem`]).
+    ///
+    /// Read and write, including the hidden component, under `/.agent-runs`
+    /// and `/.tasks` only; everything else, the rest of the
+    /// workspace included, stays denied. It is defense in depth for a store
+    /// that only runtime code with runtime-chosen paths holds, and grants
+    /// nothing to the model-facing store.
+    pub fn runtime_artifacts() -> Self {
+        let roots = || {
+            RUNTIME_ARTIFACT_ROOTS
+                .iter()
+                .map(|root| PolicyPath(vec![(*root).to_string()]))
+                .collect::<Vec<_>>()
+        };
+        Self {
+            layers: vec![PolicyLayer {
+                read: roots(),
+                write: roots(),
+                deny_read: Vec::new(),
+                deny_write: Vec::new(),
+                deny_write_components: Vec::new(),
+                hidden: roots(),
                 sensitive: Vec::new(),
                 recursive_delete: false,
             }],
@@ -756,5 +790,32 @@ mod tests {
             .build()
             .unwrap_err();
         assert!(error.to_string().contains("must not be empty"));
+    }
+
+    #[test]
+    fn runtime_artifact_policy_reaches_only_the_artifact_roots() {
+        let policy = WorkspacePolicy::runtime_artifacts();
+        for path in [
+            "/.agent-runs",
+            "/.agent-runs/run_1/result.json",
+            "/workspace/.tasks/task_1/result.json",
+        ] {
+            assert!(policy.permits_write(path), "{path}");
+            assert!(policy.permits_read(path), "{path}");
+        }
+        for path in [
+            "/notes.md",
+            "/.agents/AGENTS.md",
+            "/.env",
+            "/.ssh/id_rsa",
+            "/.agent-runs/../notes.md",
+            "/.agent-runs/run_1/.git/config",
+        ] {
+            assert!(!policy.permits_write(path), "{path}");
+        }
+        // The model-facing default is untouched: artifact roots stay denied.
+        let default = WorkspacePolicy::default();
+        assert!(!default.permits_write("/.agent-runs/run_1/result.json"));
+        assert!(!default.permits_read("/.tasks/task_1/result.json"));
     }
 }

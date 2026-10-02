@@ -116,6 +116,7 @@ pub use everruns_provider::error::{AgentLoopError, BillingPressureReason, LlmErr
 pub use everruns_provider::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 pub use extensions::{HostToolAugmentor, SubagentDelegateFactory, ToolContextExtensionsFactory};
+pub(crate) use file_store_decorators::apply_workspace_policy;
 #[allow(deprecated)]
 pub use file_store_decorators::{
     ApprovalGatingFileStore, FileApprovalGate, PolicyFileStore, WriteBlocklistFileStore,

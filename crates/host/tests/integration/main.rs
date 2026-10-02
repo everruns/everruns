@@ -24,6 +24,7 @@ mod model_change_event_test;
 mod model_visible_path_identity_test;
 mod native_async_http;
 mod resolved_snapshot_test;
+mod runtime_artifact_store_test;
 mod runtime_host_test;
 mod tool_scheduler_e2e_test;
 mod turn_recovery_test;

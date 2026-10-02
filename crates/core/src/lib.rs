@@ -299,7 +299,7 @@ pub use runtime_context::{
     ResolvedTurnContextInput, TurnContextRequest, TurnContextResolver,
     assemble_resolved_turn_context, resolve_runtime_capabilities, resolve_snapshot_capabilities,
 };
-pub use session_files::{SessionFileSystem, WorkspaceScopedFileSystem};
+pub use session_files::{RuntimeArtifactFileSystem, SessionFileSystem, WorkspaceScopedFileSystem};
 pub use session_services::{
     KeyInfo, LeasedResourceStore, SecretInfo, SessionResourceRegistry, SessionStorageStore,
 };

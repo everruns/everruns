@@ -40,6 +40,16 @@ in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/a
 | [Host Shell Agent](/framework/examples/host-shell-agent/) | OpenAI `gpt-5.6-terra` | Fixes a failing Rust test suite by compiling and running it through real processes inside a kernel-enforced boundary. |
 | [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine decision questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
 
+## Serving agents
+
+These run agents as HTTP services with [Serve](/framework/serve/).
+
+| Example | What it does | Command |
+| --- | --- | --- |
+| [`serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest serve app: one agent, one tool | `cargo run -p serve-example-hello` |
+| [`serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to CopilotKit or any AG-UI client | `cargo run -p serve-example-ag-ui` |
+| [`serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | Two agents over [A2A](/framework/a2a/): a researcher served by serve, and a writer that delegates to it. Offline by default | `cargo run -p serve-example-a2a --bin researcher`, then `--bin writer -- "tide pools"` |
+
 ## Core crate catalog
 
 | Example | Demonstrates | Command |
