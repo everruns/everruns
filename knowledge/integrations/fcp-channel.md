@@ -92,7 +92,7 @@ with anything else.
 
 1. **Auth stack is FCP-only.** Token verification lives inside
    `crates/server/src/api/fcp.rs::check_token` and never delegates to
-   `AppEndpointAuthVerifier`. Adding new auth modes is intentionally a
+   `EndpointAuthVerifier`. Adding new auth modes is intentionally a
    breaking design decision, not a config flag.
 2. **Rate limiter is FCP-only.** `app_builder` constructs a dedicated
    `ChannelRateLimiter` with namespace `"fcp"`. Buckets cannot collide
