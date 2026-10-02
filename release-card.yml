@@ -1,19 +1,13 @@
-version: 0.34.0
+version: 0.34.1
 date: 2026-10-02
 headline:
-  - AG-UI and A2A
-  - reach 1.0.
+  - 0.34 reaches
+  - crates.io.
 summary:
-  - Agents speak AG-UI 1.0 and A2A 1.0,
-  - host on Amazon Bedrock AgentCore,
-  - and can run on the OpenAI Agents API.
+  - A patch release that finishes publishing
+  - the 0.34 crates, with the AG-UI 1.0
+  - and A2A 1.0 work from 0.34.0.
 highlights:
-  - title: AG-UI 1.0
-    description: Interrupts, frontend tools and subagents on the AG-UI 1.0 endpoint.
-    source: "#3965"
-  - title: A2A 1.0
-    description: Task results, ListTasks, subscriptions and push notifications.
-    source: "#3999"
-  - title: AgentCore hosting
-    description: A new hosting target runs agents on AgentCore Runtime.
-    source: "#3990"
+  - title: Complete crate publish
+    description: Every 0.34 crate publishes to crates.io in dependency order.
+    source: "#4018"

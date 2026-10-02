@@ -178,7 +178,20 @@ jobs:
               name: {
                   d["name"]
                   for d in published[name]["dependencies"]
-                  if d["name"] in to_release and (d.get("kind") in (None, "normal", "build"))
+                  if d["name"] in to_release
+                  and d["name"] != name
+                  and (
+                      d.get("kind") in (None, "normal", "build")
+                      # A dev-dependency that carries a version requirement
+                      # stays in the packaged manifest, and `cargo package`
+                      # resolves it from the index, so it must publish first.
+                      # Version-less path dev-deps are stripped and stay out
+                      # of the ordering. Ignoring the versioned ones put
+                      # everruns-durable (no normal deps, dev-dep on
+                      # everruns-core) first in the v0.34.0 cascade, where it
+                      # failed to package and halted the release.
+                      or (d.get("kind") == "dev" and d.get("req", "*") != "*")
+                  )
               }
               for name in to_release
           }

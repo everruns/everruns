@@ -210,9 +210,22 @@ private workspace package. CI runs it in the **Lockfile** job and again in
 (`.github/workflows/crate-release.yml`) compares each published crate's version
 against crates.io, creates `crate/<package>/v<version>` for any version not yet
 published, and dispatches **Publish Crate** for it in dependency order, so a
-dependant never publishes before the dependency it pins. Detection is by
+dependant never publishes before the dependency it pins. Dependency order
+includes dev-dependencies that carry a version requirement (explicit or
+inherited with `workspace = true`): `cargo package` keeps them in the packaged
+manifest and resolves them from the index. Version-less path dev-dependencies
+are stripped and do not constrain the order. Missing that is how v0.34.0 halted:
+`everruns-durable` has no normal dependencies, so it was ordered before
+`everruns-core`, which it dev-depends on, and could not package. Detection is by
 crates.io presence, so re-runs are idempotent and a version already published is
 skipped. `workflow_dispatch` with `dry_run: true` previews the set.
+
+**A halted cascade is resumed at the same commit or not at all.** Re-running
+Crate Release on the release commit finishes it. A fix pushed to `main` cannot
+finish it at the same version: siblings already published came from the
+release commit, so the plan reads the version as cut earlier and holds back
+every never-published crate and its dependants. When the fix has to change
+source, cut the next patch version instead (v0.34.0 was finished by v0.34.1).
 
 **Publish Crate** validates the selected manifest version, derives internal pins
 from Cargo metadata, and publishes only that package. Publishing cannot be
