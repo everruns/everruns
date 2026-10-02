@@ -286,9 +286,9 @@ everruns-integrations-openrouter = { path = "integrations/openrouter", version =
 everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.33.0", default-features = false }
 
 # A2A protocol
-a2a = { package = "a2a-lf", version = "0.3" }
-a2a-client = { package = "a2a-client-lf", version = "0.1" }
-a2a-server = { package = "a2a-server-lf", version = "0.3" }
+a2a = { package = "a2a-lf", version = "0.4" }
+a2a-client = { package = "a2a-client-lf", version = "0.2" }
+a2a-server = { package = "a2a-server-lf", version = "0.5" }
 
 # gRPC (tonic)
 tonic = { version = "0.14", features = ["tls-aws-lc"] }

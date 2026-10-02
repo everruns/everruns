@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "a2a-client-lf"
-version = "0.1.17"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1da8f6ca9f460fc47231a78165abec30e9ab60886a6c62c599b6055f7f5429cc"
+checksum = "ce0a91ba20a4c3406fd7161afb9aa9c29b9b2541ebf0a9d571368354b4059daf"
 dependencies = [
  "a2a-lf",
  "a2a-pb",
@@ -15,9 +15,8 @@ dependencies = [
  "bytes",
  "futures",
  "pin-project-lite",
- "reqwest 0.12.28",
+ "reqwest",
  "rustls",
- "rustls-pemfile",
  "semver",
  "serde",
  "serde_json",
@@ -25,14 +24,13 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "uuid",
- "webpki-roots 1.0.9",
 ]
 
 [[package]]
 name = "a2a-lf"
-version = "0.3.1"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b24d0f12bb1205e7ff85edbac2ea34aedd028f31dfebe8628e3aae4a66c200bd"
+checksum = "f7f132f3efbe23ffda546c5b24d065e7743981a28698f50a1803086b27ad9f9f"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -44,9 +42,9 @@ dependencies = [
 
 [[package]]
 name = "a2a-pb"
-version = "0.1.8"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e44fccf50ee3f44badfb7861e9b9d1e7af7f276b970762b25eb5911b9f03c0b"
+checksum = "88dce304b61df41018fbdf3f6e46d6b0832c09c2c422cd40d812eb2e07e68185"
 dependencies = [
  "a2a-lf",
  "chrono",
@@ -65,25 +63,26 @@ dependencies = [
 
 [[package]]
 name = "a2a-server-lf"
-version = "0.3.1"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5027f0f4919b0fea22831bd75521974efdf4561658c3df768d9a84dbe8313062"
+checksum = "8785556fe5031fcaa08ade5863265824164270b297810a57c10d6729ff5e26d3"
 dependencies = [
  "a2a-lf",
  "a2a-pb",
  "async-trait",
  "axum",
+ "axum-server",
  "chrono",
  "futures",
  "hyper",
- "reqwest 0.12.28",
+ "reqwest",
  "rustls",
  "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
  "tower",
- "tower-http 0.6.11",
+ "tower-http 0.7.1",
  "tracing",
  "uuid",
 ]
@@ -806,6 +805,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-server"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1df331683d982a0b9492b38127151e6453639cd34926eb9c07d4cd8c6d22bfc"
+dependencies = [
+ "arc-swap",
+ "bytes",
+ "either",
+ "fs-err",
+ "http",
+ "http-body",
+ "hyper",
+ "hyper-util",
+ "pin-project-lite",
+ "rustls",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tower-service",
+]
+
+[[package]]
 name = "base16ct"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -869,7 +890,7 @@ dependencies = [
  "os_display",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "serde",
  "serde_json",
@@ -2226,7 +2247,7 @@ dependencies = [
  "everruns-provider",
  "futures-util",
  "jsonschema",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2241,7 +2262,7 @@ dependencies = [
  "eventsource-stream",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2259,7 +2280,7 @@ dependencies = [
  "everruns-host",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2342,7 +2363,7 @@ dependencies = [
  "hostname",
  "ignore",
  "notify",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2491,7 +2512,7 @@ dependencies = [
  "chrono",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2552,7 +2573,7 @@ dependencies = [
  "eventsource-stream",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2593,7 +2614,7 @@ dependencies = [
  "opentelemetry_sdk",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "seccompiler",
  "serde",
  "serde_json",
@@ -2664,7 +2685,7 @@ dependencies = [
  "everruns-llmsim",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2684,7 +2705,7 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "futures-util",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -2725,7 +2746,7 @@ dependencies = [
  "everruns-core",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2744,7 +2765,7 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "inventory",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
@@ -2767,7 +2788,7 @@ dependencies = [
  "futures-util",
  "hickory-resolver",
  "http",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -2801,7 +2822,7 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2826,7 +2847,7 @@ dependencies = [
  "http-body",
  "prost",
  "protox",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -2867,7 +2888,7 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2899,7 +2920,7 @@ dependencies = [
  "everruns-core",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2918,7 +2939,7 @@ dependencies = [
  "everruns-core",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2935,7 +2956,7 @@ dependencies = [
  "everruns-core",
  "everruns-openrouter",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2950,7 +2971,7 @@ dependencies = [
  "everruns-core",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2965,7 +2986,7 @@ dependencies = [
  "everruns-core",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -2984,7 +3005,7 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "inventory",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -3102,7 +3123,7 @@ dependencies = [
  "chrono",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3141,7 +3162,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3165,7 +3186,7 @@ dependencies = [
  "chrono",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3181,7 +3202,7 @@ dependencies = [
  "chrono",
  "everruns-provider",
  "futures",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -3217,7 +3238,7 @@ dependencies = [
  "include_dir",
  "inventory",
  "jsonschema",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -3248,7 +3269,7 @@ dependencies = [
  "http",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls",
  "serde",
  "serde_json",
@@ -3287,7 +3308,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "getrandom 0.4.3",
- "reqwest 0.13.5",
+ "reqwest",
  "secrecy",
  "serde",
  "serde_json",
@@ -3315,7 +3336,7 @@ dependencies = [
  "hex",
  "hmac",
  "inventory",
- "reqwest 0.13.5",
+ "reqwest",
  "rusqlite",
  "schemars",
  "serde",
@@ -3336,7 +3357,7 @@ dependencies = [
  "clap",
  "everruns",
  "everruns-serve",
- "reqwest 0.13.5",
+ "reqwest",
  "serde_json",
  "tempfile",
  "tokio",
@@ -3424,7 +3445,7 @@ dependencies = [
  "prost-types",
  "rand 0.10.3",
  "regex",
- "reqwest 0.13.5",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_html_form 0.4.1",
@@ -3500,7 +3521,7 @@ dependencies = [
  "everruns-core",
  "everruns-platform",
  "everruns-provider",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -3548,7 +3569,7 @@ dependencies = [
  "everruns-provider",
  "mimalloc",
  "prost-types",
- "reqwest 0.13.5",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",
@@ -3632,7 +3653,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "rand 0.10.3",
- "reqwest 0.13.5",
+ "reqwest",
  "schemars",
  "serde",
  "serde_json",
@@ -3828,6 +3849,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "fs-err"
+version = "3.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b91aa448ca50d7e79433bdf3ee8d99215430d2ec02ade5aefab2a073a1822e8a"
+dependencies = [
+ "autocfg",
+ "tokio",
 ]
 
 [[package]]
@@ -4373,7 +4404,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -5848,7 +5878,7 @@ dependencies = [
  "percent-encoding",
  "quick-xml",
  "rand 0.10.3",
- "reqwest 0.13.5",
+ "reqwest",
  "rustls-pki-types",
  "serde",
  "serde_json",
@@ -5909,7 +5939,7 @@ dependencies = [
  "bytes",
  "http",
  "opentelemetry",
- "reqwest 0.13.5",
+ "reqwest",
 ]
 
 [[package]]
@@ -5925,7 +5955,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
- "reqwest 0.13.5",
+ "reqwest",
  "thiserror 2.0.21",
  "tokio",
 ]
@@ -7076,49 +7106,6 @@ checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 
 [[package]]
 name = "reqwest"
-version = "0.12.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "encoding_rs",
- "futures-core",
- "futures-util",
- "h2",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-util",
- "js-sys",
- "log",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "rustls",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sync_wrapper",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tower",
- "tower-http 0.6.11",
- "tower-service",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-streams 0.4.2",
- "web-sys",
- "webpki-roots 1.0.9",
-]
-
-[[package]]
-name = "reqwest"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
@@ -7159,7 +7146,7 @@ dependencies = [
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams 0.5.0",
+ "wasm-streams",
  "web-sys",
 ]
 
@@ -7300,15 +7287,6 @@ dependencies = [
  "rustls-pki-types",
  "schannel",
  "security-framework",
-]
-
-[[package]]
-name = "rustls-pemfile"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50"
-dependencies = [
- "rustls-pki-types",
 ]
 
 [[package]]
@@ -9405,19 +9383,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23f0c9c52aa7cd7d77769a4cfe2a9adb1b331f489a41d912ce14513d5ab995c6"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "wasm-streams"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
-dependencies = [
- "futures-util",
- "js-sys",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
