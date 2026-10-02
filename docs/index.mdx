@@ -4,61 +4,59 @@ description: Tutorials, how-to guides, reference, and explanation for building a
 template: splash
 ---
 
-import { Card, CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 Everruns is a **durable agentic harness engine** built on Rust. It provides APIs for managing agents, sessions, and long-running tasks, with real-time SSE event streaming and PostgreSQL-backed durability.
 
-Build directly inside a Rust application with the [Everruns Framework](/framework/),
-or use the Platform and SDK documentation for a durable deployment and remote clients.
-To skip operating the Platform entirely, use the hosted edition at
-[Everruns Cloud](https://app.everruns.com).
+Use it in one of three ways: embed the [Framework](/framework/) in a Rust
+application, run the Platform yourself, or use [Everruns Cloud](/getting-started/cloud/)
+and let Everruns operate it. [Start here](/getting-started/introduction/) compares
+the three.
 
-## What kind of help do you need?
-
-The documentation is organised by what you're trying to do.
+## Choose how you run Everruns
 
 <CardGrid>
   <LinkCard
-    title="Everruns Cloud"
-    description="Use the hosted Platform without running it yourself. Includes a built-in model provider with starter credit; your own provider keys are optional."
-    href="https://app.everruns.com"
-  />
-  <LinkCard
     title="Framework"
-    description="Build and run agents in a Rust process with the application-facing everruns crate."
-    href="/framework/"
+    description="Build and run agents inside a Rust process with the everruns crate. Nothing else to deploy."
+    href="/framework/quickstart/"
   />
   <LinkCard
-    title="Learn — Tutorials"
+    title="Self-hosted"
+    description="Run the Platform (API, workers, PostgreSQL, UI) on infrastructure you control, starting with Docker Compose."
+    href="/getting-started/docker-compose/"
+  />
+  <LinkCard
+    title="Everruns Cloud"
+    description="Use the Platform at app.everruns.com without running it. A built-in model provider and $5 of starter credit; your own provider keys are optional."
+    href="/getting-started/cloud/"
+  />
+</CardGrid>
+
+## What kind of help do you need?
+
+<CardGrid>
+  <LinkCard
+    title="Learn: Tutorials"
     description="Step-by-step lessons that end with a running agent. Start here if you're new."
     href="/tutorials/run-an-agent/"
   />
   <LinkCard
-    title="Do — How-to guides"
+    title="Do: How-to guides"
     description="Task-oriented recipes for common problems. Use these when you know what you want to build."
     href="/how-to/"
   />
   <LinkCard
-    title="Understand — Explanation"
+    title="Understand: Explanation"
     description="Background and design rationale. Read these when reference docs aren't enough on their own."
     href="/explanation/"
   />
   <LinkCard
-    title="Look up — Reference"
-    description="API endpoints, event types, capability catalog, CLI flags, environment variables. The dry stuff."
+    title="Look up: Reference"
+    description="API endpoints, event types, capability catalog, CLI flags, environment variables."
     href="/api/"
   />
 </CardGrid>
-
-## Getting started fast
-
-<Steps>
-
-1. Choose [Everruns Cloud](https://app.everruns.com) for the hosted Platform, the [Framework](/framework/) for an in-process Rust application, or [Docker Compose](/getting-started/docker-compose/) to run the full Platform yourself.
-2. Run the [Framework quickstart](/framework/quickstart/) or follow the [SDK tutorial](/tutorials/building-agents-using-sdk/).
-3. Browse [How-to guides](/how-to/) to do something specific.
-
-</Steps>
 
 ## Popular destinations
 

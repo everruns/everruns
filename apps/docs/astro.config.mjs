@@ -42,6 +42,8 @@ export default defineConfig({
     "/framework/runtime-compatibility/": "/framework/custom-backends/",
     "/advanced/embedding-everruns/": "/framework/custom-backends/",
     "/framework/direct-classification/": "/framework/direct-decisions/",
+    // The Bashkit ecosystem overview was folded into the capability page.
+    "/ecosystem/bashkit/": "/capabilities/bashkit-shell/",
   },
   vite: {
     resolve: {
@@ -128,6 +130,7 @@ export default defineConfig({
         Footer: "./src/components/Footer.astro",
         TableOfContents: "./src/components/TableOfContents.astro",
         MobileTableOfContents: "./src/components/MobileTableOfContents.astro",
+        PageTitle: "./src/components/PageTitle.astro",
       },
       customCss: ["./src/styles/custom.css"],
       plugins: [
@@ -139,29 +142,32 @@ export default defineConfig({
           },
         ]),
         starlightSidebarTopics(
+          // Four tracks: Start here (choose Framework, self-hosted, or Everruns
+          // Cloud), Framework, Platform (shared by self-hosted and Cloud), and
+          // Reference (catalogs and API). Order Framework, self-hosted, Cloud
+          // wherever the three appear. Each page belongs to one topic only.
           [
             {
-              label: "Get Started",
+              label: "Start here",
               link: "/getting-started/introduction/",
               icon: "open-book",
               items: [
                 {
-                  label: "Getting Started",
+                  label: "Start here",
                   items: [
-                    { label: "Introduction", slug: "getting-started/introduction" },
+                    { label: "Choose how you run Everruns", slug: "getting-started/introduction" },
+                    { label: "Self-hosted: Docker Compose", slug: "getting-started/docker-compose" },
+                    { label: "Everruns Cloud", slug: "getting-started/cloud" },
                     { label: "Concepts", slug: "getting-started/concepts" },
-                    { label: "Docker Compose", slug: "getting-started/docker-compose" },
                     { label: "Use in AI Tools", slug: "getting-started/use-in-ai-tools" },
-                    { label: "Architecture", slug: "getting-started/architecture" },
                   ],
                 },
                 {
-                  label: "Features",
-                  items: [{ autogenerate: { directory: "features" } }],
-                },
-                {
-                  label: "Advanced",
-                  items: [{ autogenerate: { directory: "advanced" } }],
+                  label: "Tutorials",
+                  items: [
+                    { label: "Run an Agent", slug: "tutorials/run-an-agent" },
+                    { label: "Build your first agent", slug: "tutorials/building-agents-using-sdk" },
+                  ],
                 },
               ],
             },
@@ -239,19 +245,72 @@ export default defineConfig({
               ],
             },
             {
-              label: "Built-ins",
-              link: "/built-ins/",
-              icon: "puzzle",
+              // Everything a self-hosted Platform and Everruns Cloud share,
+              // plus what only a self-hosted operator needs (Operations).
+              label: "Platform",
+              link: "/getting-started/architecture/",
+              icon: "laptop",
               items: [
                 {
+                  label: "Overview",
+                  items: [{ label: "Architecture", slug: "getting-started/architecture" }],
+                },
+                {
+                  label: "Features",
+                  collapsed: true,
+                  items: [{ autogenerate: { directory: "features" } }],
+                },
+                {
+                  label: "How-to guides",
+                  collapsed: true,
+                  items: [{ autogenerate: { directory: "how-to" } }],
+                },
+                {
+                  label: "Advanced",
+                  collapsed: true,
+                  items: [{ autogenerate: { directory: "advanced" } }],
+                },
+                {
+                  label: "Explanation",
+                  collapsed: true,
+                  items: [{ autogenerate: { directory: "explanation" } }],
+                },
+                {
+                  label: "Operations (self-hosted)",
+                  collapsed: true,
+                  items: [
+                    { label: "Environment Variables", slug: "sre/environment-variables" },
+                    { label: "Admin Container", slug: "sre/admin-container" },
+                    {
+                      label: "Runbooks",
+                      items: [{ autogenerate: { directory: "sre/runbooks" } }],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              label: "Reference",
+              link: "/api/",
+              icon: "information",
+              id: "reference",
+              items: [
+                { label: "Event Reference", slug: "event-reference" },
+                {
                   label: "Harnesses",
-                  items: [{ autogenerate: { directory: "built-ins/harnesses" } }],
+                  collapsed: true,
+                  items: [
+                    { label: "Overview", slug: "built-ins" },
+                    { autogenerate: { directory: "built-ins/harnesses" } },
+                  ],
                 },
                 {
                   label: "Capabilities",
+                  collapsed: true,
                   // Grouped to mirror the category taxonomy in
                   // docs/capabilities/index.md. Keep the two in sync when
-                  // adding or recategorizing a capability.
+                  // adding or recategorizing a capability. Dev-grade-only
+                  // capabilities live in "Experimental (dev grade)" below.
                   items: [
                     { label: "Overview", slug: "capabilities" },
                     {
@@ -284,16 +343,12 @@ export default defineConfig({
                       items: [
                         { label: "Daytona", slug: "capabilities/daytona" },
                         { label: "E2B", slug: "capabilities/e2b" },
-                        { label: "Docker Container", slug: "capabilities/docker" },
                       ],
                     },
                     {
                       label: "Browser",
                       collapsed: true,
-                      items: [
-                        { label: "Browserless", slug: "capabilities/browserless" },
-                        { label: "Computer Use", slug: "capabilities/computer-use" },
-                      ],
+                      items: [{ label: "Browserless", slug: "capabilities/browserless" }],
                     },
                     {
                       label: "Data",
@@ -331,10 +386,7 @@ export default defineConfig({
                     {
                       label: "Platform",
                       collapsed: true,
-                      items: [
-                        { label: "Platform", slug: "capabilities/platform" },
-                        { label: "Platform Management (removed)", slug: "capabilities/platform-management" },
-                      ],
+                      items: [{ label: "Platform", slug: "capabilities/platform" }],
                     },
                     {
                       label: "Optimization",
@@ -369,129 +421,74 @@ export default defineConfig({
                     },
                   ],
                 },
-              ],
-            },
-            {
-              label: "Integrations",
-              link: "/integrations/",
-              icon: "laptop",
-              items: [
-                { label: "Overview", slug: "integrations" },
-                // Grouped to mirror the category taxonomy in
-                // docs/integrations/index.md. Keep the two in sync when adding
-                // or recategorizing an integration. Sidebar glyphs for each
-                // entry live in src/styles/custom.css, keyed by href.
                 {
-                  label: "Sandboxes & execution",
+                  label: "Integrations",
+                  collapsed: true,
+                  // Grouped to mirror the category taxonomy in
+                  // docs/integrations/index.md. Keep the two in sync when adding
+                  // or recategorizing an integration. Sidebar glyphs for each
+                  // entry live in src/styles/custom.css, keyed by href.
                   items: [
-                    { label: "Daytona", slug: "integrations/daytona" },
-                    { label: "E2B", slug: "integrations/e2b" },
-                    { label: "Container Sandbox", slug: "integrations/container-sandbox" },
-                    { label: "Sprites", slug: "integrations/sprites" },
-                    { label: "Cursor", slug: "integrations/cursor" },
-                  ],
-                },
-                {
-                  label: "Browser & web",
-                  items: [
-                    { label: "Browserless", slug: "integrations/browserless" },
-                    { label: "Brave Search", slug: "integrations/brave-search" },
-                    { label: "DuckDuckGo", slug: "integrations/duckduckgo" },
-                    { label: "Parallel", slug: "integrations/parallel" },
-                  ],
-                },
-                {
-                  label: "Reasoning & judgment",
-                  items: [{ label: "TypeSafe", slug: "integrations/typesafe" }],
-                },
-                {
-                  label: "Messaging",
-                  items: [{ label: "Slack", slug: "integrations/slack" }],
-                },
-                {
-                  label: "Credentials",
-                  items: [
-                    { label: "Secure MCP Credentials", slug: "integrations/mcp-credentials" },
-                  ],
-                },
-                {
-                  label: "Discovery",
-                  items: [{ label: "ARD", slug: "integrations/ard" }],
-                },
-                {
-                  label: "Providers",
-                  items: [{ autogenerate: { directory: "providers" } }],
-                },
-                {
-                  label: "Observability",
-                  items: [{ autogenerate: { directory: "observability" } }],
-                },
-                {
-                  label: "Ecosystem",
-                  items: [{ autogenerate: { directory: "ecosystem" } }],
-                },
-              ],
-            },
-            {
-              label: "Tutorials",
-              link: "/tutorials/run-an-agent/",
-              icon: "rocket",
-              items: [
-                {
-                  label: "Tutorials",
-                  items: [
-                    { label: "Run an Agent", slug: "tutorials/run-an-agent" },
-                    { label: "Build your first agent", slug: "tutorials/building-agents-using-sdk" },
-                  ],
-                },
-                {
-                  label: "How-to guides",
-                  items: [{ autogenerate: { directory: "how-to" } }],
-                },
-              ],
-            },
-            {
-              label: "Explanation",
-              link: "/explanation/",
-              icon: "information",
-              items: [
-                {
-                  label: "Explanation",
-                  items: [{ autogenerate: { directory: "explanation" } }],
-                },
-              ],
-            },
-            {
-              label: "Reference",
-              link: "/api/",
-              icon: "information",
-              id: "reference",
-              items: [
-                { label: "Event Reference", slug: "event-reference" },
-                ...openAPISidebarGroups,
-              ],
-            },
-            {
-              label: "Operations",
-              link: "/sre/environment-variables/",
-              icon: "setting",
-              items: [
-                {
-                  label: "How-to: Operate Everruns",
-                  items: [
-                    { label: "Environment Variables", slug: "sre/environment-variables" },
-                    { label: "Admin Container", slug: "sre/admin-container" },
+                    { label: "Overview", slug: "integrations" },
                     {
-                      label: "Runbooks",
-                      items: [{ autogenerate: { directory: "sre/runbooks" } }],
+                      label: "Sandboxes & execution",
+                      items: [
+                        { label: "Daytona", slug: "integrations/daytona" },
+                        { label: "E2B", slug: "integrations/e2b" },
+                        { label: "Container Sandbox", slug: "integrations/container-sandbox" },
+                        { label: "Cursor", slug: "integrations/cursor" },
+                      ],
+                    },
+                    {
+                      label: "Browser & web",
+                      items: [{ label: "Browserless", slug: "integrations/browserless" }],
+                    },
+                    {
+                      label: "Messaging",
+                      items: [{ label: "Slack", slug: "integrations/slack" }],
+                    },
+                    {
+                      label: "Credentials",
+                      items: [
+                        { label: "Secure MCP Credentials", slug: "integrations/mcp-credentials" },
+                      ],
+                    },
+                    {
+                      label: "Providers",
+                      items: [{ autogenerate: { directory: "providers" } }],
+                    },
+                    {
+                      label: "Observability",
+                      items: [{ autogenerate: { directory: "observability" } }],
                     },
                   ],
                 },
+                {
+                  // Capabilities and integrations registered only at the
+                  // development deployment grade (`experimental_only: true` in
+                  // their crate's plugin list), so never on Everruns Cloud.
+                  label: "Experimental (dev grade)",
+                  collapsed: true,
+                  items: [
+                    { label: "ARD", slug: "integrations/ard" },
+                    { label: "Brave Search", slug: "integrations/brave-search" },
+                    { label: "Computer Use", slug: "capabilities/computer-use" },
+                    { label: "Docker Container", slug: "capabilities/docker" },
+                    { label: "DuckDuckGo", slug: "integrations/duckduckgo" },
+                    { label: "Parallel", slug: "integrations/parallel" },
+                    { label: "Sprites", slug: "integrations/sprites" },
+                    { label: "TypeSafe", slug: "integrations/typesafe" },
+                  ],
+                },
+                ...openAPISidebarGroups,
               ],
             },
           ],
           {
             exclude: ["/", "/api/**"],
+            // Retired capability page kept for inbound links, unlisted in the
+            // sidebar but still shown under the Reference tab.
+            topics: { reference: ["/capabilities/platform-management"] },
           },
         ),
         apiSidebarFix(),
@@ -513,9 +510,9 @@ export default defineConfig({
           details: [
             "Everruns is used in three ways, in increasing order of what it operates for you:",
             "",
-            "- **Framework** — embed Everruns in a Rust application with the `everruns` crate. You own the process, deployment, integrations, and data path. Start at <https://docs.everruns.com/framework/quickstart/>.",
-            "- **Self-hosted platform** — run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution. Start at <https://docs.everruns.com/getting-started/docker-compose/>.",
-            "- **Hosted Everruns** — use the shared runtime and production operations without operating the platform yourself: <https://app.everruns.com>.",
+            "- **Framework**: embed Everruns in a Rust application with the `everruns` crate. You own the process, deployment, integrations, and data path. Start at <https://docs.everruns.com/framework/quickstart/>.",
+            "- **Self-hosted platform**: run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution. Start at <https://docs.everruns.com/getting-started/docker-compose/>.",
+            "- **Everruns Cloud**: use the shared runtime and production operations without operating the platform yourself, with a built-in model provider and starter credit. Start at <https://docs.everruns.com/getting-started/cloud/>.",
             "",
             "The documentation sets below are organised the same way, so a reader with a narrow question can take one set instead of the complete text. Every page in them carries a `Source:` line with its canonical URL; cite that rather than the text file.",
             "",
@@ -525,8 +522,22 @@ export default defineConfig({
           // derives no page index from the sidebar, so without these llms.txt
           // offers nothing but the two whole-site dumps — and the complete text
           // is ~250k tokens, more than most readers want for one question.
-          // Mirrors the sidebar topics above; keep the two in sync.
+          // Mirrors the sidebar topics above, split along their groups; keep
+          // the two in sync.
           customSets: [
+            {
+              label: "Start here",
+              description:
+                "choose between the Framework, a self-hosted Platform, and Everruns Cloud, then the first steps for each",
+              paths: [
+                "index",
+                "getting-started/introduction",
+                "getting-started/docker-compose",
+                "getting-started/cloud",
+                "getting-started/concepts",
+                "getting-started/use-in-ai-tools",
+              ],
+            },
             {
               label: "Framework",
               description:
@@ -534,10 +545,10 @@ export default defineConfig({
               paths: ["index", "framework/**"],
             },
             {
-              label: "Getting Started",
+              label: "Platform",
               description:
-                "platform concepts, deployment, and the feature surface of a running Everruns",
-              paths: ["index", "getting-started/**", "features/**", "advanced/**"],
+                "architecture and the feature surface of a running Everruns Platform, self-hosted or Everruns Cloud",
+              paths: ["getting-started/architecture", "features/**", "advanced/**"],
             },
             {
               label: "Built-ins",
@@ -557,7 +568,6 @@ export default defineConfig({
                 "integrations/**",
                 "providers/**",
                 "observability/**",
-                "ecosystem/**",
               ],
             },
             {
@@ -628,7 +638,6 @@ export default defineConfig({
             "sre/**",
             "providers/**",
             "observability/**",
-            "ecosystem/**",
             "integrations/**",
             "event-reference",
             "capabilities/platform-management",

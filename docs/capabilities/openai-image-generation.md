@@ -1,6 +1,7 @@
 ---
 title: OpenAI Image Generation
 description: Generate and edit raster images with OpenAI's GPT Image API, persist artifacts, and save outputs into the session workspace.
+appliesTo: [platform, cloud]
 ---
 
 | | |

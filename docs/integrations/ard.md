@@ -3,6 +3,7 @@ title: Agentic Resource Discovery (ARD)
 description: Discover and attach external MCP servers and A2A agents at runtime via the ARD protocol, with registry configuration and trust gating.
 sidebar:
   label: ARD Discovery
+appliesTo: [platform]
 ---
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><circle cx="12" cy="5" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="5" cy="18" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="19" cy="18" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.7 6.9L6.3 15.9M13.3 6.9L17.7 15.9M7.3 18h9.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

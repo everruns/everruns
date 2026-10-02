@@ -3,6 +3,7 @@ title: Claude Tool Search
 description: Deferred tool loading on supported Claude models. Tools are loaded on demand through Anthropic's hosted tool search.
 sidebar:
   order: 91
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

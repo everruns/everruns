@@ -1,6 +1,7 @@
 ---
 title: Stream events with the SDK
 description: Consume the SSE event stream from the Python SDK with automatic reconnection, heartbeat detection, and event filtering.
+appliesTo: [platform, cloud]
 ---
 
 The Python SDK's `client.events.stream(session_id)` returns an async iterator over typed events. It handles reconnection, heartbeat-based stale detection, and resumption with `since_id` automatically.

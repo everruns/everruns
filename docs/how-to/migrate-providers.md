@@ -1,6 +1,7 @@
 ---
 title: Migrate between LLM providers
 description: Switch agents from OpenAI to Anthropic to Gemini (or any OpenAI-compatible provider) without rewriting prompts or capabilities.
+appliesTo: [platform, cloud]
 ---
 
 Everruns abstracts the LLM behind a uniform interface, so the same agent can run on OpenAI, Anthropic, Gemini, or any OpenAI-compatible provider. This guide swaps providers cleanly without losing sessions or rewriting agents.

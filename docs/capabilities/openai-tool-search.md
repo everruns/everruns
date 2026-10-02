@@ -3,6 +3,7 @@ title: OpenAI Tool Search
 description: Deferred tool loading on supported OpenAI models. Tools are loaded on demand through semantic search.
 sidebar:
   order: 90
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

@@ -3,6 +3,7 @@ title: Guardrails
 description: Config-driven checks that constrain agent behavior, inspecting model output and tool activity, then blocking or logging when content matches a rule.
 sidebar:
   order: 94
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

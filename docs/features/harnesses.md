@@ -1,6 +1,7 @@
 ---
 title: Harnesses
 description: A harness is what an agent runs on, the execution environment, default model, and bundled capabilities that agents and sessions extend.
+appliesTo: [platform, cloud]
 ---
 
 A **harness** is what an agent *runs on*. It answers "what environment am I working in, and what is available to me?", the execution environment, the default model, and a bundle of capabilities. Every session is assigned exactly one harness. Agents and sessions then layer their own configuration on top.

@@ -60,11 +60,20 @@ rendered as horizontal tabs below the header on desktop:
 
 | Tab | Content |
 |-----|---------|
-| Get Started | Getting Started guides + Features |
-| Integrations | Integrations + Providers + Observability + Ecosystem |
-| Capabilities | Per-capability reference pages (tools, examples, use cases) |
-| Operations | SRE Guide + Runbooks |
-| Reference | Event Reference + API Reference (OpenAPI) |
+| Start here | The chooser between Framework, self-hosted, and Everruns Cloud; the Docker Compose and Cloud quickstarts; concepts; tutorials |
+| Framework | The in-process Rust Framework |
+| Platform | What self-hosted and Everruns Cloud share: features, how-to guides, advanced topics, explanation; plus self-hosted operations |
+| Reference | Event reference, harness and capability catalog, integrations and providers, dev-grade-only experiments, API reference (OpenAPI) |
+
+Why these four: the first question a reader has is which Everruns they are
+using. The three ways of running it appear in the same order and with the same
+names everywhere (README, llms.txt, chooser, badges): Framework, Self-hosted,
+Everruns Cloud. "Everruns Cloud" is the only name for app.everruns.com.
+
+Capabilities and integrations registered only at the development deployment
+grade sit in one "Experimental (dev grade)" group rather than beside the
+supported ones, because Everruns Cloud runs at production grade and never
+offers them.
 
 Custom `Header.astro` override renders topics as a fixed tab bar below the
 main header. Sidebar topic list is hidden on desktop (visible on mobile).
@@ -91,6 +100,7 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 
 - `title` and `description` are required
 - `hero` is optional, relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
+- `appliesTo` is optional: any of `framework`, `platform`, `cloud`. `PageTitle.astro` renders it as an "Applies to" badge row under the title. Set it on capability, feature, and how-to pages, and only after checking availability in code: `framework` means the default Framework capability registry or an `everruns` Cargo feature; `platform` and `cloud` share the server registry, except that `experimental_only` (dev grade) plugins are never on Cloud. A page without the field shows no row, which is better than a wrong one
 
 #### Notebook-Backed Tutorials
 
@@ -350,7 +360,7 @@ without the site next to it.
    leave out. `starlight-llms-txt` derives no page index from the sidebar, so
    the index exists only as far as `customSets` and `optionalLinks` describe it
 2. Every documentation set in `astro.config.mjs` must correspond to a sidebar
-   topic, so a reader with a narrow question can take one set — the complete
+   topic or a group within one, so a reader with a narrow question can take one set — the complete
    text is around 250k tokens
 3. Every page in every text output must carry a `Source:` line with its
    canonical URL, and links must be absolute: the outputs are read away from

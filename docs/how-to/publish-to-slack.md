@@ -1,6 +1,7 @@
 ---
 title: Publish an Agent to Slack
 description: Add a Slack endpoint to an Agent, publish it, connect a Slack workspace, and verify the first message.
+appliesTo: [platform, cloud]
 ---
 
 This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For Slack scopes, manual setup, and troubleshooting, see [Slack Integration](/integrations/slack/).

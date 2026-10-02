@@ -1,6 +1,7 @@
 ---
 title: Agent Versions
 description: Save immutable Agent snapshots, compare changes, roll back, and bind endpoints and triggers to a default, latest, or pinned version.
+appliesTo: [platform, cloud]
 ---
 
 # Agent Versions

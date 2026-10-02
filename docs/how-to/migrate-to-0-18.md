@@ -1,6 +1,7 @@
 ---
 title: Migrate to 0.18
 description: Move Rust code off `everruns-core` paths that changed in 0.18, with a symbol-by-symbol table of where each type now lives.
+appliesTo: [framework]
 ---
 
 0.18 narrows `everruns-core` to the neutral execution kernel. Types that were persisted control-plane records, hosted service contracts, product composition or concrete integrations moved to the crate that owns them. The behaviour, the wire formats and the stored schema are unchanged, only the import paths.

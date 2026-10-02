@@ -3,6 +3,7 @@ title: Tool Approval
 description: Hold back risky tool calls until a person approves them. The call does not run until someone says yes.
 sidebar:
   order: 95
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

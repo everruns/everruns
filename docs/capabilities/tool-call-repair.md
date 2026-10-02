@@ -3,6 +3,7 @@ title: Tool Call Repair
 description: Detects and repairs malformed tool-call arguments from the model, recovering the turn instead of surfacing a raw parse error.
 sidebar:
   order: 96
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

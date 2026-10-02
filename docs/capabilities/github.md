@@ -1,6 +1,7 @@
 ---
 title: GitHub
 description: Read and review GitHub pull requests with inline comments, keep one comment per pull request up to date, and file deduplicated issues.
+appliesTo: [platform, cloud]
 ---
 
 | | |

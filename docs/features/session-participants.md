@@ -1,6 +1,7 @@
 ---
 title: Session Participants
 description: Invite agents into a shared session, address a specific agent for a turn, and understand host, member, user, join, and leave behavior.
+appliesTo: [platform, cloud]
 ---
 
 A session can include more than one agent and more than one user. Session participants record who is present, whether they are the host or a member, and when they joined or left.

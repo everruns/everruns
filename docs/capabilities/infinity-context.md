@@ -3,6 +3,7 @@ title: Infinity Context
 description: Trim live prompt history and query older messages on demand, so conversation length is not bounded by the context window.
 sidebar:
   order: 85
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

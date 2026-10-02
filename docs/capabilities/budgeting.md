@@ -1,6 +1,7 @@
 ---
 title: Budgeting
 description: Expose active budgets to the agent so it can check the remaining balance and adjust its own spending.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

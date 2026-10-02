@@ -1,6 +1,7 @@
 ---
 title: Bashkit Shell
 description: Run Bash commands in a sandboxed interpreter with process isolation, resource limits, streaming output, and workspace-only filesystem access.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |
@@ -15,13 +16,26 @@ Execute bash commands in a sandboxed environment with no access to the host
 system. The session filesystem is mounted at `/workspace`, so commands read and
 write the same files as the [File System](/capabilities/file-system/) tools.
 
-## Powered by Bashkit
+## About Bashkit
 
-This capability runs on [**bashkit**](https://bashkit.sh), an embeddable bash
-interpreter that executes shell scripts in-process inside a WASM-like sandbox,
-with no real shell, no subprocess spawning, and no host access. Learn more at
-[bashkit.sh](https://bashkit.sh) or browse the source on
-[GitHub](https://github.com/everruns/bashkit).
+This capability runs on [**Bashkit**](https://bashkit.sh), a virtual Bash
+interpreter written in Rust. It executes shell scripts in-process, with no real
+shell, no subprocess spawning, and no host access, which makes it suitable for
+running untrusted scripts in multi-tenant agent environments. Browse the source
+on [GitHub](https://github.com/everruns/bashkit).
+
+Bashkit provides:
+
+- **The shell language**: variables, parameter expansion, command
+  substitution, arithmetic, pipelines, redirections, control flow, functions,
+  arrays, globs, and here-documents.
+- **Built-in commands** implemented in Rust: file I/O and navigation (`cat`,
+  `ls`, `find`, `cp`, `mv`), text processing (`grep`, `sed`, `awk`, `jq`,
+  `sort`), archives (`tar`, `gzip`), and network commands (`curl`, `wget`).
+- **A pluggable virtual filesystem**: Everruns plugs in the session file store,
+  so there is no copy step before or after a command.
+- **Resource limits** on command count, loop iterations, and function depth,
+  so a runaway script cannot exhaust shared infrastructure.
 
 Because the interpreter is sandboxed by construction, bash here is **not** a
 shell-out to the host: there is no `/bin/bash` process, no direct network stack,

@@ -3,6 +3,7 @@ title: Auto Tool Search
 description: Deferred tool loading that uses the provider's hosted tool search where available (OpenAI or Claude) and a client-side fallback everywhere else.
 sidebar:
   order: 89
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

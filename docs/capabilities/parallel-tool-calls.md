@@ -3,6 +3,7 @@ title: Parallel Tool Calls
 description: Controls whether the agent requests multiple tool calls per turn and runs them concurrently, prefer parallel, avoid (serialize), or leave the provider default.
 sidebar:
   order: 97
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

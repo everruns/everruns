@@ -1,6 +1,7 @@
 ---
 title: Message Metadata
 description: Annotate user and agent messages with metadata such as their timestamp when they are sent to the LLM, so agents can reason about timing and gaps between messages.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

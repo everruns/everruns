@@ -1,6 +1,7 @@
 ---
 title: Complete a URL elicitation over the API
 description: Drive the pause-and-consent flow from your own client — declare the hint, read the confirm_url_elicitation event, and post the user's decision.
+appliesTo: [platform, cloud]
 ---
 
 When an MCP server asks that a person finish something in their browser, Everruns

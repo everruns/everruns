@@ -1,6 +1,7 @@
 ---
 title: AGENTS.md
 description: The AGENTS.md capability resolves project-level instructions from workspace files hierarchically and injects them as the leading user message on every turn.
+appliesTo: [platform, cloud]
 ---
 
 The **AGENTS.md** capability resolves project instruction files hierarchically — from the session filesystem root down to the working directory — and injects them as the leading user-role message on every turn. By default it reads `AGENTS.md`, Everruns' implementation of the [`AGENTS.md`](https://agents.md/) open standard, an emerging convention backed by OpenAI, Google, Cursor, Sourcegraph, and the Linux Foundation.

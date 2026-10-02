@@ -1,6 +1,7 @@
 ---
 title: Citation Verification
 description: Verify that each cited source actually supports the claim it is attached to, stamping a faithfulness verdict on every citation produced by any feed.
+appliesTo: [platform, cloud]
 ---
 
 | | |

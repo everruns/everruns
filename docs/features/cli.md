@@ -3,6 +3,7 @@ title: CLI
 description: Manage agents, sessions, and conversations from the command line.
 sidebar:
   label: CLI
+appliesTo: [platform, cloud]
 ---
 
 The `everruns` CLI is a command-line client for the Everruns API. It covers the same surface as the SDK (agents, sessions, messages, capabilities) and is designed to compose well with shell pipelines.

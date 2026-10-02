@@ -60,8 +60,9 @@ tools that would rather read text than HTML.
 - [`/llms-small.txt`](https://docs.everruns.com/llms-small.txt): the same
   corpus without the vendor- and operator-specific long tails.
 - `/_llms-txt/<set>.txt`: one topic at a time, mirroring the sidebar:
+  [start-here](https://docs.everruns.com/_llms-txt/start-here.txt),
   [framework](https://docs.everruns.com/_llms-txt/framework.txt),
-  [getting-started](https://docs.everruns.com/_llms-txt/getting-started.txt),
+  [platform](https://docs.everruns.com/_llms-txt/platform.txt),
   [built-ins](https://docs.everruns.com/_llms-txt/built-ins.txt),
   [guides](https://docs.everruns.com/_llms-txt/guides.txt),
   [integrations](https://docs.everruns.com/_llms-txt/integrations.txt),

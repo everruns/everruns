@@ -1,6 +1,7 @@
 ---
 title: Platform
 description: Discover, inspect, and manage Everruns resources through the command catalog.
+appliesTo: [platform, cloud]
 ---
 
 | | |

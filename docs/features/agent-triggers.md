@@ -1,6 +1,7 @@
 ---
 title: Agent Triggers
 description: Run an agent proactively on a recurring schedule, choose session reuse, test it immediately, and inspect recent outcomes.
+appliesTo: [platform, cloud]
 ---
 
 Agent triggers let an Agent start work without a user message. A trigger belongs to one Agent, runs on that Agent's Harness, and sends a configured message when it fires.

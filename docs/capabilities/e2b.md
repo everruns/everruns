@@ -3,6 +3,7 @@ title: E2B Sandboxes
 description: Run agent code in isolated E2B cloud sandboxes with command execution, file access, and session-scoped lifecycle management.
 sidebar:
   label: E2B
+appliesTo: [platform, cloud]
 ---
 
 | | |

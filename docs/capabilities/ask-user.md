@@ -1,6 +1,7 @@
 ---
 title: Ask User
 description: Let an agent ask the user a small batch of structured questions, and wait for the answer, instead of guessing or ending the turn in prose.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

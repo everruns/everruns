@@ -1,6 +1,7 @@
 ---
 title: Summarize GitHub Pull Requests
 description: Connect GitHub to an Agent, subscribe it to pull request events, and have it keep one summary comment on every pull request up to date.
+appliesTo: [platform, cloud]
 ---
 
 This guide builds an Agent that comments a summary on every pull request in the

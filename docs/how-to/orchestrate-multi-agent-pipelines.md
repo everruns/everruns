@@ -1,6 +1,7 @@
 ---
 title: Orchestrate multi-agent pipelines
 description: Chain multiple Everruns agents together by passing output from one session into another.
+appliesTo: [platform, cloud]
 ---
 
 A common pattern is splitting work across specialised agents, a researcher gathers facts, a writer turns them into prose, an editor polishes the result. Each is a separate agent and session; the application chains them.

@@ -1,6 +1,7 @@
 ---
 title: Agent Skills
 description: Discover and activate portable skill packages from the session workspace at runtime.
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |

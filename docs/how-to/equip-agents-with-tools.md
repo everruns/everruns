@@ -1,6 +1,7 @@
 ---
 title: Equip an agent with tools
 description: Assign capabilities to an agent so it can read files, run shell commands, fetch URLs, and track tasks.
+appliesTo: [platform, cloud]
 ---
 
 This guide assigns common capabilities to an agent so it can interact with files, run commands, and fetch URLs. For the full catalog see the [Capabilities reference](/capabilities/).

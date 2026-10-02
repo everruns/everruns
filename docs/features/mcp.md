@@ -3,6 +3,7 @@ title: Model Context Protocol (MCP)
 description: Everruns is both an MCP server, exposing its agents and tools to external clients with OAuth 2.1, and an MCP client that registers remote servers as virtual capabilities.
 sidebar:
   label: MCP
+appliesTo: [platform, cloud]
 ---
 
 Everruns speaks the [Model Context Protocol](https://spec.modelcontextprotocol.io) on **both sides**: it exposes its own agents and tools as an MCP server, and it consumes remote MCP servers as agent capabilities.

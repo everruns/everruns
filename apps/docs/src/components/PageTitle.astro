@@ -1,0 +1,82 @@
+---
+// Page title plus the "Applies to" row.
+//
+// Decision: the row reads the `appliesTo` frontmatter field (see
+// src/content.config.ts) and lists all three ways of running Everruns, marking
+// the ones the page does not apply to, so a reader can answer "does this work
+// for me?" without reading the page. Pages without the field render no row:
+// availability is filled in only where it was checked against the code.
+import Default from "@astrojs/starlight/components/PageTitle.astro";
+
+const appliesTo: string[] | undefined =
+  Astro.locals.starlightRoute.entry.data.appliesTo;
+
+// Same order and names as the Start here chooser.
+const targets = [
+  { id: "framework", label: "Framework", href: "/framework/quickstart/" },
+  { id: "platform", label: "Self-hosted", href: "/getting-started/docker-compose/" },
+  { id: "cloud", label: "Everruns Cloud", href: "/getting-started/cloud/" },
+];
+---
+
+<Default />
+
+{
+  appliesTo && appliesTo.length > 0 && (
+    <p class="applies-to">
+      <a class="applies-to-label" href="/getting-started/introduction/">
+        Applies to
+      </a>
+      {targets.map((target) => {
+        const on = appliesTo.includes(target.id);
+        return (
+          <a
+            class:list={["applies-to-badge", { off: !on }]}
+            href={target.href}
+          >
+            {target.label}
+            {!on && <span class="sr-only"> (not available)</span>}
+          </a>
+        );
+      })}
+    </p>
+  )
+}
+
+<style>
+  .applies-to {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+    font-size: var(--sl-text-xs);
+  }
+
+  .applies-to-label {
+    color: var(--sl-color-gray-3);
+    text-decoration: none;
+    margin-inline-end: 0.25rem;
+  }
+
+  .applies-to-badge {
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 999px;
+    background: var(--sl-color-accent-low);
+    color: var(--sl-color-white);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .applies-to-badge.off {
+    border-color: var(--sl-color-gray-5);
+    background: transparent;
+    color: var(--sl-color-gray-4);
+    text-decoration: line-through;
+  }
+
+  .applies-to a:hover {
+    color: var(--sl-color-text-accent);
+  }
+</style>

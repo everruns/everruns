@@ -3,6 +3,7 @@ title: User Hooks
 description: Run user-authored shell commands at lifecycle and tool events. Block, mutate, or audit agent actions from outside the model.
 sidebar:
   order: 96
+appliesTo: [platform, cloud]
 ---
 
 | | |

@@ -1,6 +1,7 @@
 ---
 title: Capabilities
 description: Capabilities give an agent tools, system prompt fragments, and session state. Overview with links to the reference.
+appliesTo: [platform, cloud]
 ---
 
 A **capability** is a self-contained unit that extends an agent. Each capability can contribute three kinds of thing:

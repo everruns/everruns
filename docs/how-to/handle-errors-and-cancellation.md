@@ -1,6 +1,7 @@
 ---
 title: Handle errors and cancel turns
 description: Detect and recover from failed turns, cancel a long-running turn, and react to common error events from the SSE stream.
+appliesTo: [platform, cloud]
 ---
 
 Turns can fail (the LLM rejected the request, a tool errored repeatedly) or be cancelled by the user. The event stream tells you which. This guide covers both paths.

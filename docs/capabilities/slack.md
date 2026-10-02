@@ -1,6 +1,7 @@
 ---
 title: Slack
 description: "Act in the Slack conversation as the bot the workspace already invited: reactions, message updates, file uploads, and user lookups."
+appliesTo: [platform, cloud]
 ---
 
 | | |

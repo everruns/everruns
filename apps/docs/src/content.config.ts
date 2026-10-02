@@ -12,6 +12,11 @@ export const collections = {
         published: z.string().optional(),
         topics: z.array(z.string()).optional(),
         github: z.url().optional(),
+        // Which ways of running Everruns a page applies to, rendered as a
+        // badge row under the title by components/PageTitle.astro. Omit it
+        // when availability has not been checked against the code: an absent
+        // row is better than a wrong one.
+        appliesTo: z.array(z.enum(["framework", "platform", "cloud"])).optional(),
       }),
     }),
   }),

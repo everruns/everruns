@@ -1,6 +1,7 @@
 ---
 title: SQL Database
 description: "Session-scoped SQLite databases: create tables, run queries, and persist relational data per session."
+appliesTo: [platform, cloud]
 ---
 
 | | |

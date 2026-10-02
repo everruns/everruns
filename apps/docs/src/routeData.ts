@@ -20,13 +20,13 @@ import { defineRouteMiddleware } from "@astrojs/starlight/route-data";
 const methodPathPrefix =
   /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+\s+-\s+/;
 
-// Hosted Everruns is the one route the docs never mentioned: readers could
-// only find the Framework and Docker Compose paths. A page may still override
-// this by setting `banner` in its own frontmatter.
+// Everruns Cloud is the one route readers could miss: the sidebar opens on the
+// Framework and Docker Compose paths. A page may still override this by
+// setting `banner` in its own frontmatter.
 const CLOUD_BANNER = {
   content:
     "Everruns Cloud is open in early access. " +
-    '<a href="https://app.everruns.com">Run agents without operating the platform</a>.',
+    '<a href="/getting-started/cloud/">Run agents without operating the platform</a>.',
 };
 
 export const onRequest = defineRouteMiddleware((context) => {

@@ -3,6 +3,7 @@ title: Auto-Continue After Usage Limit
 description: When an LLM subscription/plan usage limit is reached, automatically resume the interrupted work shortly after the limit resets.
 sidebar:
   order: 33
+appliesTo: [platform, cloud]
 ---
 
 | | |
