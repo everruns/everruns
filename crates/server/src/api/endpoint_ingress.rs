@@ -68,7 +68,14 @@ pub struct IngressContext {
 
 impl IngressContext {
     pub fn matches_legacy_app_id(&self, legacy_app_id: &str) -> bool {
-        self.legacy_app_public_id.as_deref() == Some(legacy_app_id)
+        match self.legacy_app_public_id.as_deref() {
+            Some(legacy) => legacy == legacy_app_id,
+            // An endpoint created through `/v1/agents/{id}/endpoints` never had
+            // an App. Its canonical `/v1/e/{endpoint_id}` routes pass the
+            // synthetic `public_id` derived from the endpoint, which must match
+            // or every such endpoint answers 404.
+            None => self.public_id.to_string() == legacy_app_id,
+        }
     }
 }
 

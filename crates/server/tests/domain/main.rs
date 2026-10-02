@@ -34,6 +34,7 @@ mod command_policy_enforcement_test;
 mod db_pool_isolation_test;
 mod endpoint_a2a_ask_user_test;
 mod endpoint_a2a_integration_test;
+mod endpoint_a2a_protocol_test;
 mod endpoint_api_integration_test;
 mod endpoint_attribution_test;
 mod evals_integration_test;
