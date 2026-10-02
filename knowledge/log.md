@@ -1,5 +1,17 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-02
+
+* **PR Reviewer and Security Scanner templates.** Two agent examples carry a
+  guided setup (connect the agent's GitHub App, pick a repository, choose
+  settings, create the trigger) on the existing import path. The `github`
+  capability gains `submit_github_pull_request_review` (inline comments,
+  cannot approve, deterministic repeat suppression), `upsert_github_issue`
+  (fingerprint-keyed findings) and the opt-in `create_github_pull_request`,
+  with `allow_pull_requests` and `private_issues_only` settings the tools
+  enforce. See [GitHub review and security agent
+  templates](integrations/github-agent-templates.md) and TM-GHAPP-008 to 011.
+
 ## 2026-10-01
 
 * **AG-UI subagents, run metadata and capabilities.** With `subagents_visible`

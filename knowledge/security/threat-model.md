@@ -39,7 +39,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
 | TM-MCP | MCP Server | First-party `/mcp` endpoint, MCP OAuth, external MCP clients, MCP server tool discovery/execution |
 | TM-SLACK | Slack Integration | Webhook forgery, signing secret leak, bot loops |
-| TM-GHAPP | Per-agent GitHub Apps | Callback forgery, installation hijack, App key leak |
+| TM-GHAPP | Per-agent GitHub Apps | Callback forgery, installation hijack, App key leak, review/scan agents acting on untrusted GitHub content |
 | TM-A2A | A2A Channel | API key forgery, replay, method abuse, card disclosure |
 
 ### Managing Threat IDs
@@ -1375,6 +1375,10 @@ GitHub Scout is a blueprint-only integration. It gives the child agent private r
 | TM-GHAPP-005 | Over-broad App permissions | Medium | The manifest requests contents and metadata read, pull requests and issues write. The installing user picks repositories on GitHub. | **CALLER RISK** |
 | TM-GHAPP-006 | Forged GitHub webhook starts agent runs | High | The webhook route carries no user auth, so the App's `X-Hub-Signature-256` HMAC over the raw body is the only gate: it is checked before any parsing with a constant-time compare, and a missing or empty secret fails closed. Deliveries only reach triggers of agents bound to that App's identity. | MITIGATED |
 | TM-GHAPP-007 | Replayed or self-caused deliveries loop runs | Medium | The GitHub delivery id is the event id, so the shared pipeline records a replay as a duplicate. Deliveries whose sender is the App's own bot are dropped, so an agent's comment cannot re-trigger it. | MITIGATED |
+| TM-GHAPP-008 | Prompt injection through pull request text, diffs, code or issues steers a review or scan agent | High | The templates' prompts frame all GitHub content as data; the reviewer's trigger message omits the attacker-written title. Consequential limits are enforced by tools, not the prompt: the review tool cannot approve (`COMMENT`/`REQUEST_CHANGES` only), pull request creation is absent unless `allow_pull_requests` is set, and `private_issues_only` is checked against the repository's visibility. Residual: an injected model can still write misleading review text or issues on the target repository. | **CALLER RISK** |
+| TM-GHAPP-009 | Security finding disclosed through a public issue | High | `upsert_github_issue` with `private_issues_only` (on by default in the Security Scanner template) fetches the repository and refuses public ones; the scanner then reports only in its run. | MITIGATED |
+| TM-GHAPP-010 | A person suppresses a finding by pasting a dedupe marker | Medium | Review, comment and issue dedupe only matches bodies authored by a `Bot` account, which a person cannot post as. Another bot installed on the repository could still forge one. | MITIGATED |
+| TM-GHAPP-011 | An agent pushes or opens unreviewed code changes | High | `create_github_pull_request` is offered only with `allow_pull_requests` (off by default), opens drafts by default, accepts same-repository branches only, and agent Apps request contents read, so pushing needs the owner to grant Contents write on GitHub as a separate step. The scanner prompt forbids pushing to the default branch; branch protection is the repository owner's control. | **CALLER RISK** |
 
 ## 18. E2B Cloud Sandbox (TM-E2B)
 

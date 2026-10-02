@@ -128,6 +128,8 @@ futures.workspace = true
 serde_html_form = "0.4"  # Same deserializer axum-extra::extract::Query uses
 everruns-sdk.workspace = true
 everruns-test-support = { path = "../test-support", default-features = false }
+# Template tests check the `github` capability enforces template settings.
+everruns-integrations-github = { path = "../../integrations/github" }
 wiremock = "0.6"
 jsonschema = { version = "0.58.1", default-features = false }
 flate2.workspace = true

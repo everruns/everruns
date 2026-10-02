@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { useAgentExamples, useImportAgentExample, useCapabilities, usePageTitle } from "@/hooks";
 import { useRouter } from "next/navigation";
+import { importedExampleLanding } from "@/lib/agent-template-setup";
 import { LinkButton } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { ArrowLeft } from "lucide-react";
@@ -23,14 +24,14 @@ export default function AllExamplesPage() {
       setImportingName(name);
       try {
         const agent = await importExample.mutateAsync(name);
-        router.push(`/agents/${agent.id}`);
+        router.push(importedExampleLanding(examples, name, agent.id));
       } catch (err) {
         console.error("Failed to import example:", err);
       } finally {
         setImportingName(null);
       }
     },
-    [importExample, router],
+    [importExample, router, examples],
   );
 
   const filteredExamples = useMemo(() => {

@@ -24,7 +24,7 @@ const MAX_COMMENT_PAGES: u32 = 10;
 const DEFAULT_MARKER: &str = "summary";
 
 /// `owner/repo` and a positive pull request or issue number.
-fn target(arguments: &Value) -> Result<(String, u64), ToolExecutionResult> {
+pub(crate) fn target(arguments: &Value) -> Result<(String, u64), ToolExecutionResult> {
     let repo = required_str(arguments, "repo")?;
     if !is_valid_owner_repo(repo) {
         return Err(ToolExecutionResult::tool_error(
@@ -39,12 +39,12 @@ fn target(arguments: &Value) -> Result<(String, u64), ToolExecutionResult> {
     Ok((repo.to_string(), number))
 }
 
-async fn token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
+pub(crate) async fn github_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
     enforce_github_network_access(context)?;
     get_github_token(context).await
 }
 
-fn target_schema(extra: Value) -> Value {
+pub(crate) fn target_schema(extra: Value) -> Value {
     let mut schema = json!({
         "type": "object",
         "properties": {
@@ -75,7 +75,7 @@ pub(crate) fn marker_line(marker: &str) -> String {
     format!("<!-- everruns:{marker} -->")
 }
 
-fn valid_marker(marker: &str) -> bool {
+pub(crate) fn valid_marker(marker: &str) -> bool {
     !marker.is_empty()
         && marker.len() <= 64
         && marker
@@ -120,7 +120,7 @@ impl Tool for GetGitHubPullRequestTool {
             Ok(target) => target,
             Err(e) => return e,
         };
-        let client = match token(context).await {
+        let client = match github_token(context).await {
             Ok(token) => github_client(token),
             Err(e) => return e,
         };
@@ -215,7 +215,7 @@ impl Tool for GetGitHubPullRequestDiffTool {
             .and_then(Value::as_u64)
             .unwrap_or(DEFAULT_DIFF_BYTES)
             .clamp(1000, MAX_DIFF_BYTES) as usize;
-        let client = match token(context).await {
+        let client = match github_token(context).await {
             Ok(token) => github_client(token),
             Err(e) => return e,
         };
@@ -311,7 +311,7 @@ impl Tool for UpsertGitHubCommentTool {
                 body.len()
             ));
         }
-        let client = match token(context).await {
+        let client = match github_token(context).await {
             Ok(token) => github_client(token),
             Err(e) => return e,
         };
@@ -375,6 +375,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn review_rejects_approval_and_empty_reviews_before_touching_github() {
+        for arguments in [
+            json!({"repo": "acme/app", "number": 1, "body": "ok", "event": "APPROVE"}),
+            json!({"repo": "acme/app", "number": 1}),
+            json!({"repo": "acme/app", "number": 1, "comments": [{"path": "a", "line": 1}]}),
+        ] {
+            let result = run(&crate::reviews::SubmitGitHubReviewTool, arguments.clone()).await;
+            assert!(
+                matches!(result, ToolExecutionResult::ToolError { .. }),
+                "{arguments}: {result:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn valid_calls_without_a_connection_ask_for_github() {
         for (tool, arguments) in [
             (
@@ -388,6 +403,18 @@ mod tests {
             (
                 &UpsertGitHubCommentTool,
                 json!({"repo": "acme/app", "number": 1, "body": "Summary"}),
+            ),
+            (
+                &crate::reviews::SubmitGitHubReviewTool,
+                json!({"repo": "acme/app", "number": 1, "body": "Summary"}),
+            ),
+            (
+                &crate::issues::UpsertGitHubIssueTool::new(true),
+                json!({"repo": "acme/app", "fingerprint": "f", "title": "t", "body": "b"}),
+            ),
+            (
+                &crate::fix_pull_requests::CreateGitHubPullRequestTool,
+                json!({"repo": "acme/app", "head": "fix", "base": "main", "title": "t"}),
             ),
         ] {
             match run(tool, arguments).await {
