@@ -30,6 +30,16 @@
 //! );
 //! ```
 //!
+//! # Modules
+//!
+//! - The wire types, at the crate root.
+//! - [`consumer`]: the consumer side of the protocol. It decodes a
+//!   producer's events, enforces the 1.0 sequencing rules and assembles a
+//!   [`consumer::RunResult`]; [`ResumeBuilder`] answers interrupts.
+//! - `client` (feature `client`): an HTTP client that runs an AG-UI agent
+//!   over SSE and feeds the consumer.
+//! - `projection` (feature `core`): Everruns runtime events as an AG-UI run.
+//!
 //! # Contract
 //!
 //! - The types follow the pinned upstream schema in `spec/1.0/schema.json`;
@@ -51,18 +61,23 @@
 // `tests/spec.rs`) catch drift as well as generation would.
 
 mod capabilities;
+#[cfg(feature = "client")]
+pub mod client;
+pub mod consumer;
 mod event;
 mod input;
 mod message;
 mod patch;
 #[cfg(feature = "core")]
 pub mod projection;
+mod resume;
 
 pub use capabilities::*;
 pub use event::*;
 pub use input::*;
 pub use message::*;
 pub use patch::*;
+pub use resume::*;
 
 /// The AG-UI protocol version these types implement.
 pub const PROTOCOL_VERSION: &str = "1.0";
