@@ -199,6 +199,7 @@ export default defineConfig({
                     { label: "Lifecycle Hooks", slug: "framework/lifecycle-hooks" },
                     { label: "Answer Agent Questions", slug: "framework/ask-user" },
                     { label: "Serve AG-UI", slug: "framework/ag-ui" },
+                    { label: "A2A", slug: "framework/a2a" },
                     { label: "Persistence", slug: "framework/persistence" },
                   ],
                 },

@@ -610,7 +610,7 @@ impl InProcessRuntimeBuilder {
     /// Returns a configuration error when no default model is available after
     /// applying explicit configuration and any requested `llmsim` setup.
     pub async fn build(mut self) -> Result<InProcessRuntime> {
-        let backends = match self.backends.take() {
+        let mut backends = match self.backends.take() {
             Some(backends) => backends,
             None => HostBackends::in_memory(),
         };
@@ -620,7 +620,7 @@ impl InProcessRuntimeBuilder {
         )
         .await?;
         if let Some(policy) = self.workspace_policy.take() {
-            file_store = Arc::new(crate::PolicyFileStore::new(file_store, policy));
+            file_store = crate::apply_workspace_policy(file_store, policy, &mut backends);
         }
 
         if let Some((provider, model_id)) = self.default_provider.take() {

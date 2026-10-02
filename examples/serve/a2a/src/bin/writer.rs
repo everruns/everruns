@@ -19,7 +19,7 @@
 use everruns::providers::openai::OpenAI;
 use everruns::{
     Agent, CapabilityRef, Engine, LlmSimConfig, LocalConfig, Model, OnExhausted, SimToolCall,
-    SimTurn, WorkspacePolicy,
+    SimTurn,
 };
 use everruns_example_demo as demo;
 use serde_json::{Value, json};
@@ -27,21 +27,8 @@ use serde_json::{Value, json};
 const MODEL: &str = "gpt-5.6-terra";
 const RESEARCHER: &str = "http://127.0.0.1:3000/v1/e/researcher/a2a";
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Outbound delegation is an experimental capability: the runtime registers
-    // it only when `FEATURE_AGENT_DELEGATION` is on (or in a dev deployment
-    // grade). This example opts in unless the caller decided otherwise.
-    if std::env::var_os("FEATURE_AGENT_DELEGATION").is_none() {
-        // SAFETY: no other thread exists yet; the runtime starts below.
-        unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "true") };
-    }
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?
-        .block_on(run())
-}
-
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
     let topic = if input.is_empty() {
         "tide pools"
@@ -59,16 +46,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
         .model(model(topic))
         .capability(CapabilityRef::new("a2a_agent_delegation").config(delegation(&researcher)))
-        // Delegation records each run's result under `/workspace/.agent-runs`,
-        // a hidden path the default read-only policy denies.
-        .workspace_policy(
-            WorkspacePolicy::builder()
-                .allow_read("/workspace")
-                .allow_hidden(".agents")
-                .allow_write(".agent-runs")
-                .allow_hidden(".agent-runs")
-                .build()?,
-        )
         // Delegated runs are recorded in session storage, which a local
         // (SQLite-backed) session provides.
         .local(LocalConfig::new(

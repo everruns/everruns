@@ -179,6 +179,18 @@ pub trait SessionFileSystem: Send + Sync {
     }
 }
 
+/// Tool-context extension: the session filesystem the runtime itself uses to
+/// persist artifacts it owns (delegated-run records under `/.agent-runs`,
+/// structured task results under `/.tasks`), as opposed to the model-facing
+/// [`ToolContext::file_store`](crate::ToolContext::file_store).
+///
+/// A host that restricts the model-facing store with a workspace policy
+/// installs this so runtime-written records do not depend on the model's
+/// permissions. Read it through
+/// [`ToolContext::runtime_artifact_file_store`](crate::ToolContext::runtime_artifact_file_store),
+/// which falls back to `file_store` when no host installed one.
+pub struct RuntimeArtifactFileSystem(pub Arc<dyn SessionFileSystem>);
+
 /// A [`SessionFileSystem`] decorator that pins every operation to a fixed
 /// workspace key, ignoring the per-call `session_id`.
 ///

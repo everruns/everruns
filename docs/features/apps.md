@@ -47,5 +47,6 @@ Publishing or unpublishing one endpoint does not change another endpoint on the 
 ## Where to Go
 
 - [Slack Integration](/integrations/slack/), create and publish a Slack endpoint.
+- [A2A](/features/a2a/), create and publish an A2A endpoint.
 - [Agent Triggers](/features/agent-triggers/), configure proactive scheduled work.
 - [Agent Versions](/features/agent-versions/), select which Agent version an endpoint uses.

@@ -219,6 +219,9 @@ kept in memory, so old task ids are forgotten on restart while their context
 continues. Requests need the `A2A-Version: 1.0` header. A pending approval or
 `ask_user` question keeps the task `working` until the routes above answer it.
 The agent card lists each agent's endpoint under `a2a`.
+[Framework A2A](/framework/a2a/) covers serving and calling A2A agents, and
+[`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a)
+shows a served agent and a second agent that delegates to it.
 
 Sessions survive a restart: the binary rebuilds each agent and resumes the
 session from the local store. A turn the old process left waiting on an

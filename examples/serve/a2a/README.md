@@ -96,6 +96,7 @@ The result is the completed task, with the reply as its `response` artifact.
 | `evals/notes.rs` | `#[eval] async fn answers_with_notes(t)` |
 
 Each A2A `contextId` maps to one researcher session, which survives a restart;
-tasks are held in memory. The writer turns on `FEATURE_AGENT_DELEGATION`
-(delegation is experimental) and lets its workspace policy write
-`/workspace/.agent-runs`, where delegated results are recorded.
+tasks are held in memory. The writer needs no extra setup: the `a2a` Cargo
+feature plus the `a2a_agent_delegation` capability is the opt-in, and the
+runtime records delegated results under `/workspace/.agent-runs` itself, so the
+default read-only workspace policy stays in place.

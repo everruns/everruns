@@ -143,6 +143,24 @@ fn register_environment_capabilities(
 ) {
 }
 
+/// Register the agent-delegation capabilities compiled into this build:
+/// `agent_handoff`, plus `a2a_agent_delegation` (Cargo feature `a2a`) and
+/// `ag_ui_delegation` (Cargo feature `ag-ui`).
+///
+/// No feature-flag check here. The hosted product gates delegation behind
+/// `FEATURE_AGENT_DELEGATION` in [`register_hosted_capabilities`]; an embedder
+/// whose opt-in is the Cargo feature plus an explicit capability ref on the
+/// agent (the `everruns` framework facade) calls this directly.
+pub fn register_agent_delegation_capabilities(
+    registry: &mut everruns_core::capabilities::CapabilityRegistry,
+) {
+    registry.register(AgentHandoffCapability);
+    #[cfg(feature = "a2a")]
+    registry.register(A2aAgentDelegationCapability);
+    #[cfg(feature = "ag-ui")]
+    registry.register(AgUiDelegationCapability);
+}
+
 /// Register every hosted product capability while preserving stable IDs,
 /// configuration schemas, feature gates, and task-executor registrations.
 pub fn register_hosted_capabilities(
@@ -166,11 +184,7 @@ pub fn register_hosted_capabilities(
     registry.register(SubagentCapability);
     registry.register(SessionTasksCapability);
     if everruns_core::ExecutionFeatureDecisions::from_env(grade).agent_delegation {
-        registry.register(AgentHandoffCapability);
-        #[cfg(feature = "a2a")]
-        registry.register(A2aAgentDelegationCapability);
-        #[cfg(feature = "ag-ui")]
-        registry.register(AgUiDelegationCapability);
+        register_agent_delegation_capabilities(registry);
     }
     // First channel adapter to implement `Capability::tools()` (EVE-1024). It
     // is inert outside a Slack-originated session: the invoker seam resolves

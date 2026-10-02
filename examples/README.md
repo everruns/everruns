@@ -34,3 +34,7 @@ half of that capability an embedding host owns.
 session history, workspaces, cancellation, structured questions, and other
 individual features.
 [Platform definitions](agents/) are a separate hosted-control-plane catalog.
+[Serve examples](serve/) run agents as HTTP services with `everruns-serve`:
+[hello](serve/hello/) is the smallest app, [ag-ui](serve/ag-ui/) streams to
+AG-UI clients, and [a2a](serve/a2a/) has two agents talking over A2A, one served
+and one delegating to it (`cargo run -p serve-example-a2a --bin researcher`).

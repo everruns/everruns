@@ -426,6 +426,27 @@ impl ToolContext {
         SessionId::from_uuid(self.workspace_id.uuid())
     }
 
+    /// Filesystem for artifacts the runtime writes on the session's behalf,
+    /// at paths the runtime chooses (`/.agent-runs/{run_id}`,
+    /// `/.tasks/{task_id}`).
+    ///
+    /// Uses the host's [`RuntimeArtifactFileSystem`](crate::session_files::RuntimeArtifactFileSystem)
+    /// when installed, re-keyed to the attached workspace and mount-resolved the
+    /// same way the engine prepares `file_store` for tool execution; otherwise
+    /// `file_store`. Never pass a model-chosen path to this store.
+    pub fn runtime_artifact_file_store(&self) -> Option<Arc<dyn SessionFileSystem>> {
+        match self
+            .extensions
+            .get::<crate::session_files::RuntimeArtifactFileSystem>()
+        {
+            Some(artifacts) => Some(crate::mount_fs::scoped_prompt_file_store(
+                artifacts.0.clone(),
+                self.workspace_id,
+            )),
+            None => self.file_store.clone(),
+        }
+    }
+
     /// Override the attached workspace (default is the 1:1 session-derived id).
     pub fn with_workspace_id(mut self, workspace_id: WorkspaceId) -> Self {
         self.workspace_id = workspace_id;
