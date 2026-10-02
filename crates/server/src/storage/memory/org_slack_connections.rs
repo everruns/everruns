@@ -263,7 +263,7 @@ mod tests {
             })
             .await
             .unwrap();
-        // A row written before migration 156 recorded workspaces.
+        // A row written before migration 159 recorded workspaces.
         db.org_slack_connections
             .write()
             .get_mut(&row.id)
