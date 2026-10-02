@@ -344,7 +344,12 @@ impl Target {
                 Ok::<_, serve::Error>(Booted { server, wire })
             })
             .await
-            .map_err(|err| problem(StatusCode::INTERNAL_SERVER_ERROR, format!("{err:#}")))
+            .map_err(|err| {
+                // The platform shows callers only "error (500) from runtime";
+                // the cause has to reach the runtime's CloudWatch logs.
+                eprintln!("serve-agentcore: boot failed: {err:#}");
+                problem(StatusCode::INTERNAL_SERVER_ERROR, format!("{err:#}"))
+            })
     }
 }
 
@@ -370,9 +375,17 @@ async fn invocations(State(target): State<Target>, headers: HeaderMap, body: Byt
         Err(why) => return problem(StatusCode::BAD_REQUEST, why),
     };
     match target.booted().await {
-        Ok(booted) => booted.server.ag_ui(&target.agent, &input).await,
+        Ok(booted) => logged(booted.server.ag_ui(&target.agent, &input).await),
         Err(response) => response,
     }
+}
+
+/// Log a run that never started: AgentCore hides the response from callers.
+fn logged(response: Response) -> Response {
+    if !response.status().is_success() {
+        eprintln!("serve-agentcore: invocation answered {}", response.status());
+    }
+    response
 }
 
 /// `GET /ws`: AgentCore's WebSocket transport for the same runs.
@@ -405,7 +418,7 @@ async fn converse(target: Target, session: Option<String>, mut socket: WebSocket
         };
         let response = match run_agent_input(&body, session.as_deref()) {
             Ok(input) => match target.booted().await {
-                Ok(booted) => booted.server.ag_ui(&target.agent, &input).await,
+                Ok(booted) => logged(booted.server.ag_ui(&target.agent, &input).await),
                 Err(response) => response,
             },
             Err(why) => problem(StatusCode::BAD_REQUEST, why),
