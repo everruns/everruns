@@ -68,13 +68,13 @@ semantics.
 1. **Workflow** - Deterministic state machine driven by events
    - Unique type identifier
    - Input/Output types (serializable)
-   - Event handlers: `on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_signal`
+   - Event handlers: `on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_child_workflow_completed`, `on_child_workflow_failed`, `on_signal`
 
 2. **WorkflowAction** - Actions a workflow can request
    - `ScheduleActivity` - Queue activity with retry policy, timeouts, priority
-   - `StartTimer` - Delayed execution
+   - `StartTimer` - Delayed execution (fires once, after its duration)
    - `CompleteWorkflow` / `FailWorkflow` - Terminal states
-   - `ScheduleChildWorkflow` - Nested workflows
+   - `ScheduleChildWorkflow` - Nested workflows; the parent hears the child's outcome
    - `CancelActivity` - Cancel pending work
 
 3. **Activity** - Unit of work that may fail and be retried
@@ -84,6 +84,29 @@ semantics.
 
 4. **WorkflowSignal** - External signals to running workflows
    - Types: `cancel`, `shutdown`, custom
+
+### Timers and Child Workflows
+
+Timers and child workflows are tasks on the ordinary queue, claimed by a worker
+registered for `SYSTEM_ACTIVITY_TYPES` that calls
+`WorkflowExecutor::run_system_tasks`. A timer is a task held back by
+`ActivityOptions::start_delay`; both stores honor that delay, and the store
+conformance suite checks it. Starting a child and reporting its outcome to the
+parent are tasks too. The queue already gives crash survival and retry, and a
+task keeps the executor from re-entering a parent while that parent's own
+actions are still being applied, which would race its optimistic sequence.
+
+Delivery is at least once, so each step is idempotent: a timer fires once per
+`TimerStarted`, a child's UUID is v5 of the parent UUID and the parent's id for
+the child, and a parent records each child's outcome once. A child knows its
+parent from the `parent` field of its `WorkflowStarted` event. A child whose
+type is not registered fails the parent with code `child_not_started`.
+
+Known gaps: a crash between recording a child's terminal status and enqueueing
+its result leaves the parent waiting, and cancelling a child does not notify
+the parent. Agent turns in Everruns do not use timers or child workflows yet:
+workers talk to the store over gRPC, which exposes only the task operations, and
+turns are driven by `DurableExecution` checkpoints rather than replay.
 
 ### Persistence
 

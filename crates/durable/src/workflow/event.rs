@@ -39,6 +39,11 @@ pub enum WorkflowEvent {
     WorkflowStarted {
         /// The input provided when starting the workflow
         input: serde_json::Value,
+
+        /// The workflow that started this one as a child, if any. Its
+        /// completion is reported back to that parent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent: Option<ParentWorkflow>,
     },
 
     /// Workflow completed successfully
@@ -171,12 +176,20 @@ pub enum WorkflowEvent {
 
         /// Type of the child workflow
         workflow_type: String,
+
+        /// The id the parent gave the child in its `ScheduleChildWorkflow`
+        #[serde(default)]
+        child_id: String,
     },
 
     /// Child workflow completed successfully
     ChildWorkflowCompleted {
         /// Child workflow ID
         workflow_id: Uuid,
+
+        /// The id the parent gave the child
+        #[serde(default)]
+        child_id: String,
 
         /// Result from the child workflow
         result: serde_json::Value,
@@ -187,12 +200,34 @@ pub enum WorkflowEvent {
         /// Child workflow ID
         workflow_id: Uuid,
 
+        /// The id the parent gave the child
+        #[serde(default)]
+        child_id: String,
+
         /// Error from the child workflow
         error: WorkflowError,
     },
 }
 
+/// Link from a child workflow back to the parent that started it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ParentWorkflow {
+    /// The parent workflow's ID
+    pub workflow_id: Uuid,
+
+    /// The id the parent gave this child in its `ScheduleChildWorkflow`
+    pub child_id: String,
+}
+
 impl WorkflowEvent {
+    /// The first event of a top-level workflow (one with no parent).
+    pub fn started(input: serde_json::Value) -> Self {
+        Self::WorkflowStarted {
+            input,
+            parent: None,
+        }
+    }
+
     /// Get the activity_id if this is an activity-related event
     pub fn activity_id(&self) -> Option<&str> {
         match self {
@@ -224,15 +259,32 @@ mod tests {
 
     #[test]
     fn test_workflow_event_serialization() {
-        let event = WorkflowEvent::WorkflowStarted {
-            input: json!({"order_id": "123"}),
-        };
+        let event = WorkflowEvent::started(json!({"order_id": "123"}));
 
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"workflow_started\""));
 
+        assert!(
+            !json.contains("parent"),
+            "a top-level start stays unchanged"
+        );
         let parsed: WorkflowEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(event, parsed);
+    }
+
+    #[test]
+    fn test_child_events_read_histories_written_before_child_ids() {
+        let id = Uuid::now_v7();
+        let old = json!({"type": "child_workflow_completed", "workflow_id": id, "result": 1});
+        let parsed: WorkflowEvent = serde_json::from_value(old).unwrap();
+        assert_eq!(
+            parsed,
+            WorkflowEvent::ChildWorkflowCompleted {
+                workflow_id: id,
+                child_id: String::new(),
+                result: json!(1),
+            }
+        );
     }
 
     #[test]
@@ -257,7 +309,7 @@ mod tests {
 
         assert_eq!(event.activity_id(), Some("my-activity"));
 
-        let start_event = WorkflowEvent::WorkflowStarted { input: json!({}) };
+        let start_event = WorkflowEvent::started(json!({}));
         assert_eq!(start_event.activity_id(), None);
     }
 
@@ -277,7 +329,7 @@ mod tests {
             .is_terminal()
         );
 
-        assert!(!WorkflowEvent::WorkflowStarted { input: json!({}) }.is_terminal());
+        assert!(!WorkflowEvent::started(json!({})).is_terminal());
         assert!(
             !WorkflowEvent::ActivityCompleted {
                 activity_id: "x".to_string(),

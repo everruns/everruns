@@ -58,6 +58,8 @@ impl std::error::Error for WorkflowError {}
 /// - How to start execution (`on_start`)
 /// - How to handle activity completions (`on_activity_completed`, `on_activity_failed`)
 /// - How to handle timers (`on_timer_fired`)
+/// - How to handle child workflow outcomes (`on_child_workflow_completed`,
+///   `on_child_workflow_failed`)
 /// - How to handle external signals (`on_signal`)
 ///
 /// # Determinism
@@ -179,6 +181,29 @@ pub trait Workflow: Send + Sync + 'static {
     /// Called when a timer fires
     fn on_timer_fired(&mut self, timer_id: &str) -> Vec<WorkflowAction> {
         let _ = timer_id;
+        vec![]
+    }
+
+    /// Called when a child workflow started with
+    /// [`WorkflowAction::child_workflow`] completes. `child_id` is the id this
+    /// workflow gave the child.
+    fn on_child_workflow_completed(
+        &mut self,
+        child_id: &str,
+        result: serde_json::Value,
+    ) -> Vec<WorkflowAction> {
+        let _ = (child_id, result);
+        vec![]
+    }
+
+    /// Called when a child workflow fails, or cannot be started because its
+    /// type is not registered with the executor.
+    fn on_child_workflow_failed(
+        &mut self,
+        child_id: &str,
+        error: &WorkflowError,
+    ) -> Vec<WorkflowAction> {
+        let _ = (child_id, error);
         vec![]
     }
 

@@ -132,9 +132,7 @@ impl PostgresWorkflowEventStore {
             .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
-        let workflow_started = WorkflowEvent::WorkflowStarted {
-            input: workflow_input.clone(),
-        };
+        let workflow_started = WorkflowEvent::started(workflow_input.clone());
         let activity_scheduled = WorkflowEvent::ActivityScheduled {
             activity_id: task.activity_id.clone(),
             activity_type: task.activity_type.clone(),
@@ -209,10 +207,10 @@ impl PostgresWorkflowEventStore {
             r#"
             INSERT INTO durable_task_queue (
                 id, workflow_id, activity_id, activity_type, input, options,
-                max_attempts, priority,
+                max_attempts, priority, visible_at,
                 schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11)
             "#,
         )
         .bind(task_id)
@@ -226,6 +224,7 @@ impl PostgresWorkflowEventStore {
         .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
         .bind(task.options.start_to_close_timeout.as_millis() as i64)
         .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
+        .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
         .execute(&mut *tx)
         .await
         .map_err(|e| {
@@ -773,10 +772,10 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             r#"
             INSERT INTO durable_task_queue (
                 id, workflow_id, activity_id, activity_type, input, options,
-                max_attempts, priority,
+                max_attempts, priority, visible_at,
                 schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11)
             ON CONFLICT (workflow_id, activity_id)
                 WHERE workflow_id IS NOT NULL
                   AND activity_id LIKE 'waiting_turn_resolution_%'
@@ -795,6 +794,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
         .bind(task.options.start_to_close_timeout.as_millis() as i64)
         .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
+        .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
@@ -2828,9 +2828,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     ) -> Result<Uuid, StoreError> {
         let new_workflow_id = Uuid::now_v7();
         let input = sanitize_json_null_bytes(input);
-        let start_event = WorkflowEvent::WorkflowStarted {
-            input: input.clone(),
-        };
+        let start_event = WorkflowEvent::started(input.clone());
         let event_data = serde_json::to_value(&start_event)
             .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;

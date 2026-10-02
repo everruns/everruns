@@ -172,9 +172,7 @@ async fn test_full_replay_rejects_oversized_history_before_loading_events() {
             workflow_id,
             0,
             vec![
-                WorkflowEvent::WorkflowStarted {
-                    input: serde_json::json!({ "start": 0, "target": 10 }),
-                },
+                WorkflowEvent::started(serde_json::json!({ "start": 0, "target": 10 })),
                 WorkflowEvent::ActivityScheduled {
                     activity_id: "increment-0".into(),
                     activity_type: "increment".into(),
@@ -221,9 +219,7 @@ async fn test_snapshot_replay_rejects_oversized_delta() {
             workflow_id,
             0,
             vec![
-                WorkflowEvent::WorkflowStarted {
-                    input: serde_json::json!({ "start": 0, "target": 10 }),
-                },
+                WorkflowEvent::started(serde_json::json!({ "start": 0, "target": 10 })),
                 WorkflowEvent::ActivityScheduled {
                     activity_id: "increment-0".into(),
                     activity_type: "increment".into(),
@@ -357,9 +353,7 @@ async fn test_snapshot_at_sequence_zero_is_treated_as_valid_snapshot() {
             workflow_id,
             0,
             vec![
-                WorkflowEvent::WorkflowStarted {
-                    input: serde_json::json!({ "start": 0, "target": 10 }),
-                },
+                WorkflowEvent::started(serde_json::json!({ "start": 0, "target": 10 })),
                 WorkflowEvent::ActivityScheduled {
                     activity_id: "increment-0".into(),
                     activity_type: "increment".into(),
@@ -654,9 +648,7 @@ async fn test_load_events_after() {
         .await
         .unwrap();
 
-    let events = vec![WorkflowEvent::WorkflowStarted {
-        input: serde_json::json!({}),
-    }];
+    let events = vec![WorkflowEvent::started(serde_json::json!({}))];
     store.append_events(workflow_id, 0, events).await.unwrap();
 
     let events = vec![WorkflowEvent::ActivityScheduled {
@@ -808,9 +800,7 @@ async fn test_snapshot_path_rejects_before_loading_events() {
             workflow_id,
             0,
             vec![
-                WorkflowEvent::WorkflowStarted {
-                    input: serde_json::json!({ "start": 0, "target": 10 }),
-                },
+                WorkflowEvent::started(serde_json::json!({ "start": 0, "target": 10 })),
                 WorkflowEvent::ActivityScheduled {
                     activity_id: "increment-0".into(),
                     activity_type: "increment".into(),

@@ -324,9 +324,7 @@ impl DurableScheduler {
             .await?;
 
         // Append WorkflowStarted event
-        let start_event = WorkflowEvent::WorkflowStarted {
-            input: schedule.target_input.clone(),
-        };
+        let start_event = WorkflowEvent::started(schedule.target_input.clone());
 
         self.store
             .append_events(workflow_id, 0, vec![start_event])

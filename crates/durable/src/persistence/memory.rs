@@ -458,9 +458,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 input: input.clone(),
                 result: None,
                 error: None,
-                events: vec![WorkflowEvent::WorkflowStarted {
-                    input: input.clone(),
-                }],
+                events: vec![WorkflowEvent::started(input.clone())],
                 signals: vec![],
                 created_at: now,
                 started_at: Some(now),
@@ -517,7 +515,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             });
         }
         let task_id = Uuid::now_v7();
-        tasks.insert(task_id, TaskState::pending(task));
+        tasks.insert(task_id, TaskState::scheduled(task));
         Ok(task_id)
     }
 
@@ -1951,9 +1949,7 @@ mod tests {
             .append_events(
                 workflow_id,
                 0,
-                vec![WorkflowEvent::WorkflowStarted {
-                    input: serde_json::json!({}),
-                }],
+                vec![WorkflowEvent::started(serde_json::json!({}))],
             )
             .await
             .unwrap();
@@ -1995,9 +1991,7 @@ mod tests {
             .append_events(
                 workflow_id,
                 5, // Wrong sequence
-                vec![WorkflowEvent::WorkflowStarted {
-                    input: serde_json::json!({}),
-                }],
+                vec![WorkflowEvent::started(serde_json::json!({}))],
             )
             .await;
 
