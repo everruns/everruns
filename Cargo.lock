@@ -7647,6 +7647,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serve-example-ag-ui"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-build",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "serve-example-hello"
 version = "0.1.0"
 dependencies = [

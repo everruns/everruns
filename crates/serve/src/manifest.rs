@@ -206,6 +206,14 @@ impl Manifest {
                 .iter()
                 .map(|c| format!("POST /v1/channels/{}", c.name)),
         );
+        #[cfg(feature = "ag-ui")]
+        routes.extend(
+            inner
+                .agents
+                .iter()
+                .filter(|agent| !agent.sub)
+                .map(|agent| format!("POST {}", crate::ag_ui::route(agent.name))),
+        );
 
         let models: BTreeSet<String> = inner.agents.iter().map(|a| a.spec.model.clone()).collect();
         Manifest {

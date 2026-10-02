@@ -880,7 +880,8 @@ jobs:
             -p everruns-framework-support-agent -p everruns-bashkit-repo-agent \
             -p everruns-foreman-agent -p everruns-example-demo \
             -p everruns-serve -p everruns-serve-macros -p everruns-serve-build \
-            -p serve-example-hello -p serve-example-revenue-analyst
+            -p serve-example-hello -p serve-example-revenue-analyst \
+            -p serve-example-ag-ui
           for example in support-agent everruns-support-agent coding-review-agent research-agent incident-commander-agent bashkit-repo-agent foreman-agent; do
             unexpected="$(find "examples/$example" -mindepth 1 -maxdepth 1 \
               ! -name .gitignore ! -name Cargo.toml ! -name README.md \

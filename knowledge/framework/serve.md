@@ -99,6 +99,13 @@ runtime.
   activity is reported as `tool.progress` of the parent call, and its
   approvals and questions wait on the parent session.
 
+- **AG-UI is built in, not a `Channel`.** The `Channel` trait answers a
+  webhook and delivers the reply later; AG-UI streams the reply in the
+  response. So the `ag-ui` feature adds `POST /v1/e/{agent}/ag-ui` beside the
+  channel routes, a thin layer over the facade's `Session::ag_ui_with`. Its
+  `InterruptSource` reads serve's parked approvals and questions, so one
+  responder serves both APIs. See [AG-UI Channel](../integrations/ag-ui.md#serve).
+
 ## Rejected
 
 - **Runtime filesystem scanning, eve-style.** Not possible for compiled Rust,

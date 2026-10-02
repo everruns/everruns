@@ -71,6 +71,7 @@ members = [
     "examples/host-shell-agent",
     "examples/foreman-agent",
     "examples/demo-support",
+    "examples/serve/ag-ui",
     "examples/serve/hello",
     "examples/serve/revenue-analyst",
 ]

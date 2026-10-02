@@ -1,5 +1,6 @@
 //! `Session::ag_ui`: one AG-UI 1.0 run per request, with `ask_user` and tool
-//! approvals as interrupts through `InterruptGate`.
+//! approvals as interrupts through `InterruptGate` or a host's own
+//! `InterruptSource`.
 #![cfg(feature = "ag-ui")]
 
 use std::sync::Arc;
@@ -8,10 +9,12 @@ use std::time::Duration;
 
 use everruns::ag_ui::wire::RunFinishedOutcome;
 use everruns::ag_ui::{
-    ASK_USER_REASON, AgUiError, AgUiOptions, Event, InterruptGate, Message, ResumeEntry,
-    ResumeStatus, RunAgentInput, TOOL_APPROVAL_REASON,
+    ASK_USER_REASON, AgUiError, AgUiOptions, Event, Interrupt, InterruptGate, InterruptSource,
+    Message, ResumeEntry, ResumeOutcome, ResumeStatus, RunAgentInput, TOOL_APPROVAL_REASON,
 };
-use everruns::{Agent, Engine, FunctionTool, LlmSimConfig, Model, Session, ToolCall};
+use everruns::{
+    Agent, Engine, FunctionTool, LlmSimConfig, Model, SendDisposition, Session, SessionId, ToolCall,
+};
 use futures::StreamExt;
 use serde_json::{Value, json};
 
@@ -403,4 +406,98 @@ async fn an_unknown_decision_is_refused() {
         .await;
     assert!(matches!(refused, Err(AgUiError::InvalidInput(_))));
     assert_eq!(gate.interrupts(session.session_id()).len(), 1);
+}
+
+/// A host's own source: delegates to a gate and counts resumes, standing in
+/// for a host that parks requests for an API of its own.
+struct CountingSource {
+    gate: InterruptGate,
+    resumes: Arc<AtomicUsize>,
+}
+
+impl InterruptSource for CountingSource {
+    fn interrupts(&self, session_id: SessionId) -> Vec<Interrupt> {
+        self.gate.interrupts(session_id)
+    }
+
+    fn subscribe(&self) -> tokio::sync::broadcast::Receiver<SessionId> {
+        InterruptSource::subscribe(&self.gate)
+    }
+
+    fn resume(
+        &self,
+        session_id: SessionId,
+        entries: &[ResumeEntry],
+    ) -> Result<ResumeOutcome, AgUiError> {
+        self.resumes.fetch_add(1, Ordering::SeqCst);
+        InterruptSource::resume(&self.gate, session_id, entries)
+    }
+}
+
+#[tokio::test]
+async fn a_host_interrupt_source_interrupts_and_resumes() {
+    let gate = InterruptGate::new();
+    let resumes = Arc::new(AtomicUsize::new(0));
+    let session = Engine::new().create(asking_agent(&gate));
+    let options = || {
+        AgUiOptions::new().interrupts(CountingSource {
+            gate: gate.clone(),
+            resumes: resumes.clone(),
+        })
+    };
+    let run = |input| async {
+        let stream = session
+            .ag_ui_with(input, options())
+            .await
+            .expect("run starts");
+        tokio::time::timeout(Duration::from_secs(10), stream.collect::<Vec<_>>())
+            .await
+            .expect("run ends")
+    };
+
+    let first = run(input("Deploy.")).await;
+    let open = interrupts(&first);
+    let question_id =
+        open[0].metadata.as_ref().expect("questions")["everruns"]["questions"][0]["id"]
+            .as_str()
+            .expect("question id")
+            .to_string();
+    let answer = json!({ "answers": [{ "id": question_id, "selected": ["Staging"] }] });
+    let second = run(resume(vec![entry(
+        "call_target",
+        ResumeStatus::Resolved,
+        Some(answer),
+    )]))
+    .await;
+    assert_well_formed(&second);
+    assert_eq!(text(&second), "Deploying.");
+    assert_eq!(resumes.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_run_reports_the_message_it_sent() {
+    let agent = Agent::builder()
+        .instructions("Be brief.")
+        .model(Model::simulated("ok"))
+        .build()
+        .expect("valid agent");
+    let session = Engine::new().create(agent);
+
+    let run = session.ag_ui(input("Hi")).await.expect("run starts");
+    let sent = run.sent().expect("a user message starts a turn").clone();
+    assert_eq!(sent.disposition, SendDisposition::Started);
+    let events: Vec<Event> = run.collect().await;
+    assert_well_formed(&events);
+    assert!(sent.wait().await.expect("turn ends").success);
+
+    // A resume with nothing open sends nothing.
+    let gate = InterruptGate::new();
+    let empty = session
+        .ag_ui_with(
+            resume(vec![entry("none", ResumeStatus::Cancelled, None)]),
+            AgUiOptions::new().gate(gate),
+        )
+        .await
+        .expect("run starts");
+    assert!(empty.sent().is_none());
 }

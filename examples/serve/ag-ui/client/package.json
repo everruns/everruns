@@ -1,0 +1,15 @@
+{
+  "name": "serve-example-ag-ui-client",
+  "private": true,
+  "type": "module",
+  "description": "An @ag-ui/client HttpAgent driving the serve ag-ui example, approval interrupt included.",
+  "scripts": {
+    "start": "node run.mjs"
+  },
+  "dependencies": {
+    "@ag-ui/client": "1.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

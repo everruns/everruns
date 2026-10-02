@@ -161,5 +161,7 @@ must be a user message (its text parts). Earlier messages, `state`, `context`,
 planned addition. `RUN_STARTED` carries `protocolVersion: "1.0"` only when the
 request declared a version, so pre-1.0 clients see the stream they expect.
 
-For a hosted agent with no server code, Everruns serves the same protocol at
+A [serve](/framework/serve/#ag-ui-and-copilotkit) app gets this route built
+in with its `ag-ui` feature, at `/v1/e/{agent}/ag-ui`. For a hosted agent with
+no server code, Everruns serves the same protocol at
 `/v1/e/{endpoint_id}/ag-ui`.

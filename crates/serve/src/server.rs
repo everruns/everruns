@@ -10,7 +10,9 @@
 //!   `since_id` or `after_sequence`, `/question-answers`, and problem+json
 //!   errors. serve adds optional fields (`build_id`, `agent_name`,
 //!   `pending_approvals`, `pending_questions`) and a few serve-only routes
-//!   (approvals, channels, the agent card, dev schedules).
+//!   (approvals, channels, the agent card, dev schedules). With the `ag-ui`
+//!   feature, `POST /v1/e/{agent}/ag-ui` mirrors the server's AG-UI channel
+//!   route (see `ag_ui`).
 //! - Events are the engine's durable canonical log, replayed then followed
 //!   live through `Session::events_from`; serve writes none.
 
@@ -57,6 +59,10 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         .route("/v1/sessions/{id}/question-answers", post(question_answers))
         .route("/v1/sessions/{id}/approvals/{tool_call_id}", post(approval))
         .route("/v1/channels/{name}", post(channel));
+    #[cfg(feature = "ag-ui")]
+    {
+        router = router.route("/v1/e/{name}/ag-ui", post(crate::ag_ui::run));
+    }
     if host.mode == Mode::Dev {
         // Dev only: fire a schedule without waiting for its cron.
         router = router.route("/dev/schedules/{name}", post(run_schedule));
@@ -64,7 +70,7 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
     router.with_state(host)
 }
 
-struct Failure(anyhow::Error);
+pub(crate) struct Failure(anyhow::Error);
 
 impl<E: Into<anyhow::Error>> From<E> for Failure {
     fn from(err: E) -> Self {
@@ -117,7 +123,7 @@ async fn health(State(host): State<Arc<Host>>) -> Json<Value> {
 
 async fn agent_card(State(host): State<Arc<Host>>) -> Json<Value> {
     let manifest = host.app.manifest();
-    Json(json!({
+    let card = json!({
         "name": manifest.app.name,
         "version": manifest.app.version,
         "build_id": host.build_id,
@@ -131,7 +137,21 @@ async fn agent_card(State(host): State<Arc<Host>>) -> Json<Value> {
         "skills": manifest.skills,
         "channels": manifest.channels,
         "schedules": manifest.schedules,
-    }))
+    });
+    // The AG-UI endpoint of each top-level agent, by agent name.
+    #[cfg(feature = "ag-ui")]
+    let card = {
+        let mut card = card;
+        card["ag_ui"] = manifest
+            .agents
+            .iter()
+            .filter(|agent| !agent.sub)
+            .map(|agent| (agent.name.clone(), json!(crate::ag_ui::route(&agent.name))))
+            .collect::<serde_json::Map<_, _>>()
+            .into();
+        card
+    };
+    Json(card)
 }
 
 /// The subset of the server's `CreateSessionRequest` serve understands.
