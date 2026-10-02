@@ -171,7 +171,7 @@ On 2026-09-30 the prototype ran end to end against the live API with the dev key
 
 What the live run taught, beyond the documentation: the preamble and the final answer are separate message items with different phases; MCP completion arrives on `item.done`, not `item.updated`; a failed MCP call has `status: failed`, `error: null`, and the cause in `output`; turn usage was still null at `turn.completed`; and a `usage_limit_exceeded` error event precedes `turn.failed`.
 
-The credentialed conformance test (`live_conformance_one_client_function_and_one_allowed_mcp_tool`, ignored by default, needs `OPENAI_API_KEY`) runs the durable driver with one client function and one MCP server restricted by `allowed_tools`. On 2026-10-01 it reached the API, created a session, and projected the provider's `usage_limit_exceeded` failure, because the organization had no credits left (the Responses API returned `credit_balance_exhausted` at the same time). It has not yet completed a turn.
+The credentialed conformance test (`live_conformance_one_client_function_and_one_allowed_mcp_tool`, ignored by default, needs `OPENAI_API_KEY`) runs the durable driver with one client function and one MCP server restricted by `allowed_tools`. On 2026-10-01 it reached the API but failed with `usage_limit_exceeded`, because the organization had no credits left. On 2026-10-02, with the organization funded, it passed: one turn ran the client function and the allowed MCP tool, streamed the final answer, recorded the generation's usage, and deleted the provider session.
 
 ## Go / no-go
 
