@@ -51,7 +51,9 @@ async fn live_scrape() {
     let result = client
         .scrape(
             "https://example.com",
-            &[serde_json::json!({"selector": "h1"})],
+            // example.com dropped its <h1> in its 2026 redesign; <title> is the
+            // one element the other live tests already pin ("Example Domain").
+            &[serde_json::json!({"selector": "title"})],
             None,
             None,
             &[],
@@ -59,7 +61,10 @@ async fn live_scrape() {
         .await
         .expect("Scrape should succeed");
 
-    assert!(result.get("data").is_some(), "Should have data field");
+    assert_eq!(
+        result["data"][0]["results"][0]["text"], "Example Domain",
+        "Should scrape the page title, got: {result}"
+    );
 }
 
 #[tokio::test]
