@@ -20,6 +20,7 @@ deploys to AgentCore unchanged.
 |---|---|
 | `GET /ping` | `{"status":"Healthy"}`, or `HealthyBusy` while a turn runs so AgentCore keeps the session alive |
 | `POST /invocations` | An AG-UI 1.0 run of the app's agent as server-sent events. The body is AG-UI `RunAgentInput` (the AgentCore AG-UI protocol) or `{"prompt": "..."}` (a plain `InvokeAgentRuntime` call) |
+| `GET /ws` | The same runs over AgentCore's WebSocket transport: each text message is one invocation body, and each AG-UI event comes back as one text message |
 | `/health`, `/v1/...` | serve's own wire API, unchanged |
 
 The AG-UI thread defaults to the AgentCore session id
@@ -78,7 +79,7 @@ adds the microVM shell, an approval tool and an `@ag-ui/client` script.
 
 ## Limits
 
-- Not yet served: `/ws` (AgentCore's WebSocket transport) and the MCP and A2A protocol ports.
+- Not yet served: the MCP and A2A protocol ports.
 - `ask_user` and approvals park the turn without keeping the session busy, so AgentCore
   may stop the microVM after its idle timeout. serve's pending approvals do not survive
   a restart yet.

@@ -20,6 +20,7 @@ so the same app runs under `dev` on a laptop and on AgentCore without changes.
 |---|---|
 | Runtime session (`X-Amzn-Bedrock-AgentCore-Runtime-Session-Id`) | One serve session: the AG-UI thread defaults to the session id |
 | `POST /invocations` | An AG-UI 1.0 run of the app's agent, streamed as server-sent events |
+| `GET /ws` (WebSocket) | The same runs: each text message is one invocation body, each AG-UI event one text message back |
 | `GET /ping` | `Healthy`, or `HealthyBusy` while a turn runs so AgentCore keeps the microVM up |
 | Session storage mount (`/mnt/workspace`) | serve's SQLite session log and the agent's workspace |
 | The session microVM | The sandbox: `[sandbox] kind = "microvm"` gives the agent a real shell |
@@ -131,6 +132,12 @@ const agent = new HttpAgent({
 
 Reuse a session id to return to the same microVM, conversation and workspace.
 
+Over AgentCore's WebSocket transport, connect to the runtime's `/ws` URL
+(`wss://bedrock-agentcore.<region>.amazonaws.com/runtimes/<escaped-arn>/ws?qualifier=DEFAULT`)
+with the same session header, and send one invocation body per text message.
+Each AG-UI event comes back as its own text message, ending with `RUN_FINISHED`
+or `RUN_ERROR`; send the next body on the same socket for the next turn.
+
 ## Persistence
 
 AgentCore mounts session storage only when an invocation arrives, not while the
@@ -203,7 +210,7 @@ Gateway's credential providers instead of the runtime's environment.
 |---|---|---|
 | `/ping`, `/invocations`, busy reporting | Yes | Yes |
 | AG-UI protocol | Yes, AG-UI 1.0 including interrupts | Yes |
-| `/ws` WebSocket | Not yet | Yes |
+| `/ws` WebSocket | Yes | Yes |
 | MCP and A2A server protocols | Not yet | Yes |
 | Conversation persistence | SQLite on session storage | File or AgentCore Memory session managers |
 | Long-term memory (AgentCore Memory) | Not yet | Yes |
