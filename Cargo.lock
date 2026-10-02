@@ -2221,9 +2221,12 @@ version = "0.33.0"
 dependencies = [
  "everruns-core",
  "everruns-provider",
+ "futures-util",
  "jsonschema",
+ "reqwest 0.13.5",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

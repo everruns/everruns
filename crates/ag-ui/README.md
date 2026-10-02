@@ -41,13 +41,27 @@ assert_eq!(json["outcome"]["interrupts"][0]["reason"], "tool_approval");
 - The `AgentCapabilities` declaration.
 - Serialization that omits absent fields, and tolerant deserialization that
   ignores unknown fields and reads a whole-field `null` as absent.
+- The consumer side (`consumer` module): the 1.0 processing model, the
+  sequencing rules, `*_CHUNK` expansion and a `RunResult` with messages, tool
+  calls, outcome, interrupts and usage; `ResumeBuilder` enforces the resume
+  coverage rule.
+- An HTTP/SSE client for AG-UI agents behind the `client` feature.
+
+## Features
+
+| Feature | Adds |
+|---|---|
+| `client` | `client::AgUiClient`: POST a `RunAgentInput`, stream checked events (pulls in `reqwest`) |
+| `core` | `projection`: Everruns runtime events as an AG-UI run (Everruns-internal) |
 
 ## Design notes
 
-The upstream 1.0 JSON Schema and fixture corpus ship in `spec/` (MIT, from
+The upstream 1.0 JSON Schema, fixture corpus and client conformance corpus
+are vendored in the repository's `spec/` (MIT, from
 [ag-ui-protocol/ag-ui](https://github.com/ag-ui-protocol/ag-ui)). The test
-suite parses every fixture and validates everything these types serialize
-against the schema.
+suite parses every fixture, validates everything these types serialize
+against the schema, and replays every conformance stream through the
+consumer.
 
 ## Documentation
 

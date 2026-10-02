@@ -14,6 +14,11 @@
 
 ## 2026-10-01
 
+* **Everruns can consume AG-UI streams.** `everruns-ag-ui` gained a consumer
+  pipeline (1.0 processing model, sequencing rules, chunk expansion, result
+  assembly, the resume coverage rule) and an HTTP/SSE client behind the
+  `client` feature, held to upstream's client conformance corpus. Recorded in
+  [AG-UI Channel](integrations/ag-ui.md#consumer-rules).
 * **AG-UI subagents, run metadata and capabilities.** With `subagents_visible`
   (default off) subagent tasks stream as `SUBAGENT_*` keyed by task id, their
   posted text and summary attributed by `subagentRunId`; segments still open

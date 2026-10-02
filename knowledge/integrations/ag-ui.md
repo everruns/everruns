@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "AG-UI Channel"
-description: "AG-UI 1.0 inbound channel: wire types, runtime-event projection, and the 1.0 rules the stream keeps."
+description: "AG-UI 1.0 channel: wire types, runtime-event projection, the consumer pipeline, and the 1.0 rules each side keeps."
 tags:
   - everruns
   - integrations
@@ -18,8 +18,8 @@ subagents, run metadata, and a capabilities declaration at
 protocol from any session behind the facade's `ag-ui` feature (see
 [Framework](#framework)), and `serve` mounts it at `POST /v1/e/{agent}/ag-ui`
 behind its own `ag-ui` feature (see [serve](#serve)), with the runnable
-`examples/serve/ag-ui` driven by `@ag-ui/client`. The outbound client is a
-planned follow-up of the same upgrade.
+`examples/serve/ag-ui` driven by `@ag-ui/client`. The crate also has the
+consumer half (below), which outbound delegation builds on.
 
 ## Pieces
 
@@ -31,6 +31,10 @@ planned follow-up of the same upgrade.
 - **Projection**: `everruns_ag_ui::projection::Projector` (feature `core`)
   turns canonical runtime events into AG-UI events. It is transport-free so the
   server endpoint, the framework and `serve` share one projection.
+- **Consumer**: `everruns_ag_ui::consumer` decodes a producer's events,
+  enforces the 1.0 consumer rules and assembles a `RunResult`;
+  `ResumeBuilder` answers interrupts. The HTTP/SSE `client` (feature `client`)
+  feeds it. See [Consumer rules](#consumer-rules).
 - **Server adapter**: [`crates/server/src/api/ag_ui.rs`](../../crates/server/src/api/ag_ui.rs)
   validates input, runs the turn and feeds the session's events to the
   projector.
@@ -126,6 +130,33 @@ because every top-level agent is an endpoint and none is declared separately.
 - **Ids.** Client-supplied `threadId`, `runId` and message ids are 1 to 128
   characters of `[A-Za-z0-9-_.]` (TM-TENANT-009). Emitted assistant message ids
   are the runtime message UUID, so a client can correlate them with history.
+
+## Consumer rules
+
+When Everruns is the AG-UI client, the producer is untrusted, so the consumer
+holds it to the rules rather than repairing its stream:
+
+- **Processing model.** An unknown event type is dropped and an unknown union
+  member in an optional or list slot (outcome, content part, snapshot message,
+  JSON Patch op) is stripped, each with a warning; a known field with a
+  malformed value fails the stream.
+- **Sequencing.** The stream opens with `RUN_STARTED` (or `RUN_ERROR`); after a
+  terminal event only a new run may start; continuations need an open opener;
+  a run may not finish with a message, tool call, reasoning span, step or
+  subagent open; a continuation's `subagentRunId` must agree with its opener.
+  The `*_CHUNK` shorthand is expanded into triads first. A body that ends
+  inside a run is an error.
+- **Resume coverage.** A resume answers every open interrupt exactly once
+  (resolved or cancelled) and nothing else; `ResumeBuilder` refuses anything
+  less before it is sent.
+- **Bounded input.** The SSE reader caps one event's size (4 MiB by default).
+
+The rules are ported from the reference TypeScript client and tested against
+upstream's client conformance corpus, vendored under
+`crates/ag-ui/spec/1.0/conformance` (`tests/conformance.rs`): every stream the
+corpus accepts is accepted and every one it rejects is rejected for the same
+reason. Its warning, reducer and request assertions describe the TypeScript
+client's own state handling and are not checked.
 
 ## Interrupts and resume
 

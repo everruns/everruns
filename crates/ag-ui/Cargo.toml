@@ -19,27 +19,38 @@ description = "AG-UI 1.0 protocol types (events, run input, interrupts, capabili
 readme = "README.md"
 keywords = ["agent", "ag-ui", "protocol", "llm", "sse"]
 categories = ["api-bindings", "web-programming"]
-# The fixture corpus and its test are repo-only; the schema ships because
-# it is embedded.
-exclude = ["spec/1.0/fixtures", "tests"]
+# The fixture and conformance corpora and their tests are repo-only; the
+# schema ships because it is embedded.
+exclude = ["spec/1.0/fixtures", "spec/1.0/conformance", "tests"]
 
 [features]
 default = []
 # `projection`: map Everruns runtime events onto an AG-UI run.
 core = ["dep:everruns-core", "dep:everruns-provider"]
+# `client`: an HTTP/SSE client for AG-UI agents. Off by default so the wire
+# types stay serde-only.
+client = ["dep:reqwest", "dep:futures-util"]
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 everruns-core = { workspace = true, optional = true }
 everruns-provider = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls"] }
+futures-util = { workspace = true, optional = true }
 
 [dev-dependencies]
 jsonschema = { version = "0.58.1", default-features = false }
+tokio = { workspace = true }
+futures-util = { workspace = true }
 
 [[test]]
 name = "projection"
 required-features = ["core"]
+
+[[test]]
+name = "client"
+required-features = ["client"]
 
 [lints]
 workspace = true
