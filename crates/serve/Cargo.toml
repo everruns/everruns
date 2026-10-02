@@ -39,6 +39,9 @@ name = "serve"
 # `POST /v1/e/{agent}/ag-ui`: serve every top-level agent to AG-UI 1.0 clients
 # (CopilotKit, `@ag-ui/client`) through `everruns::ag_ui`.
 ag-ui = ["everruns/ag-ui-axum"]
+# `POST /v1/e/{agent}/a2a`: serve every top-level agent to A2A 1.0 callers
+# (JSON-RPC, with an Agent Card) through the A2A Rust SDK's server.
+a2a = ["dep:a2a", "dep:a2a-server"]
 # `bedrock/<model-id>` models: Amazon Bedrock on the AWS default credential
 # chain (an IAM role, ECS/AgentCore container credentials, instance profile,
 # SSO/profile, env), routed when AWS_REGION or AWS_DEFAULT_REGION is set. Off by
@@ -48,6 +51,8 @@ bedrock = ["everruns/bedrock"]
 [dependencies]
 everruns = { workspace = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }
 everruns-serve-macros.workspace = true
+a2a = { workspace = true, optional = true }
+a2a-server = { workspace = true, optional = true }
 anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true

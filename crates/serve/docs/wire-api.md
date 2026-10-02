@@ -37,6 +37,8 @@ client.messages().create(&session.id, "What was revenue last week?").await?;
 | `GET /v1/agent` (serve) | | agent card: agents, tools, skills, channels, schedules, version |
 | `POST /v1/channels/{name}` (serve) | the provider's webhook | whatever the channel answers |
 | `POST /v1/e/{agent}/ag-ui` (`ag-ui` feature) | AG-UI 1.0 `RunAgentInput` | SSE stream of AG-UI events, see [AG-UI](#ag-ui) |
+| `POST /v1/e/{agent}/a2a` (`a2a` feature) | A2A 1.0 JSON-RPC (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) | JSON-RPC result, or SSE for the streaming methods, see [A2A](#a2a) |
+| `GET /v1/e/{agent}/a2a/.well-known/agent-card.json` (`a2a` feature) | | A2A 1.0 Agent Card |
 | `GET /health` (serve) | | `{status, build_id}` |
 | `POST /dev/schedules/{name}` (serve, `dev` only) | | runs a schedule now |
 
@@ -165,6 +167,30 @@ manifest under `routes`.
   input the run cannot use (no trailing user message, an entry that cannot be
   applied) is `400`; an unknown agent or a subagent is `404`.
 
+## A2A
+
+With the `a2a` cargo feature, every top-level agent also answers A2A 1.0
+JSON-RPC at `POST /v1/e/{agent}/a2a`, with its Agent Card under it, the shape
+of the server's A2A endpoint. The protocol is the A2A Rust SDK's
+(`a2a-server-lf`) request handler; serve supplies the executor. The agent card
+lists the routes under `a2a`, and the manifest under `routes`.
+
+- **Contexts.** Each `contextId` maps to one session (channel key
+  `a2a:{agent}` in the thread map), so it survives a restart. A message
+  without one gets a new context, and so a new session.
+- **Tasks.** One task is one turn: `working`, the final reply as one
+  `response` artifact, then `completed`; a failed turn is `failed` with the
+  error as the status message. `SendMessage` blocks until then. Tasks live in
+  memory: after a restart `GetTask` no longer knows them.
+- **Input.** Text parts, and data parts as JSON, joined in order. A message
+  with neither is a JSON-RPC `-32602`. File parts are ignored.
+- **Version.** A2A 1.0 only: send `A2A-Version: 1.0`. An absent header means
+  0.3, which is refused.
+- **Interrupts.** A pending approval or `ask_user` question keeps the task
+  `working` until the routes above answer it. `CancelTask` cancels the turn
+  running on the context's session.
+- **Errors.** An unknown agent or a subagent is a `404` problem.
+
 ## Differences from the server
 
 - No auth, organizations, agents CRUD, harnesses, workspaces or files routes.
@@ -173,4 +199,6 @@ manifest under `routes`.
   agent reachable through the SDK needs a name like `analyst`, not `run_sql`.
 - No `tool-results` route (serve has no client-side tools); approvals use the
   serve-only route above.
+- The A2A endpoint speaks 1.0 only (the server also speaks 0.3), has no auth
+  or HMAC signing, and keeps tasks in memory.
 - `events` supports the listed filters only (no `around`, `q`, `turn_id` …).

@@ -1,0 +1,36 @@
+# Two agents over A2A: a serve app serves `researcher`, and a Framework agent
+# (`writer`) delegates to it. Runs offline.
+[package]
+name = "serve-example-a2a"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# The serve app: `POST /v1/e/researcher/a2a` and its Agent Card.
+[[bin]]
+name = "researcher"
+path = "src/main.rs"
+
+# The caller: an `everruns` agent with outbound A2A delegation.
+[[bin]]
+name = "writer"
+path = "src/bin/writer.rs"
+
+[dependencies]
+# The `a2a` feature serves `POST /v1/e/{agent}/a2a` for every top-level agent.
+everruns-serve = { workspace = true, features = ["a2a"] }
+# `a2a`: the `a2a_agent_delegation` capability (`spawn_agent` to a remote
+# A2A agent). `local`: the session storage it records delegated runs in.
+everruns = { workspace = true, features = ["a2a", "local", "openai"] }
+everruns-example-demo = { path = "../../demo-support" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[build-dependencies]
+everruns-serve-build.workspace = true
+
+[lints]
+workspace = true

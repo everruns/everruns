@@ -1192,3 +1192,7 @@ mod ag_ui {
         assert_eq!(card["ag_ui"]["asker"], "/v1/e/asker/ag-ui");
     }
 }
+
+#[cfg(feature = "a2a")]
+#[path = "a2a_tests.rs"]
+mod a2a;

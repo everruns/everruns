@@ -12,7 +12,8 @@
 //!   `pending_approvals`, `pending_questions`) and a few serve-only routes
 //!   (approvals, channels, the agent card, dev schedules). With the `ag-ui`
 //!   feature, `POST /v1/e/{agent}/ag-ui` mirrors the server's AG-UI channel
-//!   route (see `ag_ui`).
+//!   route (see `ag_ui`); with `a2a`, `POST /v1/e/{agent}/a2a` and its Agent
+//!   Card mirror the server's A2A endpoint (see `a2a`).
 //! - Events are the engine's durable canonical log, replayed then followed
 //!   live through `Session::events_from`; serve writes none.
 
@@ -62,6 +63,10 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
     #[cfg(feature = "ag-ui")]
     {
         router = router.route("/v1/e/{name}/ag-ui", post(crate::ag_ui::run));
+    }
+    #[cfg(feature = "a2a")]
+    {
+        router = crate::a2a::routes(&host, router);
     }
     if host.mode == Mode::Dev {
         // Dev only: fire a schedule without waiting for its cron.
@@ -147,6 +152,19 @@ async fn agent_card(State(host): State<Arc<Host>>) -> Json<Value> {
             .iter()
             .filter(|agent| !agent.sub)
             .map(|agent| (agent.name.clone(), json!(crate::ag_ui::route(&agent.name))))
+            .collect::<serde_json::Map<_, _>>()
+            .into();
+        card
+    };
+    // The A2A endpoint of each top-level agent, by agent name.
+    #[cfg(feature = "a2a")]
+    let card = {
+        let mut card = card;
+        card["a2a"] = manifest
+            .agents
+            .iter()
+            .filter(|agent| !agent.sub)
+            .map(|agent| (agent.name.clone(), json!(crate::a2a::route(&agent.name))))
             .collect::<serde_json::Map<_, _>>()
             .into();
         card

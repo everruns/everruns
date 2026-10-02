@@ -87,6 +87,7 @@ default credential chain whenever `AWS_REGION` is set.
 | [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | A tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals and the Bashkit sandbox. |
 | [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
+| [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | Two agents over A2A: a served `researcher`, and an `everruns` agent that delegates to it. |
 
 ## Project layout
 
@@ -156,7 +157,7 @@ request and response bodies:
 - `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions
 
 It adds a few routes of its own: `GET /health`, `GET /v1/agent` (the agent
-card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit) route, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
+card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit) and [A2A](#a2a) routes, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
 to approve or deny a pending tool call. Errors are `application/problem+json`.
 
 ## AG-UI and CopilotKit
@@ -192,6 +193,33 @@ them. Input that is not a valid `RunAgentInput` gets `400`, and an unknown
 agent `404`. The agent card lists each agent's route under `ag_ui`. See
 [Serve AG-UI](/framework/ag-ui/) for the event and interrupt shapes.
 
+## A2A
+
+With the `a2a` feature, every top-level agent also serves other agents over
+[A2A](https://a2a-protocol.org) 1.0 JSON-RPC:
+
+```sh
+cargo add everruns-serve --features a2a
+```
+
+The endpoint is `POST /v1/e/{agent}/a2a` and its Agent Card is
+`GET /v1/e/{agent}/a2a/.well-known/agent-card.json`, the shape of an Everruns
+A2A endpoint. Any A2A 1.0 client works, including the official `a2a` CLI and
+another Everruns agent's `a2a_agent_delegation` capability:
+
+```sh
+a2a send -a http://localhost:3000/v1/e/researcher/a2a/.well-known/agent-card.json "Tide pools"
+```
+
+Each A2A `contextId` maps to one session, which survives a restart; each task
+is one turn. A task streams `working`, then the final reply as a `response`
+artifact, then `completed` (or `failed`). `GetTask`, `ListTasks`, `CancelTask`
+and `SubscribeToTask` come from the A2A Rust SDK's request handler; tasks are
+kept in memory, so old task ids are forgotten on restart while their context
+continues. Requests need the `A2A-Version: 1.0` header. A pending approval or
+`ask_user` question keeps the task `working` until the routes above answer it.
+The agent card lists each agent's endpoint under `a2a`.
+
 Sessions survive a restart: the binary rebuilds each agent and resumes the
 session from the local store. A turn the old process left waiting on an
 approval or an `ask_user` question waits again: the call runs again, so the
@@ -208,6 +236,7 @@ build that owns it.
 
 - After a restart, an approval answered "always" before it is asked again, and a
   request parked by a subagent is lost.
+- A2A tasks are held in memory, and A2A 0.3 clients are not served.
 - A deny note is not passed to the model.
 - There is no OCI build, cloud deploy, or Postgres or NATS adapter.
 - The server's agent, harness, workspace and tool-result routes are not served.

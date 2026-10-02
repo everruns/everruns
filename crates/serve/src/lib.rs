@@ -60,6 +60,8 @@
 // Lets the macros' `::serve::…` paths resolve in this crate's own tests.
 extern crate self as serve;
 
+#[cfg(feature = "a2a")]
+mod a2a;
 #[cfg(feature = "ag-ui")]
 mod ag_ui;
 mod agent;
