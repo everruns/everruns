@@ -20,6 +20,7 @@ deploys to AgentCore unchanged.
 |---|---|
 | `GET /ping` | `{"status":"Healthy"}`, or `HealthyBusy` while a turn runs so AgentCore keeps the session alive |
 | `POST /invocations` | An AG-UI 1.0 run of the app's agent as server-sent events. The body is AG-UI `RunAgentInput` (the AgentCore AG-UI protocol) or `{"prompt": "..."}` (a plain `InvokeAgentRuntime` call) |
+| `GET /ws` | The same runs over AgentCore's WebSocket transport: each text message is one invocation body, and each AG-UI event comes back as one text message |
 | `/health`, `/v1/...` | serve's own wire API, unchanged |
 
 The AG-UI thread defaults to the AgentCore session id
@@ -59,6 +60,7 @@ serve's own.
 | `SERVE_DATA_DIR`, `DATABASE_URL` | Where serve keeps its SQLite session log. Default: the runtime's session storage at `/mnt/workspace/.serve` when mounted, else a temporary directory |
 | `SERVE_WORKSPACE` | The agent's workspace. Default: `/mnt/workspace` when mounted |
 | `SERVE_GATEWAY_URL`, `SERVE_GATEWAY_KEY` | serve's model gateway. An AgentCore Gateway inference endpoint (`https://<gateway>/inference/v1`) works here, with targets named after providers (`anthropic`, `openai`) so serve's `provider/model` ids route as-is |
+| `AWS_REGION`, `AWS_DEFAULT_REGION` | Region for `bedrock/<model-id>` models (for example `bedrock/us.anthropic.claude-sonnet-4-6`). When set, those models call Amazon Bedrock directly with the runtime's execution role, ahead of the gateway. The role needs `bedrock:InvokeModelWithResponseStream`. Disable the default `bedrock` feature to drop the AWS SDK |
 
 AgentCore mounts session storage only when an invocation arrives, so `/ping` answers
 without touching storage and the server boots on the first other request.
@@ -78,10 +80,11 @@ adds the microVM shell, an approval tool and an `@ag-ui/client` script.
 
 ## Limits
 
-- Not yet served: `/ws` (AgentCore's WebSocket transport) and the MCP and A2A protocol ports.
+- Not yet served: the MCP and A2A protocol ports.
 - `ask_user` and approvals park the turn without keeping the session busy, so AgentCore
-  may stop the microVM after its idle timeout. serve's pending approvals do not survive
-  a restart yet.
+  may stop the microVM after its idle timeout. With session storage the next microVM
+  reopens the parked turn and its interrupt is still open, but an "always" answer from
+  before the restart is not remembered, and a request a subagent parked is lost.
 - Not yet integrated: AgentCore Memory, Code Interpreter, Browser and Identity.
 - Schedules run in-process, which on AgentCore only fires while a session's microVM is up.
   Use EventBridge to call `InvokeAgentRuntime` instead.

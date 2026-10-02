@@ -92,8 +92,14 @@ runtime.
   answers it. `ask_user` questions are parked the same way and answered
   through the server's `/question-answers`. There is no canonical event for a
   pending request, so the session lists them (`pending_approvals`,
-  `pending_questions`) and reports `waitingfortoolresults`. The PoC keeps
-  them in memory only, and the runtime passes the model no deny note.
+  `pending_questions`) and reports `waitingfortoolresults`. Parked requests
+  live in memory; the event log is what survives a restart. When a session
+  comes back, the host asks the engine (`Session::interrupted_turn`) for a
+  turn the old process cut off in its act, and resumes it
+  (`Session::resume_interrupted_turn`) only when every unfinished call waits
+  on a person, so those calls run again, park again under the same tool call
+  ids, and an answer finishes the turn; a call cut off mid-execution is never
+  re-run. The runtime passes the model no deny note.
 - **Subagents are tools.** `#[agent(sub)]` becomes `ask_<name>` on the other
   agents and runs a child session on the same engine. The child's tool
   activity is reported as `tool.progress` of the parent call, and its
@@ -140,8 +146,8 @@ runtime.
   `everruns` itself?
 - Per-build routing and draining in a real host. The PoC defines the contract
   (`build_id`, `409` with `x-serve-build`) but does no routing.
-- Durable approvals and `ask_user` across restarts, and a deny note the
-  model can read.
+- "Always" approval decisions and subagent requests across restarts, and a
+  deny note the model can read.
 - Which further server routes (auth, message listing, `tool-results`) a
   serve app should answer so every client works unchanged.
 - `#[memoize]` scoped to a turn, and Postgres or NATS adapters for `start`.

@@ -6,9 +6,10 @@ use serve::sim;
 #[agent]
 fn assistant() -> Agent {
     Agent::builder()
-        // Routed by the model gateway (SERVE_GATEWAY_URL). Without one,
-        // `--dev` and evals follow the offline script below.
-        .model("anthropic/claude-sonnet-5")
+        // Bedrock through the runtime's execution role when AWS_REGION is set
+        // (as on AgentCore). Without it, `--dev` and evals follow the
+        // offline script below.
+        .model("bedrock/us.anthropic.claude-sonnet-4-6")
         .instructions(md!("instructions.md"))
         .offline(sim::script([
             sim::call(

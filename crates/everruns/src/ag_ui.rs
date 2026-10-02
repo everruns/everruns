@@ -186,7 +186,8 @@
 // bridge, built like `serve`'s gate: it parks each request under (session,
 // tool call id) until a resume entry answers it. The turn stays alive in the
 // process between the interrupted run and the resuming one; a process restart
-// cancels it, which the runtime records as a cancelled turn.
+// leaves it unfinished in the log, and `Session::resume_interrupted_turn` runs
+// its waiting calls again so they park on the gate anew.
 //
 // Decision: `InterruptSource` is the seam between a run and whatever parks
 // requests. `serve` implements it over the pending approvals and questions

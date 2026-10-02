@@ -2,6 +2,15 @@
 
 ## 2026-10-02
 
+* **Parked approvals and questions survive a restart.** A turn waiting on a
+  person blocks inside its act, so a killed process leaves it in the log
+  without an end. `Session::interrupted_turn` reports such a turn from the
+  log, and `Session::resume_interrupted_turn` runs its unfinished calls again
+  in the same turn, which asks again under the same tool call ids. serve
+  resumes it when a session comes back, only when every unfinished call waits
+  on a person, so an ungated tool is never re-run. See
+  [serve](framework/serve.md) and [AG-UI Channel](integrations/ag-ui.md).
+
 * **`everruns-durable` is a generic engine.** It no longer depends on any
   `everruns-*` crate or knows about agents and turns. `DurableExecution` and
   the turn conventions (`user_message` signal, idempotent waiting-turn
