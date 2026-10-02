@@ -1,0 +1,24 @@
+// The serve app as celld containers: one ServeCell per name, each running the
+// image built from ../Dockerfile (see ../README.md).
+{
+  "name": "serve-celld",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    // Serve variables (SERVE_*) reach the container; list others here.
+    "CONTAINER_ENV": ""
+  },
+  "containers": [
+    {
+      "class_name": "ServeCell",
+      "image": "serve-celld-example:latest",
+      // A quarter CPU and 1 GiB: serve boots in about a second on it.
+      "instance_type": "basic"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "CELL", "class_name": "ServeCell" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ServeCell"] }]
+}

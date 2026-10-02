@@ -252,5 +252,14 @@ events. serve's own commands keep working. See
 [Serve on AgentCore](/framework/serve-agentcore/) for deployment, persistence on
 session storage, tools and models.
 
+## celld
+
+[`everruns-serve-celld`](https://docs.rs/everruns-serve-celld) runs a serve app
+durably on [celld](https://github.com/denoland/celld), self-hosted Durable
+Objects. Replace `serve::start` with `serve_celld::start`; the binary then runs
+in a container that a Durable Object supervises, and the object keeps a snapshot
+and a request journal so a lost container is restored and its interrupted turn
+replayed. See [Serve on celld](/framework/serve-celld/).
+
 The full guide, wire reference and hosting contract live next to the crate in
 [`crates/serve/docs`](https://github.com/everruns/everruns/tree/main/crates/serve/docs).

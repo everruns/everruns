@@ -1,0 +1,53 @@
+# celld hosting target for the experimental `serve` agent framework.
+#
+# Decisions:
+# - A sibling of `everruns-serve-agentcore` on serve's public hosting seam
+#   (`serve::Server`): the celld contract stays out of serve.
+# - The Rust side is the container half only. Durability lives in the
+#   Durable Object that supervises the container (the JS cell in
+#   `examples/serve/celld/worker`): this crate makes serve's state portable
+#   (snapshot, restore) and observable (boot id, busy), nothing more.
+# - No celld or Cloudflare SDK: the cell talks plain HTTP to the container.
+# - Experimental (Alpha): published as `everruns-serve-celld` at the platform
+#   version, with no compatibility promise.
+
+[package]
+name = "everruns-serve-celld"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-serve-celld"
+description = "Run a serve app (experimental) durably on celld: a container whose state a Durable Object snapshots, restores and replays"
+readme = "README.md"
+keywords = ["agent", "celld", "durable-objects", "containers", "ag-ui"]
+categories = ["development-tools", "web-programming::http-server"]
+
+[lib]
+name = "serve_celld"
+
+[dependencies]
+everruns-serve = { workspace = true, features = ["ag-ui"] }
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+# `HostShell` for `[sandbox] kind = "microvm"`: the container is the boundary.
+everruns = { workspace = true, features = ["host-shell"] }
+# Consistent copies of open SQLite databases (the online backup API), on the
+# same bundled SQLite serve and everruns link.
+rusqlite = { version = "0.39", features = ["bundled", "backup"] }
+serde_json.workspace = true
+tar.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tower.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -218,6 +218,7 @@ export default defineConfig({
                   items: [
                     { label: "Serve", slug: "framework/serve" },
                     { label: "Serve on AgentCore", slug: "framework/serve-agentcore" },
+                    { label: "Serve on celld", slug: "framework/serve-celld" },
                   ],
                 },
                 {

@@ -1,0 +1,12 @@
+{
+  "name": "serve-celld-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "celld dev .",
+    "test:e2e": "node test/e2e.mjs"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  }
+}
