@@ -66,6 +66,7 @@ jobs:
       budget_e2e: ${{ steps.core_filter.outputs.budget_e2e }}
       docs: ${{ steps.core_filter.outputs.docs }}
       docs_notebooks: ${{ steps.core_filter.outputs.docs_notebooks }}
+      docs_snippets: ${{ steps.core_filter.outputs.docs_snippets }}
       docker: ${{ steps.core_filter.outputs.docker }}
       postgres_integration: ${{ steps.core_filter.outputs.postgres_integration }}
       provider_live: ${{ steps.core_filter.outputs.provider_live }}
@@ -235,6 +236,12 @@ jobs:
               - 'integrations/*/README.md'
               - 'integrations/*/src/lib.rs'
               - 'docs/**'
+              # scripts/test-docs-catalogs.sh compares the docs catalogs with
+              # these sources (docs/** and crates/*/Cargo.toml are above).
+              - 'scripts/check_docs_catalogs.py'
+              - 'crates/core/src/events/mod.rs'
+              - 'crates/capability/src/presets.rs'
+              - 'crates/server/src/harnesses/platform_chat.rs'
               # scripts/test-no-everruns-runtime.sh scans these trees too.
               - 'knowledge/**'
               - 'skills/**'
@@ -279,7 +286,12 @@ jobs:
             docs_notebooks:
               - 'apps/docs/scripts/execute-notebooks.py'
               - 'apps/docs/scripts/render-notebooks.mjs'
+              - 'apps/docs/scripts/check-python-snippets.py'
               - 'docs/tutorials/**'
+            # Framework pages whose Rust blocks crates/docs-snippets compiles.
+            # A change under crates/ already sets `rust`, which runs it too.
+            docs_snippets:
+              - 'docs/framework/**'
             docker:
               - 'docker/**'
               - '.dockerignore'
@@ -862,7 +874,9 @@ jobs:
     # (e.g. ubuntu-latest-8-core); defaults to standard runners.
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    # A docs/framework-only change still runs, but only the facade-cli leg
+    # does work: it compiles the Framework docs snippets (crates/docs-snippets).
+    if: needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_snippets == 'true')
     timeout-minutes: 30
 
 
@@ -875,6 +889,7 @@ jobs:
         shard: [llm-core, provider-engine, host-mcp, facade-cli]
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+      DOCS_SNIPPETS_ONLY: ${{ needs.changes.outputs.rust != 'true' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -885,6 +900,7 @@ jobs:
       # link (`ld terminated with signal 7 [Bus error]`, 36 MB free). Reclaim the
       # ~25 GB of preinstalled tooling this job never uses before building.
       - name: Free disk space
+        if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
             /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
@@ -899,6 +915,7 @@ jobs:
       # without lld installed still builds. To opt in locally:
       #   export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=lld"
       - name: Install fast linker
+        if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
         timeout-minutes: 5
         run: |
           if ! command -v ld.lld >/dev/null 2>&1; then
@@ -908,18 +925,27 @@ jobs:
           ld.lld --version
 
       - name: Install Rust toolchain
+        if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
         uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
+        if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "unit-v2"
           # Heaviest shard writes the key; the others restore it (see `integration`).
-          save-if: ${{ matrix.shard == 'facade-cli' }}
+          # A docs-only run builds a fraction of the workload, so it never writes.
+          save-if: ${{ matrix.shard == 'facade-cli' && needs.changes.outputs.rust == 'true' }}
 
       - name: Run pure unit tests (${{ matrix.shard }})
+        if: env.DOCS_SNIPPETS_ONLY != 'true' || matrix.shard == 'facade-cli'
         shell: bash
         run: |
+          if [ "$DOCS_SNIPPETS_ONLY" = "true" ]; then
+            # Only docs/framework/** changed: compile its Rust blocks.
+            cargo test -p everruns-docs-snippets
+            exit 0
+          fi
           case "${{ matrix.shard }}" in
             llm-core)
           # Driver suites include local HTTP contracts. Credentialed live cases
@@ -1028,7 +1054,9 @@ jobs:
           # feature, including local history/resume acceptance paths, plus a
           # bare-facade compile so public configuration cannot accidentally
           # acquire a feature-only dependency. Pure llmsim; no credentials.
-          cargo test -p everruns --all-features
+          # everruns-docs-snippets rides in the same invocation: its doctests
+          # compile every Rust block in docs/framework/ against the facade.
+          cargo test -p everruns -p everruns-docs-snippets --all-features
           cargo check -p everruns --no-default-features
           # Dynamically inventories every crates/everruns/examples/*.rs target,
           # rejects internal-crate imports, and compiles the complete set offline.
@@ -2642,6 +2670,20 @@ jobs:
           python -m pip install nbclient nbformat ipykernel everruns-sdk requests
           cd apps/docs
           python scripts/execute-notebooks.py
+          # The tutorial's complete program runs against the same llmsim
+          # default model the notebooks set up.
+          python scripts/check-python-snippets.py --execute
+
+      # Every ```python block is checked against the published SDK: imports,
+      # `client.<resource>.<method>` names, and the arguments passed. Fragments
+      # cannot run on their own, so this is where the guides' SDK calls are
+      # verified; the notebook step above also executes complete programs.
+      - name: Check Python snippets against the SDK
+        run: |
+          python3 -m venv /tmp/docs-snippets-venv
+          . /tmp/docs-snippets-venv/bin/activate
+          python -m pip install --quiet everruns-sdk
+          python scripts/check-python-snippets.py
 
       - name: Astro check
         run: pnpm run check

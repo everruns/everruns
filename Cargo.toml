@@ -38,6 +38,7 @@ members = [
     "crates/ard",
     "crates/ag-ui",
     "crates/integrations-catalog",
+    "crates/docs-snippets",
     # serve: experimental agent framework (Alpha, published as everruns-serve*). See crates/serve/README.md.
     "crates/serve",
     "crates/serve-macros",

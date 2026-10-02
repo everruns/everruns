@@ -2591,6 +2591,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-docs-snippets"
+version = "0.34.1"
+dependencies = [
+ "axum",
+ "everruns",
+ "everruns-anthropic",
+ "everruns-fireworks",
+ "everruns-host",
+ "everruns-integrations-brave-search",
+ "everruns-llmsim",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-drivers"
 version = "0.34.1"
 dependencies = [
@@ -2890,6 +2907,7 @@ dependencies = [
  "everruns-integrations-sprites",
  "everruns-integrations-typesafe",
  "everruns-platform",
+ "serde_json",
 ]
 
 [[package]]
