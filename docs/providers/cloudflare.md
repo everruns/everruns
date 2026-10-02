@@ -47,18 +47,14 @@ https://api.cloudflare.com/client/v4/accounts/<account-id>/ai/v1
 Set a base URL only to route through a proxy in front of Cloudflare; it
 replaces the derived one.
 
-:::note
-A token holding only **AI Gateway** permissions is rejected with `401` and
-error code `10000`. Those permissions cover gateway configuration, logs, and
-routes — not inference, which is what the Workers AI permission grants.
-:::
-
 ## Models
 
 Model ids are namespaced and passed through unchanged:
 
-- Third-party: `openai/gpt-6-luna`, `anthropic/claude-opus-5`
-- Workers AI: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`
+- Third-party: `openai/gpt-6-luna`, `anthropic/claude-opus-5` — see the
+  [upstream providers AI Gateway supports](https://developers.cloudflare.com/ai-gateway/usage/providers/).
+- Workers AI: `@cf/meta/llama-3.3-70b-instruct-fp8-fast` — see the
+  [Workers AI model catalog](https://developers.cloudflare.com/workers-ai/models/).
 
 Which third-party models a gateway can reach depends on the upstreams
 Cloudflare has enabled for your account, so verify an id with a real request
@@ -93,5 +89,7 @@ routes (`dynamic/{route}`), which this provider does not target.
 
 - [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/)
 - [AI Gateway REST API](https://developers.cloudflare.com/ai-gateway/usage/rest-api/)
+- [Workers AI models](https://developers.cloudflare.com/workers-ai/models/)
+- [AI Gateway providers](https://developers.cloudflare.com/ai-gateway/usage/providers/)
 - [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers)
 - [Migrate between providers](/how-to/migrate-providers/)
