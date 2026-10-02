@@ -54,7 +54,8 @@ export EVERRUNS_API_KEY=evr_pat_...
 export EVERRUNS_API_URL=https://app.everruns.com/api
 ```
 
-Set `EVERRUNS_API_URL` explicitly. Then run one turn:
+Newer SDK releases default to Everruns Cloud; setting `EVERRUNS_API_URL` keeps
+older ones pointed at it too. Then run one turn:
 
 ```python
 import asyncio
