@@ -132,7 +132,7 @@ every transport, backend, or integration is re-exported by one facade.
 The inventory covers the public [repository README](../../README.md),
 [host README](../../crates/host/README.md),
 [Everruns skill](../../skills/everruns/SKILL.md), and
-[embedding guide](../../docs/advanced/embedding-everruns.md). It also includes
+[custom backends guide](../../docs/framework/custom-backends.md). It also includes
 the in-process, inspection, real-disk, plugin, mount, and Lua examples
 under [the host examples](../../crates/host/examples/in_process_runtime.rs)
 and the provider-facing [OpenAI README](../../crates/drivers/openai/README.md).
