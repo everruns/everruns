@@ -46,6 +46,7 @@ DRIVER_LAYOUT_NAMES=(
   meta
   openai
   openrouter
+  drivers
 )
 PROVIDER_DIRS=(
   crates/drivers/openai
@@ -56,6 +57,7 @@ PROVIDER_DIRS=(
   crates/drivers/mai
   crates/drivers/fireworks
   crates/drivers/meta
+  crates/drivers/drivers
 )
 PROVIDER_CRATES=(
   everruns-openai
@@ -66,6 +68,7 @@ PROVIDER_CRATES=(
   everruns-mai
   everruns-fireworks
   everruns-meta
+  everruns-drivers
 )
 FORBIDDEN_TREE='^(everruns-core|everruns-host|everruns-platform|everruns-server) '
 HEAVY_TREE='^(sqlx|utoipa|inventory|axum|tonic) '
@@ -77,7 +80,9 @@ for driver in "${DRIVER_LAYOUT_NAMES[@]}"; do
     echo "Missing driver package: crates/drivers/$driver/Cargo.toml"
     FAILED=1
   fi
-  if [ -e "crates/$driver" ]; then
+  # `crates/drivers` is the grouping directory itself, so the multi-vendor
+  # package that shares its name has no shadow path to check.
+  if [ "$driver" != "drivers" ] && [ -e "crates/$driver" ]; then
     echo "Driver packages belong under crates/drivers, not crates/$driver"
     FAILED=1
   fi

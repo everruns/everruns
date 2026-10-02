@@ -26,6 +26,7 @@ pub fn create_driver_registry() -> DriverRegistry {
     everruns_mai::register_driver(&mut registry);
     everruns_fireworks::register_driver(&mut registry);
     everruns_meta::register_driver(&mut registry);
+    everruns_drivers::register_drivers(&mut registry);
     everruns_anthropic::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);

@@ -11,7 +11,7 @@ use everruns_provider::provider::DriverId;
 use everruns_worker::adapters::create_driver_registry;
 
 /// The published table, in `docs/framework/supported-providers.md` order:
-/// (driver, display name, services, offers model discovery, offers OAuth).
+/// (driver, display name, services, offers OAuth).
 const PUBLISHED: &[(DriverId, &str, &[ServiceKind], bool)] = &[
     (
         DriverId::OpenAI,
@@ -70,6 +70,18 @@ const PUBLISHED: &[(DriverId, &str, &[ServiceKind], bool)] = &[
     (
         DriverId::Meta,
         "Meta Model API",
+        &[ServiceKind::Chat],
+        false,
+    ),
+    (
+        DriverId::Cloudflare,
+        "Cloudflare AI Gateway",
+        &[ServiceKind::Chat],
+        false,
+    ),
+    (
+        DriverId::Vercel,
+        "Vercel AI Gateway",
         &[ServiceKind::Chat],
         false,
     ),

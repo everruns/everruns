@@ -1,5 +1,6 @@
 export * from "./schema-types";
 export * from "./legacy-api-types";
+export * from "./provider-driver-types";
 export * from "./mcp-server-types";
 export * from "./agent-mcp-types";
 export type { McpServerCatalogEntry } from "./mcp-catalog-types";

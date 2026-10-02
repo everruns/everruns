@@ -933,7 +933,7 @@
     "input_schema": {
       "$defs": {
         "DriverId": {
-          "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. Any other string is treated as an embedder-defined external provider.",
+          "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, cloudflare, vercel. Any other string is treated as an embedder-defined external provider.",
           "type": "string"
         }
       },
@@ -5567,7 +5567,7 @@
     "input_schema": {
       "$defs": {
         "DriverId": {
-          "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. Any other string is treated as an embedder-defined external provider.",
+          "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, cloudflare, vercel. Any other string is treated as an embedder-defined external provider.",
           "type": "string"
         },
         "ProviderRequestHeader": {
@@ -19151,7 +19151,7 @@
     "input_schema": {
       "$defs": {
         "DriverId": {
-          "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. Any other string is treated as an embedder-defined external provider.",
+          "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, cloudflare, vercel. Any other string is treated as an embedder-defined external provider.",
           "type": "string"
         },
         "ProviderRequestHeader": {

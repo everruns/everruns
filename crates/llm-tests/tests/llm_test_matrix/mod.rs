@@ -7,6 +7,8 @@
 
 #![allow(dead_code)] // Not all test binaries use every constant.
 
+use everruns_provider::credential_schema::assemble_credential_document;
+use everruns_provider::driver_registry::DriverDescriptor;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::driver_registry::ProviderConfig;
 use everruns_provider::model_spec::ModelSpec;
@@ -17,12 +19,19 @@ use everruns_test_support::in_memory_loop::{InMemoryModelConfig, TurnResult};
 // Provider + Model configuration
 // ============================================================================
 
-/// One cell in the test matrix: a (provider, model, env-var) tuple.
+/// One cell in the test matrix: a (provider, model) pair plus the driver's
+/// descriptor, which is what knows how to configure it from the environment.
 #[derive(Clone, Debug)]
 pub struct ProviderModelConfig {
     pub provider_type: DriverId,
     pub model_name: &'static str,
-    pub env_var: &'static str,
+    /// The driver's own descriptor. Credentials resolve through its declared
+    /// credential schema, so a cell never restates variable names and a
+    /// multi-field driver (Bedrock's AWS keys, Cloudflare's token plus account
+    /// id) works with the names its vendor actually uses. An earlier single
+    /// `env_var` could express one name, which is why Bedrock's cell asked for
+    /// a hand-assembled JSON document that was never in any vault.
+    pub descriptor: fn() -> DriverDescriptor,
     /// Whether the model surfaces extended reasoning on the private `thinking`
     /// field. Anthropic (and OpenAI o-series encrypted reasoning) do. OpenAI
     /// GPT-5.x instead surfaces its readable reasoning *summary* as public
@@ -35,12 +44,12 @@ impl ProviderModelConfig {
     pub const fn new(
         provider_type: DriverId,
         model_name: &'static str,
-        env_var: &'static str,
+        descriptor: fn() -> DriverDescriptor,
     ) -> Self {
         Self {
             provider_type,
             model_name,
-            env_var,
+            descriptor,
             reasoning_on_thinking_field: true,
         }
     }
@@ -64,19 +73,28 @@ impl ProviderModelConfig {
                 return None;
             }
         }
-        let Some(api_key) = std::env::var(self.env_var).ok().filter(|k| !k.is_empty()) else {
+        // The same resolution the CLI and dev entrypoints use: the driver's
+        // declared field names, honoring required fields and the
+        // mutually-exclusive groups `validate` enforces. An empty document
+        // means the environment carries no usable credential for this driver,
+        // which is the skip signal — and the matrix now covers the
+        // declaration, not only the wire.
+        let fields = (self.descriptor)()
+            .credential_schema
+            .resolve_from_env(|name| std::env::var(name).ok().filter(|v| !v.is_empty()));
+        let Some(credential) = assemble_credential_document(&fields) else {
             self.record_outcome(CELL_NO_KEY);
             return None;
         };
         let model = ModelSpec::on(self.provider_type.as_str(), self.model_name);
-        let provider = ProviderConfig::new(self.provider_type.clone()).with_api_key(api_key);
+        let provider = ProviderConfig::new(self.provider_type.clone()).with_api_key(credential);
         self.record_outcome(CELL_CONFIGURED);
         Some((model, provider).into())
     }
 
     /// Human-readable label for skip messages.
     pub fn label(&self) -> String {
-        format!("{}:{}", self.env_var, self.model_name)
+        format!("{}:{}", self.provider_type, self.model_name)
     }
 
     /// Record this cell as reached-but-unverified (out of quota/credits).
@@ -138,10 +156,14 @@ impl ProviderModelConfig {
         if path.is_empty() {
             return;
         }
+        // The variables this cell looked for, which is what a reader of a
+        // `no-key` row wants to know. The reporter keys on this column but
+        // does not print it, so a comma-joined list is safe as long as it
+        // carries no tab.
         let line = format!(
             "{outcome}\t{}\t{}\t{}\n",
             self.provider_type.to_string().to_lowercase(),
-            self.env_var,
+            (self.descriptor)().declared_env_vars().join(","),
             self.model_name,
         );
         if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -234,15 +256,21 @@ impl std::fmt::Display for ProviderModelConfig {
 // surface, superseded. The earlier "Model not available" on Fable dates from
 // the period when Anthropic had it disabled; both ids serve inference on the
 // Doppler `ANTHROPIC_API_KEY` (verified 2026-09-02).
-pub const ANTHROPIC_FABLE_5_1: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5-1", "ANTHROPIC_API_KEY");
-pub const ANTHROPIC_FABLE: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5", "ANTHROPIC_API_KEY");
+pub const ANTHROPIC_FABLE_5_1: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Anthropic,
+    "claude-fable-5-1",
+    everruns_anthropic::descriptor,
+);
+pub const ANTHROPIC_FABLE: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Anthropic,
+    "claude-fable-5",
+    everruns_anthropic::descriptor,
+);
 
 pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-haiku-4-5-20251001",
-    "ANTHROPIC_API_KEY",
+    everruns_anthropic::descriptor,
 );
 
 // Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
@@ -251,60 +279,78 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 // regression in `tool_search_test.rs`. Sonnet 5.5 runs alongside Sonnet 5
 // (same $2/$10 tier) so its always-on thinking and preserved-thinking wiring
 // is exercised live.
-pub const ANTHROPIC_OPUS55: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5-5", "ANTHROPIC_API_KEY");
-pub const ANTHROPIC_OPUS5: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5", "ANTHROPIC_API_KEY");
+pub const ANTHROPIC_OPUS55: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Anthropic,
+    "claude-opus-5-5",
+    everruns_anthropic::descriptor,
+);
+pub const ANTHROPIC_OPUS5: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Anthropic,
+    "claude-opus-5",
+    everruns_anthropic::descriptor,
+);
 
 pub const ANTHROPIC_SONNET55: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-sonnet-5-5",
-    "ANTHROPIC_API_KEY",
+    everruns_anthropic::descriptor,
 );
 
-pub const ANTHROPIC_SONNET5: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Anthropic, "claude-sonnet-5", "ANTHROPIC_API_KEY");
+pub const ANTHROPIC_SONNET5: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Anthropic,
+    "claude-sonnet-5",
+    everruns_anthropic::descriptor,
+);
 
-pub const OPENAI_GPT56_LUNA: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.6-luna", "OPENAI_API_KEY")
-        .reasoning_as_text();
+pub const OPENAI_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-5.6-luna",
+    everruns_openai::descriptor,
+)
+.reasoning_as_text();
 
 // GPT-6 Astra is covered by the basic and reasoning-plus-tool-call scenarios.
 // Its reasoning can carry opaque encrypted replay state without readable text.
 pub const OPENAI_GPT6_ASTRA: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-astra", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-astra", everruns_openai::descriptor);
 
 // GPT-6 Luna is the platform default model; Sol is the balanced GPT-6 tier.
 // Both run the basic, tool, schema, and reasoning-plus-tool-call scenarios,
 // which accept readable reasoning or opaque replay state alike.
 pub const OPENAI_GPT6_SOL: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-sol", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-sol", everruns_openai::descriptor);
 
 // GPT-6.1 Sol: near-Astra quality at Sol's price (DevDay 2026-09-29).
 pub const OPENAI_GPT61_SOL: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6.1-sol", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6.1-sol", everruns_openai::descriptor);
 
 pub const OPENAI_GPT6_LUNA: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-luna", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-luna", everruns_openai::descriptor);
 
 pub const OPENAI_GPT52: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.2", "OPENAI_API_KEY").reasoning_as_text();
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.2", everruns_openai::descriptor)
+        .reasoning_as_text();
 
 pub const OPENAI_GPT54: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.4", "OPENAI_API_KEY").reasoning_as_text();
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.4", everruns_openai::descriptor)
+        .reasoning_as_text();
 
 pub const OPENAI_GPT55: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.5", "OPENAI_API_KEY").reasoning_as_text();
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.5", everruns_openai::descriptor)
+        .reasoning_as_text();
 
-pub const GEMINI_FLASH: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Gemini, "gemini-2.5-flash", "GEMINI_API_KEY");
+pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Gemini,
+    "gemini-2.5-flash",
+    everruns_gemini::descriptor,
+);
 
 // Use Meta's lower-cost Contributor tier for the live matrix. Its data-use
 // terms are acceptable for these synthetic test prompts.
 pub const META_MUSE_SPARK_CONTRIBUTOR: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Meta,
     "muse-spark-1.3-contributor",
-    "MODEL_API_KEY",
+    everruns_meta::descriptor,
 )
 .reasoning_as_text();
 
@@ -314,7 +360,7 @@ pub const META_MUSE_SPARK_CONTRIBUTOR: ProviderModelConfig = ProviderModelConfig
 pub const OPENROUTER_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenRouter,
     "openai/gpt-5.6-luna",
-    "OPENROUTER_API_KEY",
+    everruns_openrouter::descriptor,
 )
 .reasoning_as_text();
 
@@ -323,7 +369,7 @@ pub const OPENROUTER_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
 pub const OPENROUTER_GPT6_LUNA: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenRouter,
     "openai/gpt-6-luna",
-    "OPENROUTER_API_KEY",
+    everruns_openrouter::descriptor,
 );
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
@@ -343,24 +389,84 @@ pub const OPENROUTER_GPT6_LUNA: ProviderModelConfig = ProviderModelConfig::new(
 // A fourth de-listing no longer reds `main`: `is_model_unavailable` skips the
 // cell and the coverage report lists it as unverified, so the next churn shows
 // up as missing coverage to repoint rather than as a broken build.
-pub const FIREWORKS_KIMI_K2: ProviderModelConfig = ProviderModelConfig::new(
+pub const FIREWORKS_KIMI_K3: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
     "accounts/fireworks/models/kimi-k3",
-    "FIREWORKS_API_KEY",
+    everruns_fireworks::descriptor,
 );
 
-// Bedrock: credentials are JSON in the env var, not a plain API key.
-// Set AWS_BEDROCK_CREDENTIALS to the JSON credential object.
+// Vercel AI Gateway routes to upstream providers over the Open Responses
+// spec. The point of this case is to exercise the Open Responses driver
+// against a gateway rather than a first-party host, so the model must call
+// tools reliably for the `test_tool_call` assertion to be deterministic —
+// GLM 4.6 is built for agentic tool use and calls tools reliably here.
+//
+// It is also one the gateway's free tier serves. The frontier models are
+// gated: `anthropic/claude-haiku-4.5` answers a 403 `RestrictedModelsError`
+// ("Free tier users do not have access to this model") rather than a quota
+// error, which would fail the cell rather than skip it. Exercising the wire
+// needs no frontier model, so this cell deliberately picks one that is always
+// reachable.
+pub const VERCEL_GLM_46: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Vercel,
+    "zai/glm-4.6",
+    everruns_drivers::vercel::descriptor,
+);
+
+// Cloudflare's AI REST API over Chat Completions. A Workers AI (`@cf/`) model
+// on purpose: those draw on the account's own allocation, while third-party
+// models bill it per call. The driver cannot tell the two apart — both are an
+// id on the same OpenAI-compatible wire — so the cheaper one proves exactly as
+// much, which is the same reasoning as the Fireworks case above. Llama 3.3 70B
+// calls tools deterministically, which the `test_tool_call` assertion needs.
+pub const CLOUDFLARE_LLAMA_33_70B: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Cloudflare,
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    everruns_drivers::cloudflare::descriptor,
+);
+
+// Bedrock resolves the AWS variables its driver declares
+// (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION), like every other
+// cell. It previously asked for a hand-assembled AWS_BEDROCK_CREDENTIALS JSON
+// document, which no vault ever carried, so these cells could only skip.
+//
+// Ids are inference profiles, not bare model ids. us-east-1 supports no
+// in-region inference for current Claude, so a bare `anthropic.claude-...`
+// answers `ValidationException: The provided model identifier is invalid`;
+// the `global.`/`us.` profile forms are what Converse accepts. Bedrock
+// advertises no catalog (`list_models` returns `None`), so an id that stops
+// working has to be re-read from the model card rather than discovered.
 pub const BEDROCK_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Bedrock,
-    "anthropic.claude-3-5-haiku-20241022-v1:0",
-    "AWS_BEDROCK_CREDENTIALS",
+    "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    everruns_bedrock::descriptor,
 );
 
+// Referenced by no suite: the account cannot reach this model, and the id is
+// not why. `AccessDeniedException: ... is not available for this account`
+// comes back identically for the bare, `us.` and `global.` forms, for Sonnet
+// 5 as well as 5.5, and for an admin in the Bedrock console playground — so
+// it is an account entitlement, not credentials, IAM, or a wrong id.
+//
+// Probing drew a clean line: this account reaches the dated-id generation
+// (Haiku 4.5 `-20251001-v1:0`, Sonnet 4.5 `-20250929-v1:0`) and none of the
+// unversioned one (Sonnet 5, Sonnet 5.5, Opus 4.7, Fable 5), even those
+// Anthropic documents as open access. That reads as the account not being
+// onboarded to the newer Anthropic generation on Bedrock, which the retired
+// model-access page says is now a use-case submission rather than a toggle.
+//
+// Haiku already covers the Converse wire, so this is a second opinion rather
+// than the only Bedrock coverage. Once the account is onboarded, add
+// `#[case]`s in agent_run_basic.rs.
+//
+// The profile form, not the bare id: Sonnet 5.5's model card gives its
+// In-Region endpoint URL as N/A and marks us-east-1 In-Region unsupported, so
+// `anthropic.claude-sonnet-5-5` has no in-region path on bedrock-runtime and
+// would keep failing after the grant.
 pub const BEDROCK_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Bedrock,
-    "anthropic.claude-3-5-sonnet-20241022-v2:0",
-    "AWS_BEDROCK_CREDENTIALS",
+    "global.anthropic.claude-sonnet-5-5",
+    everruns_bedrock::descriptor,
 );
 
 // ============================================================================
@@ -380,6 +486,8 @@ pub const BEDROCK_SONNET: ProviderModelConfig = ProviderModelConfig::new(
 //   - `quota` together with `exceeded`/`billing`/`credit` (Gemini, Anthropic,
 //     generic phrasings like "exceeded your current quota")
 //   - OpenRouter's explicit "requires more credits" / "can only afford" 402
+//   - Vercel's `customer_verification_required` (no card on file)
+//   - Cloudflare's 402 "Insufficient balance" (unfunded gateway account)
 //   - HTTP 429 carrying a quota/billing signature (not a bare rate-limit)
 //
 // Authn/authz signals (`unauthorized`, `forbidden`, `invalid api key`,
@@ -387,6 +495,16 @@ pub const BEDROCK_SONNET: ProviderModelConfig = ProviderModelConfig::new(
 // is never silently swallowed.
 pub fn is_quota_exhausted(err: &str) -> bool {
     let e = err.to_lowercase();
+
+    // Checked before the auth guard below, because Vercel AI Gateway reports
+    // "no credit card on file" as a 403 rather than a 402/429. The guard would
+    // otherwise read that as a permission failure and fail the cell, which is
+    // exactly the out-of-credits false positive this detector exists to avoid.
+    // Safe to special-case: the machine code names a billing state, and a
+    // genuinely bad credential never carries it.
+    if e.contains("customer_verification_required") {
+        return true;
+    }
 
     // Never treat auth/permission failures as quota exhaustion.
     let auth_failure = e.contains("unauthorized")
@@ -412,6 +530,15 @@ pub fn is_quota_exhausted(err: &str) -> bool {
     // — no "quota" word, and "no credits remaining" isn't an exhaustion phrase
     // below, so match it directly here.
     if e.contains("credit_balance_exhausted") {
+        return true;
+    }
+
+    // Cloudflare reports an unfunded AI Gateway account as HTTP 402
+    // `Insufficient balance; add money to your gateway or use BYOK`. There is
+    // no quota machine code and no "credit" or "billing" word, so none of the
+    // paired signals below match it. The phrase names a balance state
+    // outright, which an ordinary failure never does.
+    if e.contains("insufficient balance") {
         return true;
     }
 
@@ -794,6 +921,7 @@ pub fn all_providers_registry() -> DriverRegistry {
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);
     everruns_meta::register_driver(&mut registry);
+    everruns_drivers::register_drivers(&mut registry);
     registry
 }
 
@@ -811,10 +939,22 @@ mod quota_detector_tests {
     /// matrix cell: the macros print `SKIP: <label> out of quota` for a
     /// synthetic quota error, and a real model id there reads in CI logs as a
     /// genuine quota skip of that model.
+    /// Declares no environment variable, so the synthetic cell can never
+    /// resolve a real credential however the environment is configured.
+    fn synthetic_descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+        everruns_provider::driver_registry::DriverDescriptor {
+            credential_schema: everruns_provider::credential_schema::CredentialFormSchema::empty(),
+            ..everruns_provider::driver_registry::DriverDescriptor::chat_only(
+                super::DriverId::Anthropic,
+                |_| unreachable!("the synthetic cell never builds a driver"),
+            )
+        }
+    }
+
     const SYNTHETIC: super::ProviderModelConfig = super::ProviderModelConfig::new(
         super::DriverId::Anthropic,
         "synthetic-unit-test",
-        "SYNTHETIC_UNIT_TEST",
+        synthetic_descriptor,
     );
 
     /// A turn that failed with `error`, for driving the retry macro.
@@ -923,6 +1063,16 @@ mod quota_detector_tests {
         ));
         assert!(is_quota_exhausted(
             "Request failed: billing quota has been reached"
+        ));
+        // Vercel AI Gateway with no card on file: a 403, which the auth guard
+        // would otherwise reject, carrying an unambiguous billing machine code.
+        assert!(is_quota_exhausted(
+            "LLM error: provider 'vercel': OpenAI Responses API error (403 Forbidden): {\"error\":{\"message\":\"AI Gateway requires a valid credit card on file to service requests.\",\"type\":\"customer_verification_required\"}}"
+        ));
+        // Cloudflare with an unfunded account: a 402 with neither a quota word
+        // nor "credit"/"billing", so only the explicit balance phrase matches.
+        assert!(is_quota_exhausted(
+            "LLM error: provider 'cloudflare': OpenAI API error (402 Payment Required): {\"errors\":[{\"message\":\"Insufficient balance; add money to your gateway or use BYOK\",\"code\":2021}]}"
         ));
         // HTTP 429 paired with a quota signal.
         assert!(is_quota_exhausted(

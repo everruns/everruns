@@ -2,6 +2,7 @@
 
 // Enums that stay generated (closed sets the server owns) while the entity they
 // annotate is still hand-maintained here.
+import type { DriverId } from "./provider-driver-types";
 import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
 
 // From legacy agent-types.ts; retained as UI compatibility over generated OpenAPI schemas.
@@ -3354,18 +3355,6 @@ export interface UpdateInstalledPluginRequest {
 // ============================================
 // LLM Provider types
 // ============================================
-export type DriverId =
-  | "openai"
-  | "openrouter"
-  | "azure_openai"
-  | "openai_completions"
-  | "anthropic"
-  | "gemini"
-  | "bedrock"
-  | "mai"
-  | "fireworks"
-  | "meta";
-
 export type ProviderStatus = "active" | "disabled";
 
 /** Vendor/brand of a model, derived from the backend model registry. */

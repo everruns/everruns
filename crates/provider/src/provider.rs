@@ -49,6 +49,10 @@ impl DriverId {
     pub const Fireworks: Self = Self(std::borrow::Cow::Borrowed("fireworks"));
     #[allow(non_upper_case_globals)]
     pub const Meta: Self = Self(std::borrow::Cow::Borrowed("meta"));
+    #[allow(non_upper_case_globals)]
+    pub const Cloudflare: Self = Self(std::borrow::Cow::Borrowed("cloudflare"));
+    #[allow(non_upper_case_globals)]
+    pub const Vercel: Self = Self(std::borrow::Cow::Borrowed("vercel"));
 
     /// Construct an external driver id from its canonical wire id.
     ///
@@ -119,6 +123,15 @@ impl DriverId {
         if matches("fireworks.ai") {
             return Some(DriverId::Fireworks);
         }
+        // Matched on the gateway host only. `vercel.app` serves everything
+        // Vercel hosts, so a broader match would claim ordinary customer
+        // origins as LLM endpoints. Cloudflare has no arm at all: its AI
+        // endpoint is account-scoped under `api.cloudflare.com`, which serves
+        // the whole Cloudflare API, so the host alone does not identify an LLM
+        // endpoint.
+        if host == "ai-gateway.vercel.sh" {
+            return Some(DriverId::Vercel);
+        }
         None
     }
 
@@ -133,6 +146,9 @@ impl DriverId {
             "anthropic" => Some("https://api.anthropic.com"),
             "gemini" => Some("https://generativelanguage.googleapis.com"),
             "fireworks" => Some("https://api.fireworks.ai/inference/v1"),
+            // Cloudflare is absent on purpose: its base URL embeds the account
+            // and gateway ids, so there is no vendor-wide default.
+            "vercel" => Some("https://ai-gateway.vercel.sh/v1"),
             _ => None,
         }
     }
@@ -216,6 +232,8 @@ mod tests {
             (DriverId::Mai, "mai"),
             (DriverId::Fireworks, "fireworks"),
             (DriverId::Meta, "meta"),
+            (DriverId::Cloudflare, "cloudflare"),
+            (DriverId::Vercel, "vercel"),
         ] {
             assert_eq!(driver.as_str(), wire);
             assert_eq!(driver.to_string(), wire);
@@ -333,7 +351,8 @@ impl utoipa::PartialSchema for DriverId {
             ))
             .description(Some(
                 "LLM provider type. Built-in: openai, openrouter, azure_openai, \
-                 openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. \
+                 openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, \
+                 cloudflare, vercel. \
                  Any other string is treated as an embedder-defined external provider.",
             ))
             .build()
