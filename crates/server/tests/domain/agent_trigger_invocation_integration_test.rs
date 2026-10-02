@@ -192,10 +192,10 @@ async fn create_migrated_webhook_trigger(
             execution_resolved_owner_user_id: app_row.resolved_owner_user_id,
             execution_virtual_user_id: app_row.virtual_user_id.map(VirtualUserId::from_uuid),
             execution_app_id: Some(app_row.id),
-            execution_app_public_id: Some(app_row.public_id),
-            execution_app_name: Some(app_row.name),
-            execution_agent_version_policy: Some(app_row.agent_version_policy),
-            execution_agent_version_id: app_row
+            legacy_alias_id: Some(app_row.public_id),
+            legacy_alias_name: Some(app_row.name),
+            agent_version_policy: Some(app_row.agent_version_policy),
+            agent_version_id: app_row
                 .agent_version_id
                 .map(everruns_provider::typed_id::AgentVersionId::from_uuid),
         })

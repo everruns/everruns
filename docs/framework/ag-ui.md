@@ -156,10 +156,29 @@ let options = AgUiOptions::new().policy(ProjectionPolicy {
 ## What a run reads from the input
 
 The session owns the conversation, so only the last message is sent, and it
-must be a user message (its text parts). Earlier messages, `state`, `context`,
+must be a user message (its text parts). Earlier messages, `state`,
 `forwardedProps`, and frontend `tools` are not read; frontend tools are a
 planned addition. `RUN_STARTED` carries `protocolVersion: "1.0"` only when the
 request declared a version, so pre-1.0 clients see the stream they expect.
+
+`system` and `developer` messages and `context` entries are ignored by
+default, and a system message after the user message is refused. If your
+server authenticates whoever posts the input, you can let each run carry
+instructions:
+
+```rust
+use everruns::ag_ui::AgUiOptions;
+
+let options = AgUiOptions::new().input_instructions(true);
+```
+
+Each run's system and developer messages, in order, then its context entries,
+are then appended to the agent's instructions for that run. They may appear
+anywhere in `messages`, including after the user message, which stays the
+run's input. The next run replaces them with its own, and a run with none
+clears them; they never enter the conversation history. Leave this off for
+callers you do not trust: these messages carry the authority of the system
+prompt.
 
 A [serve](/framework/serve/#ag-ui-and-copilotkit) app gets this route built
 in with its `ag-ui` feature, at `/v1/e/{agent}/ag-ui`. For a hosted agent with

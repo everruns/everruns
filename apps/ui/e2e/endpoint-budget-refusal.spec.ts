@@ -122,7 +122,7 @@ test.describe("endpoint budget refusal", () => {
     const seededEndpoint = runSql(
       `WITH seeded AS (
          INSERT INTO agent_endpoints (
-           id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+           id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
            channel_config, enabled, status, virtual_user_id, agent_version_policy,
            agent_version_id, owner_principal_id, resolved_owner_user_id
          )

@@ -7,7 +7,7 @@ import { isTriggerChannel } from "./use-agent-endpoints";
 import type {
   Agent,
   AgUiChannelConfig,
-  AppChannel,
+  AgentEndpoint,
   FcpChannelConfig,
   PublicChatChannelConfig,
 } from "@/lib/api/types";
@@ -42,7 +42,10 @@ export function exposureStateLabel(state: ExposureState): string {
   }
 }
 
-export function resolveExposureState(channel: AppChannel, agent: Agent | undefined): ExposureState {
+export function resolveExposureState(
+  channel: AgentEndpoint,
+  agent: Agent | undefined,
+): ExposureState {
   // No agent means nothing can serve the traffic, which the server reports as
   // `NoAgent`. Treat it the same way an archived agent is treated.
   if (!agent || agent.status !== "active") return "agent-inactive";
@@ -57,7 +60,7 @@ export function resolveExposureState(channel: AppChannel, agent: Agent | undefin
 /// This is the row an operator scans for. It is deliberately conservative: a
 /// transport whose config we cannot read counts as *not* known-anonymous rather
 /// than silently clean, so a parse failure never hides a public surface.
-export function isAnonymousExposure(channel: AppChannel): boolean {
+export function isAnonymousExposure(channel: AgentEndpoint): boolean {
   if (channel.channel_type === "public_chat") {
     const config = channel.channel_config as PublicChatChannelConfig;
     const auth = channel.auth ?? config.auth;
@@ -84,7 +87,7 @@ export function isAnonymousExposure(channel: AppChannel): boolean {
 }
 
 export interface OrgExposure {
-  channel: AppChannel;
+  channel: AgentEndpoint;
   agent: Agent | undefined;
   state: ExposureState;
   /// Configured to accept callers with no credential, whatever its current

@@ -18,10 +18,10 @@ pub struct AgentTriggerRow {
     pub execution_resolved_owner_user_id: Option<Uuid>,
     pub execution_virtual_user_id: Option<VirtualUserId>,
     pub execution_app_id: Option<Uuid>,
-    pub execution_app_public_id: Option<String>,
-    pub execution_app_name: Option<String>,
-    pub execution_agent_version_policy: Option<String>,
-    pub execution_agent_version_id: Option<AgentVersionId>,
+    pub legacy_alias_id: Option<String>,
+    pub legacy_alias_name: Option<String>,
+    pub agent_version_policy: Option<String>,
+    pub agent_version_id: Option<AgentVersionId>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -45,10 +45,10 @@ pub struct CreateAgentTriggerRow {
     pub execution_resolved_owner_user_id: Option<Uuid>,
     pub execution_virtual_user_id: Option<VirtualUserId>,
     pub execution_app_id: Option<Uuid>,
-    pub execution_app_public_id: Option<String>,
-    pub execution_app_name: Option<String>,
-    pub execution_agent_version_policy: Option<String>,
-    pub execution_agent_version_id: Option<AgentVersionId>,
+    pub legacy_alias_id: Option<String>,
+    pub legacy_alias_name: Option<String>,
+    pub agent_version_policy: Option<String>,
+    pub agent_version_id: Option<AgentVersionId>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -59,6 +59,6 @@ pub struct UpdateAgentTrigger {
     pub enabled: Option<bool>,
     pub durable_schedule_id: UpdateField<Uuid>,
     pub status: Option<String>,
-    pub execution_agent_version_policy: Option<String>,
-    pub execution_agent_version_id: UpdateField<AgentVersionId>,
+    pub agent_version_policy: Option<String>,
+    pub agent_version_id: UpdateField<AgentVersionId>,
 }

@@ -47,9 +47,12 @@ import {
   PageRail,
   RailSection,
 } from "@/components/layout";
-import type { Agent, AppChannel, ScheduleChannelConfig } from "@/lib/api/types";
+import type { Agent, AgentEndpoint, ScheduleChannelConfig } from "@/lib/api/types";
 import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
-import { getChannelTypeDisplayName, getEndpointLifecyclePresentation } from "@/lib/app-channels";
+import {
+  getEndpointTransportDisplayName,
+  getEndpointLifecyclePresentation,
+} from "@/lib/endpoint-display";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 export function AgentEndpointEditor({
@@ -117,7 +120,7 @@ function AgentEndpointForm({
   slackInstallFailure,
 }: {
   agent: Agent;
-  endpoint: AppChannel;
+  endpoint: AgentEndpoint;
   canManage: boolean;
   canDangerous: boolean;
   returnHref: string;
@@ -158,13 +161,13 @@ function AgentEndpointForm({
           { label: "Agents", href: "/agents" },
           { label: agentName, href: returnHref },
           {
-            label: `${getChannelTypeDisplayName(endpoint.channel_type)} endpoint`,
+            label: `${getEndpointTransportDisplayName(endpoint.channel_type)} endpoint`,
           },
         ]}
       />
       <PageMasthead
         icon={<Radio />}
-        title={`${getChannelTypeDisplayName(endpoint.channel_type)} endpoint`}
+        title={`${getEndpointTransportDisplayName(endpoint.channel_type)} endpoint`}
         badges={
           <>
             <Badge variant="accent">

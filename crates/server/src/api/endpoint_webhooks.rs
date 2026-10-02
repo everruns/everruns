@@ -200,7 +200,7 @@ async fn invoke_webhook(
         .map_err(internal_error)?
     {
         let legacy_alias_matches = match app_id.as_deref() {
-            Some(app_id) => trigger.execution_app_public_id.as_deref() == Some(app_id),
+            Some(app_id) => trigger.legacy_alias_id.as_deref() == Some(app_id),
             None => true,
         };
         if !legacy_alias_matches {

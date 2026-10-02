@@ -34,9 +34,9 @@ import {
 import type {
   AgUiChannelConfig,
   AgUiToolVisibility,
-  AppEndpointAuthConfig,
-  AppChannel,
-  ChannelType,
+  EndpointAuthConfig,
+  AgentEndpoint,
+  EndpointTransport,
   FcpChannelConfig,
   InvocationSessionMode,
   PublicChatChannelConfig,
@@ -48,11 +48,11 @@ import type {
 } from "@/lib/api/types";
 import {
   getAgUiToolVisibilityDisplayName,
-  getChannelTypeDisplayName,
+  getEndpointTransportDisplayName,
   getInvocationSessionModeDisplayName,
   getSessionStrategyDisplayName,
   getSlackReplyModeDisplayName,
-} from "@/lib/app-channels";
+} from "@/lib/endpoint-display";
 import { generateChannelToken } from "@/lib/channel-tokens";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
 import { useInvalidateSlackWorkspaces, useSlackWorkspaces } from "@/hooks/use-agent-endpoints";
@@ -67,7 +67,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
-export const CHANNEL_FORM_KINDS: ChannelType[] = [
+export const CHANNEL_FORM_KINDS: EndpointTransport[] = [
   "schedule",
   "webhook",
   "ag_ui",
@@ -90,7 +90,7 @@ type SlackProvisionedConfig = {
 export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" | "runs";
 
 export type ChannelFormState = {
-  kind: ChannelType;
+  kind: EndpointTransport;
   enabled: boolean;
   slackSigningSecret: string;
   slackBotToken: string;
@@ -113,7 +113,7 @@ export type ChannelFormState = {
   webhookToken: string;
   agUiToken: string;
   agUiAnonymous: boolean;
-  agUiAuth?: AppEndpointAuthConfig;
+  agUiAuth?: EndpointAuthConfig;
   agUiExpirationHours: number;
   agUiRateLimitPerMinute: string;
   agUiToolVisibility: AgUiToolVisibility;
@@ -148,8 +148,8 @@ function secretValue(value?: string, configured?: boolean): string {
 }
 
 export function getDefaultChannelFormState(
-  kind: ChannelType,
-  channel?: AppChannel,
+  kind: EndpointTransport,
+  channel?: AgentEndpoint,
 ): ChannelFormState {
   const base: ChannelFormState = {
     kind,
@@ -481,7 +481,7 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
   return false;
 }
 
-function channelIcon(kind: ChannelType) {
+function channelIcon(kind: EndpointTransport) {
   switch (kind) {
     case "schedule":
       return CalendarClock;
@@ -500,7 +500,7 @@ function channelIcon(kind: ChannelType) {
   }
 }
 
-function channelDescription(kind: ChannelType): string {
+function channelDescription(kind: EndpointTransport): string {
   switch (kind) {
     case "schedule":
       return "Run this agent on a cron-driven cadence in any timezone.";
@@ -519,12 +519,12 @@ function channelDescription(kind: ChannelType): string {
   }
 }
 
-export function ChannelTypePicker({
+export function EndpointTransportPicker({
   value,
   onChange,
 }: {
-  value: ChannelType;
-  onChange: (value: ChannelType) => void;
+  value: EndpointTransport;
+  onChange: (value: EndpointTransport) => void;
 }) {
   const publicChatEnabled = useFeatureFlag("public_chat");
   const kinds = CHANNEL_FORM_KINDS.filter(
@@ -551,7 +551,7 @@ export function ChannelTypePicker({
                   <Icon className="size-4" />
                 </span>
                 <div>
-                  <p className="font-medium">{getChannelTypeDisplayName(kind)}</p>
+                  <p className="font-medium">{getEndpointTransportDisplayName(kind)}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{channelDescription(kind)}</p>
                 </div>
               </div>
@@ -1442,7 +1442,7 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
       <CardContent className="space-y-4 py-4">
         <div>
           <p className="text-xs font-medium uppercase text-muted-foreground">Channel</p>
-          <p className="mt-1 font-medium">{getChannelTypeDisplayName(state.kind)}</p>
+          <p className="mt-1 font-medium">{getEndpointTransportDisplayName(state.kind)}</p>
         </div>
         {state.kind === "schedule" && (
           <div>

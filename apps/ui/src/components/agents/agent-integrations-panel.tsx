@@ -36,12 +36,12 @@ import {
   RailSection,
 } from "@/components/layout";
 import type { Agent } from "@/lib/api/types";
-import type { AgentEndpoint } from "@/hooks/use-agent-endpoints";
+import type { AgentEndpointRow } from "@/hooks/use-agent-endpoints";
 import { pluralize } from "@/lib/formatting";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 function buildStats(
-  endpoints: AgentEndpoint[],
+  endpoints: AgentEndpointRow[],
   triggerCount: number,
   suspended: boolean,
 ): StatStripStats {

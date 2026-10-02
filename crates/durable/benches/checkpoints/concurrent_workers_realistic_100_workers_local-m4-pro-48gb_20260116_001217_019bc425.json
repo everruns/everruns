@@ -13,7 +13,7 @@
   "config": null,
   "metrics": {
     "name": "realistic_100_workers",
-    "elapsed_ms": 2660,
+    "elapsed_ms": 1035,
     "schedule_to_start": {
       "samples_micros": [
         75,
@@ -3040,7 +3040,7 @@
     },
     "tasks_completed": {
       "total": 1000,
-      "elapsed_ms": 2667,
+      "elapsed_ms": 1035,
       "timeseries": [
         [
           0,
@@ -3339,5 +3339,5 @@
     "custom": {}
   },
   "tags": [],
-  "notes": null
+  "notes": "Converted 2026-10-02: histograms compacted to 1000 quantiles; elapsed_ms re-derived from the timeseries (the original was measured at save time, after later scenarios ran)."
 }

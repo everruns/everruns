@@ -490,10 +490,10 @@ impl Command for CreateAgentTrigger {
                 execution_resolved_owner_user_id: None,
                 execution_virtual_user_id: None,
                 execution_app_id: None,
-                execution_app_public_id: None,
-                execution_app_name: None,
-                execution_agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
-                execution_agent_version_id: version.and_then(|version| version.version_id),
+                legacy_alias_id: None,
+                legacy_alias_name: None,
+                agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
+                agent_version_id: version.and_then(|version| version.version_id),
             })
             .await
             .map_err(classify_anyhow)?;
@@ -811,10 +811,8 @@ impl Command for UpdateAgentTriggerCmd {
                     config: Some(config),
                     config_encrypted,
                     enabled: Some(new_enabled),
-                    execution_agent_version_policy: version
-                        .as_ref()
-                        .map(VersionSelection::policy_str),
-                    execution_agent_version_id: version
+                    agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
+                    agent_version_id: version
                         .map_or(everruns_durable::UpdateField::Unchanged, |version| {
                             everruns_durable::UpdateField::from_option(version.version_id)
                         }),
@@ -1137,7 +1135,7 @@ pub(super) async fn resolve_trigger_execution_context(
             virtual_user_id: trigger.execution_virtual_user_id,
             app_id: trigger.execution_app_id,
             agent_version_policy: stored_version_selection(trigger).policy,
-            agent_version_id: trigger.execution_agent_version_id,
+            agent_version_id: trigger.agent_version_id,
         });
     }
 
@@ -1163,7 +1161,7 @@ pub(super) async fn resolve_trigger_execution_context(
         // Native triggers carry their own version selection (EVE-1139); a NULL
         // policy on an older row means the agent's default version.
         agent_version_policy: stored_version_selection(trigger).policy,
-        agent_version_id: trigger.execution_agent_version_id,
+        agent_version_id: trigger.agent_version_id,
     })
 }
 
@@ -1172,11 +1170,11 @@ pub(super) async fn resolve_trigger_execution_context(
 fn stored_version_selection(trigger: &AgentTriggerRow) -> VersionSelection {
     VersionSelection {
         policy: trigger
-            .execution_agent_version_policy
+            .agent_version_policy
             .as_deref()
             .map(everruns_platform::AgentVersionPolicy::from)
             .unwrap_or_default(),
-        version_id: trigger.execution_agent_version_id,
+        version_id: trigger.agent_version_id,
     }
 }
 

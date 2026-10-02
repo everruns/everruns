@@ -15,11 +15,11 @@ import {
   type CreateAgentEndpointRequest,
   type UpdateAgentEndpointRequest,
 } from "@/lib/api/agent-endpoints";
-import type { AppChannel } from "@/lib/api/types";
+import type { AgentEndpoint } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 
-export interface AgentEndpoint {
-  channel: AppChannel;
+export interface AgentEndpointRow {
+  channel: AgentEndpoint;
 }
 
 /// Which channel types are exposures (a door traffic arrives through) versus
@@ -28,7 +28,7 @@ export interface AgentEndpoint {
 /// reach this agent" and "when does it wake up on its own".
 const TRIGGER_CHANNEL_TYPES = new Set(["schedule"]);
 
-export function isTriggerChannel(channel: AppChannel): boolean {
+export function isTriggerChannel(channel: AgentEndpoint): boolean {
   return TRIGGER_CHANNEL_TYPES.has(channel.channel_type);
 }
 

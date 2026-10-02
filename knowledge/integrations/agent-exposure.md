@@ -221,7 +221,7 @@ GET  /c/{endpoint_slug}
 ```
 
 Old `/v1/apps/{app_id}/…` paths stay mounted permanently as aliases that resolve from
-`agent_endpoints.legacy_app_public_id`. They never read the frozen `apps` table or the
+`agent_endpoints.legacy_alias_id`. They never read the frozen `apps` table or the
 `app_channels` compatibility view. Nothing installed breaks, ever. Deprecate in docs,
 not in code.
 

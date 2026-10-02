@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+import { getInvocationSessionModeDisplayName } from "@/lib/endpoint-display";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, FileJson } from "lucide-react";
 import { EntityIdentity } from "@/components/ui/entity-identity";

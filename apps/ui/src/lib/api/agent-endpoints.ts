@@ -1,8 +1,8 @@
 import { api } from "./client";
-import type { AgentVersionPolicy, AppChannel, ChannelType } from "./types";
+import type { AgentVersionPolicy, AgentEndpoint, EndpointTransport } from "./types";
 
 export interface CreateAgentEndpointRequest {
-  channel_type: ChannelType;
+  channel_type: EndpointTransport;
   channel_config: unknown;
   enabled: boolean;
   agent_version_policy?: AgentVersionPolicy;
@@ -26,21 +26,24 @@ export interface SlackManifest {
   create_url: string;
 }
 
-export async function listAgentEndpoints(agentId: string): Promise<AppChannel[]> {
-  const response = await api.get<AppChannel[]>(`/v1/agents/${agentId}/endpoints`);
+export async function listAgentEndpoints(agentId: string): Promise<AgentEndpoint[]> {
+  const response = await api.get<AgentEndpoint[]>(`/v1/agents/${agentId}/endpoints`);
   return response.data;
 }
 
-export async function getAgentEndpoint(agentId: string, endpointId: string): Promise<AppChannel> {
-  const response = await api.get<AppChannel>(`/v1/agents/${agentId}/endpoints/${endpointId}`);
+export async function getAgentEndpoint(
+  agentId: string,
+  endpointId: string,
+): Promise<AgentEndpoint> {
+  const response = await api.get<AgentEndpoint>(`/v1/agents/${agentId}/endpoints/${endpointId}`);
   return response.data;
 }
 
 export async function createAgentEndpoint(
   agentId: string,
   request: CreateAgentEndpointRequest,
-): Promise<AppChannel> {
-  const response = await api.post<AppChannel>(`/v1/agents/${agentId}/endpoints`, request);
+): Promise<AgentEndpoint> {
+  const response = await api.post<AgentEndpoint>(`/v1/agents/${agentId}/endpoints`, request);
   return response.data;
 }
 
@@ -48,8 +51,8 @@ export async function updateAgentEndpoint(
   agentId: string,
   endpointId: string,
   request: UpdateAgentEndpointRequest,
-): Promise<AppChannel> {
-  const response = await api.patch<AppChannel>(
+): Promise<AgentEndpoint> {
+  const response = await api.patch<AgentEndpoint>(
     `/v1/agents/${agentId}/endpoints/${endpointId}`,
     request,
   );
@@ -68,8 +71,8 @@ export async function deleteAgentEndpoint(agentId: string, endpointId: string): 
 export async function publishAgentEndpoint(
   agentId: string,
   endpointId: string,
-): Promise<AppChannel> {
-  const response = await api.post<AppChannel>(
+): Promise<AgentEndpoint> {
+  const response = await api.post<AgentEndpoint>(
     `/v1/agents/${agentId}/endpoints/${endpointId}/publish`,
   );
   return response.data;
@@ -78,8 +81,8 @@ export async function publishAgentEndpoint(
 export async function unpublishAgentEndpoint(
   agentId: string,
   endpointId: string,
-): Promise<AppChannel> {
-  const response = await api.post<AppChannel>(
+): Promise<AgentEndpoint> {
+  const response = await api.post<AgentEndpoint>(
     `/v1/agents/${agentId}/endpoints/${endpointId}/unpublish`,
   );
   return response.data;

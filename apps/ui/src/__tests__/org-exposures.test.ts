@@ -4,9 +4,9 @@ import {
   resolveExposureState,
   type ExposureState,
 } from "@/hooks/use-org-exposures";
-import type { Agent, AppChannel } from "@/lib/api/types";
+import type { Agent, AgentEndpoint } from "@/lib/api/types";
 
-function channel(overrides: Partial<AppChannel> = {}): AppChannel {
+function channel(overrides: Partial<AgentEndpoint> = {}): AgentEndpoint {
   return {
     id: "appchan_test",
     channel_type: "webhook",
@@ -16,7 +16,7 @@ function channel(overrides: Partial<AppChannel> = {}): AppChannel {
     created_at: "2026-05-10T00:00:00Z",
     updated_at: "2026-05-10T00:00:00Z",
     ...overrides,
-  } as AppChannel;
+  } as AgentEndpoint;
 }
 
 function agent(overrides: Partial<Agent> = {}): Agent {
@@ -36,7 +36,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 // The view exists to be trusted during an incident, so it must never report
 // something live that the server would refuse. Change these together.
 describe("exposure state resolution", () => {
-  const cases: Array<[string, AppChannel, Agent | undefined, ExposureState]> = [
+  const cases: Array<[string, AgentEndpoint, Agent | undefined, ExposureState]> = [
     ["a live endpoint on an active agent", channel(), agent(), "live"],
     ["a draft endpoint", channel({ status: "draft" }), agent(), "draft"],
     ["a disabled endpoint", channel({ status: "disabled" }), agent(), "disabled"],

@@ -551,8 +551,8 @@ async fn seed_migrated_webhook_trigger(pool: &PgPool, fixture: &Fixture, token: 
         "INSERT INTO agent_triggers (
              id, org_id, agent_id, trigger_type, ingress_id, config, enabled,
              execution_harness_id, execution_owner_principal_id, execution_app_id,
-             execution_app_public_id, execution_app_name,
-             execution_agent_version_policy, execution_agent_version_id
+             legacy_alias_id, legacy_alias_name,
+             agent_version_policy, agent_version_id
          )
          SELECT $1, app.org_id, app.agent_id, 'webhook', $2, $3, true,
                 app.harness_id, app.owner_principal_id, app.id, app.public_id, app.name,
@@ -582,7 +582,7 @@ async fn seed_ingress_endpoint(
     let endpoint_public_id = format!("appchan_{}", hex32());
     sqlx::query(
         "INSERT INTO agent_endpoints (
-             id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+             id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
              channel_config, enabled, status, agent_version_policy, owner_principal_id
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, true, 'live', 'default', $8)",
@@ -844,7 +844,7 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     let endpoint_id = Uuid::now_v7();
     let endpoint_public_id = format!("appchan_{}", hex32());
     sqlx::query(
-        "INSERT INTO agent_endpoints (id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+        "INSERT INTO agent_endpoints (id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
                                       channel_config, enabled, status, agent_version_policy,
                                       owner_principal_id)
          VALUES ($1, $2, $3, $4, $5, 'slack', '{}'::jsonb, true, 'live', 'default', $6)",
