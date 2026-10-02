@@ -55,8 +55,25 @@ one AG-UI run per request over the session's live event stream and the shared
 errors visible), because the developer owns both ends.
 
 - **Input.** The session owns the conversation, so a run sends only the last
-  user message. Earlier messages, `state`, `forwardedProps` and frontend tools
-  are not read; the host maps `threadId` to a session.
+  user message, or the trailing `tool` messages that answer parked frontend
+  calls. Earlier messages, `state` and `forwardedProps` are not read; the host
+  maps `threadId` to a session.
+- **Frontend tools.** Same semantics as the server's
+  ([Frontend tools](#frontend-tools)), with the same bounds and `mcp_`
+  refusal: each run sets its `tools` as the session record's client-side
+  tools (latest set wins), a call to one parks the turn, the run streams it
+  through the shared `Projector::park` and ends with `pendingToolCallIds`, and
+  the next run's trailing results continue the same turn. The in-process
+  runtime used to end a turn at a client-side pause and drop its resume state;
+  it now keeps that state per session (`InProcessRuntime::parked_tool_calls`,
+  `resume_steerable_turn`), in memory, so a process exit leaves the calls
+  unanswered. A plain client-side call pauses only when the session's
+  `setup_connection` hint says the client answers pauses
+  (`everruns_engine::act_pauses_turn`), so the facade sets that hint while the
+  session has frontend tools. A run that sees the calls requested ends only
+  once the turn has recorded the park, so the next run always finds it.
+  Lifecycle turn-start handlers do not run again for the resumed half;
+  completion handlers run at the park and again at the end.
 - **Trusted instructions, opt-in.** `AgUiOptions::input_instructions` is for
   a host that authenticates whoever posts the input (OpenBot runs its
   coworkers this way): each run's `system` and `developer` messages, then its

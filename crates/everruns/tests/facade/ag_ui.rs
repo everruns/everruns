@@ -720,3 +720,255 @@ async fn trusted_input_still_needs_a_trailing_user_message() {
         .await;
     assert!(matches!(assistant_last, Err(AgUiError::InvalidInput(_))));
 }
+
+// --- Frontend tools ---------------------------------------------------------------
+
+fn confirm_tool() -> everruns::ag_ui::wire::Tool {
+    serde_json::from_value(json!({
+        "name": "confirm",
+        "description": "Ask the person to confirm in the page.",
+        "parameters": { "type": "object", "properties": { "what": { "type": "string" } } },
+    }))
+    .expect("valid tool")
+}
+
+/// Calls the frontend `confirm` tool, then answers in text.
+fn confirming_session() -> Session {
+    let model = Model::simulated_with_config(
+        LlmSimConfig::fixed("Confirmed.").with_tool_call_sequence(vec![
+            vec![ToolCall {
+                id: "call_confirm".to_string(),
+                name: "confirm".to_string(),
+                arguments: json!({ "what": "deploy" }),
+            }],
+            vec![],
+        ]),
+    );
+    let agent = Agent::builder()
+        .instructions("Confirm before deploying.")
+        .model(model)
+        .build()
+        .expect("valid agent");
+    Engine::new().create(agent)
+}
+
+fn tool_result(id: &str, call_id: &str, content: &str) -> Message {
+    serde_json::from_value(json!({
+        "id": id,
+        "role": "tool",
+        "toolCallId": call_id,
+        "content": content,
+    }))
+    .expect("valid tool message")
+}
+
+fn with_tools(input: RunAgentInput) -> RunAgentInput {
+    RunAgentInput {
+        tools: vec![confirm_tool()],
+        ..input
+    }
+}
+
+fn pending(events: &[Event]) -> Vec<String> {
+    match outcome(events) {
+        Some(RunFinishedOutcome::Success {
+            pending_tool_call_ids: Some(ids),
+        }) => ids,
+        other => panic!("expected pending tool calls, got {other:?}"),
+    }
+}
+
+async fn park_on_confirm(session: &Session) -> Vec<Event> {
+    let first = run_with(
+        session,
+        with_tools(input("Deploy the service.")),
+        AgUiOptions::new(),
+    )
+    .await;
+    assert_well_formed(&first);
+    assert_eq!(pending(&first), ["call_confirm"]);
+    first
+}
+
+#[tokio::test]
+async fn a_frontend_tool_call_parks_the_run_and_its_result_resumes_the_turn() {
+    let session = confirming_session();
+
+    let first = park_on_confirm(&session).await;
+    let start = first
+        .iter()
+        .find_map(|event| match event {
+            Event::ToolCallStart(start) => Some(start),
+            _ => None,
+        })
+        .expect("TOOL_CALL_START");
+    assert_eq!(start.tool_call_id, "call_confirm");
+    assert_eq!(start.tool_call_name, "confirm");
+    let args: String = first
+        .iter()
+        .filter_map(|event| match event {
+            Event::ToolCallArgs(args) => Some(args.delta.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        serde_json::from_str::<Value>(&args).unwrap(),
+        json!({ "what": "deploy" })
+    );
+    assert!(
+        first
+            .iter()
+            .any(|event| matches!(event, Event::ToolCallEnd(_)))
+    );
+    assert_eq!(text(&first), "", "the turn waits for the page");
+
+    // The next run's trailing tool message is the result: the same turn
+    // continues and answers.
+    let second = run_with(
+        &session,
+        with_tools(RunAgentInput {
+            run_id: "run-2".into(),
+            messages: vec![
+                Message::user("m1", "Deploy the service."),
+                tool_result("t1", "call_confirm", "{\"confirmed\":true}"),
+            ],
+            ..RunAgentInput::default()
+        }),
+        AgUiOptions::new(),
+    )
+    .await;
+    assert_well_formed(&second);
+    assert_eq!(outcome(&second), None, "{second:?}");
+    assert_eq!(text(&second), "Confirmed.");
+
+    // The model saw the page's answer as the call's result.
+    let context = session.inspect().await.expect("inspect");
+    let results: Vec<String> = context
+        .messages
+        .iter()
+        .flat_map(|message| message.content.iter())
+        .filter_map(|part| match part {
+            everruns::ContentPart::ToolResult(result) => Some(format!("{result:?}")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(results.len(), 1, "{results:?}");
+    assert!(results[0].contains("confirmed"), "{results:?}");
+    assert!(context.tools.iter().any(|tool| tool.name == "confirm"));
+}
+
+#[tokio::test]
+async fn an_unanswered_frontend_call_is_reported_again() {
+    let session = confirming_session();
+    park_on_confirm(&session).await;
+
+    // A new message cannot run past a parked call.
+    let new_message = run_with(&session, with_tools(input("Hurry.")), AgUiOptions::new()).await;
+    assert_well_formed(&new_message);
+    assert_eq!(pending(&new_message), ["call_confirm"]);
+    assert!(
+        new_message
+            .iter()
+            .any(|event| matches!(event, Event::ToolCallStart(_)))
+    );
+
+    // A result for another call answers nothing.
+    let unrelated = run_with(
+        &session,
+        with_tools(RunAgentInput {
+            messages: vec![tool_result("t1", "call_other", "ok")],
+            ..RunAgentInput::default()
+        }),
+        AgUiOptions::new(),
+    )
+    .await;
+    assert_eq!(pending(&unrelated), ["call_confirm"]);
+
+    // The real result still resumes the turn.
+    let resumed = run_with(
+        &session,
+        with_tools(RunAgentInput {
+            messages: vec![tool_result("t2", "call_confirm", "yes")],
+            ..RunAgentInput::default()
+        }),
+        AgUiOptions::new(),
+    )
+    .await;
+    assert_eq!(text(&resumed), "Confirmed.");
+}
+
+#[tokio::test]
+async fn a_tool_message_with_nothing_parked_finishes_empty() {
+    let session = confirming_session();
+    let events = run_with(
+        &session,
+        with_tools(RunAgentInput {
+            messages: vec![tool_result("t1", "call_confirm", "yes")],
+            ..RunAgentInput::default()
+        }),
+        AgUiOptions::new(),
+    )
+    .await;
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert_eq!(outcome(&events), None);
+}
+
+#[tokio::test]
+async fn reserved_oversized_and_duplicate_frontend_tools_are_refused() {
+    let session = confirming_session();
+    let refused = |tools: Vec<Value>| {
+        let session = session.clone();
+        async move {
+            let tools = tools
+                .into_iter()
+                .map(|tool| serde_json::from_value(tool).expect("valid tool"))
+                .collect();
+            session
+                .ag_ui(RunAgentInput {
+                    tools,
+                    ..input("Hi")
+                })
+                .await
+        }
+    };
+    let mcp = refused(vec![
+        json!({ "name": "mcp_guard__screen", "description": "d" }),
+    ])
+    .await;
+    assert!(matches!(mcp, Err(AgUiError::InvalidInput(why)) if why.contains("mcp_")));
+    let duplicate = refused(vec![
+        json!({ "name": "confirm", "description": "d" }),
+        json!({ "name": "confirm", "description": "d" }),
+    ])
+    .await;
+    assert!(matches!(duplicate, Err(AgUiError::InvalidInput(_))));
+    let oversized = refused(vec![json!({
+        "name": "big",
+        "description": "d",
+        "parameters": { "description": "x".repeat(16 * 1024) },
+    })])
+    .await;
+    assert!(matches!(oversized, Err(AgUiError::InvalidInput(_))));
+    let many = refused(
+        (0..=64)
+            .map(|i| json!({ "name": format!("t{i}"), "description": "d" }))
+            .collect(),
+    )
+    .await;
+    assert!(matches!(many, Err(AgUiError::InvalidInput(_))));
+}
+
+#[tokio::test]
+async fn the_latest_run_sets_the_frontend_tools() {
+    let session = confirming_session();
+    run_with(&session, with_tools(input("Hi")), AgUiOptions::new()).await;
+    assert!(
+        session
+            .inspect()
+            .await
+            .expect("inspect")
+            .tools
+            .iter()
+            .any(|tool| tool.name == "confirm")
+    );
+}

@@ -156,10 +156,32 @@ let options = AgUiOptions::new().policy(ProjectionPolicy {
 ## What a run reads from the input
 
 The session owns the conversation, so only the last message is sent, and it
-must be a user message (its text parts). Earlier messages, `state`,
-`forwardedProps`, and frontend `tools` are not read; frontend tools are a
-planned addition. `RUN_STARTED` carries `protocolVersion: "1.0"` only when the
-request declared a version, so pre-1.0 clients see the stream they expect.
+must be a user message (its text parts), unless the run carries frontend tool
+results (below). Earlier messages, `state`, and `forwardedProps` are not
+read. `RUN_STARTED` carries `protocolVersion: "1.0"` only when the request
+declared a version, so pre-1.0 clients see the stream they expect.
+
+## Frontend tools
+
+The input's `tools` are tools your page runs, such as a confirmation dialog or
+a navigation action. Each run makes them the session's client-side tools, so
+send them on every run; the latest set wins. When the model calls one, the
+turn parks and the run streams the call as `TOOL_CALL_START`, `TOOL_CALL_ARGS`
+and `TOOL_CALL_END` with its name and arguments, then finishes in success with
+`outcome.pendingToolCallIds`.
+
+Run the calls in the page, then post the next run with their results as
+trailing `tool` messages (`toolCallId` set, `content` the result, `error` for
+a failure). The same turn continues and the run streams the rest of it. A
+result for a call that is not parked is ignored. Until every parked call has a
+result, nothing is recorded and the run reports the calls again, as it does
+when a new user message arrives instead.
+
+Definitions are bounded: at most 64 tools, names matching
+`^[A-Za-z0-9_-]{1,64}$`, descriptions up to 4096 characters, parameter
+schemas up to 16 KiB, results up to 256 KiB. Names starting with `mcp_` are
+refused. Parked calls live in memory: if the process exits, they stay
+unanswered.
 
 `system` and `developer` messages and `context` entries are ignored by
 default, and a system message after the user message is refused. If your

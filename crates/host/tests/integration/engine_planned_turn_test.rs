@@ -168,6 +168,98 @@ async fn single_tool_turn_reports_two_iterations_and_one_tool_call() {
 }
 
 #[tokio::test]
+async fn a_client_side_call_parks_the_turn_and_its_result_resumes_it() {
+    let seed = 951;
+    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(seed);
+    let agent_id = everruns_provider::typed_id::AgentId::from_seed(seed);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(seed);
+    let mut client_session = SessionBuilder::new(harness_id)
+        .id(session_id)
+        .agent(agent_id)
+        .tool(everruns_provider::tool_types::ToolDefinition::ClientSide(
+            everruns_provider::tool_types::ClientSideTool::new(
+                "confirm",
+                "Ask the person to confirm.",
+                json!({ "type": "object" }),
+            ),
+        ))
+        .build();
+    // The client declares it answers a pause.
+    client_session.hints = Some([("setup_connection".to_string(), json!(true))].into());
+    let runtime = InProcessRuntimeBuilder::new()
+        .host_composition(math_platform())
+        .harness(harness(harness_id))
+        .agent(agent(agent_id, 8))
+        .session(client_session)
+        .llm_sim_as_default(LlmSimConfig::scripted(vec![
+            SimTurn::ToolCalls(vec![SimToolCall {
+                name: "confirm".to_string(),
+                arguments: json!({ "what": "deploy" }),
+                id: Some("call_confirm".to_string()),
+            }]),
+            SimTurn::Assistant("Deployed.".to_string()),
+        ]))
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
+        .build()
+        .await
+        .expect("runtime builds");
+
+    let parked = runtime
+        .run_text_turn(session_id, "Deploy.")
+        .await
+        .expect("turn runs");
+    assert_eq!(parked.response, "");
+    let calls = runtime
+        .parked_tool_calls(session_id)
+        .expect("the turn parked on the client-side call");
+    assert_eq!(calls.turn_id, parked.turn_id);
+    assert_eq!(calls.tool_calls.len(), 1);
+    assert_eq!(calls.tool_calls[0].id, "call_confirm");
+    assert!(
+        !event_types(&runtime)
+            .await
+            .iter()
+            .any(|event_type| event_type == "turn.completed"),
+        "a parked turn has not completed"
+    );
+
+    let resumed = runtime
+        .resume_steerable_turn(
+            session_id,
+            vec![everruns_core::events::ToolCompletedData::success(
+                "call_confirm".to_string(),
+                "confirm".to_string(),
+                vec![everruns_core::ContentPart::text("confirmed")],
+                None,
+            )],
+            everruns_host::TurnSteering::new(),
+        )
+        .await
+        .expect("turn resumes");
+    assert!(resumed.success, "{resumed:?}");
+    assert_eq!(resumed.response, "Deployed.");
+    assert_eq!(resumed.turn_id, parked.turn_id, "the same turn continues");
+    assert!(runtime.parked_tool_calls(session_id).is_none());
+    let types = event_types(&runtime).await;
+    assert_eq!(
+        types
+            .iter()
+            .filter(|event_type| *event_type == "turn.completed")
+            .count(),
+        1,
+        "{types:?}"
+    );
+
+    // Nothing is parked any more.
+    assert!(
+        runtime
+            .resume_steerable_turn(session_id, Vec::new(), everruns_host::TurnSteering::new())
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
 async fn parallel_tool_batch_runs_as_one_planned_act() {
     let (runtime, session_id) = runtime_running(
         902,

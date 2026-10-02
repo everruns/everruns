@@ -62,11 +62,81 @@
 //! # What the input carries
 //!
 //! The [`Session`] owns the conversation, so a run sends only the input's
-//! last message, which must be a user message's text. Earlier messages,
-//! `state`, `forwardedProps` and frontend `tools` are not read, and neither
-//! are `system` and `developer` messages or `context` unless the host trusts
+//! last message, which must be a user message's text, or the trailing
+//! `tool` messages that answer its frontend tool calls (below). Earlier
+//! messages, `state` and `forwardedProps` are not read, and neither are
+//! `system` and `developer` messages or `context` unless the host trusts
 //! them (below). Map `threadId` to a session yourself (one session per
 //! thread); the run does not check it.
+//!
+//! # Frontend tools
+//!
+//! The input's `tools` are tools the client runs. Each run sets them as the
+//! session's client-side tools, so the latest set wins. When the model calls
+//! one, the turn parks: the run streams `TOOL_CALL_START`/`ARGS`/`END` with
+//! the call's name and arguments under the assistant message that made it,
+//! and finishes in success with `pendingToolCallIds` (or with the interrupt
+//! outcome, the calls beside it, when an interrupt is open too). The next
+//! run's trailing `tool` messages are the results: they continue the same
+//! turn, and the run streams the rest of it. A result for a call that is not
+//! parked is ignored and logged; while a parked call has no result, nothing
+//! is recorded and the run reports the calls again, as it does when a new
+//! user message arrives instead. Definitions are bounded (64 tools, names
+//! `^[A-Za-z0-9_-]{1,64}$`, 4096-character descriptions, 16 KiB schemas,
+//! 256 KiB results) and the reserved `mcp_` prefix is refused. Parked calls
+//! live in memory: a process exit leaves them unanswered.
+//!
+//! ```
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use everruns::ag_ui::wire::RunFinishedOutcome;
+//! use everruns::ag_ui::{Event, Message, RunAgentInput};
+//! use everruns::{Agent, Engine, LlmSimConfig, Model, ToolCall};
+//! use futures::StreamExt;
+//!
+//! let model = Model::simulated_with_config(
+//!     LlmSimConfig::fixed("Done.").with_tool_call_sequence(vec![
+//!         vec![ToolCall {
+//!             id: "call_1".into(),
+//!             name: "confirm".into(),
+//!             arguments: serde_json::json!({}),
+//!         }],
+//!         vec![],
+//!     ]),
+//! );
+//! let agent = Agent::builder().instructions("Confirm first.").model(model).build()?;
+//! let session = Engine::new().create(agent);
+//! let tools = vec![serde_json::from_value(serde_json::json!({
+//!     "name": "confirm",
+//!     "description": "Ask the person to confirm.",
+//! }))?];
+//!
+//! let first = RunAgentInput {
+//!     messages: vec![Message::user("m1", "Deploy.")],
+//!     tools: tools.clone(),
+//!     ..RunAgentInput::default()
+//! };
+//! let events: Vec<Event> = session.ag_ui(first).await?.collect().await;
+//! let Some(Event::RunFinished(finished)) = events.last() else { panic!() };
+//! assert_eq!(
+//!     finished.outcome,
+//!     Some(RunFinishedOutcome::Success {
+//!         pending_tool_call_ids: Some(vec!["call_1".into()]),
+//!     })
+//! );
+//!
+//! let second = RunAgentInput {
+//!     messages: vec![serde_json::from_value(serde_json::json!({
+//!         "id": "t1", "role": "tool", "toolCallId": "call_1", "content": "yes",
+//!     }))?],
+//!     tools,
+//!     ..RunAgentInput::default()
+//! };
+//! let events: Vec<Event> = session.ag_ui(second).await?.collect().await;
+//! assert!(events.iter().any(|event| matches!(event, Event::TextMessageContent(_))));
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! # Trusted instructions
 //!
@@ -124,16 +194,28 @@
 // Decision: no axum handler here. The facade carries no HTTP server
 // dependency, and the handler is five lines over `AgUiStream` (see the public
 // docs page `framework/ag-ui`).
+//
+// Decision: frontend tools are the session's client-side tools, as on the
+// server. The in-process runtime parks a turn on a call to one and keeps its
+// resume state (`InProcessRuntime::resume_steerable_turn`), so the next run's
+// results continue the same turn instead of starting one with a synthetic
+// message. A run that sees the calls requested waits for the turn to record
+// the park before it ends, so the next run always finds it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
+use everruns_ag_ui::{Tool as WireTool, ToolCall as WireToolCall};
+use everruns_core::events::{ToolCallRequestedData, ToolCompletedData};
+use everruns_core::message::ContentPart;
+use everruns_host::ParkedToolCalls;
+use everruns_provider::tool_types::ClientSideTool;
 use futures::{Stream, StreamExt};
-use serde_json::Value;
-use tokio::sync::{broadcast, oneshot};
+use serde_json::{Value, json};
+use tokio::sync::{broadcast, oneshot, watch};
 
 use crate::approval::{ApprovalDecision, ToolApprover};
 use crate::ask_user::{
@@ -145,7 +227,10 @@ use crate::{
     ToolDefinition,
 };
 
+mod frontend_tools;
 mod shapes;
+
+use frontend_tools::{frontend_definitions, trailing_results};
 
 pub use shapes::{approval_decision, approval_interrupt, question_interrupt, question_outcome};
 
@@ -889,10 +974,11 @@ impl Stream for AgUiStream {
 
 /// How the run begins, decided before the stream opens.
 enum Start {
-    /// A message started or steered a turn; stream it.
+    /// A message started or steered a turn, or results resumed one; stream
+    /// it.
     Follow,
-    /// The run ends at once with these interrupts.
-    Interrupt(Vec<Interrupt>),
+    /// The run ends at once with these frontend calls and interrupts.
+    Park(Vec<WireToolCall>, Vec<Interrupt>),
     /// Nothing to run: finish empty.
     Empty,
 }
@@ -905,6 +991,12 @@ struct RunState {
     projector: Projector,
     /// Highest durable sequence seen, for recovering from lag.
     last_sequence: Option<i32>,
+    /// This run's frontend tool names.
+    frontend: HashSet<String>,
+    /// The session's parked client-side calls, updated as each turn ends.
+    parked_calls: watch::Receiver<Option<ParkedToolCalls>>,
+    /// Frontend calls the turn requested, waiting for it to park on them.
+    awaiting: Option<Vec<WireToolCall>>,
 }
 
 impl Session {
@@ -958,6 +1050,9 @@ impl Session {
     /// session's open interrupts and the run streams the rest of the parked
     /// turn. A run that would start while interrupts are open, or a resume
     /// that leaves one unanswered, ends at once with the interrupts again.
+    /// The input's `tools` become the session's frontend tools, and trailing
+    /// `tool` messages answer the calls to them the turn parked on (see
+    /// [Frontend tools](crate::ag_ui#frontend-tools)).
     ///
     /// `RUN_STARTED` carries `protocolVersion: "1.0"` only when the input
     /// declared a version, so a pre-1.0 client sees the stream it expects.
@@ -995,9 +1090,10 @@ impl Session {
     /// # Errors
     ///
     /// [`AgUiError::InvalidInput`] when the input has neither a trailing user
-    /// message nor resume entries, or an entry cannot be applied (nothing is
-    /// resolved then); [`AgUiError::Run`] when the session refuses the
-    /// message.
+    /// message nor resume entries nor trailing tool results, a frontend tool
+    /// definition or result is out of bounds, or an entry cannot be applied
+    /// (nothing is resolved then); [`AgUiError::Run`] when the session
+    /// refuses the message.
     pub async fn ag_ui_with(
         &self,
         input: RunAgentInput,
@@ -1009,10 +1105,17 @@ impl Session {
             input_instructions: trusted,
         } = options;
         let session_id = self.session_id();
+        let frontend_tools = frontend_definitions(&input.tools)?;
+        let frontend: HashSet<String> = input.tools.iter().map(|tool| tool.name.clone()).collect();
+        let results = trailing_results(&input.messages);
+        // A resuming run (AG-UI 1.0) answers the interrupts or frontend tool
+        // calls that ended the last one and starts no new turn, so it needs
+        // no trailing user message.
+        let resuming = !input.resume.is_empty() || !results.is_empty();
         // A trusted run's system and developer messages are instructions,
         // not the conversation: the input is the last message of any other
         // role.
-        let trigger = if input.resume.is_empty() {
+        let trigger = if !resuming {
             let last = input.messages.iter().rev().find(|message| {
                 !(trusted && matches!(message, Message::System(_) | Message::Developer(_)))
             });
@@ -1028,9 +1131,14 @@ impl Session {
         } else {
             None
         };
-        if trusted {
+        // The consumer sends its frontend tools on every run, so the session
+        // takes the latest set; a session that never had any is left alone.
+        let client_tools =
+            (!frontend_tools.is_empty() || self.had_client_tools()).then_some(frontend_tools);
+        if trusted || client_tools.is_some() {
             self.override_record(SessionOverrides {
-                instructions: Some(input_instructions(&input)),
+                instructions: trusted.then(|| input_instructions(&input)),
+                client_tools,
             })
             .await?;
         }
@@ -1038,14 +1146,18 @@ impl Session {
         // no park is missed.
         let events = self.events();
         let parked = gate.as_ref().map(|gate| gate.subscribe());
+        let parked_calls = self.watch_parked_tool_calls();
+        let open_interrupts = || {
+            gate.as_ref()
+                .map(|gate| gate.interrupts(session_id))
+                .unwrap_or_default()
+        };
 
         let mut sent = None;
         let start = if let Some(text) = trigger {
-            let open = gate
-                .as_ref()
-                .map(|gate| gate.interrupts(session_id))
-                .unwrap_or_default();
-            if open.is_empty() {
+            let open = open_interrupts();
+            let pending = self.pending_frontend_calls(&frontend);
+            if open.is_empty() && pending.is_empty() {
                 if text.trim().is_empty() {
                     return Err(invalid("the user message has no text"));
                 }
@@ -1053,14 +1165,25 @@ impl Session {
                 Start::Follow
             } else {
                 // AG-UI 1.0: an interrupt without an answer is not abandoned;
-                // ask again instead of running past it.
-                Start::Interrupt(open)
+                // ask again instead of running past it. A parked frontend
+                // call without a result is reported again the same way.
+                Start::Park(pending, open)
             }
+        } else if input.resume.is_empty() {
+            self.submit_frontend_results(&frontend, results, open_interrupts)
+                .await?
         } else {
+            if !results.is_empty() {
+                // A run carrying resume entries resolves only those.
+                tracing::warn!(
+                    session_id = %session_id,
+                    "AG-UI tool messages beside resume entries; ignoring them"
+                );
+            }
             match &gate {
                 Some(gate) => match gate.resume(session_id, &input.resume)? {
                     ResumeOutcome::NothingOpen => Start::Empty,
-                    ResumeOutcome::StillOpen(interrupts) => Start::Interrupt(interrupts),
+                    ResumeOutcome::StillOpen(interrupts) => Start::Park(Vec::new(), interrupts),
                     ResumeOutcome::Resumed => Start::Follow,
                 },
                 None => {
@@ -1080,7 +1203,7 @@ impl Session {
         let mut projector = Projector::new(input.thread_id, input.run_id, policy);
         match start {
             Start::Follow => {}
-            Start::Interrupt(interrupts) => projector.interrupt(interrupts),
+            Start::Park(calls, interrupts) => projector.park(calls, interrupts),
             Start::Empty => projector.project("turn.completed", &Value::Null),
         }
         let state = RunState {
@@ -1090,6 +1213,9 @@ impl Session {
             parked,
             projector,
             last_sequence: None,
+            frontend,
+            parked_calls,
+            awaiting: None,
         };
         let run = futures::stream::unfold(state, next_event);
         let stream = futures::stream::once(async move { Event::RunStarted(started) }).chain(run);
@@ -1118,7 +1244,31 @@ async fn next_event(mut state: RunState) -> Option<(Event, RunState)> {
                 Err(EventStreamError::Lagged { .. }) => state.recover().await,
             },
             () = parked_on(&mut state.parked, session_id) => state.interrupt_if_parked(),
+            () = parked_with(&mut state.parked_calls, state.awaiting.as_deref()) => {
+                state.park_frontend_calls();
+            }
         }
+    }
+}
+
+/// Resolves once the session has parked on every call in `awaiting`, which
+/// it records as the turn ends. Pending while nothing is awaited.
+async fn parked_with(
+    parked: &mut watch::Receiver<Option<ParkedToolCalls>>,
+    awaiting: Option<&[WireToolCall]>,
+) {
+    let Some(calls) = awaiting else {
+        return std::future::pending().await;
+    };
+    let covered = parked.wait_for(|parked| {
+        parked.as_ref().is_some_and(|parked| {
+            calls
+                .iter()
+                .all(|call| parked.tool_calls.iter().any(|made| made.id == call.id))
+        })
+    });
+    if covered.await.is_err() {
+        std::future::pending::<()>().await;
     }
 }
 
@@ -1148,7 +1298,47 @@ impl RunState {
             .get("data")
             .cloned()
             .unwrap_or(Value::Null);
+        // Calls to this run's frontend tools are the consumer's to run: the
+        // turn parks on them and the run ends naming them, once it has.
+        if event.event_type() == "tool.call_requested" {
+            let calls: Vec<WireToolCall> = serde_json::from_value::<ToolCallRequestedData>(data)
+                .map(|requested| {
+                    requested
+                        .tool_calls
+                        .into_iter()
+                        .filter(|call| self.frontend.contains(&call.name))
+                        .map(|call| {
+                            WireToolCall::function(call.id, call.name, call.arguments.to_string())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if !calls.is_empty() {
+                self.awaiting = Some(calls);
+            }
+            return;
+        }
         self.projector.project(event.event_type(), &data);
+    }
+
+    /// The turn parked on the frontend calls it requested: flush what it
+    /// emitted, then end the run with them, beside any open interrupt.
+    fn park_frontend_calls(&mut self) {
+        let Some(calls) = self.awaiting.take() else {
+            return;
+        };
+        while let Ok(Some(event)) = self.events.try_recv() {
+            self.project(&event);
+            if self.projector.is_finished() {
+                return;
+            }
+        }
+        let interrupts = self
+            .gate
+            .as_ref()
+            .map(|gate| gate.interrupts(self.session.session_id()))
+            .unwrap_or_default();
+        self.projector.park(calls, interrupts);
     }
 
     /// The run fell behind the live feed: replay the durable log after the
