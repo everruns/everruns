@@ -90,18 +90,20 @@ def private_dependency_failures(packages: list[dict[str, Any]]) -> list[str]:
 # Dev-dependencies are pinned only where the declaration already carries a
 # version of its own. A version-less path dev-dependency never reaches
 # downstream consumers (`cargo publish` drops it entirely), and crate-release.yml
-# ignores dev edges in both its publish ordering and its strand check. Adding a
-# version there would only create a publish-order deadlock: a crate that
-# dev-depends on a sibling bumped in the same cycle could not package before that
-# sibling publishes, while the sibling may in turn depend on it (host <-> llmsim).
+# leaves it out of its publish ordering. Adding a version there would only
+# create a publish-order constraint: a crate that dev-depends on a sibling
+# bumped in the same cycle cannot package before that sibling publishes, while
+# the sibling may in turn depend on it (host <-> llmsim). crate-release.yml
+# orders versioned dev edges (including `workspace = true` ones, which inherit
+# the workspace pin) ahead of their dependant.
 # A dev-dependency that spells out a version has opted into that ordering
 # deliberately - usually because it also carries features the workspace entry
 # does not (ard dev-depends on host with `direct-egress`), so it cannot inherit
 # the pin from `[workspace.dependencies]`. Such a pin still has to track the
 # target package, or a breaking bump leaves the published crate requesting a
-# version that no longer exists. Workspace-inherited dev edges stay excluded:
-# they declare no version, so keeping them out preserves the deadlock-free
-# default.
+# version that no longer exists. Workspace-inherited dev edges are skipped
+# here because their pin lives in `[workspace.dependencies]`, which
+# `workspace_pin_drift` checks.
 DEPENDENCY_KINDS = ("dependencies", "build-dependencies", "dev-dependencies")
 
 

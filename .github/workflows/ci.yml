@@ -181,6 +181,8 @@ jobs:
               # The lockfile job runs the single-version gate; re-run it when
               # the gate itself changes.
               - 'scripts/sync-publish-pin-versions.py'
+              - 'scripts/check-publish-order.py'
+              - '.github/workflows/crate-release.yml'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -425,6 +427,14 @@ jobs:
       # rejects a published crate depending on a private workspace package.
       - name: Check the single platform version and internal pins
         run: python3 scripts/sync-publish-pin-versions.py --check
+
+      # Packages every published crate and checks Crate Release's own plan
+      # against the manifests cargo actually produces: every workspace
+      # dependency a packaged manifest keeps must publish first. v0.34.0 halted
+      # after two crates on exactly this (everruns-durable before the
+      # everruns-core it dev-depends on).
+      - name: Check the crates.io publish order
+        run: python3 scripts/check-publish-order.py
 
   msrv:
     name: Published Crate MSRV
