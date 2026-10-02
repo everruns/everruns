@@ -72,6 +72,7 @@ members = [
     "examples/host-shell-agent",
     "examples/foreman-agent",
     "examples/demo-support",
+    "examples/serve/a2a",
     "examples/serve/ag-ui",
     "examples/serve/agentcore",
     "examples/serve/agentcore-workspace",

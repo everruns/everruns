@@ -3320,6 +3320,8 @@ dependencies = [
 name = "everruns-serve"
 version = "0.33.0"
 dependencies = [
+ "a2a-lf",
+ "a2a-server-lf",
  "anyhow",
  "async-trait",
  "axum",
@@ -7648,6 +7650,19 @@ checksum = "66cf8fedced2fcf12406bcb34223dffb92eaf34908ede12fed414c82b7f00b3e"
 dependencies = [
  "base16ct",
  "serde",
+]
+
+[[package]]
+name = "serve-example-a2a"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-example-demo",
+ "everruns-serve",
+ "everruns-serve-build",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

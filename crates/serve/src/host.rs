@@ -526,7 +526,7 @@ impl Host {
     }
 
     /// The session bound to a channel thread, if any.
-    #[cfg(feature = "ag-ui")]
+    #[cfg(any(feature = "ag-ui", feature = "a2a"))]
     pub(crate) fn thread_session(
         &self,
         channel: &str,
@@ -536,7 +536,7 @@ impl Host {
     }
 
     /// Bind a channel thread to a session.
-    #[cfg(feature = "ag-ui")]
+    #[cfg(any(feature = "ag-ui", feature = "a2a"))]
     pub(crate) fn bind_thread(&self, channel: &str, thread: &str, session: &str) -> crate::Result {
         self.store.bind_thread(channel, thread, session)
     }

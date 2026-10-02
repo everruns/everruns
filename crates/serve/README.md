@@ -101,6 +101,7 @@ ids as they are). You can instead point `SERVE_GATEWAY_URL` and
 | [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
 | [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | The `ag-ui` feature: an agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
+| [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | The `a2a` feature: a served `researcher`, and an `everruns` agent that delegates to it over A2A. |
 
 ## Project layout
 
@@ -163,6 +164,17 @@ become interrupts that the next run resumes.
 everruns-serve = { version = "0.33", features = ["ag-ui"] }
 ```
 
+## A2A
+
+With the `a2a` feature, every top-level agent also serves A2A 1.0 JSON-RPC at
+`POST /v1/e/{agent}/a2a`, with its Agent Card at
+`GET /v1/e/{agent}/a2a/.well-known/agent-card.json`. Each A2A context is one
+session, and each task one turn whose reply is the task's `response` artifact.
+
+```toml
+everruns-serve = { version = "0.33", features = ["a2a"] }
+```
+
 ## Commands
 
 The commands are part of the app binary, because only the linked binary knows
@@ -190,7 +202,7 @@ what it registered.
 This PoC works end to end offline: discovery, the manifest, the
 server-compatible wire API (driven by the everruns Rust SDK in tests) with
 resumable SSE, approvals, `ask_user` answers, cancel, restart and resume,
-Slack and webhook channels, the AG-UI channel, schedules, subagents, skills, sandbox selection,
+Slack and webhook channels, the AG-UI and A2A channels, schedules, subagents, skills, sandbox selection,
 and evals both in-process and remote.
 
 It does not have:

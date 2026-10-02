@@ -214,6 +214,12 @@ impl Manifest {
                 .filter(|agent| !agent.sub)
                 .map(|agent| format!("POST {}", crate::ag_ui::route(agent.name))),
         );
+        #[cfg(feature = "a2a")]
+        for agent in inner.agents.iter().filter(|agent| !agent.sub) {
+            let route = crate::a2a::route(agent.name);
+            routes.push(format!("POST {route}"));
+            routes.push(format!("GET {route}/.well-known/agent-card.json"));
+        }
 
         let models: BTreeSet<String> = inner.agents.iter().map(|a| a.spec.model.clone()).collect();
         Manifest {
