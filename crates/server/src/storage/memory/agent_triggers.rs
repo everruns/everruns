@@ -33,10 +33,10 @@ impl InMemoryDatabase {
             execution_resolved_owner_user_id: input.execution_resolved_owner_user_id,
             execution_virtual_user_id: input.execution_virtual_user_id,
             execution_app_id: input.execution_app_id,
-            execution_app_public_id: input.execution_app_public_id,
-            execution_app_name: input.execution_app_name,
-            execution_agent_version_policy: input.execution_agent_version_policy,
-            execution_agent_version_id: input.execution_agent_version_id,
+            legacy_alias_id: input.legacy_alias_id,
+            legacy_alias_name: input.legacy_alias_name,
+            agent_version_policy: input.agent_version_policy,
+            agent_version_id: input.agent_version_id,
             status: "active".to_string(),
             created_at: Self::now(),
             updated_at: Self::now(),
@@ -123,12 +123,10 @@ impl InMemoryDatabase {
         if let Some(status) = input.status {
             row.status = status;
         }
-        if let Some(policy) = input.execution_agent_version_policy {
-            row.execution_agent_version_policy = Some(policy);
+        if let Some(policy) = input.agent_version_policy {
+            row.agent_version_policy = Some(policy);
         }
-        input
-            .execution_agent_version_id
-            .apply(&mut row.execution_agent_version_id);
+        input.agent_version_id.apply(&mut row.agent_version_id);
         row.updated_at = Self::now();
         Ok(Some(row.clone()))
     }

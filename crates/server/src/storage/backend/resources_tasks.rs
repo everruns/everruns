@@ -779,13 +779,13 @@ impl StorageBackend {
 
     pub async fn list_ingress_endpoints_by_legacy_alias(
         &self,
-        legacy_app_public_id: &str,
+        legacy_alias_id: &str,
         channel_type: &str,
     ) -> Result<Vec<IngressEndpointRow>> {
         dispatch!(
             self,
             list_ingress_endpoints_by_legacy_alias,
-            legacy_app_public_id,
+            legacy_alias_id,
             channel_type
         )
     }

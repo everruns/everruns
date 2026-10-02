@@ -51,7 +51,7 @@ They return frozen records for archival consumers. Create, update, delete, publi
 
 ## Endpoint-owned ingress
 
-`agent_endpoints` is the source of truth for ingress. Each endpoint stores its agent ownership, channel identity, channel configuration, authentication data, lifecycle status, and `legacy_app_public_id`.
+`agent_endpoints` is the source of truth for ingress. Each endpoint stores its agent ownership, channel identity, channel configuration, authentication data, lifecycle status, and `legacy_alias_id`.
 
 Traffic-serving resolution reads `agent_endpoints JOIN agents`. It does not read `apps` or `app_channels`, directly or indirectly. This rule applies to Slack, AG-UI, FCP, A2A, API endpoint, Public Chat, webhook, and schedule compatibility paths.
 
@@ -64,7 +64,7 @@ An endpoint accepts traffic only when:
 
 ## Permanent route aliases
 
-Endpoint-scoped `/v1/e/{endpoint_id}/...` routes are canonical. Existing App-shaped ingress routes remain permanent aliases. Alias resolution uses `agent_endpoints.legacy_app_public_id` and channel identity, so it remains deterministic when the frozen App relations are unreadable.
+Endpoint-scoped `/v1/e/{endpoint_id}/...` routes are canonical. Existing App-shaped ingress routes remain permanent aliases. Alias resolution uses `agent_endpoints.legacy_alias_id` and channel identity, so it remains deterministic when the frozen App relations are unreadable.
 
 Alias lookups preserve endpoint-route tenant and error behavior. A mismatched App/channel pair is not found. A channelless legacy alias resolves only when one matching live endpoint exists; ambiguous matches return the protocol-specific existing ambiguity response.
 

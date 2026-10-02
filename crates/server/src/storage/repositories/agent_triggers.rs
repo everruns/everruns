@@ -9,7 +9,7 @@ use crate::kernel_imports::{
 use anyhow::Result;
 use uuid::Uuid;
 
-const COLUMNS: &str = "id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at";
+const COLUMNS: &str = "id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status, created_at, updated_at, archived_at, deleted_at";
 
 impl Database {
     // ============================================
@@ -22,9 +22,9 @@ impl Database {
     ) -> Result<AgentTriggerRow> {
         let row = sqlx::query_as::<_, AgentTriggerRow>(
             r#"
-            INSERT INTO agent_triggers (org_id, id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status)
+            INSERT INTO agent_triggers (org_id, id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'active')
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(input.org_id)
@@ -41,10 +41,10 @@ impl Database {
         .bind(input.execution_resolved_owner_user_id)
         .bind(input.execution_virtual_user_id)
         .bind(input.execution_app_id)
-        .bind(&input.execution_app_public_id)
-        .bind(&input.execution_app_name)
-        .bind(&input.execution_agent_version_policy)
-        .bind(input.execution_agent_version_id)
+        .bind(&input.legacy_alias_id)
+        .bind(&input.legacy_alias_name)
+        .bind(&input.agent_version_policy)
+        .bind(input.agent_version_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -124,11 +124,11 @@ impl Database {
                 enabled = COALESCE($6, enabled),
                 durable_schedule_id = CASE WHEN $7 THEN $8 ELSE durable_schedule_id END,
                 status = COALESCE($9, status),
-                execution_agent_version_policy = COALESCE($10, execution_agent_version_policy),
-                execution_agent_version_id = CASE WHEN $11 THEN $12 ELSE execution_agent_version_id END,
+                agent_version_policy = COALESCE($10, agent_version_policy),
+                agent_version_id = CASE WHEN $11 THEN $12 ELSE agent_version_id END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -140,9 +140,9 @@ impl Database {
         .bind(input.durable_schedule_id.is_changed())
         .bind(input.durable_schedule_id.into_value())
         .bind(&input.status)
-        .bind(&input.execution_agent_version_policy)
-        .bind(input.execution_agent_version_id.is_changed())
-        .bind(input.execution_agent_version_id.into_value())
+        .bind(&input.agent_version_policy)
+        .bind(input.agent_version_id.is_changed())
+        .bind(input.agent_version_id.into_value())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -162,7 +162,7 @@ impl Database {
             UPDATE agent_triggers
             SET durable_schedule_id = $3, updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
