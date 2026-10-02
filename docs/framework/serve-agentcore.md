@@ -138,6 +138,15 @@ with the same session header, and send one invocation body per text message.
 Each AG-UI event comes back as its own text message, ending with `RUN_FINISHED`
 or `RUN_ERROR`; send the next body on the same socket for the next turn.
 
+The upgrade request is authenticated like any other call: sign it with SigV4
+(service `bedrock-agentcore`), either in the headers or, where the client cannot
+set upgrade headers (a browser), as a presigned URL that also carries the
+session id as the `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` query
+parameter. The AWS SDKs have no WebSocket client, so sign the request yourself
+and hand it to a WebSocket library; the
+[agentcore-workspace example](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore-workspace)
+has a Python client (`client/ws.py`) that does both.
+
 ## Persistence
 
 AgentCore mounts session storage only when an invocation arrives, not while the

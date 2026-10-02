@@ -75,6 +75,14 @@ python3 client/invoke.py --arn "$AGENT_ARN" "Add 'check the build' to my todo li
 python3 client/invoke.py --arn "$AGENT_ARN" "What is on my todo list?"
 ```
 
+Over the WebSocket transport (`pip install websockets`), each prompt is one turn
+on the same socket; the script signs the upgrade with SigV4 (`--presign` puts
+the signature in the URL) and shares the session file with `invoke.py`:
+
+```sh
+python3 client/ws.py --arn "$AGENT_ARN" "Add 'try the websocket' to my todo list and share it." "What is on it now?"
+```
+
 With a bearer token (JWT inbound auth), the `@ag-ui/client` script works too:
 
 ```sh
@@ -105,5 +113,6 @@ fn gateway() -> McpServer {
 | `src/tools.rs` | `#[tool(needs_approval)] async fn share_report(...)` |
 | `evals/workspace.rs` | uses the shell, then shares only after approval |
 | `client/invoke.py` | a boto3 (IAM) client with the approval round trip |
+| `client/ws.py` | the same over `/ws`, with a SigV4-signed upgrade |
 | `client/run.mjs` | an `@ag-ui/client` run with the approval round trip |
 | `Dockerfile` | the `arm64` image, with a shell |
