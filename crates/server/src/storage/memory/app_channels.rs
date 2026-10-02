@@ -180,7 +180,7 @@ impl InMemoryDatabase {
 
     pub async fn list_ingress_endpoints_by_legacy_alias(
         &self,
-        legacy_app_public_id: &str,
+        legacy_alias_id: &str,
         channel_type: &str,
     ) -> Result<Vec<IngressEndpointRow>> {
         let mut endpoints: Vec<_> = self
@@ -188,7 +188,7 @@ impl InMemoryDatabase {
             .read()
             .values()
             .filter(|endpoint| {
-                endpoint.legacy_app_public_id.as_deref() == Some(legacy_app_public_id)
+                endpoint.legacy_alias_id.as_deref() == Some(legacy_alias_id)
                     && endpoint.channel_type == channel_type
                     && endpoint.enabled
             })
@@ -254,7 +254,7 @@ impl InMemoryDatabase {
             endpoint_id,
             endpoint_public_id: input.public_id,
             legacy_app_id: None,
-            legacy_app_public_id: None,
+            legacy_alias_id: None,
             org_id,
             agent_id: input.agent_id,
             agent_public_id: agent.public_id,
@@ -367,7 +367,7 @@ impl InMemoryDatabase {
             endpoint_id: channel.id,
             endpoint_public_id: channel.public_id,
             legacy_app_id: Some(app.id),
-            legacy_app_public_id: Some(app.public_id),
+            legacy_alias_id: Some(app.public_id),
             org_id: app.org_id,
             agent_id,
             agent_public_id: agent.public_id,

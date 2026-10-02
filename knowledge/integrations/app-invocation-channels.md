@@ -16,7 +16,7 @@ Webhook and schedule compatibility behavior can retain historical App attributio
 
 The canonical route is `POST /v1/e/{endpoint_id}/webhook`. The permanent alias `POST /v1/apps/{legacy_app_id}/webhooks/{endpoint_id}` remains available.
 
-Resolution and liveness use only `agent_endpoints JOIN agents`. The alias App ID is matched against `agent_endpoints.legacy_app_public_id`; traffic serving never reads `apps` or `app_channels`.
+Resolution and liveness use only `agent_endpoints JOIN agents`. The alias App ID is matched against `agent_endpoints.legacy_alias_id`; traffic serving never reads `apps` or `app_channels`.
 
 Webhook endpoint configuration retains `token`, `session_mode`, `message`, and optional rate-limit data. Authentication accepts `Authorization: Bearer <token>` or `X-Everruns-Webhook-Token: <token>`.
 

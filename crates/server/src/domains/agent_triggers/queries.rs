@@ -36,11 +36,11 @@ pub fn row_to_trigger(
         enabled: row.enabled,
         // NULL on rows that predate per-trigger pinning: they run the default.
         agent_version_policy: row
-            .execution_agent_version_policy
+            .agent_version_policy
             .as_deref()
             .map(everruns_platform::AgentVersionPolicy::from)
             .unwrap_or_default(),
-        agent_version_id: row.execution_agent_version_id,
+        agent_version_id: row.agent_version_id,
         created_at: row.created_at,
         updated_at: row.updated_at,
         archived_at: row.archived_at,

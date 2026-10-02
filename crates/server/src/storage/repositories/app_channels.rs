@@ -37,7 +37,7 @@ fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
 /// missing or still agent-less, which callers turn into `missing_agent_error`.
 const INSERT_CHANNEL_SQL: &str = r#"
     INSERT INTO agent_endpoints (
-        app_id, legacy_app_public_id, agent_id, public_id, channel_type, channel_config,
+        app_id, legacy_alias_id, agent_id, public_id, channel_type, channel_config,
         channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled,
         status, virtual_user_id, agent_version_policy, agent_version_id,
         owner_principal_id, resolved_owner_user_id
@@ -110,7 +110,7 @@ impl Database {
                 ae.id AS endpoint_id,
                 ae.public_id AS endpoint_public_id,
                 ae.app_id AS legacy_app_id,
-                ae.legacy_app_public_id,
+                ae.legacy_alias_id,
                 agent.org_id,
                 ae.agent_id,
                 agent.public_id AS agent_public_id,
@@ -152,7 +152,7 @@ impl Database {
         sqlx::query_as::<_, IngressEndpointRow>(
             r#"
             SELECT ae.id AS endpoint_id, ae.public_id AS endpoint_public_id,
-                ae.app_id AS legacy_app_id, ae.legacy_app_public_id, agent.org_id,
+                ae.app_id AS legacy_app_id, ae.legacy_alias_id, agent.org_id,
                 ae.agent_id, agent.public_id AS agent_public_id,
                 COALESCE(agent.display_name, agent.name) AS agent_name,
                 agent.description AS agent_description, agent.harness_id,
@@ -183,7 +183,7 @@ impl Database {
         sqlx::query_as::<_, IngressEndpointRow>(
             r#"
             SELECT ae.id AS endpoint_id, ae.public_id AS endpoint_public_id,
-                ae.app_id AS legacy_app_id, ae.legacy_app_public_id, agent.org_id,
+                ae.app_id AS legacy_app_id, ae.legacy_alias_id, agent.org_id,
                 ae.agent_id, agent.public_id AS agent_public_id,
                 COALESCE(agent.display_name, agent.name) AS agent_name,
                 agent.description AS agent_description, agent.harness_id,
@@ -213,7 +213,7 @@ impl Database {
         let inserted = sqlx::query_scalar::<_, Uuid>(
             r#"
             INSERT INTO agent_endpoints (
-                agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+                agent_id, app_id, legacy_alias_id, public_id, channel_type,
                 channel_config, channel_config_encrypted, auth, auth_encrypted,
                 enabled, status, virtual_user_id, agent_version_policy,
                 agent_version_id, owner_principal_id, resolved_owner_user_id
@@ -337,7 +337,7 @@ impl Database {
 
     pub async fn list_ingress_endpoints_by_legacy_alias(
         &self,
-        legacy_app_public_id: &str,
+        legacy_alias_id: &str,
         channel_type: &str,
     ) -> Result<Vec<IngressEndpointRow>> {
         sqlx::query_as::<_, IngressEndpointRow>(
@@ -346,7 +346,7 @@ impl Database {
                 ae.id AS endpoint_id,
                 ae.public_id AS endpoint_public_id,
                 ae.app_id AS legacy_app_id,
-                ae.legacy_app_public_id,
+                ae.legacy_alias_id,
                 agent.org_id,
                 ae.agent_id,
                 agent.public_id AS agent_public_id,
@@ -371,13 +371,13 @@ impl Database {
                 ae.updated_at
             FROM agent_endpoints AS ae
             JOIN agents AS agent ON agent.id = ae.agent_id
-            WHERE ae.legacy_app_public_id = $1
+            WHERE ae.legacy_alias_id = $1
               AND ae.channel_type = $2
               AND ae.enabled = true
             ORDER BY ae.created_at, ae.id
             "#,
         )
-        .bind(legacy_app_public_id)
+        .bind(legacy_alias_id)
         .bind(channel_type)
         .fetch_all(&self.pool)
         .await

@@ -33,7 +33,7 @@ The pilot is intentionally Agent-specific (`agent_versions`) instead of a generi
 - Sessions capture `agent_version_id` when created if the Agent or the exposure that started them resolves to a version.
 - Worker turn loading uses the captured version snapshot instead of the current Agent draft.
 - Every exposure carries its own version policy: each endpoint (`agent_endpoints`) and each trigger
-  (`agent_triggers.execution_agent_version_*`). A staging endpoint on `latest` and a production
+  (`agent_triggers.agent_version_*`). A staging endpoint on `latest` and a production
   endpoint `pinned` on the same Agent is the case this exists for.
   - `default`: use the Agent's `default_version_id`. A trigger row with no stored policy means this.
   - `latest`: use the newest saved version for the Agent.

@@ -315,10 +315,10 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         execution_resolved_owner_user_id: resolved_owner_user_id,
         execution_virtual_user_id: virtual_user_id,
         execution_app_id: app_id,
-        execution_app_public_id: Some("app_frozen".to_string()),
-        execution_app_name: Some("Frozen App".to_string()),
-        execution_agent_version_policy: Some("pinned".to_string()),
-        execution_agent_version_id: Some(everruns_provider::typed_id::AgentVersionId::from_uuid(
+        legacy_alias_id: Some("app_frozen".to_string()),
+        legacy_alias_name: Some("Frozen App".to_string()),
+        agent_version_policy: Some("pinned".to_string()),
+        agent_version_id: Some(everruns_provider::typed_id::AgentVersionId::from_uuid(
             uuid::Uuid::from_u128(61),
         )),
         status: "active".to_string(),
@@ -341,7 +341,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         context.agent_version_policy,
         everruns_platform::AgentVersionPolicy::Pinned
     );
-    assert_eq!(context.agent_version_id, trigger.execution_agent_version_id);
+    assert_eq!(context.agent_version_id, trigger.agent_version_id);
 }
 
 #[tokio::test]
