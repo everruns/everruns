@@ -164,13 +164,25 @@ configure_commit_git_identity_if_needed() {
   git config user.email "$RESOLVED_GIT_AUTHOR_EMAIL"
 }
 
+# Prints the revision arguments (one per line) selecting commits this branch would push.
+# Commits already on origin/main are always excluded: after a branch rebases onto a newer
+# main, @{upstream} still pins the earlier push, and other people's merged commits (e.g.
+# dependabot squash merges) would otherwise count as outgoing (EVE-1137).
 git_outgoing_commit_range() {
+  local has_main=0
+  if git rev-parse --verify -q 'origin/main' >/dev/null 2>&1; then
+    has_main=1
+  fi
+
   if git rev-parse --verify -q '@{upstream}' >/dev/null 2>&1; then
     printf '%s\n' '@{upstream}..HEAD'
+    if [ "$has_main" = 1 ]; then
+      printf '%s\n' '^origin/main'
+    fi
     return 0
   fi
 
-  if git rev-parse --verify -q 'origin/main' >/dev/null 2>&1; then
+  if [ "$has_main" = 1 ]; then
     printf '%s\n' 'origin/main..HEAD'
     return 0
   fi
@@ -179,11 +191,13 @@ git_outgoing_commit_range() {
 }
 
 find_agent_like_outgoing_commit() {
-  local range sha name email
+  local range_output sha name email
+  local -a range
 
-  if ! range="$(git_outgoing_commit_range)"; then
+  if ! range_output="$(git_outgoing_commit_range)"; then
     return 1
   fi
+  mapfile -t range <<<"$range_output"
 
   while IFS=$'\t' read -r sha name email; do
     [ -n "$sha" ] || continue
@@ -195,7 +209,7 @@ find_agent_like_outgoing_commit() {
       printf '%s\t%s\t%s\n' "$sha" "$name" "$email"
       return 0
     fi
-  done < <(git log --format='%H%x09%an%x09%ae' "$range")
+  done < <(git log --format='%H%x09%an%x09%ae' "${range[@]}")
 
   return 1
 }

@@ -4,12 +4,21 @@
 # repository guards still run every time.
 
 pre_push_collect_changed_files() {
-  local base
+  local base main_base
+
+  if git rev-parse --verify -q 'origin/main' >/dev/null 2>&1; then
+    main_base="$(git merge-base HEAD origin/main)"
+  fi
 
   if git rev-parse --verify -q '@{upstream}' >/dev/null 2>&1; then
     base="$(git merge-base HEAD '@{upstream}')"
-  elif git rev-parse --verify -q 'origin/main' >/dev/null 2>&1; then
-    base="$(git merge-base HEAD origin/main)"
+    # After a rebase onto newer main, the upstream still pins the earlier push, so its
+    # merge base predates main's new commits. Never diff from behind origin/main (EVE-1137).
+    if [ -n "${main_base:-}" ] && git merge-base --is-ancestor "$base" "$main_base"; then
+      base="$main_base"
+    fi
+  elif [ -n "${main_base:-}" ]; then
+    base="$main_base"
   else
     return 1
   fi
