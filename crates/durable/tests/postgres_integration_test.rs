@@ -440,13 +440,13 @@ async fn test_start_workflow_with_task_writes_initial_state_in_one_step() {
     let task_id = store
         .start_workflow_with_task(
             workflow_id,
-            "turn_workflow",
-            json!({"session_id": "session_123"}),
+            "run_workflow",
+            json!({"request_id": "request_123"}),
             TaskDefinition {
                 workflow_id: Some(workflow_id),
                 activity_id: "input-1".to_string(),
                 activity_type: "process_input".to_string(),
-                input: json!({"session_id": "session_123"}),
+                input: json!({"request_id": "request_123"}),
                 options: ActivityOptions::default(),
             },
         )
@@ -494,12 +494,12 @@ async fn test_start_workflow_with_task_is_idempotent_for_concurrent_same_workflo
                 .start_workflow_with_task(
                     workflow_id,
                     "turn_workflow",
-                    json!({"session_id": "session_race"}),
+                    json!({"request_id": "request_race"}),
                     TaskDefinition {
                         workflow_id: Some(workflow_id),
                         activity_id: format!("input-{attempt}"),
                         activity_type: "process_input".to_string(),
-                        input: json!({"session_id": "session_race", "attempt": attempt}),
+                        input: json!({"request_id": "request_race", "attempt": attempt}),
                         options: ActivityOptions::default(),
                     },
                 )
@@ -1815,13 +1815,13 @@ async fn test_stale_reclaim_respects_max_attempts() {
     cleanup_worker(&store, "worker-3").await;
 }
 
-/// EVE-534: a turn that deterministically crashes mid-`reason` every attempt —
+/// EVE-534: a task that deterministically crashes mid-`reason` every attempt —
 /// recording no new durable events — is SEALED after exactly N no-progress
 /// recoveries instead of looping until it exhausts max_attempts (or hits
 /// max-iterations). The sealed task lands in the DLQ (status='dead') and is no
 /// longer claimable, so it cannot keep re-billing.
 #[tokio::test]
-async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
+async fn test_no_progress_task_is_sealed_after_n_recoveries() {
     // Relies on the default seal threshold (3); avoid mutating the
     // process-global env, which is flaky under parallel test execution.
     let threshold = DEFAULT_NO_PROGRESS_SEAL_THRESHOLD;
@@ -1851,13 +1851,13 @@ async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
             workflow_id: Some(workflow_id),
             activity_id: "reason_task".to_string(),
             activity_type: "reason".to_string(),
-            // Minimal session context so the seal can be surfaced; the store
-            // only needs the workflow_id for the progress token.
+            // Opaque application context the consumer of a seal would read;
+            // the store only needs the workflow_id for the progress token.
             input: json!({
-                "org_id": 1,
-                "session_id": format!("session_{}", Uuid::now_v7().simple()),
-                "turn_id": format!("turn_{}", Uuid::now_v7().simple()),
-                "input_message_id": format!("message_{}", Uuid::now_v7().simple()),
+                "tenant_id": 1,
+                "request_id": format!("request_{}", Uuid::now_v7().simple()),
+                "run_id": format!("run_{}", Uuid::now_v7().simple()),
+                "message_id": format!("message_{}", Uuid::now_v7().simple()),
             }),
             options,
         })
@@ -1908,7 +1908,7 @@ async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
                 "cycle {cycle}: not yet sealed"
             );
         } else if cycle == threshold {
-            // At the Nth no-progress recovery the turn is sealed.
+            // At the Nth no-progress recovery the task is sealed.
             assert_eq!(
                 result.sealed_tasks.len(),
                 1,
@@ -1926,7 +1926,7 @@ async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
             sealed = true;
         }
     }
-    assert!(sealed, "turn should have been sealed at the threshold");
+    assert!(sealed, "task should have been sealed at the threshold");
 
     // The sealed task is terminal/non-retryable: status 'dead' and not claimable.
     let task = store.get_task(task_id).await.unwrap();
@@ -1956,7 +1956,7 @@ async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
     cleanup_worker(&store, "worker-1").await;
 }
 
-/// EVE-534: a turn that DOES make progress between recoveries is never sealed —
+/// EVE-534: a task that DOES make progress between recoveries is never sealed —
 /// the no-progress counter resets whenever the progress token advances.
 #[tokio::test]
 async fn test_progressing_turn_is_not_sealed() {
@@ -2033,7 +2033,7 @@ async fn test_progressing_turn_is_not_sealed() {
             .unwrap();
         assert!(
             result.sealed_tasks.is_empty(),
-            "cycle {cycle}: progressing turn must never be sealed"
+            "cycle {cycle}: progressing task must never be sealed"
         );
         assert_eq!(
             result.reclaimed_ids.len(),

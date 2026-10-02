@@ -12,10 +12,15 @@ tags:
 
 Custom PostgreSQL-backed durable execution engine for workflow orchestration with automatic retries, circuit breakers, and distributed task execution.
 
-Agent turns use `everruns-durable::DurableExecution`, the checkpointed driver
-for `everruns-engine::Execution`. The durable crate owns persistence, retries,
-and activity scheduling; it does not own a second copy of atom or turn
-semantics.
+`everruns-durable` is a generic engine: workflows, activities, tasks, signals,
+and schedules, with no `everruns-*` dependency (enforced by
+`scripts/lib/check-durable-isolation.sh`). Agent semantics live above it. Turns
+use the worker's `DurableExecution`, the checkpointed driver for
+`everruns-engine::Execution`; the worker's `durable_turn` module owns the
+turn-level conventions (the `user_message` signal, idempotent waiting-turn
+resolution tasks via `ActivityOptions::dedupe_by_activity_id`); and the server
+turns a sealed task into `turn.sealed`. The durable crate owns persistence,
+retries, and activity scheduling.
 
 ## Goals
 
@@ -108,7 +113,8 @@ Known gaps: a crash between recording a child's terminal status and enqueueing
 its result leaves the parent waiting, and cancelling a child does not notify
 the parent. Agent turns in Everruns do not use timers or child workflows yet:
 workers talk to the store over gRPC, which exposes only the task operations, and
-turns are driven by `DurableExecution` checkpoints rather than replay.
+turns are driven by the worker's `DurableExecution` checkpoints rather than
+replay.
 
 ### Persistence
 

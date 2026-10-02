@@ -498,8 +498,8 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 state machine, concrete `InputAtom`, `ReasonAtom`, and `ActAtom` algorithms,
 their phase values, post-act helpers, tool scheduler, infrastructure hooks, and
 pure turn planner. There is no generic public `Atom` trait. `everruns-host`
-retains state in `InProcessExecution`; `everruns-durable` checkpoints the same
-state through `DurableExecution`. Hosts inject core/provider contracts and keep
+retains state in `InProcessExecution`; `everruns-worker` checkpoints the same
+state through `DurableExecution` on the generic `everruns-durable` engine. Hosts inject core/provider contracts and keep
 deployment composition outside the engine.
 
 4. **Concrete In-Memory Implementations**:

@@ -18,8 +18,10 @@
 //!   schedules.
 //! - [`RetryPolicy`], [`ActivityOptions`] and [`DistributedCircuitBreaker`]
 //!   control retries, timeouts and failure isolation.
-//! - [`DurableExecution`] drives `everruns-engine` turns from checkpointed
-//!   state.
+//!
+//! The crate is a generic durable-execution engine: it knows workflows,
+//! activities, tasks and signals, and nothing about the domain built on top of
+//! it. Everruns' agent-turn semantics live in the worker and server.
 //!
 //! # Example
 //!
@@ -51,7 +53,6 @@ struct ReadmeDoctests;
 
 pub mod activity;
 pub mod engine;
-pub mod execution;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
@@ -95,7 +96,6 @@ pub use activity::{Activity, ActivityContext, ActivityError};
 pub use engine::{
     ExecutorConfig, ExecutorError, SYSTEM_ACTIVITY_TYPES, WorkflowExecutor, WorkflowRegistry,
 };
-pub use execution::DurableExecution;
 pub use persistence::{
     CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow, DeadLetters,
     DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, EventLog, HeartbeatResponse,

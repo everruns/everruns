@@ -11,7 +11,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             let limit = self.max_pending_tasks_per_workflow;
             let pending_count: i64 = sqlx::query_scalar(
                 r#"
-                SELECT CASE WHEN $2 LIKE 'waiting_turn_resolution_%' AND EXISTS (
+                SELECT CASE WHEN $3 AND EXISTS (
                     SELECT 1 FROM durable_task_queue WHERE workflow_id = $1 AND activity_id = $2
                 ) THEN 0 ELSE COUNT(*) END FROM durable_task_queue
                 WHERE workflow_id = $1 AND status = 'pending'
@@ -19,6 +19,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             )
             .bind(wf_id)
             .bind(&task.activity_id)
+            .bind(task.options.dedupe_by_activity_id)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| {
@@ -61,7 +62,27 @@ impl TaskQueue for PostgresWorkflowEventStore {
             .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
-        let task_id: Uuid = sqlx::query_scalar(
+        // A dedupe task returns the existing `(workflow_id, activity_id)` row
+        // instead of inserting a second one. `ON CONFLICT DO NOTHING` names no
+        // arbiter so any unique index over those ids (the deployment decides
+        // which, see `ActivityOptions::dedupe_by_activity_id`) settles a race;
+        // the loser then reads the winner's committed row.
+        let dedupe = task.options.dedupe_by_activity_id && task.workflow_id.is_some();
+        let inserted: Option<Uuid> = sqlx::query_scalar(if dedupe {
+            r#"
+            INSERT INTO durable_task_queue (
+                id, workflow_id, activity_id, activity_type, input, options,
+                max_attempts, priority, visible_at,
+                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
+            )
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11
+            WHERE NOT EXISTS (
+                SELECT 1 FROM durable_task_queue WHERE workflow_id = $2 AND activity_id = $3
+            )
+            ON CONFLICT DO NOTHING
+            RETURNING id
+            "#
+        } else {
             r#"
             INSERT INTO durable_task_queue (
                 id, workflow_id, activity_id, activity_type, input, options,
@@ -69,13 +90,9 @@ impl TaskQueue for PostgresWorkflowEventStore {
                 schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11)
-            ON CONFLICT (workflow_id, activity_id)
-                WHERE workflow_id IS NOT NULL
-                  AND activity_id LIKE 'waiting_turn_resolution_%'
-                DO UPDATE SET activity_id = EXCLUDED.activity_id
             RETURNING id
-            "#,
-        )
+            "#
+        })
         .bind(task_id)
         .bind(task.workflow_id)
         .bind(&task.activity_id)
@@ -88,12 +105,32 @@ impl TaskQueue for PostgresWorkflowEventStore {
         .bind(task.options.start_to_close_timeout.as_millis() as i64)
         .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
         .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to enqueue task");
             StoreError::Database(e.to_string())
         })?;
+
+        let task_id = match inserted {
+            Some(task_id) => task_id,
+            None => sqlx::query_scalar(
+                r#"
+                SELECT id FROM durable_task_queue
+                WHERE workflow_id = $1 AND activity_id = $2
+                ORDER BY id
+                LIMIT 1
+                "#,
+            )
+            .bind(task.workflow_id)
+            .bind(&task.activity_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to read deduplicated task");
+                StoreError::Database(e.to_string())
+            })?,
+        };
 
         #[cfg(feature = "failpoints")]
         fail_point!("postgres_enqueue_task_after_insert", |_| {
@@ -366,7 +403,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         });
 
         match result {
-            // Still ours, but the turn was cancelled: stop the work (EVE-1134).
+            // Still ours, but the workflow was cancelled: stop the work (EVE-1134).
             Some((workflow_status,)) => Ok(HeartbeatResponse {
                 accepted: true,
                 should_cancel: workflow_status.as_deref() == Some("cancelled"),
@@ -670,7 +707,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         //   - advanced (or first observation): record the new token, reset the
         //     no-progress counter, and requeue (status='pending').
         //   - not advanced: increment the no-progress counter. If it reaches the
-        //     configured threshold, SEAL the turn — mark the task 'dead' so it
+        //     configured threshold, SEAL the task — mark the task 'dead' so it
         //     routes to the DLQ instead of looping forever — otherwise requeue.
         //
         // The token is monotonic per workflow, so a non-progressing retry (an
@@ -693,7 +730,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
                        -- one on the FIRST attempt of a task (see the EVE-639
                        -- started_by_workflow handling; reclaims no longer emit
                        -- it). Counting that first-attempt marker as progress
-                       -- would let a turn that crashes immediately after dispatch
+                       -- would let a task that crashes immediately after dispatch
                        -- — recording nothing else — appear to advance, defeating
                        -- the seal guard (EVE-534). 'activity_started' is the only
                        -- dispatch/bookkeeping event written to
@@ -726,7 +763,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
                        -- only DLQ via the max-attempts path (EVE-534).
                        --
                        -- A missing prior token is treated as the 0 baseline (no
-                       -- events recorded yet), so a turn that records nothing on
+                       -- events recorded yet), so a task that records nothing on
                        -- its first attempt already counts as no-progress. The
                        -- token only "advances" when it strictly grows past the
                        -- baseline, which a non-progressing retry can never do.
@@ -755,7 +792,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
                    no_progress_count = d.new_no_progress,
                    last_error = CASE
                                     WHEN d.new_no_progress >= $2
-                                    THEN 'Turn sealed: no forward progress across '
+                                    THEN 'Task sealed by the no-progress guard: no forward progress across '
                                          || d.new_no_progress::TEXT
                                          || ' consecutive recoveries (EVE-534)'
                                     ELSE q.last_error
@@ -817,7 +854,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         if !sealed_tasks.is_empty() {
             info!(
                 count = sealed_tasks.len(),
-                "sealed non-progressing turns during reclaim (EVE-534)"
+                "sealed non-progressing tasks during reclaim (EVE-534)"
             );
         }
 

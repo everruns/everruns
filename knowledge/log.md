@@ -2,6 +2,14 @@
 
 ## 2026-10-02
 
+* **`everruns-durable` is a generic engine.** It no longer depends on any
+  `everruns-*` crate or knows about agents and turns. `DurableExecution` and
+  the turn conventions (`user_message` signal, idempotent waiting-turn
+  resolution tasks) moved to the worker; the store's new-run claim is
+  `EventLog::try_start_new_run`; dedupe is the generic
+  `ActivityOptions::dedupe_by_activity_id`. Wire strings, SQL effects and task
+  ids are unchanged. See
+  [Durable Execution Engine](operations/durable-execution-engine.md).
 * **`everruns-durable` joins the crates.io publish set.** The crate ships its
   own idempotent PostgreSQL schema, applied by
   `PostgresWorkflowEventStore::migrate`, so it no longer depends on the server

@@ -54,8 +54,8 @@ The library path is immediate. `everruns::Engine` uses `everruns-host` to run
 use the local profile for crash-durable canonical events.
 
 The Platform path is distributed and checkpointed. The server schedules work,
-workers resolve host services and effects, and `everruns-durable` advances a
-`DurableExecution` across persisted phase boundaries. PostgreSQL remains the
+workers resolve host services and effects, and advance a `DurableExecution`
+across phase boundaries persisted by the generic `everruns-durable` engine. PostgreSQL remains the
 source of recovery state.
 
 Neither path owns a private copy of the turn algorithm. `everruns-engine` owns

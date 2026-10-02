@@ -12,11 +12,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use everruns_core::ExecutionContext;
 use everruns_durable::{
-    ActivityOptions, ClaimedTask, DurableExecution, EventLog, HeartbeatResponse, SignalStore,
-    StoreError, TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo, WorkerRegistry,
-    WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event,
-    record_activity_completed, record_activity_failed, record_activity_started,
-    record_workflow_failed,
+    ActivityOptions, ClaimedTask, EventLog, HeartbeatResponse, SignalStore, StoreError,
+    TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo, WorkerRegistry, WorkflowError,
+    WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
+    record_activity_failed, record_activity_started, record_workflow_failed,
 };
 use everruns_engine::{ActInput, ActPlan, TurnPlan};
 use everruns_host::{
@@ -1430,7 +1429,7 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
         );
     }
 
-    let mut execution = DurableExecution::new(input.clone());
+    let mut execution = crate::DurableExecution::new(input.clone());
     let plan = advance_host_execution(
         &WorkerRuntimeHost::new(adapters.clone()),
         &mut execution,
@@ -1522,7 +1521,7 @@ async fn count_drained_wakes<S: TaskStore>(
         return Ok(0);
     }
     Ok(store
-        .consume_pending_signals_by_type(workflow_id, everruns_durable::signal_types::USER_MESSAGE)
+        .consume_pending_signals_by_type(workflow_id, crate::durable_turn::USER_MESSAGE)
         .await
         .map_err(|error| anyhow::anyhow!("Failed to consume workflow wake signals: {}", error))?
         .len())
@@ -1576,7 +1575,7 @@ mod tests {
 
     fn user_message_signal() -> everruns_durable::WorkflowSignal {
         everruns_durable::WorkflowSignal::new(
-            everruns_durable::signal_types::USER_MESSAGE,
+            crate::durable_turn::USER_MESSAGE,
             serde_json::json!({}),
         )
     }

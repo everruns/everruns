@@ -566,7 +566,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Enqueue an "act" task (triggered by user message)
+        // Enqueue an "act" task (triggered by an external signal)
         let task_id = store
             .enqueue_task(TaskDefinition {
                 workflow_id: Some(workflow_id),
@@ -1588,7 +1588,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_no_progress_turn_is_sealed_in_memory() {
+    async fn test_no_progress_task_is_sealed_in_memory() {
         // Relies on the default seal threshold (3); avoid mutating the
         // process-global env, which is flaky under parallel test execution.
         let threshold = DEFAULT_NO_PROGRESS_SEAL_THRESHOLD;
@@ -1617,7 +1617,7 @@ mod tests {
             // (re)claim, advancing the event sequence. The seal guard MUST NOT
             // treat that bookkeeping event as forward progress (EVE-534) —
             // otherwise the token advances every cycle and the crash-looping
-            // turn is never sealed (the original bug). We append it here so the
+            // task is never sealed (the original bug). We append it here so the
             // in-memory test exercises the same event stream as Postgres.
             store
                 .append_events(
@@ -1698,9 +1698,9 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            // ...but the turn also records a genuine progress event each cycle
+            // ...but the task also records a genuine progress event each cycle
             // (e.g. the activity completed), which MUST advance the token and
-            // reset the no-progress counter so the turn is never sealed.
+            // reset the no-progress counter so the task is never sealed.
             store
                 .append_events(
                     workflow_id,
@@ -1804,7 +1804,7 @@ mod tests {
         register_workers(&store, &["worker"]);
         let workflow_id = Uuid::now_v7();
         store
-            .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
+            .create_workflow(workflow_id, "run", serde_json::json!({}), None)
             .await
             .unwrap();
         store
@@ -1816,7 +1816,7 @@ mod tests {
                 workflow_id: Some(workflow_id),
                 activity_id: "reason".to_string(),
                 activity_type: "reason".to_string(),
-                input: serde_json::json!({"session_id": "session_test"}),
+                input: serde_json::json!({"request_id": "request_test"}),
                 options: ActivityOptions {
                     retry_policy: crate::reliability::RetryPolicy::exponential()
                         .with_max_attempts(5),
@@ -1845,12 +1845,7 @@ mod tests {
                 .unwrap()
         );
         assert!(!store.try_fail_workflow(workflow_id, error).await.unwrap());
-        assert!(
-            store
-                .try_claim_workflow_for_new_turn(workflow_id)
-                .await
-                .unwrap()
-        );
+        assert!(store.try_start_new_run(workflow_id).await.unwrap());
         assert_eq!(
             store.get_workflow_status(workflow_id).await.unwrap(),
             WorkflowStatus::Running
@@ -1880,7 +1875,7 @@ mod tests {
         register_workers(&store, &["worker"]);
         let workflow_id = Uuid::now_v7();
         store
-            .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
+            .create_workflow(workflow_id, "run", serde_json::json!({}), None)
             .await
             .unwrap();
         store
@@ -1919,7 +1914,7 @@ mod tests {
         let store = std::sync::Arc::new(InMemoryWorkflowEventStore::new());
         let workflow_id = Uuid::now_v7();
         store
-            .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
+            .create_workflow(workflow_id, "run", serde_json::json!({}), None)
             .await
             .unwrap();
         store

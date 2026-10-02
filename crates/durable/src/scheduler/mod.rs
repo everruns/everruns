@@ -158,7 +158,7 @@ impl DurableScheduler {
                 }
                 _ = poll_interval.tick() => {
                     if let Err(e) = self.process_due_schedules().await {
-                        everruns_core::log_database_failure(
+                        crate::persistence::log_database_failure(
                             "durable.scheduler.poll",
                             "failed to process due schedules",
                             &e.to_string(),
