@@ -1,9 +1,9 @@
+use super::redact_channel_for_response;
 use super::types::{CreateAgentEndpointRequest, UpdateAgentEndpointRequest};
 use super::validation::{merge_preserved_secret_fields, normalize_and_validate_channel_config};
 use crate::api::endpoint_ingress::{endpoint_liveness, row_to_ingress};
 use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
-use crate::domains::apps::redact_channel_for_response;
 use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::storage::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
@@ -193,11 +193,8 @@ impl Command for CreateAgentEndpoint {
             self.req.channel_type.clone(),
             self.req.channel_config,
         )?;
-        let prepared = crate::domains::apps::queries::prepare_channel_storage(
-            ctx.encryption.as_ref(),
-            &config,
-        )
-        .map_err(classify_anyhow)?;
+        let prepared = super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)
+            .map_err(classify_anyhow)?;
         let endpoint_id = AgentEndpointId::new();
         let row = ctx
             .db
@@ -281,11 +278,9 @@ impl Command for UpdateAgentEndpointCmd {
                 let current = decrypted_config(ctx, existing.clone())?;
                 merge_preserved_secret_fields(channel_type.clone(), &mut config, &current);
                 let config = normalize_and_validate_channel_config(channel_type.clone(), config)?;
-                let prepared = crate::domains::apps::queries::prepare_channel_storage(
-                    ctx.encryption.as_ref(),
-                    &config,
-                )
-                .map_err(classify_anyhow)?;
+                let prepared =
+                    super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)
+                        .map_err(classify_anyhow)?;
                 (
                     Some(prepared.channel_config),
                     UpdateField::from_option(prepared.channel_config_encrypted),
@@ -520,7 +515,7 @@ impl Command for TriggerAgentEndpoint {
         let message_service = ctx.message_service.as_ref().ok_or_else(|| {
             CommandError::internal(anyhow::anyhow!("Message service not available"))
         })?;
-        let result = crate::domains::apps::invoke_scheduled_agent_endpoint(
+        let result = super::invoke_scheduled_agent_endpoint(
             &ctx.db,
             ctx.encryption.as_ref(),
             session_service,

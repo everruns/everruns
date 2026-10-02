@@ -244,7 +244,7 @@ impl TestServer {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_platform::AgentEndpointId;
         use everruns_provider::typed_id::{AppId, HarnessId, PrincipalId};
-        use everruns_server::domains::apps::queries::prepare_channel_storage;
+        use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
         use everruns_server::storage::models::{
             CreateAppRow, CreateLegacyAliasEndpointRow, CreatePrincipalRow,
         };
@@ -385,7 +385,7 @@ impl TestServer {
     ) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_platform::AgentEndpointId;
-        use everruns_server::domains::apps::queries::prepare_channel_storage;
+        use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
         use everruns_server::storage::models::CreateLegacyAliasEndpointRow;
 
         let app = self
@@ -448,7 +448,7 @@ impl TestServer {
             .expect("update fixture endpoint")
             .expect("fixture endpoint exists");
         serde_json::to_value(
-            everruns_server::domains::apps::queries::channel_row_to_channel(
+            everruns_server::domains::agent_endpoints::queries::channel_row_to_channel(
                 self.encryption.as_ref(),
                 endpoint,
             ),
@@ -462,7 +462,7 @@ impl TestServer {
         channel_config: Value,
     ) -> Value {
         use everruns_durable::UpdateField;
-        use everruns_server::domains::apps::queries::{
+        use everruns_server::domains::agent_endpoints::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };
         use everruns_server::storage::models::UpdateEndpointByIdRow;
@@ -505,7 +505,7 @@ impl TestServer {
             .expect("update fixture endpoint")
             .expect("fixture endpoint exists");
         serde_json::to_value(
-            everruns_server::domains::apps::queries::channel_row_to_channel(
+            everruns_server::domains::agent_endpoints::queries::channel_row_to_channel(
                 self.encryption.as_ref(),
                 endpoint,
             ),
