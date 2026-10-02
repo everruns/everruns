@@ -1,13 +1,19 @@
-version: 0.34.1
+version: 0.34.2
 date: 2026-10-02
 headline:
-  - 0.34 reaches
-  - crates.io.
+  - The kernel runs
+  - in an isolate.
 summary:
-  - A patch release that finishes publishing
-  - the 0.34 crates, with the AG-UI 1.0
-  - and A2A 1.0 work from 0.34.0.
+  - The execution kernel runs in a JavaScript
+  - isolate, serve apps run durably on celld,
+  - and every 0.34 crate ships from one commit.
 highlights:
-  - title: Complete crate publish
-    description: Every 0.34 crate publishes to crates.io in dependency order.
-    source: "#4018"
+  - title: Kernel in an isolate
+    description: The engine's execution kernel runs inside a JavaScript isolate.
+    source: "#4024"
+  - title: Durable serve on celld
+    description: Serve apps snapshot and restore across process and node loss.
+    source: "#4019"
+  - title: Workers AI discovery
+    description: The Cloudflare driver lists Workers AI models.
+    source: "#4021"

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.2] - 2026-10-02
+
+### Highlights
+
+- **Execution kernel in a JavaScript isolate** - the engine's execution kernel runs inside a JavaScript isolate, with a celld engine cell ([#4024](https://github.com/everruns/everruns/pull/4024))
+- **Durable serve apps on celld** - new `everruns-serve-celld` hosting target snapshots and restores a serve app across process and node loss ([#4019](https://github.com/everruns/everruns/pull/4019))
+- **Workers AI model discovery** - the Cloudflare driver lists Workers AI models, and Chat Completions streams keep tokens sent as JSON numbers ([#4021](https://github.com/everruns/everruns/pull/4021))
+
+### What's Changed
+
+- fix(release): create every crate tag up front in one atomic push, and never finish a platform version from a commit other than the one its tags name ([#4027](https://github.com/everruns/everruns/pull/4027)) by [@chaliy](https://github.com/chaliy)
+- docs: organize around Framework, self-hosted and Everruns Cloud ([#4026](https://github.com/everruns/everruns/pull/4026)) by [@chaliy](https://github.com/chaliy)
+- feat(engine): run the execution kernel in a JavaScript isolate, with a celld engine cell ([#4024](https://github.com/everruns/everruns/pull/4024)) by [@chaliy](https://github.com/chaliy)
+- fix(compose): working server healthcheck and a quickstart smoke job ([#4025](https://github.com/everruns/everruns/pull/4025)) by [@chaliy](https://github.com/chaliy)
+- feat(drivers): Workers AI model discovery on Cloudflare, and a dropped numeric stream token ([#4021](https://github.com/everruns/everruns/pull/4021)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): framework delegation without the hosted flag, plus A2A docs ([#4023](https://github.com/everruns/everruns/pull/4023)) by [@chaliy](https://github.com/chaliy)
+- feat(serve-celld): run a serve app durably on celld ([#4019](https://github.com/everruns/everruns/pull/4019)) by [@chaliy](https://github.com/chaliy)
+- fix(docs): correct onboarding, reference, and guide pages that drifted from the code ([#4022](https://github.com/everruns/everruns/pull/4022)) by [@chaliy](https://github.com/chaliy)
+- fix(everruns): AG-UI threads keep a parked turn alive between runs ([#4020](https://github.com/everruns/everruns/pull/4020)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.34.2. First published this release: `everruns-serve-agentcore`, `everruns-serve-celld`.
+
+The 0.34.1 cascade did not finish from one commit. Two pushes that changed `.github/workflows/` landed mid-cascade, after which GitHub refused the controller's next tag push, and Crate Release runs triggered by later pushes to `main` published the rest from their own commits: 30 crates are from the 0.34.1 commit, 16 from #4019's, and `everruns` from #4024's. `everruns-integrations-catalog`, `everruns-turbopuffer` and `everruns-serve` never reached 0.34.1. 0.34.2 republishes every crate from one commit.
+
 ## [0.34.1] - 2026-10-02
 
 ### What's Changed
