@@ -154,7 +154,11 @@ class Resolver:
 
     @staticmethod
     def _href(href: str) -> str:
-        return href.split("#", 1)[0].rstrip("/")
+        # Keep the anchor: several capabilities can share one page (tool
+        # search), and the anchor is what tells their rows apart.
+        base, _, anchor = href.partition("#")
+        base = base.rstrip("/")
+        return f"{base}#{anchor}" if anchor else base
 
     def bind(self, cell: str, capability_id: str) -> None:
         link = LINK.search(cell)

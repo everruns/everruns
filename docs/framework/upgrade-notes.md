@@ -192,7 +192,7 @@ Two of these also changed how a capability *reaches* the service. `sqldb_store` 
 
 If you implement a custom host, install them the way `everruns-host` does:
 
-```rust
+```rust ignore
 extensions.insert(Arc::new(SessionSqlDbStoreExt(store)));
 extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 ```

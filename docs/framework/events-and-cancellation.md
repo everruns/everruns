@@ -128,6 +128,7 @@ sees the turn from its first event.
 
 ```rust
 use everruns::prelude::*;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 let agent = Agent::builder()
     .instructions("Answer concisely.")
@@ -168,6 +169,9 @@ let turn = session.run("hello").await?;
 drop(session); // closes the subscriber once buffered events are drained
 let recorded = observer.await??;
 assert!(!recorded.is_empty());
+# let _ = turn;
+# Ok(())
+# }
 ```
 
 ### One protocol, two views
