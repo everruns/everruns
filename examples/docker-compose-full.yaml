@@ -116,7 +116,7 @@ services:
       nats:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "/app/everruns-server", "--version"]
+      test: ["CMD", "/app/everruns-server", "--health-check"]
       interval: 10s
       timeout: 5s
       retries: 5

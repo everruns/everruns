@@ -124,6 +124,9 @@ pub mod supervised_task;
 // Background sweep: time out sessions stuck in waiting_for_tool_results
 pub mod tool_result_timeout;
 
+// `--health-check` probe for distroless container healthchecks
+pub mod health_probe;
+
 // Server configuration and router helpers
 pub mod server;
 pub use server::ServerConfig;
