@@ -29,7 +29,7 @@ use everruns_platform::slack_provisioning::{
     ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningError, UnavailableSlackAppProvisioner,
 };
-use everruns_platform::{ChannelType, SlackChannelConfig};
+use everruns_platform::{EndpointTransport, SlackChannelConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -358,7 +358,7 @@ async fn begin_install(
     if app.org_id != org.org_id {
         return Err(ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND));
     }
-    if endpoint.channel_type != ChannelType::Slack {
+    if endpoint.channel_type != EndpointTransport::Slack {
         return Err(ErrorResponse::new("Endpoint is not a Slack endpoint")
             .into_response(StatusCode::BAD_REQUEST));
     }

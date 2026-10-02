@@ -69,7 +69,7 @@ than model-supplied).
 
 ## Model
 
-A new `ChannelType::A2a` (`"a2a"`) variant. Configuration:
+A new `EndpointTransport::A2a` (`"a2a"`) variant. Configuration:
 
 ```rust
 pub struct A2aChannelConfig {
@@ -378,7 +378,7 @@ otherwise `404`. Card shape:
       "tags": ["everruns", "a2a"]
     }
   ],
-  "securitySchemes": { "...": "derived from AppChannel.auth" },
+  "securitySchemes": { "...": "derived from AgentEndpoint.auth" },
   "securityRequirements": [{ "...": [] }]
 }
 ```
@@ -520,7 +520,7 @@ timestamp + signature header pair; otherwise the channel keeps the
 existing authentication-only behavior. This closes TM-A2A-010
 (captured-request replay until rotation) without breaking deployments
 that have not opted in. Signing is **orthogonal** to first-class endpoint
-auth (`AppChannel.auth`), it layers replay protection on top of
+auth (`AgentEndpoint.auth`), it layers replay protection on top of
 whichever auth mode the channel uses (default API key, HTTP Basic, OIDC,
 OAuth2, or mTLS).
 

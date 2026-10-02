@@ -308,7 +308,7 @@ Sessions and Reports, because reading it is an operational act and the editing i
 lives on the agent.
 
 The view **resolves** state rather than reading `endpoint.status`: it folds in the
-agent-level terms the same way `app_ingress::endpoint_liveness` does, so a live endpoint on
+agent-level terms the same way `endpoint_ingress::endpoint_liveness` does, so a live endpoint on
 a suspended or archived agent never reads as Live. Anonymous *configuration* and *live*
 reachability are reported separately — an anonymous endpoint says so while it is still
 draft or suspended, because resuming its agent opens it and the row has to warn before
@@ -358,7 +358,7 @@ rest proceeds.
    (EVE-1006).
 6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`
    (EVE-1007, landed). Every ingress gate resolves liveness through one helper,
-   `app_ingress::endpoint_liveness`. The App publish switch remains, and now drives the
+   `endpoint_ingress::endpoint_liveness`. The App publish switch remains, and now drives the
    endpoints it owns, until App management is retired. The Slack manifest and bot identity
    move to the endpoint separately (EVE-1008).
 7. **UI**: Integrations tab with endpoint and trigger editors (EVE-1009), cross-agent

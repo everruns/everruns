@@ -8,7 +8,7 @@
 //
 // Design Decision: FCP runs its own minimal auth stack — anonymous access
 // plus a single shared bearer token, validated by constant-time comparison
-// inline. It deliberately does **not** call into `AppEndpointAuthVerifier`
+// inline. It deliberately does **not** call into `EndpointAuthVerifier`
 // (used by AG-UI/A2A) or the platform's user-session auth. This keeps the
 // public FCP surface narrow, predictable, and decoupled from changes to
 // other channels.
@@ -39,7 +39,7 @@ use everruns_core::events::{
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
-use everruns_platform::{ChannelType, FcpChannelConfig};
+use everruns_platform::{EndpointTransport, FcpChannelConfig};
 use everruns_provider::execution_phase::ExecutionPhase;
 use serde::Deserialize;
 use serde_json::Value;
@@ -119,8 +119,8 @@ enum FcpTarget {
 /// Resolved channel context, used by both `GET` and `POST`. The lookup is
 /// shared so we apply the same "exists at all?" sanitization in one place.
 struct FcpContext {
-    app: crate::api::app_ingress::IngressContext,
-    channel: crate::api::app_ingress::IngressEndpoint,
+    app: crate::api::endpoint_ingress::IngressContext,
+    channel: crate::api::endpoint_ingress::IngressEndpoint,
     config: FcpChannelConfig,
 }
 
@@ -132,26 +132,28 @@ async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpConte
     //   - whether an app is published but has no FCP channel
     //   - whether a channel exists but is disabled
     let (app, channel) = match target {
-        FcpTarget::LegacyApp(app_id) => match crate::api::app_ingress::resolve_legacy_endpoint(
-            &state.db,
-            state.encryption.as_ref(),
-            &app_id,
-            ChannelType::Fcp,
-        )
-        .await
-        {
-            Ok(crate::api::app_ingress::LegacyEndpointMatch::One(endpoint)) => *endpoint,
-            Ok(
-                crate::api::app_ingress::LegacyEndpointMatch::NotFound
-                | crate::api::app_ingress::LegacyEndpointMatch::Ambiguous,
-            ) => return Err(not_found_response()),
-            Err(err) => {
-                tracing::error!(error = %err, "FCP alias lookup failed");
-                return Err(internal_error_response());
+        FcpTarget::LegacyApp(app_id) => {
+            match crate::api::endpoint_ingress::resolve_legacy_endpoint(
+                &state.db,
+                state.encryption.as_ref(),
+                &app_id,
+                EndpointTransport::Fcp,
+            )
+            .await
+            {
+                Ok(crate::api::endpoint_ingress::LegacyEndpointMatch::One(endpoint)) => *endpoint,
+                Ok(
+                    crate::api::endpoint_ingress::LegacyEndpointMatch::NotFound
+                    | crate::api::endpoint_ingress::LegacyEndpointMatch::Ambiguous,
+                ) => return Err(not_found_response()),
+                Err(err) => {
+                    tracing::error!(error = %err, "FCP alias lookup failed");
+                    return Err(internal_error_response());
+                }
             }
-        },
+        }
         FcpTarget::Endpoint(channel_id) => {
-            match crate::api::app_ingress::resolve_endpoint(
+            match crate::api::endpoint_ingress::resolve_endpoint(
                 &state.db,
                 state.encryption.as_ref(),
                 &channel_id,
@@ -167,10 +169,10 @@ async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpConte
             }
         }
     };
-    if channel.channel_type != ChannelType::Fcp {
+    if channel.channel_type != EndpointTransport::Fcp {
         return Err(not_found_response());
     }
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,
@@ -228,8 +230,8 @@ async fn check_rate_limit(
     state: &FcpState,
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
-    app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    channel: &crate::api::endpoint_ingress::IngressEndpoint,
     config: &FcpChannelConfig,
 ) -> Result<(), Response> {
     let Some(limit) = config.rate_limit_per_minute else {
@@ -650,7 +652,7 @@ async fn message(
 // ----------------------------------------------------------------------------
 
 fn render_handshake(
-    app: &crate::api::app_ingress::IngressContext,
+    app: &crate::api::endpoint_ingress::IngressContext,
     config: &FcpChannelConfig,
 ) -> String {
     if let Some(handshake) = config.handshake.as_deref() {
@@ -771,8 +773,8 @@ struct ResolvedSession {
 
 async fn resolve_session(
     state: &FcpState,
-    app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    channel: &crate::api::endpoint_ingress::IngressEndpoint,
     config: &FcpChannelConfig,
     cookie_session_id: Option<Uuid>,
 ) -> Result<ResolvedSession, Response> {
@@ -909,8 +911,8 @@ fn expired_age_seconds(
 }
 
 fn fcp_message_metadata(
-    app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    channel: &crate::api::endpoint_ingress::IngressEndpoint,
 ) -> HashMap<String, Value> {
     let mut map = HashMap::new();
     map.insert(
@@ -1077,8 +1079,11 @@ mod tests {
     use super::*;
     use chrono::Duration as ChronoDuration;
 
-    fn test_app(name: &str, description: Option<&str>) -> crate::api::app_ingress::IngressContext {
-        crate::api::app_ingress::IngressContext::for_test(name, description)
+    fn test_app(
+        name: &str,
+        description: Option<&str>,
+    ) -> crate::api::endpoint_ingress::IngressContext {
+        crate::api::endpoint_ingress::IngressContext::for_test(name, description)
     }
 
     fn default_config() -> FcpChannelConfig {

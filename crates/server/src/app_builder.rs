@@ -1501,7 +1501,7 @@ impl ServerAppBuilder {
                 db: db.clone(),
                 auth: auth_state.clone(),
                 encryption: encryption.clone(),
-                verifier: api::app_endpoint_auth::AppEndpointAuthVerifier::new(),
+                verifier: api::endpoint_auth::EndpointAuthVerifier::new(),
             }))
             .merge(api::virtual_users::routes(virtual_users_state))
             .merge(api::virtual_user_connections::routes(

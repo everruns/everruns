@@ -27,11 +27,11 @@ use everruns_core::events::{
 use everruns_provider::execution_phase::ExecutionPhase;
 use serde::{Deserialize, Serialize};
 
-use crate::api::app_endpoint_auth::{
-    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth, extract_bearer,
-};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
+use crate::api::endpoint_auth::{
+    EndpointAuthError, EndpointAuthVerifier, LegacyEndpointAuth, extract_bearer,
+};
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::apps::{
     ApiInvocationRequest, hash_app_api_key, invoke_api_app_channel, post_api_app_channel_message,
@@ -52,7 +52,7 @@ pub struct EndpointApiState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub rate_limiter: ChannelRateLimiter,
-    pub auth_verifier: AppEndpointAuthVerifier,
+    pub auth_verifier: EndpointAuthVerifier,
 }
 
 impl EndpointApiState {
@@ -75,7 +75,7 @@ impl EndpointApiState {
             db,
             encryption,
             rate_limiter,
-            auth_verifier: AppEndpointAuthVerifier::new(),
+            auth_verifier: EndpointAuthVerifier::new(),
         }
     }
 }
@@ -118,7 +118,7 @@ async fn endpoint_app_id(
     state: &EndpointApiState,
     channel_id: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+    crate::api::endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
         .await
         .map_err(internal_error)?
         .map(|(app, _)| app.public_id.to_string())
@@ -817,11 +817,11 @@ fn command_error_response(
     }
 }
 
-fn api_auth_error_response(error: AppEndpointAuthError) -> (StatusCode, Json<ErrorResponse>) {
+fn api_auth_error_response(error: EndpointAuthError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        AppEndpointAuthError::Unauthorized => unauthorized(),
-        AppEndpointAuthError::Misconfigured => forbidden("api_endpoint auth is misconfigured"),
-        AppEndpointAuthError::ProviderUnavailable => {
+        EndpointAuthError::Unauthorized => unauthorized(),
+        EndpointAuthError::Misconfigured => forbidden("api_endpoint auth is misconfigured"),
+        EndpointAuthError::ProviderUnavailable => {
             ErrorResponse::new("api_endpoint auth provider is unavailable".to_string())
                 .into_response(StatusCode::SERVICE_UNAVAILABLE)
         }

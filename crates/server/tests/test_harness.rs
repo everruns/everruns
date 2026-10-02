@@ -242,7 +242,8 @@ impl TestServer {
         mut channel_config: Value,
     ) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_provider::typed_id::{AppChannelId, AppId, HarnessId, PrincipalId};
+        use everruns_platform::AgentEndpointId;
+        use everruns_provider::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_server::domains::apps::queries::prepare_channel_storage;
         use everruns_server::storage::models::{
             CreateAppChannelRow, CreateAppRow, CreatePrincipalRow,
@@ -319,7 +320,7 @@ impl TestServer {
             .create_app_channel(
                 app.id,
                 CreateAppChannelRow {
-                    public_id: AppChannelId::new().to_string(),
+                    public_id: AgentEndpointId::new().to_string(),
                     channel_type: channel_type.to_string(),
                     channel_config: prepared.channel_config,
                     channel_config_encrypted: prepared.channel_config_encrypted,
@@ -383,7 +384,7 @@ impl TestServer {
         channel_config: Value,
     ) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_provider::typed_id::AppChannelId;
+        use everruns_platform::AgentEndpointId;
         use everruns_server::domains::apps::queries::prepare_channel_storage;
         use everruns_server::storage::models::CreateAppChannelRow;
 
@@ -400,7 +401,7 @@ impl TestServer {
             .create_app_channel(
                 app.id,
                 CreateAppChannelRow {
-                    public_id: AppChannelId::new().to_string(),
+                    public_id: AgentEndpointId::new().to_string(),
                     channel_type: channel_type.to_string(),
                     channel_config: prepared.channel_config,
                     channel_config_encrypted: prepared.channel_config_encrypted,

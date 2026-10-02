@@ -12,7 +12,7 @@ use everruns_core::channel::{
     InboundAttachment, InboundChannelEvent, SessionBinding, ThreadContext,
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
-use everruns_platform::{ChannelType, SlackChannelConfig, SlackReplyMode};
+use everruns_platform::{EndpointTransport, SlackChannelConfig, SlackReplyMode};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use std::collections::HashMap;
 
@@ -124,18 +124,18 @@ pub(crate) async fn resolve_slack_channel(
     target: SlackTarget,
 ) -> Result<
     (
-        crate::api::app_ingress::IngressContext,
-        crate::api::app_ingress::IngressEndpoint,
+        crate::api::endpoint_ingress::IngressContext,
+        crate::api::endpoint_ingress::IngressEndpoint,
     ),
     (StatusCode, Json<ErrorResponse>),
 > {
     let (app, channel) = match target {
         SlackTarget::LegacyApp(app_id) => {
-            match crate::api::app_ingress::resolve_legacy_endpoint(
+            match crate::api::endpoint_ingress::resolve_legacy_endpoint(
                 &state.db,
                 state.encryption.as_ref(),
                 &app_id,
-                ChannelType::Slack,
+                EndpointTransport::Slack,
             )
             .await
             .map_err(|error| {
@@ -143,13 +143,13 @@ pub(crate) async fn resolve_slack_channel(
                 ErrorResponse::new("Internal server error")
                     .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             })? {
-                crate::api::app_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
-                crate::api::app_ingress::LegacyEndpointMatch::NotFound => {
+                crate::api::endpoint_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
+                crate::api::endpoint_ingress::LegacyEndpointMatch::NotFound => {
                     return Err(
                         ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
                     );
                 }
-                crate::api::app_ingress::LegacyEndpointMatch::Ambiguous => {
+                crate::api::endpoint_ingress::LegacyEndpointMatch::Ambiguous => {
                     return Err(ErrorResponse::new(
                         "Multiple enabled Slack channels; use an endpoint-scoped /v1/e/{channel_id}/slack/... URL",
                     )
@@ -157,7 +157,7 @@ pub(crate) async fn resolve_slack_channel(
                 }
             }
         }
-        SlackTarget::Endpoint(channel_id) => crate::api::app_ingress::resolve_endpoint(
+        SlackTarget::Endpoint(channel_id) => crate::api::endpoint_ingress::resolve_endpoint(
             &state.db,
             state.encryption.as_ref(),
             &channel_id,
@@ -170,10 +170,10 @@ pub(crate) async fn resolve_slack_channel(
         })?
         .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?,
     };
-    if channel.channel_type != ChannelType::Slack {
+    if channel.channel_type != EndpointTransport::Slack {
         return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
     }
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,
@@ -516,8 +516,8 @@ pub(crate) fn is_supported_slack_message_subtype(subtype: Option<&str>) -> bool 
 /// - `ThreadContext` for participant tracking
 pub(crate) async fn process_slack_message(
     state: &SlackState,
-    app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
     request_id: Option<String>,
@@ -936,8 +936,8 @@ pub(crate) async fn ensure_slack_user_participant(
 }
 
 pub(crate) fn slack_message_metadata(
-    app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
     event: &SlackEvent,
     participant: Option<&SessionParticipantRow>,
 ) -> HashMap<String, serde_json::Value> {
@@ -978,8 +978,8 @@ pub(crate) fn slack_message_metadata(
 
 async fn find_slack_session(
     state: &SlackState,
-    app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
     routing_tags: &[String],
 ) -> anyhow::Result<Option<crate::storage::models::SessionRow>> {
     match app.historical_app_id {
@@ -1021,8 +1021,8 @@ async fn find_slack_session(
 /// session link (EVE-966); posting our own would double it.
 pub(crate) async fn handle_agent_session_stopped(
     state: &SlackState,
-    app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<()> {
@@ -1081,8 +1081,8 @@ pub(crate) async fn handle_agent_session_stopped(
 /// suppresses a no-op change, so the two directions settle instead of echoing.
 pub(crate) async fn handle_agent_session_title_changed(
     state: &SlackState,
-    app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<()> {
@@ -1167,8 +1167,8 @@ pub(crate) async fn handle_agent_session_title_changed(
 /// moved on. Slack re-reports on the next navigation either way.
 pub(crate) async fn handle_app_context_changed(
     state: &SlackState,
-    app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    app: &crate::api::endpoint_ingress::IngressContext,
+    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<()> {

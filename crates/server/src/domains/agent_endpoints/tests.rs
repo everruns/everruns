@@ -5,7 +5,7 @@ use crate::domains::agent_endpoints::types::{
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
 use everruns_core::{Caller, DEFAULT_ORG_ID};
-use everruns_platform::{ChannelType, EndpointStatus};
+use everruns_platform::{EndpointStatus, EndpointTransport};
 use everruns_provider::typed_id::AgentId;
 use serde_json::json;
 use std::sync::Arc;
@@ -77,7 +77,7 @@ async fn endpoint_commands_cover_the_management_lifecycle() {
     let created = CreateAgentEndpoint {
         agent_id: agent_id.clone(),
         req: CreateAgentEndpointRequest {
-            channel_type: ChannelType::Webhook,
+            channel_type: EndpointTransport::Webhook,
             channel_config: json!({
                 "token": "endpoint-secret",
                 "message": "Process {{payload}}",
@@ -172,7 +172,7 @@ async fn native_schedule_creation_uses_agent_triggers_instead() {
     let error = CreateAgentEndpoint {
         agent_id,
         req: CreateAgentEndpointRequest {
-            channel_type: ChannelType::Schedule,
+            channel_type: EndpointTransport::Schedule,
             channel_config: json!({
                 "cron_expression": "0 0 * * * * *",
                 "timezone": "UTC",
@@ -236,7 +236,7 @@ fn webhook_create(
     version: Option<everruns_provider::typed_id::AgentVersionId>,
 ) -> CreateAgentEndpointRequest {
     CreateAgentEndpointRequest {
-        channel_type: ChannelType::Webhook,
+        channel_type: EndpointTransport::Webhook,
         channel_config: json!({ "token": "endpoint-secret", "message": "Process {{payload}}" }),
         enabled: true,
         agent_version_policy: policy,

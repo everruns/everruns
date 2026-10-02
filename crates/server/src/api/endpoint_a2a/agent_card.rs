@@ -71,7 +71,7 @@ async fn agent_card(
     channel_id: String,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(
+    let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(
         &state.db,
         state.encryption.as_ref(),
         &channel_id,
@@ -88,7 +88,7 @@ async fn agent_card(
     // The Agent Card is only served for a live endpoint: it advertises the
     // invocation URL and security scheme, so publishing it for a draft or
     // suspended endpoint would leak a surface that refuses traffic.
-    if crate::api::app_ingress::endpoint_liveness(&app, &channel).is_err() {
+    if crate::api::endpoint_ingress::endpoint_liveness(&app, &channel).is_err() {
         return Err(not_found());
     }
     let config = channel.a2a_config().ok_or_else(not_found)?;

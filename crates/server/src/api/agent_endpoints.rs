@@ -14,7 +14,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_platform::AppChannel;
+use everruns_platform::AgentEndpoint;
 use serde_json::Value;
 
 use super::common::{ApiResult, ErrorResponse};
@@ -54,7 +54,7 @@ pub fn routes(state: AppState) -> Router {
     path = "/v1/agents/{agent_id}/endpoints",
     params(("agent_id" = String, Path, description = "Agent ID or name")),
     responses(
-        (status = 200, description = "Agent endpoints", body = Vec<AppChannel>),
+        (status = 200, description = "Agent endpoints", body = Vec<AgentEndpoint>),
         (status = 404, description = "Agent not found", body = ErrorResponse)
     ),
     tag = "agent-endpoints"
@@ -63,7 +63,7 @@ pub async fn list_agent_endpoints(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
-) -> ApiResult<Vec<AppChannel>> {
+) -> ApiResult<Vec<AgentEndpoint>> {
     let endpoints = ListAgentEndpoints { agent_id }
         .run(&state.ctx(&org))
         .await?;
@@ -77,7 +77,7 @@ pub async fn list_agent_endpoints(
     params(("agent_id" = String, Path, description = "Agent ID or name")),
     request_body = CreateAgentEndpointRequest,
     responses(
-        (status = 201, description = "Endpoint created", body = AppChannel),
+        (status = 201, description = "Endpoint created", body = AgentEndpoint),
         (status = 400, description = "Invalid endpoint", body = ErrorResponse),
         (status = 404, description = "Agent not found", body = ErrorResponse)
     ),
@@ -88,7 +88,7 @@ pub async fn create_agent_endpoint(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
     Json(req): Json<CreateAgentEndpointRequest>,
-) -> Result<(StatusCode, Json<AppChannel>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<AgentEndpoint>), (StatusCode, Json<ErrorResponse>)> {
     let endpoint = CreateAgentEndpoint { agent_id, req }
         .run(&state.ctx(&org))
         .await?;
@@ -104,7 +104,7 @@ pub async fn create_agent_endpoint(
         ("endpoint_id" = String, Path, description = "Endpoint ID")
     ),
     responses(
-        (status = 200, description = "Agent endpoint", body = AppChannel),
+        (status = 200, description = "Agent endpoint", body = AgentEndpoint),
         (status = 404, description = "Endpoint not found", body = ErrorResponse)
     ),
     tag = "agent-endpoints"
@@ -113,7 +113,7 @@ pub async fn get_agent_endpoint(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((agent_id, endpoint_id)): Path<(String, String)>,
-) -> ApiResult<AppChannel> {
+) -> ApiResult<AgentEndpoint> {
     let endpoint = GetAgentEndpoint {
         agent_id,
         endpoint_id,
@@ -133,7 +133,7 @@ pub async fn get_agent_endpoint(
     ),
     request_body = UpdateAgentEndpointRequest,
     responses(
-        (status = 200, description = "Endpoint updated", body = AppChannel),
+        (status = 200, description = "Endpoint updated", body = AgentEndpoint),
         (status = 400, description = "Invalid endpoint", body = ErrorResponse),
         (status = 404, description = "Endpoint not found", body = ErrorResponse)
     ),
@@ -144,7 +144,7 @@ pub async fn update_agent_endpoint(
     State(state): State<AppState>,
     Path((agent_id, endpoint_id)): Path<(String, String)>,
     Json(req): Json<UpdateAgentEndpointRequest>,
-) -> ApiResult<AppChannel> {
+) -> ApiResult<AgentEndpoint> {
     let endpoint = UpdateAgentEndpointCmd {
         agent_id,
         endpoint_id,
@@ -192,7 +192,7 @@ pub async fn delete_agent_endpoint(
         ("endpoint_id" = String, Path, description = "Endpoint ID")
     ),
     responses(
-        (status = 200, description = "Endpoint published", body = AppChannel),
+        (status = 200, description = "Endpoint published", body = AgentEndpoint),
         (status = 404, description = "Endpoint not found", body = ErrorResponse)
     ),
     tag = "agent-endpoints"
@@ -201,7 +201,7 @@ pub async fn publish_agent_endpoint(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((agent_id, endpoint_id)): Path<(String, String)>,
-) -> ApiResult<AppChannel> {
+) -> ApiResult<AgentEndpoint> {
     let endpoint = PublishAgentEndpoint {
         agent_id,
         endpoint_id,
@@ -220,7 +220,7 @@ pub async fn publish_agent_endpoint(
         ("endpoint_id" = String, Path, description = "Endpoint ID")
     ),
     responses(
-        (status = 200, description = "Endpoint unpublished", body = AppChannel),
+        (status = 200, description = "Endpoint unpublished", body = AgentEndpoint),
         (status = 404, description = "Endpoint not found", body = ErrorResponse)
     ),
     tag = "agent-endpoints"
@@ -229,7 +229,7 @@ pub async fn unpublish_agent_endpoint(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((agent_id, endpoint_id)): Path<(String, String)>,
-) -> ApiResult<AppChannel> {
+) -> ApiResult<AgentEndpoint> {
     let endpoint = UnpublishAgentEndpoint {
         agent_id,
         endpoint_id,

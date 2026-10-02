@@ -5,8 +5,9 @@ use crate::errors::ResourceNotFoundError;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
+use everruns_platform::AgentEndpointId;
 use everruns_platform::{AgentTrigger, AgentTriggerType};
-use everruns_provider::typed_id::{AgentId, AppChannelId, TriggerId};
+use everruns_provider::typed_id::{AgentId, TriggerId};
 use std::sync::Arc;
 
 /// Map a storage row into the core [`AgentTrigger`].
@@ -30,7 +31,7 @@ pub fn row_to_trigger(
         ingress_id: row
             .ingress_id
             .as_deref()
-            .and_then(|value| value.parse::<AppChannelId>().ok()),
+            .and_then(|value| value.parse::<AgentEndpointId>().ok()),
         config,
         enabled: row.enabled,
         // NULL on rows that predate per-trigger pinning: they run the default.

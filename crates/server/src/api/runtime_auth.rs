@@ -14,7 +14,7 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
     pub encryption: Option<Arc<EncryptionService>>,
-    pub verifier: super::app_endpoint_auth::AppEndpointAuthVerifier,
+    pub verifier: super::endpoint_auth::EndpointAuthVerifier,
 }
 impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
@@ -29,11 +29,11 @@ async fn exchange(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let (context, channel) =
-        super::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), &endpoint)
+        super::endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), &endpoint)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .ok_or(StatusCode::NOT_FOUND)?;
-    if super::app_ingress::endpoint_liveness(&context, &channel).is_err() {
+    if super::endpoint_ingress::endpoint_liveness(&context, &channel).is_err() {
         return Err(StatusCode::NOT_FOUND);
     }
     let public_chat_auth = channel.public_chat_config().and_then(|c| c.auth);
@@ -47,7 +47,7 @@ async fn exchange(
         .verify_principal(
             auth,
             &headers,
-            super::app_endpoint_auth::LegacyEndpointAuth {
+            super::endpoint_auth::LegacyEndpointAuth {
                 shared_secret: None,
                 api_key: None,
             },

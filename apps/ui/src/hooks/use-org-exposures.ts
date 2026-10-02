@@ -14,7 +14,7 @@ import type {
 
 /// Why an exposure is not accepting traffic, or that it is.
 ///
-/// This mirrors `live(endpoint)` in `crates/server/src/api/app_ingress.rs`:
+/// This mirrors `endpoint_liveness` in `crates/server/src/api/endpoint_ingress.rs`:
 ///
 /// ```text
 /// live = endpoint.status == live && agent.status == active && !agent.exposures_suspended
