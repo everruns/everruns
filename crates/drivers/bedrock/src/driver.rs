@@ -368,12 +368,7 @@ impl ChatDriver for BedrockChatDriver {
                                 let result: Result<Vec<ToolCall>> = ordered
                                     .into_iter()
                                     .map(|(_, ptc)| {
-                                        let arguments = serde_json::from_str(&ptc.input_json)
-                                            .map_err(|e| {
-                                                AgentLoopError::llm(format!(
-                                                    "invalid Bedrock tool arguments JSON: {e}"
-                                                ))
-                                            })?;
+                                        let arguments = tool_arguments(&ptc.input_json)?;
                                         Ok(ToolCall {
                                             id: ptc.id,
                                             name: ptc.name,
@@ -832,8 +827,30 @@ fn is_too_large(msg: &str) -> bool {
 // Tests
 // ============================================================================
 
+/// Parse a streamed tool call's accumulated input. Bedrock sends no
+/// `toolUse` delta at all for a call with no arguments, so an empty input is
+/// the empty object, not a parse error.
+fn tool_arguments(input_json: &str) -> Result<Value> {
+    if input_json.trim().is_empty() {
+        return Ok(Value::Object(Default::default()));
+    }
+    serde_json::from_str(input_json)
+        .map_err(|e| AgentLoopError::llm(format!("invalid Bedrock tool arguments JSON: {e}")))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tool_call_without_input_deltas_has_empty_object_arguments() {
+        assert_eq!(super::tool_arguments("").unwrap(), serde_json::json!({}));
+        assert_eq!(super::tool_arguments("  ").unwrap(), serde_json::json!({}));
+        assert_eq!(
+            super::tool_arguments(r#"{"a":1}"#).unwrap(),
+            serde_json::json!({"a": 1})
+        );
+        assert!(super::tool_arguments("{").is_err());
+    }
+
     #[test]
     fn registered_descriptor_declares_aws_credential_fields() {
         let mut registry = DriverRegistry::new();
