@@ -232,28 +232,55 @@ pub async fn start(app: App) -> serve::Result {
 
 /// Make SQLite usable on AgentCore session storage, for this process.
 ///
-/// Decision: session storage is an NFSv4 mount, where SQLite's default VFS
-/// fails to open a WAL database ("database is locked"): WAL keeps its index
-/// in shared memory mapped from a file beside the database, which NFS does
-/// not support. The `unix-excl` VFS keeps that index in heap memory and holds
-/// one exclusive lock per database file instead. That is correct here because
-/// exactly one process, this one, ever uses a session's storage: AgentCore
-/// runs one microVM per session. Only the binary entry calls this, since it
-/// is process-wide; tests that open the same files twice keep the default.
+/// Decision: session storage is an NFSv4 mount whose POSIX byte-range locks
+/// fail, so SQLite's default `unix` VFS (and `unix-excl`) answers every open
+/// with "database is locked". `unix-dotfile` locks with a `.lock` file
+/// beside the database instead, which the mount supports (tried on a live
+/// runtime: `unix` and `unix-excl` fail, `unix-dotfile` and `unix-none`
+/// work). It cannot share a WAL index, so databases stay in rollback-journal
+/// mode: slower writes, the same durability. Only the binary entry calls
+/// this, since the default VFS is process-wide.
 fn sqlite_for_session_storage() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
+        DOTFILE_LOCKS.store(true, std::sync::atomic::Ordering::Relaxed);
         // SAFETY: `sqlite3_vfs_find` takes a NUL-terminated name and returns
         // a pointer to a VFS SQLite owns for the life of the process (or
         // null); registering it as the default only changes which built-in
         // VFS later `open` calls use. Both initialize SQLite as needed.
         unsafe {
-            let vfs = rusqlite::ffi::sqlite3_vfs_find(c"unix-excl".as_ptr());
+            let vfs = rusqlite::ffi::sqlite3_vfs_find(c"unix-dotfile".as_ptr());
             if !vfs.is_null() {
                 rusqlite::ffi::sqlite3_vfs_register(vfs, 1);
             }
         }
     });
+}
+
+/// Whether this process locks SQLite with dot files (see
+/// [`sqlite_for_session_storage`]).
+static DOTFILE_LOCKS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Remove dot-file locks a stopped microVM left behind. A process killed
+/// mid-write never deletes its `<db>.lock`, and the next boot would wait on
+/// it forever. Safe at boot: no other process uses this session's storage.
+fn clear_stale_locks(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let stale = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".db.lock"));
+        if stale {
+            eprintln!("serve-agentcore: removing stale lock {}", path.display());
+            let _ = std::fs::remove_dir_all(&path).or_else(|_| std::fs::remove_file(&path));
+        } else if path.is_dir() && entry.file_name() == "everruns" {
+            clear_stale_locks(&path);
+        }
+    }
 }
 
 /// The AgentCore contract around `app`: `/ping`, `/invocations`, and serve's
@@ -365,6 +392,9 @@ impl Target {
                     );
                 }
                 std::fs::create_dir_all(&storage.data_dir)?;
+                if DOTFILE_LOCKS.load(std::sync::atomic::Ordering::Relaxed) {
+                    clear_stale_locks(&storage.data_dir);
+                }
                 let server = boot(self.app.clone(), &self.options, Some(&storage))?;
                 server.spawn_schedules();
                 let wire = server.router();
