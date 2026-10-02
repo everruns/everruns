@@ -48,6 +48,7 @@ reqwest = { workspace = true, features = ["json", "stream", "rustls", "blocking"
 eventsource-stream = { version = "0.2", optional = true }
 http = { version = "1", optional = true }
 bytes = { version = "1", optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
 
 # Encoding / hashing / rng
 base64.workspace = true
@@ -69,6 +70,10 @@ rustls = { workspace = true, optional = true }
 default = ["http"]
 # Shared protocol drivers, request helpers, and streaming reconnect support.
 http = ["dep:reqwest", "dep:eventsource-stream", "dep:http", "dep:bytes", "tokio/net", "tls-aws-lc-rs"]
+# OpenAI Responses API WebSocket transport, an opt-in alternative to SSE for
+# the Responses driver (`openai/websocket` driver option). Kept out of `http`
+# so contract and custom-provider consumers do not compile a WebSocket stack.
+responses-websocket = ["http", "dep:tokio-tungstenite"]
 # Process-wide crypto-provider install for products that build TLS clients.
 # The workspace links `aws-lc-rs` only (EVE-924).
 tls-aws-lc-rs = ["dep:rustls"]

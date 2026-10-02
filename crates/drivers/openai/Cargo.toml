@@ -41,7 +41,8 @@ tracing.workspace = true
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { path = "../../provider", version = "0.33.0" }
+# `responses-websocket` is on because this driver offers the opt-in transport.
+everruns-provider = { path = "../../provider", version = "0.33.0", features = ["responses-websocket"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

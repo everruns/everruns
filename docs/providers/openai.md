@@ -32,6 +32,11 @@ endpoint** through a custom base URL. For Azure deployments, use the dedicated
   running the turn restarts, and Everruns picks the stream back up instead of
   paying for the call twice. A cancelled turn cancels the response. Background mode stores the response, so organizations
   with zero data retention fall back to a normal streaming call.
+- **WebSocket transport (opt-in)**: on `api.openai.com`, a call can stream over
+  OpenAI's Responses WebSocket mode instead of HTTP streaming, keeping one
+  connection open across the turns of a tool loop. OpenAI recommends it for
+  the `ultrafast` speed tier. It is off by default; see
+  [WebSocket transport](#websocket-transport).
 
 ## Configure in Everruns
 
@@ -52,6 +57,27 @@ driver replays the full transcript each turn instead of relying on server-side
 continuation. For Microsoft Azure deployments, use the dedicated
 [Azure OpenAI](/providers/azure-openai/) provider, which is recognized as a
 stateful host.
+
+## WebSocket transport
+
+HTTP streaming (SSE) is the default. To use OpenAI's
+[WebSocket mode](https://developers.openai.com/api/docs/guides/websocket-mode)
+instead, opt in per call with the `openai/websocket` driver option set to
+`true` (`false` opts a call out), or for a whole provider when you build it in
+code:
+
+```rust
+use everruns_openai::OpenAIChatDriver;
+
+let driver = OpenAIChatDriver::new().with_websocket_transport(true);
+```
+
+Each turn of a tool loop continues on the connection the previous turn used,
+sending only the new tool results. The transport applies to `api.openai.com`
+only; Azure OpenAI and custom endpoints keep using HTTP streaming. If the socket
+cannot connect, or drops or reports an error before the response starts, the
+call is sent over HTTP streaming instead, so opting in never fails a call that
+HTTP would have served. Background-mode calls always use HTTP.
 
 ## Models
 
