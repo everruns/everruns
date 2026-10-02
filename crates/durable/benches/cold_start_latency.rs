@@ -8,6 +8,8 @@
 //!   cargo bench -p everruns-durable --bench cold_start_latency
 //!   cargo bench -p everruns-durable --bench cold_start_latency -- --save
 //!   cargo bench -p everruns-durable --bench cold_start_latency -- --save --moniker ci-4cpu-8gb
+//!   cargo bench -p everruns-durable --bench cold_start_latency -- --smoke
+//!   cargo bench -p everruns-durable --bench cold_start_latency -- --smoke --summary out.jsonl
 
 use std::env;
 use std::sync::Arc;
@@ -17,7 +19,7 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 
 use everruns_durable::bench::{
-    BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
+    BenchOptions, BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore,
     ReportConfig, register_bench_worker,
 };
 use everruns_durable::persistence::{
@@ -202,37 +204,8 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
     metrics
 }
 
-/// CLI options parsed from arguments
-struct CliOptions {
-    save_checkpoint: bool,
-    moniker: Option<String>,
-}
-
-fn parse_args() -> CliOptions {
-    let args: Vec<String> = env::args().collect();
-    let mut opts = CliOptions {
-        save_checkpoint: false,
-        moniker: None,
-    };
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--save" => opts.save_checkpoint = true,
-            "--moniker" if i + 1 < args.len() => {
-                opts.moniker = Some(args[i + 1].clone());
-                i += 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    opts
-}
-
 fn main() {
-    let opts = parse_args();
+    let opts = BenchOptions::from_args();
     let rt = Runtime::new().unwrap();
 
     println!("═══════════════════════════════════════════════════════════");
@@ -241,13 +214,16 @@ fn main() {
     println!("\nMeasures idle worker → task pickup latency");
     println!("This is what users experience when sending a message to an idle agent.\n");
 
+    let bench = "cold_start_latency";
+
     // Current implementation baseline
     let baseline = rt.block_on(run_cold_start_scenario(ColdStartConfig {
-        iterations: 20,
+        iterations: opts.pick(20, 3),
         worker_count: 1,
-        check_interval: Duration::from_millis(100),
+        check_interval: Duration::from_millis(opts.pick(100, 10)),
         name: "cold_start_baseline".to_string(),
     }));
+    opts.record(bench, "cold_start_baseline", &baseline);
 
     // Summary
     println!("\n═══════════════════════════════════════════════════════════");
@@ -273,29 +249,28 @@ fn main() {
         println!("\n   ❌ P99 {:.0}ms: Users may perceive delay", p99_ms);
     }
 
-    // Generate HTML report
-    println!("\n📊 Generating HTML report...");
+    // Generate HTML report (skipped in smoke mode)
+    if !opts.smoke {
+        println!("\n📊 Generating HTML report...");
 
-    let report_config = ReportConfig {
-        title: "Cold-Start Latency Benchmark".to_string(),
-        filename_prefix: Some("cold_start".to_string()),
-        ..Default::default()
-    };
+        let report_config = ReportConfig {
+            title: "Cold-Start Latency Benchmark".to_string(),
+            filename_prefix: Some("cold_start".to_string()),
+            ..Default::default()
+        };
 
-    let report = BenchmarkReport::new(report_config);
-    match report.generate(&baseline) {
-        Ok(path) => println!("   ✅ {}", path),
-        Err(e) => println!("   ❌ {}", e),
+        let report = BenchmarkReport::new(report_config);
+        match report.generate(&baseline) {
+            Ok(path) => println!("   ✅ {}", path),
+            Err(e) => println!("   ❌ {}", e),
+        }
     }
 
     // Save checkpoint
-    if opts.save_checkpoint {
+    if opts.save_checkpoint && !opts.smoke {
         println!("\n💾 Saving checkpoint...");
 
-        let env = match &opts.moniker {
-            Some(m) => EnvironmentInfo::detect_with_moniker(m),
-            None => EnvironmentInfo::detect(),
-        };
+        let env = opts.environment();
         let store = CheckpointStore::new(format!(
             "{}/benches/checkpoints",
             env!("CARGO_MANIFEST_DIR")
