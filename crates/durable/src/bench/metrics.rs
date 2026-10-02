@@ -296,7 +296,8 @@ impl ThroughputCounter {
     /// Increment by N
     pub fn increment_by(&self, n: u64) {
         self.count.fetch_add(n, Ordering::Relaxed);
-        let now = self.start.elapsed().as_micros() as u64;
+        // At least 1: zero means "nothing counted yet" to `active_elapsed`.
+        let now = (self.start.elapsed().as_micros() as u64).max(1);
         self.last_micros.fetch_max(now, Ordering::Relaxed);
     }
 
