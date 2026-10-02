@@ -36,7 +36,7 @@ When a worker crashes mid-turn, the control plane sees the missed heartbeats, ma
 
 The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable engine, `everruns-durable`, instead. The reasoning:
 
-1. **Single dependency.** PostgreSQL is the only stateful infrastructure. Operators don't need to run a second cluster with its own ops story.
+1. **Single dependency.** PostgreSQL is the only required stateful infrastructure (Valkey and NATS are optional). Operators don't need to run a second cluster with its own ops story.
 2. **Co-located with the rest of the platform.** Workflow events and session events live in the same database, in the same transaction when needed. There's no eventual consistency between "what happened" and "what was reported."
 3. **Tight scope.** Everruns runs agentic workflows specifically, limited fan-out, short-to-medium duration, well-understood failure modes. We don't need the full Temporal feature set, and the operational surface area of a tightly-scoped engine is much smaller.
 
@@ -47,7 +47,7 @@ The trade-off: no multi-region replication beyond what PostgreSQL itself offers,
 What durable execution gives you:
 
 - **No work lost on crash.** If a worker dies, another worker resumes from the last persisted step. Tokens already paid for are not paid for again.
-- **Exactly-once tool execution.** Tool calls are persisted by their result, not their attempt. A tool that completed but failed to ack will not be re-run.
+- **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. Execution is at-least-once: see the caveat below for a tool that completes but crashes before its result is persisted.
 - **Deterministic replay.** Reloading a session reproduces the same message sequence, which makes traces and exports authoritative.
 
 What it doesn't give you:
@@ -57,9 +57,9 @@ What it doesn't give you:
 
 ## When the database becomes the bottleneck
 
-Everruns is designed to run on a single PostgreSQL primary. Read replicas help for reporting; write-heavy session loads are handled by partitioning the durable workflow tables by workflow ID hash and by keeping event payloads compact.
+Everruns is designed to run on a single PostgreSQL primary. Read replicas help for reporting; write-heavy session loads are kept manageable by keeping event payloads compact.
 
-For deployments that outgrow a single primary, the migration path is to a sharded PostgreSQL setup keyed by organization, but in practice, LLM provider rate limits cap throughput long before the database does.
+In practice, LLM provider rate limits tend to cap throughput long before the database does.
 
 ## Further reading
 

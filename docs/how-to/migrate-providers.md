@@ -14,7 +14,7 @@ Two pieces decide which model runs:
 
 Model resolution priority on each turn:
 
-1. Message-level `model` control (if present on the incoming message).
+1. Message-level `controls.model_id` (if present on the incoming message).
 2. Session override (`session.default_model_id`).
 3. Agent default (`agent.default_model_id`).
 4. System default.
@@ -38,8 +38,10 @@ The API key is encrypted at rest. The provider's models are discovered on creati
 ```bash
 curl -X PATCH http://localhost:9300/api/v1/agents/$AGENT_ID \
   -H "Content-Type: application/json" \
-  -d '{ "default_model_id": "model_claude_sonnet_4" }'
+  -d '{ "default_model_id": "model_..." }'
 ```
+
+Model IDs have the form `model_` followed by 32 hex characters. Find the ID of the model you want with `GET /api/v1/models` (or the model list in the UI), and substitute it for `model_...` throughout this guide.
 
 New sessions inherit the new default. **Existing sessions keep running on the model they started with** unless you override per-session or per-message.
 
@@ -52,7 +54,7 @@ curl -X POST http://localhost:9300/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "agent_...",
-    "default_model_id": "model_claude_sonnet_4"
+    "default_model_id": "model_..."
   }'
 ```
 
@@ -61,10 +63,12 @@ curl -X POST http://localhost:9300/api/v1/sessions \
 The most targeted form, run a single turn on a different model:
 
 ```python
+from everruns_sdk import Controls
+
 await client.messages.create(
     session.id,
     "Re-analyse the above with extra rigour.",
-    model="model_claude_opus",
+    controls=Controls(model_id="model_..."),
 )
 ```
 

@@ -16,7 +16,7 @@ A running Everruns deployment is two kinds of process plus PostgreSQL:
 
 ![Platform Overview](../images/architecture/platform-overview.svg)
 
-The control plane scales vertically and is fronted by a load balancer. Workers scale horizontally, add more for throughput, remove some to save cost. PostgreSQL is the only piece of stateful infrastructure.
+The control plane can run as several instances behind a load balancer (set `EXPECTED_INSTANCES` so per-instance SSE connection limits are divided across them). Workers scale horizontally: add more for throughput, remove some to save cost. PostgreSQL is the only required piece of stateful infrastructure; Valkey and NATS are optional.
 
 ## Why a separate worker tier?
 
@@ -44,11 +44,11 @@ The management UI exists for operators, configuring providers, browsing sessions
 
 Sessions need a bidirectional flow: the client posts messages, the server streams events. WebSockets would be a natural fit, but Everruns uses **REST for writes and SSE for reads**.
 
-- REST is cacheable, debuggable with `curl`, and survives every reverse proxy on the planet.
+- REST is cacheable, debuggable with `curl`, and works through ordinary reverse proxies.
 - SSE is a one-way streaming protocol that works through HTTP/1.1, HTTP/2, and HTTP/3 with no special infrastructure.
 - The events you'd want to push to the server (cancel, new message) are infrequent enough that a `POST` is the right shape.
 
-Combined with `since_id` resumption and 5-minute connection cycling, SSE gives you reconnection-as-a-feature instead of reconnection-as-a-bug.
+Combined with `since_id` resumption and 5-minute connection cycling, clients reconnect routinely and resume without missing events.
 
 ## Multitenancy and isolation
 
@@ -57,7 +57,7 @@ Everruns is organization-scoped end-to-end:
 - All resources (agents, sessions, capabilities, providers) belong to exactly one organization.
 - API keys carry an org membership; the API enforces the boundary on every request.
 - Sessions are isolated at the database row level, there is no cross-session filesystem or key-value access.
-- Secrets are encrypted at rest with an organization-scoped key chain.
+- Secrets are encrypted at rest with envelope encryption: each value gets its own data key, wrapped by a rotatable deployment-wide key.
 
 ## Where the boundaries are
 

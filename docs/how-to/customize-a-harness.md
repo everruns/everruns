@@ -3,7 +3,7 @@ title: Customize a harness
 description: Create a custom harness that bundles your preferred capabilities, system prompt baseline, and default model, then use it as the starting point for many agents.
 ---
 
-A harness is the base environment for sessions, system prompt baseline, default model, and pre-bundled capabilities. Create a custom one when you have a set of defaults you want to share across many agents.
+A harness is the base environment for sessions: a system prompt baseline, a default model, and pre-bundled capabilities. Create a custom one when you have a set of defaults you want to share across many agents.
 
 For the design rationale, see [Why three configuration layers](/explanation/concepts/#why-three-configuration-layers-harness-agent-session).
 

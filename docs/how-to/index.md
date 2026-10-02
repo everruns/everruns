@@ -5,6 +5,8 @@ sidebar:
   order: 0
 ---
 
+These guides target the Everruns Platform (Everruns Cloud or self-hosted). Framework guides live under [/framework/](/framework/).
+
 Each how-to here solves one concrete problem. They assume you already understand the basics (read the [Tutorials](/tutorials/run-an-agent/) first) and they don't try to teach concepts (see [Explanation](/explanation/) for that).
 
 ## Building agents
@@ -21,6 +23,7 @@ Each how-to here solves one concrete problem. They assume you already understand
 
 - [Stream events with the SDK](/how-to/stream-events/), consume the SSE stream from Python, with reconnection and event filtering.
 - [Consume events via raw SSE](/how-to/consume-events-via-sse/), when you don't want the SDK: curl, EventSource, or any HTTP client.
+- [Complete a URL elicitation over the API](/how-to/complete-a-url-elicitation/), drive the pause-and-consent flow from your own client.
 - [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/), graceful failure paths, turn cancellation, retries.
 - [Orchestrate multi-agent pipelines](/how-to/orchestrate-multi-agent-pipelines/), chain sessions together.
 - [Build a foreman agent](/how-to/build-a-foreman-agent/), put one agent in front of a team of specialists and let it triage and delegate.

@@ -26,7 +26,7 @@ everruns chat "What time is it?" --session "$SESSION_ID"
 
 ```bash
 everruns agents create -f agent.toml --quiet
-# Output: agt_550e8400e29b41d4a716446655440000
+# Output: agent_550e8400e29b41d4a716446655440000
 ```
 
 Useful inside `$(...)` substitution when JSON parsing is overkill.
@@ -47,7 +47,16 @@ everruns agents list -o json \
        '.data[] | select(.created_at > $cutoff)'
 ```
 
-## Configure the API URL
+## Authenticate and configure the API URL
+
+The CLI targets Everruns Cloud (`https://app.everruns.com/api`) by default. Sign in once:
+
+```bash
+everruns login           # browser sign-in
+everruns login --token   # headless/SSH: paste an API key
+```
+
+For a self-hosted server, point the CLI at it:
 
 ```bash
 # Per-command
@@ -55,10 +64,9 @@ everruns --api-url http://localhost:9300/api agents list
 
 # For the whole shell
 export EVERRUNS_API_URL=http://localhost:9300/api
-export EVERRUNS_API_KEY=dev
 ```
 
-In CI, set both via secrets and the CLI will pick them up automatically.
+In CI, skip `login`: set `EVERRUNS_API_KEY` (and `EVERRUNS_API_URL` for self-hosted) from secrets and the CLI picks them up. `EVERRUNS_API_KEY` always takes precedence over stored credentials.
 
 ## Drive sessions from a file-defined agent
 
@@ -68,9 +76,7 @@ cat > agent.md <<'EOF'
 name: "code-reviewer"
 capabilities:
   - ref: current_time
-  - ref: filesystem
-    config:
-      allowed_paths: ["/workspace"]
+  - ref: session_file_system
 tags: [development]
 ---
 You are an expert code reviewer.

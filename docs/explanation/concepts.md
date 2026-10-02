@@ -51,7 +51,7 @@ MCP servers and skills are also capabilities. They participate in the same merge
 
 A session is a long-lived conversation: it owns an isolated virtual filesystem, a key/value store, and the full event log. Sessions don't terminate, they go `idle` waiting for the next input.
 
-Inside a session, work happens in **turns**. A turn is one cycle of *reason* (call the LLM) and *act* (execute tools), repeated until the model produces a final answer. Turns are bounded, by default capped at 10 iterations, to make runaway loops impossible.
+Inside a session, work happens in **turns**. A turn is one cycle of *reason* (call the LLM) and *act* (execute tools), repeated until the model produces a final answer. Turns are bounded, by default capped at 500 iterations (`max_iterations`), to make runaway loops impossible.
 
 The reason–act loop is described in more detail in [The agentic loop](/explanation/agentic-loop/).
 
@@ -59,7 +59,7 @@ The reason–act loop is described in more detail in [The agentic loop](/explana
 
 There is no `messages` table in Everruns. The primary store is the **event log**: an immutable, append-only sequence of records per session. Messages are *reconstructed* from those events when needed.
 
-This sounds backwards until you remember what the application actually wants:
+This design follows from what the application actually wants:
 
 - The UI wants a stream of *deltas* and *tool calls* and *state transitions*, not just finished messages.
 - Observability wants a trace of every LLM call and every tool invocation.
