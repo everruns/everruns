@@ -57,9 +57,15 @@ use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
 use sha2::{Digest, Sha256};
-use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+
+mod parked;
+mod steering;
+
+pub use parked::ParkedToolCalls;
+use parked::{ParkedTurn, ParkedTurns, lock_parked};
+pub use steering::{TurnSteering, TurnSteeringPushError};
 
 /// Cap on the input length hashed by [`hash_public_org_id`].
 ///
@@ -168,106 +174,6 @@ impl AcceptedTurnInput {
     }
 }
 
-/// Concurrency-safe ingress for messages sent while an in-process turn runs.
-///
-/// Closing and observing an empty queue is one atomic operation. A sender can
-/// therefore never be told that it steered a turn after that turn committed to
-/// completion; rejected input belongs to the next turn instead.
-///
-/// This type, [`AcceptedTurnInput`], [`TurnSteeringPushError`],
-/// [`InProcessRuntime::run_steerable_turn`] and
-/// [`InProcessRuntime::append_accepted_inputs`] form the steering surface the
-/// separately published `everruns` facade drives. It was `#[doc(hidden)]`
-/// while that was treated as internal plumbing, which is what let a signature
-/// change ship under a host patch release and break the published facade
-/// (everruns/yolop#665) -- `#[doc(hidden)]` hides an item from rustdoc and from
-/// `cargo-semver-checks`, but it does not make it private, and a contract
-/// crossing a crates.io boundary is public whatever it is annotated with.
-/// Change these together with a host minor bump and a facade release.
-#[derive(Clone, Debug)]
-pub struct TurnSteering {
-    state: Arc<Mutex<TurnSteeringState>>,
-}
-
-/// Why a steered message could not join the running turn.
-///
-/// Either way the input is handed back so the caller can requeue it; see the
-/// note on [`TurnSteering`].
-#[derive(Debug)]
-pub enum TurnSteeringPushError {
-    /// The turn already committed to completion; the input belongs to the next one.
-    Closed(Box<AcceptedTurnInput>),
-    /// The steering queue is at capacity and is rejecting overflow.
-    Full(Box<AcceptedTurnInput>),
-}
-
-/// Bounds user input retained between reason boundaries when a model or tool is slow.
-// THREAT[TM-DOS-036]: reject overflow before accepting more steering input.
-const TURN_STEERING_CAPACITY: usize = 256;
-
-#[derive(Debug, Default)]
-struct TurnSteeringState {
-    open: bool,
-    inputs: VecDeque<AcceptedTurnInput>,
-}
-
-impl TurnSteering {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(Mutex::new(TurnSteeringState {
-                open: true,
-                inputs: VecDeque::new(),
-            })),
-        }
-    }
-
-    pub fn try_push(
-        &self,
-        input: AcceptedTurnInput,
-    ) -> std::result::Result<(), TurnSteeringPushError> {
-        let mut state = self.state.lock().expect("turn steering lock poisoned");
-        if !state.open {
-            return Err(TurnSteeringPushError::Closed(Box::new(input)));
-        }
-        if state.inputs.len() >= TURN_STEERING_CAPACITY {
-            return Err(TurnSteeringPushError::Full(Box::new(input)));
-        }
-        state.inputs.push_back(input);
-        Ok(())
-    }
-
-    fn drain(&self) -> Vec<AcceptedTurnInput> {
-        let mut state = self.state.lock().expect("turn steering lock poisoned");
-        state.inputs.drain(..).collect()
-    }
-
-    /// Drain accepted input, or close the ingress when there is none.
-    fn drain_or_close(&self) -> Vec<AcceptedTurnInput> {
-        let mut state = self.state.lock().expect("turn steering lock poisoned");
-        if state.inputs.is_empty() {
-            state.open = false;
-            return vec![];
-        }
-        state.inputs.drain(..).collect()
-    }
-
-    pub fn close(&self) {
-        self.state.lock().expect("turn steering lock poisoned").open = false;
-    }
-
-    pub fn close_and_drain(&self) -> Vec<AcceptedTurnInput> {
-        let mut state = self.state.lock().expect("turn steering lock poisoned");
-        state.open = false;
-        state.inputs.drain(..).collect()
-    }
-}
-
-impl Default for TurnSteering {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Result of changing the session-scoped capability set of a live runtime.
 ///
 /// A changed result is the refresh seam for embedders: every subsequent reason
@@ -283,34 +189,6 @@ pub struct CapabilityDelta {
     pub active: bool,
     /// Whether prompt, tool, hook, command, or MCP surfaces must be refreshed.
     pub surfaces_dirty: bool,
-}
-
-/// The client-side tool calls a turn parked on, as
-/// [`InProcessRuntime::parked_tool_calls`] reports them.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub struct ParkedToolCalls {
-    /// The parked turn; [`InProcessRuntime::resume_steerable_turn`] continues it.
-    pub turn_id: TurnId,
-    /// The calls the turn waits on, in the order the model made them.
-    pub tool_calls: Vec<everruns_provider::tool_types::ToolCall>,
-}
-
-/// A turn waiting for client-side tool results, with the engine state its
-/// next step resumes from.
-struct ParkedTurn {
-    calls: ParkedToolCalls,
-    resume: TurnState,
-}
-
-type ParkedTurns = Arc<Mutex<std::collections::HashMap<SessionId, ParkedTurn>>>;
-
-fn lock_parked(
-    parked: &ParkedTurns,
-) -> std::sync::MutexGuard<'_, std::collections::HashMap<SessionId, ParkedTurn>> {
-    parked
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// What the plan loop of one turn needs from its entry step.
@@ -1333,81 +1211,6 @@ impl InProcessRuntime {
             steering,
         )
         .await
-    }
-
-    /// The client-side tool calls `session_id`'s last turn parked on, if it
-    /// parked and has not been resumed or superseded since.
-    ///
-    /// A turn whose model calls a client-side tool (a
-    /// [`ToolDefinition::ClientSide`](everruns_provider::tool_types::ToolDefinition::ClientSide)
-    /// on the session) pauses when the session's `setup_connection` hint
-    /// says its client can answer, and [`run_steerable_turn`](Self::run_steerable_turn)
-    /// returns. The calls wait here until
-    /// [`resume_steerable_turn`](Self::resume_steerable_turn) delivers their
-    /// results, or a new turn starts.
-    pub fn parked_tool_calls(&self, session_id: SessionId) -> Option<ParkedToolCalls> {
-        lock_parked(&self.parked_turns)
-            .get(&session_id)
-            .map(|parked| parked.calls.clone())
-    }
-
-    /// Continue the turn `session_id` parked on client-side tool calls,
-    /// recording `results` as their outcomes first.
-    ///
-    /// The results land under the parked turn, as a hosted runtime records
-    /// them for its tool-results endpoint, and the turn's next model call
-    /// sees them. Pass one result per parked call: a call left without one
-    /// stays unanswered in history. Steering works as in
-    /// [`run_steerable_turn`](Self::run_steerable_turn).
-    ///
-    /// # Errors
-    ///
-    /// A store error when no turn of `session_id` is parked, or the results
-    /// cannot be recorded.
-    pub async fn resume_steerable_turn(
-        &self,
-        session_id: SessionId,
-        results: Vec<ToolCompletedData>,
-        steering: TurnSteering,
-    ) -> Result<TurnResult> {
-        let parked = self.take_parked_turn(session_id).ok_or_else(|| {
-            AgentLoopError::store(format!(
-                "session {session_id} has no turn waiting for tool results"
-            ))
-        })?;
-        let snapshot = self.resolved_execution_snapshot(session_id).await?;
-        let turn_id = parked.calls.turn_id;
-        let input_message_id = parked.resume.input_message_id;
-        for result in results {
-            self.event_emitter
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::turn(turn_id, input_message_id),
-                    result,
-                ))
-                .await?;
-        }
-        let drive = TurnDrive {
-            session_id,
-            org_id: parked.resume.org_id,
-            turn_id,
-            input_message_id,
-            harness_id: snapshot.harness_id,
-            agent_id: snapshot.agent_id,
-            workspace_id: snapshot.workspace_id,
-        };
-        let plan = TurnPlan::ScheduleReason(parked.resume.clone());
-        self.drive_turn_plan(
-            drive,
-            InProcessExecution::new(parked.resume),
-            plan,
-            steering,
-        )
-        .await
-    }
-
-    fn take_parked_turn(&self, session_id: SessionId) -> Option<ParkedTurn> {
-        lock_parked(&self.parked_turns).remove(&session_id)
     }
 
     /// The engine-planned loop of one turn, from the plan its entry step
