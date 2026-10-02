@@ -211,6 +211,13 @@ cargo test -p everruns-durable --features "failpoints,postgres-tests" \
   --test failure_injection_test --test agent_reliability_test -- --test-threads=1
 ```
 
+Coverage across all of the above (needs `cargo-llvm-cov`):
+
+```sh
+cargo llvm-cov -p everruns-durable --features "failpoints,postgres-tests" \
+  --no-fail-fast -- --test-threads=1
+```
+
 `agent_reliability_test` drives whole workflows through worker crashes,
 control-plane restarts and database outages. All of these run in CI on the
 `durable` PostgreSQL shard. The examples in this README are compiled and run
