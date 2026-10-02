@@ -36,6 +36,8 @@ pub(super) struct StreamContext {
     /// UI origin, for the `auth-required` projection of a secret question.
     pub frontend_url: String,
     pub version: WireVersion,
+    /// The first frame: the task as it stands when the stream opens.
+    pub initial_task: Value,
 }
 
 struct StreamState {
@@ -46,16 +48,7 @@ struct StreamState {
 /// Build the SSE response. `guard` is held for the stream's lifetime so the
 /// connection-limit slot is released only when the client disconnects.
 pub(super) fn sse_response<G: Send + Sync + 'static>(ctx: StreamContext, guard: G) -> Response {
-    let initial_frame = jsonrpc_sse_frame(
-        &ctx.rpc_id,
-        ctx.version,
-        json!({
-            "kind": "task",
-            "id": ctx.task_id,
-            "contextId": ctx.context_id,
-            "status": { "state": "working" },
-        }),
-    );
+    let initial_frame = jsonrpc_sse_frame(&ctx.rpc_id, ctx.version, ctx.initial_task.clone());
     let initial = stream::iter(vec![Ok::<SseEvent, Infallible>(initial_frame)]);
 
     let body = stream::unfold(

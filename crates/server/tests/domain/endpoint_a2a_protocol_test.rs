@@ -259,7 +259,6 @@ async fn unimplemented_operations_use_their_error_codes() {
     let server = TestServer::in_memory().await;
     let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
     for (method, code) in [
-        ("ListTasks", -32004),
         ("CreateTaskPushNotificationConfig", -32003),
         ("GetExtendedAgentCard", -32007),
     ] {
@@ -298,4 +297,138 @@ async fn continuing_an_unknown_task_is_task_not_found() {
     .await
     .json();
     assert_eq!(res["error"]["code"], -32001, "{res}");
+}
+
+async fn send_task(server: &TestServer, endpoint: &A2aEndpoint, id: &str) -> String {
+    let sent: Value = rpc(
+        server,
+        endpoint,
+        vec![("A2A-Version", "1.0")],
+        v1_send(id, json!({})),
+    )
+    .await
+    .json();
+    sent["result"]["task"]["id"].as_str().unwrap().to_string()
+}
+
+async fn v1_call(
+    server: &TestServer,
+    endpoint: &A2aEndpoint,
+    method: &str,
+    params: Value,
+) -> Value {
+    rpc(
+        server,
+        endpoint,
+        vec![("A2A-Version", "1.0")],
+        json!({ "jsonrpc": "2.0", "id": method, "method": method, "params": params }),
+    )
+    .await
+    .json()
+}
+
+/// `ListTasks` returns only this endpoint's tasks, newest first, and pages
+/// with an opaque cursor.
+#[tokio::test]
+async fn list_tasks_pages_through_this_endpoints_tasks_only() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let other = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let first = send_task(&server, &endpoint, "first").await;
+    let second = send_task(&server, &endpoint, "second").await;
+    send_task(&server, &other, "elsewhere").await;
+
+    let all = v1_call(&server, &endpoint, "ListTasks", json!({})).await;
+    let ids: Vec<&str> = all["result"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, [second.as_str(), first.as_str()], "{all}");
+    assert_eq!(all["result"]["totalSize"], 2);
+    assert_eq!(all["result"]["nextPageToken"], "");
+    assert!(all["result"]["tasks"][0].get("artifacts").is_none());
+
+    let page1 = v1_call(&server, &endpoint, "ListTasks", json!({ "pageSize": 1 })).await;
+    assert_eq!(page1["result"]["tasks"][0]["id"], second.as_str());
+    let token = page1["result"]["nextPageToken"].as_str().unwrap();
+    assert!(!token.is_empty(), "{page1}");
+    let page2 = v1_call(
+        &server,
+        &endpoint,
+        "ListTasks",
+        json!({ "pageSize": 1, "pageToken": token }),
+    )
+    .await;
+    assert_eq!(page2["result"]["tasks"][0]["id"], first.as_str(), "{page2}");
+
+    let by_context = v1_call(&server, &other, "ListTasks", json!({ "contextId": first })).await;
+    assert_eq!(by_context["result"]["tasks"], json!([]), "{by_context}");
+
+    let bad = v1_call(&server, &endpoint, "ListTasks", json!({ "pageSize": 0 })).await;
+    assert_eq!(bad["error"]["code"], -32602, "{bad}");
+}
+
+/// `SubscribeToTask` refuses an unknown task and a finished one, and a
+/// finished task cannot be canceled again.
+#[tokio::test]
+async fn subscribe_and_cancel_respect_terminal_tasks() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let task_id = send_task(&server, &endpoint, "to-cancel").await;
+
+    let unknown = v1_call(
+        &server,
+        &endpoint,
+        "SubscribeToTask",
+        json!({ "id": "00000000-0000-0000-0000-000000000000" }),
+    )
+    .await;
+    assert_eq!(unknown["error"]["code"], -32602, "{unknown}");
+
+    let canceled = v1_call(&server, &endpoint, "CancelTask", json!({ "id": task_id })).await;
+    assert_eq!(
+        canceled["result"]["status"]["state"], "TASK_STATE_CANCELED",
+        "{canceled}"
+    );
+    let again = v1_call(&server, &endpoint, "CancelTask", json!({ "id": task_id })).await;
+    assert_eq!(again["error"]["code"], -32002, "{again}");
+    let subscribe = v1_call(
+        &server,
+        &endpoint,
+        "SubscribeToTask",
+        json!({ "id": task_id }),
+    )
+    .await;
+    assert_eq!(subscribe["error"]["code"], -32004, "{subscribe}");
+}
+
+/// The `status` filter keeps exactly the tasks in that state.
+#[tokio::test]
+async fn list_tasks_filters_on_state() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let task_id = send_task(&server, &endpoint, "queued").await;
+
+    let submitted = v1_call(
+        &server,
+        &endpoint,
+        "ListTasks",
+        json!({ "status": "TASK_STATE_SUBMITTED" }),
+    )
+    .await;
+    assert_eq!(
+        submitted["result"]["tasks"][0]["id"],
+        task_id.as_str(),
+        "{submitted}"
+    );
+    let completed = v1_call(
+        &server,
+        &endpoint,
+        "ListTasks",
+        json!({ "status": "TASK_STATE_COMPLETED" }),
+    )
+    .await;
+    assert_eq!(completed["result"]["tasks"], json!([]), "{completed}");
 }

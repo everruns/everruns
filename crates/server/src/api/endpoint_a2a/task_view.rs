@@ -172,6 +172,14 @@ pub(super) async fn load_task(
         super::build_task_json(session.id, state_label, None),
         status_message,
     );
+    // The session's last change is the task's status timestamp, the key
+    // `ListTasks` orders and filters on.
+    if let Some(status) = task.get_mut("status").and_then(Value::as_object_mut) {
+        status.insert(
+            "timestamp".to_string(),
+            Value::String(session.updated_at.to_rfc3339()),
+        );
+    }
     if !artifacts.is_empty()
         && let Some(obj) = task.as_object_mut()
     {

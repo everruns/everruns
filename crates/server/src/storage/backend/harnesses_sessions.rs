@@ -545,6 +545,29 @@ impl StorageBackend {
         dispatch!(self, find_session_by_tags, org_id, tags)
     }
 
+    /// One page of the sessions carrying ALL `tags`, most recently updated
+    /// first, plus the total that match (A2A `ListTasks`).
+    pub async fn list_sessions_by_tags(
+        &self,
+        org_id: i64,
+        tags: &[String],
+        activities: &[everruns_platform::SessionActivity],
+        updated_after: Option<DateTime<Utc>>,
+        after: Option<(DateTime<Utc>, Uuid)>,
+        limit: u32,
+    ) -> Result<(Vec<SessionRow>, u32)> {
+        dispatch!(
+            self,
+            list_sessions_by_tags,
+            org_id,
+            tags,
+            activities,
+            updated_after,
+            after,
+            limit
+        )
+    }
+
     /// Find a single app-owned session matching ALL given tags within an org.
     pub async fn find_app_session_by_tags(
         &self,
