@@ -101,7 +101,16 @@ impl LocalSessionRunner for RuntimeRunner {
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
-        let result = self.runtime()?.run_text_turn(session_id, content).await?;
+        // The child turn runs on its own task, as a real embedder's runner does,
+        // instead of nesting inside the parent's tool call: a foreground handoff
+        // nested on one stack overflows the 2 MiB test thread in debug builds.
+        let runtime = self.runtime()?.clone();
+        let content = content.to_string();
+        let result = tokio::spawn(async move { runtime.run_text_turn(session_id, &content).await })
+            .await
+            .map_err(|e| {
+                everruns_provider::error::AgentLoopError::tool(format!("child turn panicked: {e}"))
+            })??;
         if result.success {
             Ok(())
         } else {
