@@ -237,8 +237,13 @@ pub mod __macro_support {
 // --- Real LLM provider configuration (feature-gated) --------------------
 // The default facade build stays offline; provider modules compile only when
 // their feature is enabled. `openai` adds `providers::openai::OpenAI`,
-// `openrouter` adds `providers::openrouter::OpenRouter`.
+// `openrouter` adds `providers::openrouter::OpenRouter`, `anthropic` adds
+// `providers::anthropic::Anthropic`, `gemini` adds `providers::gemini::Gemini`.
 pub mod providers;
+#[cfg(feature = "anthropic")]
+pub use providers::anthropic::{Anthropic, AnthropicError};
+#[cfg(feature = "gemini")]
+pub use providers::gemini::{Gemini, GeminiError};
 #[cfg(feature = "openai")]
 pub use providers::openai::{OpenAI, OpenAIError};
 #[cfg(feature = "openrouter")]

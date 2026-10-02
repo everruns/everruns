@@ -33,6 +33,16 @@ Use `OpenAI::new(key)` when the host already owns an explicitly resolved
 credential. Never put credentials in a model id, log them as model identity, or
 select provider behavior with vendor-specific detection.
 
+The `anthropic` and `gemini` features add `Anthropic` and `Gemini` with the
+same shape, and `openrouter` adds `OpenRouter`:
+
+| Feature | Type | Reads |
+| --- | --- | --- |
+| `openai` | `OpenAI` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
+| `anthropic` | `Anthropic` | `ANTHROPIC_API_KEY` |
+| `gemini` | `Gemini` | `GEMINI_API_KEY` or `GOOGLE_API_KEY`, `GEMINI_BASE_URL` |
+| `openrouter` | `OpenRouter` | `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` |
+
 `from_env` is not OpenAI-specific: every driver declares the variables its own
 vendor SDK reads, and each driver crate exposes the same entry point. See
 [Credentials](/framework/credentials/) for the per-driver table.

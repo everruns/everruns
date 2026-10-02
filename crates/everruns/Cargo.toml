@@ -115,6 +115,10 @@ a2a = ["local", "everruns-platform/a2a"]
 # `OpenAI` config type and its driver wiring compile only with this feature.
 openai = ["dep:everruns-openai"]
 openrouter = ["dep:everruns-openrouter"]
+# Anthropic Messages and Google Gemini, the same shape as `openai`:
+# `providers::anthropic::Anthropic` and `providers::gemini::Gemini`.
+anthropic = ["dep:everruns-anthropic"]
+gemini = ["dep:everruns-gemini"]
 # Typed decision: the TypeSafe-backed `DecisionsService` behind
 # `Decisions`, re-exported so one import reaches both halves.
 typesafe = ["dep:everruns-integrations-typesafe"]
@@ -151,6 +155,8 @@ everruns-integrations-duckduckgo = { workspace = true, optional = true }
 # versioned provider package's current release baseline.
 everruns-openai = { workspace = true, optional = true }
 everruns-openrouter = { workspace = true, optional = true }
+everruns-anthropic = { workspace = true, optional = true }
+everruns-gemini = { workspace = true, optional = true }
 # Client + framework surface only: the workspace dependency leaves the crate's
 # `hosted` feature off, so enabling `typesafe` on the facade does not drag in
 # everruns-platform. Guarded by scripts/lib/check-portable-builtins-isolation.sh.

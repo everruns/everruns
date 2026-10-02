@@ -2,8 +2,9 @@
 //!
 //! Each provider lives behind its own cargo feature so the default facade build
 //! stays fully offline — no provider crate, no Reqwest edge. Enable the `openai`
-//! feature to configure OpenAI-backed models through [`openai::OpenAI`], or
-//! `openrouter` for [`openrouter::OpenRouter`].
+//! feature to configure OpenAI-backed models through [`openai::OpenAI`],
+//! `openrouter` for [`openrouter::OpenRouter`], `anthropic` for
+//! `anthropic::Anthropic`, or `gemini` for `gemini::Gemini`.
 //!
 //! When an application does not care *which* vendor it reaches — a script, a
 //! test harness, a tool that runs on whoever's machine — [`from_env`] picks the
@@ -11,6 +12,10 @@
 
 use std::fmt;
 
+#[cfg(feature = "anthropic")]
+pub mod anthropic;
+#[cfg(feature = "gemini")]
+pub mod gemini;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "openrouter")]
@@ -40,7 +45,7 @@ impl fmt::Display for FromEnvError {
                 vars.join(", ")
             ),
             FromEnvError::NoProvidersCompiled => f.write_str(
-                "no provider feature is enabled; build `everruns` with `openai` or `openrouter`",
+                "no provider feature is enabled; build `everruns` with `openai`, `openrouter`, `anthropic` or `gemini`",
             ),
         }
     }
@@ -50,12 +55,14 @@ impl std::error::Error for FromEnvError {}
 
 /// Configure whichever provider the environment carries credentials for.
 ///
-/// Enabled providers are tried in a fixed, documented order — OpenAI, then
-/// OpenRouter — so the choice is reproducible rather than dependent on feature
-/// resolution or iteration order. Each is resolved through its own
-/// `from_env`, which reads the variables that provider's driver declares
+/// Enabled providers are tried in a fixed, documented order — OpenAI,
+/// OpenRouter, Anthropic, then Gemini — so the choice is reproducible rather
+/// than dependent on feature resolution or iteration order. Each is resolved
+/// through its own `from_env`, which reads the variables that provider's
+/// driver declares
 /// (`OPENAI_API_KEY`/`OPENAI_BASE_URL`, `OPENROUTER_API_KEY`/
-/// `OPENROUTER_BASE_URL`).
+/// `OPENROUTER_BASE_URL`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` or
+/// `GOOGLE_API_KEY`/`GEMINI_BASE_URL`).
 ///
 /// For a specific vendor, or to be explicit about which one an application
 /// uses, construct it directly instead — this is the convenience for callers
@@ -97,6 +104,24 @@ pub fn from_env() -> Result<crate::Provider, FromEnvError> {
             Err(openrouter::OpenRouterError::MissingEnvVar { vars: declared }) => {
                 vars.extend(declared)
             }
+        }
+    }
+
+    #[cfg(feature = "anthropic")]
+    {
+        match anthropic::Anthropic::from_env() {
+            Ok(config) => return Ok(config.into()),
+            Err(anthropic::AnthropicError::MissingEnvVar { vars: declared }) => {
+                vars.extend(declared)
+            }
+        }
+    }
+
+    #[cfg(feature = "gemini")]
+    {
+        match gemini::Gemini::from_env() {
+            Ok(config) => return Ok(config.into()),
+            Err(gemini::GeminiError::MissingEnvVar { vars: declared }) => vars.extend(declared),
         }
     }
 
