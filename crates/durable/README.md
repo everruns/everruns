@@ -128,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 | Piece | Role |
 | --- | --- |
-| `Workflow` | Deterministic state machine. Handlers (`on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_signal`) return `WorkflowAction`s. |
+| `Workflow` | Deterministic state machine. Handlers (`on_start`, `on_activity_completed`, `on_activity_failed`, `on_timer_fired`, `on_child_workflow_completed`, `on_child_workflow_failed`, `on_signal`) return `WorkflowAction`s. |
 | `WorkflowEvent` | Append-only history. Replaying it rebuilds workflow state after a crash. |
 | `WorkflowExecutor` | Starts workflows, appends events, replays history and applies the actions it has not recorded yet, so re-processing is idempotent. Optional snapshots bound replay cost; `continue_as_new` rolls over long histories. |
 | `WorkflowEventStore` | Storage contract: event log, task queue, workers, DLQ, circuit breakers, schedules. `PostgresWorkflowEventStore` for production, `InMemoryWorkflowEventStore` for tests and benches. |
@@ -136,6 +136,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `WorkerPool` | Polls for tasks, runs registered handlers with bounded concurrency, heartbeats, reclaims stale work and applies backpressure. |
 | `DurableScheduler` | Cron and interval schedules that start workflows or tasks, with leader-safe claiming. |
 | `DurableExecution` | Checkpointed driver of `everruns-engine` turns. |
+
+### Timers and child workflows
+
+`WorkflowAction::timer` fires `on_timer_fired` once its duration has passed.
+`WorkflowAction::child_workflow` starts a registered workflow type and reports
+its outcome to `on_child_workflow_completed` or `on_child_workflow_failed`.
+
+Both run as the engine's own tasks on the ordinary queue, so they survive a
+crash and retry like any activity. Something has to claim them: register a
+worker for `SYSTEM_ACTIVITY_TYPES` and call `run_system_tasks` in a loop.
+
+```rust,ignore
+let engine = WorkerInfo::new("engine-1", SYSTEM_ACTIVITY_TYPES);
+executor.store().register_worker(engine).await?;
+loop {
+    if executor.run_system_tasks("engine-1", 100).await? == 0 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+```
+
+A child's id is derived from its parent and the id the parent gave it, so a
+retried start never creates a second child. The rustdoc of
+`WorkflowExecutor::run_system_tasks` has a runnable example.
 
 ## Reliability
 

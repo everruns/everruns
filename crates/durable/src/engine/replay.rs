@@ -24,8 +24,8 @@ impl RecordedAction {
             WorkflowAction::CancelActivity { activity_id } => {
                 Some(Self::CancelActivity(activity_id.clone()))
             }
-            WorkflowAction::ScheduleChildWorkflow { workflow_type, .. } => {
-                Some(Self::ChildWorkflow(workflow_type.clone()))
+            WorkflowAction::ScheduleChildWorkflow { workflow_id, .. } => {
+                Some(Self::ChildWorkflow(workflow_id.clone()))
             }
             WorkflowAction::CompleteWorkflow { .. } => Some(Self::Completed),
             WorkflowAction::FailWorkflow { .. } => Some(Self::Failed),
@@ -42,8 +42,8 @@ impl RecordedAction {
             WorkflowEvent::ActivityCancelled { activity_id, .. } => {
                 Some(Self::CancelActivity(activity_id.clone()))
             }
-            WorkflowEvent::ChildWorkflowStarted { workflow_type, .. } => {
-                Some(Self::ChildWorkflow(workflow_type.clone()))
+            WorkflowEvent::ChildWorkflowStarted { child_id, .. } => {
+                Some(Self::ChildWorkflow(child_id.clone()))
             }
             WorkflowEvent::WorkflowCompleted { .. } => Some(Self::Completed),
             WorkflowEvent::WorkflowFailed { .. } => Some(Self::Failed),
@@ -141,6 +141,7 @@ mod tests {
             WorkflowEvent::ChildWorkflowStarted {
                 workflow_id: Uuid::now_v7(),
                 workflow_type: "child".into(),
+                child_id: "c1".into(),
             },
             WorkflowEvent::WorkflowFailed {
                 error: crate::WorkflowError::new("boom"),

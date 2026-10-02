@@ -188,13 +188,7 @@ impl DurableStoreBackend for GrpcDurableStore {
     ) -> Result<Uuid> {
         GrpcDurableStore::create_workflow(self, workflow_id, workflow_type, input.clone()).await?;
         let _ = self
-            .append_events(
-                workflow_id,
-                0,
-                vec![WorkflowEvent::WorkflowStarted {
-                    input: input.clone(),
-                }],
-            )
+            .append_events(workflow_id, 0, vec![WorkflowEvent::started(input.clone())])
             .await?;
         let task_id = GrpcDurableStore::enqueue_task(
             self,
@@ -470,13 +464,7 @@ impl DurableStoreBackend for InMemoryDurableStore {
             .await?;
         let _ = self
             .store
-            .append_events(
-                workflow_id,
-                0,
-                vec![WorkflowEvent::WorkflowStarted {
-                    input: input.clone(),
-                }],
-            )
+            .append_events(workflow_id, 0, vec![WorkflowEvent::started(input.clone())])
             .await?;
         let task_id = self
             .store

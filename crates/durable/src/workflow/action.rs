@@ -51,9 +51,12 @@ pub enum WorkflowAction {
         error: WorkflowError,
     },
 
-    /// Schedule a child workflow
+    /// Start a child workflow and get its outcome back through
+    /// [`Workflow::on_child_workflow_completed`](super::Workflow::on_child_workflow_completed)
+    /// or [`Workflow::on_child_workflow_failed`](super::Workflow::on_child_workflow_failed).
     ScheduleChildWorkflow {
-        /// Unique identifier for the child workflow
+        /// The child's id within this workflow. The engine derives the child's
+        /// workflow UUID from it, so scheduling the same id twice starts one child.
         workflow_id: String,
 
         /// Type of workflow to start
@@ -98,6 +101,27 @@ impl WorkflowAction {
         Self::FailWorkflow { error }
     }
 
+    /// Start a child workflow of a registered type.
+    ///
+    /// ```
+    /// use everruns_durable::WorkflowAction;
+    /// use serde_json::json;
+    ///
+    /// let action = WorkflowAction::child_workflow("invoice", "billing", json!({ "order": 7 }));
+    /// assert!(matches!(action, WorkflowAction::ScheduleChildWorkflow { .. }));
+    /// ```
+    pub fn child_workflow(
+        child_id: impl Into<String>,
+        workflow_type: impl Into<String>,
+        input: serde_json::Value,
+    ) -> Self {
+        Self::ScheduleChildWorkflow {
+            workflow_id: child_id.into(),
+            workflow_type: workflow_type.into(),
+            input,
+        }
+    }
+
     /// Create a timer action
     pub fn timer(timer_id: impl Into<String>, duration: Duration) -> Self {
         Self::StartTimer {
@@ -131,6 +155,11 @@ pub struct ActivityOptions {
 
     /// Priority (higher values = higher priority, claimed first)
     pub priority: i32,
+
+    /// Delay before the task becomes claimable. Durable timers use this; an
+    /// activity can too, to run no earlier than a point in time.
+    #[serde(default, with = "option_duration_serde")]
+    pub start_delay: Option<Duration>,
 }
 
 impl Default for ActivityOptions {
@@ -142,6 +171,7 @@ impl Default for ActivityOptions {
             heartbeat_timeout: None,
             circuit_breaker: None,
             priority: 0,
+            start_delay: None,
         }
     }
 }
@@ -174,6 +204,20 @@ impl ActivityOptions {
     /// Set the priority
     pub fn with_priority(mut self, priority: i32) -> Self {
         self.priority = priority;
+        self
+    }
+
+    /// Keep the task unclaimable until `delay` has passed.
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use everruns_durable::ActivityOptions;
+    ///
+    /// let options = ActivityOptions::default().with_start_delay(Duration::from_secs(30));
+    /// assert_eq!(options.start_delay, Some(Duration::from_secs(30)));
+    /// ```
+    pub fn with_start_delay(mut self, delay: Duration) -> Self {
+        self.start_delay = Some(delay);
         self
     }
 }

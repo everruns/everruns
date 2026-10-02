@@ -290,9 +290,7 @@ async fn test_append_and_load_events() {
         .unwrap();
 
     // Append workflow started event
-    let events = vec![WorkflowEvent::WorkflowStarted {
-        input: json!({"test": true}),
-    }];
+    let events = vec![WorkflowEvent::started(json!({"test": true}))];
     let seq = store.append_events(workflow_id, 0, events).await.unwrap();
     assert_eq!(seq, 1);
 
@@ -345,11 +343,7 @@ async fn test_optimistic_concurrency_conflict() {
 
     // First append succeeds
     store
-        .append_events(
-            workflow_id,
-            0,
-            vec![WorkflowEvent::WorkflowStarted { input: json!({}) }],
-        )
+        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
         .await
         .unwrap();
 
@@ -2157,7 +2151,7 @@ async fn test_append_events_multi_row_sequences() {
             workflow_id,
             0,
             vec![
-                WorkflowEvent::WorkflowStarted { input: json!({}) },
+                WorkflowEvent::started(json!({})),
                 WorkflowEvent::ActivityScheduled {
                     activity_id: "a-0".to_string(),
                     activity_type: "act".to_string(),
@@ -2237,7 +2231,7 @@ async fn test_claim_task_set_based_first_attempt_only() {
             wf_a,
             0,
             vec![
-                WorkflowEvent::WorkflowStarted { input: json!({}) },
+                WorkflowEvent::started(json!({})),
                 WorkflowEvent::ActivityScheduled {
                     activity_id: "a-task".to_string(),
                     activity_type: "work".to_string(),

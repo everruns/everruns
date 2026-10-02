@@ -125,11 +125,7 @@ async fn test_append_events_failure_after_insert_rolls_back() {
 
     // Attempt to append events - should fail
     let result = store
-        .append_events(
-            workflow_id,
-            0,
-            vec![WorkflowEvent::WorkflowStarted { input: json!({}) }],
-        )
+        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
         .await;
 
     assert!(result.is_err());
@@ -161,11 +157,7 @@ async fn test_append_events_failure_before_commit_rolls_back() {
     fail::cfg("postgres_append_events_before_commit", "return").unwrap();
 
     let result = store
-        .append_events(
-            workflow_id,
-            0,
-            vec![WorkflowEvent::WorkflowStarted { input: json!({}) }],
-        )
+        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
         .await;
 
     assert!(result.is_err());
@@ -196,21 +188,13 @@ async fn test_append_events_single_failure_then_success() {
 
     // First attempt fails
     let result1 = store
-        .append_events(
-            workflow_id,
-            0,
-            vec![WorkflowEvent::WorkflowStarted { input: json!({}) }],
-        )
+        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
         .await;
     assert!(result1.is_err());
 
     // Second attempt succeeds (fail point auto-disabled after one failure)
     let result2 = store
-        .append_events(
-            workflow_id,
-            0,
-            vec![WorkflowEvent::WorkflowStarted { input: json!({}) }],
-        )
+        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
         .await;
     assert!(result2.is_ok());
     assert_eq!(result2.unwrap(), 1);

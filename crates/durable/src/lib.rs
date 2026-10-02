@@ -39,7 +39,9 @@ pub mod prelude {
 
 // Re-export key types at crate root
 pub use activity::{Activity, ActivityContext, ActivityError};
-pub use engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
+pub use engine::{
+    ExecutorConfig, ExecutorError, SYSTEM_ACTIVITY_TYPES, WorkflowExecutor, WorkflowRegistry,
+};
 pub use execution::DurableExecution;
 pub use persistence::{
     CircuitBreakerState, ClaimedTask, CreateScheduleRow, DeadTaskInfo, DlqEntry, DlqFilter,
