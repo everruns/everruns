@@ -37,9 +37,7 @@ use crate::api::endpoint_auth::{EndpointAuthError, EndpointAuthVerifier, LegacyE
 use crate::api::endpoint_ingress;
 use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
-use crate::domains::apps::{
-    A2aInvocationRequest, hash_a2a_api_key, invoke_a2a_app_channel_with_hook,
-};
+use crate::domains::apps::{A2aInvocationRequest, hash_a2a_api_key, invoke_endpoint_a2a_with_hook};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::event_delivery::EventDelivery;
@@ -766,7 +764,7 @@ async fn handle_message_send(
     let hook_slot = subscription_slot.clone();
     let event_delivery = state.event_delivery.clone();
     let request_id = ctx.req_id.map(|axum::Extension(id)| id.0);
-    let result = match invoke_a2a_app_channel_with_hook(
+    let result = match invoke_endpoint_a2a_with_hook(
         &state.db,
         state.encryption.as_ref(),
         &state.session_service,
@@ -1132,7 +1130,7 @@ async fn handle_message_stream(
     > = Arc::new(tokio::sync::Mutex::new(None));
     let hook_slot = subscription_slot.clone();
     let request_id = ctx.req_id.map(|axum::Extension(id)| id.0);
-    let result = match invoke_a2a_app_channel_with_hook(
+    let result = match invoke_endpoint_a2a_with_hook(
         &state.db,
         state.encryption.as_ref(),
         &state.session_service,

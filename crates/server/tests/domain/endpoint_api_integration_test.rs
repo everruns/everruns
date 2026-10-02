@@ -45,7 +45,7 @@ async fn create_app_with_api_endpoint(server: &TestServer, name: &str) -> (Value
 }
 
 #[tokio::test]
-async fn api_endpoint_legacy_app_channel_mismatch_is_not_found() {
+async fn api_endpoint_legacy_alias_endpoint_mismatch_is_not_found() {
     let server = TestServer::in_memory().await;
     let (app_a, _) = create_app_with_api_endpoint(&server, "api-endpoint-mismatch-a").await;
     let (app_b, key_b) = create_app_with_api_endpoint(&server, "api-endpoint-mismatch-b").await;

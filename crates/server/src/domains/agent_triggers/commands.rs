@@ -989,7 +989,7 @@ impl Command for TriggerAgentTriggerNow {
 inventory::submit! { CommandDescriptor::of::<TriggerAgentTriggerNow>() }
 
 // ============================================================================
-// invoke_agent_trigger — execution activity (mirrors invoke_scheduled_app_channel)
+// invoke_agent_trigger — execution activity (mirrors invoke_scheduled_legacy_alias_endpoint)
 // ============================================================================
 
 #[derive(Debug, Clone)]

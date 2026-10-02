@@ -167,9 +167,9 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
         .await
         .unwrap();
     let endpoint = db
-        .create_app_channel(
+        .create_legacy_alias_endpoint(
             app.id,
-            CreateAppChannelRow {
+            CreateLegacyAliasEndpointRow {
                 public_id: endpoint_public_id.clone(),
                 channel_type: channel_type.into(),
                 channel_config: serde_json::json!({}),

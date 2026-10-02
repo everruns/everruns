@@ -31,15 +31,17 @@ pub use everruns_engine::{
     ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
 };
 
+/// Durable schedule target input for an endpoint addressed through its legacy
+/// App alias. Field names are persisted in schedule targets.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScheduledAppChannelInput {
+pub struct ScheduledEndpointInput {
     pub org_id: i64,
     pub app_id: String,
     pub channel_id: String,
 }
 
 /// Durable schedule target input for an agent-owned schedule trigger (EVE-757).
-/// Mirrors [`ScheduledAppChannelInput`], re-homed on the agent + trigger.
+/// Mirrors [`ScheduledEndpointInput`], re-homed on the agent + trigger.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduledAgentTriggerInput {
     pub org_id: i64,
@@ -173,7 +175,9 @@ pub mod activity_types {
     pub const INPUT: &str = "input";
     pub const REASON: &str = "reason";
     pub const ACT: &str = "act";
-    pub const INVOKE_SCHEDULED_APP_CHANNEL: &str = "invoke_scheduled_app_channel";
+    /// The value is the App-era activity type: durable schedules created before
+    /// the App retirement persist it in their targets, so it cannot change.
+    pub const INVOKE_SCHEDULED_ENDPOINT: &str = "invoke_scheduled_app_channel";
     pub const INVOKE_AGENT_TRIGGER: &str = "invoke_agent_trigger";
 }
 

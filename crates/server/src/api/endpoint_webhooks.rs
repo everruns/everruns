@@ -23,7 +23,7 @@ use crate::domains::agent_triggers::events::TriggerEventOutcome;
 use crate::domains::agent_triggers::{
     WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger,
 };
-use crate::domains::apps::{WebhookInvocationRequest, invoke_webhook_app_channel};
+use crate::domains::apps::{WebhookInvocationRequest, invoke_endpoint_webhook};
 use crate::domains::common::{CommandError, CommandErrorKind};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -293,7 +293,7 @@ async fn invoke_webhook(
     let request_headers = flatten_headers(&headers);
     let request_id = req_id.map(|axum::Extension(id)| id.0);
 
-    let result = invoke_webhook_app_channel(
+    let result = invoke_endpoint_webhook(
         &state.db,
         state.encryption.as_ref(),
         &state.session_service,

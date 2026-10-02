@@ -32,7 +32,7 @@ use everruns_platform::EndpointTransport;
 use everruns_provider::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
-use everruns_server::domains::apps::{hash_a2a_api_key, hash_app_api_key};
+use everruns_server::domains::apps::{hash_a2a_api_key, hash_endpoint_api_key};
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
 use everruns_worker::{RunnerBackend, create_runner_with_backend};
@@ -117,7 +117,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         &fixture,
         EndpointTransport::ApiEndpoint,
         json!({
-            "api_key_hash": hash_app_api_key(api_key),
+            "api_key_hash": hash_endpoint_api_key(api_key),
             "api_key_prefix": "evr_app_test...",
             "session_mode": "session_per_invocation"
         }),
@@ -1165,9 +1165,9 @@ async fn endpoint_creation_requires_the_app_to_have_an_agent() {
         .expect("clear agent");
 
     let result = db
-        .create_app_channel(
+        .create_legacy_alias_endpoint(
             fixture.app_id,
-            everruns_server::storage::CreateAppChannelRow {
+            everruns_server::storage::CreateLegacyAliasEndpointRow {
                 public_id: format!("appchan_{}", hex32()),
                 channel_type: "slack".to_string(),
                 channel_config: serde_json::json!({}),
@@ -1203,9 +1203,9 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
 
     // Disabling must drive the derived status to 'disabled'.
     let updated = db
-        .update_app_channel(
+        .update_endpoint_by_id(
             fixture.endpoint_id,
-            everruns_server::storage::UpdateAppChannel {
+            everruns_server::storage::UpdateEndpointByIdRow {
                 channel_config: Some(serde_json::json!({"team_id": "T1"})),
                 enabled: Some(false),
                 ..Default::default()
@@ -1230,9 +1230,9 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
     assert_eq!(status, "disabled");
 
     // Re-enabling does not infer lifecycle from the frozen App row.
-    db.update_app_channel(
+    db.update_endpoint_by_id(
         fixture.endpoint_id,
-        everruns_server::storage::UpdateAppChannel {
+        everruns_server::storage::UpdateEndpointByIdRow {
             enabled: Some(true),
             ..Default::default()
         },
@@ -1248,9 +1248,9 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
         .expect("read status");
     assert_eq!(status, "disabled");
 
-    db.update_app_channel(
+    db.update_endpoint_by_id(
         fixture.endpoint_id,
-        everruns_server::storage::UpdateAppChannel {
+        everruns_server::storage::UpdateEndpointByIdRow {
             status: Some("live".to_string()),
             ..Default::default()
         },
@@ -1285,7 +1285,7 @@ async fn deleting_an_endpoint_removes_it_from_the_view() {
     let fixture = seed(&pool, "endpoint-delete", "published").await;
 
     assert!(
-        db.delete_app_channel(fixture.endpoint_id)
+        db.delete_endpoint_by_id(fixture.endpoint_id)
             .await
             .expect("delete endpoint")
     );

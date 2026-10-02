@@ -238,9 +238,9 @@ pub use app::{
     EndpointTransport, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
     PublicChatChannelConfig, SlackReplyMode,
 };
-/// Endpoint-oriented name for the endpoint ID. The typed ID lives in
-/// `everruns-provider` as `AppChannelId` and keeps its `appchan_` wire prefix.
-pub use everruns_provider::typed_id::AppChannelId as AgentEndpointId;
+/// Endpoint ID. Lives in `everruns-provider` and keeps its `appchan_` wire
+/// prefix, which is stored in rows, tags, and third-party registrations.
+pub use everruns_provider::typed_id::AgentEndpointId;
 // EVE-1131 dropped the App-era Rust aliases (`AppChannel`, `ChannelType`,
 // `AppEndpointAuth*`). Their OpenAPI component names stay via `schema(as = ...)`.
 // `App`/`AppStatus` are the frozen `apps` row and keep their names.

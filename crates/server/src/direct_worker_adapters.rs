@@ -1581,7 +1581,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
-    async fn invoke_scheduled_app_channel(
+    async fn invoke_scheduled_endpoint(
         &self,
         org_id: i64,
         app_id: &str,
@@ -1604,7 +1604,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.event_service.event_delivery().clone(),
         );
 
-        let result = crate::domains::apps::invoke_scheduled_app_channel(
+        let result = crate::domains::apps::invoke_scheduled_legacy_alias_endpoint(
             &self.db,
             self.encryption.as_ref(),
             &session_service,

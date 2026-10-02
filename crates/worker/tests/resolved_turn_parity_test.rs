@@ -295,7 +295,7 @@ macro_rules! mock_worker_adapters {
                     mcp_tool_definitions: vec![],
                 })
             }
-            async fn invoke_scheduled_app_channel(
+            async fn invoke_scheduled_endpoint(
                 &self,
                 _org_id: i64,
                 _app_id: &str,
