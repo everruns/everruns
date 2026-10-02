@@ -120,7 +120,7 @@ questions you *might* need, and let your code decide which ones mattered.
 The id labels the answer for your code and is never sent to the model. A
 question whose meaning lives in its id asks nothing:
 
-```rust
+```rust ignore
 // Wrong: the model never sees "is_the_joke_funny".
 .noul("is_the_joke_funny", "?")
 

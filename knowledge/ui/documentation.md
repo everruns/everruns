@@ -118,6 +118,23 @@ Notebook tutorials use a checked-in `.ipynb` file as the source of truth and a h
 - The notebook source should default to `https://app.everruns.com/api`; local execution should override `EVERRUNS_API_URL` instead of editing the notebook
 - CI must execute notebook-backed tutorials against a local Everruns dev-mode API using `EVERRUNS_API_URL=http://127.0.0.1:9301/api`, `EVERRUNS_API_KEY=dev`, and `EVERRUNS_NOTEBOOK_USE_LLMSIM=1`
 
+#### Checked Catalogs and Snippets
+
+Hand-written catalogs and snippets drifted from the code because nothing
+compared them. Each now has a source of truth CI compares it against:
+
+- The capability index, the built-in harness pages, the event reference, and the
+  environment-variable summary are checked by `scripts/check_docs_catalogs.py`.
+  Capabilities come from `docs/api/capability-catalog.json`, a registry snapshot
+  that a Rust test keeps equal to what the server registers at each grade; the
+  check itself needs no Rust build, so a docs-only edit is checked too.
+- Every Python block is checked against the published SDK (names, methods,
+  arguments), and complete programs run against llmsim in the notebook step.
+  Most guide blocks are fragments that need earlier steps, so they are checked,
+  not run.
+- Framework Rust blocks compile as doctests (see
+  `knowledge/framework/documentation-and-examples.md`).
+
 ### Design Requirements
 
 Design follows the brand guidelines defined in [knowledge/ui/brand.md](brand.md) (colors, typography, visual principles).

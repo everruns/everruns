@@ -76,7 +76,7 @@ Applications with their own driver can use the shared boundary directly:
 ```rust
 use everruns::{Agent, BuildError, ChatDriver, Provider};
 
-fn agent_for(driver: impl ChatDriver) -> Result<Agent, BuildError> {
+fn agent_for(driver: impl ChatDriver + 'static) -> Result<Agent, BuildError> {
     Agent::builder()
         .instructions("Use the configured provider.")
         .provider(Provider::new("acme", driver))

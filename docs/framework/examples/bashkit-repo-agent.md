@@ -64,7 +64,7 @@ The definition lives in `src/agent.rs`; the prompt and disposable repository
 live under `src/resources/`. Read-write access is explicit—the default workspace
 policy is read-only.
 
-```rust
+```rust ignore
 pub fn build(provider: impl Into<Provider>, workspace: &Path) -> Result<Agent, BuildError> {
     Agent::builder()
         .name("bashkit-repo-agent")
@@ -84,7 +84,7 @@ pub fn build(provider: impl Into<Provider>, workspace: &Path) -> Result<Agent, B
 The shared observer displays a bounded shell timeline and waits for a successful
 turn. The host then verifies the mounted files itself.
 
-```rust
+```rust ignore
 // OPENAI_API_KEY, declared by the OpenAI driver itself.
 let agent = agent::build(everruns::OpenAI::from_env()?, &workspace)?;
 let engine = Engine::new();

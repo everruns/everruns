@@ -24,6 +24,9 @@ use everruns::{
     Agent, CapabilityRef, CompactionConfig, OpenAI, ToolSearch,
 };
 use serde_json::json;
+# fn build_weather_capability() -> everruns::capability::Definition {
+#     everruns::capability::Definition::new("weather", "Weather", "Weather tools.")
+# }
 
 let weather_definition = build_weather_capability();
 let agent = Agent::builder()

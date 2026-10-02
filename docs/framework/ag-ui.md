@@ -91,6 +91,10 @@ conversation by sending its `threadId`:
 ```rust
 use axum::http::HeaderMap;
 use everruns::ag_ui::{AgUiCaller, Unauthorized};
+# use everruns::ag_ui::{AgUiHandler, AgUiThreads};
+# use everruns::{Agent, Engine, Model};
+# let agent = Agent::builder().instructions("x").model(Model::simulated("ok")).build()?;
+# let threads = AgUiThreads::new(Engine::new(), agent);
 
 // Your proxy has verified the user and set this header.
 let by_user = |headers: &HeaderMap| {
@@ -101,6 +105,8 @@ let by_user = |headers: &HeaderMap| {
         .ok_or_else(Unauthorized::new)
 };
 let handler = AgUiHandler::new(threads, by_user);
+# let _ = handler;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 ### Your own route
@@ -147,6 +153,8 @@ let agent = Agent::builder()
     .local(config.clone())
     .build()?;
 let threads = AgUiThreads::with_store(Engine::new(), agent, SqliteThreadStore::local(&config)?);
+# let _ = threads;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 After a restart the next run of a thread reopens its session, history
@@ -159,7 +167,13 @@ authenticated caller: `AgUiCaller::scoped` does it in `AgUiHandler`, and
 `run_in` on your own route:
 
 ```rust
+# use everruns::ag_ui::{AgUiError, AgUiOptions, AgUiThreads, RunAgentInput};
+# struct App { threads: AgUiThreads }
+# async fn handle(app: &App, user_id: String, input: RunAgentInput, options: AgUiOptions) -> Result<(), AgUiError> {
 let run = app.threads.run_in(&user_id, input, options).await?;
+# let _ = run;
+# Ok(())
+# }
 ```
 
 Thread ids must be 1 to 128 characters of `[A-Za-z0-9-_.]`; anything else is

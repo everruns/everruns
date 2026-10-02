@@ -41,7 +41,7 @@ cargo run -p everruns-research-agent -- "Compare retry guarantees in Temporal Ac
 
 This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
 
-```rust
+```rust ignore
 let agent = bound_external_calls(
     Agent::builder()
         .name("research-agent")
@@ -66,7 +66,7 @@ fn bound_external_calls(builder: AgentBuilder) -> AgentBuilder {
 
 The Framework interaction stays readable in `main.rs`. The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
 
-```rust
+```rust ignore
 let engine = Engine::new();
 let session = engine.create(agent);
 println!("MODEL: {MODEL}");

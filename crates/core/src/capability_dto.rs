@@ -207,6 +207,25 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "stateless_todo_list" => Some("task-management"),
         "bashkit_shell" => Some("bashkit-shell"),
         "web_fetch" => Some("web-fetch"),
+        "ask_user" => Some("ask-user"),
+        "citation_retrieval" => Some("citation-retrieval"),
+        "citation_verification" => Some("citation-verification"),
+        "claude_tool_search" => Some("claude-tool-search"),
+        "docker_container" => Some("docker"),
+        "e2b" => Some("e2b"),
+        "guardrails" => Some("guardrails"),
+        "host_shell" => Some("host-shell"),
+        "message_metadata" => Some("message-metadata"),
+        "openai_server_tools" => Some("openai-server-tools"),
+        "openrouter_server_tools" => Some("openrouter-server-tools"),
+        "parallel_tool_calls" => Some("parallel-tool-calls"),
+        "platform" => Some("platform"),
+        "tool_approval" => Some("tool-approval"),
+        "tool_call_repair" => Some("tool-call-repair"),
+        "usage_limit_auto_continue" => Some("usage-limit-auto-continue"),
+        "user_hooks" => Some("user-hooks"),
+        // Kept complete by scripts/check_docs_catalogs.py: every capability
+        // the docs index links to a page must map to that page here.
         _ => None,
     }
 }

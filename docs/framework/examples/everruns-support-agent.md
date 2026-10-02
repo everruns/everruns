@@ -49,7 +49,7 @@ cargo run -p everruns-framework-support-agent -- --interactive
 
 The definition lives in `src/agent.rs`; `main.rs` only handles input and runs the session. The prompt and documentation corpus live under `src/resources/`. Tools retrieve evidence; Opus decides what to search, read, and explain.
 
-```rust
+```rust ignore
 pub fn build(provider: impl Into<everruns::Provider>) -> Result<Agent, BuildError> {
     Agent::builder()
         .name("everruns-support-agent")
@@ -67,7 +67,7 @@ pub fn build(provider: impl Into<everruns::Provider>) -> Result<Agent, BuildErro
 
 The Framework interaction stays small in `main.rs`. The shared demo helper subscribes before sending, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. Use `session.send_and_wait(&question).await?` when a live tool timeline is unnecessary.
 
-```rust
+```rust ignore
 // ANTHROPIC_API_KEY, declared by the Anthropic driver itself.
 let agent = agent::build(everruns_anthropic::from_env("anthropic")?)?;
 let engine = Engine::new();

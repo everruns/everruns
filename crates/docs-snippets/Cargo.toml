@@ -1,0 +1,38 @@
+# Compile check for the Rust shown in docs/framework/.
+# Decision: the Framework pages are written as rustdoc doctests (hidden `# `
+# lines, trailing `Ok::<(), E>(())`), but nothing compiled them, so they drifted
+# from the API. build.rs copies each page into OUT_DIR with every `rust` fence
+# made `no_run`, and src/lib.rs attaches the copies as doc comments, so
+# `cargo test -p everruns-docs-snippets` type-checks every block without
+# executing it (most need a provider key). Unpublished: it exists only for CI.
+
+[package]
+name = "everruns-docs-snippets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+description = "Compiles the Rust code blocks in the Everruns Framework docs"
+
+# Doctests link the package's dev-dependencies, so these are the crates the
+# snippets import, with the facade features the pages tell readers to enable.
+[dev-dependencies]
+everruns = { workspace = true, features = ["openai", "anthropic", "gemini", "bedrock", "openrouter", "typesafe", "local", "bashkit", "web-fetch", "duckduckgo", "host-shell", "mcp", "ag-ui-axum", "otel", "braintrust"] }
+everruns-host.workspace = true
+everruns-anthropic.workspace = true
+everruns-llmsim.workspace = true
+everruns-fireworks = { path = "../drivers/fireworks" }
+# The pages tell readers to drop `hosted` for a Framework-only build.
+everruns-integrations-brave-search = { path = "../../integrations/brave-search", default-features = false }
+axum.workspace = true
+futures.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

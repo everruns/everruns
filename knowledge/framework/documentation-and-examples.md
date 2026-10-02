@@ -46,3 +46,9 @@ Published crates carry a newcomer-readable README and compiled crate-level
 rustdoc that lead users toward the Framework when appropriate. Repository
 guards validate required structure and local ownership of public documentation
 links without asserting brittle prose.
+
+Rust blocks in the public Framework pages compile in CI as doctests
+(`crates/docs-snippets`), written in the rustdoc doctest style the docs site
+already renders. They are compiled, not run, because most call a real provider.
+A block may opt out with `rust ignore` only when it is deliberately partial,
+such as an excerpt of an example program that compiles on its own.

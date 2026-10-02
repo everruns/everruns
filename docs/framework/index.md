@@ -10,6 +10,7 @@ observe events, and embed agent execution directly in a Rust process.
 ```rust
 use everruns::{Agent, Engine, OpenAI};
 
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
 let agent = Agent::builder()
     .instructions("Answer in one short sentence.")
     .provider(OpenAI::from_env()?)
@@ -19,7 +20,8 @@ let agent = Agent::builder()
 let engine = Engine::new();
 let turn = engine.create(agent).send_and_wait("Say hello.").await?;
 println!("{}", turn.response);
-# Ok::<(), Box<dyn std::error::Error>>(())
+# Ok(())
+# }
 ```
 
 No database, server or worker is required: an agent runs inside your process.
