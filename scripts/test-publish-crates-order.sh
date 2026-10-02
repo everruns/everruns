@@ -172,6 +172,30 @@ require(
     f"dev-only and crates.io edges, got {private_failures}",
 )
 
+# A workspace pin that only unpublished crates consume still has to track its
+# member, or the release bump breaks `cargo generate-lockfile`.
+root = pathlib.Path("/repo/Cargo.toml")
+published = {
+    pathlib.Path("/repo/catalog/Cargo.toml"): {"name": "catalog", "version": "0.34.0"},
+    pathlib.Path("/repo/serve/Cargo.toml"): {"name": "serve", "version": "0.34.0"},
+}
+drift = list(
+    sync.workspace_pin_drift(
+        {
+            "catalog": {"path": "catalog", "version": "0.33.0"},
+            "serve": {"path": "serve", "version": "0.34.0"},
+            "private": {"path": "private", "version": "0.1.0"},
+            "serde": "1",
+        },
+        root,
+        published,
+    )
+)
+require(
+    drift == [("catalog", "0.33.0", "0.34.0")],
+    f"workspace_pin_drift must report stale pins on published members only, got {drift}",
+)
+
 manifest = tomllib.loads("""
 [dependencies]
 everruns-core = { path = "../core", version = "1.0.0" }
