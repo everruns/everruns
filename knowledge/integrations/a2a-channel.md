@@ -50,10 +50,11 @@ References:
 
 ## Non-Goals
 
-1. The full A2A method surface, this iteration canonically supports
-   `message/send`, `message/stream`, `tasks/get`, and `tasks/cancel`.
-   `tasks/resubscribe`, push notifications, and authenticated extensions
-   remain out of scope.
+1. The full A2A method surface. The endpoint supports send, streaming send,
+   get task, and cancel task. List tasks, subscribe to task, push
+   notifications, and the extended Agent Card answer the A2A error for an
+   unsupported operation (`-32004`, `-32003`, `-32007`) rather than
+   `-32601`.
 2. Persistent per-task identity beyond the session lifecycle. Tasks are
    identified by the underlying session id (`task_id == contextId`); a
    shared session reuses the same task id across follow-up messages.
@@ -124,11 +125,40 @@ without reading `apps` or `app_channels`.
   `google_oidc`, `oidc`, and `oauth2_introspection` use bearer tokens;
   `http_basic` uses HTTP Basic; `mtls` uses the configured trusted reverse
   proxy identity header.
-- Body: A2A JSON-RPC 2.0 envelope. Canonical methods are `message/send`,
-  `message/stream`, `tasks/get`, and `tasks/cancel`. For compatibility with
-  linked clients that still emit legacy method names, the endpoint accepts
-  `SendMessage`, `SendStreamingMessage`, `GetTask`, and `CancelTask` as aliases
-  for the canonical methods.
+- Body: A2A JSON-RPC 2.0 envelope. Both protocol versions are served on the
+  same URL: A2A 1.0 (`SendMessage`, `SendStreamingMessage`, `GetTask`,
+  `CancelTask`) and A2A 0.3 (`message/send`, `message/stream`, `tasks/get`,
+  `tasks/cancel`). Either spelling reaches the same handler.
+
+#### Version negotiation
+
+The `A2A-Version` header (or query parameter) selects the wire version by
+Major.Minor, per A2A 1.0 §3.6.2: `1.0` answers in 1.0, `0.3` or an empty value
+answers in 0.3, anything else is `-32009 VersionNotSupportedError`. One
+extension: with no version, a PascalCase 1.0 method name is answered in 1.0,
+because 0.3 never had those names. The two versions say the same thing in two
+shapes; 1.0 drops the `kind` discriminators and `final`, uses ProtoJSON enum
+names (`TASK_STATE_COMPLETED`, `ROLE_AGENT`), flattens parts to
+`{ "text" }` / `{ "data" }`, and wraps results (`{ "task": ... }` for
+send, `StreamResponse` objects for streaming frames). Source:
+[`crates/server/src/api/endpoint_a2a/wire.rs`](../../crates/server/src/api/endpoint_a2a/wire.rs).
+
+#### Blocking send
+
+A2A 1.0 send is blocking by default: the call returns once the task is
+terminal or parked on an `ask_user` question, with the task's outputs, unless
+`configuration.returnImmediately` is `true`. A 0.3 send blocks only when
+`configuration.blocking` is `true`. A turn that outlasts the server's bound
+(`BLOCKING_SEND_TIMEOUT` in
+[`task_view.rs`](../../crates/server/src/api/endpoint_a2a/task_view.rs)) returns
+in its current state and the caller polls.
+
+#### Multi-turn
+
+A message carrying a `taskId` or `contextId` from an earlier response continues
+that session, in either session mode. An unknown `taskId` is `-32001`; an
+unknown `contextId` is ignored and the message starts a new context. Only a
+session bound to the calling channel can be continued (TM-A2A-012).
 
 ```json
 {
@@ -145,7 +175,7 @@ without reading `apps` or `app_channels`.
 }
 ```
 
-Response: A2A JSON-RPC 2.0 success with a non-terminal `Task` result:
+Response (0.3, non-blocking): A2A JSON-RPC 2.0 success with a `Task` result:
 
 ```json
 {
@@ -161,10 +191,9 @@ Response: A2A JSON-RPC 2.0 success with a non-terminal `Task` result:
 ```
 
 The task `id` is the underlying Everruns `SessionId`, it is intentionally
-the same value as `contextId`. The durable workflow is asynchronous, so the
-initial response is always non-terminal (`submitted`). Clients observe
-state transitions via `tasks/get` (see "Task Lifecycle" below) or
-`message/stream` (see "Streaming"). Shared sessions reuse the same task id
+the same value as `contextId`. A non-blocking send returns `submitted`;
+clients observe state transitions via `tasks/get` (see "Task Lifecycle"
+below) or streaming (see "Streaming"). Shared sessions reuse the same task id
 across follow-up messages.
 
 Error mapping. Transport-level failures use plain HTTP errors; protocol-level
@@ -178,7 +207,9 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | 404  |, | Endpoint not found                     |
 | 400  |, | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
-| 200  | `-32601`      | Method not found (only canonical `message/send`, `message/stream`, `tasks/get`, `tasks/cancel` and their legacy linked-client aliases are supported) |
+| 200  | `-32601`      | Method not found (not an A2A method) |
+| 200  | `-32003` / `-32004` / `-32007` | A defined A2A operation this endpoint does not offer (push notifications / list, subscribe, streaming on a shared-session endpoint / extended card) |
+| 200  | `-32009`      | `A2A-Version` names a version this endpoint does not speak |
 | 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id, an `ask_user` answer that does not match what was asked) |
 | 200  | `-32001`      | Task not found (`tasks/get` / `tasks/cancel` against an unknown task id) |
 
@@ -192,20 +223,21 @@ of SSE events. Each event's `data:` payload is a JSON-RPC 2.0 envelope whose
 `id` echoes the request `id` and whose `result` carries one A2A streaming
 frame.
 
-Frame kinds emitted:
+Frame kinds emitted (0.3 names; 1.0 wraps the same objects as
+`task` / `artifactUpdate` / `statusUpdate`):
 
-- `status-update` with `status.state = "working"` and `final = false`, sent
-  immediately after the session is resolved so clients see liveness even
-  before the durable runtime emits its first event.
-- `message` with `role = "agent"` and `parts: [{ kind: "text", text: ... }]`
-, emitted from `output.message.completed` events for the same session.
-  Tool calls and intermediate deltas are not surfaced in this iteration.
+- The `Task` with `status.state = "working"`, sent immediately after the
+  session is resolved so clients see liveness before the runtime emits its
+  first event. A2A 1.0 requires a task lifecycle stream to open with it.
+- `artifact-update` carrying each final assistant message of the turn as a
+  text artifact, the same artifacts `tasks/get` returns. Commentary, tool
+  calls, and intermediate deltas are not surfaced.
 - A terminal `status-update` with `final = true` and one of
   `state = "completed" | "failed" | "canceled"`, emitted from the
   corresponding `turn.completed` / `turn.failed` / `turn.cancelled` event.
   The stream closes after this frame.
 
-- A `status-update` with `state = "input_required"` (or `auth_required`) and
+- A `status-update` with `state = "input-required"` (or `auth-required`) and
   `final = true` when the session parks on a question, see "Questions"
   below. The turn that asked is still open, so without this frame the stream
   would hold the caller on a question it cannot see.
@@ -242,12 +274,14 @@ separate task table in this iteration:
 | (no turn events yet)    | `submitted`  |
 
 A session parked on `ask_user` overrides that derivation with
-`input_required` (or `auth_required`, see "Questions" below): the turn that
+`input-required` (or `auth-required`, see "Questions" below): the turn that
 asked is still open, so the table above would report `working` for a task that
 is in fact waiting on a person.
 
 `tasks/get` returns the current task with `id` and `contextId` echoing the
-session id. An unknown but well-formed task id surfaces `-32001 Task not
+session id. Its `artifacts` carry the latest turn's outputs: one text
+artifact per final assistant message, `artifactId` = the message id,
+`name` = `response`. Without them a completed task carried no answer. An unknown but well-formed task id surfaces `-32001 Task not
 found`. A malformed task id surfaces `-32602 Invalid params`.
 
 **Structured result artifact.** When the underlying session reported a
@@ -267,8 +301,8 @@ last-message text:
 ]
 ```
 
-The artifact is present only when a result was reported; a plain agent turn
-returns the task with no `artifacts`. When a session reported more than one
+The structured artifact is present only when a result was reported; a plain
+agent turn returns only its text artifacts. When a session reported more than one
 structured result the most recently updated one wins. Retrieval is org-scoped
 and further fenced by the same channel-binding check as the rest of `tasks/get`
 (TM-A2A-012): the artifact for a session created by one channel is never
@@ -294,12 +328,12 @@ contract because:
 
 ### Questions (`ask_user`)
 
-A2A 0.3 has no elicitation or form primitive, so a session parked on `ask_user`
+A2A (0.3 and 1.0) has no elicitation or form primitive, so a session parked on `ask_user`
 ([`knowledge/execution/ask-user.md`](../execution/ask-user.md)) is projected onto the two things the
 protocol does have: a task state, and typed parts on `TaskStatus.message`.
 
 **Outbound.** While the session waits, `tasks/get` reports
-`state = "input_required"` and `status.message` carries the question twice:
+`state = "input-required"` and `status.message` carries the question twice:
 
 - a **text part** rendering the question, its options and how to answer, in
   prose. Every A2A consumer reads text and the ones written before this
@@ -333,7 +367,7 @@ chat-supersedes-question rule that `MessageService::create` owns.
 rather than resuming the one that asked.
 
 **Credentials.** A `secret` question is never projected as something a remote
-agent could fill in (TM-AGENT-016). It reports `state = "auth_required"`, and
+agent could fill in (TM-AGENT-016). It reports `state = "auth-required"`, and
 `status.message` carries prose plus an `everruns/auth_required` data part
 naming what is wanted, what it is for, and the session URL where a person
 provides it (absent when the deployment configures no public UI origin). There
@@ -475,7 +509,7 @@ Coverage required:
    answer naming an option nobody offered is refused without resuming; an
    answer with no `taskId` is refused; a text-only reply still supersedes the
    question as `cancelled` and is delivered as a message; a `secret` question
-   projects as `auth_required` with a URL and cannot be answered over the
+   projects as `auth-required` with a URL and cannot be answered over the
    channel.
 
 ## Rate Limiting

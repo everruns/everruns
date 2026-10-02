@@ -300,7 +300,7 @@ async fn a2a_tasks_get_projects_parked_ask_user_as_prose_and_data_part() {
     )
     .await;
 
-    assert_eq!(got["result"]["status"]["state"], "input_required");
+    assert_eq!(got["result"]["status"]["state"], "input-required");
     let parts = got["result"]["status"]["message"]["parts"]
         .as_array()
         .expect("status message carries parts");
@@ -471,7 +471,7 @@ async fn a2a_data_part_answer_without_a_task_id_is_refused() {
 }
 
 /// THREAT[TM-AGENT-016]: a remote agent is never prompted for a human's
-/// credential. The secret question becomes `auth_required` plus a URL, and
+/// credential. The secret question becomes `auth-required` plus a URL, and
 /// nothing in the projection is answerable.
 #[tokio::test]
 async fn a2a_secret_question_projects_as_auth_required_never_as_a_question_to_answer() {
@@ -492,7 +492,7 @@ async fn a2a_secret_question_projects_as_auth_required_never_as_a_question_to_an
     )
     .await;
 
-    assert_eq!(got["result"]["status"]["state"], "auth_required");
+    assert_eq!(got["result"]["status"]["state"], "auth-required");
     let message = got["result"]["status"]["message"].to_string();
     assert!(
         !message.contains("everruns/ask_user\""),

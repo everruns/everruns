@@ -1,6 +1,6 @@
 // `ask_user` over the inbound A2A channel (EVE-1062).
 //
-// A2A 0.3 has no elicitation or form primitive, so a parked `ask_user` call is
+// A2A (0.3 and 1.0) has no elicitation or form primitive, so a parked `ask_user` call is
 // projected onto the extension point the protocol does have: a namespaced,
 // schema-declared `DataPart` on `TaskStatus.message`. The same message always
 // carries a **text part** rendering the identical question in prose — every
@@ -22,9 +22,10 @@ use axum::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::wire::{self, WireVersion};
 use super::{
-    AuthorizedA2a, EndpointA2aState, build_task_json, derive_task_state_from_events,
-    internal_error, legacy_task_json, rpc_error, rpc_success, session_belongs_to_a2a_channel,
+    AuthorizedA2a, EndpointA2aState, internal_error, rpc_error, rpc_success,
+    session_belongs_to_a2a_channel, task_view,
 };
 use crate::storage::StorageBackend;
 
@@ -72,7 +73,7 @@ const ASK_USER_DATA_VERSION: u32 = 1;
 
 /// A parked `ask_user` call, projected onto the A2A task.
 pub(super) struct AskUserProjection {
-    /// `input_required`, or `auth_required` when a credential is wanted.
+    /// `input-required`, or `auth-required` when a credential is wanted.
     pub(super) state: &'static str,
     /// `TaskStatus.message`: prose first, typed data second.
     pub(super) message: Value,
@@ -152,7 +153,7 @@ pub(super) fn project_ask_user(
     use everruns_builtins::ask_user::AskUserQuestionKind;
 
     // THREAT[TM-AGENT-016]: a remote agent is never prompted for a human's
-    // credential. A `secret` question projects as `auth_required` carrying a
+    // credential. A `secret` question projects as `auth-required` carrying a
     // URL a person opens — never as a data part with a field to fill in, and
     // never with anywhere for a value to travel back through.
     if pending
@@ -184,7 +185,7 @@ pub(super) fn project_ask_user(
             }
         });
         return AskUserProjection {
-            state: "auth_required",
+            state: "auth-required",
             message: a2a_status_message(
                 task_id,
                 vec![
@@ -206,7 +207,7 @@ pub(super) fn project_ask_user(
         }
     });
     AskUserProjection {
-        state: "input_required",
+        state: "input-required",
         message: a2a_status_message(
             task_id,
             vec![
@@ -388,7 +389,7 @@ fn render_secret_prose(
     let mut out = String::from(
         "This task needs a credential, which is never requested from a calling agent and never \
          travels over A2A. A person with access to the session provides it directly to Everruns; \
-         the task stays in auth_required until they do.\n",
+         the task stays auth-required until they do.\n",
     );
     for question in questions
         .iter()
@@ -434,7 +435,7 @@ pub(super) async fn handle_ask_user_answer(
     task_id: Option<&str>,
     submission: crate::api::question_answers::QuestionAnswersRequest,
     rpc_id: Value,
-    wrap_legacy_send_response: bool,
+    version: WireVersion,
 ) -> Response {
     use crate::api::question_answers::{QuestionResolver, ResolveError, SubmittedStatus};
     use everruns_builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
@@ -551,22 +552,21 @@ pub(super) async fn handle_ask_user_answer(
         return invalid(rpc_id, &detail);
     }
 
-    let state_label = match derive_task_state_from_events(&state.db, session_id).await {
-        Ok(label) => label,
+    let task = match task_view::load_task(state, auth, &session).await {
+        Ok(task) => task,
         Err(err) => return internal_error(err).into_response(),
     };
-    let task = build_task_json(session_id, state_label, None);
-    let result = if wrap_legacy_send_response {
-        json!({ "task": legacy_task_json(task) })
-    } else {
-        task
-    };
-    (StatusCode::OK, rpc_success(rpc_id, result)).into_response()
+    (
+        StatusCode::OK,
+        rpc_success(rpc_id, wire::send_message_result(version, task)),
+    )
+        .into_response()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::{parse_message_params, translate_session_event};
+    use super::super::parse_message_params;
+    use super::super::stream::translate_session_event;
     use super::*;
     use everruns_core::events::EventData;
 
@@ -639,7 +639,7 @@ mod tests {
     #[test]
     fn ask_user_projection_carries_prose_and_typed_data() {
         let projection = project_ask_user(&pending(vec![choice_question()]), "task-1", "");
-        assert_eq!(projection.state, "input_required");
+        assert_eq!(projection.state, "input-required");
         let parts = projection.message["parts"].as_array().unwrap();
 
         let text = parts
@@ -674,7 +674,7 @@ mod tests {
     #[test]
     fn text_question_projects_as_a_free_text_field_without_options() {
         let projection = project_ask_user(&pending(vec![text_question()]), "task-1", "");
-        assert_eq!(projection.state, "input_required");
+        assert_eq!(projection.state, "input-required");
         let data = projection.message["parts"]
             .as_array()
             .unwrap()
@@ -712,7 +712,7 @@ mod tests {
             "session_1",
             "https://app.example.test/",
         );
-        assert_eq!(projection.state, "auth_required");
+        assert_eq!(projection.state, "auth-required");
         let rendered = projection.message.to_string();
         assert!(
             !rendered.contains(ASK_USER_QUESTION_KEY),
@@ -737,7 +737,7 @@ mod tests {
     #[test]
     fn secret_question_without_a_frontend_url_still_projects_auth_required() {
         let projection = project_ask_user(&pending(vec![secret_question()]), "session_1", "");
-        assert_eq!(projection.state, "auth_required");
+        assert_eq!(projection.state, "auth-required");
         let parts = projection.message["parts"].as_array().unwrap();
         let auth = parts
             .iter()
@@ -814,7 +814,7 @@ mod tests {
             completed_headline: None,
         });
         let frame = translate_session_event(&data, "task-1", "ctx-1", "").unwrap();
-        assert_eq!(frame["status"]["state"], "input_required");
+        assert_eq!(frame["status"]["state"], "input-required");
         assert_eq!(frame["final"], true);
         assert!(
             frame["status"]["message"]["parts"]

@@ -46,7 +46,6 @@ crates/provider/src/openresponses_types.rs
 crates/server/src/api/agents.rs
 crates/server/src/api/common.rs
 crates/server/src/api/durable.rs
-crates/server/src/api/endpoint_a2a.rs
 crates/server/src/api/mcp_endpoint/mod.rs
 crates/server/src/api/sessions.rs
 crates/server/src/api/voice.rs

@@ -629,7 +629,7 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
 
-    // tasks/resubscribe is not supported (sentinel for unhandled method).
+    // tasks/resubscribe is not supported: A2A UnsupportedOperationError.
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
         "id": "x",
@@ -650,7 +650,7 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(response["error"]["code"], -32601);
+    assert_eq!(response["error"]["code"], -32004);
 
     // Empty parts.
     let body = serde_json::to_vec(&json!({
@@ -739,7 +739,7 @@ async fn a2a_message_stream_rejects_shared_session_channels() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(response["error"]["code"], -32600);
+    assert_eq!(response["error"]["code"], -32004);
     assert!(
         response["error"]["message"]
             .as_str()

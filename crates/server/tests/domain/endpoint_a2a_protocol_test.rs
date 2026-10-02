@@ -143,3 +143,159 @@ async fn api_created_a2a_endpoint_still_requires_its_key() {
     .await
     .assert_status(StatusCode::UNAUTHORIZED);
 }
+
+fn v1_send(id: &str, extra: Value) -> Value {
+    let mut params = json!({
+        "message": {
+            "role": "ROLE_USER",
+            "messageId": format!("m-{id}"),
+            "parts": [{ "text": "hello" }]
+        },
+        "configuration": { "returnImmediately": true }
+    });
+    if let (Some(params), Some(extra)) = (params.as_object_mut(), extra.as_object()) {
+        for (key, value) in extra {
+            params.insert(key.clone(), value.clone());
+        }
+    }
+    json!({ "jsonrpc": "2.0", "id": id, "method": "SendMessage", "params": params })
+}
+
+/// The card advertises both wire versions and stays readable by 0.3 clients.
+#[tokio::test]
+async fn agent_card_advertises_1_0_and_0_3() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let card: Value = server
+        .get(&format!(
+            "/v1/e/{}/a2a/.well-known/agent-card.json",
+            endpoint.id
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let versions: Vec<&str> = card["supportedInterfaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["protocolVersion"].as_str().unwrap())
+        .collect();
+    assert_eq!(versions, ["1.0", "0.3"], "{card}");
+    assert_eq!(card["supportedInterfaces"][0]["protocolBinding"], "JSONRPC");
+    assert!(
+        card["securityRequirements"][0]["schemes"].is_object(),
+        "{card}"
+    );
+    assert!(card.get("stateTransitionHistory").is_none());
+    assert!(card["capabilities"].get("stateTransitionHistory").is_none());
+    // 0.3 fields of the union card.
+    assert_eq!(card["protocolVersion"], "0.3.0");
+    assert_eq!(card["preferredTransport"], "JSONRPC");
+    assert!(card["url"].as_str().unwrap().ends_with("/a2a"), "{card}");
+}
+
+/// A 1.0 `SendMessage` answers with the `SendMessageResponse` wrapper and
+/// ProtoJSON enum names, and `GetTask` reads the same task back.
+#[tokio::test]
+async fn v1_send_message_and_get_task_use_1_0_shapes() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+
+    let sent: Value = rpc(
+        &server,
+        &endpoint,
+        vec![("A2A-Version", "1.0")],
+        v1_send("v1-1", json!({})),
+    )
+    .await
+    .assert_status(StatusCode::OK)
+    .json();
+    assert!(sent.get("error").is_none(), "{sent}");
+    let task = &sent["result"]["task"];
+    assert!(task.get("kind").is_none(), "{sent}");
+    let state = task["status"]["state"].as_str().unwrap();
+    assert!(state.starts_with("TASK_STATE_"), "{sent}");
+    let task_id = task["id"].as_str().unwrap();
+
+    let got: Value = rpc(
+        &server,
+        &endpoint,
+        vec![("A2A-Version", "1.0")],
+        json!({ "jsonrpc": "2.0", "id": "get-1", "method": "GetTask", "params": { "id": task_id } }),
+    )
+    .await
+    .assert_status(StatusCode::OK)
+    .json();
+    assert_eq!(got["result"]["id"], task_id, "{got}");
+    assert!(
+        got["result"]["status"]["state"]
+            .as_str()
+            .unwrap()
+            .starts_with("TASK_STATE_"),
+        "{got}"
+    );
+}
+
+/// An unsupported `A2A-Version` is refused with VersionNotSupportedError.
+#[tokio::test]
+async fn unsupported_version_is_refused() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let res: Value = rpc(
+        &server,
+        &endpoint,
+        vec![("A2A-Version", "2.0")],
+        v1_send("bad-version", json!({})),
+    )
+    .await
+    .json();
+    assert_eq!(res["error"]["code"], -32009, "{res}");
+}
+
+/// Operations we do not implement answer with their dedicated error codes.
+#[tokio::test]
+async fn unimplemented_operations_use_their_error_codes() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    for (method, code) in [
+        ("ListTasks", -32004),
+        ("CreateTaskPushNotificationConfig", -32003),
+        ("GetExtendedAgentCard", -32007),
+    ] {
+        let res: Value = rpc(
+            &server,
+            &endpoint,
+            vec![("A2A-Version", "1.0")],
+            json!({ "jsonrpc": "2.0", "id": method, "method": method, "params": {} }),
+        )
+        .await
+        .json();
+        assert_eq!(res["error"]["code"], code, "{method}: {res}");
+    }
+}
+
+/// Continuing a task this endpoint never created is TaskNotFoundError, not a
+/// silent new session.
+#[tokio::test]
+async fn continuing_an_unknown_task_is_task_not_found() {
+    let server = TestServer::in_memory().await;
+    let endpoint = create_a2a_endpoint(&server, "session_per_invocation").await;
+    let res: Value = rpc(
+        &server,
+        &endpoint,
+        vec![("A2A-Version", "1.0")],
+        v1_send(
+            "unknown-task",
+            json!({ "message": {
+                "role": "ROLE_USER",
+                "messageId": "m-unknown",
+                "taskId": "00000000-0000-0000-0000-000000000000",
+                "parts": [{ "text": "hello again" }]
+            }}),
+        ),
+    )
+    .await
+    .json();
+    assert_eq!(res["error"]["code"], -32001, "{res}");
+}
