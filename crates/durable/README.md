@@ -231,14 +231,25 @@ as doctests.
 
 ```sh
 just durable bench                 # in-memory store
-just durable bench-db              # PostgreSQL store
+just durable bench-db              # PostgreSQL store (DATABASE_URL)
 just durable bench --save my-box   # also write a checkpoint for comparison
 ```
 
-Each run writes an HTML report to `target/benchmark-reports/`. Scenarios cover
-worker scaling (1 to 100 workers, burst load), workflow throughput (many
-workflows with many sequential steps) and cold-start latency. Saved
-checkpoints live in `benches/checkpoints/`.
+Scenarios cover worker scaling (1 to 100 workers, burst load), workflow
+throughput (many workflows with many sequential steps) and cold-start latency.
+Each run writes HTML reports to `crates/durable/target/benchmark-reports/`.
+
+Every bench takes the same flags: `--smoke` runs each scenario at a tiny scale,
+and `--summary <file>` appends one JSON line per scenario.
+
+- **Pull requests** run every bench with `--smoke` on the `durable` CI shard, so
+  a broken bench fails the change that broke it.
+- **Weekly**, the `Durable Benchmarks` workflow runs them at full scale and
+  compares throughput with `benches/baseline.jsonl`, failing on a drop of more
+  than 30%. Refresh the baseline from a trusted run's `summary.jsonl`
+  artifacts when a change is expected.
+- **Checkpoints** in `benches/checkpoints/` keep compact history (1000-point
+  quantile sketches, not raw samples).
 
 ## Feature flags
 

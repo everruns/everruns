@@ -165,7 +165,27 @@ pub struct LatencyHistogramSnapshot {
     pub max_micros: u64,
 }
 
+/// Points kept per histogram when a snapshot is compacted for storage.
+const SKETCH_POINTS: usize = 1000;
+
 impl LatencyHistogramSnapshot {
+    /// Replace the raw samples with `SKETCH_POINTS` evenly spaced quantiles.
+    ///
+    /// Decision: checkpoints are committed to git, and raw samples made them
+    /// megabytes each (33 MB for one run of the suite). Percentiles read
+    /// from the sketch land on the same sample the raw data gives for p50,
+    /// p95 and p99; count, sum, min and max are kept exactly.
+    pub fn compact(&mut self) {
+        if self.samples_micros.len() <= SKETCH_POINTS {
+            return;
+        }
+        self.samples_micros.sort_unstable();
+        let n = self.samples_micros.len();
+        self.samples_micros = (0..SKETCH_POINTS)
+            .map(|k| self.samples_micros[k * n / SKETCH_POINTS])
+            .collect();
+    }
+
     /// Get summary statistics from snapshot
     pub fn summary(&self) -> LatencySummary {
         let mut sorted = self.samples_micros.clone();
@@ -246,6 +266,10 @@ pub struct ThroughputCounter {
     start: Instant,
     /// Count of operations
     count: AtomicU64,
+    /// Microseconds from `start` to the latest increment. Throughput divides by
+    /// this, not by "now", so a rate read after the scenario ends still
+    /// describes the scenario.
+    last_micros: AtomicU64,
     /// Time-series data: (timestamp_ms, cumulative_count)
     timeseries: Mutex<Vec<(u64, u64)>>,
     /// Last sample time
@@ -258,6 +282,7 @@ impl ThroughputCounter {
         Self {
             start: now,
             count: AtomicU64::new(0),
+            last_micros: AtomicU64::new(0),
             timeseries: Mutex::new(vec![(0, 0)]),
             last_sample: Mutex::new(now),
         }
@@ -265,12 +290,23 @@ impl ThroughputCounter {
 
     /// Increment the counter
     pub fn increment(&self) {
-        self.count.fetch_add(1, Ordering::Relaxed);
+        self.increment_by(1);
     }
 
     /// Increment by N
     pub fn increment_by(&self, n: u64) {
         self.count.fetch_add(n, Ordering::Relaxed);
+        // At least 1: zero means "nothing counted yet" to `active_elapsed`.
+        let now = (self.start.elapsed().as_micros() as u64).max(1);
+        self.last_micros.fetch_max(now, Ordering::Relaxed);
+    }
+
+    /// Time from start to the latest increment, or to now before the first.
+    fn active_elapsed(&self) -> Duration {
+        match self.last_micros.load(Ordering::Relaxed) {
+            0 => self.start.elapsed(),
+            micros => Duration::from_micros(micros),
+        }
     }
 
     /// Sample current value for timeseries (call periodically)
@@ -293,7 +329,7 @@ impl ThroughputCounter {
 
     /// Get throughput (ops/sec)
     pub fn throughput(&self) -> f64 {
-        let elapsed = self.start.elapsed().as_secs_f64();
+        let elapsed = self.active_elapsed().as_secs_f64();
         if elapsed == 0.0 {
             return 0.0;
         }
@@ -309,7 +345,7 @@ impl ThroughputCounter {
     pub fn snapshot(&self) -> ThroughputSnapshot {
         ThroughputSnapshot {
             total: self.count.load(Ordering::Relaxed),
-            elapsed_ms: self.start.elapsed().as_millis() as u64,
+            elapsed_ms: self.active_elapsed().as_millis() as u64,
             timeseries: self.timeseries.lock().clone(),
         }
     }
@@ -545,6 +581,16 @@ pub struct MetricsSnapshot {
 }
 
 impl MetricsSnapshot {
+    /// Compact every histogram for storage; see [`LatencyHistogramSnapshot::compact`].
+    pub fn compact(&mut self) {
+        self.schedule_to_start.compact();
+        self.execution.compact();
+        self.end_to_end.compact();
+        self.custom
+            .values_mut()
+            .for_each(LatencyHistogramSnapshot::compact);
+    }
+
     /// Get elapsed duration
     pub fn elapsed(&self) -> Duration {
         Duration::from_millis(self.elapsed_ms)
@@ -554,6 +600,36 @@ impl MetricsSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_keeps_percentiles() {
+        let hist = LatencyHistogram::new();
+        for i in (1..=100_000u64).rev() {
+            hist.record(Duration::from_micros(i));
+        }
+        let mut snapshot = hist.snapshot();
+        let raw = snapshot.summary();
+        snapshot.compact();
+        assert_eq!(snapshot.samples_micros.len(), SKETCH_POINTS);
+        let compact = snapshot.summary();
+        assert_eq!(compact.p50, raw.p50);
+        assert_eq!(compact.p95, raw.p95);
+        assert_eq!(compact.p99, raw.p99);
+        assert_eq!((compact.count, compact.mean), (raw.count, raw.mean));
+    }
+
+    #[test]
+    fn throughput_stops_at_the_last_increment() {
+        let counter = ThroughputCounter::new();
+        counter.increment_by(100);
+        let rate = counter.throughput();
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(
+            counter.throughput(),
+            rate,
+            "idle time does not dilute the rate"
+        );
+    }
 
     #[test]
     fn test_latency_histogram() {

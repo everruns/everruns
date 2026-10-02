@@ -20,6 +20,7 @@
 //! ```
 
 mod checkpoint;
+mod cli;
 mod db;
 mod metrics;
 mod report;
@@ -29,6 +30,7 @@ pub use checkpoint::{
     BenchmarkCheckpoint, CheckpointComparison, CheckpointFilter, CheckpointStore,
     CheckpointSummary, EnvironmentInfo, PerformanceChanges,
 };
+pub use cli::{BenchOptions, ScenarioSummary};
 pub use db::register_bench_worker;
 pub use metrics::{
     BenchmarkMetrics, LatencyHistogram, LatencyHistogramSnapshot, LatencySummary, MetricsSnapshot,
