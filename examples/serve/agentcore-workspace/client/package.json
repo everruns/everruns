@@ -1,0 +1,15 @@
+{
+  "name": "serve-example-agentcore-workspace-client",
+  "private": true,
+  "type": "module",
+  "description": "An @ag-ui/client HttpAgent driving the agentcore-workspace example, locally or on AgentCore Runtime.",
+  "scripts": {
+    "start": "node run.mjs"
+  },
+  "dependencies": {
+    "@ag-ui/client": "1.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

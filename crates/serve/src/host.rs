@@ -193,6 +193,8 @@ pub(crate) struct Host {
     /// Question sets already answered, for `409`.
     answered: Mutex<HashSet<Key>>,
     gateway: gateway::Env,
+    /// The hosting target's `[sandbox] kind = "microvm"` adapter, if any.
+    microvm: std::sync::OnceLock<crate::hosting::MicroVm>,
     /// Names the session a request just parked on, for AG-UI runs.
     #[cfg(feature = "ag-ui")]
     pub(crate) parked_on: broadcast::Sender<SessionId>,
@@ -234,10 +236,17 @@ impl Host {
             questions: Mutex::new(HashMap::new()),
             answered: Mutex::new(HashSet::new()),
             gateway: gateway::Env::from_process(),
+            microvm: std::sync::OnceLock::new(),
             #[cfg(feature = "ag-ui")]
             parked_on: broadcast::channel(64).0,
             me: me.clone(),
         }))
+    }
+
+    /// Install the hosting target's microVM adapter. Set once, before any
+    /// agent is built.
+    pub(crate) fn set_microvm(&self, microvm: crate::hosting::MicroVm) {
+        let _ = self.microvm.set(microvm);
     }
 
     fn arc(&self) -> crate::Result<Arc<Host>> {
@@ -417,6 +426,14 @@ impl Host {
             .get(id)
             .is_some_and(|live| lock(&live.active).is_some());
         if active { "active" } else { "idle" }
+    }
+
+    /// Whether any session has a turn running that is not parked on a
+    /// person. A turn waiting for an approval or an answer counts as idle:
+    /// nothing runs until someone replies.
+    pub(crate) fn busy(&self) -> bool {
+        let ids: Vec<String> = lock(&self.live).keys().cloned().collect();
+        ids.iter().any(|id| self.status(id) == "active")
     }
 
     pub(crate) fn pending_approvals(&self, id: &str) -> Vec<PendingApprovalView> {
@@ -769,8 +786,13 @@ impl Host {
         builder = match self.app.inner.config.sandbox.kind {
             SandboxKind::None => builder,
             SandboxKind::Local => builder.capability(everruns::FileSystem),
-            // A host supplies the microVM adapter; locally bashkit stands in.
-            SandboxKind::Bashkit | SandboxKind::Microvm => builder.capability(BashkitShell::new()),
+            SandboxKind::Bashkit => builder.capability(BashkitShell::new()),
+            // A hosting target supplies the microVM adapter; without one
+            // (dev, self-hosted start) bashkit stands in.
+            SandboxKind::Microvm => match self.microvm.get() {
+                Some(microvm) => microvm(builder),
+                None => builder.capability(BashkitShell::new()),
+            },
         };
         if persistent && let Some(dir) = &self.data_dir {
             builder = builder.local(LocalConfig::new(dir.join("everruns")));

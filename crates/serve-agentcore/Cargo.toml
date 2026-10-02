@@ -1,0 +1,48 @@
+# Amazon Bedrock AgentCore Runtime hosting target for the experimental `serve`
+# agent framework.
+#
+# Decisions:
+# - A crate of its own on serve's public hosting seam (`serve::Server`), not a
+#   serve feature: the platform contract (`/ping`, `/invocations`, port 8080)
+#   stays out of serve, and the next target is another sibling crate.
+# - No AWS SDK dependency: AgentCore Runtime talks plain HTTP to the
+#   container, and authentication happens in front of it.
+# - Experimental (Alpha): published as `everruns-serve-agentcore` at the
+#   platform version, with no compatibility promise.
+
+[package]
+name = "everruns-serve-agentcore"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-serve-agentcore"
+description = "Run a serve app (experimental) on Amazon Bedrock AgentCore Runtime: /ping, /invocations, port 8080"
+readme = "README.md"
+keywords = ["agent", "agentcore", "aws", "bedrock", "ag-ui"]
+categories = ["development-tools", "web-programming::http-server"]
+
+[lib]
+name = "serve_agentcore"
+
+[dependencies]
+everruns-serve = { workspace = true, features = ["ag-ui"] }
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+# `HostShell` for `[sandbox] kind = "microvm"`: the session's microVM is the boundary.
+everruns = { workspace = true, features = ["host-shell"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tower.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
