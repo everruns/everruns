@@ -543,7 +543,16 @@ impl Respond for FakeAgentsApi {
                 let mut events = vec![
                     json!({"type": "agent.session.created", "event_id": "evt_created", "session": session}),
                 ];
-                state.start_turn(index, body["input"].as_str().unwrap_or_default());
+                // A seeded create sends user messages; the last is the turn's.
+                let input = match &body["input"] {
+                    Value::Array(messages) => messages
+                        .last()
+                        .and_then(|message| message["content"][0]["text"].as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    other => other.as_str().unwrap_or_default().to_string(),
+                };
+                state.start_turn(index, &input);
                 events.extend(state.drain(index));
                 sse(&events)
             }
@@ -1024,6 +1033,7 @@ pub fn request(turn: u128, text: &str) -> AgentsApiTurnRequest {
         input_message_id,
         iteration: 1,
         input_text: text.to_string(),
+        seed: None,
         config: build_session_config(&agent(), "", None).unwrap(),
         event_context: EventContext::turn(turn_id, input_message_id),
         provider: Some("openai".to_string()),

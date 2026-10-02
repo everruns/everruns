@@ -206,3 +206,129 @@ async fn deleting_a_provider_session_is_idempotent() {
         Err(AgentsApiError::Api { status: 401, .. })
     ));
 }
+
+/// A turn as the backend builds it once the session has history: it carries
+/// the record's transcript, which the driver sends only when it creates a
+/// provider session (EVE-1146).
+fn seeded(turn: u128, text: &str) -> AgentsApiTurnRequest {
+    let mut request = request(turn, text);
+    request.seed = Some(format!("RECORD-BEFORE-TURN-{turn}"));
+    request
+}
+
+/// The create input: the transcript, then the turn's text, both as user
+/// messages.
+fn assert_seeded_create(create: &Value, turn: u128, text: &str) {
+    assert_eq!(
+        create["input"].as_array().map(Vec::len),
+        Some(2),
+        "{create}"
+    );
+    for (index, expected) in [format!("RECORD-BEFORE-TURN-{turn}"), text.to_string()]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(create["input"][index]["role"], "user");
+        assert_eq!(
+            create["input"][index]["content"][0]["text"],
+            json!(expected)
+        );
+    }
+}
+
+/// What the server's retention task does to an idle checkpoint.
+async fn release_by_retention(h: &Harness) {
+    let lease = AgentsApiLease {
+        org_id: 1,
+        session_id: SessionId::from_seed(1),
+        owner: uuid::Uuid::new_v4(),
+    };
+    let mut released = h.store.acquire(lease).await.unwrap();
+    released.release_provider_session();
+    h.store.save(lease, &released).await.unwrap();
+    h.store.release(lease).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_replaced_or_released_provider_session_is_seeded_from_the_record() {
+    let h = Harness::new().await;
+    // The first turn has no history; the create sends its text alone.
+    let (first, _) = h.run(&request(1, "Who is customer 123?")).await;
+    assert_completed(&first);
+    assert_eq!(
+        h.fake.with(|s| s.create_bodies[0]["input"].clone()),
+        json!("Who is customer 123?")
+    );
+
+    // An existing provider session already holds the conversation: the turn
+    // goes out as follow-up input, and the transcript is not sent.
+    let (second, _) = h.run(&seeded(2, "And again?")).await;
+    assert_completed(&second);
+    assert_eq!(h.fake.with(|s| (s.creates, s.input_posts)), (1, 1));
+
+    // Replaced: the agent definition changed.
+    let mut changed = seeded(3, "Who is customer 123?");
+    changed.config.agent.instructions.push_str(" Be brief.");
+    let (third, _) = h.run(&changed).await;
+    assert_completed(&third);
+    assert_eq!(h.fake.with(|s| s.creates), 2);
+    assert_seeded_create(
+        &h.fake.with(|s| s.create_bodies[1].clone()),
+        3,
+        "Who is customer 123?",
+    );
+
+    // Released by retention: the checkpoint no longer names a session.
+    release_by_retention(&h).await;
+    let mut fourth = seeded(4, "Who is customer 123?");
+    fourth.config = changed.config.clone();
+    let (outcome, _) = h.run(&fourth).await;
+    assert_completed(&outcome);
+    assert_eq!(h.fake.with(|s| s.creates), 3);
+    assert_seeded_create(
+        &h.fake.with(|s| s.create_bodies[2].clone()),
+        4,
+        "Who is customer 123?",
+    );
+}
+
+#[tokio::test]
+async fn a_lost_provider_session_is_replaced_by_a_seeded_one() {
+    let h = Harness::new().await;
+    let (first, _) = h.run(&request(1, "Who is customer 123?")).await;
+    assert_completed(&first);
+    h.fake.with(|s| s.sessions.clear());
+    let (lost, _) = h.run(&seeded(2, "And customer 456?")).await;
+    assert_eq!(failed(&lost).0, "provider_session_unavailable");
+    assert_eq!(
+        h.fake.with(|s| s.creates),
+        1,
+        "the failed turn creates none"
+    );
+
+    let (third, _) = h.run(&seeded(3, "Who is customer 123?")).await;
+    assert_completed(&third);
+    assert_eq!(h.fake.with(|s| s.creates), 2);
+    assert_seeded_create(
+        &h.fake.with(|s| s.create_bodies[1].clone()),
+        3,
+        "Who is customer 123?",
+    );
+}
+
+#[tokio::test]
+async fn an_uncertain_seeded_create_is_adopted_not_repeated() {
+    let h = Harness::new().await;
+    // The worker dies after the provider created the seeded session, before
+    // saving its id: recovery adopts it instead of sending the seed again.
+    h.store.crash_when(|cp| cp.provider_session_id.is_some());
+    let (outcome, crashes) = h.run(&seeded(1, "Who is customer 123?")).await;
+    assert_eq!(crashes, 1);
+    assert_completed(&outcome);
+    assert_eq!(h.fake.with(|s| s.creates), 1);
+    assert_seeded_create(
+        &h.fake.with(|s| s.create_bodies[0].clone()),
+        1,
+        "Who is customer 123?",
+    );
+}
