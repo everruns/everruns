@@ -71,6 +71,10 @@ pub struct A2aInvocationRequest {
     pub task_id: String,
     pub context_id: Option<String>,
     pub role: Option<String>,
+    /// A session the caller already proved is bound to this channel (an A2A
+    /// `contextId` / `taskId` from an earlier response). When set, the message
+    /// continues that session instead of resolving one by `session_mode`.
+    pub continue_session: Option<SessionId>,
 }
 
 pub(crate) fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
@@ -445,6 +449,7 @@ struct InvocationRequest {
     source: AppInvocationSource,
     template_context: Value,
     request_id: Option<String>,
+    continue_session: Option<SessionId>,
 }
 
 async fn invoke_app_channel_inner(
@@ -474,6 +479,7 @@ where
         source,
         template_context,
         request_id,
+        continue_session,
     } = request;
 
     if !channel.status.is_live() {
@@ -514,15 +520,20 @@ where
         ));
     }
 
-    let (session_id, created_session) = find_or_create_invocation_session(
-        services.db,
-        services.session_service,
-        &app,
-        &channel,
-        session_mode,
-        source,
-    )
-    .await?;
+    let (session_id, created_session) = match continue_session {
+        Some(session_id) => (session_id, false),
+        None => {
+            find_or_create_invocation_session(
+                services.db,
+                services.session_service,
+                &app,
+                &channel,
+                session_mode,
+                source,
+            )
+            .await?
+        }
+    };
 
     // Subscribe-before-dispatch hook: streaming callers register here so the
     // workflow events emitted by `dispatch_invocation_message` cannot race
@@ -629,6 +640,7 @@ async fn invoke_scheduled_endpoint_inner(
             source: AppInvocationSource::Schedule,
             template_context,
             request_id: None,
+            continue_session: None,
         },
     )
     .await
@@ -719,6 +731,7 @@ where
             source: AppInvocationSource::A2a,
             template_context,
             request_id,
+            continue_session: req.continue_session,
         },
         after_session_resolved,
     )
@@ -961,6 +974,7 @@ pub async fn invoke_webhook_app_channel(
             source: AppInvocationSource::Webhook,
             template_context,
             request_id,
+            continue_session: None,
         },
     )
     .await
