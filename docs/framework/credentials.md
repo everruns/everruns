@@ -24,15 +24,19 @@ let agent = Agent::builder()
 ```
 
 Each driver crate offers the same entry point, returning a ready `Provider`.
-The facade bundles OpenAI behind its `openai` feature; other drivers are
-separate crates you add as dependencies:
+The facade bundles OpenAI, Anthropic, Gemini and OpenRouter behind the
+`openai`, `anthropic`, `gemini` and `openrouter` features (`Anthropic::from_env`
+and friends); any other driver is a separate crate you add as a dependency:
 
 ```rust
 use everruns::{Agent, Model};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-// Reads ANTHROPIC_API_KEY, and ANTHROPIC_BASE_URL when set.
-let model = Model::new("claude-sonnet-5", everruns_anthropic::from_env("anthropic")?);
+// Reads FIREWORKS_API_KEY, and FIREWORKS_BASE_URL when set.
+let model = Model::new(
+    "accounts/fireworks/models/llama-v3p1-70b-instruct",
+    everruns_fireworks::from_env("fireworks")?,
+);
 # let _ = model;
 # Ok(())
 # }
