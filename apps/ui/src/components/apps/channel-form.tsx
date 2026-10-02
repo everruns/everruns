@@ -1458,7 +1458,8 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Slack</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Reuse the existing manifest flow after saving credentials.
+              Gets its own Slack app, with its own name in Slack&apos;s Agents menu, in the
+              workspace you choose.
             </p>
           </div>
         )}

@@ -217,12 +217,18 @@ fn unsupported_response() -> (StatusCode, Json<ErrorResponse>) {
         .into_response(StatusCode::NOT_IMPLEMENTED)
 }
 
+/// Errors from connecting, testing or listing a workspace.
+///
+/// Any refusal from Slack here is about the token the admin supplied, never
+/// about creating an app, and it is their input to fix rather than an upstream
+/// outage. A malformed token comes back as `invalid_arguments`, not
+/// `invalid_refresh_token`, so the code is reported rather than matched on.
 fn connection_error_response(error: SlackProvisioningError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        SlackProvisioningError::Rejected(code) if code == "invalid_refresh_token" => {
-            ErrorResponse::new("Slack rejected the configuration refresh token")
-                .into_response(StatusCode::BAD_REQUEST)
-        }
+        SlackProvisioningError::Rejected(code) => ErrorResponse::new(format!(
+            "Slack did not accept the configuration refresh token ({code}). Generate a new one and paste its refresh token."
+        ))
+        .into_response(StatusCode::BAD_REQUEST),
         other => provisioning_error_response(other),
     }
 }
@@ -793,6 +799,19 @@ mod tests {
             token_generation: 1,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn any_slack_refusal_while_connecting_is_reported_as_the_tokens_fault() {
+        for code in ["invalid_refresh_token", "invalid_arguments", "invalid_auth"] {
+            let (status, Json(body)) =
+                connection_error_response(SlackProvisioningError::Rejected(code.to_string()));
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{code}");
+            let rendered = serde_json::to_string(&body).unwrap();
+            assert!(rendered.contains("configuration refresh token"), "{rendered}");
+            assert!(rendered.contains(code), "{rendered}");
+            assert!(!rendered.contains("app creation"), "{rendered}");
         }
     }
 

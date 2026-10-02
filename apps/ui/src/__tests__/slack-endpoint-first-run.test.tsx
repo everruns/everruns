@@ -358,6 +358,15 @@ describe("Slack endpoint first run", () => {
     expect(push).toHaveBeenCalledWith("/agents/agent_123/endpoints/appchan_123");
   });
 
+  it("asks for a workspace before saving when several are connected", async () => {
+    mockWorkspaces = [workspace("T1", "Acme"), workspace("T2", "Globex")];
+    await renderNewEndpointPage();
+    fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
+
+    expect(screen.getByRole("button", { name: "Save endpoint" })).toBeDisabled();
+    expect(beginSlackInstall).not.toHaveBeenCalled();
+  });
+
   it("keeps the manual save flow when no provisioner is available", async () => {
     mockSlackCapability = {
       supported: false,
