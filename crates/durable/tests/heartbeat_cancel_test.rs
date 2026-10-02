@@ -11,7 +11,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use everruns_durable::persistence::{
-    InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore, WorkflowStatus,
+    InMemoryWorkflowEventStore, TaskDefinition, WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_durable::workflow::ActivityOptions;
 
@@ -31,6 +31,8 @@ async fn cancelled_turn_reaches_the_owning_worker(store: &impl WorkflowEventStor
         })
         .await
         .unwrap();
+    let worker = WorkerInfo::new("worker-1", ["heartbeat_cancel_reason"]);
+    store.register_worker(worker).await.unwrap();
     let claimed = store
         .claim_task("worker-1", &["heartbeat_cancel_reason".to_string()], 1)
         .await
