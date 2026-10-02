@@ -96,7 +96,7 @@ async fn publish_app(server: &TestServer, app_id: &str) {
     server.set_app_endpoints_live(app_id, true).await;
 }
 #[tokio::test]
-async fn a2a_legacy_app_channel_mismatch_is_not_found() {
+async fn a2a_legacy_alias_endpoint_mismatch_is_not_found() {
     let server = TestServer::in_memory().await;
     let (app_a, _) = create_app_with_a2a(&server, "a2a-mismatch-a", "{{a2a.text}}").await;
     let (app_b, key_b) = create_app_with_a2a(&server, "a2a-mismatch-b", "{{a2a.text}}").await;

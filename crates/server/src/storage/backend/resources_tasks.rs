@@ -665,36 +665,19 @@ impl StorageBackend {
     }
 
     // ============================================
-    // App Channel CRUD
+    // Agent endpoint rows (App-linked compatibility path)
     // ============================================
 
-    pub async fn create_app_channel(
+    pub async fn create_legacy_alias_endpoint(
         &self,
         app_id: Uuid,
-        input: CreateAppChannelRow,
-    ) -> Result<AppChannelRow> {
-        dispatch!(self, create_app_channel, app_id, input)
+        input: CreateLegacyAliasEndpointRow,
+    ) -> Result<AgentEndpointRow> {
+        dispatch!(self, create_legacy_alias_endpoint, app_id, input)
     }
 
-    pub async fn create_app_channel_enforcing_schedule_cap(
-        &self,
-        org_id: i64,
-        app_id: Uuid,
-        input: CreateAppChannelRow,
-        max_enabled_schedule_channels: i64,
-    ) -> Result<AppChannelRow> {
-        dispatch!(
-            self,
-            create_app_channel_enforcing_schedule_cap,
-            org_id,
-            app_id,
-            input,
-            max_enabled_schedule_channels
-        )
-    }
-
-    pub async fn list_app_channels(&self, app_id: Uuid) -> Result<Vec<AppChannelRow>> {
-        dispatch!(self, list_app_channels, app_id)
+    pub async fn list_legacy_alias_endpoints(&self, app_id: Uuid) -> Result<Vec<AgentEndpointRow>> {
+        dispatch!(self, list_legacy_alias_endpoints, app_id)
     }
 
     pub async fn set_app_endpoint_publish(&self, app_id: Uuid, published: bool) -> Result<u64> {
@@ -708,15 +691,11 @@ impl StorageBackend {
         dispatch!(self, agents_with_live_endpoints, agent_ids)
     }
 
-    pub async fn app_has_channels(&self, app_id: Uuid) -> Result<bool> {
-        dispatch!(self, app_has_channels, app_id)
-    }
-
-    pub async fn get_app_channel_by_public_id(
+    pub async fn get_endpoint_row_by_public_id(
         &self,
         public_id: &str,
-    ) -> Result<Option<AppChannelRow>> {
-        dispatch!(self, get_app_channel_by_public_id, public_id)
+    ) -> Result<Option<AgentEndpointRow>> {
+        dispatch!(self, get_endpoint_row_by_public_id, public_id)
     }
 
     pub async fn get_ingress_endpoint_by_public_id(
@@ -798,37 +777,16 @@ impl StorageBackend {
         dispatch!(self, get_agent_endpoint_public_id, org_id, endpoint_id)
     }
 
-    pub async fn update_app_channel(
+    pub async fn update_endpoint_by_id(
         &self,
         id: Uuid,
-        input: UpdateAppChannel,
-    ) -> Result<Option<AppChannelRow>> {
-        dispatch!(self, update_app_channel, id, input)
+        input: UpdateEndpointByIdRow,
+    ) -> Result<Option<AgentEndpointRow>> {
+        dispatch!(self, update_endpoint_by_id, id, input)
     }
 
-    pub async fn update_app_channel_enforcing_schedule_cap(
-        &self,
-        org_id: i64,
-        id: Uuid,
-        input: UpdateAppChannel,
-        max_enabled_schedule_channels: i64,
-    ) -> Result<Option<AppChannelRow>> {
-        dispatch!(
-            self,
-            update_app_channel_enforcing_schedule_cap,
-            org_id,
-            id,
-            input,
-            max_enabled_schedule_channels
-        )
-    }
-
-    pub async fn delete_app_channel(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_app_channel, id)
-    }
-
-    pub async fn count_enabled_schedule_channels_for_org(&self, org_id: i64) -> Result<i64> {
-        dispatch!(self, count_enabled_schedule_channels_for_org, org_id)
+    pub async fn delete_endpoint_by_id(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_endpoint_by_id, id)
     }
 
     // ============================================

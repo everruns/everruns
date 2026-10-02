@@ -1,4 +1,4 @@
-// In-memory storage: App Channel CRUD
+// In-memory storage: agent endpoint CRUD
 
 use super::super::models::*;
 use super::InMemoryDatabase;
@@ -8,7 +8,7 @@ use anyhow::Result;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
-    fn sync_ingress_endpoint(&self, channel: &AppChannelRow) {
+    fn sync_ingress_endpoint(&self, channel: &AgentEndpointRow) {
         let mut endpoints = self.ingress_endpoints.write();
         let Some(endpoint) = endpoints.get_mut(&channel.id) else {
             return;
@@ -30,7 +30,7 @@ fn initial_status(enabled: bool) -> String {
 
 impl InMemoryDatabase {
     // ============================================
-    // App Channel CRUD
+    // Agent endpoint CRUD
     // ============================================
 
     // Mirrors the PostgreSQL backend, where an endpoint row carries a NOT NULL
@@ -52,15 +52,15 @@ impl InMemoryDatabase {
         }
     }
 
-    pub async fn create_app_channel(
+    pub async fn create_legacy_alias_endpoint(
         &self,
         app_id: Uuid,
-        input: CreateAppChannelRow,
-    ) -> Result<AppChannelRow> {
+        input: CreateLegacyAliasEndpointRow,
+    ) -> Result<AgentEndpointRow> {
         self.require_app_agent(app_id)?;
         let now = Self::now();
         let id = Uuid::now_v7();
-        let row = AppChannelRow {
+        let row = AgentEndpointRow {
             id,
             app_id,
             public_id: input.public_id,
@@ -76,72 +76,16 @@ impl InMemoryDatabase {
             updated_at: now,
         };
         let ingress = self.ingress_endpoint_row(row.clone());
-        self.app_channels.write().insert(id, row.clone());
+        self.endpoint_rows.write().insert(id, row.clone());
         if let Some(ingress) = ingress {
             self.ingress_endpoints.write().insert(id, ingress);
         }
         Ok(row)
     }
 
-    pub async fn create_app_channel_enforcing_schedule_cap(
-        &self,
-        org_id: i64,
-        app_id: Uuid,
-        input: CreateAppChannelRow,
-        max_enabled_schedule_channels: i64,
-    ) -> Result<AppChannelRow> {
-        self.require_app_agent(app_id)?;
-        let apps = self.apps.read();
-        let org_app_ids: std::collections::HashSet<Uuid> = apps
-            .values()
-            .filter(|a| a.org_id == org_id)
-            .map(|a| a.id)
-            .collect();
-        drop(apps);
-
-        let mut channels = self.app_channels.write();
-        let count = channels
-            .values()
-            .filter(|ch| {
-                org_app_ids.contains(&ch.app_id) && ch.channel_type == "schedule" && ch.enabled
-            })
-            .count() as i64;
-        if count >= max_enabled_schedule_channels {
-            return Err(BadRequestError::new(format!(
-                "Organization may have at most {max_enabled_schedule_channels} enabled schedule channel(s); currently has {count}"
-            ))
-            .into());
-        }
-
-        let now = Self::now();
-        let id = Uuid::now_v7();
-        let row = AppChannelRow {
-            id,
-            app_id,
-            public_id: input.public_id,
-            channel_type: input.channel_type,
-            channel_config: input.channel_config,
-            channel_config_encrypted: input.channel_config_encrypted,
-            auth: input.auth,
-            auth_encrypted: input.auth_encrypted,
-            durable_schedule_id: input.durable_schedule_id,
-            enabled: input.enabled,
-            status: initial_status(input.enabled),
-            created_at: now,
-            updated_at: now,
-        };
-        let ingress = self.ingress_endpoint_row(row.clone());
-        channels.insert(id, row.clone());
-        drop(channels);
-        if let Some(ingress) = ingress {
-            self.ingress_endpoints.write().insert(id, ingress);
-        }
-        Ok(row)
-    }
-
-    pub async fn list_app_channels(&self, app_id: Uuid) -> Result<Vec<AppChannelRow>> {
-        let channels = self.app_channels.read();
-        let mut result: Vec<AppChannelRow> = channels
+    pub async fn list_legacy_alias_endpoints(&self, app_id: Uuid) -> Result<Vec<AgentEndpointRow>> {
+        let channels = self.endpoint_rows.read();
+        let mut result: Vec<AgentEndpointRow> = channels
             .values()
             .filter(|ch| ch.app_id == app_id)
             .cloned()
@@ -150,16 +94,11 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    pub async fn app_has_channels(&self, app_id: Uuid) -> Result<bool> {
-        let channels = self.app_channels.read();
-        Ok(channels.values().any(|ch| ch.app_id == app_id))
-    }
-
-    pub async fn get_app_channel_by_public_id(
+    pub async fn get_endpoint_row_by_public_id(
         &self,
         public_id: &str,
-    ) -> Result<Option<AppChannelRow>> {
-        let channels = self.app_channels.read();
+    ) -> Result<Option<AgentEndpointRow>> {
+        let channels = self.endpoint_rows.read();
         Ok(channels
             .values()
             .find(|ch| ch.public_id == public_id)
@@ -354,7 +293,7 @@ impl InMemoryDatabase {
         Ok(true)
     }
 
-    fn ingress_endpoint_row(&self, channel: AppChannelRow) -> Option<IngressEndpointRow> {
+    fn ingress_endpoint_row(&self, channel: AgentEndpointRow) -> Option<IngressEndpointRow> {
         let app = self.apps.read().get(&channel.app_id)?.clone();
         let agent_id = app.agent_id?;
         let agent = self
@@ -398,7 +337,7 @@ impl InMemoryDatabase {
         org_id: i64,
         endpoint_id: Uuid,
     ) -> Result<Option<String>> {
-        let channel = self.app_channels.read().get(&endpoint_id).cloned();
+        let channel = self.endpoint_rows.read().get(&endpoint_id).cloned();
         let Some(channel) = channel else {
             return Ok(None);
         };
@@ -416,12 +355,12 @@ impl InMemoryDatabase {
         Ok(belongs_to_org.then_some(channel.public_id))
     }
 
-    pub async fn update_app_channel(
+    pub async fn update_endpoint_by_id(
         &self,
         id: Uuid,
-        input: UpdateAppChannel,
-    ) -> Result<Option<AppChannelRow>> {
-        let mut channels = self.app_channels.write();
+        input: UpdateEndpointByIdRow,
+    ) -> Result<Option<AgentEndpointRow>> {
+        let mut channels = self.endpoint_rows.write();
         let Some(ch) = channels.get_mut(&id) else {
             return Ok(None);
         };
@@ -453,68 +392,8 @@ impl InMemoryDatabase {
         Ok(Some(updated))
     }
 
-    pub async fn update_app_channel_enforcing_schedule_cap(
-        &self,
-        org_id: i64,
-        id: Uuid,
-        input: UpdateAppChannel,
-        max_enabled_schedule_channels: i64,
-    ) -> Result<Option<AppChannelRow>> {
-        let apps = self.apps.read();
-        let org_app_ids: std::collections::HashSet<Uuid> = apps
-            .values()
-            .filter(|a| a.org_id == org_id)
-            .map(|a| a.id)
-            .collect();
-        drop(apps);
-
-        let mut channels = self.app_channels.write();
-        let count = channels
-            .values()
-            .filter(|ch| {
-                org_app_ids.contains(&ch.app_id) && ch.channel_type == "schedule" && ch.enabled
-            })
-            .count() as i64;
-        if count >= max_enabled_schedule_channels {
-            return Err(BadRequestError::new(format!(
-                "Organization may have at most {max_enabled_schedule_channels} enabled schedule channel(s); currently has {count}"
-            ))
-            .into());
-        }
-
-        let Some(ch) = channels.get_mut(&id) else {
-            return Ok(None);
-        };
-        if let Some(channel_type) = input.channel_type {
-            ch.channel_type = channel_type;
-        }
-        if let Some(channel_config) = input.channel_config {
-            ch.channel_config = channel_config;
-        }
-        input
-            .channel_config_encrypted
-            .apply(&mut ch.channel_config_encrypted);
-        input.auth.apply(&mut ch.auth);
-        input.auth_encrypted.apply(&mut ch.auth_encrypted);
-        input.durable_schedule_id.apply(&mut ch.durable_schedule_id);
-        if let Some(enabled) = input.enabled {
-            ch.enabled = enabled;
-            if !enabled {
-                ch.status = "disabled".to_string();
-            }
-        }
-        if let Some(status) = input.status.clone() {
-            ch.status = status;
-        }
-        ch.updated_at = Self::now();
-        let updated = ch.clone();
-        drop(channels);
-        self.sync_ingress_endpoint(&updated);
-        Ok(Some(updated))
-    }
-
-    pub async fn delete_app_channel(&self, id: Uuid) -> Result<bool> {
-        let mut channels = self.app_channels.write();
+    pub async fn delete_endpoint_by_id(&self, id: Uuid) -> Result<bool> {
+        let mut channels = self.endpoint_rows.write();
         let removed = channels.remove(&id).is_some();
         drop(channels);
         self.ingress_endpoints.write().remove(&id);
@@ -533,7 +412,7 @@ impl InMemoryDatabase {
             .filter_map(|a| a.agent_id.map(|agent| (a.id, agent)))
             .collect();
         drop(apps);
-        let channels = self.app_channels.read();
+        let channels = self.endpoint_rows.read();
         Ok(channels
             .values()
             .filter(|ch| ch.status == "live")
@@ -544,7 +423,7 @@ impl InMemoryDatabase {
 
     /// See the PostgreSQL backend: bridges App publish onto endpoint status.
     pub async fn set_app_endpoint_publish(&self, app_id: Uuid, published: bool) -> Result<u64> {
-        let mut channels = self.app_channels.write();
+        let mut channels = self.endpoint_rows.write();
         let mut changed = 0;
         for ch in channels.values_mut().filter(|ch| ch.app_id == app_id) {
             if published {
@@ -567,22 +446,5 @@ impl InMemoryDatabase {
             self.sync_ingress_endpoint(&channel);
         }
         Ok(changed)
-    }
-
-    pub async fn count_enabled_schedule_channels_for_org(&self, org_id: i64) -> Result<i64> {
-        let apps = self.apps.read();
-        let channels = self.app_channels.read();
-        let org_app_ids: std::collections::HashSet<Uuid> = apps
-            .values()
-            .filter(|a| a.org_id == org_id)
-            .map(|a| a.id)
-            .collect();
-        let count = channels
-            .values()
-            .filter(|ch| {
-                org_app_ids.contains(&ch.app_id) && ch.channel_type == "schedule" && ch.enabled
-            })
-            .count();
-        Ok(count as i64)
     }
 }

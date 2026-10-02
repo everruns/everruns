@@ -34,8 +34,8 @@ use crate::api::endpoint_auth::{
 };
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::apps::{
-    ApiInvocationRequest, hash_app_api_key, invoke_api_app_channel, post_api_app_channel_message,
-    resolve_api_app_channel, session_has_app_channel_tags,
+    ApiInvocationRequest, hash_endpoint_api_key, invoke_endpoint_api, post_endpoint_api_message,
+    resolve_endpoint_api, session_has_endpoint_tags,
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -347,7 +347,7 @@ pub async fn create_session(
     };
     let request_id = req_id.map(|Extension(id)| id.0);
 
-    match invoke_api_app_channel(
+    match invoke_endpoint_api(
         &state.db,
         state.encryption.as_ref(),
         &state.session_service,
@@ -413,7 +413,7 @@ pub async fn post_message(
     };
     let request_id = req_id.map(|Extension(id)| id.0);
 
-    match post_api_app_channel_message(
+    match post_endpoint_api_message(
         &state.db,
         state.encryption.as_ref(),
         &state.message_service,
@@ -477,7 +477,7 @@ pub async fn get_session(
         Ok(None) => return not_found().into_response(),
         Err(err) => return internal_error(err).into_response(),
     };
-    if !session_has_app_channel_tags(&session.tags, &auth.app_public_id, &auth.channel_public_id) {
+    if !session_has_endpoint_tags(&session.tags, &auth.app_public_id, &auth.channel_public_id) {
         return not_found().into_response();
     }
 
@@ -536,7 +536,7 @@ pub async fn cancel_session(
         Ok(None) => return not_found().into_response(),
         Err(err) => return internal_error(err).into_response(),
     };
-    if !session_has_app_channel_tags(&session.tags, &auth.app_public_id, &auth.channel_public_id) {
+    if !session_has_endpoint_tags(&session.tags, &auth.app_public_id, &auth.channel_public_id) {
         return not_found().into_response();
     }
 
@@ -563,11 +563,11 @@ async fn authenticate_request(
     peer_addr: Option<std::net::SocketAddr>,
 ) -> Result<AuthorizedApi, (StatusCode, Json<ErrorResponse>)> {
     // THREAT[TM-APIKEY-001/005]: published-app + enabled-channel + channel-type
-    // gate. Shared with the command layer (`invoke_api_app_channel` /
-    // `post_api_app_channel_message`) via `resolve_api_app_channel` so the gate
+    // gate. Shared with the command layer (`invoke_endpoint_api` /
+    // `post_endpoint_api_message`) via `resolve_endpoint_api` so the gate
     // lives in one place and cannot drift between HTTP and command paths.
     let (app, channel) =
-        resolve_api_app_channel(&state.db, state.encryption.as_ref(), app_id, channel_id)
+        resolve_endpoint_api(&state.db, state.encryption.as_ref(), app_id, channel_id)
             .await
             .map_err(command_error_response)?;
 
@@ -635,7 +635,7 @@ fn verify_api_key(
     // via the shared `extract_bearer` helper, matching the rest of the
     // app-endpoint auth stack.
     let provided_key = extract_bearer(headers).ok_or_else(unauthorized)?;
-    let provided_hash = hash_app_api_key(provided_key);
+    let provided_hash = hash_endpoint_api_key(provided_key);
     if constant_time_eq(provided_hash.as_bytes(), expected_hash.as_bytes()) {
         Ok(())
     } else {
@@ -862,7 +862,7 @@ mod tests {
 
     #[test]
     fn verify_api_key_accepts_case_insensitive_bearer() {
-        let hash = hash_app_api_key("evr_app_secret");
+        let hash = hash_endpoint_api_key("evr_app_secret");
         for header in ["Bearer evr_app_secret", "bearer evr_app_secret"] {
             let mut headers = HeaderMap::new();
             headers.insert(axum::http::header::AUTHORIZATION, header.parse().unwrap());

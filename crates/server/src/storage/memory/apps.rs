@@ -74,7 +74,7 @@ impl InMemoryDatabase {
         channel_public_id: &str,
     ) -> Result<Option<AppRow>> {
         let app_id = self
-            .app_channels
+            .endpoint_rows
             .read()
             .values()
             .find(|channel| channel.public_id == channel_public_id)

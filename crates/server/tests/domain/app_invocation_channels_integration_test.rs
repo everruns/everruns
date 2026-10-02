@@ -43,7 +43,7 @@ async fn publish_app(server: &TestServer, app_id: &str) {
     server.set_app_endpoints_live(app_id, true).await;
 }
 #[tokio::test]
-async fn webhook_legacy_app_channel_mismatch_is_not_found() {
+async fn webhook_legacy_alias_endpoint_mismatch_is_not_found() {
     let server = TestServer::in_memory().await;
     let app_a = create_app(
         &server,

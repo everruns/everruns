@@ -2768,12 +2768,12 @@ pub struct UpdateApp {
 }
 
 // ============================================
-// App Channel models
+// Agent endpoint rows (App-linked compatibility path)
 // ============================================
 
-/// App channel row from database
+/// `agent_endpoints` row as read through its archival `app_id` link.
 #[derive(Debug, Clone, FromRow)]
-pub struct AppChannelRow {
+pub struct AgentEndpointRow {
     pub id: Uuid,
     pub app_id: Uuid,
     pub public_id: String,
@@ -2831,9 +2831,9 @@ pub struct UpdatePrincipalRow {
     pub status: Option<String>,
 }
 
-/// Input for creating an app channel
+/// Input for creating an endpoint under a legacy App alias (agent derived from the App).
 #[derive(Debug, Clone)]
-pub struct CreateAppChannelRow {
+pub struct CreateLegacyAliasEndpointRow {
     pub public_id: String,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
@@ -2844,9 +2844,9 @@ pub struct CreateAppChannelRow {
     pub enabled: bool,
 }
 
-/// Input for updating an app channel
+/// Input for updating an endpoint by its internal row id.
 #[derive(Debug, Clone, Default)]
-pub struct UpdateAppChannel {
+pub struct UpdateEndpointByIdRow {
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
     pub channel_config_encrypted: UpdateField<Vec<u8>>,

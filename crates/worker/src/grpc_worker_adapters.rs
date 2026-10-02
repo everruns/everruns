@@ -656,7 +656,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         self.stream_heartbeater.clone()
     }
 
-    async fn invoke_scheduled_app_channel(
+    async fn invoke_scheduled_endpoint(
         &self,
         org_id: i64,
         app_id: &str,

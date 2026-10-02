@@ -6,7 +6,7 @@ use crate::domains::common::CommandError;
 use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
-use crate::storage::models::UpdateAppChannel;
+use crate::storage::models::UpdateEndpointByIdRow;
 use everruns_durable::UpdateField;
 use everruns_platform::{
     AgentEndpoint, AgentEndpointId, AgentVersionPolicy, App, AppStatus, EndpointAuthConfig,
@@ -17,7 +17,7 @@ use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, VirtualUse
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::types::{AppChannelRow, AppRow};
+use super::types::{AgentEndpointRow, AppRow};
 
 // ============================================================================
 // Encryption helpers
@@ -148,7 +148,7 @@ pub fn prepare_channel_storage(
 
 fn first_class_auth_value(
     encryption: Option<&Arc<EncryptionService>>,
-    row: &AppChannelRow,
+    row: &AgentEndpointRow,
 ) -> Option<serde_json::Value> {
     if let Some(encrypted) = row.auth_encrypted.as_deref() {
         let Some(encryption) = encryption else {
@@ -174,7 +174,7 @@ fn first_class_auth_value(
 
 pub fn decrypt_endpoint_auth(
     encryption: Option<&Arc<EncryptionService>>,
-    row: &AppChannelRow,
+    row: &AgentEndpointRow,
 ) -> Option<EndpointAuthConfig> {
     first_class_auth_value(encryption, row).map(|value| {
         serde_json::from_value(value).unwrap_or_else(|err| {
@@ -200,7 +200,7 @@ fn parse_legacy_endpoint_auth(value: serde_json::Value) -> EndpointAuthConfig {
 /// when its payload cannot be decrypted or parsed.
 pub fn channel_config_with_auth(
     encryption: Option<&Arc<EncryptionService>>,
-    row: &AppChannelRow,
+    row: &AgentEndpointRow,
 ) -> serde_json::Value {
     let mut config = decrypt_channel_config(
         encryption,
@@ -224,7 +224,7 @@ pub fn channel_config_with_auth(
 
 pub fn channel_row_to_channel(
     encryption: Option<&Arc<EncryptionService>>,
-    row: AppChannelRow,
+    row: AgentEndpointRow,
 ) -> AgentEndpoint {
     let public_id: AgentEndpointId = row
         .public_id
@@ -286,7 +286,7 @@ pub async fn row_to_app(
         .unwrap_or_else(|_| AppId::from_uuid(row.id));
 
     // Load channels from app_channels table; fall back to legacy columns
-    let channel_rows = match db.list_app_channels(row.id).await {
+    let channel_rows = match db.list_legacy_alias_endpoints(row.id).await {
         Ok(rows) => rows,
         Err(err) => {
             tracing::error!(
@@ -567,14 +567,14 @@ pub async fn update_channel_config_unscoped(
     config: &serde_json::Value,
 ) -> anyhow::Result<()> {
     let prepared = prepare_channel_storage(encryption, config)?;
-    let input = UpdateAppChannel {
+    let input = UpdateEndpointByIdRow {
         channel_config: Some(prepared.channel_config),
         channel_config_encrypted: UpdateField::from_option(prepared.channel_config_encrypted),
         auth: UpdateField::from_option(prepared.auth),
         auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
         ..Default::default()
     };
-    db.update_app_channel(channel_internal_id, input).await?;
+    db.update_endpoint_by_id(channel_internal_id, input).await?;
     Ok(())
 }
 
@@ -589,8 +589,8 @@ mod tests {
         channel_config_encrypted: Option<Vec<u8>>,
         auth: Option<serde_json::Value>,
         auth_encrypted: Option<Vec<u8>>,
-    ) -> AppChannelRow {
-        AppChannelRow {
+    ) -> AgentEndpointRow {
+        AgentEndpointRow {
             id: Uuid::now_v7(),
             app_id: Uuid::now_v7(),
             public_id: AgentEndpointId::new().to_string(),

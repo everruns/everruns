@@ -26,14 +26,14 @@ static TEMPLATE_EXPR_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppInvocationSource {
+pub enum EndpointInvocationSource {
     Schedule,
     Webhook,
     A2a,
     ApiEndpoint,
 }
 
-impl AppInvocationSource {
+impl EndpointInvocationSource {
     fn as_str(self) -> &'static str {
         match self {
             Self::Schedule => "schedule",
@@ -45,7 +45,7 @@ impl AppInvocationSource {
 }
 
 #[derive(Debug, Clone)]
-pub struct AppInvocationResult {
+pub struct EndpointInvocationResult {
     pub session_id: SessionId,
     pub created_session: bool,
 }
@@ -169,7 +169,7 @@ pub fn hash_a2a_api_key(plaintext: &str) -> String {
 }
 
 /// Hash a plaintext API endpoint execution key using SHA-256.
-pub fn hash_app_api_key(plaintext: &str) -> String {
+pub fn hash_endpoint_api_key(plaintext: &str) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(plaintext.as_bytes()))
 }
@@ -205,7 +205,7 @@ pub(crate) fn render_message_template(template: &str, context: &Value) -> String
         .into_owned()
 }
 
-fn app_session_tags(
+fn endpoint_session_tags(
     app: &crate::api::endpoint_ingress::IngressContext,
     channel: &crate::api::endpoint_ingress::IngressEndpoint,
 ) -> Vec<String> {
@@ -217,10 +217,10 @@ fn app_session_tags(
     ]
 }
 
-fn app_invocation_message_metadata(
+fn endpoint_invocation_message_metadata(
     app: &crate::api::endpoint_ingress::IngressContext,
     channel: &crate::api::endpoint_ingress::IngressEndpoint,
-    source: AppInvocationSource,
+    source: EndpointInvocationSource,
 ) -> HashMap<String, Value> {
     [
         (
@@ -244,12 +244,12 @@ fn app_invocation_message_metadata(
     .collect()
 }
 
-fn emit_app_invocation_audit_event(
+fn emit_endpoint_invocation_audit_event(
     db: Arc<crate::storage::StorageBackend>,
     app: &crate::api::endpoint_ingress::IngressContext,
     channel: &crate::api::endpoint_ingress::IngressEndpoint,
     session_id: SessionId,
-    source: AppInvocationSource,
+    source: EndpointInvocationSource,
     created_session: bool,
 ) {
     let mut event = AuditEvent::agent(AgentAction::AppInvocationStarted, app.org_id, None)
@@ -268,14 +268,14 @@ fn emit_app_invocation_audit_event(
 }
 fn shared_session_title(
     app: &crate::api::endpoint_ingress::IngressContext,
-    source: AppInvocationSource,
+    source: EndpointInvocationSource,
 ) -> String {
     format!("{} {}", app.name, source.as_str())
 }
 
 fn invocation_session_title(
     app: &crate::api::endpoint_ingress::IngressContext,
-    source: AppInvocationSource,
+    source: EndpointInvocationSource,
 ) -> String {
     format!(
         "{} {} {}",
@@ -291,9 +291,9 @@ async fn find_or_create_invocation_session(
     app: &crate::api::endpoint_ingress::IngressContext,
     channel: &crate::api::endpoint_ingress::IngressEndpoint,
     session_mode: SessionBinding,
-    source: AppInvocationSource,
+    source: EndpointInvocationSource,
 ) -> Result<(SessionId, bool), CommandError> {
-    let shared_tags = app_session_tags(app, channel);
+    let shared_tags = endpoint_session_tags(app, channel);
     if session_mode == SessionBinding::Endpoint
         && let Some(existing) = match app.historical_app_id {
             Some(app_id) => {
@@ -351,11 +351,11 @@ async fn find_or_create_invocation_session(
             // The invocation channel *is* the session's origin. `api_endpoint`
             // collapses into `webhook`: both are an inbound HTTP call into the app.
             match source {
-                AppInvocationSource::Schedule => everruns_platform::SessionSource::Schedule,
-                AppInvocationSource::Webhook | AppInvocationSource::ApiEndpoint => {
+                EndpointInvocationSource::Schedule => everruns_platform::SessionSource::Schedule,
+                EndpointInvocationSource::Webhook | EndpointInvocationSource::ApiEndpoint => {
                     everruns_platform::SessionSource::Webhook
                 }
-                AppInvocationSource::A2a => everruns_platform::SessionSource::A2a,
+                EndpointInvocationSource::A2a => everruns_platform::SessionSource::A2a,
             },
             CreateSessionRequest {
                 source: None,
@@ -396,11 +396,11 @@ async fn dispatch_invocation_message(
     app: &crate::api::endpoint_ingress::IngressContext,
     channel: &crate::api::endpoint_ingress::IngressEndpoint,
     session_id: SessionId,
-    source: AppInvocationSource,
+    source: EndpointInvocationSource,
     request_id: Option<String>,
     rendered_message: String,
 ) -> Result<(), CommandError> {
-    let metadata = Some(app_invocation_message_metadata(app, channel, source));
+    let metadata = Some(endpoint_invocation_message_metadata(app, channel, source));
 
     message_service
         .create(
@@ -446,28 +446,28 @@ struct InvocationRequest {
     app: crate::api::endpoint_ingress::IngressContext,
     channel: crate::api::endpoint_ingress::IngressEndpoint,
     session_mode: SessionBinding,
-    source: AppInvocationSource,
+    source: EndpointInvocationSource,
     template_context: Value,
     request_id: Option<String>,
     continue_session: Option<SessionId>,
 }
 
-async fn invoke_app_channel_inner(
+async fn invoke_endpoint_inner(
     services: InvocationServices<'_>,
     request: InvocationRequest,
-) -> Result<AppInvocationResult, CommandError> {
-    invoke_app_channel_inner_with_hook(services, request, |_session_id| async { Ok(()) }).await
+) -> Result<EndpointInvocationResult, CommandError> {
+    invoke_endpoint_inner_with_hook(services, request, |_session_id| async { Ok(()) }).await
 }
 
-/// Variant of [`invoke_app_channel_inner`] that runs a caller-supplied async
+/// Variant of [`invoke_endpoint_inner`] that runs a caller-supplied async
 /// hook between session resolution and message dispatch. The hook gives
 /// streaming callers a deterministic point to start an event subscription so
 /// they cannot miss workflow events that the dispatched turn emits.
-async fn invoke_app_channel_inner_with_hook<F, Fut>(
+async fn invoke_endpoint_inner_with_hook<F, Fut>(
     services: InvocationServices<'_>,
     request: InvocationRequest,
     after_session_resolved: F,
-) -> Result<AppInvocationResult, CommandError>
+) -> Result<EndpointInvocationResult, CommandError>
 where
     F: FnOnce(SessionId) -> Fut,
     Fut: std::future::Future<Output = Result<(), CommandError>>,
@@ -486,19 +486,19 @@ where
         return Err(CommandError::forbidden("App is not published".to_string()));
     }
     let message_template = match source {
-        AppInvocationSource::Schedule => {
+        EndpointInvocationSource::Schedule => {
             channel
                 .schedule_config()
                 .ok_or_else(|| CommandError::bad_request("Invalid schedule channel configuration"))?
                 .message
         }
-        AppInvocationSource::Webhook => {
+        EndpointInvocationSource::Webhook => {
             channel
                 .webhook_config()
                 .ok_or_else(|| CommandError::bad_request("Invalid webhook channel configuration"))?
                 .message
         }
-        AppInvocationSource::A2a => {
+        EndpointInvocationSource::A2a => {
             channel
                 .a2a_config()
                 .ok_or_else(|| CommandError::bad_request("Invalid A2A channel configuration"))?
@@ -506,8 +506,8 @@ where
         }
         // api_endpoint channels carry no config-side message template — the
         // caller supplies the message directly, so they use the dedicated
-        // `invoke_api_app_channel` path instead of this template renderer.
-        AppInvocationSource::ApiEndpoint => {
+        // `invoke_endpoint_api` path instead of this template renderer.
+        EndpointInvocationSource::ApiEndpoint => {
             return Err(CommandError::bad_request(
                 "api_endpoint channels do not use message templates",
             ));
@@ -551,7 +551,7 @@ where
     )
     .await?;
 
-    emit_app_invocation_audit_event(
+    emit_endpoint_invocation_audit_event(
         Arc::clone(services.db),
         &app,
         &channel,
@@ -560,13 +560,13 @@ where
         created_session,
     );
 
-    Ok(AppInvocationResult {
+    Ok(EndpointInvocationResult {
         session_id,
         created_session,
     })
 }
 
-pub async fn invoke_scheduled_app_channel(
+pub async fn invoke_scheduled_legacy_alias_endpoint(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     session_service: &SessionService,
@@ -574,7 +574,7 @@ pub async fn invoke_scheduled_app_channel(
     org_id: i64,
     app_id: &str,
     channel_id: &str,
-) -> Result<AppInvocationResult, CommandError> {
+) -> Result<EndpointInvocationResult, CommandError> {
     let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(db, encryption, channel_id)
         .await
         .map_err(classify_anyhow)?
@@ -593,7 +593,7 @@ pub async fn invoke_scheduled_agent_endpoint(
     message_service: &MessageService,
     org_id: i64,
     channel_id: &str,
-) -> Result<AppInvocationResult, CommandError> {
+) -> Result<EndpointInvocationResult, CommandError> {
     let (app, channel) = crate::api::endpoint_ingress::resolve_endpoint(db, encryption, channel_id)
         .await
         .map_err(classify_anyhow)?
@@ -608,7 +608,7 @@ async fn invoke_scheduled_endpoint_inner(
     message_service: &MessageService,
     app: crate::api::endpoint_ingress::IngressContext,
     channel: crate::api::endpoint_ingress::IngressEndpoint,
-) -> Result<AppInvocationResult, CommandError> {
+) -> Result<EndpointInvocationResult, CommandError> {
     let config = channel
         .schedule_config()
         .ok_or_else(|| CommandError::bad_request("Invalid schedule channel configuration"))?;
@@ -627,7 +627,7 @@ async fn invoke_scheduled_endpoint_inner(
         },
     });
 
-    invoke_app_channel_inner(
+    invoke_endpoint_inner(
         InvocationServices {
             db,
             session_service,
@@ -637,7 +637,7 @@ async fn invoke_scheduled_endpoint_inner(
             app,
             channel,
             session_mode: config.session_mode,
-            source: AppInvocationSource::Schedule,
+            source: EndpointInvocationSource::Schedule,
             template_context,
             request_id: None,
             continue_session: None,
@@ -646,15 +646,15 @@ async fn invoke_scheduled_endpoint_inner(
     .await
 }
 
-pub async fn invoke_a2a_app_channel(
+pub async fn invoke_endpoint_a2a(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     session_service: &SessionService,
     message_service: &MessageService,
     req: A2aInvocationRequest,
     request_id: Option<String>,
-) -> Result<AppInvocationResult, CommandError> {
-    invoke_a2a_app_channel_with_hook(
+) -> Result<EndpointInvocationResult, CommandError> {
+    invoke_endpoint_a2a_with_hook(
         db,
         encryption,
         session_service,
@@ -666,12 +666,12 @@ pub async fn invoke_a2a_app_channel(
     .await
 }
 
-/// Variant of [`invoke_a2a_app_channel`] that runs a caller-supplied async
+/// Variant of [`invoke_endpoint_a2a`] that runs a caller-supplied async
 /// hook between session resolution and message dispatch. Streaming callers
 /// use the hook to subscribe to session events at the safe point — before
 /// the durable workflow that the dispatched message triggers can emit any
 /// translatable events.
-pub async fn invoke_a2a_app_channel_with_hook<F, Fut>(
+pub async fn invoke_endpoint_a2a_with_hook<F, Fut>(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     session_service: &SessionService,
@@ -679,7 +679,7 @@ pub async fn invoke_a2a_app_channel_with_hook<F, Fut>(
     req: A2aInvocationRequest,
     request_id: Option<String>,
     after_session_resolved: F,
-) -> Result<AppInvocationResult, CommandError>
+) -> Result<EndpointInvocationResult, CommandError>
 where
     F: FnOnce(SessionId) -> Fut,
     Fut: std::future::Future<Output = Result<(), CommandError>>,
@@ -718,7 +718,7 @@ where
         },
     });
 
-    invoke_app_channel_inner_with_hook(
+    invoke_endpoint_inner_with_hook(
         InvocationServices {
             db,
             session_service,
@@ -728,7 +728,7 @@ where
             app,
             channel,
             session_mode: config.session_mode,
-            source: AppInvocationSource::A2a,
+            source: EndpointInvocationSource::A2a,
             template_context,
             request_id,
             continue_session: req.continue_session,
@@ -752,7 +752,7 @@ pub struct ApiInvocationRequest {
 /// **and** by the HTTP auth layer (`api::endpoint_api::authenticate_request`) so the
 /// published / enabled / channel-type gate lives in exactly one place and
 /// cannot drift between the two.
-pub async fn resolve_api_app_channel(
+pub async fn resolve_endpoint_api(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     app_id: &str,
@@ -792,7 +792,7 @@ pub async fn resolve_api_app_channel(
 /// Whether a session's routing tags bind it to the given app + channel.
 /// Confinement check for api_endpoint execution keys (mirrors the A2A
 /// `session_belongs_to_a2a_channel` guard). THREAT[TM-APIKEY-002].
-pub fn session_has_app_channel_tags(
+pub fn session_has_endpoint_tags(
     tags: &[String],
     app_public_id: &str,
     channel_public_id: &str,
@@ -804,21 +804,20 @@ pub fn session_has_app_channel_tags(
 
 /// Create (or resolve, for shared-session mode) the app-owned session for an
 /// api_endpoint channel and dispatch the caller-supplied message, triggering a
-/// turn. Mirrors `invoke_a2a_app_channel`, but the message is supplied by the
+/// turn. Mirrors `invoke_endpoint_a2a`, but the message is supplied by the
 /// caller rather than rendered from a config-side template.
-pub async fn invoke_api_app_channel(
+pub async fn invoke_endpoint_api(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     session_service: &SessionService,
     message_service: &MessageService,
     req: ApiInvocationRequest,
     request_id: Option<String>,
-) -> Result<AppInvocationResult, CommandError> {
+) -> Result<EndpointInvocationResult, CommandError> {
     if req.message.trim().is_empty() {
         return Err(CommandError::bad_request("message must not be empty"));
     }
-    let (app, channel) =
-        resolve_api_app_channel(db, encryption, &req.app_id, &req.channel_id).await?;
+    let (app, channel) = resolve_endpoint_api(db, encryption, &req.app_id, &req.channel_id).await?;
     let config = channel
         .api_endpoint_config()
         .ok_or_else(|| CommandError::bad_request("Invalid api_endpoint channel configuration"))?;
@@ -829,7 +828,7 @@ pub async fn invoke_api_app_channel(
         &app,
         &channel,
         config.session_mode,
-        AppInvocationSource::ApiEndpoint,
+        EndpointInvocationSource::ApiEndpoint,
     )
     .await?;
 
@@ -838,22 +837,22 @@ pub async fn invoke_api_app_channel(
         &app,
         &channel,
         session_id,
-        AppInvocationSource::ApiEndpoint,
+        EndpointInvocationSource::ApiEndpoint,
         request_id,
         req.message,
     )
     .await?;
 
-    emit_app_invocation_audit_event(
+    emit_endpoint_invocation_audit_event(
         Arc::clone(db),
         &app,
         &channel,
         session_id,
-        AppInvocationSource::ApiEndpoint,
+        EndpointInvocationSource::ApiEndpoint,
         created_session,
     );
 
-    Ok(AppInvocationResult {
+    Ok(EndpointInvocationResult {
         session_id,
         created_session,
     })
@@ -864,7 +863,7 @@ pub async fn invoke_api_app_channel(
 /// (confinement) or the call fails with not-found, so one app's key cannot
 /// drive another app's sessions. THREAT[TM-APIKEY-002].
 #[allow(clippy::too_many_arguments)]
-pub async fn post_api_app_channel_message(
+pub async fn post_endpoint_api_message(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     message_service: &MessageService,
@@ -873,18 +872,18 @@ pub async fn post_api_app_channel_message(
     session_id: SessionId,
     message: String,
     request_id: Option<String>,
-) -> Result<AppInvocationResult, CommandError> {
+) -> Result<EndpointInvocationResult, CommandError> {
     if message.trim().is_empty() {
         return Err(CommandError::bad_request("message must not be empty"));
     }
-    let (app, channel) = resolve_api_app_channel(db, encryption, app_id, channel_id).await?;
+    let (app, channel) = resolve_endpoint_api(db, encryption, app_id, channel_id).await?;
 
     let session = db
         .get_session(app.org_id, session_id)
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("Session"))?;
-    if !session_has_app_channel_tags(
+    if !session_has_endpoint_tags(
         &session.tags,
         &app.public_id.to_string(),
         &channel.public_id.to_string(),
@@ -897,35 +896,35 @@ pub async fn post_api_app_channel_message(
         &app,
         &channel,
         session_id,
-        AppInvocationSource::ApiEndpoint,
+        EndpointInvocationSource::ApiEndpoint,
         request_id,
         message,
     )
     .await?;
 
-    emit_app_invocation_audit_event(
+    emit_endpoint_invocation_audit_event(
         Arc::clone(db),
         &app,
         &channel,
         session_id,
-        AppInvocationSource::ApiEndpoint,
+        EndpointInvocationSource::ApiEndpoint,
         false,
     );
 
-    Ok(AppInvocationResult {
+    Ok(EndpointInvocationResult {
         session_id,
         created_session: false,
     })
 }
 
-pub async fn invoke_webhook_app_channel(
+pub async fn invoke_endpoint_webhook(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     session_service: &SessionService,
     message_service: &MessageService,
     req: WebhookInvocationRequest,
     request_id: Option<String>,
-) -> Result<AppInvocationResult, CommandError> {
+) -> Result<EndpointInvocationResult, CommandError> {
     let (app, channel) =
         crate::api::endpoint_ingress::resolve_endpoint(db, encryption, &req.channel_id)
             .await
@@ -961,7 +960,7 @@ pub async fn invoke_webhook_app_channel(
         },
     });
 
-    invoke_app_channel_inner(
+    invoke_endpoint_inner(
         InvocationServices {
             db,
             session_service,
@@ -971,7 +970,7 @@ pub async fn invoke_webhook_app_channel(
             app,
             channel,
             session_mode: config.session_mode,
-            source: AppInvocationSource::Webhook,
+            source: EndpointInvocationSource::Webhook,
             template_context,
             request_id,
             continue_session: None,
