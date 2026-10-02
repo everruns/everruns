@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-10-02
+
+### What's Changed
+
+- fix(release): order versioned dev-dependencies in the crate publish cascade, and check the order against packaged manifests in CI and before tagging ([#4018](https://github.com/everruns/everruns/pull/4018)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.34.1.
+
+The 0.34.0 crate cascade halted after `everruns-capability` and `everruns-cli-contract`: `everruns-durable` was ordered ahead of `everruns-core`, which it dev-depends on, and could not package. 0.34.1 carries the same source as 0.34.0 plus the ordering fix, and publishes every crate. First published this release: `everruns-ag-ui`, `everruns-drivers`, `everruns-durable`, `everruns-serve-agentcore`.
+
+## [0.34.0] - 2026-10-02
+
+### Highlights
+
+- **AG-UI 1.0** - A new `everruns-ag-ui` crate carries the AG-UI 1.0 wire types ([#3964](https://github.com/everruns/everruns/pull/3964)), and the AG-UI endpoint moves to protocol 1.0 with interrupts, resume, token usage, frontend tools, subagents and run metadata ([#3965](https://github.com/everruns/everruns/pull/3965), [#3967](https://github.com/everruns/everruns/pull/3967), [#3972](https://github.com/everruns/everruns/pull/3972), [#3979](https://github.com/everruns/everruns/pull/3979)). Any framework session serves AG-UI behind the `ag-ui` feature, with a durable thread store and a ready-made axum handler ([#3976](https://github.com/everruns/everruns/pull/3976), [#3998](https://github.com/everruns/everruns/pull/3998), [#4000](https://github.com/everruns/everruns/pull/4000)), `everruns-serve` exposes an AG-UI channel ([#3978](https://github.com/everruns/everruns/pull/3978)), and a consumer pipeline and SSE client ship with an upstream conformance corpus ([#3982](https://github.com/everruns/everruns/pull/3982)).
+- **A2A 1.0** - The A2A endpoint speaks A2A 1.0 and returns task results ([#3999](https://github.com/everruns/everruns/pull/3999)), with ListTasks, SubscribeToTask ([#4010](https://github.com/everruns/everruns/pull/4010)) and push notifications ([#4013](https://github.com/everruns/everruns/pull/4013)); `everruns-serve` serves every agent over A2A behind an `a2a` feature ([#4014](https://github.com/everruns/everruns/pull/4014)).
+- **Amazon Bedrock AgentCore hosting** - The new `everruns-serve-agentcore` crate hosts agents on AgentCore Runtime, with Bedrock through the execution role, WebSocket transport and durable approvals ([#3990](https://github.com/everruns/everruns/pull/3990), [#4012](https://github.com/everruns/everruns/pull/4012)).
+- **OpenAI Agents API backend** - An opt-in durable OpenAI Agents API backend ([#3957](https://github.com/everruns/everruns/pull/3957)) projects events, usage and cost ([#3961](https://github.com/everruns/everruns/pull/3961)), supports session lifecycle and portability ([#3963](https://github.com/everruns/everruns/pull/3963)), and enforces Everruns policy at tool boundaries ([#3959](https://github.com/everruns/everruns/pull/3959)).
+- **Native computer use with hard approval** - Native OpenAI and Anthropic computer tools run behind a hard tool-approval gate ([#3968](https://github.com/everruns/everruns/pull/3968), [#3956](https://github.com/everruns/everruns/pull/3956)).
+- **Slack workspaces per organization** - Organizations connect Slack workspaces and pick one per agent ([#3977](https://github.com/everruns/everruns/pull/3977)).
+- **Agent version pinning** - Endpoints and triggers can pin a specific agent version ([#3975](https://github.com/everruns/everruns/pull/3975)).
+- **More ways to reach models** - Cloudflare and Vercel AI Gateway drivers ([#3996](https://github.com/everruns/everruns/pull/3996)), an opt-in Responses WebSocket transport for OpenAI ([#3981](https://github.com/everruns/everruns/pull/3981)), and OpenAI background responses that re-attach after a worker restart ([#3969](https://github.com/everruns/everruns/pull/3969)).
+- **GitHub and MCP triggers** - PR reviewer and security scanner templates on the GitHub App ([#3980](https://github.com/everruns/everruns/pull/3980)), and agents that wake on inbound MCP events ([#3970](https://github.com/everruns/everruns/pull/3970)).
+- **`everruns-durable` on crates.io** - The durable workflow engine fires timers, runs child workflows and ships with a bundled PostgreSQL schema ([#3994](https://github.com/everruns/everruns/pull/3994), [#4008](https://github.com/everruns/everruns/pull/4008)).
+
+### What's Changed
+
+- feat(drivers): Cloudflare and Vercel AI Gateway drivers ([#3996](https://github.com/everruns/everruns/pull/3996)) by [@chaliy](https://github.com/chaliy)
+- docs(serve-agentcore): SigV4-signed /ws client, verified against a live runtime ([#4015](https://github.com/everruns/everruns/pull/4015)) by [@chaliy](https://github.com/chaliy)
+- feat(serve): serve every agent over A2A 1.0 behind an a2a feature ([#4014](https://github.com/everruns/everruns/pull/4014)) by [@chaliy](https://github.com/chaliy)
+- feat(serve-agentcore): Bedrock via execution role, /ws, durable approvals, live-tested on AgentCore ([#4012](https://github.com/everruns/everruns/pull/4012)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): push notifications on the A2A endpoint ([#4013](https://github.com/everruns/everruns/pull/4013)) by [@chaliy](https://github.com/chaliy)
+- refactor(durable): remove agent-turn semantics from the generic engine ([#4011](https://github.com/everruns/everruns/pull/4011)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): ListTasks, SubscribeToTask, and TaskNotCancelable on the A2A endpoint ([#4010](https://github.com/everruns/everruns/pull/4010)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump A2A SDK crates to a2a-lf 0.4, a2a-client-lf 0.2, a2a-server-lf 0.5 ([#4009](https://github.com/everruns/everruns/pull/4009)) by [@chaliy](https://github.com/chaliy)
+- feat(durable): prepare everruns-durable for crates.io ([#4008](https://github.com/everruns/everruns/pull/4008)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): move endpoint runtime to agent_endpoints domain ([#4006](https://github.com/everruns/everruns/pull/4006)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): endpoint names for agent_endpoints storage layer ([#4003](https://github.com/everruns/everruns/pull/4003)) by [@chaliy](https://github.com/chaliy)
+- refactor(durable): split WorkflowEventStore into focused traits ([#4002](https://github.com/everruns/everruns/pull/4002)) by [@chaliy](https://github.com/chaliy)
+- feat(everruns): ready-made axum AG-UI handler behind ag-ui-axum ([#4000](https://github.com/everruns/everruns/pull/4000)) by [@chaliy](https://github.com/chaliy)
+- feat(server): speak A2A 1.0 on the A2A endpoint and return task results ([#3999](https://github.com/everruns/everruns/pull/3999)) by [@chaliy](https://github.com/chaliy)
+- feat(everruns): durable AG-UI thread store and history seeding ([#3998](https://github.com/everruns/everruns/pull/3998)) by [@chaliy](https://github.com/chaliy)
+- fix(server): serve A2A and other canonical endpoint routes for API-created endpoints ([#3993](https://github.com/everruns/everruns/pull/3993)) by [@chaliy](https://github.com/chaliy)
+- chore(durable): record the first CI bench baseline ([#3997](https://github.com/everruns/everruns/pull/3997)) by [@chaliy](https://github.com/chaliy)
+- feat(everruns): frontend tools on Session::ag_ui ([#3995](https://github.com/everruns/everruns/pull/3995)) by [@chaliy](https://github.com/chaliy)
+- feat(durable): fire timers and run child workflows ([#3994](https://github.com/everruns/everruns/pull/3994)) by [@chaliy](https://github.com/chaliy)
+- feat(serve): everruns-serve-agentcore hosting target for AgentCore Runtime ([#3990](https://github.com/everruns/everruns/pull/3990)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): endpoint/trigger names for App-era columns ([#3992](https://github.com/everruns/everruns/pull/3992)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): retry expired response continuations ([#3991](https://github.com/everruns/everruns/pull/3991)) by [@chaliy](https://github.com/chaliy)
+- ci(durable): run benches weekly against a baseline and smoke them on every PR ([#3988](https://github.com/everruns/everruns/pull/3988)) by [@chaliy](https://github.com/chaliy)
+- feat(everruns): trusted per-run instructions for Session::ag_ui ([#3989](https://github.com/everruns/everruns/pull/3989)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): endpoint-oriented names for App-era endpoint types ([#3987](https://github.com/everruns/everruns/pull/3987)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): endpoint_ingress, endpoint_auth; drop App-era aliases ([#3986](https://github.com/everruns/everruns/pull/3986)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): make the in-memory store behave like PostgreSQL ([#3983](https://github.com/everruns/everruns/pull/3983)) by [@chaliy](https://github.com/chaliy)
+- feat(everruns): Anthropic and Gemini provider features on the facade ([#3985](https://github.com/everruns/everruns/pull/3985)) by [@chaliy](https://github.com/chaliy)
+- feat(platform): ag_ui_delegation capability ([#3984](https://github.com/everruns/everruns/pull/3984)) by [@chaliy](https://github.com/chaliy)
+- feat(provider): opt-in Responses WebSocket transport for OpenAI ([#3981](https://github.com/everruns/everruns/pull/3981)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): consumer pipeline, SSE client and upstream conformance corpus ([#3982](https://github.com/everruns/everruns/pull/3982)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): PR reviewer and security scanner templates on the GitHub App ([#3980](https://github.com/everruns/everruns/pull/3980)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): subagents, run metadata and capabilities on the AG-UI endpoint ([#3979](https://github.com/everruns/everruns/pull/3979)) by [@chaliy](https://github.com/chaliy)
+- feat(serve): AG-UI channel at /v1/e/{agent}/ag-ui behind the ag-ui feature ([#3978](https://github.com/everruns/everruns/pull/3978)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): connect Slack workspaces per org, pick one per agent ([#3977](https://github.com/everruns/everruns/pull/3977)) by [@chaliy](https://github.com/chaliy)
+- feat(everruns): serve AG-UI 1.0 from any session behind the ag-ui feature ([#3976](https://github.com/everruns/everruns/pull/3976)) by [@chaliy](https://github.com/chaliy)
+- feat(agent-versions): pin an agent version per endpoint and trigger ([#3975](https://github.com/everruns/everruns/pull/3975)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): replay applies follow-up actions; README, runnable docs, tests, working benches ([#3974](https://github.com/everruns/everruns/pull/3974)) by [@chaliy](https://github.com/chaliy)
+- test(browserless): scrape example.com title now that its h1 is gone ([#3973](https://github.com/everruns/everruns/pull/3973)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): frontend tools on the AG-UI endpoint ([#3972](https://github.com/everruns/everruns/pull/3972)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): reconcile late Agents API turn usage (EVE-1145) ([#3971](https://github.com/everruns/everruns/pull/3971)) by [@chaliy](https://github.com/chaliy)
+- feat(triggers): wake agents on inbound MCP events (EVE-1121) ([#3970](https://github.com/everruns/everruns/pull/3970)) by [@chaliy](https://github.com/chaliy)
+- feat(computer-use): native OpenAI and Anthropic computer tools with hard approval (EVE-1133) ([#3968](https://github.com/everruns/everruns/pull/3968)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): interrupts, resume and token usage on the AG-UI endpoint ([#3967](https://github.com/everruns/everruns/pull/3967)) by [@chaliy](https://github.com/chaliy)
+- feat(provider): re-attach OpenAI background responses after a worker restart (EVE-1134) ([#3969](https://github.com/everruns/everruns/pull/3969)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): move the AG-UI endpoint to protocol 1.0 ([#3965](https://github.com/everruns/everruns/pull/3965)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): add everruns-ag-ui crate with AG-UI 1.0 wire types ([#3964](https://github.com/everruns/everruns/pull/3964)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): Agents API session lifecycle and portability ([#3963](https://github.com/everruns/everruns/pull/3963)) by [@chaliy](https://github.com/chaliy)
+- chore(sprites): mark the Sprites integration experimental ([#3951](https://github.com/everruns/everruns/pull/3951)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): endpoint names for api, a2a and webhook modules ([#3962](https://github.com/everruns/everruns/pull/3962)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): project Agents API events, usage and cost ([#3961](https://github.com/everruns/everruns/pull/3961)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): endpoint-oriented names for App-era endpoint types ([#3960](https://github.com/everruns/everruns/pull/3960)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): enforce Everruns policy at Agents API tool boundaries ([#3959](https://github.com/everruns/everruns/pull/3959)) by [@chaliy](https://github.com/chaliy)
+- fix(session-storage): reserve MCP elicitation keys from kv_store ([#3958](https://github.com/everruns/everruns/pull/3958)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): durable opt-in OpenAI Agents API backend ([#3957](https://github.com/everruns/everruns/pull/3957)) by [@chaliy](https://github.com/chaliy)
+- feat(approvals): hard tool-approval gate for hosted sessions ([#3956](https://github.com/everruns/everruns/pull/3956)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): log expected Platform Chat starter conflict at debug ([#3955](https://github.com/everruns/everruns/pull/3955)) by [@chaliy](https://github.com/chaliy)
+- fix(tests): pin live thinking model to served Sonnet 4.6 id ([#3954](https://github.com/everruns/everruns/pull/3954)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.34.0.
+
+First published this release: `everruns-ag-ui`, `everruns-drivers`, `everruns-durable`, `everruns-serve-agentcore`.
+
 ## [0.33.0] - 2026-10-01
 
 ### Highlights

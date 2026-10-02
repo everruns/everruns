@@ -41,12 +41,15 @@ What is left is one gate:
 
 ```bash
 python3 scripts/sync-publish-pin-versions.py --check
+python3 scripts/check-publish-order.py
 ```
 
 It fails if a published crate declares a literal version instead of inheriting, if an internal pin
 has drifted, or if a published crate depends on a private workspace package (the
-`everruns-host` 0.23.0 failure). `--write` fixes the first two. CI runs the same check in the
-**Lockfile** job.
+`everruns-host` 0.23.0 failure). `--write` fixes the first two. `check-publish-order.py` packages
+every published crate and fails if Crate Release's plan would publish a crate before a workspace
+dependency its packaged manifest keeps (the v0.34.0 failure). CI runs both in the **Lockfile** job,
+and Crate Release reruns the order check on its real plan before creating the first tag.
 
 Tagging and publishing stay automated: on merge to `main` the **Crate Release** workflow
 (`.github/workflows/crate-release.yml`) creates `crate/<pkg>/v<ver>` for every published crate whose

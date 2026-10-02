@@ -42,7 +42,7 @@ tracing.workspace = true
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
 # `responses-websocket` is on because this driver offers the opt-in transport.
-everruns-provider = { path = "../../provider", version = "0.33.0", features = ["responses-websocket"] }
+everruns-provider = { path = "../../provider", version = "0.34.1", features = ["responses-websocket"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

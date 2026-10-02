@@ -1,19 +1,13 @@
-version: 0.33.0
-date: 2026-10-01
+version: 0.34.1
+date: 2026-10-02
 headline:
-  - GitHub triggers,
-  - OpenAI tools.
+  - 0.34 reaches
+  - crates.io.
 summary:
-  - Agents trigger on GitHub pull requests,
-  - the OpenAI Responses driver gains hosted tools,
-  - and MCP Apps views reach ChatGPT and Codex.
+  - A patch release that finishes publishing
+  - the 0.34 crates, with the AG-UI 1.0
+  - and A2A 1.0 work from 0.34.0.
 highlights:
-  - title: GitHub pull request triggers
-    description: Agents trigger on pull requests and connect their own GitHub App by clicks.
-    source: "#3943"
-  - title: OpenAI Responses hosted tools
-    description: Hosted web search, code interpreter, shell and file search, plus remote MCP.
-    source: "#3930"
-  - title: MCP Apps for ChatGPT and Codex
-    description: Everruns serves MCP Apps views for ChatGPT and Codex.
-    source: "#3927"
+  - title: Complete crate publish
+    description: Every 0.34 crate publishes to crates.io in dependency order.
+    source: "#4018"

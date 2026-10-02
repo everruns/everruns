@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -732,7 +732,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -748,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "schemars",
@@ -776,7 +776,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -806,7 +806,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -843,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -871,7 +871,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-bashkit"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "bashkit",
@@ -888,7 +888,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -904,7 +904,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-typesafe"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -920,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -933,7 +933,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -942,14 +942,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "everruns-openai"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -963,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-provider"
-version = "0.33.0"
+version = "0.34.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -996,6 +996,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "url",
  "uuid",
@@ -1740,9 +1741,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.58.3"
+version = "0.58.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "905edfa6eee835291d6efe33f733f7fcb40c2a24be93b78b74df95e56aef8611"
+checksum = "5761b0ca0a31464030d7c2a98087fde3124ebb5e09b5a112cdb815f03b8ee150"
 dependencies = [
  "ahash",
  "bytecount",
@@ -1768,18 +1769,18 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.58.3"
+version = "0.58.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "023cf6b6c38655c1e9cedf72b9c534fd361bd35d20ac06e074f2c93b7dd0836c"
+checksum = "f1ffba4378a3d6ee7f1ab65a8ed95c711ccfe4a3870932bdce89d8260abed38a"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.58.3"
+version = "0.58.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43519639b8e32075ef90a9b6b19136e516a3236b7943c3fe6b1622dafdced8ea"
+checksum = "386121f898b560ff6aaa7974952720e9d9276a201eca31296387c2ed8707855e"
 dependencies = [
  "ahash",
  "bytecount",
@@ -1799,9 +1800,9 @@ checksum = "34b357333733e8260735ba5894eb928c02ecc69c78715f01a8019e7fa7f2db4c"
 
 [[package]]
 name = "libc"
-version = "0.2.189"
+version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
 
 [[package]]
 name = "libm"
@@ -2341,9 +2342,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.58.3"
+version = "0.58.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ead446bbb5527785ff232eb96625ac03daa627945470374c553db8f13090e30f"
+checksum = "5cfa1c91745dbca76a406b926918d7c63e15a4525ebab939fec3e015a1fb82b1"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -3029,6 +3030,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
+dependencies = [
+ "futures-util",
+ "log",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tungstenite",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3161,6 +3178,24 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48ac77174b19c110a50ab2128b24215ac9cb40e0e12e093fb602d175c569d22"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.10.3",
+ "rustls",
+ "rustls-pki-types",
+ "sha1",
+ "thiserror",
+]
 
 [[package]]
 name = "typed-arena"

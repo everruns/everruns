@@ -178,7 +178,20 @@ jobs:
               name: {
                   d["name"]
                   for d in published[name]["dependencies"]
-                  if d["name"] in to_release and (d.get("kind") in (None, "normal", "build"))
+                  if d["name"] in to_release
+                  and d["name"] != name
+                  and (
+                      d.get("kind") in (None, "normal", "build")
+                      # A dev-dependency that carries a version requirement
+                      # stays in the packaged manifest, and `cargo package`
+                      # resolves it from the index, so it must publish first.
+                      # Version-less path dev-deps are stripped and stay out
+                      # of the ordering. Ignoring the versioned ones put
+                      # everruns-durable (no normal deps, dev-dep on
+                      # everruns-core) first in the v0.34.0 cascade, where it
+                      # failed to package and halted the release.
+                      or (d.get("kind") == "dev" and d.get("req", "*") != "*")
+                  )
               }
               for name in to_release
           }
@@ -202,6 +215,13 @@ jobs:
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "Release plan ($COUNT crate(s), dependency order):"
           jq -r '.[] | "  \(.package) \(.version)  (\(.tag))"' release-plan.json
+
+      # Fail before the first tag, not mid-cascade: package every crate in the
+      # plan and check the order against the manifests cargo produces. A
+      # halted cascade can only be finished by the next patch version.
+      - name: Check publish order against packaged manifests
+        if: steps.plan.outputs.count != '0'
+        run: python3 scripts/check-publish-order.py --plan release-plan.json
 
       - name: Tag and publish in dependency order
         if: steps.plan.outputs.count != '0' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
