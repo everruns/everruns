@@ -12,7 +12,7 @@ tags:
 
 ## Description
 
-Verifies that a user can save agent versions, compare changes, set a default version, roll back, and fork from the UI.
+Verifies that a user can save agent versions, compare changes, set a default version, pin a version to an endpoint, roll back, and fork from the UI.
 
 ## Preconditions
 
@@ -38,8 +38,12 @@ Verifies that a user can save agent versions, compare changes, set a default ver
 5. Reopen Version history and save a patch version with summary `Prompt update`.
 6. Use Compare Versions to compare the first version to the second version.
 7. Set the second version as Default.
-8. Roll back to the first version and confirm the rollback dialog.
-9. Fork the second version into `version-ui-agent-fork`.
+8. Open the agent's **Integrations** tab, add a webhook endpoint, and open its editor. In the
+   **Agent version** rail section set **Runs** to **A pinned version**, choose `0.1.0`, and save.
+9. Expand the endpoint row on the Integrations tab.
+10. Reopen the endpoint editor, set **Runs** back to **Agent default version**, and save.
+11. Roll back to the first version and confirm the rollback dialog.
+12. Fork the second version into `version-ui-agent-fork`.
 
 ## Expected Result
 
@@ -47,10 +51,8 @@ Verifies that a user can save agent versions, compare changes, set a default ver
 - Two saved versions appear with semantic labels and summaries.
 - The diff shows the system prompt changing from the initial prompt to the updated prompt.
 - The selected default version displays a Default badge.
+- The pinned version picker offers only saved versions, not automatic draft snapshots.
+- After pinning, the endpoint editor header and the expanded endpoint row show `Pinned to 0.1.0`
+  even though `0.1.1` is the default; after unpinning the badge is gone.
 - Rollback updates the editable agent draft and appends a rollback history entry.
 - Fork creates a new agent with lineage from the selected version.
-
-Pinning a version is deliberately not covered. The step that set it went through the `/apps`
-configuration page, which was removed with the App UI, and nothing replaced it — the policy is
-still honoured wherever it is stored but cannot be set from any surface (EVE-1139). Re-add the
-coverage with the write path rather than leaving a step no tester can perform.
