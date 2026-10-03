@@ -25,6 +25,7 @@ on:
       # unpublished until someone dispatches the controller by hand, and nothing
       # on main reports that the crates never shipped.
       - '.github/workflows/publish-crates.yml'
+      - 'scripts/lib/wait-for-crate-index.py'
   workflow_dispatch:
     inputs:
       dry_run:

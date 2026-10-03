@@ -100,7 +100,7 @@ class VisibilityTests(unittest.TestCase):
                 self.run_gate([], tarball=body)
 
     def test_duplicate_or_malformed_index_fails_closed(self):
-        for body in [index() + b"\n" + index(), b"not json"]:
+        for body in [index() + b"\n" + index(), b"not json", b"null"]:
             with self.subTest(body=body), self.assertRaises(ValueError):
                 self.run_gate([body])
 

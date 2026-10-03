@@ -61,6 +61,8 @@ def artifact_checksum(body: bytes, package: str, version: str, sha: str) -> str:
 
 def index_visible(body: bytes, package: str, version: str, checksum: str) -> bool:
     entries = [json.loads(line) for line in body.splitlines() if line.strip()]
+    if not all(isinstance(entry, dict) for entry in entries):
+        raise ValueError("Invalid sparse-index records")
     matches = [entry for entry in entries if entry.get("vers") == version]
     if not matches:
         return False
