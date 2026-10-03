@@ -16,6 +16,7 @@ use crate::host::{
     execute_reason_activity_with_prompt_messages, run_user_prompt_submit_for_message,
 };
 use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
+use crate::turn_strategy::resolve_pause_hints;
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_capability::plugin_capability_id;
@@ -1343,10 +1344,9 @@ impl InProcessRuntime {
                     client_tool_calls.clone_from(&act_result.client_tool_calls);
                     let outcome = crate::turn_strategy::act_outcome(&act_result);
                     let ask_user_calls = crate::turn_strategy::pending_ask_user_calls(&act_result);
-                    let hints = crate::turn_strategy::resolve_pause_hints(
-                        self, org_id, session_id, outcome,
-                    )
-                    .await;
+                    let hints =
+                        resolve_pause_hints(self, org_id, session_id, input_message_id, outcome)
+                            .await?;
                     let transition = execution.advance(
                         ActivityOutcome::Act(outcome),
                         0,

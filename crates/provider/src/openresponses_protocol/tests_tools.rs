@@ -503,8 +503,44 @@ fn function_tools_serialize_strict_only_for_compatible_schemas() {
     let serialized =
         serde_json::to_value(&OpenResponsesProtocolChatDriver::convert_tools(&[incompatible])[0])
             .unwrap();
-    assert!(serialized.get("strict").is_none());
+    assert_eq!(serialized["strict"], false);
     assert!(serialized["parameters"].get("allOf").is_some());
+}
+
+#[test]
+fn client_question_tools_keep_kind_specific_fields_optional() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "questions": {
+                "type": "array", "minItems": 1, "maxItems": 4,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "secret_name": {"type": "string", "minLength": 1},
+                        "purpose": {"type": "string", "minLength": 1}
+                    },
+                    "required": ["question"],
+                    "additionalProperties": false
+                }
+            },
+            "expires_at": {"type": "string", "format": "date-time", "readOnly": true}
+        },
+        "required": ["questions"],
+        "additionalProperties": false
+    });
+    let tool = ToolDefinition::function("ask_user", "Ask a question", schema.clone());
+    for defer_loading in [None, Some(true)] {
+        let wire = serde_json::to_value(OpenResponsesProtocolChatDriver::function_tool(
+            &tool,
+            defer_loading,
+        ))
+        .unwrap();
+        assert_eq!(wire["strict"], false);
+        assert_eq!(wire["parameters"], schema);
+        assert_eq!(wire["defer_loading"], json!(defer_loading));
+    }
 }
 #[tokio::test]
 async fn compact_request_preserves_endpoint_query_and_complete_contract() {

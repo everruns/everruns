@@ -667,9 +667,11 @@ impl<A: crate::RuntimeHostAdapter> AgentsApiFunctionExecutor for HostFunctionExe
                 &self.adapter,
                 self.org_id,
                 session_id,
+                self.template.context.input_message_id,
                 outcome,
             )
-            .await;
+            .await
+            .map_err(|error| AgentsApiError::Store(error.user_facing_message()))?;
             everruns_engine::act_pauses_turn(
                 outcome,
                 hints.setup_connection,

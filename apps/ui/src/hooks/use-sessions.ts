@@ -22,6 +22,7 @@ import {
 } from "@/lib/api/sessions";
 import { DEFAULT_EXCLUDED_EVENTS, getSseUrl, listEventsPaginated } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
+import { CHAT_CLIENT_HINTS } from "@/lib/chat-client-hints";
 import type {
   CreateSessionRequest,
   ForkSessionRequest,
@@ -214,9 +215,7 @@ export function useCreateSession() {
         // question with the model's declared defaults rather than parking on a
         // card nobody is there to see (EVE-1057).
         hints: {
-          setup_connection: true,
-          url_elicitation: true,
-          ask_user: true,
+          ...CHAT_CLIENT_HINTS,
           ...request.hints,
         },
       }),

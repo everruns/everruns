@@ -104,7 +104,7 @@ pub(super) struct MockHostAdapter {
     harness_store: Arc<InMemoryHarnessStore>,
     agent_store: Arc<InMemoryAgentStore>,
     pub(super) session_store: Arc<TestSessionStore>,
-    message_store: Arc<InMemoryMessageRetriever>,
+    pub(super) message_store: Arc<InMemoryMessageRetriever>,
     provider_store: Arc<InMemoryProviderStore>,
     pub(super) event_emitter: Arc<InMemoryEventEmitter>,
     file_store: Arc<InMemorySessionFileStore>,

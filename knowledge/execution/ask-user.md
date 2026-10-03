@@ -97,15 +97,18 @@ The result alone returns the answer to the model. No synthetic user message is
 needed because the model authored the call.
 
 Whether the turn parks on step 3 at all is a client-capability question, so it
-rides a session hint — `ask_user`, declared by the UI alongside
-`setup_connection` and `url_elicitation`, the same mechanism URL elicitation
-uses. An MCP client declares it by declaring `elicitation`, and is then asked
-the question set as a form mode elicitation ([mcp.md](../integrations/mcp.md)).
+rides a hint — `ask_user`, declared by the UI at session creation and on each
+interactive message alongside `setup_connection` and `url_elicitation`, the same
+mechanism URL elicitation uses. An MCP client declares it by declaring
+`elicitation`, and is then asked the question set as a form mode elicitation
+([mcp.md](../integrations/mcp.md)).
 A client that never declared it (a scheduled run, a trigger, an SDK
 caller) has nobody to answer the card, so the planner answers the call itself
 with the model's declared defaults and `answered_by: "unattended"` in the same
 turn rather than burning the whole timeout on a human who is not there. One
-rule covers every headless surface. The engine recognises the call through
+rule covers every headless surface. Per-message declarations keep existing and
+forked chat threads interactive even when their stored session hints predate
+support for the card. The engine recognises the call through
 `ASK_USER_TOOL_NAME` in `everruns-provider`, and `unattended_ask_user_result`
 there is the JSON twin of `DefaultsResponder`; a drift test in
 `everruns-builtins` fails if the two disagree.

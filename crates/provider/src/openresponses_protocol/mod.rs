@@ -632,7 +632,10 @@ impl OpenResponsesProtocolChatDriver {
             parameters: strict_parameters
                 .clone()
                 .unwrap_or_else(|| Self::sanitize_parameters(tool.parameters())),
-            strict: strict_parameters.as_ref().map(|_| true),
+            // Omitting `strict` lets Responses normalize optional properties
+            // into required ones. Explicitly opt out when our safe conversion
+            // declines a schema so kind-specific fields remain optional.
+            strict: Some(strict_parameters.is_some()),
             defer_loading,
         }
     }

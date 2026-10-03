@@ -588,7 +588,7 @@ impl Capability for AskUserCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "`ask_user` handles decisions/preferences. Ask only when blocked; batch questions, and never ask what code or context answers. Use `kind: \"text\"` for an open question with no options; it never auto-resolves. Put likely choice options first; timeout uses default/first, and `answered_by` names its source. Do not re-ask a declined question. Never use `ask_user` as a consent gate: destructive, irreversible, or outward-facing actions require `request_approval`, which does not auto-resolve. For A2A `input_required` unanswered, ask the user and relay with `message_task`; never answer for them. For a credential use `kind: \"secret\"` with `secret_name`/`purpose`, alone in the call — never ask for one in prose or an option. It returns a `secret_ref`, never the value, and never auto-resolves.",
+            "`ask_user` is for decisions/preferences. Ask only when blocked; batch, and never ask what code or context answers. Invoke the `ask_user` tool; do not print its JSON arguments. Include `header` and `question`; wait for the tool result. `kind: \"text\"` has no options and never auto-resolves. Order likely choices first; timeout takes default/first; `answered_by` identifies the source. Do not re-ask a declined question. Never use `ask_user` as a consent gate: destructive, irreversible or external actions need non-auto-resolving `request_approval`. For A2A `input_required`, ask and relay via `message_task`; never answer for them. Credentials: `kind: \"secret\"` with `secret_name`/`purpose`, alone; never ask for one in prose or an option. Returns `secret_ref`, never the value; never auto-resolves.",
         )
     }
 
