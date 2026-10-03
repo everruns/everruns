@@ -87,6 +87,13 @@ impl InMemoryDatabase {
         Ok(false)
     }
 
+    pub async fn delete_personal_access_tokens_for_user(&self, user_id: Uuid) -> Result<u64> {
+        let mut tokens = self.personal_access_tokens.write();
+        let before = tokens.len();
+        tokens.retain(|_, token| token.user_id != user_id);
+        Ok((before - tokens.len()) as u64)
+    }
+
     // ============================================
     // CLI Auth Sessions
     // ============================================

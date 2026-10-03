@@ -76,6 +76,7 @@ fn fixture_records() -> (Harness, Agent, ExecutionSession) {
         network_access: None,
         max_iterations: Some(9),
         parallel_tool_calls: None,
+        environments: None,
         tools: vec![],
         mcp_servers: Default::default(),
         status: AgentStatus::Active,

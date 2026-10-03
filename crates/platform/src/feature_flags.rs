@@ -80,13 +80,6 @@ pub struct FeatureFlags {
     /// it is off for every organization until an admin turns it on. The
     /// reporting API and background aggregation are not gated.
     pub reports: bool,
-    /// Session environments: where a session's commands run and what they may
-    /// touch. Deployment-controlled and not org-configurable, like
-    /// `machine_payments`: it describes the sandbox surface, so turning it on is
-    /// a platform decision rather than a per-org preference. Defaults to on
-    /// wherever sandboxes are already enabled.
-    /// See `knowledge/harnesses/execution-environments.md`.
-    pub environments: bool,
     /// Machine-payment custody, policy, audit, and paid capability surfaces.
     /// Deployment-controlled and off by default on every grade because spend is
     /// irreversible. Unlike experimental flags, this is not org-configurable.
@@ -137,17 +130,6 @@ pub struct FeatureFlagDefinition {
     /// tenant and not another; what changes is who decides. Used for surfaces
     /// whose cost or risk is the platform's rather than the tenant's.
     pub platform_managed: bool,
-}
-
-/// Whether this deployment runs sandboxes at all.
-///
-/// Sandbox enablement is an internal, env-controlled decision
-/// (`crates/core/src/execution_features.rs`); the environments surface follows
-/// it so an operator who turned sandboxes on does not have to find a second
-/// switch to see what those sandboxes can do.
-fn sandboxes_enabled() -> bool {
-    let internal = everruns_core::InternalFeatureFlags::from_env();
-    internal.session_sandbox || internal.container_sandbox
 }
 
 /// API-visible flags that organizations may opt into when the deployment allows them.
@@ -256,17 +238,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         platform_managed: false,
     },
     FeatureFlagDefinition {
-        name: "environments",
-        label: "Environments",
-        description: "Shows where each session's commands run and what that environment can \
-             actually do, including whether it can run native processes and whether its files \
-             can be recovered.",
-        experimental: true,
-        // Platform-managed: this describes the sandbox surface an operator runs
-        // and pays for, so an org is enrolled in it rather than opting itself in.
-        platform_managed: true,
-    },
-    FeatureFlagDefinition {
         name: "public_chat",
         label: "Public Chat",
         description: "Isolated, public-facing chat web app and the public_chat channel.",
@@ -343,7 +314,6 @@ impl FeatureFlags {
             mcp_events: opt_in("mcp_events", system.mcp_events),
             playground: opt_in("playground", system.playground),
             reports: opt_in("reports", system.reports),
-            environments: opt_in("environments", system.environments),
             machine_payments: system.machine_payments,
             openai_agents_api: opt_in("openai_agents_api", system.openai_agents_api),
         }
@@ -368,14 +338,6 @@ impl FeatureFlags {
             mcp_events: experimental_flag("FEATURE_MCP_EVENTS", grade),
             playground: standard_flag("FEATURE_PLAYGROUND", false),
             reports: experimental_flag("FEATURE_REPORTS", grade),
-            // Environments describe the sandbox surface, so a deployment that
-            // has already turned sandboxes on gets them without a second
-            // switch. Dev keeps the experimental convenience of being on by
-            // default; everywhere else this is an explicit platform decision.
-            environments: standard_flag(
-                "FEATURE_ENVIRONMENTS",
-                sandboxes_enabled() || grade.experimental_features_enabled(),
-            ),
             machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
             openai_agents_api: standard_flag("FEATURE_OPENAI_AGENTS_API", false),
         }
@@ -406,7 +368,6 @@ impl FeatureFlags {
             ("voice".to_string(), self.voice),
             ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
-            ("environments".to_string(), self.environments),
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
             ("mcp_events".to_string(), self.mcp_events),
@@ -431,7 +392,6 @@ impl FeatureFlags {
             "voice" => self.voice,
             "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
-            "environments" => self.environments,
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
             "mcp_events" => self.mcp_events,
@@ -479,7 +439,6 @@ impl FeatureFlags {
             voice: true,
             agent_delegation: true,
             observers: true,
-            environments: true,
             public_chat: true,
             webmcp: true,
             mcp_events: true,
@@ -572,61 +531,6 @@ mod tests {
     }
 
     #[test]
-    fn environments_follows_sandbox_enablement_in_prod() {
-        let _lock = lock_env();
-        let previous_environments = std::env::var("FEATURE_ENVIRONMENTS").ok();
-        let previous_sandbox = std::env::var("FEATURE_SESSION_SANDBOX").ok();
-        unsafe { std::env::remove_var("FEATURE_ENVIRONMENTS") };
-
-        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
-        assert!(
-            !FeatureFlags::from_env(&DeploymentGrade::Prod).environments,
-            "a prod deployment with no sandboxes has nothing to describe"
-        );
-
-        unsafe { std::env::set_var("FEATURE_SESSION_SANDBOX", "true") };
-        assert!(
-            FeatureFlags::from_env(&DeploymentGrade::Prod).environments,
-            "turning sandboxes on should not need a second switch"
-        );
-
-        // The explicit env var still wins, so a platform admin can opt out.
-        unsafe { std::env::set_var("FEATURE_ENVIRONMENTS", "false") };
-        assert!(!FeatureFlags::from_env(&DeploymentGrade::Prod).environments);
-
-        restore_env("FEATURE_ENVIRONMENTS", previous_environments);
-        restore_env("FEATURE_SESSION_SANDBOX", previous_sandbox);
-    }
-
-    #[test]
-    fn environments_is_org_scoped_but_platform_managed() {
-        // In the catalog, so an org opt-in row counts: the platform can enrol
-        // one tenant and not another.
-        assert!(
-            API_FEATURE_FLAG_DEFINITIONS
-                .iter()
-                .any(|definition| definition.name == "environments" && definition.platform_managed),
-            "environments is org-scoped but not the org's own decision"
-        );
-        assert!(is_platform_managed("environments"));
-        assert!(!is_platform_managed("skills"));
-
-        let system = FeatureFlags {
-            environments: true,
-            ..FeatureFlags::default()
-        };
-
-        // Enrolment is a row, and without one the flag stays off.
-        assert!(!FeatureFlags::for_org(&system, &std::collections::HashMap::new()).environments);
-
-        let enrolled = std::collections::HashMap::from([("environments".to_string(), true)]);
-        assert!(FeatureFlags::for_org(&system, &enrolled).environments);
-
-        // The deployment gate still comes first.
-        assert!(!FeatureFlags::for_org(&FeatureFlags::default(), &enrolled).environments);
-    }
-
-    #[test]
     fn test_is_enabled_dynamic() {
         let flags = FeatureFlags {
             notifications: true,
@@ -640,7 +544,6 @@ mod tests {
             voice: true,
             agent_delegation: true,
             observers: true,
-            environments: true,
             public_chat: true,
             webmcp: true,
             mcp_events: true,
@@ -719,7 +622,6 @@ mod tests {
             voice: true,
             agent_delegation: true,
             observers: true,
-            environments: true,
             public_chat: true,
             webmcp: true,
             mcp_events: true,

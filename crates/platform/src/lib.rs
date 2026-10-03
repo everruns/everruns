@@ -30,6 +30,7 @@ pub mod audit;
 pub mod budget;
 #[cfg(feature = "openapi")]
 pub mod capability_schema;
+pub mod environment_profile;
 pub mod exposure;
 pub mod organization;
 pub mod payment;
@@ -207,6 +208,13 @@ pub use session_sandbox::{
 };
 
 // Management/reporting aggregates (EVE-878).
+pub use environment_profile::{
+    EnvironmentBootstrap, EnvironmentContainmentLevel, EnvironmentContainmentProfile,
+    EnvironmentDurability, EnvironmentEscalation, EnvironmentFilesystemPolicy,
+    EnvironmentIdleAction, EnvironmentLifecycle, EnvironmentNetworkPolicy, EnvironmentProfile,
+    EnvironmentSelection, EnvironmentSet, EnvironmentTargetKind, EnvironmentTargetProfile,
+    ResolvedEnvironmentProfile,
+};
 pub use eval::{
     ArtifactSpec, CaseResultStatus, Eval, EvalCase, EvalCaseResult, EvalDatasetStatus,
     EvalInputMessage, EvalRun, EvalRunDataset, EvalRunSource, EvalRunStatus, EvalRunSummaryView,

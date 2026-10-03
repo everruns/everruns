@@ -2,6 +2,17 @@
 
 ## 2026-10-03
 
+* **Image provider egress.** `gpt_image_gen` sends generation and edit
+  requests through the host egress boundary with DNS pinning, the session
+  network ACL, and no redirects, so an org-configured base URL cannot reach
+  internal addresses or carry the provider key to another origin (EVE-1174).
+  See [Capabilities](execution/capabilities.md) and TM-LLM-047.
+* **Untrusted host shell no longer trusts a program name.** `rg --pre` and the
+  other options that start a program ask for approval, including when
+  containment is already `danger-full-access`. `git status` asks unless the
+  command disables repository fsmonitor and hooks. See
+  [Threat Model](security/threat-model.md) TM-BASH-028.
+
 * **Agent page Test chat.** The gold masthead CTA starts an interactive chat
   thread (`source: chat` → `/chats/{id}`) instead of opening a read-only
   session recording. See [Agent Page](ui/agent-page.md).
@@ -11,6 +22,12 @@
   network ACL, and rejects `allow_local_urls` outside `DEPLOYMENT_GRADE=dev`
   (EVE-1173). See [A2A Capability](integrations/a2a-capability.md) and
   TM-AGENT-024.
+
+* **Anonymous PAT mode transition closed.** Leaving `AUTH_MODE=none` revokes
+  PATs owned by the seeded anonymous admin, and PAT validation rejects that
+  identity even if a stale row remains (EVE-1153). See
+  [Authentication](security/authentication.md) and TM-AUTH-032.
+>>>>>>> 18ea41401 (fix(auth): revoke anonymous PATs when leaving AUTH_MODE=none — Fixes EVE-1153)
 
 * **Sandbox secret forgery closed.** Capability-owned sandbox secret prefixes
   (`container_sandbox:`, `daytona_sandbox:`, `e2b_sandbox:`, `deno_sandbox:`,

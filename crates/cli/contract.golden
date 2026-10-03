@@ -24,7 +24,7 @@ agents health-checks get	--agent-id! --run-id!
 agents health-checks latest get	--agent-id!
 agents health-checks list	--agent-id!
 agents health-checks trigger	--agent-id!
-agents import	--capabilities --default-model-id --description --display-name --harness-id --harness-name --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools
+agents import	--capabilities --default-model-id --description --display-name --environments --harness-id --harness-name --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools
 agents list	
 agents preview	--capabilities --harness-id --initial-files --mcp-servers --system-prompt --tools
 agents triggers create	--agent-id! --agent-version-id --agent-version-policy --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-type
@@ -36,7 +36,7 @@ agents triggers runs list	--agent-id! --trigger-id!
 agents triggers trigger	--agent-id! --trigger-id!
 agents triggers update	--agent-id! --agent-version-id --agent-version-policy --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable <agent_id>
-agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
+agents upsert	--capabilities --default-model-id --description --display-name --environments --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents versions create	--agent! --change-kind --summary
 agents versions diff	--agent! --from-version-id! --to-version-id!
 agents versions fork	--agent! --description --display-name --name! --version-id!

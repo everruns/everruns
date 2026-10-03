@@ -359,6 +359,7 @@ fn test_agent() -> Agent {
         root_agent_id: None,
         tags: vec![],
         capabilities: vec![],
+        environments: None,
         initial_files: vec![],
         network_access: None,
         max_iterations: None,

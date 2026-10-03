@@ -343,6 +343,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

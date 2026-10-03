@@ -106,6 +106,9 @@ impl SessionSandboxService {
         let Some(config) = self.config_for_session(session_id).await.ok().flatten() else {
             return;
         };
+        if !config.idle_pause_enabled {
+            return;
+        }
 
         let timeout = config.idle_pause_after_seconds;
         let service = self.clone();
@@ -325,7 +328,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
-            content: &str,
+            content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxWriteFileResponse {
                 path: path.to_string(),
@@ -459,7 +462,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
-            content: &str,
+            content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxWriteFileResponse {
                 path: path.to_string(),

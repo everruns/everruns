@@ -73,7 +73,7 @@ python -m swe_bench.loader [OPTIONS]
 Options:
   --integration       Load only 2 instances (astropy-12907, django-11179)
   --limit N           Load first N instances
-  --harness NAME      Harness name (default: coding-daytona)
+  --harness NAME      Harness name (default: coding)
   --name TEXT         Custom eval name
   --tag TEXT          Extra tag
   -o, --output FILE   Write manifest JSON

@@ -12,7 +12,7 @@ tags:
 
 # Execution environments
 
-Status: first slice implemented, the rest proposed. Extends, does not replace,
+Status: active implementation. Extends, does not replace,
 [Sandbox Abstraction](sandbox-abstraction.md). The application-facing half, what a
 harness becomes once the environment is separable, is proposed in
 [Framework Harnesses](../framework/harnesses.md).
@@ -34,27 +34,34 @@ What exists in code today:
   the `command`/`commands` argument alias that lets an agent move between it and
   `bashkit_shell`. Behind `everruns-host/host-shell`, and deliberately absent
   from the hosted catalog, see [Where it lives](#where-the-host-shell-lives);
-- a read-only control-plane surface, `GET /v1/sessions/{id}/environment` and
-  `GET /v1/environment-targets`, derived from a session's effective
-  capabilities because profiles are not stored yet, which the response says with
-  `resolved_from: "capabilities"`;
+- Agent-version Environment profiles with named defaults, session-time named or
+  inline selection, strict target-policy validation, and an immutable resolved
+  profile snapshot pinned to the logical Environment;
+- a control-plane surface, `GET /v1/sessions/{id}/environment` and
+  `GET /v1/environment-targets`. New sessions report
+  `resolved_from: "profile"`; pre-profile sessions retain the pessimistic
+  capability-derived compatibility view;
+- durable logical Environment state in `sandboxes`, with disposable physical
+  incarnations in `sandbox_instances`, generation fencing, checkpoint lineage,
+  and Daytona recovery from an Everruns-owned portable workspace revision;
+- one stable `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep`
+  vocabulary for Bashkit and managed Daytona targets, with one `/workspace`;
+- initial workspace seeding, checkpoint-before-success for mutations, automatic
+  replacement after provider loss, and `environment.instance_lost` /
+  `environment.recovered` lifecycle events;
+- one provider-neutral `coding` harness example. The earlier provider-specific
+  coding harnesses are reconciliation-only legacy names;
 - the Workspace-tab environment panel in the UI.
 
-All of it sits behind the `environments` feature flag, which is
-platform-managed: org-scoped, so an operator enrols one tenant at a time, but
-never the tenant's own decision. The deployment gate defaults to on wherever
-sandboxes are already enabled, because an operator who turned sandboxes on
-should not have to find a second switch to see what those sandboxes can do, and
-to on in dev. The flag is what makes shipping a provisional view safe: the
-derived `resolved_from: "capabilities"` answer reaches an org only after a
-platform user enrols it, and the flag comes down once profiles replace the
-derivation. See [Feature Flags](../security/feature-flags.md).
+The original `environments` feature gate protected the provisional,
+capability-derived view. Profiles now replace that derivation for new sessions,
+so the gate is being retired rather than becoming a permanent prerequisite for
+the core Environment API. See [Feature Flags](../security/feature-flags.md).
 
-Not yet: environment profiles as agent configuration, the machine target, and
-the provider ports. That concept solved the durable
-logical sandbox: one working filesystem, provider-neutral drivers, checkpoints,
-and physical-loss recovery. This proposal adds the two things it left out, then
-folds Yolop into the same contract:
+Not yet: the machine target and remaining provider ports. The implemented model
+solves the durable logical sandbox for Bashkit and Daytona: one working
+filesystem, stable tools, provider-neutral drivers, checkpoints, and
+physical-loss recovery. The remaining proposal extends that contract with:
 
 1. an environment where nothing is contained (the machine the agent is already
    running on), and
@@ -69,8 +76,7 @@ Everruns uses it for **where code runs**, and answers that question by which
 capability the harness enables. Bashkit, `container_sandbox`, Daytona, and E2B
 are four independent capabilities with four tool families and four state
 formats. `SessionSandboxProvider` (`crates/platform/src/session_sandbox.rs`) is
-the newer provider-neutral attempt at the same question, but it is behind an
-internal feature flag and Daytona is its only implementation. Containment is not
+the provider-neutral managed-target SPI; Daytona is its first implementation. Containment is not
 a field anywhere: it is whatever the chosen capability happens to give, so
 Bashkit is default-deny by construction while a Daytona VM is wide open inside
 itself.
@@ -86,24 +92,19 @@ Both are asked for exactly that.
 
 ### Selecting an environment means selecting a harness
 
-`coding-container`, `coding-daytona`, and `coding-session-sandbox` differ in one
-capability each, and then repeat roughly a hundred lines of near-identical
-system prompt with provider tool names spelled into the text
-(`sandbox_exec` vs `daytona_exec` vs `sandbox_read_file`). Changing where a
-session runs currently means changing its behavior, its prompt, and its tool
-names at once.
-
-**The prompt half is resolved (EVE-1042).** The three harnesses now share one
-behavioral prompt that names no tools and describes no environment, and the
-environment half is derived from the facts the target already carries — see
-[Deriving the environment preamble](#deriving-the-environment-preamble) below.
-Changing where a session runs no longer changes its prompt.
+The former `coding-container`, `coding-daytona`, and
+`coding-session-sandbox` harnesses encoded provider choice in behavior. They
+have been replaced by one `coding` example. The Agent's Environment profile now
+selects the target while the shared behavioral prompt and stable tool names stay
+unchanged. The environment half is derived from the facts the target carries —
+see [Deriving the environment preamble](#deriving-the-environment-preamble).
 
 ### Five tool namespaces for the same six operations
 
-`read_file`/`write_file`/`edit_file` (session VFS), `bash` (Bashkit),
-`sandbox_*` (container and session sandbox), `daytona_*`, `e2b_*`. The model
-learns a different vocabulary per provider for read, write, exec, and lifecycle.
+Legacy capabilities still define `sandbox_*`, `daytona_*`, and `e2b_*`, but
+Environment profiles expose the same six model-facing tools for the implemented
+Bashkit and Daytona targets. Provider lifecycle operations stay in the control
+plane rather than the model vocabulary.
 
 ### There is no honest "no sandbox"
 
@@ -200,7 +201,7 @@ explicit containment block and an honest durability class:
 
 ```json
 {
-  "target": { "kind": "managed", "vendor": "daytona" },
+  "target": { "kind": "managed", "provider": "daytona" },
   "containment": {
     "level": "isolated",
     "filesystem": { "writable_roots": ["/home/daytona/workspace"] },
@@ -212,6 +213,9 @@ explicit containment block and an honest durability class:
   "bootstrap": { "...": "unchanged" }
 }
 ```
+
+`provider` is the canonical wire field. The parser accepts the earlier
+experimental `vendor` spelling only as a read-time migration alias.
 
 `durability` is declared, never assumed: `checkpointed` (Everruns owns a
 portable workspace checkpoint, eligible for durable-agent recovery),
@@ -336,8 +340,8 @@ An agent version declares named environments and a default:
   "environments": {
     "default": "scratch",
     "profiles": {
-      "scratch": { "target": { "kind": "vfs", "vendor": "bashkit" } },
-      "build":   { "target": { "kind": "managed", "vendor": "daytona" } },
+      "scratch": { "target": { "kind": "vfs", "provider": "bashkit" } },
+      "build":   { "target": { "kind": "managed", "provider": "daytona" } },
       "here":    { "target": { "kind": "host" }, "containment": { "level": "none" } }
     }
   }
@@ -659,12 +663,12 @@ POST /v1/agents
     "default": "scratch",
     "profiles": {
       "scratch": {
-        "target": { "kind": "vfs", "vendor": "bashkit" },
+        "target": { "kind": "vfs", "provider": "bashkit" },
         "containment": { "level": "isolated", "network": { "mode": "deny" } },
         "durability": "checkpointed"
       },
       "build": {
-        "target": { "kind": "managed", "vendor": "daytona",
+        "target": { "kind": "managed", "provider": "daytona",
                     "options": { "size": "small", "snapshot": "everruns-rust" } },
         "containment": { "level": "isolated",
                          "network": { "mode": "allowlist", "allowed_hosts": ["crates.io"] } },
@@ -689,17 +693,19 @@ naming the offending field.
 
 ### Create a session on Bashkit
 
-Today the request says nothing about where commands will run. Bashkit happens
-because `generic` carries the `bashkit_shell` capability:
+Before Environment profiles, the request said nothing about where commands
+would run. Bashkit happened because `generic` carried the `bashkit_shell`
+capability:
 
 ```http
 POST /v1/sessions
 { "harness_name": "generic", "title": "Rename the config module" }
 ```
 
-Getting Daytona instead means `"harness_name": "coding-daytona"`, which also
-changes the system prompt and every tool name. Three proposed forms, in
-increasing order of how much the caller decides.
+Getting Daytona instead required the provider-specific `coding-daytona`
+harness, which also changed the system prompt and every tool name. Environment
+profiles replace that coupling with three selection forms, in increasing order
+of how much the caller decides.
 
 **Inherit the agent's default.** The common case. The agent declares `scratch`
 as its default profile, so the caller says nothing:
@@ -731,7 +737,7 @@ POST /v1/sessions
   "title": "Rename the config module",
   "workspace_id": "wsp_01933b5a00007000800000000000001",
   "environment": {
-    "target": { "kind": "vfs", "vendor": "bashkit" },
+    "target": { "kind": "vfs", "provider": "bashkit" },
     "containment": { "level": "isolated", "network": { "mode": "deny" } },
     "durability": "checkpointed"
   }
@@ -756,7 +762,7 @@ Response:
   "environment": {
     "self_url": "https://api.example/v1/sessions/session_01933…/environment",
     "name": "inline",
-    "target": { "kind": "vfs", "vendor": "bashkit" },
+    "target": { "kind": "vfs", "provider": "bashkit" },
     "containment": { "level": "isolated", "network": { "mode": "deny" } },
     "durability": "checkpointed",
     "capabilities": {
@@ -834,7 +840,7 @@ GET /v1/sessions/{session_id}/environment
   "self_url": "https://api.example/v1/sessions/session_.../environment",
   "name": "build",
   "environment_id": "env_...",
-  "target": { "kind": "managed", "vendor": "daytona" },
+  "target": { "kind": "managed", "provider": "daytona" },
   "containment": { "level": "isolated", "network": { "mode": "allowlist" } },
   "durability": "checkpointed",
   "capabilities": {
@@ -865,7 +871,7 @@ starts, and moving work elsewhere is a new session against the same
 
 ### Targets this deployment can actually offer
 
-The UI cannot render an honest picker from vendor names alone.
+The UI cannot render an honest picker from provider names alone.
 
 ```http
 GET /v1/environment-targets
@@ -874,11 +880,11 @@ GET /v1/environment-targets
 ```json
 {
   "items": [
-    { "kind": "vfs", "vendor": "bashkit", "available": true,
+    { "kind": "vfs", "provider": "bashkit", "available": true,
       "capabilities": { "native_processes": false, "packages": false, "pty": false,
                         "ports": false, "portable_checkpoint": true },
       "containment_levels": ["isolated"] },
-    { "kind": "managed", "vendor": "daytona", "available": true,
+    { "kind": "managed", "provider": "daytona", "available": true,
       "requires_connection": true,
       "capabilities": { "native_processes": true, "packages": true, "pty": true,
                         "ports": true, "portable_checkpoint": true },

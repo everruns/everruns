@@ -52,7 +52,8 @@ use everruns_mcp::is_mcp_capability;
 use everruns_platform::FeatureFlags;
 use everruns_platform::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_platform::{
-    AgentVersionPolicy, MemoryConfig, MemoryMountAccess, capabilities::MEMORY_CAPABILITY_ID,
+    AgentVersionPolicy, EnvironmentSet, MemoryConfig, MemoryMountAccess,
+    capabilities::MEMORY_CAPABILITY_ID,
 };
 use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 use everruns_provider::typed_id::MemoryId;

@@ -11,8 +11,10 @@ tags:
 
 # Sandbox abstraction: filesystem plus compute
 
-Status: active proposed architecture. Replaces the experimental `session_sandbox` direction and
-consolidates the provider-specific sandbox capabilities.
+Status: active implementation. Durable logical resources, physical incarnation
+state, generation fencing, checkpoint recovery, and pinned Agent Environment
+profiles are implemented. The remaining consolidation replaces provider-named
+model tools and duplicate coding harnesses with the stable Environment surface.
 
 ## Decision
 
@@ -583,7 +585,9 @@ durable state.
 
 - Provision: one provider sandbox from the pinned profile.
 - Filesystem: Daytona API rooted at the configured provider worktree (currently
-  `/home/daytona/workspace`; logical path translation is internal).
+  `/home/daytona/workspace`; the Environment tool boundary translates absolute
+  `/workspace` shell operands before execution and canonicalizes provider paths
+  in command output).
 - Compute: streaming Daytona exec.
 - Stop: preserve filesystem; pause/memory preservation only when the selected
   Daytona class advertises it.
@@ -676,9 +680,11 @@ revision in provider state, and replaces a physical Daytona sandbox after a
 `404`. Logical identity, checkpoint history, and physical incarnations now live
 in first-class `sandboxes`, `sandbox_checkpoints`, and `sandbox_instances`
 tables. Generation-fenced writes prevent an in-flight response from a retired
-incarnation from becoming current. Existing secret-backed state is adopted
-lazily; secrets remain only a compatibility fallback for hosts without the
-hosted store.
+incarnation from becoming current. The hosted worker accesses the same store
+through the control-plane gRPC boundary, so local and remote execution do not
+create competing lifecycle records. Existing secret-backed state is adopted
+lazily; secrets remain only a compatibility fallback for portable hosts
+without the hosted store.
 
 These are internal runtime names. Following the Environment decision in
 [Execution environments](execution-environments.md), the eventual API and UI

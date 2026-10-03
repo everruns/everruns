@@ -225,14 +225,14 @@ async fn live_cdp_session_interact() {
         .await
         .expect("Navigate should succeed");
 
-    // Click the "More information..." link
+    // Click the page's only link. It sits below the fold of Browserless' default
+    // 800x600 viewport, so this also covers click_selector scrolling it into view.
     session
         .click_selector("a")
         .await
         .expect("Click should succeed");
 
-    // Poll for navigation: the remote browser sometimes needs more than a few
-    // seconds to reach the link target, so a fixed sleep flakes.
+    // Poll for navigation: the link target is a remote site and may take a moment.
     let mut url = String::new();
     for _ in 0..30 {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;

@@ -9,6 +9,10 @@
 // Each vendor's block is behind its own feature, so the suite tells the truth
 // about whatever feature set it was compiled with.
 
+// Every mock answers with `Connection: close`. The drivers share one process-wide
+// HTTP client, and wiremock recycles a dropped server's port to the next test, so a
+// pooled keep-alive connection driven by another test's runtime could otherwise
+// serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 #[cfg(any(feature = "cloudflare", feature = "vercel"))]
 use everruns_provider::driver_registry::{
     ChatDriver, DriverRegistry, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
@@ -112,7 +116,9 @@ mod cloudflare {
             .and(path("/client/v4/accounts/acct123/ai/v1/chat/completions"))
             .and(header("authorization", "Bearer cf-token"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -140,7 +146,9 @@ mod cloudflare {
             .and(header("authorization", "Bearer cf-token"))
             .and(header("cf-aig-gateway-id", "my-gateway"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -164,14 +172,16 @@ mod cloudflare {
     async fn no_gateway_sends_no_gateway_header() {
         let server = MockServer::start().await;
         Mock::given(header_exists("cf-aig-gateway-id"))
-            .respond_with(ResponseTemplate::new(500))
+            .respond_with(ResponseTemplate::new(500).insert_header("connection", "close"))
             .expect(0)
             .mount(&server)
             .await;
         Mock::given(method("POST"))
             .and(path("/client/v4/accounts/acct123/ai/v1/chat/completions"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -199,7 +209,9 @@ mod cloudflare {
             .and(header("authorization", "Bearer cf-token"))
             .and(header("cf-aig-gateway-id", "my-gateway"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -247,7 +259,7 @@ mod cloudflare {
         let server = MockServer::start().await;
         // Any request at all would be wrong: assert none is made.
         Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(500))
+            .respond_with(ResponseTemplate::new(500).insert_header("connection", "close"))
             .expect(0)
             .mount(&server)
             .await;
@@ -336,7 +348,9 @@ mod vercel {
             .and(path("/v1/responses"))
             .and(header("authorization", "Bearer synthetic-key"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -361,7 +375,9 @@ mod vercel {
             .and(path("/v1/responses"))
             .and(header("authorization", "Bearer synthetic-key"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -396,10 +412,14 @@ mod vercel {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v1/models"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "object": "list",
-                "data": [{"id": "anthropic/claude-opus-5", "object": "model"}],
-            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_json(serde_json::json!({
+                        "object": "list",
+                        "data": [{"id": "anthropic/claude-opus-5", "object": "model"}],
+                    })),
+            )
             .expect(0)
             .mount(&server)
             .await;

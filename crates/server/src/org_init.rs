@@ -336,8 +336,8 @@ pub async fn initialize_org_harnesses_with_definitions(
     Ok(result)
 }
 
-/// Demote any rows for the legacy default built-ins (`coding-container`,
-/// `coding-daytona`, `data-analyst`) to regular org-owned harnesses. Idempotent
+/// Demote rows for legacy provider-specific coding harnesses and `data-analyst`
+/// to regular org-owned harnesses. Idempotent
 /// — only flips rows that are still flagged `is_built_in = true`.
 async fn release_legacy_built_ins(db: &StorageBackend, org_id: i64) -> Result<()> {
     for name in crate::harnesses::LEGACY_BUILT_IN_NAMES {

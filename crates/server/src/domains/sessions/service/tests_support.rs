@@ -79,6 +79,7 @@ pub(crate) fn build_create_request(
         tags: vec![],
         model_id,
         capabilities: vec![],
+        environment: None,
         tools: vec![],
         mcp_servers: Default::default(),
         system_prompt: None,

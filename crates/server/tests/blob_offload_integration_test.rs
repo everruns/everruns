@@ -139,6 +139,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_provider::typ
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

@@ -1,9 +1,11 @@
-//! Session-owned managed sandbox abstractions.
-//!
-//! `session_sandbox` is the provider-neutral contract for "one managed sandbox
-//! per session". The capability in `capabilities/session_sandbox.rs` exposes
-//! generic `sandbox_*` tools, while integration crates register concrete
-//! providers (Daytona first) through the inventory plugin system below.
+//! Provider-neutral managed Environment runtime.
+
+#[cfg(test)]
+mod concurrency_tests;
+mod environment_recovery;
+#[cfg(test)]
+mod test_provider_files;
+mod workspace_seed;
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -37,6 +39,9 @@ pub struct SessionSandboxConfig {
     /// Pause the sandbox after this much session inactivity.
     #[serde(default = "default_idle_timeout")]
     pub idle_pause_after_seconds: u64,
+    /// Whether the control plane should pause this sandbox when the timeout elapses.
+    #[serde(default = "default_true")]
+    pub idle_pause_enabled: bool,
     /// Provider-specific extra configuration.
     #[serde(default = "default_provider_config")]
     pub provider_config: Value,
@@ -51,6 +56,7 @@ impl Default for SessionSandboxConfig {
             provider: String::new(),
             auto_start: true,
             idle_pause_after_seconds: DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS,
+            idle_pause_enabled: true,
             provider_config: default_provider_config(),
             init: SessionSandboxInitConfig::default(),
         }
@@ -222,7 +228,7 @@ pub trait SessionSandboxProvider: Send + Sync {
         config: &SessionSandboxConfig,
         instance: &SessionSandboxInstance,
         path: &str,
-        content: &str,
+        content: &[u8],
     ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult>;
 
     /// Persist the current workspace after a completed mutating operation.
@@ -308,6 +314,11 @@ pub async fn ensure_session_sandbox_running(
     context: &ToolContext,
     config: &SessionSandboxConfig,
 ) -> Result<SessionSandboxState, ToolExecutionResult> {
+    // Models may issue file and shell calls in parallel. Serialize lifecycle
+    // reconciliation per session so physical loss creates one replacement,
+    // not one replacement per concurrent tool call.
+    let lifecycle_lock = environment_recovery::lifecycle_lock(context.session_id);
+    let _lifecycle_guard = lifecycle_lock.lock().await;
     let Some(provider) = create_session_sandbox_provider(&config.provider) else {
         return Err(ToolExecutionResult::tool_error(format!(
             "Session sandbox provider '{}' is not registered",
@@ -332,28 +343,17 @@ pub async fn ensure_session_sandbox_running(
             reconcile_session_sandbox_checkpoint(context, provider.as_ref(), config, &mut state)
                 .await?;
 
-            let needs_resume = match state.status {
-                SessionSandboxStatus::Paused | SessionSandboxStatus::Lost => true,
-                SessionSandboxStatus::Running => {
-                    let status = provider.status(context, config, &state).await?;
-                    status.session_status != SessionSandboxStatus::Running
-                }
-            };
+            environment_recovery::resume_if_needed(context, provider.as_ref(), config, &mut state)
+                .await?;
 
-            if needs_resume {
-                state.instance = provider.resume(context, config, &state.instance).await?;
-                state.status = SessionSandboxStatus::Running;
-                state.last_init_error = None;
-                state.updated_at = now_rfc3339();
-                save_session_sandbox_state(context, &mut state).await?;
-            }
-
+            workspace_seed::seed_if_pending(context, provider.as_ref(), config, &mut state).await?;
             run_session_sandbox_init_if_needed(context, provider.as_ref(), config, &mut state)
                 .await?;
             Ok(state)
         }
         None => {
-            let instance = provider.create(context, config).await?;
+            let mut instance = provider.create(context, config).await?;
+            workspace_seed::mark_pending(&mut instance);
             let mut state = SessionSandboxState {
                 sandbox: None,
                 provider: config.provider.clone(),
@@ -365,6 +365,7 @@ pub async fn ensure_session_sandbox_running(
                 updated_at: now_rfc3339(),
             };
             save_session_sandbox_state(context, &mut state).await?;
+            workspace_seed::seed_if_pending(context, provider.as_ref(), config, &mut state).await?;
             run_session_sandbox_init_if_needed(context, provider.as_ref(), config, &mut state)
                 .await?;
             Ok(state)
@@ -575,8 +576,8 @@ async fn reconcile_session_sandbox_checkpoint(
     use crate::sandbox_checkpoint::{DurableToolResultStoreExt, SandboxCheckpointStoreExt};
     use everruns_core::durability::DurableToolCallStatus;
 
-    // Both halves are needed to decide anything. Hosts that install neither
-    // (remote workers, embedded Framework hosts) keep the pre-EVE-870 behaviour.
+    // Both halves are needed to decide anything. Portable Framework hosts that
+    // install neither keep the pre-EVE-870 behaviour.
     let Some(checkpoints) = context.extensions.get::<SandboxCheckpointStoreExt>() else {
         return Ok(());
     };
@@ -672,9 +673,8 @@ async fn reconcile_session_sandbox_checkpoint(
 /// Record an uploaded revision as an unattached checkpoint.
 ///
 /// Returns the store, sandbox and checkpoint id so the caller can attach it
-/// once the pointer write has succeeded. Hosts without the store installed
-/// (remote workers, embedded Framework hosts) get `None` and keep the
-/// secret-only behaviour.
+/// once the pointer write has succeeded. Portable Framework hosts without the
+/// store installed get `None` and keep the secret-only behaviour.
 async fn record_sandbox_checkpoint(
     context: &ToolContext,
     config: &SessionSandboxConfig,
@@ -743,24 +743,19 @@ pub fn session_sandbox_tool_hints() -> ToolHints {
 fn default_true() -> bool {
     true
 }
-
 fn default_idle_timeout() -> u64 {
     DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS
 }
-
 fn default_provider_config() -> Value {
     json!({})
 }
-
 fn default_output_mode() -> String {
     // EVE-489: persistence-first default for exec-style sandbox tools.
     "auto".to_string()
 }
-
 fn now_rfc3339() -> String {
     Utc::now().to_rfc3339()
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -769,7 +764,6 @@ mod tests {
     use everruns_core::{session_services::SecretInfo, session_services::SessionStorageStore};
     use std::collections::HashMap;
     use std::sync::{Arc, LazyLock, Mutex};
-
     // `everruns-host` reserves this name from the user-facing secret_store, but
     // it cannot name the constant: host is a dependency of this crate, not the
     // other way round. Pin the two together here, where the constant is
@@ -781,9 +775,8 @@ mod tests {
             SESSION_SANDBOX_SECRET_NAME
         ));
     }
-
     #[derive(Clone, Default)]
-    struct MemorySecrets {
+    pub(super) struct MemorySecrets {
         secrets: Arc<Mutex<HashMap<String, String>>>,
     }
 
@@ -935,9 +928,9 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct TestProviderSandboxState {
+    pub(super) struct TestProviderSandboxState {
         remote_status: SessionSandboxStatus,
-        resume_calls: usize,
+        pub(super) resume_calls: usize,
         exec_commands: Vec<String>,
     }
 
@@ -963,7 +956,7 @@ mod tests {
             })
     }
 
-    fn test_provider_state(external_id: &str) -> TestProviderSandboxState {
+    pub(super) fn test_provider_state(external_id: &str) -> TestProviderSandboxState {
         TEST_PROVIDER_STATE
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -977,18 +970,19 @@ mod tests {
             })
     }
 
-    fn reset_test_provider_state(external_id: &str, remote_status: SessionSandboxStatus) {
+    pub(super) fn reset_test_provider_state(external_id: &str, status: SessionSandboxStatus) {
         let mut state = TEST_PROVIDER_STATE
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         state.sandboxes.insert(
             external_id.to_string(),
             TestProviderSandboxState {
-                remote_status,
+                remote_status: status,
                 resume_calls: 0,
                 exec_commands: Vec::new(),
             },
         );
+        test_provider_files::clear(external_id);
     }
 
     struct CoreTestSessionSandboxProvider;
@@ -1065,18 +1059,19 @@ mod tests {
             let mut state = TEST_PROVIDER_STATE
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            sandbox_state_mut(&mut state, &_instance.external_id)
-                .exec_commands
-                .push(request.command.clone());
+            let sandbox = sandbox_state_mut(&mut state, &_instance.external_id);
+            sandbox.exec_commands.push(request.command.clone());
+            let stdout =
+                test_provider_files::command_output(&_instance.external_id, &request.command);
 
             Ok(SessionSandboxExecResponse {
                 exit_code: 0,
-                stdout: "ok".to_string(),
+                stdout: stdout.clone(),
                 stderr: String::new(),
                 success: true,
                 truncated: false,
                 total_lines: 1,
-                raw_output: Some("ok".to_string()),
+                raw_output: Some(stdout),
                 hint: None,
             })
         }
@@ -1088,9 +1083,10 @@ mod tests {
             _instance: &SessionSandboxInstance,
             path: &str,
         ) -> Result<SessionSandboxReadFileResponse, ToolExecutionResult> {
+            let content = test_provider_files::read(&_instance.external_id, path);
             Ok(SessionSandboxReadFileResponse {
                 path: path.to_string(),
-                content: "data".to_string(),
+                content,
                 encoding: "text".to_string(),
             })
         }
@@ -1101,8 +1097,9 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
-            content: &str,
+            content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult> {
+            test_provider_files::write(&_instance.external_id, path, content);
             Ok(SessionSandboxWriteFileResponse {
                 path: path.to_string(),
                 bytes_written: content.len(),
@@ -1128,7 +1125,7 @@ mod tests {
         }
     }
 
-    fn test_instance(external_id: &str) -> SessionSandboxInstance {
+    pub(super) fn test_instance(external_id: &str) -> SessionSandboxInstance {
         SessionSandboxInstance {
             external_id: external_id.to_string(),
             display_name: Some("Core Test Sandbox".to_string()),
@@ -1138,11 +1135,12 @@ mod tests {
         }
     }
 
-    fn test_config_with_init(commands: Vec<&str>) -> SessionSandboxConfig {
+    pub(super) fn test_config_with_init(commands: Vec<&str>) -> SessionSandboxConfig {
         SessionSandboxConfig {
             provider: "core-test-session-sandbox".to_string(),
             auto_start: true,
             idle_pause_after_seconds: 180,
+            idle_pause_enabled: true,
             provider_config: json!({}),
             init: SessionSandboxInitConfig {
                 commands: commands.into_iter().map(ToString::to_string).collect(),
@@ -1439,7 +1437,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _path: &str,
-            _content: &str,
+            _content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult> {
             unreachable!()
         }
@@ -1472,6 +1470,7 @@ mod tests {
             provider: "revision-test-session-sandbox".to_string(),
             auto_start: true,
             idle_pause_after_seconds: 180,
+            idle_pause_enabled: true,
             provider_config: json!({}),
             init: SessionSandboxInitConfig { commands: vec![] },
         }
@@ -1517,8 +1516,8 @@ mod tests {
 
     #[tokio::test]
     async fn checkpoint_persists_binding_when_no_checkpoint_store_is_installed() {
-        // Remote workers and embedded Framework hosts have no store; they must
-        // keep the pre-EVE-870 secret-only behaviour rather than fail the tool.
+        // Portable Framework hosts may have no store; they must keep the
+        // pre-EVE-870 secret-only behaviour rather than fail the tool.
         let storage = Arc::new(MemorySecrets::default());
         let context = ToolContext::with_storage_store(
             everruns_provider::typed_id::SessionId::new(),
@@ -1789,7 +1788,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _path: &str,
-            _content: &str,
+            _content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult> {
             unreachable!()
         }
@@ -1888,6 +1887,7 @@ mod tests {
             provider: "rewind-test-session-sandbox".to_string(),
             auto_start: true,
             idle_pause_after_seconds: 180,
+            idle_pause_enabled: true,
             provider_config: json!({}),
             init: SessionSandboxInitConfig { commands: vec![] },
         }

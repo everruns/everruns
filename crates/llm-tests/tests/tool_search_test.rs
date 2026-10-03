@@ -15,6 +15,10 @@
 //
 // Required env vars (tests skip gracefully if missing):
 //   OPENAI_API_KEY / ANTHROPIC_API_KEY (per case)
+//
+// Every live turn goes through `live_turn` (built on `run_live_turn!`): out-of-quota and
+// retired-model cells skip and are reported as unverified, and transient transport/overload
+// errors retry on a fresh runner, matching the other live-matrix targets.
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
@@ -31,7 +35,7 @@ use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_platform::capabilities::SessionCapability;
-use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
+use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, InMemoryModelConfig, TurnResult};
 use rstest::rstest;
 
 async fn assert_hosted_tool_search_was_enabled(runner: &InMemoryAgenticLoop) {
@@ -68,6 +72,51 @@ async fn generation_called_tool(runner: &InMemoryAgenticLoop, name: &str) -> boo
         })
 }
 
+const TIME_SYSTEM_PROMPT: &str =
+    "You are a helpful assistant. When asked about time, use the get_current_time tool.";
+
+/// Attempts per live turn when the failure is a transient transport/overload
+/// error (e.g. `error decoding response body`), which failed main CI on a
+/// single Opus 5 hiccup. Separate from each test's own sampling-retry loop.
+const TRANSPORT_ATTEMPTS: u32 = 3;
+
+/// Runs one live turn for `config` on a runner from `build`.
+///
+/// Returns `None` when the test should skip: the cell has no credentials, is
+/// out of quota/credits, or its model was retired (the latter two are recorded
+/// as unverified coverage by `run_live_turn!`). Transient transport errors are
+/// retried with backoff; each attempt builds a fresh runner so a retry never
+/// inherits the failed attempt's session history or events. Any other failure
+/// is returned as-is for the caller's `result.success` assertion to report.
+async fn live_turn<B, F>(
+    config: &ProviderModelConfig,
+    prompt: &str,
+    build: B,
+) -> Option<(InMemoryAgenticLoop, TurnResult)>
+where
+    B: Fn(InMemoryModelConfig) -> F,
+    F: std::future::Future<Output = InMemoryAgenticLoop>,
+{
+    if config.model().is_none() {
+        eprintln!("Skipping: {} not set", config.label());
+        return None;
+    }
+    let mut runner = None;
+    let result = run_live_turn!(
+        config,
+        TRANSPORT_ATTEMPTS,
+        |r: &TurnResult| r.success || !r.error.as_deref().is_some_and(is_transient_transport_error),
+        {
+            let model = config.model().expect("checked above");
+            let built = build(model).await;
+            let result = built.run_turn(prompt).await.unwrap();
+            runner = Some(built);
+            result
+        }
+    )?;
+    Some((runner.expect("at least one attempt ran"), result))
+}
+
 // ============================================================================
 // Scenario: hosted OpenAI tool_search (deferred loading)
 // ============================================================================
@@ -83,39 +132,35 @@ async fn generation_called_tool(runner: &InMemoryAgenticLoop, name: &str) -> boo
 #[case::gpt56_terra(OPENAI_GPT56_TERRA)]
 #[tokio::test]
 async fn test_openai_tool_search_with_many_capabilities(#[case] config: ProviderModelConfig) {
-    if config.model().is_none() {
-        eprintln!("Skipping: {} not set", config.label());
-        return;
-    }
-
     const MAX_ATTEMPTS: usize = 5;
     let mut called_get_current_time = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let model = config.model().expect("checked above");
-        let runner = InMemoryAgenticLoop::builder()
-            .agent_name("Tool Search Agent")
-            .system_prompt(
-                "You are a helpful assistant. When asked about time, use the get_current_time tool.",
-            )
-            .model(model)
-            .driver_registry(all_providers_registry())
-            // Add multiple capabilities to exceed the 15-tool threshold (16 total)
-            .capability(CurrentTimeCapability) // 1 tool
-            .capability(TestMathCapability) // 4 tools
-            .capability(TestWeatherCapability) // 2 tools
-            .capability(FileSystemCapability) // 6 tools
-            .capability(SessionCapability) // 2 tools
-            .capability(StatelessTodoListCapability) // 1 tool
-            // Enable tool_search
-            .capability(OpenAiToolSearchCapability::new())
-            .max_iterations(5)
-            .build()
+        let Some((runner, result)) =
+            live_turn(&config, "What time is it right now?", |model| async move {
+                InMemoryAgenticLoop::builder()
+                    .agent_name("Tool Search Agent")
+                    .system_prompt(TIME_SYSTEM_PROMPT)
+                    .model(model)
+                    .driver_registry(all_providers_registry())
+                    // Add multiple capabilities to exceed the 15-tool threshold (16 total)
+                    .capability(CurrentTimeCapability) // 1 tool
+                    .capability(TestMathCapability) // 4 tools
+                    .capability(TestWeatherCapability) // 2 tools
+                    .capability(FileSystemCapability) // 6 tools
+                    .capability(SessionCapability) // 2 tools
+                    .capability(StatelessTodoListCapability) // 1 tool
+                    // Enable tool_search
+                    .capability(OpenAiToolSearchCapability::new())
+                    .max_iterations(5)
+                    .build()
+                    .await
+                    .unwrap()
+            })
             .await
-            .unwrap();
-
-        let result = runner.run_turn("What time is it right now?").await.unwrap();
-
+        else {
+            return;
+        };
         assert!(result.success, "Turn should succeed: {:?}", result.error);
         if result.tool_calls_count > 0 && generation_called_tool(&runner, "get_current_time").await
         {
@@ -140,32 +185,29 @@ async fn test_openai_tool_search_with_many_capabilities(#[case] config: Provider
 #[case::gpt56_terra(OPENAI_GPT56_TERRA)]
 #[tokio::test]
 async fn test_openai_tool_search_low_threshold(#[case] config: ProviderModelConfig) {
-    if config.model().is_none() {
-        eprintln!("Skipping: {} not set", config.label());
-        return;
-    }
-
     const MAX_ATTEMPTS: usize = 5;
     let mut called_add = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let model = config.model().expect("checked above");
-        let runner = InMemoryAgenticLoop::builder()
-            .agent_name("Low Threshold Agent")
-            .system_prompt("When asked to add numbers, use the add tool.")
-            .model(model)
-            .driver_registry(all_providers_registry())
-            .capability(TestMathCapability)
-            .capability(CurrentTimeCapability)
-            // Low threshold: tool_search activates even with few tools (5 > 3)
-            .capability(OpenAiToolSearchCapability::with_threshold(3))
-            .max_iterations(5)
-            .build()
-            .await
-            .unwrap();
-
-        let result = runner.run_turn("What is 7 + 3?").await.unwrap();
-
+        let Some((runner, result)) = live_turn(&config, "What is 7 + 3?", |model| async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Low Threshold Agent")
+                .system_prompt("When asked to add numbers, use the add tool.")
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(TestMathCapability)
+                .capability(CurrentTimeCapability)
+                // Low threshold: tool_search activates even with few tools (5 > 3)
+                .capability(OpenAiToolSearchCapability::with_threshold(3))
+                .max_iterations(5)
+                .build()
+                .await
+                .unwrap()
+        })
+        .await
+        else {
+            return;
+        };
         assert!(result.success, "Turn should succeed: {:?}", result.error);
         assert_hosted_tool_search_was_enabled(&runner).await;
         if result.tool_calls_count > 0 && generation_called_tool(&runner, "add").await {
@@ -186,37 +228,36 @@ async fn test_openai_tool_search_low_threshold(#[case] config: ProviderModelConf
 /// the wire namespace was the human label `File Operations` (whitespace).
 #[tokio::test]
 async fn test_gpt55_tool_search_file_operations_namespace() {
-    if OPENAI_GPT55.model().is_none() {
-        eprintln!("Skipping: {} not set", OPENAI_GPT55.label());
-        return;
-    }
-
     const MAX_ATTEMPTS: usize = 3;
     let mut called_list_directory = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let model = OPENAI_GPT55.model().expect("checked above");
-        let runner = InMemoryAgenticLoop::builder()
-            .agent_name("File Operations Namespace Agent")
-            .system_prompt(
-                "You have file tools. When asked to list a directory, call list_directory \
-                 with path \".\". Do not answer without calling the tool.",
-            )
-            .model(model)
-            .driver_registry(all_providers_registry())
-            .capability(FileSystemCapability)
-            // Force hosted search with a single namespace derived from the
-            // filesystem category (`File Operations` → `File_Operations`).
-            .capability(OpenAiToolSearchCapability::with_threshold(1))
-            .max_iterations(5)
-            .build()
-            .await
-            .unwrap();
-
-        let result = runner
-            .run_turn("List the files in the current directory using list_directory.")
-            .await
-            .unwrap();
+        let Some((runner, result)) = live_turn(
+            &OPENAI_GPT55,
+            "List the files in the current directory using list_directory.",
+            |model| async move {
+                InMemoryAgenticLoop::builder()
+                    .agent_name("File Operations Namespace Agent")
+                    .system_prompt(
+                        "You have file tools. When asked to list a directory, call list_directory \
+                         with path \".\". Do not answer without calling the tool.",
+                    )
+                    .model(model)
+                    .driver_registry(all_providers_registry())
+                    .capability(FileSystemCapability)
+                    // Force hosted search with a single namespace derived from the
+                    // filesystem category (`File Operations` → `File_Operations`).
+                    .capability(OpenAiToolSearchCapability::with_threshold(1))
+                    .max_iterations(5)
+                    .build()
+                    .await
+                    .unwrap()
+            },
+        )
+        .await
+        else {
+            return;
+        };
         assert!(
             result.success,
             "hosted search over File Operations must not fail: {:?}",
@@ -258,27 +299,25 @@ async fn test_gpt55_tool_search_file_operations_namespace() {
 /// request, and the deferred tool can still be called and completed by the loop.
 #[tokio::test]
 async fn test_gpt55_tool_search_low_threshold() {
-    let Some(model) = OPENAI_GPT55.model() else {
-        eprintln!("Skipping: {} not set", OPENAI_GPT55.label());
+    let Some((runner, result)) = live_turn(&OPENAI_GPT55, "What is 7 + 3?", |model| async move {
+        InMemoryAgenticLoop::builder()
+            .agent_name("GPT-5.5 Tool Search Agent")
+            .system_prompt("When asked to add numbers, use the add tool.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(TestMathCapability)
+            .capability(CurrentTimeCapability)
+            // Low threshold: tool_search activates even with few tools (5 > 3).
+            .capability(OpenAiToolSearchCapability::with_threshold(3))
+            .max_iterations(5)
+            .build()
+            .await
+            .unwrap()
+    })
+    .await
+    else {
         return;
     };
-
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("GPT-5.5 Tool Search Agent")
-        .system_prompt("When asked to add numbers, use the add tool.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(TestMathCapability)
-        .capability(CurrentTimeCapability)
-        // Low threshold: tool_search activates even with few tools (5 > 3).
-        .capability(OpenAiToolSearchCapability::with_threshold(3))
-        .max_iterations(5)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
-
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -312,38 +351,35 @@ async fn test_gpt55_tool_search_low_threshold() {
 #[case::gpt56_terra(OPENAI_GPT56_TERRA)]
 #[tokio::test]
 async fn test_openai_auto_tool_search_resolves_to_hosted(#[case] config: ProviderModelConfig) {
-    if config.model().is_none() {
-        eprintln!("Skipping: {} not set", config.label());
-        return;
-    }
-
     const MAX_ATTEMPTS: usize = 5;
     let mut called_get_current_time = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let model = config.model().expect("checked above");
-        let runner = InMemoryAgenticLoop::builder()
-            .agent_name("Auto Tool Search Agent")
-            .system_prompt(
-                "You are a helpful assistant. When asked about time, use the get_current_time tool.",
-            )
-            .model(model)
-            .driver_registry(all_providers_registry())
-            // Multiple capabilities to exceed the 15-tool threshold (16 total).
-            .capability(CurrentTimeCapability) // 1 tool
-            .capability(TestMathCapability) // 4 tools
-            .capability(TestWeatherCapability) // 2 tools
-            .capability(FileSystemCapability) // 6 tools
-            .capability(SessionCapability) // 2 tools
-            .capability(StatelessTodoListCapability) // 1 tool
-            // Model-adaptive: on this OpenAI model this must resolve to the hosted mechanism.
-            .capability(AutoToolSearchCapability::new())
-            .max_iterations(5)
-            .build()
+        let Some((runner, result)) =
+            live_turn(&config, "What time is it right now?", |model| async move {
+                InMemoryAgenticLoop::builder()
+                    .agent_name("Auto Tool Search Agent")
+                    .system_prompt(TIME_SYSTEM_PROMPT)
+                    .model(model)
+                    .driver_registry(all_providers_registry())
+                    // Multiple capabilities to exceed the 15-tool threshold (16 total).
+                    .capability(CurrentTimeCapability) // 1 tool
+                    .capability(TestMathCapability) // 4 tools
+                    .capability(TestWeatherCapability) // 2 tools
+                    .capability(FileSystemCapability) // 6 tools
+                    .capability(SessionCapability) // 2 tools
+                    .capability(StatelessTodoListCapability) // 1 tool
+                    // Model-adaptive: on this OpenAI model this must resolve to hosted.
+                    .capability(AutoToolSearchCapability::new())
+                    .max_iterations(5)
+                    .build()
+                    .await
+                    .unwrap()
+            })
             .await
-            .unwrap();
-
-        let result = runner.run_turn("What time is it right now?").await.unwrap();
+        else {
+            return;
+        };
         assert!(result.success, "Turn should succeed: {:?}", result.error);
 
         let generations = runner.events_by_type(LLM_GENERATION).await;
@@ -391,26 +427,24 @@ async fn test_openai_auto_tool_search_resolves_to_hosted(#[case] config: Provide
 /// Tests model-adaptive hosted resolution on GPT-5.5.
 #[tokio::test]
 async fn test_gpt55_auto_tool_search_resolves_to_hosted() {
-    let Some(model) = OPENAI_GPT55.model() else {
-        eprintln!("Skipping: {} not set", OPENAI_GPT55.label());
+    let Some((runner, result)) = live_turn(&OPENAI_GPT55, "What is 7 + 3?", |model| async move {
+        InMemoryAgenticLoop::builder()
+            .agent_name("GPT-5.5 Auto Tool Search Agent")
+            .system_prompt("When asked to add numbers, use the add tool.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(TestMathCapability)
+            .capability(CurrentTimeCapability)
+            .capability(AutoToolSearchCapability::with_threshold(3))
+            .max_iterations(5)
+            .build()
+            .await
+            .unwrap()
+    })
+    .await
+    else {
         return;
     };
-
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("GPT-5.5 Auto Tool Search Agent")
-        .system_prompt("When asked to add numbers, use the add tool.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(TestMathCapability)
-        .capability(CurrentTimeCapability)
-        .capability(AutoToolSearchCapability::with_threshold(3))
-        .max_iterations(5)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
-
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -440,32 +474,32 @@ async fn test_gpt55_auto_tool_search_resolves_to_hosted() {
 /// loads them via the `tool_search` tool before calling the real tool.
 #[tokio::test]
 async fn test_anthropic_generic_tool_search() {
-    let Some(model) = ANTHROPIC_HAIKU.model() else {
-        eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
+    let Some((_, result)) = live_turn(&ANTHROPIC_HAIKU, "What is 21 + 21?", |model| async move {
+        InMemoryAgenticLoop::builder()
+            .agent_name("Generic Tool Search Agent")
+            .system_prompt(
+                "You are a helpful assistant. When asked to add numbers, use the add tool.",
+            )
+            .model(model)
+            .driver_registry(all_providers_registry())
+            // Many tools to exceed the default threshold (16 total).
+            .capability(CurrentTimeCapability) // 1 tool
+            .capability(TestMathCapability) // 4 tools
+            .capability(TestWeatherCapability) // 2 tools
+            .capability(FileSystemCapability) // 6 tools
+            .capability(SessionCapability) // 2 tools
+            .capability(StatelessTodoListCapability) // 1 tool
+            // Generic, provider-agnostic deferred loading (works on Anthropic).
+            .capability(ToolSearchCapability::new())
+            .max_iterations(6)
+            .build()
+            .await
+            .unwrap()
+    })
+    .await
+    else {
         return;
     };
-
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Generic Tool Search Agent")
-        .system_prompt("You are a helpful assistant. When asked to add numbers, use the add tool.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        // Many tools to exceed the default threshold (16 total).
-        .capability(CurrentTimeCapability) // 1 tool
-        .capability(TestMathCapability) // 4 tools
-        .capability(TestWeatherCapability) // 2 tools
-        .capability(FileSystemCapability) // 6 tools
-        .capability(SessionCapability) // 2 tools
-        .capability(StatelessTodoListCapability) // 1 tool
-        // Generic, provider-agnostic deferred loading (works on Anthropic).
-        .capability(ToolSearchCapability::new())
-        .max_iterations(6)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("What is 21 + 21?").await.unwrap();
-
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -476,27 +510,25 @@ async fn test_anthropic_generic_tool_search() {
 /// Tests generic tool_search with a low threshold so it activates with few tools.
 #[tokio::test]
 async fn test_anthropic_generic_tool_search_low_threshold() {
-    let Some(model) = ANTHROPIC_HAIKU.model() else {
-        eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
+    let Some((_, result)) = live_turn(&ANTHROPIC_HAIKU, "What is 7 + 3?", |model| async move {
+        InMemoryAgenticLoop::builder()
+            .agent_name("Generic Low Threshold Agent")
+            .system_prompt("When asked to add numbers, use the add tool.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(TestMathCapability)
+            .capability(CurrentTimeCapability)
+            // Low threshold: deferral activates even with few tools (6 > 3).
+            .capability(ToolSearchCapability::with_threshold(3))
+            .max_iterations(6)
+            .build()
+            .await
+            .unwrap()
+    })
+    .await
+    else {
         return;
     };
-
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Generic Low Threshold Agent")
-        .system_prompt("When asked to add numbers, use the add tool.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(TestMathCapability)
-        .capability(CurrentTimeCapability)
-        // Low threshold: deferral activates even with few tools (6 > 3).
-        .capability(ToolSearchCapability::with_threshold(3))
-        .max_iterations(6)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
-
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -515,34 +547,32 @@ async fn test_anthropic_generic_tool_search_low_threshold() {
 /// the deferred tool can still be discovered, loaded, and called by the loop.
 #[tokio::test]
 async fn test_anthropic_claude_tool_search_low_threshold() {
-    if ANTHROPIC_HAIKU.model().is_none() {
-        eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
-        return;
-    }
-
     // Haiku sometimes answers "7 + 3" without the tool; retry fresh sessions
     // like the GPT cases, but check the hosted wire contract on every attempt.
     const MAX_ATTEMPTS: usize = 5;
     let mut called_add = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let model = ANTHROPIC_HAIKU.model().expect("checked above");
-        let runner = InMemoryAgenticLoop::builder()
-            .agent_name("Claude Tool Search Agent")
-            .system_prompt("When asked to add numbers, use the add tool.")
-            .model(model)
-            .driver_registry(all_providers_registry())
-            .capability(TestMathCapability)
-            .capability(CurrentTimeCapability)
-            // Low threshold: hosted tool_search activates even with few tools (5 > 3).
-            .capability(ClaudeToolSearchCapability::with_threshold(3))
-            .max_iterations(6)
-            .build()
+        let Some((runner, result)) =
+            live_turn(&ANTHROPIC_HAIKU, "What is 7 + 3?", |model| async move {
+                InMemoryAgenticLoop::builder()
+                    .agent_name("Claude Tool Search Agent")
+                    .system_prompt("When asked to add numbers, use the add tool.")
+                    .model(model)
+                    .driver_registry(all_providers_registry())
+                    .capability(TestMathCapability)
+                    .capability(CurrentTimeCapability)
+                    // Low threshold: hosted tool_search activates even with few tools (5 > 3).
+                    .capability(ClaudeToolSearchCapability::with_threshold(3))
+                    .max_iterations(6)
+                    .build()
+                    .await
+                    .unwrap()
+            })
             .await
-            .unwrap();
-
-        let result = runner.run_turn("What is 7 + 3?").await.unwrap();
-
+        else {
+            return;
+        };
         assert!(result.success, "Turn should succeed: {:?}", result.error);
         assert_hosted_tool_search_was_enabled(&runner).await;
 
@@ -587,27 +617,25 @@ async fn test_anthropic_claude_tool_search_low_threshold() {
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[tokio::test]
 async fn test_anthropic_auto_tool_search_resolves_to_hosted(#[case] config: ProviderModelConfig) {
-    let Some(model) = config.model() else {
-        eprintln!("Skipping: {} not set", config.label());
+    let Some((runner, result)) = live_turn(&config, "What is 7 + 3?", |model| async move {
+        InMemoryAgenticLoop::builder()
+            .agent_name("Claude Auto Tool Search Agent")
+            .system_prompt("When asked to add numbers, use the add tool.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(TestMathCapability)
+            .capability(CurrentTimeCapability)
+            // Model-adaptive: on native Claude this must resolve to the hosted mechanism.
+            .capability(AutoToolSearchCapability::with_threshold(3))
+            .max_iterations(6)
+            .build()
+            .await
+            .unwrap()
+    })
+    .await
+    else {
         return;
     };
-
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Claude Auto Tool Search Agent")
-        .system_prompt("When asked to add numbers, use the add tool.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(TestMathCapability)
-        .capability(CurrentTimeCapability)
-        // Model-adaptive: on native Claude this must resolve to the hosted mechanism.
-        .capability(AutoToolSearchCapability::with_threshold(3))
-        .max_iterations(6)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
-
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -640,30 +668,29 @@ async fn test_anthropic_auto_tool_search_resolves_to_hosted(#[case] config: Prov
 async fn test_anthropic_opus_hosted_search_calls_bash_contract(
     #[case] config: ProviderModelConfig,
 ) {
-    let Some(model) = config.model() else {
-        eprintln!("Skipping: {} not set", config.label());
+    let Some((runner, result)) = live_turn(
+        &config,
+        "Use Bash to run `printf everruns-bash-contract`.",
+        |model| async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Claude Bash Tool Search Agent")
+                .system_prompt("Use the bash tool for shell commands.")
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(BashkitShellCapability)
+                .capability(FileSystemCapability)
+                .capability(TestMathCapability)
+                .capability(AutoToolSearchCapability::with_threshold(3))
+                .max_iterations(6)
+                .build()
+                .await
+                .unwrap()
+        },
+    )
+    .await
+    else {
         return;
     };
-
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Claude Bash Tool Search Agent")
-        .system_prompt("Use the bash tool for shell commands.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(BashkitShellCapability)
-        .capability(FileSystemCapability)
-        .capability(TestMathCapability)
-        .capability(AutoToolSearchCapability::with_threshold(3))
-        .max_iterations(6)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner
-        .run_turn("Use Bash to run `printf everruns-bash-contract`.")
-        .await
-        .unwrap();
-
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert_hosted_tool_search_was_enabled(&runner).await;
 
@@ -693,26 +720,24 @@ async fn test_anthropic_opus_hosted_search_calls_bash_contract(
 /// (falls back to standard tool format — no namespaces, no defer_loading)
 #[tokio::test]
 async fn test_gpt54_tool_search_below_threshold_fallback() {
-    let Some(model) = OPENAI_GPT54.model() else {
-        eprintln!("Skipping: {} not set", OPENAI_GPT54.label());
+    let Some((_, result)) = live_turn(&OPENAI_GPT54, "What time is it?", |model| async move {
+        InMemoryAgenticLoop::builder()
+            .agent_name("Below Threshold Agent")
+            .system_prompt("When asked about time, use the get_current_time tool.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            // Only 1 tool — well below default threshold of 15
+            .capability(CurrentTimeCapability)
+            .capability(OpenAiToolSearchCapability::new())
+            .max_iterations(5)
+            .build()
+            .await
+            .unwrap()
+    })
+    .await
+    else {
         return;
     };
-
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Below Threshold Agent")
-        .system_prompt("When asked about time, use the get_current_time tool.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        // Only 1 tool — well below default threshold of 15
-        .capability(CurrentTimeCapability)
-        .capability(OpenAiToolSearchCapability::new())
-        .max_iterations(5)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("What time is it?").await.unwrap();
-
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,

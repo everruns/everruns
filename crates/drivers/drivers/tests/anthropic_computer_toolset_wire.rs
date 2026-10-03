@@ -29,10 +29,21 @@ fn driver(server: &MockServer) -> Provider {
         .auth(StaticHeaderAuth::new("x-api-key", "test-key"))
 }
 
+// `Connection: close` keeps every request on a fresh connection. The driver's
+// HTTP client is process-wide, so a keep-alive connection outlives the test
+// that opened it, and its I/O task runs on that test's tokio runtime. wiremock
+// recycles pooled servers (same port) as soon as one is dropped, so another
+// test could pick up that parked connection; if the owning runtime stopped
+// mid-response, the stream failed before its first event and the driver's
+// reconnect sent a second request (CI flake: `left: 2, right: 1`).
 async fn mount(server: &MockServer, body: String) {
     Mock::given(method("POST"))
         .and(path("/v1/messages"))
-        .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_raw(body, "text/event-stream"),
+        )
         .mount(server)
         .await;
 }

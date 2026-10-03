@@ -1501,6 +1501,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         root_agent_id: None,
         tags: vec![],
         capabilities,
+        environments: None,
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
@@ -3155,7 +3156,6 @@ fn decode_task(proto: proto::SessionTaskProto) -> Result<everruns_core::SessionT
     everruns_internal_protocol::proto_to_session_task(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid session task payload: {e}")))
 }
-
 fn decode_task_message(proto: proto::TaskMessageProto) -> Result<everruns_core::TaskMessage> {
     everruns_internal_protocol::proto_to_task_message(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid task message payload: {e}")))

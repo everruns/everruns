@@ -273,11 +273,16 @@ impl Command for UpdateAgentEndpointCmd {
             self.req.agent_version_id,
         )
         .await?;
+        let mut config_changed = false;
         let (channel_config, channel_config_encrypted, auth, auth_encrypted) =
             if let Some(mut config) = self.req.channel_config {
                 let current = decrypted_config(ctx, existing.clone())?;
                 merge_preserved_secret_fields(channel_type.clone(), &mut config, &current);
                 let config = normalize_and_validate_channel_config(channel_type.clone(), config)?;
+                config_changed = super::exposure::config_changed(
+                    &config,
+                    normalize_and_validate_channel_config(channel_type.clone(), current).ok(),
+                );
                 let prepared =
                     super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)
                         .map_err(classify_anyhow)?;
@@ -295,6 +300,12 @@ impl Command for UpdateAgentEndpointCmd {
                     UpdateField::Unchanged,
                 )
             };
+        super::exposure::require_live_change_permission(
+            ctx,
+            &existing.endpoint_status,
+            config_changed,
+            self.req.enabled == Some(false),
+        )?;
         let status = self.req.enabled.map(|enabled| {
             if enabled {
                 if existing.endpoint_status == "disabled" {

@@ -250,6 +250,12 @@
         "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
       },
       {
+        "field": "environments",
+        "long": "environments",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "harness_name",
         "long": "harness",
         "short": "H",
@@ -959,6 +965,12 @@
         "kind": "string",
         "required": false,
         "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
+      },
+      {
+        "field": "environments",
+        "long": "environments",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "harness_id",
@@ -1693,6 +1705,12 @@
         "help": "Human-readable display name shown in UI."
       },
       {
+        "field": "environments",
+        "long": "environments",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "harness_name",
         "long": "harness",
         "short": "H",
@@ -1854,6 +1872,12 @@
         "kind": "string",
         "required": false,
         "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
+      },
+      {
+        "field": "environments",
+        "long": "environments",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "harness_name",
@@ -7377,6 +7401,12 @@
         "kind": "json",
         "required": false,
         "help": "Session-level capabilities (additive to agent capabilities). Applied after agent capabilities..."
+      },
+      {
+        "field": "environment",
+        "long": "environment",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "goal",

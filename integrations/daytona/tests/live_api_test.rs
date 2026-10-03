@@ -369,6 +369,7 @@ async fn test_live_session_sandbox_provider_flow() {
         provider: "daytona".to_string(),
         auto_start: true,
         idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
         provider_config: json!({
             "snapshot": "daytona-small",
             "workspace_path": "/home/daytona/workspace",
@@ -406,7 +407,7 @@ async fn test_live_session_sandbox_provider_flow() {
             &config,
             &instance,
             "/home/daytona/live-session-sandbox.txt",
-            "provider-flow\n",
+            b"provider-flow\n",
         )
         .await
         .expect("managed session sandbox write failed");
@@ -468,6 +469,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
         provider: "daytona".to_string(),
         auto_start: true,
         idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
         provider_config: json!({
             "snapshot": "daytona-small",
             "workspace_path": "/home/daytona/workspace",
@@ -492,7 +494,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
             &config,
             &instance,
             "/home/daytona/workspace/recovery-marker.txt",
-            "survived\n",
+            b"survived\n",
         )
         .await
         .expect("recovery marker write failed");

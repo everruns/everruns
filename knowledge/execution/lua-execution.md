@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Lua Execution Capability (experimental)"
-description: "Experimental Lua execution capability (sandboxed VFS scripting; aims to supersede bashkit_shell)."
+description: "Experimental Lua execution capability for evaluating sandboxed VFS scripting and code mode alongside Bashkit."
 tags:
   - everruns
   - execution
@@ -35,14 +35,12 @@ targets, in order:
 7. **Code mode** *(later)*, the agent's available tools registered as Lua
    functions, so one script orchestrates many tool calls per turn.
 
-### Goal: supersede `bashkit_shell`
+### Experiment boundary
 
-The intent is for `lua` to become the primary execution capability and for
-`bashkit_shell` to be deprecated once `lua` reaches feature parity for the
-workflows bash is used for today. Until then the two ship side by side and are
-evaluated head to head (round-trips per task, token cost, success rate, sandbox
-incidents). No bash removal happens before that evidence exists. See
-"Migration" below.
+Lua is an experiment, not an approved replacement plan for `bashkit_shell`.
+The two may be evaluated head to head (round-trips per task, token cost, success
+rate, and sandbox incidents). Any decision to change defaults or deprecate
+Bashkit requires a separate accepted proposal backed by that evidence.
 
 ## Architecture
 
@@ -233,13 +231,13 @@ prompt) means it is paid only when `lua` is present.
   `lua` feature, run in CI) assert that the math tools are hidden from the model
   yet executed through one `lua` script.
 
-## Migration (supersede `bashkit_shell`)
+## Evaluation path
 
 1. Reach parity for the file-munging workflows bash covers (Phase 2 eval gate).
 2. Land code mode (Phase 4), the capability bash cannot match.
-3. Default new agents to `lua`; mark `bashkit_shell` deprecated in capability
-   metadata; keep existing bash-assigned agents running.
-4. Remove `bashkit_shell` only after a deprecation window with no parity gaps.
+3. Compare the two capabilities in representative agent workloads.
+4. If the evidence warrants a default change, write and accept a separate
+   migration proposal. Until then Bashkit remains shipped and supported.
 
 ## Evaluation vs bash
 

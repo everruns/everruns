@@ -308,6 +308,29 @@ impl SessionService {
             None
         };
 
+        // Resolve once from the immutable Agent version selected for this
+        // Session. Falling back to the editable Agent head is only for agents
+        // without versioning; later edits never move an existing Session.
+        let agent_environments: Option<EnvironmentSet> =
+            if let Some(version) = &resolved_agent_version {
+                version
+                    .authored_config
+                    .get("environments")
+                    .cloned()
+                    .and_then(|value| serde_json::from_value(value).ok())
+            } else {
+                agent
+                    .as_ref()
+                    .and_then(|agent| agent.environments.clone())
+                    .and_then(|value| serde_json::from_value(value).ok())
+            };
+        let resolved_environment =
+            crate::domains::environments::profiles::resolve_environment_selection(
+                agent_environments.as_ref(),
+                req.environment.as_ref(),
+            )
+            .map_err(BadRequestError::new)?;
+
         let virtual_user_id = if let Some(identity_id) = req.virtual_user_id {
             let identity = self
                 .db
@@ -334,7 +357,13 @@ impl SessionService {
                     .or(effective_harness.default_model_id)
             });
 
-        let session_capabilities = sanitize_session_capabilities(req.capabilities);
+        let session_capabilities =
+            crate::domains::environments::profiles::apply_environment_to_capabilities(
+                &sanitize_session_capabilities(req.capabilities),
+                resolved_environment
+                    .as_ref()
+                    .map(|environment| &environment.profile),
+            );
 
         // EVE-AARDVARK: authorize high-risk session capability assignment
         // before full config validation so unauthorized callers cannot force
@@ -495,6 +524,11 @@ impl SessionService {
             workspace_id,
         };
         let row = self.db.create_session(input).await?;
+        if let Some(environment) = &resolved_environment {
+            self.db
+                .pin_environment(row.id, &environment.name, &environment.profile)
+                .await?;
+        }
         let row = if requested_goal.is_some() {
             self.db
                 .update_session(
