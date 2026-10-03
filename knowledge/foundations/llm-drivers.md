@@ -245,6 +245,19 @@ When `config.max_tokens` is `None`, drivers resolve the default from model profi
 
 Anthropic requires `max_tokens` in every request (cannot be omitted), so the driver always resolves a value.
 
+**Which field name carries the cap (Chat Completions)**: OpenAI deprecated `max_tokens` and current
+models reject it — `gpt-6-luna` answers HTTP 400 `Unsupported parameter: 'max_tokens' is not
+supported with this model. Use 'max_completion_tokens' instead.` Azure serves the same models under
+the same rules. `max_output_fields` therefore sends `max_completion_tokens` to OpenAI-family hosts
+and `max_tokens` to everything else; exactly one is ever set.
+
+The split is deliberately narrow. Measured against live accounts, Fireworks and Cloudflare accept
+*either* name and honour both — a cap of 16 returns `finish_reason: length` at 16 completion tokens
+— so switching them would buy nothing, while the self-hosted OpenAI-compatible servers this
+protocol also serves may implement only the original name. MAI could not be measured: the Foundry
+resource lists MAI models in its catalog but has none deployed, so its branch rests on Azure
+following OpenAI's parameter rules rather than on a live request.
+
 **Caller caps and thinking (Anthropic)**: thinking tokens count toward `max_tokens`. An explicit caller
 value remains a hard limit on all generated tokens and is serialized unchanged. When thinking does not
 fit underneath it — measured against `budget_tokens` for budget-based thinking, or the effort-sized room
@@ -606,7 +619,12 @@ never probed (the OpenRouter/Meta/Fireworks posture). They differ in what a cata
 | Cloudflare | `ai/models/search`, a sibling of `v1` rather than a path under it | Partial: Workers AI (`@cf/`) only, filtered to the text-generation task |
 
 Cloudflare's listing cannot be complete. Which third-party models an account reaches depends on
-what it can bill, and no endpoint enumerates that, so those ids are still added by hand. The
+what it can bill, and no endpoint enumerates that, so those ids are still added by hand. Probed to
+be sure rather than assumed: `ai/v1/models` answers `405 GET not supported`, and the
+`ai-gateway/gateways` and `ai-gateway/providers` endpoints answer `403` code `10000`
+(authentication error) to a Workers AI-scoped token — they exist, but behind the AI Gateway
+permission the inference token deliberately does not carry, and they enumerate configured
+providers rather than per-provider model catalogs. Neither route yields a third-party model list. The
 partial list is returned anyway because the `@cf/` ids are the awkward ones to type, and they come
 with the context window and `function_calling` flag the catalog advertises. One trap: that
 endpoint's `result_info.total_count` does not describe the result — an account served 69 models in

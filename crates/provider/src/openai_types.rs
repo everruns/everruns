@@ -14,8 +14,16 @@ pub(crate) struct OpenAiRequest {
     pub(crate) messages: Vec<OpenAiMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) temperature: Option<f32>,
+    /// Output cap for providers that still take the original field name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) max_tokens: Option<u32>,
+    /// Output cap for OpenAI-family hosts, which reject `max_tokens` on current
+    /// models: `gpt-6-luna` answers HTTP 400 "Unsupported parameter:
+    /// 'max_tokens' is not supported with this model. Use
+    /// 'max_completion_tokens' instead." Exactly one of the two is ever set,
+    /// chosen by [`max_output_fields`](super::openai_protocol::max_output_fields).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_completion_tokens: Option<u32>,
     pub(crate) stream: bool,
     /// Request usage info in streaming response (required for token counts)
     #[serde(skip_serializing_if = "Option::is_none")]
