@@ -52,6 +52,10 @@ owners, and memory. Older custom agents, apps, triggers, and child harnesses ret
 their original execution bindings so their authored behavior is preserved; the retired
 harness remains stored for those bindings and historical accounting.
 
+The Agent name `platform-chat` is reserved for the managed assistant. An existing
+custom Agent with that name is renamed to `platform-chat-custom-<ID suffix>`; its
+ID and bindings stay intact. Clients using its old name should switch to its ID.
+
 Conversation introductions and starters now belong exclusively to Agents. Existing
 harness presentation is copied to its assigned Agents when those Agent fields are
 empty. Harness presentation fields are deprecated and no longer accepted on writes.
