@@ -118,7 +118,9 @@ process or provide an independent transaction boundary.
 
 ## Observability
 
-To export these events as traces, see [Observability](/observability/).
+To send every session's events to OpenTelemetry or Braintrust, or to your own
+listener, register it on the Engine; see
+[Framework observability](/framework/observability/).
 
 ## Canonical events
 

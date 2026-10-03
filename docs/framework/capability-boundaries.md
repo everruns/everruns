@@ -32,6 +32,9 @@ persisted capability IDs or JSON configuration. A specialized low-level host
 can depend on `everruns-platform`, install the required services, and select the
 hosted registry deliberately.
 
+Moving an agent to the Platform keeps its capability IDs and configuration;
+see [Moving to Platform or Cloud](/framework/moving-to-platform/).
+
 For application-owned behavior, continue with
 [advanced capabilities](/framework/advanced-capabilities/). For low-level host
 composition, see [custom backends](/framework/custom-backends/).

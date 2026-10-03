@@ -56,6 +56,7 @@ export default defineConfig({
     "/capabilities/claude-tool-search/": "/capabilities/tool-search/",
     "/integrations/daytona/": "/capabilities/daytona/",
     "/integrations/e2b/": "/capabilities/e2b/",
+    "/integrations/container-sandbox/": "/capabilities/container-sandbox/",
     "/integrations/browserless/": "/capabilities/browserless/",
     "/integrations/slack/": "/capabilities/slack/",
     "/framework/supported-providers/": "/framework/models-and-providers/",
@@ -226,6 +227,7 @@ export default defineConfig({
                     { label: "Direct Calls and Decisions", slug: "framework/direct-model-calls" },
                     { label: "Sessions", slug: "framework/sessions" },
                     { label: "Events and Cancellation", slug: "framework/events-and-cancellation" },
+                    { label: "Observability", slug: "framework/observability" },
                     { label: "Workspaces and Environments", slug: "framework/workspaces-and-environments" },
                     { label: "Lifecycle Hooks", slug: "framework/lifecycle-hooks" },
                     { label: "Answer Agent Questions", slug: "framework/ask-user" },
@@ -249,6 +251,8 @@ export default defineConfig({
                   // say so.
                   label: "Expose and deploy",
                   items: [
+                    { label: "Deploy a Framework App", slug: "framework/deployment" },
+                    { label: "Move to Platform or Cloud", slug: "framework/moving-to-platform" },
                     { label: "Serve (experimental)", slug: "framework/serve" },
                     { label: "Serve AG-UI", slug: "framework/ag-ui" },
                     { label: "A2A", slug: "framework/a2a" },
@@ -386,6 +390,7 @@ export default defineConfig({
                       items: [
                         { label: "Daytona", slug: "capabilities/daytona" },
                         { label: "E2B", slug: "capabilities/e2b" },
+                        { label: "Container Sandbox", slug: "capabilities/container-sandbox" },
                       ],
                     },
                     {
@@ -400,6 +405,10 @@ export default defineConfig({
                         { label: "SQL Database", slug: "capabilities/sql-database" },
                         { label: "Retrieval Citations", slug: "capabilities/citation-retrieval" },
                         { label: "Citation Verification", slug: "capabilities/citation-verification" },
+                        { label: "Memory", slug: "capabilities/memory" },
+                        { label: "Knowledge Base", slug: "capabilities/knowledge-base" },
+                        { label: "Knowledge Index", slug: "capabilities/knowledge-index" },
+                        { label: "Data Knowledge", slug: "capabilities/data-knowledge" },
                       ],
                     },
                     {
@@ -440,6 +449,7 @@ export default defineConfig({
                         { label: "Budgeting", slug: "capabilities/budgeting" },
                         { label: "Self-Budget", slug: "capabilities/self-budget" },
                         { label: "Parallel Tool Calls", slug: "capabilities/parallel-tool-calls" },
+                        { label: "Prompt Caching", slug: "capabilities/prompt-caching" },
                       ],
                     },
                     {
@@ -450,6 +460,8 @@ export default defineConfig({
                         { label: "Tool Approval", slug: "capabilities/tool-approval" },
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
                         { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
+                        { label: "Soft Approval", slug: "capabilities/soft-approval" },
+                        { label: "Tool Loop Detection", slug: "capabilities/loop-detection" },
                       ],
                     },
                     {
@@ -476,7 +488,6 @@ export default defineConfig({
                     {
                       label: "Sandboxes & execution",
                       items: [
-                        { label: "Container Sandbox", slug: "integrations/container-sandbox" },
                         { label: "Cursor", slug: "integrations/cursor" },
                       ],
                     },
@@ -503,6 +514,8 @@ export default defineConfig({
                   label: "Experimental (dev grade)",
                   collapsed: true,
                   items: [
+                    { label: "A2A Agent Delegation", slug: "capabilities/a2a-agent-delegation" },
+                    { label: "Agent Handoff", slug: "capabilities/agent-handoff" },
                     { label: "ARD", slug: "integrations/ard" },
                     { label: "Brave Search", slug: "integrations/brave-search" },
                     { label: "Computer Use", slug: "capabilities/computer-use" },
