@@ -179,6 +179,8 @@ Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS whe
 
 Why it matters: every turn phase (`process_input`, `reason`, `act`) is its own queued task. Before the worker consumed these notifications, an idle worker sat in a backoff of up to 5s, so a new message waited up to 5s to start and each tool call paid that wait twice (reason to act, act to reason). Measured locally on a two-tool turn: pickup fell from about 1.5s to about 70ms and each phase hand-off from up to 1.5s to under 200ms. `crates/server/tests/workflow_test/latency.rs` guards the pickup end to end.
 
+Once a phase is claimed, its own setup is the next cost: before a reason phase calls the model, host setup reads the session, harness, and agent several times over (dependency check, capability loading, snapshot projection, tool augmentation), and each read from a gRPC worker is a control-plane round trip plus database queries. With the production database a few milliseconds away, that setup took about 600 ms of each ~700 ms hand-off, against about 130 ms locally. The worker memoizes those reads for the length of the setup (`crates/worker/src/phase_reads.rs`) and logs `phase setup` with `setup_ms` and the reads fetched and saved, once per phase.
+
 Operational contract:
 
 - NATS is the preferred backend when configured
