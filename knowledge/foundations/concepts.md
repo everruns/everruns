@@ -268,7 +268,7 @@ storage, but App management, publishing, command discovery, and UI are retired.
 
 - Only deprecated archival reads remain.
 - `agent_channels` owns live ingress identity and liveness.
-- Permanent App-shaped route aliases resolve from endpoint-owned legacy identity without reading
+- Permanent App-shaped route aliases resolve from channel-owned legacy identity without reading
   `apps` or `app_channels`.
 - Existing session attribution, budget subject values, owner semantics, and reserved routing tags
   remain compatible.

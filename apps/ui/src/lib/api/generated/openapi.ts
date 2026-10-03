@@ -1145,7 +1145,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Exchange verified endpoint authentication for a bounded runtime credential. */
+    /** Exchange verified channel authentication for a bounded runtime credential. */
     post: operations["exchange"];
     delete?: never;
     options?: never;
@@ -1947,7 +1947,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Exchange verified endpoint authentication for a bounded runtime credential.
+     * Exchange verified channel authentication for a bounded runtime credential.
      * @deprecated
      */
     post: operations["exchange_legacy"];

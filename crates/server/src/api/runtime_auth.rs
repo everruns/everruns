@@ -23,7 +23,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/e/{channel_id}/runtime-auth", post(exchange))
         .with_state(state)
 }
-#[utoipa::path(summary = "Exchange verified endpoint authentication for a bounded runtime credential.", post, path = "/v1/channels/{channel_id}/runtime-auth", params(("channel_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Exchange verified channel authentication for a bounded runtime credential.", post, path = "/v1/channels/{channel_id}/runtime-auth", params(("channel_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn exchange(
     State(state): State<AppState>,
     Path(endpoint): Path<String>,

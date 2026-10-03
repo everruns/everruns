@@ -978,7 +978,7 @@ async fn find_or_create_session(
                     app.agent_version_policy.clone(),
                     app.agent_version_id,
                     Some(channel_internal_id),
-                    None, // endpoint ingress, not a trigger
+                    None, // channel ingress, not a trigger
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
                     everruns_platform::SessionSource::AgUi,

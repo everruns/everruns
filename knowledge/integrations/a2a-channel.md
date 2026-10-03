@@ -10,40 +10,40 @@ tags:
 
 ## Status
 
-A2A ingress is endpoint-owned. Canonical routes use the endpoint ID. Existing
+A2A ingress is channel-owned. Canonical routes use the channel ID. Existing
 App-shaped routes, routing tags, API key material, and session attribution
 remain permanent compatibility contracts. App management, App key creation,
-and App key rotation are retired. Generic Agent endpoint APIs can manage
-existing A2A endpoint rows, but the current endpoint picker does not create
+and App key rotation are retired. Generic Agent channel APIs can manage
+existing A2A channel rows, but the current channel picker does not create
 new A2A credentials.
 
 ## Abstract
 
 The A2A channel exposes an Everruns agent as an **Agent2Agent (A2A) protocol**
 endpoint so other agents can invoke it over JSON-RPC. It is a sibling of the
-`webhook` transport and injects a rendered user message into an endpoint-owned
-session after endpoint liveness is established.
+`webhook` transport and injects a rendered user message into an channel-owned
+session after channel liveness is established.
 
 The first cut implemented the **API key** authentication scheme from the A2A
-security model. A2A channels now also adopt the shared endpoint auth model
-documented in [`knowledge/integrations/apps.md`](apps.md): each channel may keep the generated
-bearer API key or attach first-class endpoint auth for HTTP Basic,
+security model. A2A channels now also adopt the shared channel auth model
+documented in [`Channel Authentication`](channel-auth.md): each channel may keep the generated
+bearer API key or attach first-class channel auth for HTTP Basic,
 Google/OIDC JWT bearer, OAuth2 introspection, or mTLS.
 
-A2A is a separate endpoint type so an agent can advertise itself to other
+A2A is a separate channel type so an agent can advertise itself to other
 agents without conflating it with bare HTTP webhook ingress.
 
 References:
 
 - A2A protocol: <https://a2aproject.github.io/A2A>
 - `knowledge/integrations/app-invocation-channels.md`, sibling invocation channels
-- `knowledge/integrations/apps.md`, app entity, harness, agent identity binding
+- `knowledge/integrations/agent-exposure.md`, channel ownership and agent identity binding
 - `crates/server/specs/slack-integration.md`, sibling messaging channel
 
 ## Goals
 
 1. Let an Everruns agent act as a discoverable A2A agent for other agents
-2. Reuse endpoint liveness, ownership, harness, agent, and identity
+2. Reuse channel liveness, ownership, harness, agent, and identity
 3. Authenticate inbound calls with a hashed API key (no plaintext at rest)
 4. Reuse `SessionBinding` for session routing (shared / per-invocation)
 5. Publish a minimal **Agent Card** for protocol discovery
@@ -103,7 +103,7 @@ API key generation:
   platform `evr_` API keys.
 - Hash: `SHA-256` of the full key, hex-encoded. Matches `auth/api_key.rs`.
 - Display prefix: first 8 hex chars after `evra2a_`, suffixed with `...`.
-- Existing plaintext keys were returned only once when their endpoint was
+- Existing plaintext keys were returned only once when their channel was
   created or regenerated. Frozen reads expose only `api_key_prefix`.
 
 ## Endpoints
@@ -113,13 +113,13 @@ API key generation:
 Canonical: `POST /v1/channels/{channel_id}/a2a`.
 
 Permanent compatibility alias:
-`POST /v1/apps/{legacy_app_id}/a2a/{channel_id}`. It resolves the endpoint
+`POST /v1/apps/{legacy_app_id}/a2a/{channel_id}`. It resolves the channel
 without reading `apps` or `app_channels`.
 
 - Content-Type: `application/json`
 - Auth: `Authorization: Bearer <api_key>` (the `apiKey` scheme in the Agent
   Card uses `bearer` for unification with the standard HTTP header).
-- If `auth` is configured, the endpoint uses that shared endpoint auth
+- If `auth` is configured, the channel uses that shared channel auth
   policy instead. `auth.mode = api_key` keeps generated-key behavior;
   `google_oidc`, `oidc`, and `oauth2_introspection` use bearer tokens;
   `http_basic` uses HTTP Basic; `mtls` uses the configured trusted reverse
@@ -515,33 +515,33 @@ common app-channel invocation helper, not by the A2A HTTP adapter.
 
 ## Lifecycle
 
-- Agent endpoint publish/unpublish controls whether the endpoint accepts
+- Agent channel publish/unpublish controls whether the channel accepts
   traffic.
-- Disabling or suspending the endpoint rejects further requests.
-- Deleting the endpoint removes its row; previously created sessions remain.
+- Disabling or suspending the channel rejects further requests.
+- Deleting the channel removes its row; previously created sessions remain.
 - Existing API keys remain frozen compatibility credentials. No App key
   creation or regeneration operation remains.
 
 ## Surfaces
 
 A2A invocation uses the canonical `/v1/channels/{channel_id}/a2a` routes and their
-permanent App-shaped aliases. Endpoint configuration uses the Agent endpoint
+permanent App-shaped aliases. Channel configuration uses the Agent channel
 HTTP APIs and matching command catalog. There is no App management API or Apps
-UI. The current endpoint picker does not offer A2A because no replacement
+UI. The current channel picker does not offer A2A because no replacement
 credential-generation flow exists.
 
 ## Testing
 
 Coverage required:
 
-1. Endpoint reads redact the stored API key digest and preserve its display
+1. Channel reads redact the stored API key digest and preserve its display
    prefix.
 2. Inbound `message/send` returns a terminal completed task and creates a
    user message in the routed session.
 3. Shared-session vs per-invocation routing.
 4. Auth: missing / wrong / disabled / suspended all return the documented
    JSON-RPC error codes.
-5. Agent Card returns 404 when the endpoint is not live or the endpoint is
+5. Agent Card returns 404 when the channel is not live or the channel is
    disabled, and returns the documented shape when live.
 6. Method gating accepts the four documented methods and rejects other
    methods with `-32601 Method not found`.
@@ -599,7 +599,7 @@ request signing. When set, every request must additionally carry a
 timestamp + signature header pair; otherwise the channel keeps the
 existing authentication-only behavior. This closes TM-A2A-010
 (captured-request replay until rotation) without breaking deployments
-that have not opted in. Signing is **orthogonal** to first-class endpoint
+that have not opted in. Signing is **orthogonal** to first-class channel
 auth (`AgentChannel.auth`), it layers replay protection on top of
 whichever auth mode the channel uses (default API key, HTTP Basic, OIDC,
 OAuth2, or mTLS).
@@ -611,7 +611,7 @@ Headers (sent by the client):
   `HMAC-SHA256(signing_secret, "v0:{timestamp}:{channel_scope}:{raw_body}")`.
   `channel_scope` is the literal string `{app_id}:{channel_id}` (the same
   values that appear in the request path). Including the scope inside the
-  signed basestring binds the signature to its target endpoint and
+  signed basestring binds the signature to its target channel and
   prevents cross-channel replay when operators share the same
   `signing_secret` across multiple A2A channels.
 

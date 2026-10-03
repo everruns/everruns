@@ -467,7 +467,7 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "channel_config_encrypted",
         id_column: "id",
     },
-    // Endpoint authentication can contain password hashes and provider secrets.
+    // Channel authentication can contain password hashes and provider secrets.
     EncryptedColumn {
         table: "agent_channels",
         column: "auth_encrypted",

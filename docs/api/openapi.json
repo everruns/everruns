@@ -4545,7 +4545,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Exchange verified endpoint authentication for a bounded runtime credential.",
+        "summary": "Exchange verified channel authentication for a bounded runtime credential.",
         "operationId": "exchange",
         "parameters": [
           {
@@ -7298,7 +7298,7 @@
         "tags": [
           "virtual-users"
         ],
-        "summary": "Exchange verified endpoint authentication for a bounded runtime credential.",
+        "summary": "Exchange verified channel authentication for a bounded runtime credential.",
         "operationId": "exchange_legacy",
         "parameters": [
           {

@@ -12,9 +12,9 @@
 * [Apps](apps.md) - Frozen App compatibility data and permanent ingress aliases.
 * [Agent Exposure (retiring the App abstraction)](agent-exposure.md) - Make Agent the addressable entity by making channels Agent-owned and folding invocation into Triggers, retiring App.
 * [Public Chat (Hosted Chat App)](public-chat.md) - Public Chat (hosted, isolated chat app), product spec/proposal.
-* [Legacy App Invocation Aliases](app-invocation-channels.md) - Frozen App-shaped aliases for endpoint-owned webhook and schedule ingress.
+* [Legacy App Invocation Aliases](app-invocation-channels.md) - Frozen App-shaped aliases for channel-owned webhook and schedule ingress.
 * [Channel Authentication](channel-auth.md) - Shared inbound auth framework for Agent-owned channels.
-* [Legacy App API Keys](app-api-keys.md) - Frozen execution-only credentials for endpoint-owned native session ingress.
+* [Legacy App API Keys](app-api-keys.md) - Frozen execution-only credentials for channel-owned native session ingress.
 * [AG-UI Channel](ag-ui.md) - AG-UI 1.0 channel: wire types, runtime-event projection, the consumer pipeline, and the 1.0 rules each side keeps.
 * [A2A Channel](a2a-channel.md) - A2A inbound channel.
 * [A2A Capability](a2a-capability.md) - A2A outbound delegation capability.

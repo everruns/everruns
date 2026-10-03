@@ -274,7 +274,7 @@ or grant it to an external consumer who reaches a management-capable harness.
 The [API proposal](../../crates/server/specs/virtual-users.md) maps the model
 onto existing resource families. Virtual users have one canonical API with
 self-service shortcuts; management and runtime auth remain distinct authorities
-at the shared command boundary. Existing Agent, Session, and endpoint ingress
+at the shared command boundary. Existing Agent, Session, and channel ingress
 families remain, with validated runtime identity captured for each invocation.
 External consumers gain bounded self-service access without management accounts.
 Legacy connection/identity routes are adapters during cutover, not another store.

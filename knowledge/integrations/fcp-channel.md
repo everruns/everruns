@@ -58,7 +58,7 @@ GET  /v1/apps/{legacy_app_id}/fcp
 POST /v1/apps/{legacy_app_id}/fcp
 ```
 
-Aliases resolve from endpoint-owned legacy identity without reading `apps` or
+Aliases resolve from channel-owned legacy identity without reading `apps` or
 `app_channels`.
 
 Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
