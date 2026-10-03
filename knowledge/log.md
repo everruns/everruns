@@ -1,5 +1,15 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-03
+
+* **Crate layout target.** Published crates go from 52 to about 37 in seven
+  release-sized steps: `everruns-contracts` absorbs provider, capability, and
+  model profiles plus platform's extension traits; `everruns-platform` splits
+  into `everruns-capabilities` and server-owned records; engine, host,
+  builtins, MCP, and AG-UI fold into core behind features; the worker gets a
+  private `everruns-durable-engine`. Only the server and durable open a
+  database. See [Crate Layout](project/crate-layout.md).
+
 ## 2026-10-02
 
 * **Seeded Agents API sessions.** A turn that creates an OpenAI Agents API
