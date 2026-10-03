@@ -45,6 +45,7 @@ use crate::user_facing_error::is_provider_quota_message;
 // module's public surface is unchanged.
 mod background;
 mod chat_driver;
+mod completion_contract;
 mod computer;
 mod hosted_tools;
 mod input;
@@ -162,6 +163,7 @@ pub struct OpenResponsesProtocolChatDriver {
     hosted_tools: bool,
     native_prompt_cache_options: bool,
     background_mode: bool,
+    required_completion: bool,
     websocket: websocket::WebSocketPolicy,
 }
 
@@ -182,8 +184,15 @@ impl OpenResponsesProtocolChatDriver {
             hosted_tools: false,
             native_prompt_cache_options: false,
             background_mode: false,
+            required_completion: false,
             websocket: Default::default(),
         }
+    }
+
+    /// Reject truncated streams and gateway-only terminal frames.
+    pub fn with_required_completion(mut self, enabled: bool) -> Self {
+        self.required_completion = enabled;
+        self
     }
 
     /// Enable optional protocol extensions implemented by this endpoint.
@@ -998,15 +1007,23 @@ impl OpenResponsesProtocolChatDriver {
                     );
 
                     if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm(format!(
-                            "{} (after {} retries, last error: {})",
-                            error_msg,
-                            attempts,
-                            last_error.lock().unwrap().take().unwrap_or_default()
-                        )));
+                        return RetryDecision::Terminal(AgentLoopError::llm_http(
+                            status.as_u16(),
+                            &error_text,
+                            format!(
+                                "{} (after {} retries, last error: {})",
+                                error_msg,
+                                attempts,
+                                last_error.lock().unwrap().take().unwrap_or_default()
+                            ),
+                        ));
                     }
 
-                    RetryDecision::Terminal(AgentLoopError::llm(error_msg))
+                    RetryDecision::Terminal(AgentLoopError::llm_http(
+                        status.as_u16(),
+                        &error_text,
+                        error_msg,
+                    ))
                 }
             },
             |e, attempts| {

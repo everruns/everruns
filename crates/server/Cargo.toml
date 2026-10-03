@@ -64,6 +64,7 @@ sha3 = "0.12"
 time.workspace = true
 regex.workspace = true
 async-trait.workspace = true
+everruns-drivers = { workspace = true, features = ["chatgpt"] }
 aes-gcm.workspace = true
 argon2.workspace = true
 governor.workspace = true

@@ -21,6 +21,8 @@
 // probe cannot see, and an unverified provider is still better than a lost one.
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { startChatGptLogin } from "@/lib/api/chatgpt";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -39,7 +41,14 @@ import { useCredentialCheck } from "./use-credential-check";
 import { CredentialCheckStatus } from "./credential-check-status";
 
 // The drivers that need nothing but a key, in the order they are offered.
-const QUICK_CONNECT_DRIVERS: DriverId[] = ["anthropic", "openai", "gemini", "openrouter", "meta"];
+const QUICK_CONNECT_DRIVERS: DriverId[] = [
+  "anthropic",
+  "openai",
+  "chatgpt",
+  "gemini",
+  "openrouter",
+  "meta",
+];
 
 // Shape hints so a pasted key can be eyeballed against the expected prefix.
 const KEY_PLACEHOLDERS: Partial<Record<DriverId, string>> = {
@@ -92,6 +101,7 @@ export function QuickConnect({
 }) {
   const { data: config } = useProvidersConfig();
   const createProvider = useCreateProvider();
+  const router = useRouter();
   // The driver whose paste panel is open, and the driver currently being handed
   // to an OAuth redirect (its tile shows a busy label until navigation happens).
   const [openDriver, setOpenDriver] = useState<DriverId | null>(null);
@@ -109,6 +119,8 @@ export function QuickConnect({
     setError(null);
     setOpenDriver(null);
     setOauthDriver(driver);
+    const popup = driver === "chatgpt" ? window.open("about:blank", "_blank") : null;
+    if (popup) popup.opener = null;
     try {
       const provider = await createProvider.mutateAsync({
         name: uniqueProviderName(
@@ -117,8 +129,17 @@ export function QuickConnect({
         ),
         provider_type: driver,
       });
-      window.location.href = providerOAuthAuthorizeUrl(provider.id);
+      if (driver === "chatgpt") {
+        const { authorize_url } = await startChatGptLogin(provider.id);
+        router.push(`/settings/providers/${provider.id}`);
+        if (popup) popup.location.assign(authorize_url);
+        else window.location.assign(authorize_url);
+        setOauthDriver(null);
+      } else {
+        window.location.assign(providerOAuthAuthorizeUrl(provider.id));
+      }
     } catch {
+      popup?.close();
       setOauthDriver(null);
       setError(`Could not start the ${quickConnectLabel(driver)} sign-in. Please try again.`);
     }
@@ -131,14 +152,16 @@ export function QuickConnect({
           Connect
         </h3>
         <p className="text-xs text-muted-foreground">
-          Paste a key and it verifies itself. No name needed.
+          Connect an account or paste a key. No name needed.
         </p>
       </div>
 
       {/* The settings pane is far narrower than the page, so the tiles cap at
           three across: six would truncate every provider name. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {QUICK_CONNECT_DRIVERS.map((driver) => (
+        {QUICK_CONNECT_DRIVERS.filter(
+          (driver) => driver !== "chatgpt" || config?.drivers.some((d) => d.driver === "chatgpt"),
+        ).map((driver) => (
           <QuickConnectTile
             key={driver}
             driver={driver}
@@ -217,13 +240,27 @@ function QuickConnectTile({
         {getProviderDescription(driver)}
       </p>
       {connected > 0 ? (
-        <Badge variant="success" className="self-start">
-          <Check className="icon-sharp size-3" />
-          {connected} connected
+        <Badge variant={driver === "chatgpt" ? "outline" : "success"} className="self-start">
+          {driver !== "chatgpt" && <Check className="icon-sharp size-3" />}
+          {connected}{" "}
+          {driver === "chatgpt" ? (connected === 1 ? "account" : "accounts") : "connected"}
         </Badge>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        {dualAuth ? (
+        {driver === "chatgpt" ? (
+          <>
+            <span className="text-xs text-muted-foreground">Personal · Preview</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              disabled={oauthPending}
+              onClick={onOAuthConnect}
+            >
+              {oauthPending ? "Connecting…" : "Continue with ChatGPT"}
+            </Button>
+          </>
+        ) : dualAuth ? (
           <>
             <span className="text-xs text-muted-foreground">Key or sign-in</span>
             <Button

@@ -20,6 +20,7 @@ import { formatCountLabel } from "@/lib/formatting";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { managedProviderCopy } from "@/lib/managed-provider-copy";
 import type { Provider } from "@/lib/api/types";
+import { ChatGptConnectionCard } from "../chatgpt-connection";
 import { ApiError } from "@/lib/api/client";
 
 export default function ProviderDetailPage({
@@ -155,10 +156,12 @@ export default function ProviderDetailPage({
                   <p className="break-all text-sm text-muted-foreground">{provider.base_url}</p>
                 </div>
               )}
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Key className="h-4 w-4" />
-                API Key: {provider.api_key_set ? "Configured" : "Not set"}
-              </div>
+              {provider.provider_type !== "chatgpt" && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Key className="h-4 w-4" />
+                  API Key: {provider.api_key_set ? "Configured" : "Not set"}
+                </div>
+              )}
               {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
               {!provider.managed && (
                 <Button
@@ -173,11 +176,15 @@ export default function ProviderDetailPage({
           </CardContent>
         </Card>
 
+        {provider.provider_type === "chatgpt" && <ChatGptConnectionCard providerId={providerId} />}
+
         {/* Trace links are part of the host-managed config for managed providers. */}
         {!provider.managed && <ProviderTraceCard provider={provider} providerId={providerId} />}
 
         {/* Same rule as trace: a managed connection's request options belong to the host. */}
-        {!provider.managed && <ProviderAdvancedCard provider={provider} providerId={providerId} />}
+        {!provider.managed && provider.provider_type !== "chatgpt" && (
+          <ProviderAdvancedCard provider={provider} providerId={providerId} />
+        )}
 
         <Card>
           <CardHeader>

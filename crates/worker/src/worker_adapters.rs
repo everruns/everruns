@@ -127,6 +127,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get default model configuration
     async fn get_default_model_spec(&self, org_id: i64) -> Result<Option<ModelSpec>>;
 
+    async fn get_provider_config_for_session(
+        &self,
+        org_id: i64,
+        provider: &everruns_contracts::ProviderKey,
+        _session: SessionId,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        self.get_provider_config(org_id, provider).await
+    }
+
     async fn get_provider_config(
         &self,
         org_id: i64,
@@ -852,6 +861,16 @@ impl<A: WorkerAdapters> everruns_core::provider_resolution::ProviderStore for Or
 
     async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>> {
         self.adapters.get_default_model_spec(self.org_id).await
+    }
+
+    async fn get_provider_config_for_session(
+        &self,
+        provider: &everruns_contracts::ProviderKey,
+        session: SessionId,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        self.adapters
+            .get_provider_config_for_session(self.org_id, provider, session)
+            .await
     }
 
     async fn get_provider_config(

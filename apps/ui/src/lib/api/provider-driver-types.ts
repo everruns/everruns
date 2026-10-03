@@ -9,6 +9,8 @@
 /** Wire id of a model provider driver, matching the server's `DriverId`. */
 export type DriverId =
   | "openai"
+  | "chatgpt"
+  | "openai-codex"
   | "openrouter"
   | "azure_openai"
   | "openai_completions"

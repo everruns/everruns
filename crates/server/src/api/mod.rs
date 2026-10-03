@@ -20,6 +20,7 @@ pub mod audit_logs;
 pub mod budgets;
 pub mod capabilities;
 pub mod channel_rate_limit;
+pub mod chatgpt;
 pub mod commands;
 pub mod common;
 pub mod dispatch;

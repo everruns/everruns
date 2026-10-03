@@ -463,3 +463,31 @@ The refactor has landed; current implementations live at:
 - `crates/server/src/api/voice.rs`, realtime credential resolution (routed through `resolve_service`)
 - `crates/platform/src/connector.rs`, connector plugin trait
 - `apps/ui/src/app/(main)/settings/providers/`, provider settings UI
+
+## Personal ChatGPT plan connections
+
+ChatGPT grants belong to a user and their exact personal runtime principal.
+Management visibility does not imply runtime access: org administrators cannot
+borrow another user's grant, and Playground and shared defaults cannot use it.
+Both deployment enablement and organization opt-in are required. Hosted defaults
+stay off until that product supports subscription-funded execution.
+
+The shared [ChatGPT and Codex drivers](../../crates/drivers/drivers/src/chatgpt/mod.rs)
+own OAuth validation, issuing-client binding, request shaping, streaming, and
+refresh sequencing. Hosts own browser navigation and storage. Everruns uses an
+encrypted [control-plane token store](../../crates/server/src/services/chatgpt.rs)
+and a database lease across replicas; workers get only access tokens through
+session-scoped resolution. All connection mutations use that lease and an
+attempt generation, so cancellation/deletion cannot be undone by a late callback.
+Rotation persists the full token pair before using it. Disconnect revokes before
+clearing; failure retains the grant. Registration survives reconnect.
+
+The UI extends the existing Providers Connect grid and account-detail cards;
+private ownership replaces API-key management for this provider. Remote hosts
+use the shared loopback helper and protected credential transfer, with validated
+installation, signature, nonce, issuing client, and subject. See the
+[public workflow](../../docs/features/chatgpt.md).
+
+Yolop consumes the same driver package and credential types. Its settings
+adapter supplies a cross-process lease and an atomic compare-and-save so an
+external login/logout cannot be overwritten by an in-flight refresh.
