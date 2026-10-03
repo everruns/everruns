@@ -1,6 +1,6 @@
 //! Durable implementation of the shared engine execution contract.
 //!
-//! Lives in durable-engine, not in `everruns-durable`: the durable engine is a
+//! Lives in durable-engine, not in `everruns-durable`: `everruns-durable` is a
 //! generic workflow/task runtime with no agent or turn semantics, so the
 //! adapter that checkpoints engine [`TurnState`] between durable activities
 //! belongs to the host that knows about turns.
