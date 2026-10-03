@@ -60,6 +60,7 @@ fn external_test_ctx(db: Arc<StorageBackend>, user_id: Uuid) -> Ctx {
 
 fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
     CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: Some(harness_id),

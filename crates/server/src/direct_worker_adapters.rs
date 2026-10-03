@@ -433,6 +433,7 @@ impl DirectWorkerAdapters {
                 agent_id: r.agent_id,
                 agent_version_id: r.agent_version_id,
                 virtual_user_id: r.virtual_user_id,
+                playground_user_id: r.playground_user_id,
                 owner_principal_id: r.owner_principal_id,
                 resolved_owner_user_id: r.resolved_owner_user_id,
                 owner: None,

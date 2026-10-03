@@ -18,6 +18,7 @@ fn test_harness_id() -> HarnessId {
 
 fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,

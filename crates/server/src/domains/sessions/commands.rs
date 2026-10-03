@@ -267,8 +267,29 @@ impl Command for CreateSession {
         let source = req.source.unwrap_or(SessionSource::Api);
         if !source.is_client_declarable() {
             return Err(CommandError::bad_request(format!(
-                "source must be one of chat, api (got {source})"
+                "source must be one of chat, playground, api (got {source})"
             )));
+        }
+        if source == SessionSource::Playground {
+            if req.parent_session_id.is_some()
+                || req.forked_from_session_id.is_some()
+                || req.workspace_id.is_some()
+            {
+                return Err(CommandError::bad_request(
+                    "Playground starts with a fresh session and workspace",
+                ));
+            }
+            if harness.is_built_in && harness.name.starts_with("platform-chat") {
+                return Err(CommandError::bad_request(
+                    "Platform Chat is a personal operator harness and cannot be shared in Playground",
+                ));
+            }
+            req.playground_user_id =
+                Some(super::playground::validate_subject(ctx, req.playground_user_id).await?);
+        } else if req.playground_user_id.is_some() {
+            return Err(CommandError::bad_request(
+                "playground_user_id requires source=playground",
+            ));
         }
         // A session created under a parent is a delegated child whatever the
         // caller called it. This is the spawn path the in-process worker
@@ -693,6 +714,11 @@ inventory::submit! { CommandDescriptor::of::<ForkSession>() }
 pub struct SessionFilterArgs {
     /// Agent's prefixed public identifier.
     pub agent_id: Option<AgentId>,
+    /// Fixed Playground end-user identity.
+    pub playground_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+    /// Return only archived sessions.
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    pub archived_only: Option<bool>,
     /// Case-insensitive title substring match.
     pub search: Option<String>,
     /// Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`,
@@ -784,6 +810,8 @@ impl SessionFilterArgs {
 
         Ok(Some(crate::storage::SessionListFilters {
             include_archived: self.include_archived.unwrap_or(false),
+            archived_only: self.archived_only.unwrap_or(false),
+            playground_user_id: self.playground_user_id,
             agent_id,
             search: self.search,
             sources: parse_csv(self.source.as_deref(), SessionSource::parse, "source")?,

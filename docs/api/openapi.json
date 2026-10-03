@@ -12368,6 +12368,30 @@
         "operationId": "list_sessions",
         "parameters": [
           {
+            "name": "playground_user_id",
+            "in": "query",
+            "description": "Filter by the fixed Playground end-user identity.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "archived_only",
+            "in": "query",
+            "description": "Return only archived sessions.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "agent_id",
             "in": "query",
             "description": "Filter sessions by agent ID.",
@@ -12614,6 +12638,24 @@
         "summary": "GET /v1/sessions/facets - Facet counts and masthead metrics",
         "operationId": "get_session_facets",
         "parameters": [
+          {
+            "name": "playground_user_id",
+            "in": "query",
+            "description": "Filter by the fixed Playground end-user identity.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "archived_only",
+            "in": "query",
+            "description": "Return only archived sessions.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
           {
             "name": "agent_id",
             "in": "query",
@@ -23859,12 +23901,19 @@
             "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to inherit\nthe agent/harness preference or the provider default.",
             "example": true
           },
+          "playground_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fixed Playground end user. Defaults to the caller's linked virtual user. Only valid with source=playground."
+          },
           "source": {
             "type": [
               "string",
               "null"
             ],
-            "description": "How this session was started. Clients may declare only `chat` (an\ninteractive thread) or `api` (the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
+            "description": "How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`\n(the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
             "example": "chat"
           },
           "system_prompt": {
@@ -34958,6 +35007,13 @@
                   ],
                   "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
                 },
+                "playground_user_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Fixed end-user identity for a Playground conversation; independent of the resident service."
+                },
                 "preview": {
                   "type": [
                     "string",
@@ -35923,6 +35979,13 @@
                         "null"
                       ],
                       "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
+                    },
+                    "playground_user_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Fixed end-user identity for a Playground conversation; independent of the resident service."
                     },
                     "preview": {
                       "type": [
@@ -39024,6 +39087,13 @@
             ],
             "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
           },
+          "playground_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fixed end-user identity for a Playground conversation; independent of the resident service."
+          },
           "preview": {
             "type": [
               "string",
@@ -39711,6 +39781,7 @@
         "description": "How a session came into existence.\n\nClosed set: the sessions facet rail enumerates every variant, so the value\nis typed rather than a free-form string. Ingress paths set it server-side —\nclients may only declare the two variants they can legitimately be\n(`Chat` and `Api`), which keeps a facet like \"started by a schedule\"\ntrustworthy. Rows that predate the column, or whose origin could not be\ninferred at backfill time, carry `Unknown`.",
         "enum": [
           "chat",
+          "playground",
           "api",
           "slack",
           "ag_ui",
@@ -46878,6 +46949,13 @@
                   "null"
                 ],
                 "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
+              },
+              "playground_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Fixed end-user identity for a Playground conversation; independent of the resident service."
               },
               "preview": {
                 "type": [

@@ -509,6 +509,7 @@ pub async fn create_agent_voice_session(
 > {
     ensure_voice_enabled(&org)?;
     let session = CreateSession(crate::api::sessions::CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: None,
@@ -743,15 +744,22 @@ async fn authorize_session(
     org: &ResolvedOrg,
     session_id: SessionId,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    state
+    let session = state
         .session_service
         .get(&Caller::from(org), session_id.uuid(), None)
         .await
-        .map(|_| ())
         .map_err(|err| {
             tracing::debug!(error = %err, "voice session authorization failed");
             ErrorResponse::not_found("Session")
-        })
+        })?
+        .ok_or_else(|| ErrorResponse::not_found("Session"))?;
+    // Realtime transcripts bypass runtime invocation binding. Until that path
+    // supports the fixed test subject, Playground uses the shared text composer.
+    if session.source == everruns_platform::SessionSource::Playground {
+        return Err(ErrorResponse::new("Voice is unavailable in Playground")
+            .into_response(StatusCode::BAD_REQUEST));
+    }
+    Ok(())
 }
 
 /// Resolve the realtime-voice provider connection for an org via service-bound

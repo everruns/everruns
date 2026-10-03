@@ -46,8 +46,8 @@ use utoipa::{IntoParams, ToSchema};
 /// Request to create a session
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
-    /// How this session was started. Clients may declare only `chat` (an
-    /// interactive thread) or `api` (the default); every other source is
+    /// How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`
+    /// (the default); every other source is
     /// server-owned so the sessions facet rail stays trustworthy.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "chat")]
@@ -81,6 +81,10 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
     pub virtual_user_id: Option<VirtualUserId>,
+    /// Fixed Playground end user. Defaults to the caller's linked virtual user. Only valid with source=playground.
+    #[serde(default)]
+    #[schema(value_type = Option<String>)]
+    pub playground_user_id: Option<VirtualUserId>,
     /// Human-readable title for the session.
     #[serde(default)]
     #[schema(example = "Debug login issue")]
@@ -372,6 +376,15 @@ pub struct AddSessionParticipantRequest {
 /// Query parameters for listing sessions with pagination.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListSessionsQuery {
+    /// Filter by the fixed Playground end-user identity.
+    #[param(value_type = Option<String>)]
+    pub playground_user_id: Option<VirtualUserId>,
+    /// Return only archived sessions.
+    #[serde(
+        default,
+        deserialize_with = "crate::domains::common::deserialize_opt_bool_lenient"
+    )]
+    pub archived_only: Option<bool>,
     /// Filter sessions by agent ID.
     #[param(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
@@ -413,6 +426,15 @@ pub struct ListSessionsQuery {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct SessionFacetsQuery {
+    /// Filter by the fixed Playground end-user identity.
+    #[param(value_type = Option<String>)]
+    pub playground_user_id: Option<VirtualUserId>,
+    /// Return only archived sessions.
+    #[serde(
+        default,
+        deserialize_with = "crate::domains::common::deserialize_opt_bool_lenient"
+    )]
+    pub archived_only: Option<bool>,
     #[param(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
@@ -752,6 +774,8 @@ pub async fn list_sessions(
     let page = ListSessions {
         filters: SessionFilterArgs {
             agent_id: query.agent_id,
+            playground_user_id: query.playground_user_id,
+            archived_only: query.archived_only,
             search: query.search,
             source: query.source,
             status: query.status,
@@ -793,6 +817,8 @@ pub async fn get_session_facets(
         GetSessionFacets {
             filters: SessionFilterArgs {
                 agent_id: query.agent_id,
+                playground_user_id: query.playground_user_id,
+                archived_only: query.archived_only,
                 search: query.search,
                 source: query.source,
                 status: query.status,

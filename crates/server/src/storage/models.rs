@@ -875,6 +875,8 @@ pub struct SessionRow {
     pub agent_config_hash: Option<String>,
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
+    #[sqlx(default)]
+    pub playground_user_id: Option<VirtualUserId>,
     pub owner_principal_id: PrincipalId,
     #[sqlx(default)]
     pub resolved_owner_user_id: Option<Uuid>,
@@ -1015,6 +1017,8 @@ pub enum SessionListOrder {
 /// different population than the page it annotates.
 #[derive(Debug, Clone, Default)]
 pub struct SessionListFilters {
+    pub playground_user_id: Option<VirtualUserId>,
+    pub archived_only: bool,
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
     /// Empty means "any source".

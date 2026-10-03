@@ -633,6 +633,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     let session = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,

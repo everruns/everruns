@@ -612,6 +612,7 @@ pub(crate) async fn process_slack_message(
             );
             let title = build_session_title(slack_config, event);
             let req = CreateSessionRequest {
+                playground_user_id: None,
                 source: None,
                 workspace_id: None,
                 harness_id: Some(app.harness_id),

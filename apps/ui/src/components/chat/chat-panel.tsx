@@ -273,6 +273,7 @@ export function ChatPanel({
   const activeSessionIdRef = useRef(sessionId);
   const voiceAvailable =
     voiceFeatureEnabled &&
+    session?.source !== "playground" &&
     typeof window !== "undefined" &&
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&

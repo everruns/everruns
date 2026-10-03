@@ -41,6 +41,7 @@
 * [Organization settings](organization_settings/) - 1 manual UI case.
 * [Page layout](page_layout/) - 2 manual UI cases.
 * [Personal access tokens](personal_access_tokens/) - 1 manual UI case.
+* [Playground](playground/) - 1 manual UI case.
 * [Plugins](plugins/) - 3 manual UI cases.
 * [Reports](reports/) - 1 manual UI case.
 * [Scheduled tasks](scheduled_tasks/) - 4 manual UI cases.
