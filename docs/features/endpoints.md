@@ -48,6 +48,8 @@ Disabled → Draft
 - **Live**: Published and able to accept traffic while its Agent is active and exposures are not suspended.
 - **Disabled**: Kept for configuration but rejects ingress traffic and does not invoke the Agent.
 
+Publishing and unpublishing require the dangerous Agent permission (Owner by default). The same permission is required to change a live endpoint's configuration, including its authentication and secrets, or to disable it. Members who can manage Agents can still edit Draft and Disabled endpoints.
+
 An endpoint serves traffic only when all three hold: the endpoint is live, the Agent is active, and the Agent's exposures are not suspended. Suspending exposures from the Agent's **Integrations** tab takes every endpoint of that Agent offline at once without changing each endpoint's state.
 
 Errors from public endpoints are sanitized so they do not expose internal state, such as whether an endpoint exists or why it is offline.

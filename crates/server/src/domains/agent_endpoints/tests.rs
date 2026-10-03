@@ -387,3 +387,256 @@ async fn endpoint_version_pin_requires_agent_versions_feature() {
     .await
     .expect("default policy is always accepted");
 }
+
+/// Contexts for several roles over one database and one encryption key, so
+/// each role reads the secrets the others stored.
+fn role_ctxs(db: Arc<StorageBackend>) -> impl Fn(everruns_core::OrgRole) -> Ctx {
+    let encryption = crate::storage::encryption::EncryptionService::new(
+        &crate::storage::encryption::generate_encryption_key("test"),
+        &[],
+    )
+    .expect("test encryption service");
+    let base = Ctx::minimal_for_test(
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
+            user_id: Some(uuid::Uuid::nil()),
+            role: everruns_core::OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+        },
+        db,
+        Some(Arc::new(encryption)),
+    );
+    move |role| {
+        let mut ctx = base.clone();
+        ctx.caller.role = role;
+        ctx
+    }
+}
+
+async fn create_endpoint(
+    ctx: &Ctx,
+    agent_id: &str,
+    channel_type: EndpointTransport,
+    channel_config: serde_json::Value,
+    publish: bool,
+) -> String {
+    let endpoint_id = CreateAgentEndpoint {
+        agent_id: agent_id.to_string(),
+        req: CreateAgentEndpointRequest {
+            channel_type,
+            channel_config,
+            enabled: true,
+            agent_version_policy: None,
+            agent_version_id: None,
+        },
+    }
+    .run(ctx)
+    .await
+    .expect("create endpoint")
+    .public_id
+    .to_string();
+    if publish {
+        PublishAgentEndpoint {
+            agent_id: agent_id.to_string(),
+            endpoint_id: endpoint_id.clone(),
+        }
+        .run(ctx)
+        .await
+        .expect("owner publishes endpoint");
+    }
+    endpoint_id
+}
+
+fn config_update(channel_config: serde_json::Value) -> UpdateAgentEndpointRequest {
+    UpdateAgentEndpointRequest {
+        channel_config: Some(channel_config),
+        ..Default::default()
+    }
+}
+
+/// Altering a live endpoint's auth, exposure, or enabled status is a
+/// publication decision, so it needs the same dangerous permission as
+/// publish and unpublish (EVE-1176).
+#[tokio::test]
+async fn live_endpoint_exposure_changes_require_dangerous_permission() {
+    use everruns_core::OrgRole;
+    let db = Arc::new(StorageBackend::in_memory());
+    let agent_id = seed_agent(&db).await;
+    let role_ctx = role_ctxs(db);
+    let owner = role_ctx(OrgRole::Owner);
+    let shared_secret = json!({ "token": "live-secret", "auth": { "mode": "shared_secret" } });
+    let ag_ui = create_endpoint(
+        &owner,
+        &agent_id,
+        EndpointTransport::AgUi,
+        shared_secret.clone(),
+        true,
+    )
+    .await;
+    let webhook_config = json!({ "token": "endpoint-secret", "message": "Process {{payload}}" });
+    let webhook = create_endpoint(
+        &owner,
+        &agent_id,
+        EndpointTransport::Webhook,
+        webhook_config.clone(),
+        true,
+    )
+    .await;
+
+    let attempts: Vec<(&str, &str, UpdateAgentEndpointRequest)> = vec![
+        (
+            "switch live auth to anonymous",
+            &ag_ui,
+            config_update(json!({ "auth": { "mode": "anonymous" } })),
+        ),
+        (
+            "replace the live shared secret",
+            &ag_ui,
+            config_update(
+                json!({ "token": "attacker-secret", "auth": { "mode": "shared_secret" } }),
+            ),
+        ),
+        (
+            "replace the live webhook token",
+            &webhook,
+            config_update(json!({ "token": "attacker-token", "message": "Process {{payload}}" })),
+        ),
+        (
+            "disable a live endpoint",
+            &webhook,
+            UpdateAgentEndpointRequest {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        ),
+    ];
+    for role in [OrgRole::Member, OrgRole::Admin] {
+        let ctx = role_ctx(role);
+        for (case, endpoint_id, req) in &attempts {
+            let error = UpdateAgentEndpointCmd {
+                agent_id: agent_id.clone(),
+                endpoint_id: endpoint_id.to_string(),
+                req: req.clone(),
+            }
+            .run(&ctx)
+            .await
+            .expect_err(case);
+            assert_eq!(
+                error.status(),
+                axum::http::StatusCode::FORBIDDEN,
+                "{role:?}: {case}"
+            );
+        }
+        let error = UnpublishAgentEndpoint {
+            agent_id: agent_id.clone(),
+            endpoint_id: webhook.clone(),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("manage-only member must not unpublish");
+        assert_eq!(error.status(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    // Nothing the member attempted reached storage.
+    let stored = GetAgentEndpoint {
+        agent_id: agent_id.clone(),
+        endpoint_id: ag_ui.clone(),
+    }
+    .run(&owner)
+    .await
+    .expect("get endpoint");
+    assert_eq!(stored.status, EndpointStatus::Live);
+    assert_eq!(
+        stored.auth.as_ref().map(|auth| auth.mode.clone()),
+        Some(everruns_platform::EndpointAuthMode::SharedSecret)
+    );
+
+    // Re-saving a live endpoint without changing it (secrets omitted or shown
+    // as the redacted `*_configured` flags) is not an exposure change.
+    let member = role_ctx(OrgRole::Member);
+    let resaved = UpdateAgentEndpointCmd {
+        agent_id: agent_id.clone(),
+        endpoint_id: webhook.clone(),
+        req: UpdateAgentEndpointRequest {
+            channel_config: Some(
+                json!({ "token_configured": true, "message": "Process {{payload}}" }),
+            ),
+            enabled: Some(true),
+            ..Default::default()
+        },
+    }
+    .run(&member)
+    .await
+    .expect("member may re-save a live endpoint unchanged");
+    assert_eq!(resaved.status, EndpointStatus::Live);
+    UpdateAgentEndpointCmd {
+        agent_id: agent_id.clone(),
+        endpoint_id: ag_ui.clone(),
+        req: config_update(
+            json!({ "token_configured": true, "auth": { "mode": "shared_secret" } }),
+        ),
+    }
+    .run(&member)
+    .await
+    .expect("member may re-save live auth unchanged");
+
+    // The owner holds the dangerous permission and may do all of it.
+    for (case, endpoint_id, req) in attempts {
+        UpdateAgentEndpointCmd {
+            agent_id: agent_id.clone(),
+            endpoint_id: endpoint_id.to_string(),
+            req,
+        }
+        .run(&owner)
+        .await
+        .unwrap_or_else(|error| panic!("owner may {case}: {error:?}"));
+    }
+    UnpublishAgentEndpoint {
+        agent_id: agent_id.clone(),
+        endpoint_id: ag_ui,
+    }
+    .run(&owner)
+    .await
+    .expect("owner may unpublish");
+}
+
+#[tokio::test]
+async fn draft_endpoint_edits_stay_available_to_managers() {
+    use everruns_core::OrgRole;
+    let db = Arc::new(StorageBackend::in_memory());
+    let agent_id = seed_agent(&db).await;
+    let member = role_ctxs(db)(OrgRole::Member);
+    let endpoint_id = create_endpoint(
+        &member,
+        &agent_id,
+        EndpointTransport::AgUi,
+        json!({ "token": "draft-secret", "auth": { "mode": "shared_secret" } }),
+        false,
+    )
+    .await;
+
+    for req in [
+        config_update(json!({ "auth": { "mode": "anonymous" } })),
+        config_update(json!({ "token": "rotated", "auth": { "mode": "shared_secret" } })),
+        UpdateAgentEndpointRequest {
+            enabled: Some(false),
+            ..Default::default()
+        },
+        UpdateAgentEndpointRequest {
+            enabled: Some(true),
+            ..Default::default()
+        },
+    ] {
+        let updated = UpdateAgentEndpointCmd {
+            agent_id: agent_id.clone(),
+            endpoint_id: endpoint_id.clone(),
+            req,
+        }
+        .run(&member)
+        .await
+        .expect("member may edit a draft endpoint");
+        assert_ne!(updated.status, EndpointStatus::Live);
+    }
+}
