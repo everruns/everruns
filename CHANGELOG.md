@@ -68,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - feat(environments): persist physical sandbox incarnations ([#4079](https://github.com/everruns/everruns/pull/4079)) by [@chaliy](https://github.com/chaliy)
 
+- fix(ci): stabilize live-model tests and pin cargo-binstall ([#4080](https://github.com/everruns/everruns/pull/4080)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): bind runtime identities to verifier authority ([#4017](https://github.com/everruns/everruns/pull/4017)) by [@chaliy](https://github.com/chaliy)
+
 ### Crate Releases
 
 All 52 published crates ship at the platform version 0.35.0.
