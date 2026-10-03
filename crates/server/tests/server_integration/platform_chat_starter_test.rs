@@ -53,6 +53,8 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
         .expect("load Platform Chat harness")
         .expect("Platform Chat harness is seeded");
     let starter = CreateSessionRow {
+        playground_user_id: None,
+
         source: everruns_platform::SessionSource::Chat,
         workspace_id: None,
         org_id: TEST_ORG_ID,
