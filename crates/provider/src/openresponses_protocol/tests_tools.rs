@@ -722,6 +722,69 @@ fn tool_search_has_complete_stable_wire_order_and_threshold_boundary() {
     );
 }
 
+/// The model initially sees namespace descriptions, not deferred functions.
+/// Generic categories must describe their functions so search can select them.
+#[test]
+fn tool_search_namespace_description_exposes_deferred_tool_purposes() {
+    use crate::tool_types::DeferrablePolicy::{Automatic, Never};
+    let tools = vec![
+        make_tool("get_current_time", Some("Core"), Automatic),
+        make_tool("add", Some("Testing"), Automatic),
+        make_tool("subtract", Some("Testing"), Automatic),
+        make_tool("hidden_eager", Some("Testing"), Never),
+    ];
+    let wire = serde_json::to_value(OpenResponsesProtocolChatDriver::convert_tools_with_search(
+        &tools, 1,
+    ))
+    .unwrap();
+    let namespaces: Vec<_> = wire
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|tool| tool["type"] == "namespace")
+        .collect();
+    let core = namespaces[0]["description"].as_str().unwrap();
+    assert!(core.contains("get_current_time description"));
+    let testing = namespaces[1]["description"].as_str().unwrap();
+    assert!(testing.contains("add description"));
+    assert!(testing.contains("subtract description"));
+    assert!(!testing.contains("hidden_eager"));
+    for namespace in namespaces {
+        for function in namespace["tools"].as_array().unwrap() {
+            assert_eq!(function["defer_loading"], true);
+        }
+        assert!(
+            !namespace["description"]
+                .as_str()
+                .unwrap()
+                .contains("properties")
+        );
+    }
+}
+
+#[test]
+fn tool_search_namespace_description_bounds_unicode_purposes_without_dropping_tools() {
+    use crate::tool_types::DeferrablePolicy::Automatic;
+    let tools: Vec<_> = (0..100)
+        .map(|index| {
+            let mut tool = make_tool(&format!("lookup_{index}"), Some("Core"), Automatic);
+            let ToolDefinition::Builtin(ref mut definition) = tool else {
+                unreachable!()
+            };
+            definition.description = "目的".repeat(1000);
+            tool
+        })
+        .collect();
+    let wire = serde_json::to_value(OpenResponsesProtocolChatDriver::convert_tools_with_search(
+        &tools, 1,
+    ))
+    .unwrap();
+    let description = wire[0]["description"].as_str().unwrap();
+    assert!(description.chars().count() <= 4096);
+    assert!(description.contains("lookup_0: 目的"));
+    assert_eq!(wire[0]["tools"].as_array().unwrap().len(), 100);
+}
+
 /// EVE-1164: OpenAI hosted tool search fails with `server_error` when a
 /// deferred namespace is named `File Operations` (whitespace). The wire name
 /// must be a provider-safe identifier; the description keeps the human label.
@@ -745,7 +808,7 @@ fn tool_search_normalizes_file_operations_namespace_for_openai() {
             {
                 "type": "namespace",
                 "name": "File_Operations",
-                "description": "Tools for File Operations",
+                "description": "Tools for File Operations: list_directory: list_directory description",
                 "tools": [{
                     "type": "function",
                     "name": "list_directory",
@@ -845,9 +908,9 @@ fn tool_search_namespace_normalization_covers_safe_names_punctuation_unicode_and
     assert_eq!(
         descriptions,
         vec![
-            "Tools for File Operations",
-            "Tools for File-Operations",
-            "Tools for File_Operations",
+            "Tools for File Operations: a: a description",
+            "Tools for File-Operations: c: c description",
+            "Tools for File_Operations: b: b description",
         ],
         "descriptions keep the original category labels"
     );
@@ -960,7 +1023,7 @@ async fn file_operations_namespace_request_and_namespaced_call_dispatch() {
             {
                 "type": "namespace",
                 "name": "File_Operations",
-                "description": "Tools for File Operations",
+                "description": "Tools for File Operations: list_directory: list_directory description",
                 "tools": [{
                     "type": "function",
                     "name": "list_directory",

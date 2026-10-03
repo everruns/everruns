@@ -4,8 +4,8 @@
 // Tests the full pipeline for provider-backed and generic client-side tool_search
 // capability wiring through RuntimeAgent and LlmCallConfig.
 //
-// Includes real GPT-5.5 / GPT-5.6 Terra (and GPT-5.4 below-threshold) integration
-// tests that exercise hosted tool_search end-to-end against the OpenAI API.
+// Includes real GPT-5.4, GPT-5.5, and GPT-5.6 Terra integration tests that
+// exercise hosted tool_search end-to-end against the OpenAI API.
 //
 // Run all:
 //   cargo test -p everruns-llm-tests --test tool_search_test --features llm-tests
@@ -55,21 +55,36 @@ async fn assert_hosted_tool_search_was_enabled(runner: &InMemoryAgenticLoop) {
     );
 }
 
+async fn generation_called_tool(runner: &InMemoryAgenticLoop, name: &str) -> bool {
+    runner
+        .events_by_type(LLM_GENERATION)
+        .await
+        .iter()
+        .any(|event| {
+            let EventData::LlmGeneration(data) = &event.data else {
+                return false;
+            };
+            data.output.tool_calls.iter().any(|call| call.name == name)
+        })
+}
+
 // ============================================================================
 // Scenario: hosted OpenAI tool_search (deferred loading)
 // ============================================================================
 
-/// Tests tool_search end-to-end with GPT-5.6 Terra:
+/// Tests tool_search end-to-end with GPT-5.4 and GPT-5.6 Terra:
 /// - Adds enough capabilities to exceed the threshold (16 tools > 15)
 /// - Adds OpenAiToolSearchCapability
 /// - Verifies the model can still call tools correctly with deferred schemas
 ///
-/// Retargeted from GPT-5.4 after Live Provider Matrix showed repeated
-/// sampling misses on that model once `tool_search_test` joined CI (EVE-1164).
+/// Both models must discover tool purposes hidden behind generic categories.
+#[rstest]
+#[case::gpt54(OPENAI_GPT54)]
+#[case::gpt56_terra(OPENAI_GPT56_TERRA)]
 #[tokio::test]
-async fn test_gpt56_terra_tool_search_with_many_capabilities() {
-    if OPENAI_GPT56_TERRA.model().is_none() {
-        eprintln!("Skipping: {} not set", OPENAI_GPT56_TERRA.label());
+async fn test_openai_tool_search_with_many_capabilities(#[case] config: ProviderModelConfig) {
+    if config.model().is_none() {
+        eprintln!("Skipping: {} not set", config.label());
         return;
     }
 
@@ -77,7 +92,7 @@ async fn test_gpt56_terra_tool_search_with_many_capabilities() {
     let mut called_get_current_time = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let model = OPENAI_GPT56_TERRA.model().expect("checked above");
+        let model = config.model().expect("checked above");
         let runner = InMemoryAgenticLoop::builder()
             .agent_name("Tool Search Agent")
             .system_prompt(
@@ -102,7 +117,8 @@ async fn test_gpt56_terra_tool_search_with_many_capabilities() {
         let result = runner.run_turn("What time is it right now?").await.unwrap();
 
         assert!(result.success, "Turn should succeed: {:?}", result.error);
-        if result.tool_calls_count > 0 {
+        if result.tool_calls_count > 0 && generation_called_tool(&runner, "get_current_time").await
+        {
             called_get_current_time = true;
             break;
         }
@@ -118,11 +134,14 @@ async fn test_gpt56_terra_tool_search_with_many_capabilities() {
 
 /// Tests tool_search with a lower custom threshold so it activates with few tools.
 ///
-/// Retargeted from GPT-5.4 after Live Provider Matrix sampling misses (EVE-1164).
+/// GPT-5.4 remains covered alongside the production GPT-5.6 Terra model.
+#[rstest]
+#[case::gpt54(OPENAI_GPT54)]
+#[case::gpt56_terra(OPENAI_GPT56_TERRA)]
 #[tokio::test]
-async fn test_gpt56_terra_tool_search_low_threshold() {
-    if OPENAI_GPT56_TERRA.model().is_none() {
-        eprintln!("Skipping: {} not set", OPENAI_GPT56_TERRA.label());
+async fn test_openai_tool_search_low_threshold(#[case] config: ProviderModelConfig) {
+    if config.model().is_none() {
+        eprintln!("Skipping: {} not set", config.label());
         return;
     }
 
@@ -130,7 +149,7 @@ async fn test_gpt56_terra_tool_search_low_threshold() {
     let mut called_add = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let model = OPENAI_GPT56_TERRA.model().expect("checked above");
+        let model = config.model().expect("checked above");
         let runner = InMemoryAgenticLoop::builder()
             .agent_name("Low Threshold Agent")
             .system_prompt("When asked to add numbers, use the add tool.")
@@ -149,7 +168,7 @@ async fn test_gpt56_terra_tool_search_low_threshold() {
 
         assert!(result.success, "Turn should succeed: {:?}", result.error);
         assert_hosted_tool_search_was_enabled(&runner).await;
-        if result.tool_calls_count > 0 {
+        if result.tool_calls_count > 0 && generation_called_tool(&runner, "add").await {
             called_add = true;
             break;
         }
@@ -283,15 +302,18 @@ async fn test_gpt55_tool_search_low_threshold() {
 /// 2. **The hosted round-trip executes (live).** The model actually calls
 ///    `get_current_time` (deferred load → server-side search → tool call).
 ///
-/// GPT-5.6 Terra occasionally answers "what time is it" from priors without
+/// Supported models occasionally answer "what time is it" from priors without
 /// calling a tool, so the round-trip half is retried; the hosted-resolution
 /// half is asserted on every attempt's generation events.
 ///
-/// Retargeted from GPT-5.4 after Live Provider Matrix sampling misses (EVE-1164).
+/// GPT-5.4 remains covered alongside the production GPT-5.6 Terra model.
+#[rstest]
+#[case::gpt54(OPENAI_GPT54)]
+#[case::gpt56_terra(OPENAI_GPT56_TERRA)]
 #[tokio::test]
-async fn test_gpt56_terra_auto_tool_search_resolves_to_hosted() {
-    if OPENAI_GPT56_TERRA.model().is_none() {
-        eprintln!("Skipping: {} not set", OPENAI_GPT56_TERRA.label());
+async fn test_openai_auto_tool_search_resolves_to_hosted(#[case] config: ProviderModelConfig) {
+    if config.model().is_none() {
+        eprintln!("Skipping: {} not set", config.label());
         return;
     }
 
@@ -299,7 +321,7 @@ async fn test_gpt56_terra_auto_tool_search_resolves_to_hosted() {
     let mut called_get_current_time = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let model = OPENAI_GPT56_TERRA.model().expect("checked above");
+        let model = config.model().expect("checked above");
         let runner = InMemoryAgenticLoop::builder()
             .agent_name("Auto Tool Search Agent")
             .system_prompt(
@@ -314,7 +336,7 @@ async fn test_gpt56_terra_auto_tool_search_resolves_to_hosted() {
             .capability(FileSystemCapability) // 6 tools
             .capability(SessionCapability) // 2 tools
             .capability(StatelessTodoListCapability) // 1 tool
-            // Model-adaptive: on GPT-5.6 Terra this must resolve to the hosted mechanism.
+            // Model-adaptive: on this OpenAI model this must resolve to the hosted mechanism.
             .capability(AutoToolSearchCapability::new())
             .max_iterations(5)
             .build()
@@ -339,7 +361,7 @@ async fn test_gpt56_terra_auto_tool_search_resolves_to_hosted() {
             // fell back to the generic mechanism.
             assert!(
                 !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
-                "auto_tool_search on GPT-5.6 Terra must resolve to hosted: the client-side \
+                "auto_tool_search on this OpenAI model must resolve to hosted: the client-side \
                  `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
             );
             // (2) Round-trip: the model executed the deferred get_current_time tool.
