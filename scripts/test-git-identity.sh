@@ -277,6 +277,40 @@ test_human_outgoing_commit_is_allowed() {
   rm -rf "$tmp"
 }
 
+test_rebased_branch_ignores_commits_already_on_main() {
+  local tmp
+  tmp="$(mktemp -d)"
+  (
+    with_isolated_git_env "$tmp"
+    make_repo "$tmp"
+    git checkout -q -b fix/test
+    printf 'branch change\n' >> README.md
+    git add README.md
+    git commit -q -m "fix: human authored"
+    # The branch was pushed: its upstream pins this earlier tip.
+    git branch -q pushed-tip HEAD
+    git branch -q --set-upstream-to=pushed-tip
+
+    # main later gains a bot-authored squash merge, then the branch rebases onto it.
+    git checkout -q main
+    printf 'bump\n' > deps.txt
+    git add deps.txt
+    GIT_AUTHOR_NAME="dependabot[bot]" \
+      GIT_AUTHOR_EMAIL="49699333+dependabot[bot]@users.noreply.github.com" \
+      git commit -q -m "chore(deps): bump"
+    git update-ref refs/remotes/origin/main HEAD
+    git checkout -q fix/test
+    git rebase -q origin/main
+
+    if offender="$(find_agent_like_outgoing_commit)"; then
+      echo "FAIL: commit already on origin/main should not be blamed, got '$offender'" >&2
+      exit 1
+    fi
+  )
+  rm -rf "$tmp"
+}
+
+
 test_human_git_config_without_env_uses_git_identity
 test_agent_git_config_requires_env_override
 test_agent_git_config_uses_human_env_override
@@ -287,5 +321,6 @@ test_allowlisted_warp_factory_outgoing_commit_is_allowed
 test_warp_factory_outgoing_email_case_variant_is_detected
 test_warp_factory_identity_near_misses_are_detected
 test_human_outgoing_commit_is_allowed
+test_rebased_branch_ignores_commits_already_on_main
 
 echo "git identity checks passed"

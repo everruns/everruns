@@ -106,4 +106,39 @@ trap 'rm -rf "$temp_repo"' EXIT
   fi
 )
 
+rebase_repo="$(mktemp -d)"
+trap 'rm -rf "$temp_repo" "$rebase_repo"' EXIT
+(
+  cd "$rebase_repo"
+  git init -q -b main
+  git config user.name "Mykhailo Chalyi"
+  git config user.email "mike@chaliy.name"
+  printf '%s\n' 'base' > README.md
+  git add README.md
+  git commit -qm "test: base"
+  git update-ref refs/remotes/origin/main HEAD
+  git checkout -qb feature
+  printf '%s\n' 'docs' > notes.md
+  git add notes.md
+  git commit -qm "test: branch change"
+  # Pushed: the upstream pins this tip.
+  git branch -q pushed-tip HEAD
+  git branch -q --set-upstream-to=pushed-tip
+  # main gains a Rust change; the branch rebases onto it.
+  git checkout -q main
+  mkdir -p crates/example/src
+  printf '%s\n' 'fn merged() {}' > crates/example/src/lib.rs
+  git add crates/example/src/lib.rs
+  git commit -qm "test: merged elsewhere"
+  git update-ref refs/remotes/origin/main HEAD
+  git checkout -q feature
+  git rebase -q origin/main
+
+  changed_files="$(pre_push_collect_changed_files)"
+  if [ "$changed_files" != 'notes.md' ]; then
+    echo "FAIL: rebased branch scoped main's commits as its own: $changed_files" >&2
+    exit 1
+  fi
+)
+
 echo "Pre-push context tests passed."
