@@ -9,7 +9,9 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
-## Runtime store migration
+## 0.38
+
+### Runtime store migration
 
 Custom hosts implementing `everruns_platform::PlatformStore` now return
 `everruns_core::AgentDefinition`, an inheritance-resolved
@@ -26,7 +28,7 @@ The deprecated provider, capability, and model-profile shims are removed after
 their final release. Depend on `everruns-contracts`; replace `everruns_provider::`
 with `everruns_contracts::`, `everruns_capability::` with
 `everruns_contracts::capability::`, and `everruns_model_profiles::` with
-`everruns_contracts::model_profiles::`.
+`everruns_contracts::model_profile_data::`.
 
 ## 0.18
 
