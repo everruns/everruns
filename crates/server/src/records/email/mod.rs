@@ -3,7 +3,7 @@
 // Decision (EVE-879): email delivery is a hosted product/ops side effect owned
 // by the host application — never a tool exposed to agents and never consumed
 // during a turn — so the contract and its concrete senders live in
-// `everruns-capabilities`, not `everruns-core`.
+// `everruns-server`.
 // Decision: Keep provider details behind EmailSender so future SendGrid,
 // Cloudflare, SES, or SMTP implementations can reuse the same call sites.
 // Decision: Keep the sender fixed until product requirements justify
@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
 
+// The server owns product email configuration and its concrete sender together;
+// enabling a runtime capability must not control system email delivery.
 pub mod resend;
 
 pub use resend::{ResendEmailConfig, ResendEmailSender};
