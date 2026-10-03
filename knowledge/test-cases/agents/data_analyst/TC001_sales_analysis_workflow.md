@@ -14,7 +14,7 @@ tags:
 
 Verify that an agent on the **Data Analyst** harness can load CSV data into a SQL database, analyze it, render a chart, and persist a correction to cross-session memory.
 
-Exercises the 6-step analysis pipeline (recall → inspect → plan → execute → visualize → learn) and validates that bundled capabilities wire together: `session_sql_database`, `memory`, `openui`, `stateless_todo_list`, `data_knowledge`.
+Exercises the 6-step analysis pipeline (recall → inspect → plan → execute → visualize → learn) and validates that bundled capabilities wire together: `session_sql_database`, `openui`, `stateless_todo_list`, `data_knowledge`.
 
 ## Preconditions
 
@@ -64,19 +64,20 @@ id,product,category,amount,order_date
 
 5. **Send message:** "Actually, revenue should be calculated net of refunds. For this dataset we have no refunds, but remember this for future sessions. Then re-confirm the top category."
 
-6. **Wait for the agent to finish.** It should save a memory about the refund rule and reconfirm the top category.
+6. **Wait for the agent to finish.** It should write the refund rule to a file under `/memory/agent/` and reconfirm the top category.
 
 ## Expected Result
 
 ### Harness & Capabilities
 
 - The `data-analyst` harness exists and inherits from `generic`.
-- Agent has access to `sql_execute`, `sql_query`, `sql_schema`, `remember`, `recall`, and OpenUI rendering.
+- Agent has access to `sql_execute`, `sql_query`, `sql_schema`, the file tools, and OpenUI rendering.
+- `/memory/agent/` is mounted in the session.
 - Session workspace contains the `/knowledge/` scaffold (`tables/`, `business/`, `queries/`).
 
 ### Turn 1 — Data Loading & Analysis
 
-- Agent calls `recall` before writing SQL (pipeline step 1).
+- Agent reads `/memory/agent/` before writing SQL (pipeline step 1).
 - Agent creates the `orders` table and inserts all 15 rows.
 - Agent runs a `GROUP BY category` query and identifies **Tools** ($923.00) as the top category over **Gadgets** ($259.92).
 - Agent renders a bar chart via OpenUI comparing the two categories.
@@ -84,21 +85,21 @@ id,product,category,amount,order_date
 
 ### Turn 2 — Correction & Learning
 
-- Agent calls `remember` to save a correction about revenue being net of refunds.
+- Agent writes a correction about revenue being net of refunds to a file under `/memory/agent/`.
 - Agent reconfirms **Tools** as the top category (totals unchanged since there are no refund rows).
-- The memory store contains at least one memory mentioning "refund".
+- A file under `/memory/agent/` mentions "refund".
 
 ### Failure Modes
 
 | Failure | What to look for |
 |---------|-----------------|
-| Missing capabilities | `sql_execute`, `remember`, or OpenUI tools not available to the agent |
+| Missing capabilities | `sql_execute`, file tools, or OpenUI not available to the agent |
 | Zero-row result without self-correction | Agent reports "no data" without investigating |
 | No chart rendered | Response has no OpenUI visualization |
-| Memory not persisted | `remember` never called or memory store empty for "refund" |
+| Memory not persisted | No file under `/memory/agent/` mentions "refund" |
 | Recall skipped | Agent jumps straight to SQL without checking prior knowledge first |
 
 ## Notes
 
 - Deterministic model output is not guaranteed; check tool usage and database state rather than exact wording.
-- Memory persists across sessions — a second session with the same agent should surface the refund correction via passive recall.
+- Memory persists across sessions — a second session with the same agent should find the refund correction when it reads `/memory/agent/`.

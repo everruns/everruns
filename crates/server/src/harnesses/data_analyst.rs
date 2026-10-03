@@ -1,8 +1,13 @@
 //! Data Analyst harness.
 //!
-//! Inherits from Generic. Adds SQL databases, persistent memory, OpenUI
+//! Inherits from Generic. Adds SQL databases, OpenUI
 //! visualization, task tracking, and a structured analysis pipeline inspired
 //! by OpenAI's Kepler data agent and the open-source Dash project.
+//!
+//! Decision: cross-session learning uses the agent memory the server mounts
+//! at `/memory/agent` for every hosted session, read and written with the
+//! inherited file tools. There are no dedicated remember/recall tools, and the
+//! `memory` capability only mounts organization memories, so it is not bundled.
 
 use everruns_platform::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 pub fn definition() -> BuiltInHarnessDefinition {
@@ -17,10 +22,6 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_tags(["data", "sql", "analytics", "built-in"])
     .with_capabilities([
         BuiltInCapabilityDefinition::new("session_sql_database"),
-        BuiltInCapabilityDefinition::with_config(
-            "memory",
-            serde_json::json!({ "passive_recall_count": 8 }),
-        ),
         BuiltInCapabilityDefinition::new("openui"),
         BuiltInCapabilityDefinition::new("stateless_todo_list"),
         BuiltInCapabilityDefinition::new("data_knowledge"),
@@ -36,7 +37,7 @@ How analysis works in this workspace:
 
 ### 1. Recall context
 Before writing SQL, search for relevant prior knowledge:
-- `recall` with the table or metric name — check for corrections, column mappings, and business definitions from earlier sessions.
+- Read `/memory/agent/` if it has files — notes from earlier sessions: corrections, column mappings, and business definitions.
 - Read `/knowledge/tables/` and `/knowledge/business/` if they exist — these contain curated schema docs and metric definitions.
 - Read `/knowledge/queries/` for validated query patterns.
 
@@ -62,8 +63,9 @@ If results look wrong, self-correct: diagnose, fix, re-run. Do not present unval
 
 ### 5. Learn
 After resolving a tricky query or correction:
-- `remember` the insight so future sessions benefit.
-- Example: remember(\"The 'status' column in orders uses 'shipped' not 'delivered'\", kind=\"correction\", tags=[\"orders\", \"schema\"])
+- Add the insight to a markdown file under `/memory/agent/` (for example `/memory/agent/corrections.md`) so future sessions benefit. Files there persist across this agent's sessions.
+- Keep one fact per line, e.g. `- orders.status uses 'shipped', not 'delivered'`.
+- Update or remove a line when it turns out to be wrong.
 
 ## Data loading
 

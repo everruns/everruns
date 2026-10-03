@@ -213,10 +213,11 @@ Data analysis harness with SQL databases, persistent memory, interactive charts 
 | Capability | What it provides |
 |------------|-----------------|
 | Session SQL Database | `sql_execute`, `sql_query`, `sql_schema`, session-scoped SQLite databases |
-| Memory | `remember`, `recall`, `forget`, cross-session persistent learning (passive recall: 8) |
 | OpenUI | Rich charts, tables, dashboards via OpenUI Lang |
 | Todo List | `write_todos`, multi-step analysis task tracking |
 | Data Knowledge | Mounts `/knowledge/{tables,business,queries}/` scaffold for curated context |
+
+Cross-session learning uses the agent memory mounted at `/memory/agent` with the inherited file tools; there are no dedicated memory tools.
 
 **Use cases:**
 - Natural-language data analysis (NL-to-SQL)
