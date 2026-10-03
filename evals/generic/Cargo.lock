@@ -896,6 +896,7 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
+ "globset",
  "hex",
  "serde_json",
  "sha2",
