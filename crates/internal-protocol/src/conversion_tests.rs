@@ -345,6 +345,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
     let now = Utc::now();
     let session_id = everruns_provider::typed_id::SessionId::new();
     let session = everruns_platform::Session {
+        playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
         run_summary: None,
@@ -561,6 +562,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
     let now = Utc::now();
     let session_id = everruns_provider::typed_id::SessionId::new();
     let session = everruns_platform::Session {
+        playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
         run_summary: None,

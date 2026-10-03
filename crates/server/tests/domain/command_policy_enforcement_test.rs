@@ -508,6 +508,7 @@ impl PermissionResolver for SessionsOnlyResolver {
 
 fn create_session_request() -> CreateSessionRequest {
     CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: None,

@@ -429,6 +429,23 @@ impl StorageBackend {
         }
     }
 
+    /// Delegated runs share the Playground root's private-resource boundary.
+    pub async fn is_playground_session(&self, id: SessionId) -> Result<bool> {
+        let Some(row) = self.get_session_unscoped(id).await? else {
+            return Ok(false);
+        };
+        if row.source == "playground" {
+            return Ok(true);
+        }
+        if let Some(root) = row.root_session_id.filter(|root| *root != id) {
+            return Ok(self
+                .get_session_unscoped(root)
+                .await?
+                .is_some_and(|root| root.source == "playground"));
+        }
+        Ok(false)
+    }
+
     pub async fn record_runtime_invocation(
         &self,
         org_id: i64,

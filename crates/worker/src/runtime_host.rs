@@ -25,7 +25,7 @@ use everruns_platform::capabilities::PLATFORM_CAPABILITY_ID;
 use everruns_platform::{
     DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
     PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
-    SessionSqlDbStoreExt, SlackActionInvokerExt,
+    SandboxStateStoreExt, SessionSqlDbStoreExt, SlackActionInvokerExt,
 };
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
@@ -537,8 +537,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         if let Some(invoker) = self.adapters.slack_action_invoker(org_id, session_id) {
             extensions.insert(Arc::new(SlackActionInvokerExt(invoker)));
         }
-        if let Some(store) = self.adapters.sandbox_checkpoint_store() {
-            extensions.insert(Arc::new(SandboxCheckpointStoreExt(store)));
+        if let Some(store) = self.adapters.sandbox_persistence_store() {
+            let checkpoints: Arc<dyn everruns_platform::SandboxCheckpointStore> = store.clone();
+            let state: Arc<dyn everruns_platform::SandboxStateStore> = store;
+            extensions.insert(Arc::new(SandboxCheckpointStoreExt(checkpoints)));
+            extensions.insert(Arc::new(SandboxStateStoreExt(state)));
             // Checkpoint reconciliation needs both; installing one without the
             // other silently disables it (EVE-870).
             if let Some(durable) = self.adapters.durable_tool_result_store() {

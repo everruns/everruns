@@ -738,6 +738,7 @@ mod tests {
 
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,

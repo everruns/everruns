@@ -278,8 +278,8 @@ pub(crate) fn expected_search_tools() -> Value {
     };
     json!([
         function("first", false), function("second", false),
-        {"type":"namespace","name":"Alpha","description":"Tools for Alpha","tools":[function("a", true),function("b", true)]},
-        {"type":"namespace","name":"Zeta","description":"Tools for Zeta","tools":[function("z", true)]},
+        {"type":"namespace","name":"Alpha","description":"Tools for Alpha: a: a description; b: b description","tools":[function("a", true),function("b", true)]},
+        {"type":"namespace","name":"Zeta","description":"Tools for Zeta: z: z description","tools":[function("z", true)]},
         function("loose", true), {"type":"tool_search"}
     ])
 }

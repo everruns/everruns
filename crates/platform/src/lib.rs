@@ -114,6 +114,7 @@ pub mod session_sandbox;
 // core boundary is frozen (EVE-906) and the kernel need not name the store.
 // Hosted presets install it as a typed extension.
 pub mod sandbox_checkpoint;
+pub mod sandbox_state;
 
 // Management/reporting aggregates carved out of `everruns-core` (EVE-878):
 // persisted eval definitions/runs/results/datasets, observer records with
@@ -187,6 +188,9 @@ pub use sandbox_checkpoint::{
     DurableToolResultStoreExt, MAX_CHECKPOINT_COLLECT_LIMIT, NewSandboxCheckpoint,
     SandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointKind, SandboxCheckpointStore,
     SandboxCheckpointStoreExt, SandboxRef,
+};
+pub use sandbox_state::{
+    SandboxPersistenceStore, SandboxStateError, SandboxStateStore, SandboxStateStoreExt,
 };
 
 // Managed per-session sandbox (EVE-880).

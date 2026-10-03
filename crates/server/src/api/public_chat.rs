@@ -248,6 +248,7 @@ async fn run_public_chat(
                 signed_in_visitor_tag(&EndpointAuthPrincipal {
                     issuer: binding.realm.clone(),
                     subject: binding.subject.clone(),
+                    identity_realm: binding.realm.clone(),
                 }),
                 None,
                 Some((
@@ -275,7 +276,12 @@ async fn run_public_chat(
                 true,
                 signed_in_visitor_tag(&principal),
                 None,
-                Some(("oidc".into(), principal.issuer, principal.subject, None)),
+                Some((
+                    "oidc".into(),
+                    principal.identity_realm,
+                    principal.subject,
+                    None,
+                )),
             )
         } else {
             if !config.anonymous {
@@ -361,7 +367,10 @@ async fn run_public_chat(
 fn signed_in_visitor_tag(principal: &EndpointAuthPrincipal) -> String {
     visitor_tag(
         "signed",
-        &[principal.issuer.as_str(), principal.subject.as_str()],
+        &[
+            principal.identity_realm.as_str(),
+            principal.subject.as_str(),
+        ],
     )
 }
 
@@ -664,14 +673,17 @@ mod tests {
         let alice = EndpointAuthPrincipal {
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
+            identity_realm: "google".to_string(),
         };
         let alice_again = EndpointAuthPrincipal {
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
+            identity_realm: "google".to_string(),
         };
         let bob = EndpointAuthPrincipal {
             issuer: "https://accounts.google.com".to_string(),
             subject: "bob".to_string(),
+            identity_realm: "google".to_string(),
         };
 
         assert_eq!(

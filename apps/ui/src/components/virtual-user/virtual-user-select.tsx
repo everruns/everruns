@@ -8,7 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useVirtualUsers } from "@/hooks/use-virtual-users";
+import { useVirtualUser, useVirtualUsers } from "@/hooks/use-virtual-users";
+import { Button } from "@/components/ui/button";
 import type { VirtualUser } from "@/lib/api/types";
 
 interface VirtualUserSelectProps {
@@ -33,13 +34,19 @@ export function VirtualUserSelect({
   className,
   usage,
 }: VirtualUserSelectProps) {
-  const { data: identities = [] } = useVirtualUsers({ includeArchived: !!value, usage });
+  const {
+    data: identities = [],
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useVirtualUsers({ includeArchived: !!value, usage });
+  const { data: selectedUser } = useVirtualUser(value || undefined);
   const identityMap = useMemo(
     () => new Map<string, VirtualUser>(identities.map((identity) => [identity.id, identity])),
     [identities],
   );
   // When a value is set that's not in the list (e.g. deleted identity), show a fallback
-  const selectedIdentity = value ? identityMap.get(value) : undefined;
+  const selectedIdentity = value ? (identityMap.get(value) ?? selectedUser) : undefined;
   const valueMissing = !!value && !selectedIdentity;
   const displayLabel = selectedIdentity
     ? selectedIdentity.name
@@ -55,11 +62,16 @@ export function VirtualUserSelect({
       onValueChange={(next) => onValueChange(next === "none" ? "" : next)}
       disabled={disabled}
     >
-      <SelectTrigger className={className}>
+      <SelectTrigger className={className} aria-label={placeholder}>
         <SelectValue placeholder={placeholder}>{displayLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         {includeNone && <SelectItem value="none">{noneLabel}</SelectItem>}
+        {selectedIdentity && !identityMap.has(value) && (
+          <SelectItem value={value} disabled={selectedIdentity.status !== "active"}>
+            {selectedIdentity.name}
+          </SelectItem>
+        )}
         {/* Show a disabled entry for the current value if it's not in the list */}
         {valueMissing && (
           <SelectItem value={value} disabled>
@@ -78,6 +90,16 @@ export function VirtualUserSelect({
               {identity.status !== "active" ? " (archived)" : ""}
             </SelectItem>
           ))}
+        {hasNextPage && (
+          <Button
+            variant="ghost"
+            className="w-full"
+            disabled={isFetchingNextPage}
+            onClick={() => fetchNextPage()}
+          >
+            Load more virtual users
+          </Button>
+        )}
       </SelectContent>
     </Select>
   );

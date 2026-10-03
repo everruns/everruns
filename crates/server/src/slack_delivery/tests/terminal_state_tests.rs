@@ -15,6 +15,7 @@ const THREAD_TS: &str = "1700000000.000100";
 
 pub(super) async fn seed_session(db: &StorageBackend) -> everruns_provider::typed_id::SessionId {
     db.create_session(CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: ORG,

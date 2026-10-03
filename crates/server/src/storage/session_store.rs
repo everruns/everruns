@@ -114,6 +114,7 @@ impl DbSessionStore {
                 let capabilities = serde_json::from_value(row.capabilities).unwrap_or_default();
 
                 Ok(Some(Session {
+                    playground_user_id: row.playground_user_id,
                     source: SessionSource::from(row.source.as_str()),
                     run_summary: row.run_summary.clone(),
                     activity: SessionActivity::derive(

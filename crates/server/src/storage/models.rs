@@ -875,6 +875,8 @@ pub struct SessionRow {
     pub agent_config_hash: Option<String>,
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
+    #[sqlx(default)]
+    pub playground_user_id: Option<VirtualUserId>,
     pub owner_principal_id: PrincipalId,
     #[sqlx(default)]
     pub resolved_owner_user_id: Option<Uuid>,
@@ -1001,35 +1003,7 @@ pub struct SessionRow {
     pub archived_at: Option<DateTime<Utc>>,
 }
 
-/// Ordering for the sessions list. The chat thread list wants last activity;
-/// the operational list wants creation order.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SessionListOrder {
-    #[default]
-    CreatedAt,
-    LastActivity,
-}
-
-/// Filter predicate shared by the sessions list and its facet aggregates
-/// (EVE-852). Both read the same struct so a count can never describe a
-/// different population than the page it annotates.
-#[derive(Debug, Clone, Default)]
-pub struct SessionListFilters {
-    pub agent_id: Option<AgentId>,
-    pub search: Option<String>,
-    /// Empty means "any source".
-    pub sources: Vec<everruns_platform::SessionSource>,
-    /// Empty means "any activity".
-    pub activities: Vec<everruns_platform::SessionActivity>,
-    /// Restrict to sessions whose resolved human owner is this user (`mine`).
-    pub owner_user_id: Option<Uuid>,
-    pub created_after: Option<DateTime<Utc>>,
-    pub created_before: Option<DateTime<Utc>>,
-    /// Widen the result set to archived sessions too. Default `false`: archive
-    /// is a "put it away" bit, so hiding it is the point.
-    pub include_archived: bool,
-    pub order: SessionListOrder,
-}
+pub use super::session_rows::{SessionListFilters, SessionListOrder};
 
 /// One bucket of a facet rail dimension.
 #[derive(Debug, Clone, FromRow)]

@@ -231,11 +231,20 @@ async fn live_cdp_session_interact() {
         .await
         .expect("Click should succeed");
 
-    // Wait for navigation
-    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
-    // Check we navigated away
-    let url = session.get_url().await.expect("get_url should succeed");
+    // Poll for navigation: the remote browser sometimes needs more than a few
+    // seconds to reach the link target, so a fixed sleep flakes.
+    let mut url = String::new();
+    for _ in 0..30 {
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        // Evaluation can fail while the old document is torn down; retry.
+        let Ok(current) = session.get_url().await else {
+            continue;
+        };
+        url = current;
+        if url != "https://example.com/" && url != "https://example.com" {
+            break;
+        }
+    }
     assert!(
         url != "https://example.com/" && url != "https://example.com",
         "Should have navigated away from example.com, got: {url}"
