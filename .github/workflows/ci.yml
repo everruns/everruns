@@ -2921,6 +2921,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "Job results: $RESULTS"
+          if echo "$RESULTS" | grep -qE '"failure"|"cancelled"'; then
+            echo "One or more CI jobs failed or were cancelled"
+            exit 1
+          fi
+
           # A run gated off by the label event (run_ci=false) skips every job,
           # so it has no verdict of its own. Both unconditional answers are
           # wrong, and each has an incident behind it:
@@ -2947,7 +2953,7 @@ jobs:
           # tooling started life blocked. So when the verdict is not in yet,
           # wait for the sibling run rather than guess: a gated-off run has all
           # the time in the world and no verdict worth giving early.
-          if [ "$RUN_CI" != "true" ]; then
+          if [ "$RUN_CI" = "false" ]; then
             if [ -z "${HEAD_SHA:-}" ]; then
               echo "run_ci=false and no pull request head to consult, so there is nothing to attest"
               exit 1
@@ -2997,9 +3003,8 @@ jobs:
             done
           fi
 
-          echo "Job results: $RESULTS"
-          if echo "$RESULTS" | grep -qE '"failure"|"cancelled"'; then
-            echo "One or more CI jobs failed or were cancelled"
+          if [ "$RUN_CI" != "true" ]; then
+            echo "run_ci was not produced, so this run cannot attest to the commit"
             exit 1
           fi
           echo "All CI jobs passed (or were skipped due to path filtering)"
