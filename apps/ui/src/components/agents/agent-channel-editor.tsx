@@ -49,10 +49,7 @@ import {
 } from "@/components/layout";
 import type { Agent, AgentChannel, ScheduleChannelConfig } from "@/lib/api/types";
 import type { SlackInstallCapability } from "@/lib/api/agent-channels";
-import {
-  getChannelTypeDisplayName,
-  getChannelLifecyclePresentation,
-} from "@/lib/channel-display";
+import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/channel-display";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 export function AgentChannelEditor({
@@ -150,9 +147,7 @@ function AgentChannelForm({
       : `${slackInstallFailure}.`
     : "Could not start the Slack install.";
   const schedule =
-    channel.channel_type === "schedule"
-      ? (channel.channel_config as ScheduleChannelConfig)
-      : null;
+    channel.channel_type === "schedule" ? (channel.channel_config as ScheduleChannelConfig) : null;
 
   return (
     <PageContainer>

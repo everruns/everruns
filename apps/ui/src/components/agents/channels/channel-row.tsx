@@ -25,10 +25,7 @@ import type {
   SlackChannelConfig,
   WebhookChannelConfig,
 } from "@/lib/api/types";
-import {
-  getChannelTypeDisplayName,
-  getChannelLifecyclePresentation,
-} from "@/lib/channel-display";
+import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/channel-display";
 
 function relativeTime(value?: string | null): string {
   if (!value) return "never";
@@ -197,9 +194,7 @@ export function ChannelRow({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate font-medium">{channelName(channel)}</p>
-                <Badge variant="outline">
-                  {getChannelTypeDisplayName(channel.channel_type)}
-                </Badge>
+                <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
                 <Badge variant={isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel)}</p>

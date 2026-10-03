@@ -711,10 +711,10 @@ async fn slack_response_policies_are_available_without_feature_enrollment() {
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let ctx = test_ctx(db).with_feature_flags(everruns_platform::FeatureFlags::default());
-    let create = |policy: &str| CreateAgentEndpoint {
+    let create = |policy: &str| CreateAgentChannel {
         agent_id: agent_id.clone(),
-        req: CreateAgentEndpointRequest {
-            channel_type: EndpointTransport::Slack,
+        req: CreateAgentChannelRequest {
+            channel_type: ChannelType::Slack,
             channel_config: json!({"response_policy": policy}),
             enabled: true,
             agent_version_policy: None,
@@ -724,10 +724,10 @@ async fn slack_response_policies_are_available_without_feature_enrollment() {
     for policy in ["mentions_only", "relevant_messages"] {
         let endpoint = create(policy).run(&ctx).await.unwrap();
         assert_eq!(endpoint.channel_config["response_policy"], policy);
-        let reset = UpdateAgentEndpointCmd {
+        let reset = UpdateAgentChannelCmd {
             agent_id: agent_id.clone(),
             endpoint_id: endpoint.public_id.to_string(),
-            req: UpdateAgentEndpointRequest {
+            req: UpdateAgentChannelRequest {
                 channel_config: Some(json!({"response_policy": "all_messages"})),
                 ..Default::default()
             },

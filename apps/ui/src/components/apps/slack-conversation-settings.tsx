@@ -10,10 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { SessionStrategy, SlackReplyMode, SlackResponsePolicy } from "@/lib/api/types";
-import {
-  getSessionStrategyDisplayName,
-  getSlackReplyModeDisplayName,
-} from "@/lib/channel-display";
+import { getSessionStrategyDisplayName, getSlackReplyModeDisplayName } from "@/lib/channel-display";
 
 const SLACK_SESSION_DESCRIPTIONS: Record<SessionStrategy, string> = {
   per_thread: "Each Slack thread has its own session and conversation history.",

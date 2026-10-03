@@ -716,7 +716,7 @@ mod tests {
             "generic_tool_text": "Working"
         });
         let mut edited = json!({ "session_strategy": "per_channel", "reply_mode": "all_messages" });
-        merge_preserved_secret_fields(EndpointTransport::Slack, &mut edited, &existing);
+        merge_preserved_secret_fields(ChannelType::Slack, &mut edited, &existing);
         for key in [
             "signing_secret",
             "bot_token",
@@ -745,7 +745,7 @@ mod tests {
             "webhook_verified_at": "2026-10-03T11:00:00Z",
             "agent_surface_enabled": false
         });
-        merge_preserved_secret_fields(EndpointTransport::Slack, &mut edited, &existing);
+        merge_preserved_secret_fields(ChannelType::Slack, &mut edited, &existing);
         assert_eq!(edited["provisioned_app"], existing["provisioned_app"]);
         assert_eq!(
             edited["first_message_received_at"],

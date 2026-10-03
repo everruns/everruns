@@ -44,9 +44,9 @@ import {
 import type {
   AgUiChannelConfig,
   AgUiToolVisibility,
-  EndpointAuthConfig,
+  ChannelAuthConfig,
   AgentChannel,
-  EndpointTransport,
+  ChannelType,
   FcpChannelConfig,
   InvocationSessionMode,
   PublicChatChannelConfig,
@@ -76,7 +76,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
-export const CHANNEL_FORM_KINDS: EndpointTransport[] = [
+export const CHANNEL_FORM_KINDS: ChannelType[] = [
   "schedule",
   "webhook",
   "ag_ui",
@@ -93,7 +93,7 @@ const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
 export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" | "runs";
 
 export type ChannelFormState = {
-  kind: EndpointTransport;
+  kind: ChannelType;
   enabled: boolean;
   slackSigningSecret: string;
   slackBotToken: string;
@@ -118,7 +118,7 @@ export type ChannelFormState = {
   webhookToken: string;
   agUiToken: string;
   agUiAnonymous: boolean;
-  agUiAuth?: EndpointAuthConfig;
+  agUiAuth?: ChannelAuthConfig;
   agUiExpirationHours: number;
   agUiRateLimitPerMinute: string;
   agUiToolVisibility: AgUiToolVisibility;
@@ -153,7 +153,7 @@ function secretValue(value?: string, configured?: boolean): string {
 }
 
 export function getDefaultChannelFormState(
-  kind: EndpointTransport,
+  kind: ChannelType,
   channel?: AgentChannel,
 ): ChannelFormState {
   const base: ChannelFormState = {
@@ -481,7 +481,7 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
   return false;
 }
 
-function channelIcon(kind: EndpointTransport) {
+function channelIcon(kind: ChannelType) {
   switch (kind) {
     case "schedule":
       return CalendarClock;
@@ -500,7 +500,7 @@ function channelIcon(kind: EndpointTransport) {
   }
 }
 
-function channelDescription(kind: EndpointTransport): string {
+function channelDescription(kind: ChannelType): string {
   switch (kind) {
     case "schedule":
       return "Run this agent on a cron-driven cadence in any timezone.";
@@ -519,12 +519,12 @@ function channelDescription(kind: EndpointTransport): string {
   }
 }
 
-export function EndpointTransportPicker({
+export function ChannelTypePicker({
   value,
   onChange,
 }: {
-  value: EndpointTransport;
-  onChange: (value: EndpointTransport) => void;
+  value: ChannelType;
+  onChange: (value: ChannelType) => void;
 }) {
   const publicChatEnabled = useFeatureFlag("public_chat");
   const kinds = CHANNEL_FORM_KINDS.filter(
@@ -1440,8 +1440,8 @@ export function ChannelForm({
                     id={`${slackFormId}_channel_id_description`}
                     className="text-xs leading-relaxed text-muted-foreground"
                   >
-                    Limit this channel to one channel. Leave blank to accept any channel in the
-                    workspace.
+                    Limit this integration to one Slack channel. Leave blank to accept any Slack
+                    channel in the workspace.
                   </p>
                 </div>
               </FieldGrid>

@@ -21,7 +21,7 @@ function SetupHeading() {
   return <p className="text-xs font-medium uppercase text-muted-foreground">Set up</p>;
 }
 
-function EndpointSetupGuidance({
+function ChannelSetupGuidance({
   agentName,
   agentDescription,
   channel,
@@ -118,16 +118,12 @@ export function ChannelDetailsPanel({
 }) {
   if (channel.channel_type === "slack") {
     return (
-      <SlackChannelConfiguration
-        agentId={agentId}
-        channel={channel}
-        canManage={!!configureHref}
-      />
+      <SlackChannelConfiguration agentId={agentId} channel={channel} canManage={!!configureHref} />
     );
   }
   return (
     <div className="space-y-6">
-      <EndpointSetupGuidance
+      <ChannelSetupGuidance
         agentName={agentName}
         agentDescription={agentDescription}
         channel={channel}

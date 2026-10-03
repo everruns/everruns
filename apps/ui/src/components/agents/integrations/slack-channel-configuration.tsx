@@ -11,10 +11,7 @@ import {
 } from "@/components/agents/channels/channel-form";
 import { useSlackInstallCapability, useUpdateAgentChannel } from "@/hooks/use-agent-channels";
 import { SlackConnectionStatus } from "./slack-setup-guidance";
-import {
-  getSessionStrategyDisplayName,
-  getSlackReplyModeDisplayName,
-} from "@/lib/channel-display";
+import { getSessionStrategyDisplayName, getSlackReplyModeDisplayName } from "@/lib/channel-display";
 import type { AgentChannel, SlackChannelConfig } from "@/lib/api/types";
 
 export function SlackChannelConfiguration({

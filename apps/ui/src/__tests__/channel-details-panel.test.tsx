@@ -100,9 +100,7 @@ describe("ChannelDetailsPanel", () => {
       "Handshake (GET body)",
     ],
   ])("mounts %s setup guidance", (_name, channel, expectedText) => {
-    render(
-      <ChannelDetailsPanel agentId="agent_123" agentName="Support Agent" channel={channel} />,
-    );
+    render(<ChannelDetailsPanel agentId="agent_123" agentName="Support Agent" channel={channel} />);
 
     expect(screen.getByText(expectedText)).toBeInTheDocument();
     expect(screen.getByText("Use it")).toBeInTheDocument();

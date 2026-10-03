@@ -9,7 +9,7 @@ use everruns_core::{DecisionQuestion, DecisionRequest, DecisionsService};
 use everruns_platform::{SlackChannelConfig, SlackResponsePolicy};
 use serde_json::{Value, json};
 
-use crate::api::endpoint_ingress::{IngressContext, IngressEndpoint};
+use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::storage::models::EventRow;
 
 use super::{SlackEvent, SlackState, build_session_tags, find_slack_session};
@@ -22,7 +22,7 @@ const HISTORY_LIMIT: usize = 8;
 pub(super) async fn should_process_message(
     state: &SlackState,
     app: &IngressContext,
-    endpoint: &IngressEndpoint,
+    endpoint: &IngressChannel,
     config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> bool {
@@ -74,7 +74,7 @@ fn is_directed_message(event: &SlackEvent) -> bool {
 async fn decision_state(
     state: &SlackState,
     app: &IngressContext,
-    endpoint: &IngressEndpoint,
+    endpoint: &IngressChannel,
     config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<Value> {

@@ -137,8 +137,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
               <div>
                 <h2 className="text-lg font-semibold tracking-tight">Endpoints</h2>
                 <p className="text-sm text-muted-foreground">
-                  {doors.length} {pluralize(doors.length, "channel")} · how callers reach this
-                  agent
+                  {doors.length} {pluralize(doors.length, "channel")} · how callers reach this agent
                 </p>
               </div>
               {canManage && (
@@ -190,7 +189,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                         {budgetsEnabled && canViewBudgets && (
                           <div className="border-t pt-4">
                             <BudgetPanel
-                              subjectType="agent_endpoint"
+                              subjectType="agent_channel"
                               subjectId={channel.id}
                               title="Endpoint budget"
                               canManage={canManageBudgets}
@@ -243,7 +242,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     usePanel={
                       budgetsEnabled && canViewBudgets ? (
                         <BudgetPanel
-                          subjectType="agent_endpoint"
+                          subjectType="agent_channel"
                           subjectId={channel.id}
                           title="Endpoint budget"
                           canManage={canManageBudgets}
