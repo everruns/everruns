@@ -238,3 +238,19 @@ async fn computer_calls_replay_as_member_calls_with_tagged_results() {
     assert_eq!(result["toolset_name"], "computer");
     assert_eq!(result["content"][1]["type"], "image");
 }
+
+#[tokio::test]
+async fn computer_toolset_disables_provider_side_parallel_tool_use() {
+    let server = MockServer::start().await;
+    mount(&server, end_turn()).await;
+    let mut request = config("claude-opus-5-5", true);
+    request.parallel_tool_calls = Some(true);
+    send(&server, ask(), &request).await;
+
+    let body = sent_body(&server).await;
+    assert_eq!(
+        body["tool_choice"]["disable_parallel_tool_use"],
+        json!(true),
+        "computer member actions are stateful; a failed action must not be followed by more in the same turn"
+    );
+}

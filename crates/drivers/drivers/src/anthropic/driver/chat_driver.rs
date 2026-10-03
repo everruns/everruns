@@ -243,11 +243,18 @@ impl ChatDriver for AnthropicChatDriver {
         // Map the request-level parallel preference (EVE-598) onto Anthropic's
         // `tool_choice.disable_parallel_tool_use`. `tool_choice` is only valid
         // when tools are present, so skip it for tool-less requests.
+        // Computer member actions are stateful and screenshot-dependent: never let
+        // the provider batch them, so a failed action stops the turn instead of
+        // letting later actions run against a stale screen.
+        let parallel =
+            config.resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model));
+        let parallel = if computer_toolset {
+            Some(false)
+        } else {
+            parallel
+        };
         let tool_choice = if tools.is_some() {
-            AnthropicToolChoice::from_parallel_preference(
-                config
-                    .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            )
+            AnthropicToolChoice::from_parallel_preference(parallel)
         } else {
             None
         };
