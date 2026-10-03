@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-03
+
+### Highlights
+
+- **Personal ChatGPT plan connections** - Self-hosted deployments can enable personal account sign-in and discover its available models; connections stay scoped to the signed-in user ([#4136](https://github.com/everruns/everruns/pull/4136)).
+- **Stock subagents for custom hosts** - Library hosts can run the stock subagent and handoff tools through a store of portable runtime definitions, without constructing control-plane records ([#4078](https://github.com/everruns/everruns/pull/4078)).
+
+### What's Changed
+
+- feat(chatgpt): add personal plan connections and shared drivers ([#4136](https://github.com/everruns/everruns/pull/4136)) by [@chaliy](https://github.com/chaliy)
+- perf(worker): skip history and model load in the phase setup turn context ([#4135](https://github.com/everruns/everruns/pull/4135)) by [@chaliy](https://github.com/chaliy)
+- fix(chat): preserve history identity and enable wait simulator ([#4127](https://github.com/everruns/everruns/pull/4127)) by [@chaliy](https://github.com/chaliy)
+- fix(chat): route agent testing through Playground ([#4129](https://github.com/everruns/everruns/pull/4129)) by [@chaliy](https://github.com/chaliy)
+- refactor(channels): rename agent endpoints to channels ([#4118](https://github.com/everruns/everruns/pull/4118)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): show each harness purpose in the picker ([#4125](https://github.com/everruns/everruns/pull/4125)) by [@chaliy](https://github.com/chaliy)
+- test(workflow): bind wait-response fixture to llmsim ([#4128](https://github.com/everruns/everruns/pull/4128)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): show Playground chats as dense grouped rows ([#4130](https://github.com/everruns/everruns/pull/4130)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): phrase hosted stores in runtime values ([#4078](https://github.com/everruns/everruns/pull/4078)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): manage platform conversations with a built-in Agent ([#4121](https://github.com/everruns/everruns/pull/4121)) by [@chaliy](https://github.com/chaliy)
+- feat(flags): add rollout grades and org defaults ([#4115](https://github.com/everruns/everruns/pull/4115)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): filter unmentioned messages by agent purpose ([#4116](https://github.com/everruns/everruns/pull/4116)) by [@chaliy](https://github.com/chaliy)
+- perf(worker): memoize session, harness, and agent reads during phase setup ([#4124](https://github.com/everruns/everruns/pull/4124)) by [@chaliy](https://github.com/chaliy)
+- fix(playground): shorten list creation button label ([#4123](https://github.com/everruns/everruns/pull/4123)) by [@chaliy](https://github.com/chaliy)
+- ci: run paid provider tests nightly or on relevant changes ([#4122](https://github.com/everruns/everruns/pull/4122)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All 42 published crates ship at the platform version 0.38.0.
+
+Retired after their deprecated 0.37.0 forwarding release:
+
+- `everruns-provider` → `everruns-contracts`
+- `everruns-capability` → `everruns-contracts::capability`
+- `everruns-model-profiles` → `everruns-contracts::model_profile_data`
+
+Published 0.37.0 shims remain available; no capability is removed. Custom `PlatformStore` implementations now return `AgentDefinition`, an inheritance-resolved `HarnessDefinition`, and `ExecutionSession`. See the [SDK upgrade notes](https://github.com/everruns/everruns/blob/main/docs/framework/upgrade-notes.md).
+
 ## [0.37.0] - 2026-10-03
 
 ### Highlights
@@ -17,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Slack installation returns to setup** - Valid OAuth callbacks return to the owning agent's endpoint editor; invalid callbacks use the agents page ([#4107](https://github.com/everruns/everruns/pull/4107)).
 
 ### What's Changed
+
+- feat(ui): combine Slack setup and inline configuration ([#4114](https://github.com/everruns/everruns/pull/4114)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): restore reactions with exact message references ([#4119](https://github.com/everruns/everruns/pull/4119)) by [@chaliy](https://github.com/chaliy)
+- fix(playground): align chat navigation and remove feature gating ([#4117](https://github.com/everruns/everruns/pull/4117)) by [@chaliy](https://github.com/chaliy)
 
 - style(ui): refine shared entity overview hierarchy ([#4112](https://github.com/everruns/everruns/pull/4112)) by [@chaliy](https://github.com/chaliy)
 - feat(ui): surface approval history in chat and audit views ([#4110](https://github.com/everruns/everruns/pull/4110)) by [@chaliy](https://github.com/chaliy)
@@ -31,6 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ![Agent cards show channels](https://github.com/user-attachments/assets/f04d406b-87c7-48a8-8bf6-e0a404e2d60b)
 
 [Navigation loading state](https://github.com/user-attachments/assets/de32617c-995d-40ca-a1d5-2b18652fe1cd) · [Agent tab after refresh](https://github.com/user-attachments/assets/fb561c42-dbc1-46dc-b7e8-3b98304b2b0b) · [Slack callback opens setup](https://github.com/user-attachments/assets/5bf41078-f4f6-4977-8c4b-23c8484ebed8)
+
+Existing Slack installations must reconnect and approve `reactions:write` to use reaction tools.
 
 ### Crate Releases
 
