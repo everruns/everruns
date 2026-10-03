@@ -112,18 +112,25 @@ mod tests {
                 "{} must expose ask_user",
                 definition.name
             );
+            // The description is the purpose shown in the harness picker, so it
+            // stays a sentence about when to choose it rather than a capability list.
             assert!(
-                definition.description.contains("structured user questions"),
-                "{} must describe structured user questions",
+                !definition.description.trim().is_empty()
+                    && definition.description.chars().count() <= 160,
+                "{} description should say when to use it, in picker length",
                 definition.name
             );
         }
 
+        let base = base::definition();
         assert!(
-            base::definition()
-                .capabilities
+            base.capabilities
                 .iter()
                 .all(|capability| capability.capability_id() != "ask_user")
+        );
+        assert!(
+            !base.description.trim().is_empty() && base.description.chars().count() <= 160,
+            "base description should say when to use it, in picker length"
         );
     }
 
