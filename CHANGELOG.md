@@ -50,7 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(bashkit): fail closed on empty HTTP egress DNS pins ([#4058](https://github.com/everruns/everruns/pull/4058)) by [@chaliy](https://github.com/chaliy)
 - fix(preview): include inherited harness tools and session features ([#4055](https://github.com/everruns/everruns/pull/4055)) by [@chaliy](https://github.com/chaliy)
 - fix(openai): normalize hosted tool-search namespaces — Fixes EVE-1164 ([#4052](https://github.com/everruns/everruns/pull/4052)) by [@chaliy](https://github.com/chaliy)
-
 - feat(chat): reveal AskUser shortcuts while holding Command ([#4062](https://github.com/everruns/everruns/pull/4062)) by [@chaliy](https://github.com/chaliy)
 - chore(deps): bump pinned transitive deps to patched versions ([#4063](https://github.com/everruns/everruns/pull/4063)) by [@chaliy](https://github.com/chaliy)
 - fix(computer-use): drop hard per-call approval gate, soft approvals only ([#4064](https://github.com/everruns/everruns/pull/4064)) by [@chaliy](https://github.com/chaliy)
@@ -60,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - test(llm-tests): retarget flaky GPT-5.4 tool_search cases to Terra ([#4070](https://github.com/everruns/everruns/pull/4070)) by [@chaliy](https://github.com/chaliy)
 - fix(host): enforce Agents API provider tool policy ([#4067](https://github.com/everruns/everruns/pull/4067)) by [@chaliy](https://github.com/chaliy)
 - fix(platform): enforce runtime network policy for A2A delegation ([#4068](https://github.com/everruns/everruns/pull/4068)) by [@chaliy](https://github.com/chaliy)
+
+- test(host): verify Agents API provider tool boundary ([#4074](https://github.com/everruns/everruns/pull/4074)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): describe deferred tool search namespaces ([#4073](https://github.com/everruns/everruns/pull/4073)) by [@chaliy](https://github.com/chaliy)
 
 ### Crate Releases
 
