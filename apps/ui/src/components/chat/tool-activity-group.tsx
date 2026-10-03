@@ -20,6 +20,8 @@ import { TodoListRenderer } from "./todo-list-renderer";
 import { buildActivitySegments } from "./tool-activity-utils";
 import type { ToolCallContent } from "./tool-call-utils";
 import { WriteFileToolCallCard } from "./write-file-tool-call-card";
+import type { ApprovalToolContext } from "./approval-tool-activity";
+import { ApprovalToolActivity } from "./approval-tool-activity";
 
 interface ToolActivityGroupProps {
   toolCalls: ToolCallContent[];
@@ -27,6 +29,7 @@ interface ToolActivityGroupProps {
   toolProgressMap?: Map<string, ToolProgressData>;
   toolOutputMap?: Map<string, ToolOutputStreams>;
   mode?: "server" | "client";
+  approvalContexts?: Map<string, ApprovalToolContext>;
 }
 
 export function ToolActivityGroup({
@@ -35,9 +38,18 @@ export function ToolActivityGroup({
   toolProgressMap,
   toolOutputMap,
   mode = "server",
+  approvalContexts,
 }: ToolActivityGroupProps) {
   const todoToolCalls = toolCalls.filter((toolCall) => isWriteTodosTool(toolCall.name));
-  const activityToolCalls = toolCalls.filter((toolCall) => !isWriteTodosTool(toolCall.name));
+  const approvalToolCalls = toolCalls.filter(
+    (toolCall) => toolCall.name === "request_approval" || toolCall.name === "record_approval",
+  );
+  const activityToolCalls = toolCalls.filter(
+    (toolCall) =>
+      !isWriteTodosTool(toolCall.name) &&
+      toolCall.name !== "request_approval" &&
+      toolCall.name !== "record_approval",
+  );
   const activitySegments = useMemo(
     () => buildActivitySegments(activityToolCalls, mode),
     [activityToolCalls, mode],
@@ -47,6 +59,14 @@ export function ToolActivityGroup({
 
   return (
     <div className="space-y-3">
+      {approvalToolCalls.map((toolCall) => (
+        <ApprovalToolActivity
+          key={toolCall.id}
+          toolCall={toolCall}
+          toolResult={toolResultsMap.get(toolCall.id)}
+          context={approvalContexts?.get(toolCall.id)}
+        />
+      ))}
       {activitySegments.map((segment, index) => {
         if (segment.type === "shell") {
           return (
@@ -86,6 +106,7 @@ export function ToolActivityGroup({
             toolResultsMap={toolResultsMap}
             toolProgressMap={toolProgressMap}
             mode={mode}
+            approvalContexts={approvalContexts}
           />
         );
       })}

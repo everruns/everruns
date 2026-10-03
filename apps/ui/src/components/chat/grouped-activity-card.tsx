@@ -13,17 +13,20 @@ import type { ToolCallContent } from "./tool-call-utils";
 import { summarizeToolCalls } from "./tool-activity-utils";
 import { ToolActivityRow } from "./tool-activity-row";
 import { useLocale } from "@/providers/locale-provider";
+import type { ApprovalToolContext } from "./approval-tool-activity";
 
 export function GroupedActivityCard({
   toolCalls,
   toolResultsMap,
   toolProgressMap,
   mode,
+  approvalContexts,
 }: {
   toolCalls: ToolCallContent[];
   toolResultsMap: Map<string, ToolCompletedData>;
   toolProgressMap?: Map<string, ToolProgressData>;
   mode: "server" | "client";
+  approvalContexts?: Map<string, ApprovalToolContext>;
 }) {
   const { backendLocale, t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -42,6 +45,7 @@ export function GroupedActivityCard({
         progressMessage={toolProgressMap?.get(toolCall.id)?.message}
         mode={mode}
         locale={backendLocale}
+        approvalContext={approvalContexts?.get(toolCall.id)}
       />
     );
   }
@@ -96,6 +100,7 @@ export function GroupedActivityCard({
                 progressMessage={toolProgressMap?.get(toolCall.id)?.message}
                 mode={mode}
                 locale={backendLocale}
+                approvalContext={approvalContexts?.get(toolCall.id)}
               />
             ))}
           </div>

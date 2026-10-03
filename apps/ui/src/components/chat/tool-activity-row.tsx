@@ -21,6 +21,7 @@ import {
 } from "./tool-activity-utils";
 import { extractMcpAppResources, extractResultImages, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
+import { ApprovalToolActivity, type ApprovalToolContext } from "./approval-tool-activity";
 
 export function ToolActivityRow({
   toolCall,
@@ -28,6 +29,7 @@ export function ToolActivityRow({
   progressMessage,
   mode,
   locale,
+  approvalContext,
 }: {
   toolCall: ToolCallContent;
   toolResult?: ToolCompletedData;
@@ -35,6 +37,7 @@ export function ToolActivityRow({
   progressMessage?: string;
   mode: "server" | "client";
   locale: string;
+  approvalContext?: ApprovalToolContext;
 }) {
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -47,6 +50,12 @@ export function ToolActivityRow({
   const isComplete = Boolean(toolResult);
   const isRunning = !isComplete && !hasToolError;
   const summaryChip = isComplete ? getToolActivitySummaryChip(toolCall, toolResult) : null;
+
+  if (toolCall.name === "request_approval" || toolCall.name === "record_approval") {
+    return (
+      <ApprovalToolActivity toolCall={toolCall} toolResult={toolResult} context={approvalContext} />
+    );
+  }
 
   return (
     <div

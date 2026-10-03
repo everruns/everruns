@@ -310,4 +310,41 @@ describe("buildToolActivityGroups", () => {
     expect(label("file_search")).toBe("Search files");
     expect(label("image_generation")).toBe("Image Generation");
   });
+
+  it("leaves approval lifecycle entries to their dedicated chat cards", () => {
+    const approvalSummary = {
+      id: "approval-1",
+      name: "record_approval",
+      narration: "Recording approval",
+      completed_narration: "Approval recorded",
+    };
+    const built = buildToolActivityGroups(
+      [
+        event(
+          "start",
+          "act.started",
+          "exec-1",
+          { headline: "Recording approval", tool_calls: [approvalSummary] },
+          1,
+        ),
+        event(
+          "complete",
+          "tool.completed",
+          "exec-1",
+          {
+            tool_call_id: "approval-1",
+            tool_name: "record_approval",
+            success: true,
+            status: "success",
+            narration: "Approval recorded",
+          },
+          2,
+        ),
+      ],
+      "Working",
+    );
+
+    expect(built.byAnchorEventId.size).toBe(0);
+    expect(built.narratedToolCallIds.has("approval-1")).toBe(false);
+  });
 });
