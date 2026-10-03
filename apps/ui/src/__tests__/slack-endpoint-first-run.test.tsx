@@ -159,9 +159,11 @@ describe("Slack endpoint first run", () => {
 
     expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Bot token")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Session strategy")).toBeVisible();
+    expect(screen.getByLabelText("Reply mode")).toBeVisible();
   });
 
-  it("opens manual fields for saved credentials and deployments without a provisioner", () => {
+  it("keeps saved credentials and manual-only setup collapsed until requested", () => {
     const { unmount } = render(
       <ChannelForm
         state={getDefaultChannelFormState("slack", {
@@ -174,7 +176,9 @@ describe("Slack endpoint first run", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Bot token")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Bot token")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Configure manually" }));
+    expect(screen.getByLabelText("Bot token")).toBeVisible();
     unmount();
 
     render(
@@ -190,7 +194,9 @@ describe("Slack endpoint first run", () => {
         }}
       />,
     );
-    expect(screen.getByLabelText("Signing secret")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Configure manually" }));
+    expect(screen.getByLabelText("Signing secret")).toBeVisible();
   });
 
   it("guides an administrator through connecting a workspace when none is connected", () => {
@@ -377,7 +383,7 @@ describe("Slack endpoint first run", () => {
     };
     await renderNewEndpointPage();
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
-    expect(screen.getByLabelText("Signing secret")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save endpoint" }));
