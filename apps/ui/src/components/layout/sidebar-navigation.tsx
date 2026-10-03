@@ -14,6 +14,7 @@ import type { FeatureFlags } from "@/lib/api/types";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 import { WarningBadge } from "@/components/ui/warning-badge";
 import type { NavigationItem, NavigationSection } from "./sidebar";
+import { useOrg } from "@/providers/org-provider";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -59,12 +60,14 @@ function NavSection({
   section,
   pathname,
   featureFlags,
+  hasRole,
   isFirst,
   renderExtra,
 }: {
   section: NavigationSection;
   pathname: string;
   featureFlags: FeatureFlags;
+  hasRole: (role: "admin" | "owner") => boolean;
   isFirst: boolean;
   renderExtra?: (section: NavigationSection) => ReactNode;
 }) {
@@ -72,6 +75,9 @@ function NavSection({
   if (section.devOnly && !isDev) return null;
 
   const isCollapsible = section.defaultCollapsed !== undefined && section.label;
+  const visibleItems = section.items.filter(
+    (item) => !item.minimumRole || hasRole(item.minimumRole),
+  );
 
   return (
     <>
@@ -96,7 +102,7 @@ function NavSection({
           </p>
         ))}
       {!collapsed &&
-        section.items.map((item) => (
+        visibleItems.map((item) => (
           <NavLink key={item.name} item={item} pathname={pathname} featureFlags={featureFlags} />
         ))}
       {!collapsed && renderExtra?.(section)}
@@ -117,10 +123,16 @@ export function SidebarNavigation({
    *  Chats section to hang the live thread list off the nav entry. */
   renderSectionExtra?: (section: NavigationSection) => ReactNode;
 }) {
+  const orgContext = useOrg();
+  const hasRole = orgContext.hasRole ?? (() => true);
   const visibleSections = sections.filter(
     (section) =>
       (!section.devOnly || isDev) &&
-      section.items.some((item) => !item.flag || featureFlags[item.flag]),
+      section.items.some(
+        (item) =>
+          (!item.flag || featureFlags[item.flag]) &&
+          (!item.minimumRole || hasRole(item.minimumRole)),
+      ),
   );
 
   return (
@@ -131,6 +143,7 @@ export function SidebarNavigation({
           section={section}
           pathname={pathname}
           featureFlags={featureFlags}
+          hasRole={hasRole}
           isFirst={index === 0}
           renderExtra={renderSectionExtra}
         />

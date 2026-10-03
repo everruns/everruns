@@ -20,6 +20,8 @@ export const INTERACTIVE_TOOL_CALLS = new Set([
   "approve_tool_call",
 ]);
 
+const APPROVAL_NARRATION_TOOLS = new Set(["request_approval", "record_approval"]);
+
 export interface TimelineToolRow {
   id: string;
   label: string;
@@ -141,7 +143,9 @@ export function buildToolActivityGroups(
     if (actStarted) {
       const group = ensureGroup(execKey ?? `act:${event.id}`, event, actStarted.headline);
       if (actStarted.headline) group.headline = actStarted.headline;
-      for (const summary of actStarted.tool_calls ?? []) addSummary(group, summary, "running");
+      for (const summary of actStarted.tool_calls ?? []) {
+        if (!APPROVAL_NARRATION_TOOLS.has(summary.name)) addSummary(group, summary, "running");
+      }
       groupedEventIds.add(event.id);
       continue;
     }
@@ -152,7 +156,8 @@ export function buildToolActivityGroups(
         (request.tool_summaries ?? []).map((summary) => [summary.id, summary]),
       );
       const genericCalls = request.tool_calls.filter(
-        (call) => !INTERACTIVE_TOOL_CALLS.has(call.name),
+        (call) =>
+          !INTERACTIVE_TOOL_CALLS.has(call.name) && !APPROVAL_NARRATION_TOOLS.has(call.name),
       );
       if (genericCalls.length === 0) continue;
 
@@ -185,6 +190,7 @@ export function buildToolActivityGroups(
     const toolStarted = getEventData(event, "tool.started");
     if (toolStarted) {
       const id = toolStarted.tool_call.id;
+      if (APPROVAL_NARRATION_TOOLS.has(toolStarted.tool_call.name)) continue;
       const key = groupKeyByToolCallId.get(id) ?? execKey ?? `tool:${id}`;
       const group = ensureGroup(key, event, toolStarted.narration);
       const row = ensureRow(
@@ -205,6 +211,7 @@ export function buildToolActivityGroups(
     const progress = getEventData(event, "tool.progress");
     if (progress) {
       const id = progress.tool_call_id;
+      if (APPROVAL_NARRATION_TOOLS.has(progress.tool_name)) continue;
       const key = groupKeyByToolCallId.get(id) ?? execKey ?? `tool:${id}`;
       const group = ensureGroup(key, event, progress.message);
       const row = ensureRow(
@@ -223,6 +230,7 @@ export function buildToolActivityGroups(
     const toolCompleted = getEventData(event, "tool.completed");
     if (toolCompleted) {
       const id = toolCompleted.tool_call_id;
+      if (APPROVAL_NARRATION_TOOLS.has(toolCompleted.tool_name)) continue;
       const key = groupKeyByToolCallId.get(id) ?? execKey ?? `tool:${id}`;
       const group = ensureGroup(key, event, toolCompleted.narration);
       const row = ensureRow(
