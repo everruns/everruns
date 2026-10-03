@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardFooter, EntityCardTags } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Import } from "lucide-react";
 import type { Capability, CapabilityId, HarnessExample } from "@/lib/api/types";
@@ -61,40 +61,34 @@ export function HarnessExampleCard({
     >
       <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{example.description}</p>
 
-      {example.capabilities.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          <TooltipProvider>
-            {example.capabilities.map((capConfig) => {
-              const cap = getCapabilityInfo(capConfig.ref);
-              if (!cap) return null;
-              return (
-                <Tooltip key={capConfig.ref}>
-                  <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
-                    <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
-                    <span>{localizedCapabilityName(cap, locale)}</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {localizedCapabilityDescription(cap, locale)}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </TooltipProvider>
-        </div>
-      )}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+        {example.capabilities.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            <TooltipProvider>
+              {example.capabilities.map((capConfig) => {
+                const cap = getCapabilityInfo(capConfig.ref);
+                if (!cap) return null;
+                return (
+                  <Tooltip key={capConfig.ref}>
+                    <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
+                      <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
+                      <span>{localizedCapabilityName(cap, locale)}</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {localizedCapabilityDescription(cap, locale)}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </TooltipProvider>
+          </div>
+        )}
 
-      {example.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {example.tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-        </div>
-      )}
+        <EntityCardTags tags={example.tags} />
+      </div>
     </EntityCard>
   );
 }

@@ -2,6 +2,7 @@ use super::*;
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use everruns_core::{DefaultPermissionResolver, Permission};
+use everruns_platform::{EndpointStatus, EndpointTransport};
 use std::sync::Arc;
 
 struct AgentsOnlyResolver;
@@ -136,4 +137,20 @@ fn effective_harness_metadata_allows_harness_view() {
     let caller = Caller::from(&org_with_role(OrgRole::Owner));
 
     assert!(authorize_effective_harness_view(&DefaultPermissionResolver, &caller).is_ok());
+}
+
+#[test]
+fn agent_channel_summary_serializes_only_non_secret_metadata() {
+    let summary = AgentChannelSummary {
+        id: "aep_example".into(),
+        channel_type: EndpointTransport::Webhook,
+        enabled: true,
+        status: EndpointStatus::Draft,
+    };
+    assert_eq!(
+        serde_json::to_value(summary).unwrap(),
+        serde_json::json!({
+            "id": "aep_example", "channel_type": "webhook", "enabled": true, "status": "draft"
+        })
+    );
 }

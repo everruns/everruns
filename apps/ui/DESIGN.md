@@ -246,6 +246,13 @@ status dots, circular Lucide glyphs, and the rings in the Everruns logo.
   collapse secondary or destructive actions into an ellipsis menu when the
   card is too narrow for the full action row.
 
+Entity grid cards share a separated metadata footer. Capabilities remain outlined
+chips; tags are quieter text separated by middle dots. Agent cards place a compact
+channel strip above the footer, with transport icons, names, and live/draft/paused
+indicators. Container width controls the visible chip count; overflow links to
+Integrations. Agent suspension and lifecycle override a channel's live indicator.
+Harnesses have no channel strip because endpoints belong to agents.
+
 ### Composition invariants
 
 - Top-level entity screens compose the five-zone primitives in

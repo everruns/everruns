@@ -13,8 +13,8 @@ import { cn } from "@/lib/utils";
  * copy button, the right-aligned header actions, and the click affordance — while
  * leaving the body content fully up to the caller via `children`.
  *
- * Navigation is title-link-only by design: only the title navigates (when `href`
- * is set); the rest of the card is inert so action buttons stay unambiguous.
+ * The card itself is inert. Its title and explicit relationship/action links
+ * navigate independently so nested actions stay unambiguous.
  */
 export interface EntityCardProps {
   /** Layout: vertical grid card (default) or horizontal list row. */
@@ -23,7 +23,7 @@ export interface EntityCardProps {
   icon?: React.ReactNode;
   /** Title content. */
   title: React.ReactNode;
-  /** When set, the title becomes a link to this href (the only clickable target). */
+  /** When set, the title becomes a link to this href. */
   href?: string;
   /** Extra classes for the title — e.g. entity lifecycle styling. */
   titleClassName?: string;
@@ -121,8 +121,14 @@ export function EntityCard({
   }
 
   return (
-    <Card className={cn("bg-background transition-colors hover:bg-card", className)}>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
+    <Card
+      className={cn(
+        "gap-0 bg-card transition-colors hover:bg-muted/30",
+        footer && "pb-0",
+        className,
+      )}
+    >
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-4">
         <div data-slot="entity-card-heading" className="flex min-w-0 flex-1 items-start gap-3">
           {icon && <div className="flex-shrink-0">{icon}</div>}
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -146,10 +152,8 @@ export function EntityCard({
           <div className="flex flex-shrink-0 items-center gap-1">{headerActions}</div>
         )}
       </CardHeader>
-      <CardContent>
-        {children}
-        {footer}
-      </CardContent>
+      <CardContent className="flex-1">{children}</CardContent>
+      {footer && <div className="mt-4">{footer}</div>}
     </Card>
   );
 }
@@ -167,10 +171,24 @@ export function EntityCardFooter({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-2 border-t px-4 py-2", className)}>
       {meta && <div className="min-w-0 text-xs text-muted-foreground">{meta}</div>}
       {actions && <div className="ml-auto">{actions}</div>}
     </div>
+  );
+}
+
+/** Quiet tags shared by entity cards, distinct from capability chips. */
+export function EntityCardTags({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null;
+  return (
+    <span
+      aria-label="Tags"
+      className="min-w-0 truncate text-xs text-muted-foreground"
+      title={tags.join(" · ")}
+    >
+      {tags.join(" · ")}
+    </span>
   );
 }
 

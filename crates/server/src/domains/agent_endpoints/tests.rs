@@ -640,3 +640,70 @@ async fn draft_endpoint_edits_stay_available_to_managers() {
         assert_ne!(updated.status, EndpointStatus::Live);
     }
 }
+
+#[tokio::test]
+async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
+    let db = StorageBackend::in_memory();
+    let public_id = seed_agent(&db).await;
+    let agent = db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &public_id)
+        .await
+        .unwrap()
+        .unwrap();
+    for (kind, enabled, status) in [
+        ("webhook", true, "live"),
+        ("api_endpoint", false, "disabled"),
+        ("schedule", true, "live"),
+    ] {
+        db.create_agent_endpoint(
+            DEFAULT_ORG_ID,
+            crate::storage::CreateAgentEndpointRow {
+                agent_id: agent.id.uuid(),
+                public_id: format!("aep_{kind}"),
+                channel_type: kind.into(),
+                channel_config: json!({"token": "must-not-be-projected"}),
+                channel_config_encrypted: None,
+                auth: None,
+                auth_encrypted: None,
+                enabled,
+                status: status.into(),
+                virtual_user_id: None,
+                agent_version_policy: "default".into(),
+                agent_version_id: None,
+                owner_principal_id: uuid::Uuid::now_v7(),
+                resolved_owner_user_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    let rows = db
+        .list_agent_channel_summaries(DEFAULT_ORG_ID, &[agent.id.uuid()])
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].public_id, "aep_webhook");
+    assert!(rows[0].enabled);
+    assert_eq!(rows[0].status, "live");
+    assert_eq!(rows[1].channel_type, "api_endpoint");
+    assert!(!rows[1].enabled);
+    assert_eq!(rows[1].status, "disabled");
+    assert!(
+        db.list_agent_channel_summaries(DEFAULT_ORG_ID + 1, &[agent.id.uuid()])
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        db.list_agent_channel_summaries(DEFAULT_ORG_ID, &[uuid::Uuid::now_v7()])
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        db.list_agent_channel_summaries(DEFAULT_ORG_ID, &[])
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}

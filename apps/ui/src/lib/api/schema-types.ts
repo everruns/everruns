@@ -11,6 +11,7 @@ export type OpenApiAddSessionParticipantRequest = Schemas["AddSessionParticipant
 export type OpenApiAgent = Schemas["Agent"];
 export type OpenApiAgentAnalysisResponse = Schemas["AgentAnalysisResponse"];
 export type OpenApiAgentCapabilityConfig = Schemas["AgentCapabilityConfig"];
+export type OpenApiAgentChannelSummary = Schemas["AgentChannelSummary"];
 export type OpenApiAgentCredentialBinding = Schemas["AgentCredentialBinding"];
 export type OpenApiAgentHarnessSource = Schemas["AgentHarnessSource"];
 export type OpenApiAgentHarnessStatus = Schemas["AgentHarnessStatus"];

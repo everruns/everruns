@@ -58,6 +58,7 @@ function useEndpointMutation<TVariables, TResult>(
       queryClient.invalidateQueries({
         queryKey: queryKeys.agents.detail(agentId),
       });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
   });
 }

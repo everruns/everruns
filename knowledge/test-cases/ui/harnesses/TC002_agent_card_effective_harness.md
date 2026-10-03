@@ -26,14 +26,14 @@ selection from organization-default inheritance.
 
 | Agent | Effective harness | Source | Expected card state |
 |-------|-------------------|--------|---------------------|
-| Explicit agent | Generic | Explicit | Linked `Generic` value with `Explicit` badge |
-| Inherited agent | Organization default | Organization default | Linked effective name with `Org default` badge |
+| Explicit agent | Generic | Explicit | Linked `Generic` value with quiet `Explicit` label |
+| Inherited agent | Organization default | Organization default | Linked effective name with quiet `Org default` label |
 | Unavailable agent | Unresolvable | Explicit | Honest unavailable text without a link |
 
 ## Steps
 
 1. Open `/agents` at desktop width in grid view.
-2. Verify each card's harness row, source badge, tooltip, and link behavior against the table.
+2. Verify each card's harness row, source label, tooltip, and link behavior against the table.
 3. Select list view and repeat the checks.
 4. Set a narrow mobile viewport and repeat the grid and list checks.
 5. Create a session from the inherited agent without a harness override and verify its harness ID

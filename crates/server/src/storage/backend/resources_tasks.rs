@@ -3,6 +3,14 @@
 use super::*;
 
 impl StorageBackend {
+    pub async fn list_agent_channel_summaries(
+        &self,
+        org_id: i64,
+        agent_ids: &[Uuid],
+    ) -> Result<Vec<crate::storage::AgentChannelSummaryRow>> {
+        dispatch!(self, list_agent_channel_summaries, org_id, agent_ids)
+    }
+
     pub async fn get_user_id_by_installation_id(
         &self,
         provider: &str,

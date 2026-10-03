@@ -18771,6 +18771,30 @@
           }
         }
       },
+      "AgentChannelSummary": {
+        "type": "object",
+        "description": "Non-secret metadata for an agent's inbound channels. Schedules are triggers.",
+        "required": [
+          "id",
+          "channel_type",
+          "enabled",
+          "status"
+        ],
+        "properties": {
+          "channel_type": {
+            "$ref": "#/components/schemas/ChannelType"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EndpointStatus"
+          }
+        }
+      },
       "AgentCredentialBinding": {
         "type": "object",
         "description": "Metadata for a write-only credential bound to one agent and MCP tool parameter.",
@@ -19532,13 +19556,20 @@
             "required": [
               "session_count",
               "app_count",
-              "effective_harness"
+              "effective_harness",
+              "channels"
             ],
             "properties": {
               "app_count": {
                 "type": "integer",
                 "format": "int64",
                 "minimum": 0
+              },
+              "channels": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AgentChannelSummary"
+                }
               },
               "effective_harness": {
                 "$ref": "#/components/schemas/AgentHarnessSummary"
@@ -35726,13 +35757,20 @@
                       "required": [
                         "session_count",
                         "app_count",
-                        "effective_harness"
+                        "effective_harness",
+                        "channels"
                       ],
                       "properties": {
                         "app_count": {
                           "type": "integer",
                           "format": "int64",
                           "minimum": 0
+                        },
+                        "channels": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/AgentChannelSummary"
+                          }
                         },
                         "effective_harness": {
                           "$ref": "#/components/schemas/AgentHarnessSummary"
@@ -45607,13 +45645,20 @@
                 "required": [
                   "session_count",
                   "app_count",
-                  "effective_harness"
+                  "effective_harness",
+                  "channels"
                 ],
                 "properties": {
                   "app_count": {
                     "type": "integer",
                     "format": "int64",
                     "minimum": 0
+                  },
+                  "channels": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AgentChannelSummary"
+                    }
                   },
                   "effective_harness": {
                     "$ref": "#/components/schemas/AgentHarnessSummary"
