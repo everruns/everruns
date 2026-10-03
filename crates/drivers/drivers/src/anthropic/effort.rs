@@ -111,7 +111,7 @@ pub(crate) fn default_effort(
     profile?.reasoning_effort.as_ref().map(|r| r.default)
 }
 
-fn thinking_always_on(wire_model: &str) -> bool {
+pub(crate) fn thinking_always_on(wire_model: &str) -> bool {
     let family = normalize_anthropic_id(wire_model);
     THINKING_ALWAYS_ON_FAMILIES
         .iter()
@@ -162,6 +162,19 @@ mod tests {
         // Where omitting `thinking` turns it off, `None` keeps meaning off.
         let opus48 = resolve(&config, "claude-opus-4-8", &profile("claude-opus-4-8"));
         assert_eq!(opus48, Some(ReasoningEffort::None));
+    }
+
+    #[test]
+    fn always_on_detection_handles_versioned_model_ids() {
+        for model in [
+            "claude-opus-5-5",
+            "claude-opus-5-5-20260901",
+            "claude-fable-5",
+            "claude-fable-5-1-20260901",
+        ] {
+            assert!(thinking_always_on(model), "{model}");
+        }
+        assert!(!thinking_always_on("claude-opus-4-8"));
     }
 
     #[test]
