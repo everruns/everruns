@@ -10,9 +10,7 @@
 //! spent, or says it does not know.
 #![cfg(feature = "openai-agents-api")]
 
-mod agents_api_support;
-
-use agents_api_support::*;
+use super::agents_api_support::*;
 use everruns_core::events::EventData;
 use tokio::sync::watch;
 

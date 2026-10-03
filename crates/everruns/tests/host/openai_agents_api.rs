@@ -14,9 +14,7 @@
 //! and the test is run with `--ignored`.
 #![cfg(feature = "openai-agents-api")]
 
-mod agents_api_support;
-
-use agents_api_support::*;
+use super::agents_api_support::*;
 
 // ---------------------------------------------------------------------------
 // Tests

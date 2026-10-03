@@ -8,8 +8,7 @@
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::typed_id::{HarnessId, SessionId};
 use everruns_core::host::{
-    HarnessBuilder, HostComposition, InProcessRuntimeBuilder, RuntimeHostAdapter, SessionBuilder,
-    ToolContextRequest,
+    HarnessBuilder, HostComposition, RuntimeHostAdapter, SessionBuilder, ToolContextRequest,
 };
 use everruns_core::session_files::RuntimeArtifactFileSystem;
 use everruns_core::{CapabilityRegistry, ExecutionSession, ToolContext, WorkspacePolicy};

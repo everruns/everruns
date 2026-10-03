@@ -7,9 +7,7 @@
 //! budget; and MCP credentials stay out of everything sent to the provider.
 #![cfg(feature = "openai-agents-api")]
 
-mod agents_api_support;
-
-use agents_api_support::*;
+use super::agents_api_support::*;
 
 // ---------------------------------------------------------------------------
 // Policy at the tool and output boundaries (EVE-1124)

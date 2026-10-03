@@ -297,8 +297,30 @@ path = "tests/host/main.rs"
 
 [[example]]
 name = "real_disk_file_system_tools"
+path = "examples/advanced/real_disk_file_system_tools.rs"
 required-features = ["filesystem"]
 
 [[example]]
 name = "lua_code_mode_agent"
+path = "examples/advanced/lua_code_mode_agent.rs"
 required-features = ["lua"]
+
+[[example]]
+name = "in_process_runtime"
+path = "examples/advanced/in_process_runtime.rs"
+
+[[example]]
+name = "inspect_context"
+path = "examples/advanced/inspect_context.rs"
+
+[[example]]
+name = "mount_fs_workspace"
+path = "examples/advanced/mount_fs_workspace.rs"
+
+[[example]]
+name = "plugin_from_dir"
+path = "examples/advanced/plugin_from_dir.rs"
+
+[[example]]
+name = "real_disk_agent_instructions"
+path = "examples/advanced/real_disk_agent_instructions.rs"

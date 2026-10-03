@@ -20,9 +20,14 @@ let composition = HostComposition::default();
 assert!(composition.driver_registry().registered_providers().is_empty());
 ```
 
+## Features
+
+Forwards the existing public API and feature names to `everruns-core::host`
+for this final deprecated release. New consumers use the canonical core module.
+
 ## Documentation
 
-See the [public documentation](https://everruns.com/docs), the
+See the [public documentation](https://docs.everruns.com/framework/), the
 [core API reference](https://docs.rs/everruns-core), and the
 [compatibility API reference](https://docs.rs/everruns-host).
 

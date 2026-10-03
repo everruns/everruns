@@ -10,7 +10,7 @@
 //      capability re-reads every `load_context`).
 //
 // Run with:
-//   cargo run -p everruns-host --example real_disk_agent_instructions
+//   cargo run -p everruns --example real_disk_agent_instructions
 
 use everruns_core::host::HostComposition;
 use everruns_llmsim::LlmSimRuntimeExt;
@@ -20,7 +20,7 @@ use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::provider::DriverId;
 use everruns_core::builtins::AgentInstructionsCapability;
-use everruns_core::host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
+use everruns_core::host::RealDiskSessionFileSystemFactory;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };

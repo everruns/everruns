@@ -4,9 +4,7 @@
 //! idempotent remote deletion. Runs against the stateful fake API.
 #![cfg(feature = "openai-agents-api")]
 
-mod agents_api_support;
-
-use agents_api_support::*;
+use super::agents_api_support::*;
 use everruns_core::host::openai_agents_api::lifecycle::{
     ProviderDeletion, delete_provider_session,
 };

@@ -16,7 +16,7 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, ScheduleId, 
 use everruns_core::CapabilityRegistry;
 use everruns_core::builtins::UsageLimitAutoContinueCapability;
 use everruns_core::host::HostComposition;
-use everruns_core::host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::session_services::SessionScheduleStore;
 use everruns_llmsim::LlmSimRuntimeExt;

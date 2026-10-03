@@ -14,7 +14,7 @@
 //! Run it:
 //!
 //! ```text
-//! cargo run -p everruns-host --example lua_code_mode_agent --features lua
+//! cargo run -p everruns --example lua_code_mode_agent --features lua
 //! ```
 //!
 //! Without the `lua` feature the host does not link the Lua integration, so the
@@ -25,7 +25,7 @@ use everruns_core::host::HostComposition;
 fn main() {
     eprintln!(
         "This example requires the `lua` feature:\n  \
-         cargo run -p everruns-host --example lua_code_mode_agent --features lua"
+         cargo run -p everruns --example lua_code_mode_agent --features lua"
     );
 }
 
@@ -37,9 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use everruns_contracts::provider::DriverId;
     use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
     use everruns_core::CapabilityRegistry;
-    use everruns_core::host::{
-        AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder,
-    };
+    use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
     use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
     use everruns_llmsim::LlmSimRuntimeExt;
     use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};

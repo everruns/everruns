@@ -1,10 +1,5 @@
-// Declarative guardrails capability.
-//
-// Attaches the deterministic check engine (`crate::builtins::guardrail_checks`) to the
-// existing interception seams — streaming output guardrails and pre/post
-// tool hooks — driven entirely by per-agent config. No checks configured
-// means no hooks contributed: an agent without this capability (or with an
-// empty config) runs exactly as before. See knowledge/execution/guardrails.md.
+// Declarative streaming and tool-hook checks; empty configuration contributes
+// no hooks. See knowledge/execution/guardrails.md.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

@@ -9,7 +9,7 @@
 //! [`WorkerRequest::parse`]: everruns_core::host::containment::worker::WorkerRequest::parse
 
 fn main() -> anyhow::Result<()> {
-    crate::host::containment::worker::run_from_args(std::env::args_os().skip(1))?;
+    everruns_core::host::containment::worker::run_from_args(std::env::args_os().skip(1))?;
     // `run_from_args` returns `Infallible` on success, so this is unreachable.
     Ok(())
 }

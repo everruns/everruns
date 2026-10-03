@@ -1,15 +1,10 @@
-// Deterministic reason-phase workflows driven by the simulated LLM driver.
-// Run with: cargo test -p everruns-test-support --test integration reason_atom_test::
-
+// Deterministic reason workflows driven by the simulated LLM driver.
 use async_trait::async_trait;
 use everruns_contracts::driver_registry::ProviderConfig;
 use everruns_contracts::driver_registry::{DriverId, DriverRegistry, LlmCompletionMetadata};
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
-use everruns_core::AgentDefinition;
-use everruns_core::ExecutionContext;
-use everruns_core::MessageRetriever;
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::engine::{ReasonInput, ReasonResult};
 use everruns_core::harness_definition::HarnessDefinition;
@@ -17,7 +12,10 @@ use everruns_core::host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
-use everruns_core::{CompactionCheckpointStore, Controls, RuntimeMessage};
+use everruns_core::{
+    AgentDefinition, CompactionCheckpointStore, Controls, ExecutionContext, MessageRetriever,
+    RuntimeMessage,
+};
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, reason_atom_with_stores,
@@ -31,7 +29,6 @@ use uuid::Uuid;
 
 #[path = "reason_atom/native_compact_failure_test.rs"]
 mod native_compact_failure_test;
-
 #[path = "reason_atom/provider_managed_checkpoint_test.rs"]
 mod provider_managed_checkpoint_test;
 #[path = "reason_atom/provider_managed_fallback_test.rs"]

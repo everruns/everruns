@@ -148,7 +148,7 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         })
         .collect();
     if !user_hook_specs.is_empty() {
-        let dispatcher = bash_hook_dispatcher(adapter.file_store(org_id));
+        let dispatcher = adapter.bash_hook_dispatcher(org_id);
         post_tool_hooks.extend(crate::hook_adapter::build_post_tool_use_hooks(
             &user_hook_specs,
             dispatcher.clone(),

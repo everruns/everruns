@@ -6,9 +6,8 @@
 //   - calls `load_context` to inspect the result without executing a real turn
 //
 // Run with:
-//   cargo run -p everruns-host --example plugin_from_dir
+//   cargo run -p everruns --example plugin_from_dir
 
-use everruns_core::host::InProcessRuntimeBuilder;
 use everruns_llmsim::LlmSimRuntimeExt;
 use std::path::Path;
 

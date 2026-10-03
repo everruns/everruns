@@ -1,8 +1,5 @@
-// Progress guard for coding-agent efficiency.
-//
-// This is intentionally runtime-enforced rather than prompt-only: it observes
-// tool traffic and injects a warning into the next tool result when the turn is
-// spending many tools on investigation without edits or validation.
+// Warn in the next tool result when investigation spends many tools without
+// edits or validation; enforcement is independent of the prompt.
 
 use crate::builtins::capabilities::{Capability, CapabilityStatus};
 use crate::builtins::tool_hooks::{PostToolExecHook, PostToolExecHookPriority};

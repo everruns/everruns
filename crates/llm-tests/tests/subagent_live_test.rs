@@ -27,8 +27,8 @@ use everruns_capabilities::{PlatformHostBackendsExt, PlatformMessage, PlatformSt
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::host::{
-    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
-    RuntimeSessionStore, SessionBuilder,
+    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, RuntimeSessionStore,
+    SessionBuilder,
 };
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};

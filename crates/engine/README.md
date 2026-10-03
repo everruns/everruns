@@ -20,9 +20,14 @@ fn accepts_plan(_: &TurnState, _: &TurnPlan) {}
 let _ = accepts_plan;
 ```
 
+## Features
+
+Forwards the existing public API and feature names to `everruns-core::engine`
+for this final deprecated release. New consumers use the canonical core module.
+
 ## Documentation
 
-See the [public documentation](https://everruns.com/docs), the
+See the [public documentation](https://docs.everruns.com/framework/), the
 [core API reference](https://docs.rs/everruns-core), and the
 [compatibility API reference](https://docs.rs/everruns-engine).
 

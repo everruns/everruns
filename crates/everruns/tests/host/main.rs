@@ -12,3 +12,6 @@ mod openai_agents_api_lifecycle;
 mod openai_agents_api_observability;
 #[cfg(feature = "openai-agents-api")]
 mod openai_agents_api_policy;
+
+#[cfg(feature = "openai-agents-api")]
+mod agents_api_support;
