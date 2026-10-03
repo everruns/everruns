@@ -16,6 +16,14 @@ pub(crate) const PERMANENT_SLACK_ERRORS: &[&str] = &[
     "token_revoked",
     "account_inactive",
     "no_text",
+    // Bad action arguments and missing permissions need correction, not an
+    // infrastructure retry. Keep their codes visible to the agent.
+    "message_not_found",
+    "bad_timestamp",
+    "invalid_name",
+    "invalid_arguments",
+    "missing_scope",
+    "no_permission",
     // `reactions.add` on an emoji the bot already placed. Retrying can never
     // succeed, and the caller reads it as the already-satisfied outcome it is
     // rather than a failure (EVE-1024).
@@ -136,6 +144,26 @@ pub(crate) fn parse_retry_after(
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn actionable_slack_failures_are_not_internal_errors() {
+        for code in [
+            "message_not_found",
+            "bad_timestamp",
+            "invalid_name",
+            "missing_scope",
+            "no_permission",
+            "invalid_arguments",
+        ] {
+            let error = SlackApiError::from_code(code, None);
+            assert!(
+                error.is_permanent(),
+                "{code} requires corrected arguments or configuration"
+            );
+            assert_eq!(error.code(), Some(code));
+        }
+        assert!(!SlackApiError::from_code("internal_error", None).is_permanent());
+    }
 
     #[test]
     fn advice_wins_over_backoff() {

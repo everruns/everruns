@@ -21,6 +21,8 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde_json::{Value, json};
 
+mod model_view;
+
 use crate::slack_action::{
     SlackAction, SlackActionError, SlackActionInvokerExt, SlackActionOutcome,
 };
@@ -81,7 +83,8 @@ impl Capability for SlackCapability {
         Some(
             "These tools act as this workspace's Slack bot and only work in a session a Slack \
              message created. `channel` and `timestamp` come from the Slack message you are \
-             replying to; `timestamp` is Slack's `ts` value, not a date. Prefer a reaction over a \
+             replying to: copy them exactly from its `[slack channel=... timestamp=...]` annotation, \
+             including every fractional digit. Never infer the timestamp from a date. Prefer a reaction over a \
              message when you only need to acknowledge something.",
         )
     }
@@ -101,6 +104,12 @@ impl Capability for SlackCapability {
 
     fn features(&self) -> Vec<&'static str> {
         vec!["slack_actions"]
+    }
+
+    fn model_view_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn everruns_core::capabilities::ModelViewProvider>> {
+        Some(std::sync::Arc::new(model_view::SlackModelViewProvider))
     }
 }
 

@@ -48,6 +48,17 @@ app would pick the wrong one. It then acts as the bot the user already invited â
 no second token, no second set of scopes to rotate, and the agent's Slack
 identity matches the one answering in the thread.
 
+**Exact message references are part of the model view.** Slack actions address
+messages by their platform timestamp, including its fractional digits. A received
+message's wall-clock time cannot reconstruct that identifier. The Slack capability
+renders the ingress channel and message reference alongside the message in the
+prompt, without changing stored text or exposing unrelated metadata. See the
+[model-view provider](../../crates/platform/src/capabilities/slack/model_view.rs).
+Slack argument and permission failures remain actionable tool errors so the agent
+can correct its request rather than receiving a generic internal failure.
+Generated installs request reaction permission; existing installations require
+renewed Slack consent before their bot token can use it.
+
 This is the first real use of `Capability::tools()` by a channel adapter, which
 the parity requirements anticipated and no adapter had exercised.
 

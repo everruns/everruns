@@ -253,6 +253,14 @@ missing scope with an error the agent sees.
 
 #### `slack_add_reaction`
 
+Slack messages include their exact channel and timestamp in the agent's context.
+The agent uses that reference to target a reaction; a message's date or rounded
+timestamp cannot identify it.
+
+If a bot was installed before reaction permission was included, reconnect the
+Slack app and approve `reactions:write`. Deploying an updated manifest does not
+add permissions to an existing bot token.
+
 Add an emoji reaction to a message. The cheapest acknowledgement available — prefer it over posting
 "working on it".
 
