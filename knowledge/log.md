@@ -2,6 +2,11 @@
 
 ## 2026-10-03
 
+* **Agent page tabs stay in the address.** Switching Agent, Preview,
+  Integrations, Stats, or Sessions writes `?tab=` (the Agent tab omits it), so
+  a refresh or a shared link reopens the same tab. See
+  [Agent Page](ui/agent-page.md).
+
 * **Session storage reads require session view.** Listing key/value entries
   or secret names now evaluates `SESSION_VIEW` before the store is read, so a
   same-org caller a custom resolver denies cannot see plaintext values or

@@ -88,7 +88,13 @@ import {
   AgentSettingsSheet,
   type AgentSettingsSection,
 } from "@/components/agents/agent-settings-sheet";
-import { getAgentTabItems, resolveAgentTab, type AgentTab } from "@/components/agents/agent-tabs";
+import {
+  agentTabHref,
+  getAgentTabItems,
+  isAgentTab,
+  resolveAgentTab,
+  type AgentTab,
+} from "@/components/agents/agent-tabs";
 import { BRANDING_FIELDS, useAgentDraft } from "@/components/agents/use-agent-draft";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import { normalizeNetworkAccess } from "@/components/network-access-editor";
@@ -121,9 +127,17 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { agentId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const deepLink = resolveAgentTab(searchParams.get("tab"));
+  const tabParam = searchParams.get("tab");
+  const deepLink = resolveAgentTab(tabParam);
   const [activeTab, setActiveTab] = useState<AgentTab>(deepLink.tab);
   const [openSection, setOpenSection] = useState<AgentSettingsSection | null>(deepLink.section);
+  // Follow the address bar when it changes without a click (refresh already
+  // lands here; back/forward and a replaced query must too).
+  const [tabParamSeen, setTabParamSeen] = useState<string | null>(tabParam);
+  if (tabParam !== tabParamSeen) {
+    setTabParamSeen(tabParam);
+    setActiveTab(deepLink.tab);
+  }
   const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
 
@@ -176,9 +190,23 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     [],
   );
 
+  const selectTab = useCallback(
+    (tab: AgentTab) => {
+      setActiveTab(tab);
+      const href = agentTabHref(agentId, tab, searchParams);
+      const query = searchParams.toString();
+      const currentHref = query ? `/agents/${agentId}?${query}` : `/agents/${agentId}`;
+      if (href !== currentHref) router.replace(href, { scroll: false });
+    },
+    [agentId, router, searchParams],
+  );
+
   const exitEdit = () => {
     setEditRequested(false);
-    if (searchParams.get("mode") === "edit") router.replace(`/agents/${agentId}`);
+    if (searchParams.get("mode") !== "edit") return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("mode");
+    router.replace(agentTabHref(agentId, activeTab, params), { scroll: false });
   };
 
   const handleDiscard = () => {
@@ -190,7 +218,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const handleSave = async () => {
     const result = draft.buildRequest();
     if (!result.ok) {
-      setActiveTab("agent");
+      selectTab("agent");
       if (BRANDING_FIELDS.some((field) => result.errors[field])) setOpenSection("branding");
       return;
     }
@@ -529,7 +557,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           <PageControlStrip>
             <SectionTabs
               value={activeTab}
-              onValueChange={(value) => setActiveTab(value as AgentTab)}
+              onValueChange={(value) => {
+                if (isAgentTab(value)) selectTab(value);
+              }}
               items={getAgentTabItems(sessionCount)}
               className="border-x border-t bg-background px-2"
             />

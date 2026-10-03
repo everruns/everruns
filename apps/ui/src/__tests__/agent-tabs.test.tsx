@@ -1,4 +1,4 @@
-import { getAgentTabItems, resolveAgentTab } from "@/components/agents/agent-tabs";
+import { agentTabHref, getAgentTabItems, resolveAgentTab } from "@/components/agents/agent-tabs";
 import { render } from "@testing-library/react";
 
 function labels(items: ReturnType<typeof getAgentTabItems>): string[] {
@@ -32,5 +32,25 @@ describe("agent tab definitions", () => {
     [null, "agent", null],
   ])("resolves ?tab=%s to the %s tab with sheet %s", (param, tab, section) => {
     expect(resolveAgentTab(param)).toEqual({ tab, section });
+  });
+});
+
+describe("agent tab URL", () => {
+  it("omits the tab param on the Agent tab and keeps other params", () => {
+    expect(agentTabHref("agent-1", "agent", "tab=stats&mode=edit")).toBe(
+      "/agents/agent-1?mode=edit",
+    );
+  });
+
+  it("records any other tab and preserves existing params", () => {
+    expect(agentTabHref("agent-1", "integrations", "mode=edit")).toBe(
+      "/agents/agent-1?mode=edit&tab=integrations",
+    );
+  });
+
+  it("replaces a legacy sheet param with the selected tab", () => {
+    expect(agentTabHref("agent-1", "sessions", "tab=credentials")).toBe(
+      "/agents/agent-1?tab=sessions",
+    );
   });
 });

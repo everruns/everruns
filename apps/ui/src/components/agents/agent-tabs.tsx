@@ -32,6 +32,27 @@ export function getAgentTabItems(sessionCount?: number): SectionTabItem[] {
 
 const TABS = new Set<string>(["agent", "preview", "integrations", "stats", "sessions"]);
 
+export function isAgentTab(value: string): value is AgentTab {
+  return TABS.has(value);
+}
+
+/**
+ * Address for an agent page with `tab` selected. The Agent tab omits `tab` so
+ * `/agents/{id}` stays the default; every other tab is in the query so a
+ * refresh reopens it. Other params (for example `mode=edit`) are kept.
+ */
+export function agentTabHref(
+  agentId: string,
+  tab: AgentTab,
+  search: { toString(): string },
+): string {
+  const params = new URLSearchParams(search.toString());
+  if (tab === "agent") params.delete("tab");
+  else params.set("tab", tab);
+  const query = params.toString();
+  return query ? `/agents/${agentId}?${query}` : `/agents/${agentId}`;
+}
+
 /**
  * Resolves a `?tab=` deep link. Tabs that became config-column sheets (MCP,
  * Credentials, Versions) still resolve, so existing return URLs keep working:

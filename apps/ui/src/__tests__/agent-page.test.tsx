@@ -319,6 +319,41 @@ describe("AgentPage layout", () => {
     expect(mockUseSessions).toHaveBeenCalledWith("agent-1", { offset: 0, limit: 20 });
   });
 
+  it("writes the selected tab into the URL so a refresh keeps it", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Integrations" }));
+
+    expect(screen.getByText("agent integrations")).toBeInTheDocument();
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
+  });
+
+  it("restores the tab from the URL on load", async () => {
+    mockSearchParams = new URLSearchParams("tab=stats");
+    await renderPage();
+
+    expect(screen.getByText("agent stats")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Stats" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("returns to the bare agent path from another tab and keeps other query params", async () => {
+    mockSearchParams = new URLSearchParams("tab=preview&mode=edit");
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?mode=edit", { scroll: false });
+  });
+
+  it("keeps the open tab when leaving edit mode", async () => {
+    mockSearchParams = new URLSearchParams("mode=edit&tab=integrations");
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /Discard/ }));
+
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
+  });
+
   it("keeps an archived agent read-only", async () => {
     mockUseAgent.mockReturnValue({ data: { ...mockAgent, status: "archived" }, isLoading: false });
     await renderPage();
