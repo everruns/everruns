@@ -301,6 +301,32 @@
           ],
           "type": "string"
         },
+        "InitialFile": {
+          "description": "Starter file copied into a new session from an agent or harness.",
+          "properties": {
+            "content": {
+              "description": "File content: plain text or base64-encoded binary.",
+              "type": "string"
+            },
+            "encoding": {
+              "description": "Content encoding: `text` or `base64`.",
+              "type": "string"
+            },
+            "is_readonly": {
+              "description": "Prevent session-side edits or deletes when true.",
+              "type": "boolean"
+            },
+            "path": {
+              "description": "Absolute path within the session workspace. `/workspace` prefix is accepted.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -535,6 +561,12 @@
             "client_side"
           ],
           "type": "string"
+        },
+        "harnessId": {
+          "description": "Prefixed identifier with 'harness' prefix",
+          "example": "harness_01933b5a000070008000000000000001",
+          "pattern": "^harness_[0-9a-f]{32}$",
+          "type": "string"
         }
       },
       "description": "Run advisory checks (built-in rules + LLM analysis) against an agent shape.",
@@ -542,6 +574,22 @@
         "capabilities": {
           "items": {
             "$ref": "#/$defs/AgentCapabilityConfig"
+          },
+          "type": "array"
+        },
+        "harness_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/harnessId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "initial_files": {
+          "items": {
+            "$ref": "#/$defs/InitialFile"
           },
           "type": "array"
         },
@@ -13633,6 +13681,32 @@
           ],
           "type": "string"
         },
+        "InitialFile": {
+          "description": "Starter file copied into a new session from an agent or harness.",
+          "properties": {
+            "content": {
+              "description": "File content: plain text or base64-encoded binary.",
+              "type": "string"
+            },
+            "encoding": {
+              "description": "Content encoding: `text` or `base64`.",
+              "type": "string"
+            },
+            "is_readonly": {
+              "description": "Prevent session-side edits or deletes when true.",
+              "type": "boolean"
+            },
+            "path": {
+              "description": "Absolute path within the session workspace. `/workspace` prefix is accepted.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
         "McpElicitationPolicy": {
           "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
           "enum": [
@@ -13867,6 +13941,12 @@
             "client_side"
           ],
           "type": "string"
+        },
+        "harnessId": {
+          "description": "Prefixed identifier with 'harness' prefix",
+          "example": "harness_01933b5a000070008000000000000001",
+          "pattern": "^harness_[0-9a-f]{32}$",
+          "type": "string"
         }
       },
       "description": "Preview the final agent shape with capabilities applied.",
@@ -13874,6 +13954,23 @@
         "capabilities": {
           "items": {
             "$ref": "#/$defs/AgentCapabilityConfig"
+          },
+          "type": "array"
+        },
+        "harness_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/harnessId",
+              "description": "Harness to layer beneath this draft. Omit to preview the agent layer alone."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "initial_files": {
+          "items": {
+            "$ref": "#/$defs/InitialFile"
           },
           "type": "array"
         },
