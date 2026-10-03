@@ -90,7 +90,12 @@ impl Capability for MessageMetadataCapability {
     }
 
     fn filter_response_text(&self, text: String, _config: &serde_json::Value) -> String {
-        strip_leading_timestamp_annotations(&text)
+        // Order matters: valid `[time <RFC3339>]` prefixes first, then echoed
+        // `<facts>` blocks (which often carry `current_time`), then whole-message
+        // degenerate `time <junk>` echoes that are not valid annotations.
+        let text = strip_leading_timestamp_annotations(&text);
+        let text = strip_leading_facts_blocks(&text);
+        strip_degenerate_time_echo(&text)
     }
 
     fn icon(&self) -> Option<&str> {
@@ -244,6 +249,88 @@ fn strip_one_timestamp_annotation(text: &str) -> Option<&str> {
     chrono::DateTime::parse_from_rfc3339(&rest[..close]).ok()?;
     let after = &rest[close + 1..];
     Some(after.strip_prefix(' ').unwrap_or(after))
+}
+
+/// Strip leading echoed `<facts>…</facts>` blocks from generated assistant text.
+///
+/// Dynamic facts (including `current_time`) are injected into the model view as
+/// `<facts>` blocks with an instruction never to emit them. Models nevertheless
+/// echo the block into replies and reasoning summaries; those echoes are then
+/// shown in the work log. Only complete, well-formed leading blocks are removed.
+pub fn strip_leading_facts_blocks(text: &str) -> String {
+    let mut rest = text;
+    while let Some(after) = strip_one_facts_block(rest) {
+        rest = after;
+    }
+    rest.to_string()
+}
+
+fn strip_one_facts_block(text: &str) -> Option<&str> {
+    const OPEN: &str = "<facts>";
+    const CLOSE: &str = "</facts>";
+    let trimmed = text.trim_start();
+    let rest = trimmed.strip_prefix(OPEN)?;
+    let close = rest.find(CLOSE)?;
+    let after = &rest[close + CLOSE.len()..];
+    Some(after.strip_prefix('\n').unwrap_or(after).trim_start())
+}
+
+/// Strip a whole-message degenerate echo of the time annotation.
+///
+/// Models sometimes drop the brackets and emit `time <payload>` (or a
+/// non-RFC3339 `[time <payload>]`) as the entire reply or reasoning summary.
+/// Cleared when `payload` is itself an RFC3339 timestamp, or when it has no
+/// ASCII letters (CJK / punctuation junk). Ordinary English like `time to go`
+/// is preserved. Partial echoes that lead into real prose are left alone.
+pub fn strip_degenerate_time_echo(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return text.to_string();
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("time") {
+        let payload = rest.trim_start();
+        if is_degenerate_time_payload(payload) {
+            return String::new();
+        }
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("[time ")
+        && let Some(close) = rest.find(']')
+    {
+        let payload = &rest[..close];
+        let after = rest[close + 1..].trim();
+        // Valid RFC3339 brackets are handled by
+        // `strip_leading_timestamp_annotations`; here only junk brackets that
+        // are the whole message.
+        if after.is_empty()
+            && chrono::DateTime::parse_from_rfc3339(payload).is_err()
+            && is_degenerate_time_payload(payload)
+        {
+            return String::new();
+        }
+    }
+
+    text.to_string()
+}
+
+fn is_degenerate_time_payload(payload: &str) -> bool {
+    let payload = payload.trim();
+    if payload.is_empty() {
+        return false;
+    }
+    if chrono::DateTime::parse_from_rfc3339(payload).is_ok() {
+        return true;
+    }
+    // Short clock-like answers (`2:30`, `14:30:00`) are legitimate prose.
+    if payload
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, ':' | '.' | ' '))
+    {
+        return false;
+    }
+    // No Latin letters ⇒ cannot be ordinary English (`time to go`).
+    !payload.chars().any(|c| c.is_ascii_alphabetic())
 }
 
 /// Render the combined metadata annotation for a message, e.g.
@@ -454,6 +541,74 @@ mod tests {
         assert_eq!(
             strip_leading_timestamp_annotations(&annotated),
             "the answer"
+        );
+    }
+
+    #[test]
+    fn strip_removes_leading_facts_blocks_with_current_time() {
+        let echoed = "<facts>\n- current_time: 2026-10-03T03:47:00Z\n</facts>\nHello";
+        assert_eq!(strip_leading_facts_blocks(echoed), "Hello");
+        assert_eq!(
+            strip_leading_facts_blocks(
+                "<facts>\n- current_time: 2026-10-03T03:47:00Z\n</facts>\n\
+                 <facts>\n- current_time: 2026-10-03T03:48:00Z\n</facts>\nok"
+            ),
+            "ok"
+        );
+        // Incomplete / mid-text blocks are authored content and stay.
+        assert_eq!(
+            strip_leading_facts_blocks("see <facts>\n- current_time: x\n</facts>"),
+            "see <facts>\n- current_time: x\n</facts>"
+        );
+        assert_eq!(
+            strip_leading_facts_blocks("<facts>no close"),
+            "<facts>no close"
+        );
+    }
+
+    #[test]
+    fn strip_clears_degenerate_unbracketed_time_echoes() {
+        // Observed in the wild: model drops brackets and emits CJK junk after
+        // `time` as the whole reasoning/assistant line.
+        assert_eq!(strip_degenerate_time_echo("time天天中彩票不能"), "");
+        assert_eq!(strip_degenerate_time_echo("time 天天中彩票不能"), "");
+        assert_eq!(
+            strip_degenerate_time_echo("  time 2026-10-03T03:47:00Z  "),
+            ""
+        );
+        assert_eq!(strip_degenerate_time_echo("[time 天天中彩票不能]"), "");
+        // Ordinary English / short clock answers that start with "time" are preserved.
+        assert_eq!(
+            strip_degenerate_time_echo("time to go home"),
+            "time to go home"
+        );
+        assert_eq!(strip_degenerate_time_echo("time 2:30"), "time 2:30");
+        assert_eq!(strip_degenerate_time_echo("time 14:30:00"), "time 14:30:00");
+        assert_eq!(
+            strip_degenerate_time_echo("[time to go] home"),
+            "[time to go] home"
+        );
+        // Prose after a junk payload is not a whole-message echo.
+        assert_eq!(
+            strip_degenerate_time_echo("time 天天中彩票不能 then continue"),
+            "time 天天中彩票不能 then continue"
+        );
+    }
+
+    #[test]
+    fn filter_response_text_runs_all_echo_strips() {
+        let cap = MessageMetadataCapability;
+        let echoed = "[time 2026-10-03T03:47:00Z] <facts>\n- current_time: 2026-10-03T03:47:00Z\n</facts>\ntime天天中彩票不能";
+        assert_eq!(
+            cap.filter_response_text(echoed.into(), &serde_json::Value::Null),
+            ""
+        );
+        assert_eq!(
+            cap.filter_response_text(
+                "[time 2026-10-03T03:47:00Z] cobalt".into(),
+                &serde_json::Value::Null
+            ),
+            "cobalt"
         );
     }
 
