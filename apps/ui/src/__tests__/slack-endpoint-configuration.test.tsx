@@ -139,6 +139,23 @@ describe("inline Slack endpoint configuration", () => {
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
     expect(screen.getByText("Message received")).toBeVisible();
   });
+  it("saves the response policy inline without feature enrollment", async () => {
+    mount();
+    await expand();
+    fireEvent.click(screen.getByLabelText("Response policy"));
+    const option = await screen.findByRole("option", { name: "Relevant messages" });
+    fireEvent.pointerDown(option);
+    fireEvent.click(option);
+    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await screen.findByText("Changes saved");
+    expect(current.channel_config).toMatchObject({ response_policy: "relevant_messages" });
+    const request = (updateAgentEndpoint as jest.Mock).mock.calls[0][2];
+    expect(request.channel_config.response_policy).toBe("relevant_messages");
+    expect(request.channel_config).not.toHaveProperty("bot_token");
+    expect(request).not.toHaveProperty("agent_version_id");
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  });
   it("retains the draft and surfaces a failed save", async () => {
     (updateAgentEndpoint as jest.Mock).mockRejectedValue(new Error("Could not save endpoint"));
     mount();

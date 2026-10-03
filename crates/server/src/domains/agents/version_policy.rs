@@ -100,3 +100,29 @@ pub(crate) async fn resolve_version_selection(
         version_id: Some(version.id),
     }))
 }
+
+/// Select the immutable version used when a new exposure session starts.
+/// Ingress decisions must judge the same purpose that session creation will run.
+pub(crate) async fn resolve_exposure_version(
+    db: &crate::storage::StorageBackend,
+    org_id: i64,
+    agent: &crate::storage::models::AgentRow,
+    policy: AgentVersionPolicy,
+    pinned_id: Option<AgentVersionId>,
+    versioning_enabled: bool,
+) -> anyhow::Result<Option<crate::storage::models::AgentVersionRow>> {
+    if !versioning_enabled {
+        return Ok(None);
+    }
+    match policy {
+        AgentVersionPolicy::Pinned => match pinned_id {
+            Some(id) => db.get_agent_version(org_id, id).await,
+            None => Ok(None),
+        },
+        AgentVersionPolicy::Latest => db.get_latest_agent_version(org_id, agent.id).await,
+        AgentVersionPolicy::Default => match agent.default_version_id {
+            Some(id) => db.get_agent_version(org_id, id).await,
+            None => Ok(None),
+        },
+    }
+}

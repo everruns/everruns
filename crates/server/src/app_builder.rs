@@ -1090,10 +1090,8 @@ impl ServerAppBuilder {
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
             .with_run_context(eval_run_ctx);
-        // Agent health checks (knowledge/evaluation/agent-checks.md, tier-3). Built once and
-        // shared by the agents HTTP state and the MCP endpoint state so the
-        // catalog commands work over both surfaces. Gated on the utility LLM
-        // (generates/judges cases) and a default harness (hosts the sessions).
+        // Agent health checks are shared by HTTP and MCP (knowledge/evaluation/agent-checks.md).
+        // They need a utility LLM to generate/judge cases and a default harness to host sessions.
         let utility_llm = host_composition.utility_llm_service();
         let health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>> =
             if utility_llm.is_configured()
@@ -1139,7 +1137,8 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
             auth_config.base_url.clone(),
-        );
+        )
+        .with_decisions(host_composition.decisions());
         let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
                 api::channel_rate_limit::ChannelRateLimiter::with_valkey("webhook", client)

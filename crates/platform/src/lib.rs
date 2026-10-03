@@ -259,7 +259,7 @@ pub use everruns_contracts::typed_id::AgentEndpointId;
 #[cfg(test)]
 mod endpoint_wire_names_tests;
 // Carved out of `app` for the size ratchet; the public path is unchanged.
-pub use slack_channel::SlackChannelConfig;
+pub use slack_channel::{SlackChannelConfig, SlackResponsePolicy};
 
 // Payment accounting records (EVE-838). The execution-contract types
 // (PaymentRail/PaymentMethod/MachinePaymentRequest/MachinePaymentResponse) stay

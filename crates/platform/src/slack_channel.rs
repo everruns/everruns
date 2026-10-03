@@ -15,6 +15,20 @@ use crate::app::{
 };
 use crate::exposure::PublicToolVisibility;
 
+/// When a Slack message may start an agent turn, independently of delivery style.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SlackResponsePolicy {
+    /// Preserve the existing behavior for endpoints that have not opted in.
+    #[default]
+    AllMessages,
+    /// Only explicit mentions and direct messages.
+    MentionsOnly,
+    /// Mentions, direct messages, and clearly warranted unmentioned requests.
+    RelevantMessages,
+}
+
 /// Typed Slack channel configuration.
 /// Parsed from the `channel_config` JSON field on App.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +66,9 @@ pub struct SlackChannelConfig {
     /// How replies are delivered back to Slack.
     #[serde(default)]
     pub reply_mode: SlackReplyMode,
+    /// Decides whether an incoming message warrants starting an agent turn.
+    #[serde(default)]
+    pub response_policy: SlackResponsePolicy,
     /// Set when Slack successfully verifies the webhook URL (url_verification challenge).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub webhook_verified_at: Option<DateTime<Utc>>,
@@ -112,6 +129,7 @@ mod tests {
         assert!(config.team_id.is_none());
         assert_eq!(config.session_strategy, SessionBinding::Thread);
         assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
+        assert_eq!(config.response_policy, SlackResponsePolicy::AllMessages);
         assert!(config.webhook_verified_at.is_none());
         assert!(config.first_message_received_at.is_none());
     }
@@ -153,6 +171,7 @@ mod tests {
             team_id: None,
             session_strategy: SessionBinding::Thread,
             reply_mode: SlackReplyMode::AllMessages,
+            response_policy: SlackResponsePolicy::default(),
             webhook_verified_at: None,
             first_message_received_at: None,
             agent_surface_enabled: false,

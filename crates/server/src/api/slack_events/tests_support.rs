@@ -63,6 +63,7 @@ pub(crate) fn test_config(strategy: SessionBinding) -> SlackChannelConfig {
         team_id: None,
         session_strategy: strategy,
         reply_mode: SlackReplyMode::AllMessages,
+        response_policy: Default::default(),
         webhook_verified_at: None,
         first_message_received_at: None,
         tool_visibility: Default::default(),

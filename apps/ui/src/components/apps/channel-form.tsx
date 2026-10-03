@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { buildSlackChannelConfig } from "./slack-form-config";
 import { Textarea } from "@/components/ui/textarea";
 import {
   SlackConnectionStatus,
@@ -52,6 +53,7 @@ import type {
   ScheduleChannelConfig,
   SessionStrategy,
   SlackReplyMode,
+  SlackResponsePolicy,
   WebhookChannelConfig,
 } from "@/lib/api/types";
 import {
@@ -108,6 +110,7 @@ export type ChannelFormState = {
   slackAgentSurfaceEnabled: boolean;
   slackSessionStrategy: SessionStrategy;
   slackReplyMode: SlackReplyMode;
+  slackResponsePolicy: SlackResponsePolicy;
   scheduleCronExpression: string;
   scheduleTimezone: string;
   invocationSessionMode: InvocationSessionMode;
@@ -166,6 +169,7 @@ export function getDefaultChannelFormState(
     slackAgentSurfaceEnabled: false,
     slackSessionStrategy: "per_thread",
     slackReplyMode: "all_messages",
+    slackResponsePolicy: "all_messages",
     scheduleCronExpression: "0 0 * * * * *",
     scheduleTimezone: "UTC",
     invocationSessionMode: "shared_session",
@@ -319,6 +323,7 @@ export function getDefaultChannelFormState(
       slackAgentSurfaceEnabled: config.agent_surface_enabled ?? false,
       slackSessionStrategy: config.session_strategy || "per_thread",
       slackReplyMode: config.reply_mode || "all_messages",
+      slackResponsePolicy: config.response_policy || "all_messages",
     };
   }
   return { ...base, kind: channel.channel_type };
@@ -425,17 +430,7 @@ export function buildChannelConfig(state: ChannelFormState) {
       };
     }
     case "slack":
-      return {
-        ...(state.slackSigningSecret.trim()
-          ? { signing_secret: state.slackSigningSecret.trim() }
-          : {}),
-        ...(state.slackBotToken.trim() ? { bot_token: state.slackBotToken.trim() } : {}),
-        ...(state.slackTeamId.trim() ? { team_id: state.slackTeamId.trim() } : {}),
-        ...(state.slackChannelId.trim() ? { channel_id: state.slackChannelId.trim() } : {}),
-        agent_surface_enabled: state.slackAgentSurfaceEnabled,
-        session_strategy: state.slackSessionStrategy,
-        reply_mode: state.slackReplyMode,
-      };
+      return buildSlackChannelConfig(state);
     default:
       return {};
   }
@@ -1339,6 +1334,8 @@ export function ChannelForm({
           idPrefix={slackFormId}
           sessionStrategy={state.slackSessionStrategy}
           replyMode={state.slackReplyMode}
+          responsePolicy={state.slackResponsePolicy}
+          onResponsePolicyChange={(value) => update("slackResponsePolicy", value)}
           onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
           onReplyModeChange={(value) => update("slackReplyMode", value)}
         />

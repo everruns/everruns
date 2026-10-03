@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { SessionStrategy, SlackReplyMode } from "@/lib/api/types";
+import type { SessionStrategy, SlackReplyMode, SlackResponsePolicy } from "@/lib/api/types";
 import {
   getSessionStrategyDisplayName,
   getSlackReplyModeDisplayName,
@@ -28,10 +28,14 @@ export function SlackConversationSettings({
   replyMode,
   onSessionStrategyChange,
   onReplyModeChange,
+  responsePolicy,
+  onResponsePolicyChange,
 }: {
   idPrefix?: string;
   sessionStrategy: SessionStrategy;
   replyMode: SlackReplyMode;
+  responsePolicy: SlackResponsePolicy;
+  onResponsePolicyChange: (value: SlackResponsePolicy) => void;
   onSessionStrategyChange: (value: SessionStrategy) => void;
   onReplyModeChange: (value: SlackReplyMode) => void;
 }) {
@@ -112,6 +116,36 @@ export function SlackConversationSettings({
             )}
           </p>
         </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}_response_policy`}>Response policy</Label>
+        <Select
+          value={responsePolicy}
+          onValueChange={(value) => onResponsePolicyChange(value as SlackResponsePolicy)}
+        >
+          <SelectTrigger
+            id={`${idPrefix}_response_policy`}
+            className="w-full"
+            aria-describedby={`${idPrefix}_response_policy_description`}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all_messages">All messages</SelectItem>
+            <SelectItem value="mentions_only">Mentions only</SelectItem>
+            <SelectItem value="relevant_messages">Relevant messages</SelectItem>
+          </SelectContent>
+        </Select>
+        <p
+          id={`${idPrefix}_response_policy_description`}
+          className="text-xs leading-relaxed text-muted-foreground"
+        >
+          {responsePolicy === "all_messages"
+            ? "Respond to every message received by this endpoint."
+            : responsePolicy === "mentions_only"
+              ? "Respond only to direct messages and @mentions."
+              : "Respond to direct messages, @mentions, and clear requests within the agent’s purpose. Stay silent on unrelated or uncertain messages."}
+        </p>
       </div>
     </section>
   );

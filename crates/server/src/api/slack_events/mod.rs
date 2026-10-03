@@ -20,6 +20,7 @@ mod content;
 mod events;
 mod interactivity;
 mod manifest;
+mod response_policy;
 mod thread;
 mod wire;
 
@@ -61,9 +62,17 @@ pub struct SlackState {
     /// Backend origin including the API prefix (e.g. `https://app.example.com/api`).
     /// The generated manifest needs it to name this server's own webhook URL.
     pub api_base_url: String,
+    pub(crate) agent_versions_enabled: bool,
+    pub decisions: Arc<dyn everruns_core::DecisionsService>,
 }
 
 impl SlackState {
+    /// Inject the same deployment decisions service used by the runtime.
+    pub fn with_decisions(mut self, decisions: Arc<dyn everruns_core::DecisionsService>) -> Self {
+        self.decisions = decisions;
+        self
+    }
+
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<crate::storage::EncryptionService>>,
@@ -87,6 +96,8 @@ impl SlackState {
             user_name_cache: new_slack_user_cache(),
             delivery_dispatcher,
             api_base_url,
+            agent_versions_enabled: everruns_platform::FeatureFlags::current().agent_versions,
+            decisions: Arc::new(everruns_core::DisabledDecisionsService),
         }
     }
 }
