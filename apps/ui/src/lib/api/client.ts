@@ -25,6 +25,8 @@ function fallbackErrorMessage(status: number): string {
 }
 
 export class ApiError extends Error {
+  public readonly hasDetail: boolean;
+
   constructor(
     public status: number,
     public statusText: string,
@@ -36,7 +38,9 @@ export class ApiError extends Error {
     public requestId?: string,
     public rayId?: string,
   ) {
-    super(safeErrorMessage(message) || fallbackErrorMessage(status));
+    const detail = safeErrorMessage(message);
+    super(detail || fallbackErrorMessage(status));
+    this.hasDetail = detail !== undefined;
     this.name = "ApiError";
   }
 }
