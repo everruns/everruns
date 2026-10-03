@@ -242,6 +242,12 @@ liveness check. Incoming Slack events remain blocked until the endpoint is live;
 installation alone never publishes it. The install integration test exercises
 consent, token persistence, invalid state, replay rejection, and blocked draft ingress.
 
+The OAuth callback returns to the owning agent's endpoint editor after a valid
+install nonce, including declined consent and exchange failures. Unverified,
+replayed, or unknown callbacks return to the agents list without revealing the
+owning agent. Both destinations are real UI routes; installation must not leave
+the operator on a 404 after credentials have been saved.
+
 Native endpoint config writes must not decode the archival App-linked row: native endpoints have no `app_id`. The ingress config writer updates the encrypted transport payload directly, preserves first-class endpoint authentication, and requires an existing row. The installation regression exercises both memory and PostgreSQL storage.
 
 See the [installation regression](../../crates/server/tests/domain/slack_install_integration_test.rs).

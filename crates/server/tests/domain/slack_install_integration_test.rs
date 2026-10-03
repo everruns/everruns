@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
-    matchers::{method, path},
+    matchers::{body_string_contains, method, path},
 };
 
 struct Provisioner;
@@ -105,6 +105,7 @@ async fn exercise_install(server: test_harness::TestServer) {
     let exchange = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/oauth.v2.access"))
+        .and(body_string_contains("code=code"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(
                 json!({"ok":true,"access_token":"xoxb-installed","team":{"id":"T1"}}),
@@ -113,10 +114,19 @@ async fn exercise_install(server: test_harness::TestServer) {
         .expect(1)
         .mount(&exchange)
         .await;
+    Mock::given(method("POST"))
+        .and(path("/oauth.v2.access"))
+        .and(body_string_contains("code=refused"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"ok":false,"error":"invalid_code"})),
+        )
+        .expect(1)
+        .mount(&exchange)
+        .await;
     let mut state = api::slack_install::SlackInstallState::new(
         slack,
         auth,
-        "https://example.com".into(),
+        "https://example.com/".into(),
         SlackProvisioningSetup {
             provisioner: Some(Arc::new(Provisioner)),
             connection_manager: None,
@@ -158,29 +168,67 @@ async fn exercise_install(server: test_harness::TestServer) {
         .oneshot(callback("wrong-state"))
         .await
         .unwrap();
-    assert!(
-        rejected.headers()["location"]
-            .to_str()
-            .unwrap()
-            .ends_with("slack_install=failed")
+    let editor_url = format!(
+        "https://example.com/agents/{}/endpoints/{id}",
+        agent["id"].as_str().unwrap()
     );
+    assert_eq!(
+        rejected.headers()["location"].to_str().unwrap(),
+        "https://example.com/agents?slack_install=failed"
+    );
+    for query in [
+        format!("error=access_denied&state={}", params["state"]),
+        format!("state={}", params["state"]),
+        format!("code=refused&state={}", params["state"]),
+    ] {
+        let failed = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/e/{id}/slack/oauth/callback?{query}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(failed.status(), axum::http::StatusCode::SEE_OTHER);
+        assert_eq!(
+            failed.headers()["location"].to_str().unwrap(),
+            format!("{editor_url}?slack_install=failed")
+        );
+    }
+    for uri in [
+        format!("/v1/e/{id}/slack/oauth/callback?error=access_denied&state=wrong"),
+        format!("/v1/e/{id}/slack/oauth/callback?code=code"),
+        format!(
+            "/v1/e/missing/slack/oauth/callback?code=code&state={}",
+            params["state"]
+        ),
+    ] {
+        let failed = router
+            .clone()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(failed.status(), axum::http::StatusCode::SEE_OTHER);
+        assert_eq!(
+            failed.headers()["location"].to_str().unwrap(),
+            "https://example.com/agents?slack_install=failed"
+        );
+    }
     let installed = router
         .clone()
         .oneshot(callback(&params["state"]))
         .await
         .unwrap();
-    assert!(
-        installed.headers()["location"]
-            .to_str()
-            .unwrap()
-            .ends_with("slack_install=ok")
+    assert_eq!(
+        installed.headers()["location"].to_str().unwrap(),
+        format!("{editor_url}?slack_install=ok")
     );
     let replayed = router.oneshot(callback(&params["state"])).await.unwrap();
-    assert!(
-        replayed.headers()["location"]
-            .to_str()
-            .unwrap()
-            .ends_with("slack_install=failed")
+    assert_eq!(
+        replayed.headers()["location"].to_str().unwrap(),
+        "https://example.com/agents?slack_install=failed"
     );
 
     let (_, stored) =
