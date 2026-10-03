@@ -776,34 +776,7 @@ export interface App {
 // ============================================
 export type AuthMode = "none" | "admin" | "full" | "external";
 
-export interface FeatureFlags {
-  notifications: boolean;
-  evals: boolean;
-  /** Skills registry management UI. Experimental. */
-  skills: boolean;
-  /** Workspace memory management UI. Experimental. */
-  memory: boolean;
-  /** Knowledge index management UI. Experimental. */
-  knowledge: boolean;
-  /** Plugin marketplace and installed-plugin management UI. Experimental. */
-  plugins: boolean;
-  app_budgets: boolean;
-  agent_versions: boolean;
-  voice: boolean;
-  /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
-  agent_delegation: boolean;
-  /** Observers: online scoring of production sessions. Experimental. */
-  observers: boolean;
-  /** Session environments: where a session's commands run and what they can do. Experimental. */
-  environments: boolean;
-  /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
-  public_chat: boolean;
-  /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
-  webmcp: boolean;
-  reports: boolean;
-  /** Machine-payment custody, policy, audit, and paid capability surfaces. */
-  machine_payments: boolean;
-}
+export type { FeatureFlags } from "./feature-flag-types";
 
 export interface OrgFeatureFlagSetting {
   name: string;
@@ -3829,6 +3802,8 @@ export interface Session {
   /** Immutable agent version captured when the session was created or rebound. */
   agent_version_id?: string | null;
   virtual_user_id?: string | null;
+  /** Fixed end-user subject for an organisation-shared Playground conversation. */
+  playground_user_id?: string | null;
   owner_principal_id: string;
   resolved_owner_user_id?: string | null;
   owner?: PrincipalSummary | null;
@@ -3949,8 +3924,8 @@ export interface ResourceStats {
 }
 
 export interface CreateSessionRequest {
-  /** How the session was started. Clients may declare only `chat` (an
-   *  interactive thread) or `api` (the default); every other source is
+  /** How the session was started. Clients may declare `chat`, feature-gated `playground`, or `api`
+   *  (the default); every other source is
    *  server-owned. */
   source?: SessionSource;
   /** Harness ID for this session. If omitted, the harness is derived from the agent (when one is supplied), else the org default harness. */
@@ -3962,6 +3937,7 @@ export interface CreateSessionRequest {
   /** Agent name to work in this session (optional). Mutually exclusive with `agent_id`. */
   agent_name?: string;
   virtual_user_id?: string;
+  playground_user_id?: string;
   title?: string;
   locale?: string;
   tags?: string[];

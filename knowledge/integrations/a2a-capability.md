@@ -47,7 +47,7 @@ V1 does not support:
 ## Packaging
 
 The capability is opt-in at build time. `everruns-platform`'s `a2a` feature gates the
-[`a2a_delegation`](../../crates/platform/src/capabilities/a2a_delegation.rs) module and the
+[`a2a_delegation`](../../crates/platform/src/capabilities/a2a_delegation/) module and the
 `A2aAgentDelegationCapability` registration; the `everruns` facade re-exposes it as its own `a2a`
 feature. Both stay off by default because the A2A client crate carries an independent HTTP/TLS
 stack, which an embedder that only runs local agents would otherwise duplicate against its own.
@@ -78,7 +78,7 @@ V1 uses per-capability config:
 
 `base_url` resolves `/.well-known/agent-card.json`. `agent_card` may be provided inline for tests or deployments that cache cards externally.
 
-`allow_local_urls` exists only for local integration tests and development. Production config should keep it false so `validate_safe_url` blocks localhost, private IP ranges, link-local addresses, and metadata endpoints.
+`allow_local_urls` exists only for local integration tests and development. It is honored only when `DEPLOYMENT_GRADE=dev`; every other grade rejects the flag so production cannot open loopback or private A2A targets via config alone. When the hatch is off, config-time `validate_safe_url` blocks localhost, private IP ranges, link-local addresses, and metadata endpoints, and runtime discovery/transport re-check with `validate_url_dns_pinned`, pin the resolved addresses, and refuse redirects (EVE-1173).
 
 ### Future External Agent Registry
 
@@ -215,7 +215,8 @@ Relevant threat categories: `TM-API`, `TM-TOOL`, `TM-AGENT`, `TM-DOS`.
 Required mitigations:
 
 - The model cannot provide arbitrary A2A URLs; it chooses a configured `external_agent_id`.
-- Configured URLs pass `validate_safe_url` unless explicitly marked `allow_local_urls`.
+- Configured URLs pass `validate_safe_url` unless `allow_local_urls` is set **and** `DEPLOYMENT_GRADE=dev`.
+- Discovery and every AgentCard interface request use DNS-pinned, no-redirect HTTP clients while enforcing the merged network ACL (TM-AGENT-024).
 - Remote IDs are opaque strings and are only used with the configured agent that produced them.
 - Result snapshots are bounded by normal tool-result and session-task limits;
   schema-bound data is treated as untrusted and validated before persistence.
@@ -232,4 +233,5 @@ Integration tests use the official Rust `a2a-server-lf` crate to start a real lo
 - Structured artifact validation and task-result persistence.
 - Schema mismatch settlement and explicit `message_schema` rejection.
 - Background mode (background spawn).
-- Local URL blocking unless `allow_local_urls` is set.
+- Local URL blocking unless `allow_local_urls` is set under `DEPLOYMENT_GRADE=dev`.
+- Controlled-resolver and redirect-server proofs that private, loopback, link-local, and metadata destinations are denied for base URL and AgentCard interfaces.

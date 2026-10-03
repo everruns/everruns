@@ -1,0 +1,27 @@
+export interface FeatureFlags {
+  notifications: boolean;
+  evals: boolean;
+  /** Skills registry management UI. Experimental. */
+  skills: boolean;
+  /** Workspace memory management UI. Experimental. */
+  memory: boolean;
+  /** Knowledge index management UI. Experimental. */
+  knowledge: boolean;
+  /** Plugin marketplace and installed-plugin management UI. Experimental. */
+  plugins: boolean;
+  app_budgets: boolean;
+  agent_versions: boolean;
+  voice: boolean;
+  /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
+  agent_delegation: boolean;
+  /** Observers: online scoring of production sessions. Experimental. */
+  observers: boolean;
+  /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
+  public_chat: boolean;
+  /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
+  webmcp: boolean;
+  reports: boolean;
+  playground?: boolean;
+  /** Machine-payment custody, policy, audit, and paid capability surfaces. */
+  machine_payments: boolean;
+}

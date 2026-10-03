@@ -24,6 +24,11 @@ use everruns_host::environment_preamble::{EnvironmentFacts, environment_preamble
 use serde_json::{Value, json};
 use std::sync::LazyLock;
 
+use super::environment_tools::{
+    EnvironmentBashTool, EnvironmentEditFileTool, EnvironmentGlobTool, EnvironmentGrepTool,
+    EnvironmentReadFileTool, EnvironmentWriteFileTool,
+};
+
 pub struct SessionSandboxCapability;
 
 /// The facts this capability's sandbox actually has (EVE-1042).
@@ -48,14 +53,14 @@ static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     // No hand-written "this session owns one managed sandbox" line: the derived
     // preamble's first sentence already says what the sandbox is, and a second
     // wording of the same fact is exactly the drift this issue removes.
-    let mut prompt = String::from("## Session Sandbox\n\n");
+    let mut prompt = String::from("## Execution Environment\n\n");
     if let Some(preamble) = environment_preamble(&environment_facts()) {
         prompt.push_str(&preamble);
         prompt.push_str("\n\n");
     }
     prompt.push_str(
-        "Use the sandbox tools for commands and sandbox file I/O; inspect lifecycle state before \
-         lifecycle-sensitive work, and pause, resume or delete only when asked or when cleaning up.",
+        "Use `bash` and the generic file tools against `/workspace`. The Environment starts or \
+         resumes automatically, and completed mutations are checkpointed before success.",
     );
     prompt
 });
@@ -66,11 +71,11 @@ impl Capability for SessionSandboxCapability {
     }
 
     fn name(&self) -> &str {
-        "Session Sandbox"
+        "Managed Environment"
     }
 
     fn description(&self) -> &str {
-        "One managed sandbox owned by the current session. Supports exec and file operations with provider-managed lifecycle."
+        "One managed execution Environment owned by the current session, with stable shell and filesystem tools."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -95,11 +100,12 @@ impl Capability for SessionSandboxCapability {
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         vec![
-            Box::new(SandboxExecTool::new(config.clone())),
-            Box::new(SandboxReadFileTool::new(config.clone())),
-            Box::new(SandboxWriteFileTool::new(config.clone())),
-            Box::new(SandboxStatusTool::new(config.clone())),
-            Box::new(SandboxManageTool::new(config.clone())),
+            Box::new(EnvironmentBashTool::new(config.clone())),
+            Box::new(EnvironmentReadFileTool::new(config.clone())),
+            Box::new(EnvironmentWriteFileTool::new(config.clone())),
+            Box::new(EnvironmentEditFileTool::new(config.clone())),
+            Box::new(EnvironmentGlobTool::new(config.clone())),
+            Box::new(EnvironmentGrepTool::new(config.clone())),
         ]
     }
 
@@ -211,7 +217,7 @@ impl Capability for SessionSandboxCapability {
     }
 }
 
-fn parse_config(config: &Value) -> Result<SessionSandboxConfig, ToolExecutionResult> {
+pub(super) fn parse_config(config: &Value) -> Result<SessionSandboxConfig, ToolExecutionResult> {
     let config: SessionSandboxConfig = serde_json::from_value(config.clone()).map_err(|e| {
         ToolExecutionResult::tool_error(format!("Invalid session_sandbox capability config: {e}"))
     })?;
@@ -230,7 +236,7 @@ fn parse_config(config: &Value) -> Result<SessionSandboxConfig, ToolExecutionRes
     Ok(config)
 }
 
-fn provider_for_config(
+pub(super) fn provider_for_config(
     config: &SessionSandboxConfig,
 ) -> Result<Box<dyn crate::session_sandbox::SessionSandboxProvider>, ToolExecutionResult> {
     create_session_sandbox_provider(&config.provider).ok_or_else(|| {
@@ -629,7 +635,7 @@ impl Tool for SandboxWriteFileTool {
         };
 
         match provider
-            .write_file(context, &config, &state.instance, path, content)
+            .write_file(context, &config, &state.instance, path, content.as_bytes())
             .await
         {
             Ok(response) => {
@@ -894,12 +900,6 @@ mod tests {
         assert!(prompt.contains("not a guarantee"), "{prompt}");
     }
 
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
     // Metadata/dependency constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
@@ -907,12 +907,17 @@ mod tests {
         let cap = SessionSandboxCapability;
         let tools = cap.tools_with_config(&json!({"provider": "daytona"}));
         let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
-        assert_eq!(names.len(), 5);
-        assert!(names.contains(&"sandbox_exec"));
-        assert!(names.contains(&"sandbox_read_file"));
-        assert!(names.contains(&"sandbox_write_file"));
-        assert!(names.contains(&"sandbox_status"));
-        assert!(names.contains(&"sandbox_manage"));
+        assert_eq!(
+            names,
+            vec![
+                "bash",
+                "read_file",
+                "write_file",
+                "edit_file",
+                "glob",
+                "grep"
+            ]
+        );
     }
 
     #[test]
@@ -979,20 +984,10 @@ mod tests {
     }
 
     #[test]
-    fn session_sandbox_registry_is_flag_gated() {
-        // The gate moved with the capability (EVE-886): product composition
-        // decides, the kernel preset no longer carries it either way.
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
-        let registry =
-            crate::capabilities::hosted_capability_registry_for_grade(DeploymentGrade::Dev);
-        assert!(!registry.has("session_sandbox"));
-
-        unsafe { std::env::set_var("FEATURE_SESSION_SANDBOX", "true") };
+    fn session_sandbox_registry_is_always_available_for_environment_profiles() {
         let registry =
             crate::capabilities::hosted_capability_registry_for_grade(DeploymentGrade::Dev);
         assert!(registry.has("session_sandbox"));
-        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
     }
 
     #[tokio::test]

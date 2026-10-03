@@ -114,6 +114,7 @@ fn test_config(mock_server: &MockServer) -> SessionSandboxConfig {
         provider: "daytona".to_string(),
         auto_start: true,
         idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
         provider_config: json!({
             "api_base": mock_server.uri(),
             "toolbox_base": mock_server.uri(),
@@ -306,6 +307,7 @@ async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
             &context,
             &config,
             &everruns_platform::session_sandbox::SessionSandboxState {
+                sandbox: None,
                 provider: "daytona".to_string(),
                 status: everruns_platform::session_sandbox::SessionSandboxStatus::Running,
                 instance: instance.clone(),
@@ -584,7 +586,7 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
             &config,
             &instance,
             "/home/daytona/main.rs",
-            "fn main() {}\n",
+            b"fn main() {}\n",
         )
         .await
         .unwrap();
@@ -601,6 +603,7 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
             &context,
             &config,
             &everruns_platform::session_sandbox::SessionSandboxState {
+                sandbox: None,
                 provider: "daytona".to_string(),
                 status: everruns_platform::session_sandbox::SessionSandboxStatus::Running,
                 instance: resumed.clone(),

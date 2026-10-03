@@ -407,8 +407,8 @@ mod tests {
 
     fn all_flags() -> everruns_platform::FeatureFlags {
         everruns_platform::FeatureFlags {
+            playground: false,
             notifications: true,
-            platform_chat_v2: true,
             evals: true,
             skills: true,
             memory: true,
@@ -419,7 +419,6 @@ mod tests {
             voice: true,
             agent_delegation: true,
             observers: true,
-            environments: true,
             public_chat: true,
             webmcp: true,
             mcp_events: true,
@@ -433,8 +432,8 @@ mod tests {
         discover(
             arguments,
             &everruns_platform::FeatureFlags {
+                playground: false,
                 notifications: true,
-                platform_chat_v2: true,
                 evals: true,
                 skills: true,
                 memory: true,
@@ -445,7 +444,6 @@ mod tests {
                 voice: true,
                 agent_delegation: true,
                 observers: true,
-                environments: true,
                 public_chat: true,
                 webmcp: true,
                 mcp_events: true,

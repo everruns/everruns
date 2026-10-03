@@ -111,6 +111,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_provider::typ
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            environments: None,
             is_built_in: false,
         },
     )
@@ -291,6 +292,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        environments: None,
         total_input_tokens: 0,
         total_output_tokens: 0,
         total_cache_read_tokens: 0,
@@ -382,6 +384,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

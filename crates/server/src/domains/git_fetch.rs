@@ -15,8 +15,11 @@
 
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
+use everruns_provider::driver_helpers::SsrfGuardResolver;
+use everruns_provider::url_validation::validate_safe_url;
 
 /// Ceiling on a packfile response, overridable with `GIT_FETCH_MAX_PACK_BYTES`.
 ///
@@ -256,19 +259,44 @@ fn redact_url(error: reqwest::Error) -> reqwest::Error {
     error.without_url()
 }
 
-fn client_builder() -> reqwest::blocking::ClientBuilder {
+/// `upstream_dns` replaces the system resolver underneath the guard; only
+/// tests set it, to simulate DNS that changed after the source was stored.
+fn client_builder(
+    upstream_dns: Option<Arc<dyn reqwest::dns::Resolve>>,
+) -> reqwest::blocking::ClientBuilder {
+    let resolver = match upstream_dns {
+        Some(upstream) => SsrfGuardResolver::wrapping(upstream),
+        None => SsrfGuardResolver::system(),
+    };
     reqwest::blocking::Client::builder()
         // THREAT[TM-API-023]: source URLs are validated before storage, but a
         // remote-controlled redirect could otherwise bypass that validation
         // and reach an internal service. Git hosts do not require redirects
         // for their smart-HTTP endpoints, so fail closed on every 3xx.
         .redirect(reqwest::redirect::Policy::none())
+        // THREAT[TM-API-023]: the storage-time check is static, so a public
+        // hostname can resolve to a private, loopback, link-local, or metadata
+        // address by the time the worker syncs (EVE-1178). Every connection
+        // this client opens resolves through the shared SSRF guard, which
+        // refuses blocked answers, and reqwest dials only the addresses the
+        // guard returned, so the check and the connection are pinned together.
+        .dns_resolver(Arc::new(resolver))
 }
 
 fn client() -> Result<reqwest::blocking::Client> {
-    client_builder()
+    client_builder(None)
         .build()
         .context("failed to build git HTTP client")
+}
+
+/// Rejects a URL whose host is statically private: IP literals and names like
+/// `localhost` never reach the DNS resolver, so the guarded resolver alone
+/// would not see them. Callers validate before storage too; this keeps the
+/// fetch boundary safe on its own.
+fn ensure_public_url(url: &str) -> Result<()> {
+    validate_safe_url(url)
+        .map(|_| ())
+        .map_err(|_| anyhow!("git remote URL does not target a public host"))
 }
 
 fn authenticated(
@@ -289,9 +317,18 @@ pub fn shallow_checkout(
     request: &FetchRequest<'_>,
     checkout_dir: &Path,
 ) -> std::result::Result<(), FetchError> {
+    let client = client().map_err(|error| FetchError::new(FetchFailure::Unreachable, error))?;
+    checkout_with_client(&client, request, checkout_dir)
+}
+
+fn checkout_with_client(
+    client: &reqwest::blocking::Client,
+    request: &FetchRequest<'_>,
+    checkout_dir: &Path,
+) -> std::result::Result<(), FetchError> {
     let unreachable = |error: anyhow::Error| FetchError::new(FetchFailure::Unreachable, error);
 
-    let client = client().map_err(unreachable)?;
+    ensure_public_url(request.url).map_err(unreachable)?;
 
     // Advertise v2 up front; a server that only speaks v1 will answer with a
     // v1 advertisement, which ensure_protocol_v2 rejects.
@@ -322,7 +359,7 @@ pub fn shallow_checkout(
     ensure_protocol_v2(&advertisement).map_err(unreachable)?;
 
     let refs = post_upload_pack(
-        &client,
+        client,
         request,
         ls_refs_body(request.branch),
         "list remote refs",
@@ -334,7 +371,7 @@ pub fn shallow_checkout(
         .map_err(|error| FetchError::new(FetchFailure::NotFound, error))?;
 
     let response = post_upload_pack(
-        &client,
+        client,
         request,
         fetch_body(&oid),
         "fetch objects",
@@ -693,7 +730,7 @@ mod tests {
             std::io::Write::write_all(&mut socket, response.as_bytes()).expect("redirect response");
         });
 
-        let response = client_builder()
+        let response = client_builder(None)
             .no_proxy()
             .build()
             .expect("client")
@@ -707,6 +744,129 @@ mod tests {
         );
 
         handle.join().expect("redirector thread");
+    }
+
+    /// Resolves every name to one fixed address: DNS that changed after the
+    /// source passed its storage-time check.
+    struct FixedResolver(std::net::SocketAddr);
+
+    impl reqwest::dns::Resolve for FixedResolver {
+        fn resolve(&self, _name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+            let address = self.0;
+            Box::pin(async move { Ok(Box::new(std::iter::once(address)) as reqwest::dns::Addrs) })
+        }
+    }
+
+    /// A listener standing in for an internal Git service, plus a URL whose
+    /// public-looking hostname rebinds to it.
+    fn rebound_internal_service() -> (std::net::TcpListener, std::net::SocketAddr, String) {
+        let internal = std::net::TcpListener::bind("127.0.0.1:0").expect("internal bind");
+        internal
+            .set_nonblocking(true)
+            .expect("internal nonblocking");
+        let address = internal.local_addr().expect("internal addr");
+        let url = format!("https://git.rebind.example:{}/org/repo.git", address.port());
+        // Storage-time validation is static, so the source is accepted.
+        assert!(
+            validate_safe_url(&url).is_ok(),
+            "registration accepts {url}"
+        );
+        (internal, address, url)
+    }
+
+    fn fetch(client: &reqwest::blocking::Client, url: &str) -> FetchError {
+        let checkout = tempfile::TempDir::new().expect("temp dir");
+        checkout_with_client(
+            client,
+            &FetchRequest {
+                url,
+                branch: "main",
+                auth_token: Some("token"),
+            },
+            checkout.path(),
+        )
+        .expect_err("fetch must fail")
+    }
+
+    #[test]
+    fn rebound_hostname_is_refused_before_any_request() {
+        let (internal, address, url) = rebound_internal_service();
+        let client = client_builder(Some(Arc::new(FixedResolver(address))))
+            .no_proxy()
+            .build()
+            .expect("client");
+
+        let error = fetch(&client, &url);
+
+        assert_eq!(error.failure, FetchFailure::Unreachable);
+        assert!(
+            matches!(internal.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+            "the internal service must not receive a connection, let alone a GET or POST"
+        );
+    }
+
+    #[test]
+    fn unguarded_client_reaches_the_rebound_address() {
+        // Control for the test above: without the guard, the same fixture
+        // dials the internal service, so the refusal there is not vacuous.
+        let (internal, address, url) = rebound_internal_service();
+        let client = reqwest::blocking::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .dns_resolver(Arc::new(FixedResolver(address)))
+            .no_proxy()
+            .build()
+            .expect("client");
+
+        // Accept and hang up so the client fails fast instead of waiting out
+        // its timeout on a handshake nobody answers.
+        let accepter = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while std::time::Instant::now() < deadline {
+                if internal.accept().is_ok() {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            false
+        });
+
+        let _ = fetch(&client, &url);
+
+        assert!(
+            accepter.join().expect("accepter thread"),
+            "an unguarded client connects to the rebound address"
+        );
+    }
+
+    #[test]
+    fn private_ip_literal_urls_are_refused_at_fetch_time() {
+        // IP literals never reach a DNS resolver, so the fetch boundary checks
+        // them itself rather than trusting the storage-time validation.
+        let internal = std::net::TcpListener::bind("127.0.0.1:0").expect("internal bind");
+        internal
+            .set_nonblocking(true)
+            .expect("internal nonblocking");
+        let port = internal.local_addr().expect("internal addr").port();
+        let client = client_builder(None).no_proxy().build().expect("client");
+
+        for url in [
+            format!("https://127.0.0.1:{port}/org/repo.git"),
+            format!("https://localhost:{port}/org/repo.git"),
+            "https://169.254.169.254/latest/meta-data.git".to_string(),
+            "https://[::1]/org/repo.git".to_string(),
+            "https://10.0.0.1/org/repo.git".to_string(),
+        ] {
+            let error = fetch(&client, &url);
+            assert_eq!(error.failure, FetchFailure::Unreachable, "{url}");
+            assert!(
+                error.to_string().contains("does not target a public host"),
+                "{url}: {error}"
+            );
+        }
+        assert!(
+            matches!(internal.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+            "no request may reach a private literal"
+        );
     }
 
     /// End-to-end against a real remote. Ignored by default because it needs

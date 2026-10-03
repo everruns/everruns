@@ -31,9 +31,6 @@ pub struct InternalFeatureFlags {
     /// fallback `FEATURE_DOCKER_CAPABILITY=true` when
     /// `FEATURE_CONTAINER_SANDBOX` is unset.
     pub container_sandbox: bool,
-    /// Managed session-owned sandbox capability and lifecycle orchestration.
-    /// Experimental and disabled by default.
-    pub session_sandbox: bool,
     /// Experimental sandboxed Lua execution capability (`knowledge/execution/lua-execution.md`).
     /// Disabled by default; requires the `lua` cargo feature to be compiled in to
     /// actually run scripts. Enable via `FEATURE_LUA=true`.
@@ -48,7 +45,6 @@ impl InternalFeatureFlags {
         Self {
             docker_capability,
             container_sandbox: standard_flag("FEATURE_CONTAINER_SANDBOX", docker_capability),
-            session_sandbox: standard_flag("FEATURE_SESSION_SANDBOX", false),
             lua: standard_flag("FEATURE_LUA", false),
         }
     }
@@ -58,7 +54,6 @@ impl InternalFeatureFlags {
         match flag {
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
-            "session_sandbox" => self.session_sandbox,
             "lua" => self.lua,
             _ => false,
         }
@@ -105,9 +100,7 @@ impl ExecutionFeatureDecisions {
     /// `IntegrationPlugin::feature_flag` gating.
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
-            "docker_capability" | "container_sandbox" | "session_sandbox" | "lua" => {
-                self.internal.is_enabled(flag)
-            }
+            "docker_capability" | "container_sandbox" | "lua" => self.internal.is_enabled(flag),
             "agent_delegation" => self.agent_delegation,
             _ => {
                 let env_var = format!("FEATURE_{}", flag.to_ascii_uppercase());
@@ -143,26 +136,19 @@ mod tests {
     #[test]
     fn internal_lookup_reads_each_flag_independently() {
         for values in [
-            [false, false, false, false],
-            [true, false, false, false],
-            [false, true, false, false],
-            [false, false, true, false],
-            [false, false, false, true],
+            [false, false, false],
+            [true, false, false],
+            [false, true, false],
+            [false, false, true],
         ] {
             let flags = InternalFeatureFlags {
                 docker_capability: values[0],
                 container_sandbox: values[1],
-                session_sandbox: values[2],
-                lua: values[3],
+                lua: values[2],
             };
-            for (name, expected) in [
-                "docker_capability",
-                "container_sandbox",
-                "session_sandbox",
-                "lua",
-            ]
-            .into_iter()
-            .zip(values)
+            for (name, expected) in ["docker_capability", "container_sandbox", "lua"]
+                .into_iter()
+                .zip(values)
             {
                 assert_eq!(flags.is_enabled(name), expected, "{name}, {values:?}");
             }
@@ -178,7 +164,6 @@ mod tests {
         const KEYS: &[&str] = &[
             "FEATURE_DOCKER_CAPABILITY",
             "FEATURE_CONTAINER_SANDBOX",
-            "FEATURE_SESSION_SANDBOX",
             "FEATURE_LUA",
             "FEATURE_AGENT_DELEGATION",
             "FEATURE_MACHINE_PAYMENTS",
@@ -189,7 +174,7 @@ mod tests {
         struct Case {
             name: &'static str,
             env: &'static [(&'static str, &'static str)],
-            internal: [bool; 4],
+            internal: [bool; 3],
             delegation: [bool; 4],
             grade: DeploymentGrade,
             payments: bool,
@@ -198,7 +183,7 @@ mod tests {
             Case {
                 name: "unset",
                 env: &[],
-                internal: [false, false, false, false],
+                internal: [false, false, false],
                 delegation: [true, false, false, false],
                 grade: DeploymentGrade::Prod,
                 payments: false,
@@ -206,7 +191,7 @@ mod tests {
             Case {
                 name: "legacy docker and dev mode one",
                 env: &[("FEATURE_DOCKER_CAPABILITY", "true"), ("DEV_MODE", "1")],
-                internal: [true, true, false, false],
+                internal: [true, true, false],
                 delegation: [true, false, false, false],
                 grade: DeploymentGrade::Dev,
                 payments: false,
@@ -218,7 +203,7 @@ mod tests {
                     ("DEPLOYMENT_GRADE", "staging"),
                     ("DEV_MODE", "true"),
                 ],
-                internal: [false, true, false, false],
+                internal: [false, true, false],
                 delegation: [true, false, false, false],
                 grade: DeploymentGrade::Preview,
                 payments: false,
@@ -230,7 +215,7 @@ mod tests {
                     ("FEATURE_CONTAINER_SANDBOX", "false"),
                     ("DEPLOYMENT_GRADE", "PoC"),
                 ],
-                internal: [true, false, false, false],
+                internal: [true, false, false],
                 delegation: [true, false, false, false],
                 grade: DeploymentGrade::Poc,
                 payments: false,
@@ -240,14 +225,13 @@ mod tests {
                 env: &[
                     ("FEATURE_DOCKER_CAPABILITY", "1"),
                     ("FEATURE_CONTAINER_SANDBOX", "true"),
-                    ("FEATURE_SESSION_SANDBOX", "true"),
                     ("FEATURE_LUA", "1"),
                     ("FEATURE_AGENT_DELEGATION", "true"),
                     ("FEATURE_MACHINE_PAYMENTS", "1"),
                     ("DEPLOYMENT_GRADE", "production"),
                     ("DEV_MODE", "true"),
                 ],
-                internal: [true, true, true, true],
+                internal: [true, true, true],
                 delegation: [true, true, true, true],
                 grade: DeploymentGrade::Prod,
                 payments: true,
@@ -257,13 +241,12 @@ mod tests {
                 env: &[
                     ("FEATURE_DOCKER_CAPABILITY", "false"),
                     ("FEATURE_CONTAINER_SANDBOX", "0"),
-                    ("FEATURE_SESSION_SANDBOX", "false"),
                     ("FEATURE_LUA", "0"),
                     ("FEATURE_AGENT_DELEGATION", "false"),
                     ("FEATURE_MACHINE_PAYMENTS", "false"),
                     ("DEV_MODE", "true"),
                 ],
-                internal: [false, false, false, false],
+                internal: [false, false, false],
                 delegation: [false, false, false, false],
                 grade: DeploymentGrade::Dev,
                 payments: false,
@@ -273,14 +256,13 @@ mod tests {
                 env: &[
                     ("FEATURE_DOCKER_CAPABILITY", "true"),
                     ("FEATURE_CONTAINER_SANDBOX", "TRUE"),
-                    ("FEATURE_SESSION_SANDBOX", "typo"),
                     ("FEATURE_LUA", "TRUE"),
                     ("FEATURE_AGENT_DELEGATION", "TRUE"),
                     ("FEATURE_MACHINE_PAYMENTS", "yes"),
                     ("DEPLOYMENT_GRADE", "invalid"),
                     ("DEV_MODE", "true"),
                 ],
-                internal: [true, false, false, false],
+                internal: [true, false, false],
                 delegation: [false, false, false, false],
                 grade: DeploymentGrade::Prod,
                 payments: false,
@@ -288,7 +270,7 @@ mod tests {
             Case {
                 name: "empty explicit grade suppresses legacy dev",
                 env: &[("DEPLOYMENT_GRADE", ""), ("DEV_MODE", "true")],
-                internal: [false, false, false, false],
+                internal: [false, false, false],
                 delegation: [true, false, false, false],
                 grade: DeploymentGrade::Prod,
                 payments: false,
@@ -300,8 +282,7 @@ mod tests {
             let expected_internal = InternalFeatureFlags {
                 docker_capability: case.internal[0],
                 container_sandbox: case.internal[1],
-                session_sandbox: case.internal[2],
-                lua: case.internal[3],
+                lua: case.internal[2],
             };
             assert_eq!(
                 InternalFeatureFlags::from_env(),
@@ -334,14 +315,9 @@ mod tests {
                     decisions.is_enabled("agent_delegation"),
                     expected_delegation
                 );
-                for (name, expected) in [
-                    "docker_capability",
-                    "container_sandbox",
-                    "session_sandbox",
-                    "lua",
-                ]
-                .into_iter()
-                .zip(case.internal)
+                for (name, expected) in ["docker_capability", "container_sandbox", "lua"]
+                    .into_iter()
+                    .zip(case.internal)
                 {
                     assert_eq!(decisions.is_enabled(name), expected, "{name}");
                 }
@@ -358,7 +334,6 @@ mod tests {
             for name in [
                 "docker_capability",
                 "container_sandbox",
-                "session_sandbox",
                 "lua",
                 "agent_delegation",
             ] {

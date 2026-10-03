@@ -835,6 +835,7 @@ async fn resolve_session(
             app.resolved_owner_user_id,
             everruns_platform::SessionSource::Fcp,
             CreateSessionRequest {
+                playground_user_id: None,
                 source: None,
                 workspace_id: None,
                 harness_id: Some(app.harness_id),
@@ -848,6 +849,7 @@ async fn resolve_session(
                 tags: vec![app_tag, endpoint_tag],
                 model_id: None,
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

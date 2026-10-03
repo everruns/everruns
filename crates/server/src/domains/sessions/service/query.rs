@@ -431,6 +431,7 @@ impl SessionService {
             agent_id: row.agent_id,
             agent_version_id: row.agent_version_id,
             virtual_user_id: row.virtual_user_id,
+            playground_user_id: row.playground_user_id,
             owner_principal_id: row.owner_principal_id,
             resolved_owner_user_id: row.resolved_owner_user_id,
             owner: None,

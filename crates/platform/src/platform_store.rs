@@ -354,6 +354,7 @@ pub mod tests {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    environments: None,
                     tools: vec![],
                     mcp_servers: Default::default(),
                     status: AgentStatus::Active,
@@ -368,6 +369,7 @@ pub mod tests {
                 session: {
                     let session_id = SessionId::new();
                     Session {
+                        playground_user_id: None,
                         source: Default::default(),
                         activity: Default::default(),
                         run_summary: None,

@@ -1,9 +1,9 @@
 // Environment HTTP routes and wire types.
 //
 // An Environment is where a session's commands run plus what they may touch.
-// Today both are derived from the session's effective capabilities, because
-// environment profiles are not yet first-class configuration; the wire shape
-// says so with `resolved_from` rather than implying a stored profile.
+// New sessions return their immutable, resolved profile snapshot. Legacy
+// sessions retain a capability-derived compatibility view; `resolved_from`
+// makes the distinction explicit.
 //
 // See knowledge/harnesses/execution-environments.md.
 
@@ -30,6 +30,9 @@ pub struct EnvironmentTarget {
     /// Concrete provider, when the kind has one (`bashkit`, `daytona`, ...).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Registered connection used by a machine target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
 }
 
 /// What commands may touch, and who enforces it.
@@ -59,6 +62,12 @@ pub struct EnvironmentCapabilities {
 /// The environment a session is running in.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SessionEnvironmentResponse {
+    /// Durable logical Environment id. Absent for legacy capability-derived sessions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Agent profile name selected for this Session (`inline` for one-offs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Target, absent when the session has no compute at all and only reads and
     /// writes files. That is a real configuration, not a misconfiguration.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,6 +84,21 @@ pub struct SessionEnvironmentResponse {
     /// Capability that supplied the compute, for operators tracing a surprise.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_capability: Option<String>,
+    /// Immutable resolved profile pinned when the Session was created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<everruns_platform::ResolvedEnvironmentProfile>,
+    /// Control-plane lifecycle intent and latest observed physical state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desired_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_state: Option<String>,
+    /// Physical incarnation fence. Increments whenever compute is replaced.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_checkpoint_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_activity_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// One target this deployment can offer, and what it can do.

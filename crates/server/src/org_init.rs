@@ -323,13 +323,21 @@ pub async fn initialize_org_harnesses_with_definitions(
         }
     }
 
+    if harnesses
+        .iter()
+        .any(|harness| harness.name == "platform-chat")
+        && db.consolidate_platform_chat(org_id).await?
+    {
+        result.updated += 1;
+    }
+
     sync_org_harness_settings_with_definitions(db, org_id, harnesses).await?;
 
     Ok(result)
 }
 
-/// Demote any rows for the legacy default built-ins (`coding-container`,
-/// `coding-daytona`, `data-analyst`) to regular org-owned harnesses. Idempotent
+/// Demote rows for legacy provider-specific coding harnesses and `data-analyst`
+/// to regular org-owned harnesses. Idempotent
 /// — only flips rows that are still flagged `is_built_in = true`.
 async fn release_legacy_built_ins(db: &StorageBackend, org_id: i64) -> Result<()> {
     for name in crate::harnesses::LEGACY_BUILT_IN_NAMES {

@@ -24,8 +24,7 @@ Harness examples are adoptable templates. Import them when you want a preconfigu
 
 | Example | Import Name | Description |
 |---------|-------------|-------------|
-| Coding (Daytona) | `coding-daytona` | Generic + Daytona sandbox execution + GitHub Scout subagents for repository exploration |
-| Coding (Container) | `coding-container` | Generic + self-hosted container sandbox execution + GitHub Scout subagents for repository exploration |
+| Coding | `coding` | Provider-neutral coding behavior + GitHub Scout; the Agent Environment profile selects Bashkit, Daytona, or another target |
 | Data Analyst | `data-analyst` | Generic + SQL databases, charts, persistent memory, and curated data knowledge |
 
 ## Capabilities

@@ -30,6 +30,12 @@ use everruns_server::{
 };
 use everruns_worker::{AgentRunner, RunnerBackend, create_runner_with_backend};
 
+// Relative to this file's directory; a sibling `tests/*.rs` would be its own
+// test binary, so support modules live under `tests/test_harness/`.
+#[path = "test_harness/egress_fakes.rs"]
+mod egress_fakes;
+pub use egress_fakes::{McpServerSlot, WebhookReceiver};
+
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
     headers
         .get_all(axum::http::header::SET_COOKIE)
@@ -93,83 +99,6 @@ pub struct TestServer {
     /// Inbound MCP Events (`mcp_event` triggers), wired to `mcp_servers`.
     pub mcp_event_triggers: Arc<everruns_server::domains::agent_triggers::McpEventTriggers>,
     pub mcp_servers: Arc<McpServerSlot>,
-}
-
-/// Stands in for the MCP servers `mcp_event` triggers subscribe on: requests
-/// go to the fake a test installs, and fail while none is.
-#[derive(Default)]
-pub struct McpServerSlot(pub parking_lot::RwLock<Option<Arc<dyn everruns_core::EgressService>>>);
-
-#[async_trait::async_trait]
-impl everruns_core::EgressService for McpServerSlot {
-    async fn send(
-        &self,
-        request: everruns_core::EgressRequest,
-    ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
-        let server = self.0.read().clone();
-        let Some(server) = server else {
-            return Err(everruns_core::EgressError::Transport(
-                "no MCP server".into(),
-            ));
-        };
-        server.send(request).await
-    }
-
-    async fn send_stream(
-        &self,
-        _request: everruns_core::EgressRequest,
-    ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-        Err(everruns_core::EgressError::Transport("no streaming".into()))
-    }
-}
-
-/// Stands in for MCP Events callback URLs: answers verification challenges
-/// (unless told not to) and records every request.
-#[derive(Default)]
-pub struct WebhookReceiver {
-    pub requests: parking_lot::Mutex<Vec<everruns_core::EgressRequest>>,
-    pub refuse_verification: std::sync::atomic::AtomicBool,
-    /// Statuses to answer event deliveries with, in order; then 200.
-    pub delivery_statuses: parking_lot::Mutex<std::collections::VecDeque<u16>>,
-}
-
-#[async_trait::async_trait]
-impl everruns_core::EgressService for WebhookReceiver {
-    async fn send(
-        &self,
-        request: everruns_core::EgressRequest,
-    ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
-        let body: Value = serde_json::from_slice(&request.body).unwrap_or_default();
-        self.requests.lock().push(request);
-        let (status, body) = if body["type"] == "verification" {
-            let refuse = self
-                .refuse_verification
-                .load(std::sync::atomic::Ordering::SeqCst);
-            let echoed = if refuse {
-                "wrong"
-            } else {
-                body["challenge"].as_str().unwrap_or("")
-            };
-            (200, serde_json::json!({ "challenge": echoed }))
-        } else {
-            let status = self.delivery_statuses.lock().pop_front().unwrap_or(200);
-            (status, serde_json::json!({}))
-        };
-        Ok(everruns_core::EgressResponse {
-            status,
-            headers: Default::default(),
-            body: serde_json::to_vec(&body).unwrap_or_default(),
-        })
-    }
-
-    async fn send_stream(
-        &self,
-        _request: everruns_core::EgressRequest,
-    ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-        Err(everruns_core::EgressError::Transport(
-            "webhooks do not stream".into(),
-        ))
-    }
 }
 
 impl TestServer {
@@ -708,7 +637,6 @@ impl TestServer {
         feature_flags.knowledge = true;
         feature_flags.plugins = true;
         feature_flags.agent_delegation = true;
-        feature_flags.environments = true;
         feature_flags.mcp_events = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
@@ -726,9 +654,6 @@ impl TestServer {
             "agent_versions",
             "app_budgets",
             "mcp_events",
-            // Platform-managed: the platform enrols an org rather than the org
-            // opting itself in, and seeding the row here is that enrolment.
-            "environments",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))
@@ -859,7 +784,7 @@ impl TestServer {
                 everruns_server::domains::session_commands::SessionCommandService::new(
                     db.clone(),
                     event_service.clone(),
-                    provider_resolver,
+                    provider_resolver.clone(),
                     mcp_service.clone(),
                     (*host_composition.capability_registry()).clone(),
                     driver_registry.as_ref().clone(),
@@ -1097,6 +1022,20 @@ impl TestServer {
             auth_config.base_url.clone(),
         );
 
+        let voice_state = api::voice::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            feature_flags.clone(),
+            api::voice::AppDependencies {
+                runner: runner.clone(),
+                message_service: messages_state.message_service.clone(),
+                provider_resolver: provider_resolver.clone(),
+                event_delivery: event_delivery.clone(),
+            },
+            host_composition.as_ref(),
+            &built_in_harnesses,
+        );
+
         // Build API routes
         let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
@@ -1110,6 +1049,7 @@ impl TestServer {
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
+            .merge(api::voice::routes(voice_state))
             .merge(api::messages::routes(messages_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))

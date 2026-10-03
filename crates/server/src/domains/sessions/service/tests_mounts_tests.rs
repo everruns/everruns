@@ -147,6 +147,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
         harness_name: None,
         tags: vec![],
         capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
+        environments: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),
@@ -160,6 +161,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
 
     let session_row = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: caller.org_id,
@@ -489,6 +491,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
         harness_name: None,
         tags: vec![],
         capabilities: vec![AgentCapabilityConfig::new("data_knowledge")],
+        environments: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),
@@ -502,6 +505,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
 
     let session_row = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: caller.org_id,
@@ -1254,7 +1258,7 @@ async fn shared_harness_memory_is_visible_across_sessions() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
     let harness_id = create_named_harness(
         &ctx,
-        crate::harnesses::platform_chat_v2::PLATFORM_CHAT_V2_HARNESS_NAME,
+        crate::harnesses::platform_chat::PLATFORM_CHAT_HARNESS_NAME,
     )
     .await;
 
@@ -1346,7 +1350,7 @@ async fn shared_memory_is_limited_to_harnesses_that_declare_it() {
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "no-shared-memory@example.com").await;
     let ctx = test_ctx(caller.clone(), db.clone()).await;
-    let harness_id = create_named_harness(&ctx, "platform-chat").await;
+    let harness_id = create_named_harness(&ctx, "generic").await;
 
     let session = session_service
         .create(
@@ -1402,6 +1406,7 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
         harness_name: None,
         tags: vec![],
         capabilities: vec![],
+        environments: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),

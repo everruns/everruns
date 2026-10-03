@@ -330,7 +330,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
-            content: &str,
+            content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxWriteFileResponse {
                 path: path.to_string(),
@@ -409,6 +409,7 @@ mod tests {
         .unwrap();
 
         db.create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,

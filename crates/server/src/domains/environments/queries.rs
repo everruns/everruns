@@ -59,7 +59,17 @@ pub async fn effective_session_capabilities(
             .context("failed to parse session capabilities")?;
 
     let merged = merge_capabilities(&harness.capabilities, &agent_capabilities);
-    Ok(Some(merge_capabilities(&merged, &session_capabilities)))
+    let merged = merge_capabilities(&merged, &session_capabilities);
+    let environment = db
+        .get_environment(session_id)
+        .await
+        .context("failed to load pinned session environment")?;
+    Ok(Some(
+        crate::domains::environments::profiles::apply_environment_to_capabilities(
+            &merged,
+            environment.as_ref().map(|record| &record.profile),
+        ),
+    ))
 }
 
 async fn agent_capabilities(

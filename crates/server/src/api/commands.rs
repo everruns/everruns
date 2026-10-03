@@ -117,6 +117,15 @@ async fn execute_session_command(
         .map_err(anyhow::Error::from)
         .map_policy_or_internal("authorize execute session command")?;
 
+    state
+        .command_service
+        .authorize_playground_input(
+            &caller,
+            &org.feature_flags,
+            state.auth.permission_resolver.clone(),
+            session_id,
+        )
+        .await?;
     let result = state
         .command_service
         .execute(&caller, session_id, req)

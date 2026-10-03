@@ -30,6 +30,8 @@ async fn test_session_connection_resolution_never_borrows_owner_or_other_user() 
     let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
     let session = backend
         .create_session(CreateSessionRow {
+            playground_user_id: None,
+
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,

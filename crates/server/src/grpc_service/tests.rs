@@ -1,7 +1,6 @@
 use super::worker::commands::test_support::execute_test_command;
 use super::*;
 use tonic::service::Interceptor;
-
 // Env-var-mutating tests must not run in parallel.
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const EXAMPLE_TOKEN: &str = "YExample0";
@@ -633,6 +632,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     let session = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -948,6 +948,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
                 max_iterations: None,
                 network_access: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1211,7 +1212,6 @@ fn test_grpc_server_tls_panics_on_missing_cert_file() {
         std::env::set_var("WORKER_GRPC_TLS_KEY", "/nonexistent/key.pem");
     }
     let _config = grpc_server_tls_from_env();
-    // cleanup won't run due to panic, but that's fine for test
 }
 
 // ========================================================================

@@ -124,6 +124,8 @@ impl From<&str> for SessionStatus {
 pub enum SessionSource {
     /// Interactive chat thread (UI chat surface, global chat, public chat).
     Chat,
+    /// Organisation-shared agent testing conversation.
+    Playground,
     /// Direct `POST /v1/sessions` from the API, CLI, or an SDK.
     Api,
     /// Slack channel ingress.
@@ -150,6 +152,7 @@ pub enum SessionSource {
 impl SessionSource {
     pub const ALL: &'static [SessionSource] = &[
         SessionSource::Chat,
+        SessionSource::Playground,
         SessionSource::Api,
         SessionSource::Slack,
         SessionSource::AgUi,
@@ -165,6 +168,7 @@ impl SessionSource {
     pub fn as_str(self) -> &'static str {
         match self {
             SessionSource::Chat => "chat",
+            SessionSource::Playground => "playground",
             SessionSource::Api => "api",
             SessionSource::Slack => "slack",
             SessionSource::AgUi => "ag_ui",
@@ -185,7 +189,10 @@ impl SessionSource {
     /// Whether a client may declare this source on `POST /v1/sessions`.
     /// Everything else is server-owned so facets cannot be spoofed.
     pub fn is_client_declarable(self) -> bool {
-        matches!(self, SessionSource::Chat | SessionSource::Api)
+        matches!(
+            self,
+            SessionSource::Chat | SessionSource::Api | SessionSource::Playground
+        )
     }
 }
 
@@ -416,6 +423,10 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
     pub virtual_user_id: Option<VirtualUserId>,
+    /// Fixed end-user identity for a Playground conversation; independent of the resident service.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub playground_user_id: Option<VirtualUserId>,
     /// Owning principal for this session.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "principal_01933b5a000070008000000000000001"))]
     pub owner_principal_id: PrincipalId,
@@ -661,6 +672,7 @@ impl Session {
             agent_id: execution.agent_id,
             agent_version_id: None,
             virtual_user_id: None,
+            playground_user_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
             owner: None,
@@ -803,13 +815,20 @@ mod tests {
     }
 
     #[test]
-    fn only_chat_and_api_are_client_declarable() {
+    fn interactive_sources_and_api_are_client_declarable() {
         let declarable: Vec<_> = SessionSource::ALL
             .iter()
             .filter(|s| s.is_client_declarable())
             .copied()
             .collect();
-        assert_eq!(declarable, vec![SessionSource::Chat, SessionSource::Api]);
+        assert_eq!(
+            declarable,
+            vec![
+                SessionSource::Chat,
+                SessionSource::Playground,
+                SessionSource::Api
+            ]
+        );
     }
 
     #[test]

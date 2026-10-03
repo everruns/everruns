@@ -113,6 +113,7 @@ impl InMemoryDatabase {
             agent_version_id: input.agent_version_id,
             agent_config_hash: input.agent_config_hash,
             virtual_user_id: input.virtual_user_id,
+            playground_user_id: input.playground_user_id,
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             title: input.title,
@@ -278,7 +279,18 @@ impl InMemoryDatabase {
                         })
                 })
             })
-            .filter(|s| filters.include_archived || s.archived_at.is_none())
+            .filter(|s| {
+                if filters.archived_only {
+                    s.archived_at.is_some()
+                } else {
+                    filters.include_archived || s.archived_at.is_none()
+                }
+            })
+            .filter(|s| {
+                filters
+                    .playground_user_id
+                    .is_none_or(|id| s.playground_user_id == Some(id))
+            })
             .filter(|s| filters.created_after.is_none_or(|t| s.created_at >= t))
             .filter(|s| filters.created_before.is_none_or(|t| s.created_at < t))
             .filter(|s| {

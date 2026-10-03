@@ -17,6 +17,12 @@
 //! assert_eq!(FileSystemCapability.id(), "session_file_system");
 //! ```
 
+mod stable_tools;
+
+use stable_tools::{GlobTool, GrepTool, glob_parameters_schema, grep_parameters_schema};
+#[cfg(test)]
+use stable_tools::{filesystem_tool_schemas_with_presentation, schema_contains_workspace};
+
 use crate::error::{FileSystemErrorClass, classify_fs_error};
 use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
@@ -84,6 +90,8 @@ const SESSION_FILE_SYSTEM_TOOL_NAMES: &[&str] = &[
     "read_many_files",
     "write_file",
     "edit_file",
+    "glob",
+    "grep",
     "list_directory",
     "grep_files",
     "delete_file",
@@ -209,6 +217,8 @@ impl FilePathPresentation {
             "read_many_files" => Some(read_many_files_parameters_schema(self)),
             "write_file" => Some(write_file_parameters_schema(self)),
             "edit_file" => Some(edit_file_parameters_schema(self)),
+            "glob" => Some(glob_parameters_schema(self)),
+            "grep" => Some(grep_parameters_schema(self)),
             "list_directory" => Some(list_directory_parameters_schema(self)),
             "grep_files" => Some(grep_files_parameters_schema()),
             "delete_file" => Some(delete_file_parameters_schema(self)),
@@ -480,33 +490,6 @@ fn stat_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
         "required": ["path"],
         "additionalProperties": false
     })
-}
-
-#[cfg(test)]
-fn schema_contains_workspace(value: &Value) -> bool {
-    fn walk(value: &Value) -> bool {
-        match value {
-            Value::String(text) => text.contains(WORKSPACE_PREFIX),
-            Value::Array(items) => items.iter().any(walk),
-            Value::Object(fields) => fields.values().any(walk),
-            _ => false,
-        }
-    }
-    walk(value)
-}
-
-#[cfg(test)]
-fn filesystem_tool_schemas_with_presentation(
-    presentation: &FilePathPresentation,
-) -> Vec<(String, Value)> {
-    SESSION_FILE_SYSTEM_TOOL_NAMES
-        .iter()
-        .filter_map(|name| {
-            presentation
-                .parameters_schema_for_tool(name)
-                .map(|schema| ((*name).to_string(), schema))
-        })
-        .collect()
 }
 
 // ============================================================================
@@ -970,6 +953,8 @@ impl Capability for FileSystemCapability {
             Box::new(ReadManyFilesTool),
             Box::new(WriteFileTool),
             Box::new(EditFileTool),
+            Box::new(GlobTool),
+            Box::new(GrepTool),
             Box::new(ListDirectoryTool),
             Box::new(GrepFilesTool),
             Box::new(DeleteFileTool),

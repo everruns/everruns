@@ -72,15 +72,49 @@ pub async fn verify_session(
         .await
         .map_err(classify_storage)?
         .ok_or_else(|| CommandError::not_found("Session"))?;
-    let user_memory_allowed = row
-        .resolved_owner_user_id
-        .zip(ctx.caller.user_id)
-        .is_some_and(|(owner, caller)| owner == caller)
-        || ctx.caller.is_internal;
+    let user_memory_allowed = caller_owns_user_memory(row.resolved_owner_user_id, &ctx.caller);
     Ok(SessionFileAccess {
         workspace_key: row.workspace_id,
         user_memory_allowed,
     })
+}
+
+/// Whether `caller` may touch the `/memory/user` subtree owned by `owner`.
+///
+/// Only the resolved owner (or a trusted internal path) qualifies. Org role is
+/// deliberately irrelevant: an admin with `WORKSPACE_MANAGE` is still not the
+/// owner of another member's private memory.
+pub fn caller_owns_user_memory(owner: Option<Uuid>, caller: &everruns_core::Caller) -> bool {
+    owner
+        .zip(caller.user_id)
+        .is_some_and(|(owner, caller)| owner == caller)
+        || caller.is_internal
+}
+
+/// `/memory/user` access for the canonical `/v1/workspaces/{id}/fs/*` surface,
+/// which is keyed by workspace rather than by session.
+///
+// THREAT[TM-TENANT-013]: `MemoryMountRouter::resolve` mounts `/memory/user`
+// from the session whose id equals the workspace key (the default 1:1
+// session), so that session's `resolved_owner_user_id` is the owner here too.
+// A workspace with no such session (a shared workspace) has no private owner
+// and only internal callers may touch the subtree. The caller has already
+// passed the workspace org/policy check; this adds the owner check the
+// workspace policy cannot express.
+pub async fn user_memory_allowed_for_workspace(
+    db: &crate::storage::StorageBackend,
+    org_id: i64,
+    workspace_key: Uuid,
+    caller: &everruns_core::Caller,
+) -> anyhow::Result<bool> {
+    if caller.is_internal {
+        return Ok(true);
+    }
+    let owner = db
+        .get_session(org_id, SessionId::from_uuid(workspace_key))
+        .await?
+        .and_then(|row| row.resolved_owner_user_id);
+    Ok(caller_owns_user_memory(owner, caller))
 }
 
 /// Resolve the session's workspace for a *write* and enforce the workspace

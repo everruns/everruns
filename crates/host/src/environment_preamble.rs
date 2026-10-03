@@ -3,8 +3,8 @@
 //! # Why derived
 //!
 //! Harnesses used to hand-write prose describing the world they run in, and
-//! that prose drifted from the world. `coding-container`, `coding-daytona` and
-//! `coding-session-sandbox` differed in one capability each and then repeated
+//! that prose drifted from the world. Earlier provider-specific coding harnesses
+//! differed in one capability each and then repeated
 //! roughly a hundred near-identical lines, with provider tool names spelled
 //! into the text — `sandbox_exec` against `daytona_exec` against
 //! `sandbox_read_file`.

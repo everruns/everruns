@@ -6,7 +6,7 @@
 import { render, waitFor } from "@testing-library/react";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
-import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
+import { CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 
 const mockCreate = jest.fn();
@@ -109,6 +109,23 @@ test("adopts an existing Platform Chat thread instead of creating a second", asy
   const { getByTestId } = render(<Probe ensure />);
 
   expect(getByTestId("thread")).toHaveTextContent("ses_existing");
+  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
+});
+
+test("preserves the starter when preview conversations gain the canonical harness binding", async () => {
+  mockUseChatThreads.mockReturnValue({
+    threads: [
+      thread({ id: "ses_promoted_preview" }),
+      thread({ id: "ses_starter", tags: [CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG] }),
+    ],
+    isLoading: false,
+    isRead: true,
+    error: null,
+  });
+
+  const { getByTestId } = render(<Probe ensure />);
+
+  expect(getByTestId("thread")).toHaveTextContent("ses_starter");
   await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
 });
 

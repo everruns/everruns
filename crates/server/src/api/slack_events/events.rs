@@ -612,6 +612,7 @@ pub(crate) async fn process_slack_message(
             );
             let title = build_session_title(slack_config, event);
             let req = CreateSessionRequest {
+                playground_user_id: None,
                 source: None,
                 workspace_id: None,
                 harness_id: Some(app.harness_id),
@@ -625,6 +626,7 @@ pub(crate) async fn process_slack_message(
                 virtual_user_id: app.virtual_user_id,
                 model_id: None,
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

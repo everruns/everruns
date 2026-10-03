@@ -300,6 +300,7 @@ async fn execute_case_inner(
             agent_id.map(everruns_provider::typed_id::AgentId::from_uuid),
             everruns_platform::SessionSource::Eval,
             CreateSessionRequest {
+                playground_user_id: None,
                 source: None,
                 workspace_id: None,
                 harness_id: None, // Already resolved
@@ -313,6 +314,7 @@ async fn execute_case_inner(
                 tags: vec!["eval".to_string()],
                 model_id: model_id.and_then(|m| m.parse().ok()),
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt,

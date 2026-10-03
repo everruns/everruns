@@ -573,7 +573,7 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
         let refused: Value = server
             .patch(
                 &format!("/v1/orgs/{org_id}/feature-flags"),
-                json!({ "flags": { "environments": wanted } }),
+                json!({ "flags": { "openai_agents_api": wanted } }),
             )
             .await
             .assert_status(StatusCode::BAD_REQUEST)
@@ -593,5 +593,5 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
         .assert_status(StatusCode::OK)
         .json();
     let flags = settings["flags"].as_array().expect("flags array");
-    assert!(flags.iter().all(|flag| flag["name"] != "environments"));
+    assert!(flags.iter().all(|flag| flag["name"] != "openai_agents_api"));
 }

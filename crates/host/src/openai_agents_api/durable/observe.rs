@@ -419,7 +419,16 @@ impl Run<'_> {
         self.open_subagent(key, subagent_id).await?;
         let status = if completed { "completed" } else { "failed" };
         let event = Self::with_subagent(
-            self.hosted_event(key, SUBAGENT_TOOL, status, Some(subagent_id.to_string())),
+            self.hosted_event(
+                key,
+                SUBAGENT_TOOL,
+                status,
+                Some(if self.runtime_policy_failure().is_some() {
+                    "Provider subagent work refused under runtime policy.".to_string()
+                } else {
+                    subagent_id.to_string()
+                }),
+            ),
             subagent_id,
         );
         self.complete(
@@ -460,7 +469,7 @@ impl Run<'_> {
         own: &str,
     ) -> Result<Vec<Value>, AgentsApiError> {
         let tracked = |id: &str| self.turn().items.contains_key(&format!("subagent:{id}"));
-        Ok(self
+        let mut turns: Vec<Value> = self
             .driver
             .client
             .list_turns(session_id)
@@ -471,7 +480,20 @@ impl Run<'_> {
                 id_of(turn).is_some_and(|id| id != own && tracked(id))
                     || parent_turn_of(turn) == Some(own)
             })
-            .collect())
+            .collect();
+        if self.runtime_policy_failure().is_some() {
+            // The checkpoint is evidence even if the provider no longer
+            // lists a child. Its unknown usage must not become a zero.
+            for (key, item) in &self.turn().items {
+                if item.kind == ItemKind::Subagent
+                    && let Some(id) = key.strip_prefix("subagent:")
+                    && !turns.iter().any(|turn| id_of(turn) == Some(id))
+                {
+                    turns.push(serde_json::json!({"id":id, "subagent_id":item.local_id, "status":"failed", "usage":null}));
+                }
+            }
+        }
+        Ok(turns)
     }
 
     /// Bill every provider turn of this Everruns turn once: each subagent
@@ -492,6 +514,24 @@ impl Run<'_> {
             self.checkpoint.provider_session_id.clone(),
             self.turn().provider_turn_id.clone(),
         ) else {
+            if self.runtime_policy_failure().is_some() {
+                let (_, components) = turn_cost(&self.model(), None, &self.hosted_counts(), false);
+                let event = self.generation_event(
+                    &serde_json::json!({"status":"failed"}),
+                    None,
+                    components,
+                    None,
+                    None,
+                );
+                self.complete(
+                    "usage:unattributed",
+                    ItemKind::Usage,
+                    "unattributed",
+                    Recorded::Unverifiable,
+                    vec![event],
+                )
+                .await?;
+            }
             return Ok(None);
         };
         let mut turn = match turn {
@@ -508,6 +548,7 @@ impl Run<'_> {
         }
         let model = self.model();
         let mut total = Some(TokenUsage::default());
+        let runtime_stop = self.runtime_policy_failure().is_some();
         for subagent in self.subagent_turns(&session_id, &own).await? {
             let (Some(sub_turn), Some(subagent_id)) = (
                 id_of(&subagent).map(str::to_string),
@@ -515,8 +556,14 @@ impl Run<'_> {
             ) else {
                 continue;
             };
-            if is_terminal_status(&subagent) {
-                let completed = subagent.get("status").and_then(Value::as_str) == Some("completed");
+            let subagent_id = if runtime_stop {
+                super::runtime_policy::safe_subagent_identity(&subagent_id)
+            } else {
+                subagent_id
+            };
+            if is_terminal_status(&subagent) || runtime_stop {
+                let completed = !runtime_stop
+                    && subagent.get("status").and_then(Value::as_str) == Some("completed");
                 self.close_subagent(&sub_turn, &subagent_id, completed)
                     .await?;
             }
@@ -601,7 +648,8 @@ impl Run<'_> {
             .get("status")
             .and_then(Value::as_str)
             .unwrap_or("cancelled");
-        let mut data = if status == "completed" {
+        let policy_failure = self.runtime_policy_failure();
+        let mut data = if status == "completed" && policy_failure.is_none() {
             LlmGenerationData::success(
                 Vec::new(),
                 tools,
@@ -615,11 +663,15 @@ impl Run<'_> {
             )
         } else {
             // A session or environment failure can leave the root turn open.
-            let failed = status == "failed" || self.session_failed;
-            let message = provider_turn
-                .pointer("/error/message")
-                .and_then(Value::as_str)
+            let failed = status == "failed" || self.session_failed || policy_failure.is_some();
+            let message = policy_failure
                 .map(str::to_string)
+                .or_else(|| {
+                    provider_turn
+                        .pointer("/error/message")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
                 .or_else(|| {
                     failed
                         .then(|| self.last_error.as_ref().map(|(_, message)| message.clone()))

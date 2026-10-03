@@ -57,6 +57,7 @@ fn test_proto_agent_includes_capability_ids() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        environments: None,
         tools: vec![],
         mcp_servers: Default::default(),
         status: everruns_platform::AgentStatus::Active,
@@ -129,6 +130,7 @@ fn test_proto_agent_without_capabilities() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        environments: None,
         tools: vec![],
         mcp_servers: Default::default(),
         status: everruns_platform::AgentStatus::Active,
@@ -345,6 +347,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
     let now = Utc::now();
     let session_id = everruns_provider::typed_id::SessionId::new();
     let session = everruns_platform::Session {
+        playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
         run_summary: None,
@@ -561,6 +564,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
     let now = Utc::now();
     let session_id = everruns_provider::typed_id::SessionId::new();
     let session = everruns_platform::Session {
+        playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
         run_summary: None,

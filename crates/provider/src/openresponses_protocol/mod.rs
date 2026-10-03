@@ -689,7 +689,7 @@ impl OpenResponsesProtocolChatDriver {
         let mut used_names = HashSet::new();
         for (category, tools) in namespaces {
             let name = allocate_tool_search_namespace_name(&category, &mut used_names);
-            let description = format!("Tools for {category}");
+            let description = tool_search_namespace_description(&category, &tools);
             result.push(ResponsesTool::Namespace {
                 r#type: "namespace".to_string(),
                 name,
@@ -708,6 +708,39 @@ impl OpenResponsesProtocolChatDriver {
 
         result
     }
+}
+
+/// Hosted search initially exposes only namespace names and descriptions.
+/// Include tool purposes so generic categories (e.g. Core) remain discoverable,
+/// while keeping full argument schemas deferred and the eager prompt bounded.
+fn tool_search_namespace_description(category: &str, tools: &[ResponsesTool]) -> String {
+    const MAX_DESCRIPTION_CHARS: usize = 4096;
+    const MAX_TOOL_NAME_CHARS: usize = 128;
+    const MAX_TOOL_PURPOSE_CHARS: usize = 160;
+    let category: String = category.chars().take(256).collect();
+    let mut description = format!("Tools for {category}: ");
+    let mut length = description.chars().count();
+    for tool in tools {
+        let ResponsesTool::Function {
+            name,
+            description: purpose,
+            ..
+        } = tool
+        else {
+            continue;
+        };
+        let name: String = name.chars().take(MAX_TOOL_NAME_CHARS).collect();
+        let purpose: String = purpose.chars().take(MAX_TOOL_PURPOSE_CHARS).collect();
+        let summary = format!("{name}: {purpose}; ");
+        let summary_length = summary.chars().count();
+        if length + summary_length > MAX_DESCRIPTION_CHARS {
+            break;
+        }
+        description.push_str(&summary);
+        length += summary_length;
+    }
+    description.truncate(description.trim_end_matches([';', ' ']).len());
+    description
 }
 
 /// Derive a provider-safe OpenAI tool-search namespace identifier from a

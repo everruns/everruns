@@ -162,6 +162,7 @@ impl CacheFixture {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    environments: None,
                     is_built_in: false,
                 },
             )
@@ -302,6 +303,7 @@ async fn create_persisted_session(
     .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,

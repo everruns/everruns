@@ -315,6 +315,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
+        .with_feature_flags(org.feature_flags.clone())
         .with_session_service(self.session_service.clone())
         .with_message_service(self.message_service.clone())
         .with_event_service(self.event_service.clone())

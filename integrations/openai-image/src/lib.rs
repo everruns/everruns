@@ -21,6 +21,8 @@
 
 mod image_capability;
 mod images;
+#[cfg(test)]
+mod test_egress;
 
 pub use image_capability::{
     CAPABILITY_PLUGINS, EditImageTool, GenerateImageTool, GptImageGenCapability,

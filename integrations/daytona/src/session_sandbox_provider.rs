@@ -920,12 +920,12 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         config: &SessionSandboxConfig,
         instance: &SessionSandboxInstance,
         path: &str,
-        content: &str,
+        content: &[u8],
     ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult> {
         let api_key = get_api_key(context).await?;
         let client = build_client(api_key, config);
         client
-            .file_upload(&instance.external_id, path, content.as_bytes())
+            .file_upload(&instance.external_id, path, content)
             .await
             .map_err(ToolExecutionResult::tool_error)?;
 
@@ -1236,6 +1236,7 @@ mod tests {
             provider: "daytona".to_string(),
             auto_start: true,
             idle_pause_after_seconds: 180,
+            idle_pause_enabled: true,
             provider_config: json!({
                 "recovery": { "enabled": true }
             }),

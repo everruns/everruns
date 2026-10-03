@@ -139,6 +139,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_provider::typ
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -148,6 +149,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_provider::typ
     let owner_principal_id = create_test_principal(backend, TEST_ORG_ID).await;
     backend
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,

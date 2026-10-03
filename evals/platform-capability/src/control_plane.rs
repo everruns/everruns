@@ -27,50 +27,50 @@ use serde_json::{Map, Value, json};
 
 /// The command surface, as the server generated it.
 const CATALOG: &str = include_str!("../catalog.json");
-/// Platform Chat v1: system prompt and the three platform tool schemas.
+/// Historical Platform Chat: system prompt and the three platform tool schemas.
+const LEGACY_HARNESS: &str = include_str!("../harness-legacy.json");
+/// Platform Chat: system prompt and the one `bash` tool schema.
 const HARNESS: &str = include_str!("../harness.json");
-/// Platform Chat v2: system prompt and the one `bash` tool schema.
-const HARNESS_V2: &str = include_str!("../harness-v2.json");
-/// Node help, rendered by the shipped tree. Discovery in v2 is `--help` and
+/// Node help, rendered by the shipped tree. Discovery in the shell surface is `--help` and
 /// almost nothing else, so hand-rolling it would grade the hand-rolled text.
 const HELP: &str = include_str!("../help.json");
 
 /// Which shipped harness an offline run reproduces.
 ///
 /// The A/B is exactly this: the same dataset, the same fake control plane and
-/// the same model, differing only in the surface the model is handed. v1 gets
-/// `discover`/`query`/`execute`; v2 gets one `bash` over a real interpreter in
+/// the same model, differing only in the surface the model is handed. The legacy surface gets
+/// `discover`/`query`/`execute`; the shell surface gets one `bash` over a real interpreter in
 /// which `everruns` is a builtin.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Harness {
+    LegacyPlatformChat,
     PlatformChat,
-    PlatformChatV2,
 }
 
 impl Harness {
-    /// Selected with `EVERRUNS_EVAL_HARNESS`; v1 stays the default, as it is
-    /// the surface that ships to every org.
+    /// Selected with `EVERRUNS_EVAL_HARNESS`; the canonical shell surface is
+    /// the default. `legacy` selects the historical three-tool baseline.
     pub fn from_env() -> Self {
         match std::env::var("EVERRUNS_EVAL_HARNESS")
             .unwrap_or_default()
             .trim()
         {
-            "platform-chat-v2" | "v2" => Self::PlatformChatV2,
+            "legacy" | "v1" => Self::LegacyPlatformChat,
             _ => Self::PlatformChat,
         }
     }
 
     pub fn name(self) -> &'static str {
         match self {
+            Self::LegacyPlatformChat => "platform-chat-legacy",
             Self::PlatformChat => "platform-chat",
-            Self::PlatformChatV2 => "platform-chat-v2",
         }
     }
 
     fn artifact(self) -> &'static str {
         match self {
+            Self::LegacyPlatformChat => LEGACY_HARNESS,
             Self::PlatformChat => HARNESS,
-            Self::PlatformChatV2 => HARNESS_V2,
         }
     }
 }
@@ -78,7 +78,7 @@ impl Harness {
 pub struct FakeControlPlane {
     catalog: Arc<Vec<Value>>,
     store: Arc<Mutex<Store>>,
-    /// Present only for v2, where the model's script is run rather than
+    /// Present only for the shell surface, where the model's script is run rather than
     /// approximated. One instance per case, so `cd`, variables and files
     /// persist across the turn's tool calls the way a session's shell does.
     shell: Option<tokio::sync::Mutex<bashkit::Bash>>,
@@ -123,8 +123,8 @@ pub fn tool_definitions(harness: Harness) -> Vec<Value> {
                 .iter()
                 .map(|tool| {
                     let name = tool["name"].as_str().unwrap_or_default();
-                    // v2's artifact carries the shipped description verbatim;
-                    // v1's tool descriptions are private consts, so `described`
+                    // the shell surface's artifact carries the shipped description verbatim;
+                    // the legacy surface's tool descriptions are private consts, so `described`
                     // restates their contract in one line.
                     let description = tool["description"]
                         .as_str()
@@ -155,8 +155,8 @@ impl FakeControlPlane {
             Arc::new(serde_json::from_str(CATALOG).expect("catalog.json parses"));
         let store = Arc::new(Mutex::new(Store::seeded()));
         let shell = match harness {
-            Harness::PlatformChat => None,
-            Harness::PlatformChatV2 => Some(tokio::sync::Mutex::new(build_shell(
+            Harness::LegacyPlatformChat => None,
+            Harness::PlatformChat => Some(tokio::sync::Mutex::new(build_shell(
                 catalog.clone(),
                 store.clone(),
             ))),
@@ -179,9 +179,9 @@ impl FakeControlPlane {
         }
     }
 
-    /// v2's only tool: hand the script to a real interpreter.
+    /// the shell surface's only tool: hand the script to a real interpreter.
     ///
-    /// Nothing here inspects the script. That is the point: v1's arm has to
+    /// Nothing here inspects the script. That is the point: the legacy surface's arm has to
     /// split statements itself and got loops wrong, while here `for`, `|`, `>`
     /// and `jq` are the shell's, so a failure is the model's or the contract's.
     async fn bash(&self, arguments: &Value) -> String {
@@ -323,7 +323,7 @@ impl FakeControlPlane {
 
 /// Run `everruns <args…>` and return its output and exit code.
 ///
-/// Shared by both arms: v1 reaches it through `query`/`execute`, v2 through the
+/// Shared by both arms: the legacy surface reaches it through `query`/`execute`, the shell surface through the
 /// shell builtin. One implementation is what makes the A/B a comparison of
 /// surfaces rather than of two different fakes.
 fn everruns(
@@ -433,7 +433,7 @@ fn node_help(words: &[String]) -> String {
 /// Whether a script invokes any operation the catalog marks as a mutation.
 ///
 /// Both arms are graded by one dataset, and that dataset names `query` and
-/// `execute`. v2 has a single tool for both, so what a `bash` call counts as is
+/// `execute`. The shell surface has a single tool for both, so what a `bash` call counts as is
 /// decided by what it runs: a script that only reads is that arm's `query`, and
 /// one that writes is its `execute`. Without this the A/B would compare a
 /// surface against a scorer written for the other surface.
@@ -503,7 +503,7 @@ impl bashkit::Builtin for EverrunsBuiltin {
         ctx: bashkit::BuiltinContext<'_>,
     ) -> bashkit::Result<bashkit::ExecResult> {
         // Mutations are the point of a chat that administers a platform, so the
-        // shell surface has no read-only gate; v1's `query`/`execute` split is
+        // shell surface has no read-only gate; the legacy surface's `query`/`execute` split is
         // a property of having two tools, not of the catalog.
         let (output, code) = everruns(&self.catalog, &self.store, ctx.args, false);
         Ok(if code == 0 {
@@ -520,7 +520,7 @@ impl bashkit::Builtin for EverrunsBuiltin {
     }
 }
 
-/// The v2 session shell: the product's namespace, with `everruns` in it.
+/// The canonical session shell: the product's namespace, with `everruns` in it.
 fn build_shell(catalog: Arc<Vec<Value>>, store: Arc<Mutex<Store>>) -> bashkit::Bash {
     let fs = bashkit::InMemoryFs::new();
     for dir in [
@@ -856,7 +856,7 @@ mod tests {
     use super::*;
 
     fn plane() -> FakeControlPlane {
-        FakeControlPlane::new(Harness::PlatformChat)
+        FakeControlPlane::new(Harness::LegacyPlatformChat)
     }
 
     #[tokio::test]
@@ -949,7 +949,7 @@ mod tests {
 
     /// The help is the tree's, not a local restatement: a hand-rolled list of
     /// nouns without descriptions is a different surface from the one that
-    /// ships, and in v2 `--help` is nearly the whole discovery story.
+    /// ships, and in the shell surface `--help` is nearly the whole discovery story.
     #[tokio::test]
     async fn help_is_the_shipped_rendering() {
         let root = plane()
@@ -1013,9 +1013,9 @@ mod tests {
     }
 }
 
-/// The v2 arm: one `bash` tool over a real interpreter.
+/// The canonical arm: one `bash` tool over a real interpreter.
 ///
-/// These are the cases v1's statement splitter got wrong or could not express
+/// These are the cases the legacy surface's statement splitter got wrong or could not express
 /// at all. They are the reason the A/B is worth running: if the shell arm can
 /// loop, pipe and keep a file, its failures are the model's and the contract's
 /// rather than the fake's.
@@ -1024,7 +1024,7 @@ mod shell_tests {
     use super::*;
 
     fn shell() -> FakeControlPlane {
-        FakeControlPlane::new(Harness::PlatformChatV2)
+        FakeControlPlane::new(Harness::PlatformChat)
     }
 
     #[test]
@@ -1039,8 +1039,8 @@ mod shell_tests {
     }
 
     #[tokio::test]
-    async fn v2_ships_one_tool_and_it_is_bash() {
-        let tools = tool_definitions(Harness::PlatformChatV2);
+    async fn canonical_surface_ships_one_tool_and_it_is_bash() {
+        let tools = tool_definitions(Harness::PlatformChat);
         let names: Vec<&str> = tools
             .iter()
             .filter_map(|t| t["function"]["name"].as_str())
@@ -1048,7 +1048,7 @@ mod shell_tests {
         assert_eq!(names, vec!["bash"]);
         // And the prompt it ships with does not send the model after tools it
         // no longer has.
-        let prompt = system_prompt(Harness::PlatformChatV2);
+        let prompt = system_prompt(Harness::PlatformChat);
         assert!(!prompt.contains("`discover`"), "{prompt}");
         assert!(!prompt.contains("`query`"), "{prompt}");
         assert!(!prompt.contains("`execute`"), "{prompt}");
@@ -1062,7 +1062,7 @@ mod shell_tests {
         assert!(out.contains("Triage"), "{out}");
     }
 
-    /// v1's splitter truncated at the first `|` and returned the command's own
+    /// the legacy surface's splitter truncated at the first `|` and returned the command's own
     /// JSON. Here the filter runs.
     #[tokio::test]
     async fn a_pipeline_runs_its_filter() {
@@ -1079,7 +1079,7 @@ mod shell_tests {
         );
     }
 
-    /// The defect that made v1's arm unfair: `for … do … done` was split into
+    /// The defect that made the legacy surface's arm unfair: `for … do … done` was split into
     /// words and the loop body never ran as a loop.
     #[tokio::test]
     async fn a_loop_runs_as_a_loop() {
@@ -1095,7 +1095,7 @@ mod shell_tests {
         );
     }
 
-    /// Redirection and a scratch file, which v1 has no filesystem for.
+    /// Redirection and a scratch file, which the legacy surface has no filesystem for.
     #[tokio::test]
     async fn output_survives_in_the_workspace_between_calls() {
         let plane = shell();
@@ -1186,7 +1186,7 @@ mod family_tests {
 
     #[tokio::test]
     async fn a_created_version_is_listed_by_its_own_command() {
-        let plane = FakeControlPlane::new(Harness::PlatformChat);
+        let plane = FakeControlPlane::new(Harness::LegacyPlatformChat);
         plane.call(
             "execute",
             &json!({ "commands": "create_agent_version --agent_id agent_01triage --req {\"summary\":\"before\"}" }),

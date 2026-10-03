@@ -129,7 +129,25 @@ pub fn merge_capabilities(
     base: &[AgentCapabilityConfig],
     overlay: &[AgentCapabilityConfig],
 ) -> Vec<AgentCapabilityConfig> {
-    let mut merged = base.to_vec();
+    // A single execution environment selected by a more specific layer
+    // displaces every legacy compute attachment inherited from broader layers.
+    // This lets a Session profile choose Daytona over a Harness's Bashkit (or
+    // the reverse) without creating two competing filesystems/tool surfaces.
+    // Multiple compute refs in one legacy layer are left untouched; profile
+    // validation always emits exactly one.
+    let selected_environment = overlay
+        .iter()
+        .filter(|capability| is_execution_environment_capability(capability.capability_id()))
+        .count()
+        == 1;
+    let mut merged = if selected_environment {
+        base.iter()
+            .filter(|capability| !is_execution_environment_capability(capability.capability_id()))
+            .cloned()
+            .collect()
+    } else {
+        base.to_vec()
+    };
 
     for overlay_cap in overlay {
         if let Some(existing) = merged
@@ -143,6 +161,23 @@ pub fn merge_capabilities(
     }
 
     merged
+}
+
+/// Compute attachments superseded by the first-class Environment profile.
+/// Provider-specific IDs remain here only for migration compatibility; new
+/// managed profiles resolve to `session_sandbox` plus a provider id.
+fn is_execution_environment_capability(id: &str) -> bool {
+    matches!(
+        id,
+        "host_shell"
+            | "bashkit_shell"
+            | "virtual_bash"
+            | "container_sandbox"
+            | "docker_container"
+            | "session_sandbox"
+            | "daytona"
+            | "e2b"
+    )
 }
 
 /// Merge initial files: overlay overrides base by normalized path (last wins).
@@ -366,6 +401,40 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(result.capabilities, vec![retained, replacement, added]);
+    }
+
+    #[test]
+    fn one_selected_environment_displaces_inherited_compute() {
+        let result = merge_capabilities(
+            &[
+                AgentCapabilityConfig::new("current_time"),
+                AgentCapabilityConfig::new("bashkit_shell"),
+                AgentCapabilityConfig::new("daytona"),
+            ],
+            &[AgentCapabilityConfig::with_config(
+                "session_sandbox",
+                json!({"provider":"daytona"}),
+            )],
+        );
+        assert_eq!(
+            result
+                .iter()
+                .map(AgentCapabilityConfig::capability_id)
+                .collect::<Vec<_>>(),
+            vec!["current_time", "session_sandbox"]
+        );
+    }
+
+    #[test]
+    fn legacy_multi_compute_layer_is_not_silently_rewritten() {
+        let result = merge_capabilities(
+            &[AgentCapabilityConfig::new("current_time")],
+            &[
+                AgentCapabilityConfig::new("bashkit_shell"),
+                AgentCapabilityConfig::new("daytona"),
+            ],
+        );
+        assert_eq!(result.len(), 3);
     }
 
     #[test]

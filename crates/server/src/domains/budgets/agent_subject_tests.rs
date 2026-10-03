@@ -29,6 +29,7 @@ async fn create_session_with_owner(
     resolved_owner_user_id: Option<Uuid>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id,
@@ -89,6 +90,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> AgentRow
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            environments: None,
             is_built_in: false,
         },
     )

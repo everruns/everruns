@@ -66,6 +66,7 @@ impl SessionService {
         // isolated workspace is forced (`workspace_id: None`); never a subagent
         // (`parent_session_id: None`).
         let req = CreateSessionRequest {
+            playground_user_id: None,
             source: None,
             harness_id: Some(parent.harness_id),
             harness_name: None,
@@ -78,6 +79,7 @@ impl SessionService {
             tags: overrides.tags.unwrap_or(parent.tags),
             model_id: overrides.model_id.or(parent.model_id),
             capabilities: parent.capabilities,
+            environment: None,
             tools: parent.tools,
             mcp_servers: parent.mcp_servers,
             system_prompt: overrides.system_prompt.or(parent.system_prompt),

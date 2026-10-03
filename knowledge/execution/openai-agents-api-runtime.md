@@ -44,7 +44,7 @@ A provider session keeps the agent it was created with. The checkpoint records a
 
 ## Event projection
 
-The [durable driver](../../crates/host/src/openai_agents_api/durable.rs) projects provider items, not stream events, into the record. Live events drive progress; saved items are authoritative:
+The [durable driver](../../crates/host/src/openai_agents_api/durable.rs) projects provider items, not stream events, into the record. Live events drive progress; saved items are authoritative. The table describes the permissive custom-host projection. In production, the runtime classifier runs first: only accepted empty inventory calls retain their known MCP identity; rejected provider calls use generic failed hosted markers with fixed summaries and sanitized identity, and subagents are refused and accounted with sanitized labels:
 
 | Provider item | Everruns record |
 |---|---|
@@ -61,7 +61,7 @@ The [durable driver](../../crates/host/src/openai_agents_api/durable.rs) project
 
 Only client functions enter the Act pipeline and are recorded as assistant tool-call messages followed by results, the same transcript shape the native runtime writes. Provider MCP calls ran inside the managed harness, including its own inventory tools even when no MCP server was configured. Their hosted lifecycle records preserve identity, completion counts, and unknown-price accounting without implying Everruns executed or approved them. The backend emits `reason.started` and `reason.completed` around the remote loop. Every projected event is a type existing SSE, UI, and exporter consumers already render; there is no provider-specific event.
 
-Terminal attribution is strict. A turn terminal event ends the Everruns turn only when it names the root provider turn this Everruns turn adopted: a subagent's terminal closes only its `subagent` record, and a turn terminal that names no turn is ignored until reconciliation reads the turn resource. A subagent's own messages and calls never enter the root transcript, and its required actions are not answered; lifting the subagent refusal needs that mapping and its policy contract too. Unknown progress events and item kinds are ignored; an unknown `*.failed` or `*.cancelled` event fails closed.
+Terminal attribution is strict. A turn terminal event ends the Everruns turn only when it names the root provider turn this Everruns turn adopted: a subagent's terminal closes only its `subagent` record, and a turn terminal that names no turn is ignored until reconciliation reads the turn resource. A subagent's own messages and calls never enter the root transcript, and its required actions are not answered; lifting the subagent refusal needs that mapping and its policy contract too. The permissive projection ignores unknown progress events and item kinds; production rejects unknown item kinds before projection. An unknown `*.failed` or `*.cancelled` event fails closed.
 
 OpenAI's `input_tokens` includes cached tokens. Everruns keeps disjoint buckets, so the adapter subtracts `input_tokens_details.cached_tokens`. Usage is read from the turn resource after completion, because it is still null on `turn.completed`; null usage stays unknown, never zero.
 
@@ -85,6 +85,10 @@ A session with a checkpoint cannot be forked; see [Portability](#portability).
 ## Policy at the tool and output boundaries
 
 The remote loop crosses Everruns policy at two boundaries: every function call the provider requests, and every assistant message it produces (EVE-1124). The [backend](../../crates/host/src/openai_agents_api/backend.rs) supplies the policy; the [durable driver](../../crates/host/src/openai_agents_api/durable.rs) makes each decision durable.
+
+**Observed provider work.** The production backend enables the driver's [runtime policy](../../crates/host/src/openai_agents_api/durable/runtime_policy.rs). Every strict run validates its configuration before acquiring a checkpoint, including reused sessions. The managed harness has emitted its own MCP discovery calls even with no configured MCP servers and `environment: none`. Only its two known `codex` inventory listings are tolerated, with explicit empty-object arguments and a completed, strictly empty inventory. Nonempty inventories, malformed results, errors, unknown calls, hosted commands, and provider subagent work save a fixed-text policy failure and request cancellation. These checks cover live events, saved snapshots before client-function execution, and final reconciliation; a pending listing absent from the final snapshot cannot complete the turn. Client actions must belong to this root turn, name an offered function, and contain no subagent provenance. Earlier unrelated roots are ignored only when their checkpoint attribution is known.
+
+This is observation followed by refusal, not provider-side interception. The provider may already have performed work before emitting an item, and cancellation cannot undo a side effect. An empty listing proves only that the returned inventory was empty; it does not prove the harness has no other ambient capabilities. The raw driver remains permissive for explicitly chosen custom-host and credentialed protocol-conformance use; production always enables the strict policy.
 
 **Function calls.** The calls of one required-action snapshot run as one batch through `execute_act_activity`: permission checks, the `tool_approval` gate, pre- and post-tool hooks (including `guardrails` checks with the `jev` engine), network access, the outbound rate limit, the durable per-call claim, tool narration, and the canonical `tool.started` and `tool.completed`. Before each batch the backend checks the session's budgets; a paused or exhausted budget fails the calls and stops the turn with the canonical budget message. An archived agent or harness stops it the same way.
 
@@ -167,6 +171,8 @@ Confirmed against the live API on 2026-10-01: sessions accept and return `metada
 
 Confirmed against the live API on 2026-10-02: session-create `input` accepts an array of messages, but only with role `user` (an `assistant` message returns `invalid_value` on `input[n].role`, and a `function_call` item returns `missing_required_parameter` for its `role`); `{"type": "message", "role": "user", "content": [{"type": "input_text", "text": ...}]}` works, and the provider folds several user messages into one saved user item with one `input_text` part each, which the driver does not project. A seeded session answered from the transcript in the same turn.
 
+Confirmed against the live API on 2026-10-03: with no offered tools, no MCP connection, and `environment: none`, the harness emits `mcp_call` items for its own two `codex` inventory helpers. Their completed MCP text envelopes contained only empty resources or resource templates. This demonstrates the observed result, not the provider's internal permissions or absence of possible side effects. No suppression setting for these helpers was verified in the [documented configuration](https://developers.openai.com/api/docs/guides/agents-api/configuration); a probe of `agent.tool_choice: "none"` was rejected with `unknown_parameter`, so the backend does not send it. The runtime accepts only the verified empty inventory shape and rejects other observed provider work; the provider trust limit is described in [Policy at the tool and output boundaries](#policy-at-the-tool-and-output-boundaries).
+
 Version-sensitive: exact event and item payloads, usage field names, built-in tool inventory, import/export completeness, environment policy fields, webhook coverage, and whether tool-result submissions honor `Idempotency-Key` as input events do.
 
 ## Live validation
@@ -177,13 +183,14 @@ What the live run taught, beyond the documentation: the preamble and the final a
 
 The credentialed conformance test (`live_conformance_one_client_function_and_one_allowed_mcp_tool`, ignored by default, needs `OPENAI_API_KEY`) runs the durable driver with one client function and one MCP server restricted by `allowed_tools`. On 2026-10-01 it reached the API, created a session, and projected the provider's `usage_limit_exceeded` failure, because the organization had no credits left (the Responses API returned `credit_balance_exhausted` at the same time). On 2026-10-02, with a funded key, it completed: one `lookup_customer` call, one allowed MCP search, and a final answer. `live_seeded_session_recalls_the_earlier_conversation` seeds a session with an earlier exchange (a code word and a tool result) and checks the answer recalls both; it passed the same day. Both runs showed the managed harness calling its own `codex` MCP resource listings (`list_mcp_resources`, `list_mcp_resource_templates`) with no MCP server configured and `environment: none`; they are provider `mcp_call` items projected as `tool.hosted_call` records.
 
+The production-policy conformance test (`live_runtime_policy_accepts_only_empty_codex_inventory`) uses an empty tool list and no environment, enables the same strict driver policy as the backend, and requires both empty inventory calls to complete visibly without invoking a local function or creating an Act record. The sanitized captured stream is replayed independently in deterministic tests. On 2026-10-03 the credentialed strict-policy test passed against OpenAI: both inventories completed, no local function executed, and no Act record was created. The canonical PostgreSQL-backed API/worker stack passed the same day with the strict backend: the persisted event endpoint returned both hosted lifecycles, a completed turn with two tool calls, and no Act starts or results. Actual health and UI endpoints passed; the smoke session was deleted through the normal cleanup path.
+
 ## Go / no-go
 
 Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a default or as a replacement for the native runtime. Durable orchestration, policy at the tool and output boundaries, the event, usage, and cost projection, and the session lifecycle are in place. Whether the provider keeps a required action open for as long as an approval may take (15 minutes by default) is unverified against the live API; a provider timeout fails the turn with `tool_action_expired`.
 
 ## Follow-up issues
 
-* The managed harness's own `codex` MCP resource-listing calls (observed live on 2026-10-02) run outside Everruns' tool pipeline; confirm what they can reach and whether the configuration can turn them off.
 * An uncertain create whose Everruns session is deleted before the next turn adopts it leaves that provider session to OpenAI's retention.
 
 ## References

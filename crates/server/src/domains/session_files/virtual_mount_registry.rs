@@ -38,15 +38,14 @@ impl VirtualMountRegistry {
         tree: Arc<VirtualFileTree>,
         capability_id: String,
     ) {
-        self.mounts
-            .write()
-            .entry(session_id)
-            .or_default()
-            .push(RegisteredVirtualMount {
-                mount_path,
-                tree,
-                capability_id,
-            });
+        let mut mounts = self.mounts.write();
+        let session_mounts = mounts.entry(session_id).or_default();
+        session_mounts.retain(|mount| mount.mount_path != mount_path);
+        session_mounts.push(RegisteredVirtualMount {
+            mount_path,
+            tree,
+            capability_id,
+        });
     }
 
     /// Remove all virtual mounts for a session.

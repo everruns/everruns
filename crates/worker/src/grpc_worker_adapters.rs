@@ -620,6 +620,14 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn sandbox_persistence_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
+        Some(Arc::new(
+            crate::grpc_sandbox_persistence::GrpcSandboxPersistenceStore::new(self.client.clone()),
+        ))
+    }
+
     fn payment_authority(
         &self,
         org_id: i64,

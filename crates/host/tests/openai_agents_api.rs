@@ -870,3 +870,79 @@ async fn live_seeded_session_recalls_the_earlier_conversation() {
     );
     ledger.assert_each_record_once();
 }
+
+/// Production-policy conformance: no offered tools or provider environment,
+/// but the managed harness may still run its own empty inventory helpers.
+#[tokio::test]
+#[ignore = "calls the paid OpenAI Agents API; needs OPENAI_API_KEY"]
+async fn live_runtime_policy_accepts_only_empty_codex_inventory() {
+    let api_key =
+        std::env::var("OPENAI_API_KEY").expect("credentialed conformance requires OPENAI_API_KEY");
+    let mut req = request(
+        1,
+        "Call both codex.list_mcp_resources and codex.list_mcp_resource_templates with empty arguments, then report whether each inventory is empty. Do not call any other tool or delegate work.",
+    );
+    req.session_id = SessionId::new();
+    let runtime_agent = RuntimeAgent::new(
+        "Report the two MCP inventories using only the named inventory helpers.",
+        "gpt-6-astra",
+    );
+    req.config = build_session_config(&runtime_agent, "", None).unwrap();
+    req.tools.clear();
+    req.config.ensure_enforceable().unwrap();
+    let ledger = Arc::new(TestLedger::default());
+    let executor = Arc::new(LiveExecutor {
+        ledger: ledger.clone(),
+        calls: AtomicUsize::new(0),
+    });
+    let client = AgentsApiClient::new(api_key);
+    let store = Arc::new(InMemoryAgentsApiStore::new());
+    let driver = AgentsApiTurnDriver::new(
+        client.clone(),
+        store.clone(),
+        ledger.clone(),
+        executor.clone(),
+    )
+    .with_runtime_policy();
+    let outcome = tokio::time::timeout(Duration::from_secs(240), driver.run(&req)).await;
+    // Clean up on both a policy failure and a conformance assertion failure.
+    if let Some(provider_session) = store
+        .snapshot(req.session_id)
+        .and_then(|checkpoint| checkpoint.provider_session_id)
+    {
+        client.delete_session(&provider_session).await.unwrap();
+    }
+    let outcome = outcome
+        .expect("live turn finished within four minutes")
+        .expect("live turn reached a terminal state");
+    assert!(
+        matches!(&outcome, AgentsApiTurnOutcome::Completed { final_text, .. } if !final_text.is_empty()),
+        "{outcome:?}"
+    );
+    assert_eq!(executor.calls.load(Ordering::SeqCst), 0);
+    assert!(ledger.of_type("tool.started").is_empty());
+    assert!(ledger.of_type("tool.completed").is_empty());
+    let hosted = ledger.of_type("tool.hosted_call");
+    for name in [
+        "mcp_codex__list_mcp_resources",
+        "mcp_codex__list_mcp_resource_templates",
+    ] {
+        assert!(
+            hosted
+                .iter()
+                .any(|event| event["tool_name"] == name && event["status"] == "completed"),
+            "missing completed inventory: {name}"
+        );
+    }
+    assert!(hosted.iter().all(|event| {
+        matches!(
+            event["tool_name"].as_str(),
+            Some("mcp_codex__list_mcp_resources" | "mcp_codex__list_mcp_resource_templates")
+        )
+    }));
+    assert!(matches!(
+        outcome,
+        AgentsApiTurnOutcome::Completed { tool_calls: 2, .. }
+    ));
+    ledger.assert_each_record_once();
+}

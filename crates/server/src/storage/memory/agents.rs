@@ -44,6 +44,7 @@ impl InMemoryDatabase {
             network_access: input.network_access,
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
+            environments: input.environments,
             status: "active".to_string(),
             exposures_suspended: false,
             is_built_in: input.is_built_in,
@@ -136,6 +137,7 @@ impl InMemoryDatabase {
             network_access: input.network_access,
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
+            environments: input.environments,
             status: "active".to_string(),
             exposures_suspended: false,
             is_built_in: input.is_built_in,
@@ -353,6 +355,9 @@ impl InMemoryDatabase {
             if let Some(parallel_tool_calls) = input.parallel_tool_calls {
                 agent.parallel_tool_calls = parallel_tool_calls;
             }
+            if let Some(environments) = input.environments {
+                agent.environments = environments;
+            }
             agent.updated_at = Self::now();
             return Ok(Some(agent.clone()));
         }
@@ -449,6 +454,7 @@ impl InMemoryDatabase {
             agent.mcp_servers = input.mcp_servers;
             agent.max_iterations = input.max_iterations;
             agent.parallel_tool_calls = input.parallel_tool_calls;
+            agent.environments = input.environments;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();
             Ok((agent.clone(), false))
@@ -481,6 +487,7 @@ impl InMemoryDatabase {
                 network_access: input.network_access,
                 max_iterations: input.max_iterations,
                 parallel_tool_calls: input.parallel_tool_calls,
+                environments: input.environments,
                 status: "active".to_string(),
                 exposures_suspended: false,
                 is_built_in: input.is_built_in,
@@ -530,6 +537,7 @@ impl InMemoryDatabase {
             agent.network_access = input.network_access;
             agent.max_iterations = input.max_iterations;
             agent.parallel_tool_calls = input.parallel_tool_calls;
+            agent.environments = input.environments;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();
             Ok((agent.clone(), false))
@@ -562,6 +570,7 @@ impl InMemoryDatabase {
                 network_access: input.network_access,
                 max_iterations: input.max_iterations,
                 parallel_tool_calls: input.parallel_tool_calls,
+                environments: input.environments,
                 status: "active".to_string(),
                 exposures_suspended: false,
                 is_built_in: input.is_built_in,

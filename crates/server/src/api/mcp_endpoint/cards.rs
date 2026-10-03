@@ -437,6 +437,7 @@ mod tests {
             root_agent_id: None,
             tags: vec!["faq".into(), "tier-1".into()],
             capabilities: vec![],
+            environments: None,
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
