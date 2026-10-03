@@ -101,6 +101,14 @@ export default defineConfig({
     starlight({
       expressiveCode: {
         themes: ["github-light", "github-dark"],
+        // Wrap long lines instead of scrolling sideways; wrapped lines keep
+        // their indentation. Plain-text blocks hold ASCII trees and tables,
+        // which wrapping would break, so they keep horizontal scroll.
+        defaultProps: {
+          wrap: true,
+          preserveIndent: true,
+          overridesByLang: { "text,txt,plaintext,ansi": { wrap: false } },
+        },
       },
       title: "Everruns",
       description:
