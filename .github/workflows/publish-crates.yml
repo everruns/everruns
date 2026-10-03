@@ -32,6 +32,13 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # A dropped connection to the crates.io index halts the whole cascade
+  # (v0.34.2 lost two runs to curl SSL_ERROR_SYSCALL and an HTTP/2 framing
+  # error). Retry harder, and use HTTP/1.1, where those framing errors cannot
+  # happen; a publish fetches few enough index entries that multiplexing buys
+  # nothing here.
+  CARGO_NET_RETRY: 10
+  CARGO_HTTP_MULTIPLEXING: "false"
 
 jobs:
   publish:
