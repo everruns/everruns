@@ -63,7 +63,7 @@ import {
   getCompletedTurnDurationsByEvent,
   getCompletedTurnDurationsByTurn,
 } from "@/components/chat/turn-delimiter";
-import { TurnWorkLog } from "@/components/chat/turn-work-log";
+import { TurnWorkLog, WorkLogEntries } from "@/components/chat/turn-work-log";
 import { RunCards } from "@/components/chat/run-card";
 import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
@@ -539,7 +539,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         errorCount={countWorkLogErrors(workEvents) + extraErrorCount}
         attention={attentionCards.length > 0 ? attentionCards : null}
       >
-        {renderBody(isActive)}
+        {() => renderBody(isActive)}
       </TurnWorkLog>
     );
   };
@@ -655,9 +655,11 @@ export const ChatMessageList = memo(function ChatMessageList({
               const group = workLogEventsByTurnId.get(turnId) ?? [];
               if (group[0]?.id !== event.id) return null;
               return renderWorkLog(event, group, (isActive) => (
-                <div className="space-y-3">
-                  {group.map((groupEvent) => renderWorkLogEventContent(groupEvent, !isActive))}
-                </div>
+                <WorkLogEntries
+                  entries={group
+                    .map((groupEvent) => renderWorkLogEventContent(groupEvent, !isActive))
+                    .filter(Boolean)}
+                />
               ));
             }
 
