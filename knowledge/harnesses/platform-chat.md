@@ -28,7 +28,9 @@ The earlier `discover` / `query` / `execute` split forced the model to reason
 about tool selection without providing a permission boundary. Authorization
 already belongs to command execution. The shell uses that same command
 execution path and its existing policy checks; a different spelling grants
-no additional authority. Help is progressively disclosed by CLI node and leaf.
+no additional authority. Help is progressively disclosed by CLI node and leaf. Tool metadata and previews
+honor the same configured shell surface as execution, so the retired three-tool
+surface is not advertised alongside the shell.
 
 The platform CLI is installed from the session's effective tool registry.
 A harness withholding platform capability also withholds the command.
