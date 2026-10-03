@@ -42,11 +42,13 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   saves on its own. The old `/agents/{id}/edit` route redirects to `?mode=edit`.
 - **Editable versus read-only is visible at a glance.** Editable values wear bordered controls;
   read-only facts, and every value on an archived agent, are plain muted text.
-- **One tab row:** Agent, Preview, Integrations, Stats, Sessions. MCP servers and Credentials are
-  configuration, so they are More rows; their sheets keep saving immediately as their own
-  resources. Triggers stay under Integrations (EVE-1009). Version history and archive/delete live
-  in the header overflow menu, replacing the danger-zone card. Old `?tab=mcp`,
-  `?tab=credentials`, and `?tab=versions` links open the matching sheet.
+- **One tab row:** Agent, Preview, Integrations, Stats, Sessions. The selected tab is part of
+  the address (`?tab=`), so a refresh or a shared link reopens it; the Agent tab omits the
+  parameter and `/agents/{id}` stays the default. MCP servers and Credentials are configuration,
+  so they are More rows; their sheets keep saving immediately as their own resources. Triggers
+  stay under Integrations (EVE-1009). Version history and archive/delete live in the header
+  overflow menu, replacing the danger-zone card. Old `?tab=mcp`, `?tab=credentials`, and
+  `?tab=versions` links open the matching sheet.
 - **Checks sit next to what they check.** In edit mode prompt findings render under the prompt
   editor; the behavioral health check is a More row.
 - **Button tiers.** Gold is only **Test chat**. It creates an interactive chat thread
