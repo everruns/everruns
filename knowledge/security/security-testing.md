@@ -50,7 +50,7 @@ and test there and reference the threat ID it guards.
 
 `.deepsec/` holds a [deepsec](https://www.npmjs.com/package/deepsec) workspace
 configured for the `everruns` project (priority paths: `apps/ui/`,
-`crates/server/`, `crates/core/`, `crates/worker/`, `crates/host/`,
+`crates/server/`, `crates/core/`, `crates/worker/`, `crates/durable-engine/`,
 `integrations/`). It pairs a free regex `scan` with an AI `process` stage that
 investigates candidates against the project context in
 `.deepsec/data/everruns/INFO.md`. The checked-in config uses Codex and a local

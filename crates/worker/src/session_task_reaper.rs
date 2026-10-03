@@ -23,11 +23,11 @@
 //         on the already-bumped attempt (no further increment).
 //   4. Otherwise: fail as orphaned (existing path).
 
-use anyhow::Result;
-use everruns_core::session_task::{
+use crate::core::session_task::{
     SessionTaskState, SessionTaskUpdate, TaskError, find_task_executor,
 };
-use everruns_core::tool_context::ToolContext;
+use crate::core::tool_context::ToolContext;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -212,13 +212,13 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
 /// their own.
 async fn reconcile_orphans<F, C>(
     candidates: Vec<(everruns_contracts::typed_id::SessionId, String)>,
-    registry: &std::sync::Arc<dyn everruns_core::session_task::SessionTaskRegistry>,
+    registry: &std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry>,
     input: &SessionTaskReaperInput,
     executor_for: F,
     make_reattach_ctx: C,
 ) -> ReapSummary
 where
-    F: Fn(&str) -> Option<std::sync::Arc<dyn everruns_core::session_task::TaskExecutor>>,
+    F: Fn(&str) -> Option<std::sync::Arc<dyn crate::core::session_task::TaskExecutor>>,
     C: Fn(everruns_contracts::typed_id::SessionId) -> ToolContext,
 {
     let mut summary = ReapSummary {
@@ -522,14 +522,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use everruns_contracts::error::Result as CoreResult;
-    use everruns_contracts::typed_id::SessionId;
-    use everruns_core::session_task::{
+    use crate::core::session_task::{
         CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
         SessionTaskState, TASK_KIND_SUBAGENT, TaskExecutor, TaskLinks, TaskMessage, TaskWakePolicy,
         apply_task_update, new_session_task,
     };
+    use async_trait::async_trait;
+    use everruns_contracts::error::Result as CoreResult;
+    use everruns_contracts::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -636,7 +636,7 @@ mod tests {
         async fn start(
             &self,
             task: &SessionTask,
-            context: &everruns_core::tool_context::ToolContext,
+            context: &crate::core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             assert!(
                 context.file_store.is_some(),
@@ -649,7 +649,7 @@ mod tests {
         async fn cancel(
             &self,
             _task: &SessionTask,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &crate::core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             Ok(())
         }
@@ -666,7 +666,7 @@ mod tests {
         async fn cancel(
             &self,
             _task: &SessionTask,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &crate::core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             Ok(())
         }
@@ -687,7 +687,7 @@ mod tests {
         async fn start(
             &self,
             _task: &SessionTask,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &crate::core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             Err(everruns_contracts::error::AgentLoopError::tool(
                 "simulated start failure",
@@ -697,7 +697,7 @@ mod tests {
         async fn cancel(
             &self,
             _task: &SessionTask,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &crate::core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             Ok(())
         }
@@ -708,7 +708,7 @@ mod tests {
     struct MockStorageStore;
 
     #[async_trait]
-    impl everruns_core::session_services::SessionStorageStore for MockStorageStore {
+    impl crate::core::session_services::SessionStorageStore for MockStorageStore {
         async fn set_value(
             &self,
             _session_id: SessionId,
@@ -733,7 +733,7 @@ mod tests {
         async fn list_keys(
             &self,
             _session_id: SessionId,
-        ) -> CoreResult<Vec<everruns_core::session_services::KeyInfo>> {
+        ) -> CoreResult<Vec<crate::core::session_services::KeyInfo>> {
             Ok(vec![])
         }
 
@@ -761,7 +761,7 @@ mod tests {
         async fn list_secrets(
             &self,
             _session_id: SessionId,
-        ) -> CoreResult<Vec<everruns_core::session_services::SecretInfo>> {
+        ) -> CoreResult<Vec<crate::core::session_services::SecretInfo>> {
             Ok(vec![])
         }
     }
@@ -770,12 +770,12 @@ mod tests {
     struct MockFileStore;
 
     #[async_trait]
-    impl everruns_core::session_files::SessionFileSystem for MockFileStore {
+    impl crate::core::session_files::SessionFileSystem for MockFileStore {
         async fn read_file(
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
+        ) -> CoreResult<Option<crate::core::session_file::SessionFile>> {
             Ok(None)
         }
 
@@ -785,13 +785,13 @@ mod tests {
             path: &str,
             content: &str,
             encoding: &str,
-        ) -> CoreResult<everruns_core::session_file::SessionFile> {
+        ) -> CoreResult<crate::core::session_file::SessionFile> {
             let now = chrono::Utc::now();
-            Ok(everruns_core::session_file::SessionFile {
+            Ok(crate::core::session_file::SessionFile {
                 id: uuid::Uuid::new_v4(),
                 session_id: _session_id.uuid(),
                 path: path.to_string(),
-                name: everruns_core::session_file::FileInfo::name_from_path(path),
+                name: crate::core::session_file::FileInfo::name_from_path(path),
                 content: Some(content.to_string()),
                 encoding: encoding.to_string(),
                 is_directory: false,
@@ -815,7 +815,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
+        ) -> CoreResult<Vec<crate::core::session_file::FileInfo>> {
             Ok(vec![])
         }
 
@@ -823,7 +823,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
+        ) -> CoreResult<Option<crate::core::session_file::FileStat>> {
             Ok(None)
         }
 
@@ -832,7 +832,7 @@ mod tests {
             _session_id: SessionId,
             _pattern: &str,
             _path_pattern: Option<&str>,
-        ) -> CoreResult<Vec<everruns_core::session_file::GrepMatch>> {
+        ) -> CoreResult<Vec<crate::core::session_file::GrepMatch>> {
             Ok(vec![])
         }
 
@@ -840,13 +840,13 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> CoreResult<everruns_core::session_file::FileInfo> {
+        ) -> CoreResult<crate::core::session_file::FileInfo> {
             let now = chrono::Utc::now();
-            Ok(everruns_core::session_file::FileInfo {
+            Ok(crate::core::session_file::FileInfo {
                 id: uuid::Uuid::new_v4(),
                 session_id: session_id.uuid(),
                 path: path.to_string(),
-                name: everruns_core::session_file::FileInfo::name_from_path(path),
+                name: crate::core::session_file::FileInfo::name_from_path(path),
                 is_directory: true,
                 is_readonly: false,
                 size_bytes: 0,
@@ -871,9 +871,9 @@ mod tests {
         // executor_for(kind) → None means "not found / non-reattachable"
         executor_for: impl Fn(&str) -> Option<Arc<dyn TaskExecutor>>,
     ) -> serde_json::Value {
-        let storage: Arc<dyn everruns_core::session_services::SessionStorageStore> =
+        let storage: Arc<dyn crate::core::session_services::SessionStorageStore> =
             Arc::new(MockStorageStore);
-        let file_store: Arc<dyn everruns_core::session_files::SessionFileSystem> =
+        let file_store: Arc<dyn crate::core::session_files::SessionFileSystem> =
             Arc::new(MockFileStore);
         let registry_dyn: Arc<dyn SessionTaskRegistry> = registry;
 

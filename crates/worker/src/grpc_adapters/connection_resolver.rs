@@ -1,7 +1,7 @@
+use crate::core::connection_services::UserConnectionResolver;
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::connection_services::UserConnectionResolver;
 use everruns_internal_protocol::proto;
 use uuid::Uuid;
 
@@ -45,7 +45,7 @@ impl UserConnectionResolver for GrpcAdapter {
         &self,
         session_id: SessionId,
         provider: &str,
-        acts_as: everruns_core::McpServerActsAs,
+        acts_as: crate::core::McpServerActsAs,
     ) -> Result<Option<String>> {
         let mut client = self.client.inner.lock().await;
         let response = client
@@ -86,7 +86,7 @@ impl UserConnectionResolver for GrpcAdapter {
         &self,
         session_id: SessionId,
         provider: &str,
-        acts_as: everruns_core::McpServerActsAs,
+        acts_as: crate::core::McpServerActsAs,
         rejected_credential_fingerprint: &str,
     ) -> Result<()> {
         let mut client = self.client.inner.lock().await;
@@ -201,7 +201,7 @@ mod tests {
             .get_mcp_connection_token(
                 SessionId::new(),
                 "mcp_oauth_example",
-                everruns_core::McpServerActsAs::User,
+                crate::core::McpServerActsAs::User,
             )
             .await
             .unwrap_err();

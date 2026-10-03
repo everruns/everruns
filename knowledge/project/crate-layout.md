@@ -90,8 +90,14 @@ depend on the server. Negative fixtures prove each boundary.
 The server owns the control-plane database. `everruns-durable` owns its workflow state
 (task queue, journal, timers) with its own schema and migrate. They may share one
 Postgres instance, but neither reads the other's tables except through the other's API.
-The worker reaches durable's store only through `everruns-durable-engine`. A new guard
-fails when any other crate takes a database driver as a normal dependency.
+The worker reaches durable's store only through `everruns-durable-engine`.
+[`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh)
+rejects normal and build dependencies on database drivers outside these two owners,
+including optional and renamed edges. Contracts' optional typed-id codecs are the
+only exception and cannot construct a connection. Embedded hosts keep their own
+schemas and shared query callbacks, but open SQLite handles through durable's API.
+[`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) also keeps
+durable generic and prevents worker dependencies from bypassing the private entry.
 
 ### Core stays wasm-safe by default
 
@@ -148,7 +154,8 @@ published name can land in any release.
    make the kernel guard feature-aware.
 6. **Introduce `everruns-durable-engine`.** It carries the worker's turn-on-workflow
    wiring, and the worker depends on it instead of core and durable directly. Add the
-   database guard.
+   database guard. Delete the five core shims only after their final platform
+   release is fully published; canonical feature modules retain every capability.
 7. **Migrate yolop in one batch** onto `everruns-contracts`, `everruns-core`, and
    `everruns-capabilities`. Yolop is pinned to 0.33.0 and moves once, not per step.
 

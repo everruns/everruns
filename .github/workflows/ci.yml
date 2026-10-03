@@ -178,6 +178,9 @@ jobs:
               - 'scripts/lib/core-feature-modules.sh'
               - 'scripts/test-core-feature-modules.sh'
               - 'scripts/lib/check-durable-isolation.sh'
+              - 'scripts/lib/check-database-driver-isolation.sh'
+              - 'scripts/lib/check-database-driver-isolation.py'
+              - 'scripts/test-database-driver-isolation.py'
               - 'scripts/lib/check-hosted-capability-isolation.sh'
               - 'scripts/lib/check-observability-isolation.sh'
               - 'scripts/lib/check-provider-isolation.sh'
@@ -491,7 +494,6 @@ jobs:
       - name: Check published crates against MSRV
         run: |
           cargo check --locked --all-features \
-            -p everruns-builtins \
             -p everruns-core \
             -p everruns-durable \
             -p everruns-drivers \
@@ -506,7 +508,6 @@ jobs:
             -p everruns-serve-macros \
             -p everruns-serve-agentcore \
             -p everruns-serve-celld \
-            -p everruns-ag-ui \
             -p everruns
 
   knowledge:
@@ -710,7 +711,7 @@ jobs:
 
   # Architecture guard: everruns-durable is a generic durable-execution engine
   # with no everruns-* normal or build dependency; agent/turn semantics live in
-  # the worker and server.
+  # durable-engine and server. Also owns the database-driver boundary check.
   durable-isolation:
     name: Durable Isolation Guard
     runs-on: ubuntu-latest
@@ -726,6 +727,11 @@ jobs:
 
       - name: Check durable isolation
         run: bash scripts/lib/check-durable-isolation.sh
+
+      - name: Check database driver isolation
+        run: |
+          python3 scripts/test-database-driver-isolation.py
+          bash scripts/lib/check-database-driver-isolation.sh
 
   # Public API/semver guard (EVE-906): rustdoc JSON records the complete
   # published core surface while source and documentation ratchets reject
@@ -1022,12 +1028,9 @@ jobs:
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
           cargo test -p everruns-contracts --all-features
-          # Canonical module tests (one integration binary) plus deprecated shim doctests.
+          # Canonical module tests share one integration binary.
           # Preserve the migrated host fixtures' serial execution contract.
-          cargo test -p everruns-core -p everruns-engine -p everruns-host -p everruns-builtins -p everruns-mcp -p everruns-ag-ui --all-features -- --test-threads=1
-          # Feature union can hide a shim losing its implicit transport or catalog.
-          cargo test -p everruns-host --no-default-features --features mcp --test feature_composition
-          cargo test -p everruns-host --no-default-features --features host-shell --test feature_composition
+          cargo test -p everruns-core --all-features -- --test-threads=1
           cargo test -p everruns-integrations-docker --all-features
           # The integration catalog is the one list naming every plugin-publishing
           # crate; check-integration-catalog.sh guards completeness, these tests
@@ -1148,7 +1151,7 @@ jobs:
       - name: Run worker tests
         # Whole crate (lib + integration), not just --lib: the network_reliability
         # integration test is pure (no network/credentials) and was being skipped.
-        run: cargo test -p everruns-worker --all-features -- --test-threads=1
+        run: cargo test -p everruns-worker -p everruns-durable-engine --all-features -- --test-threads=1
 
   shell-test:
     name: Shell Tests (Repo Scripts)
@@ -2861,6 +2864,7 @@ jobs:
       - log-error-field
       - lint-floor
       - wasm-portability
+      - durable-isolation
       - unit-test
       - worker-test
       - shell-test

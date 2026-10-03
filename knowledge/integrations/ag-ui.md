@@ -43,9 +43,9 @@ the protocol migration.
 
 ## Pieces
 
-- **Wire types**: the published [`everruns-ag-ui`](../../crates/ag-ui) crate.
+- **Wire types**: the published [`everruns_core::ag_ui`](../../crates/core/src/ag_ui) module.
   The upstream 1.0 JSON Schema and fixture corpus are vendored under
-  `crates/ag-ui/spec/1.0` and are the crate's test suite. Hand-written serde
+  `crates/core/src/ag_ui/spec/1.0` and are the crate's test suite. Hand-written serde
   types beat generated ones because the schema leans on `allOf` plus
   `unevaluatedProperties`, which generators turn into unidiomatic Rust.
 - **Projection**: `everruns_ag_ui::projection::Projector` (feature `core`)
@@ -234,7 +234,7 @@ holds it to the rules rather than repairing its stream:
 
 The rules are ported from the reference TypeScript client and tested against
 upstream's client conformance corpus, vendored under
-`crates/ag-ui/spec/1.0/conformance` (`tests/conformance.rs`): every stream the
+`crates/core/src/ag_ui/spec/1.0/conformance` (`crates/core/tests/consolidated/ag_ui/conformance.rs`): every stream the
 corpus accepts is accepted and every one it rejects is rejected for the same
 reason. Its warning, reducer and request assertions describe the TypeScript
 client's own state handling and are not checked.

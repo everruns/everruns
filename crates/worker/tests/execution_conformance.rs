@@ -10,11 +10,11 @@
 use chrono::{TimeZone, Utc};
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
-use everruns_core::engine::{
+use everruns_durable_engine::engine::{
     ActOutcome, ActivityOutcome, Execution, HostFacts, ReasonResult, TurnLifecycleEffect, TurnPlan,
     TurnState,
 };
-use everruns_core::host::InProcessExecution;
+use everruns_durable_engine::host::InProcessExecution;
 use everruns_worker::DurableExecution;
 use serde_json::json;
 

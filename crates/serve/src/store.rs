@@ -10,6 +10,7 @@
 //!
 //! No compatibility with earlier serve databases: an older schema is dropped.
 
+use everruns_durable::sqlite as rusqlite;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -45,11 +46,11 @@ impl Store {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        Self::init(Connection::open(path)?)
+        Self::init(rusqlite::open(path)?)
     }
 
     pub(crate) fn in_memory() -> crate::Result<Self> {
-        Self::init(Connection::open_in_memory()?)
+        Self::init(rusqlite::open_in_memory()?)
     }
 
     fn init(conn: Connection) -> crate::Result<Self> {
@@ -247,7 +248,7 @@ mod tests {
     fn an_older_schema_is_replaced() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("serve.db");
-        Connection::open(&path)
+        rusqlite::open(&path)
             .unwrap()
             .execute_batch(
                 "CREATE TABLE sessions (id TEXT PRIMARY KEY, agent TEXT NOT NULL);

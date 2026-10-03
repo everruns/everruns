@@ -10,9 +10,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use everruns_contracts::error::Result as CoreResult;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::host::{RuntimeHostAdapter, SessionBuilder};
-use everruns_core::{AgentDefinition as Agent, HarnessDefinition as Harness};
-use everruns_core::{DEFAULT_ORG_ID, ExecutionSession, ResolvedExecutionSnapshot};
+use everruns_durable_engine::core::{AgentDefinition as Agent, HarnessDefinition as Harness};
+use everruns_durable_engine::core::{DEFAULT_ORG_ID, ExecutionSession, ResolvedExecutionSnapshot};
+use everruns_durable_engine::host::{RuntimeHostAdapter, SessionBuilder};
 // EVE-877: the hosted adapters transport the stored platform view; the
 // loading seam projects it into the portable execution definition.
 use everruns_worker::{WorkerAdapters, WorkerRuntimeHost, WorkerTurnContext};
@@ -123,19 +123,19 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _session_id: Uuid,
                 _message_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::RuntimeMessage>> {
+            ) -> CoreResult<Option<everruns_durable_engine::core::RuntimeMessage>> {
                 unimplemented!()
             }
             async fn load_messages(
                 &self,
                 _session_id: Uuid,
-            ) -> CoreResult<Vec<everruns_core::RuntimeMessage>> {
+            ) -> CoreResult<Vec<everruns_durable_engine::core::RuntimeMessage>> {
                 Ok(vec![])
             }
             async fn emit_event(
                 &self,
-                _request: everruns_core::events::EventRequest,
-            ) -> CoreResult<everruns_core::events::Event> {
+                _request: everruns_durable_engine::core::events::EventRequest,
+            ) -> CoreResult<everruns_durable_engine::core::events::Event> {
                 unimplemented!()
             }
             async fn get_model_spec(
@@ -162,21 +162,21 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _org_id: i64,
                 _image_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::image_services::ResolvedImage>> {
+            ) -> CoreResult<Option<everruns_durable_engine::core::image_services::ResolvedImage>> {
                 unimplemented!()
             }
             async fn resolve_images_batch(
                 &self,
                 _org_id: i64,
                 _image_ids: &[Uuid],
-            ) -> CoreResult<HashMap<Uuid, everruns_core::image_services::ResolvedImage>> {
+            ) -> CoreResult<HashMap<Uuid, everruns_durable_engine::core::image_services::ResolvedImage>> {
                 unimplemented!()
             }
             async fn resolve_files_batch(
                 &self,
                 _org_id: i64,
                 _file_ids: &[Uuid],
-            ) -> CoreResult<HashMap<Uuid, everruns_core::file_services::ResolvedFile>> {
+            ) -> CoreResult<HashMap<Uuid, everruns_durable_engine::core::file_services::ResolvedFile>> {
                 unimplemented!()
             }
             async fn read_file(
@@ -184,7 +184,7 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
-            ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
+            ) -> CoreResult<Option<everruns_durable_engine::core::session_file::SessionFile>> {
                 unimplemented!()
             }
             async fn write_file(
@@ -194,7 +194,7 @@ macro_rules! mock_worker_adapters {
                 _path: &str,
                 _content: &str,
                 _encoding: &str,
-            ) -> CoreResult<everruns_core::session_file::SessionFile> {
+            ) -> CoreResult<everruns_durable_engine::core::session_file::SessionFile> {
                 unimplemented!()
             }
             async fn delete_file(
@@ -211,7 +211,7 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
-            ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
+            ) -> CoreResult<Vec<everruns_durable_engine::core::session_file::FileInfo>> {
                 unimplemented!()
             }
             async fn stat_file(
@@ -219,7 +219,7 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
-            ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
+            ) -> CoreResult<Option<everruns_durable_engine::core::session_file::FileStat>> {
                 unimplemented!()
             }
             async fn grep_files(
@@ -228,7 +228,7 @@ macro_rules! mock_worker_adapters {
                 _session_id: Uuid,
                 _pattern: &str,
                 _path_pattern: Option<&str>,
-            ) -> CoreResult<Vec<everruns_core::session_file::GrepMatch>> {
+            ) -> CoreResult<Vec<everruns_durable_engine::core::session_file::GrepMatch>> {
                 unimplemented!()
             }
             async fn create_directory(
@@ -236,7 +236,7 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
-            ) -> CoreResult<everruns_core::session_file::FileInfo> {
+            ) -> CoreResult<everruns_durable_engine::core::session_file::FileInfo> {
                 unimplemented!()
             }
             async fn get_mcp_server_by_prefix(
@@ -283,7 +283,7 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _limit: u32,
                 _stale_after_seconds: u32,
-            ) -> CoreResult<Vec<everruns_core::leased_resource::LeasedResource>> {
+            ) -> CoreResult<Vec<everruns_durable_engine::core::leased_resource::LeasedResource>> {
                 unimplemented!()
             }
             async fn mark_leased_resource_released(
@@ -316,8 +316,8 @@ macro_rules! mock_worker_adapters {
             ) -> CoreResult<usize> {
                 unimplemented!()
             }
-            fn capability_registry(&self) -> everruns_core::capabilities::CapabilityRegistry {
-                everruns_core::capabilities::CapabilityRegistry::new()
+            fn capability_registry(&self) -> everruns_durable_engine::core::capabilities::CapabilityRegistry {
+                everruns_durable_engine::core::capabilities::CapabilityRegistry::new()
             }
             fn driver_registry(&self) -> everruns_contracts::DriverRegistry {
                 everruns_contracts::DriverRegistry::new()
@@ -331,31 +331,31 @@ macro_rules! mock_worker_adapters {
             fn storage_store(
                 &self,
                 _org_id: i64,
-            ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+            ) -> Arc<dyn everruns_durable_engine::core::session_services::SessionStorageStore> {
                 unimplemented!()
             }
 
             fn storage_store_unscoped(
                 &self,
-            ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
-                self.storage_store(everruns_core::DEFAULT_ORG_ID)
+            ) -> Arc<dyn everruns_durable_engine::core::session_services::SessionStorageStore> {
+                self.storage_store(everruns_durable_engine::core::DEFAULT_ORG_ID)
             }
             fn image_artifact_store(
                 &self,
                 _org_id: i64,
-            ) -> Arc<dyn everruns_core::image_services::ImageArtifactStore> {
+            ) -> Arc<dyn everruns_durable_engine::core::image_services::ImageArtifactStore> {
                 unimplemented!()
             }
             fn provider_credential_store(
                 &self,
                 _org_id: i64,
-            ) -> Arc<dyn everruns_core::connection_services::ProviderCredentialStore> {
+            ) -> Arc<dyn everruns_durable_engine::core::connection_services::ProviderCredentialStore> {
                 unimplemented!()
             }
-            fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
+            fn utility_llm_service(&self) -> Option<Arc<dyn everruns_durable_engine::core::UtilityLlmService>> {
                 None
             }
-            fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
+            fn egress_service(&self) -> Option<Arc<dyn everruns_durable_engine::core::EgressService>> {
                 None
             }
             fn platform_store(
@@ -367,23 +367,23 @@ macro_rules! mock_worker_adapters {
             }
             fn connection_resolver(
                 &self,
-            ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
+            ) -> Arc<dyn everruns_durable_engine::core::connection_services::UserConnectionResolver> {
                 unimplemented!()
             }
             fn leased_resource_store(
                 &self,
-            ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
+            ) -> Arc<dyn everruns_durable_engine::core::session_services::LeasedResourceStore> {
                 unimplemented!()
             }
             fn schedule_store(
                 &self,
                 _org_id: i64,
-            ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
+            ) -> Arc<dyn everruns_durable_engine::core::session_services::SessionScheduleStore> {
                 unimplemented!()
             }
             fn reaper_session_task_registry(
                 &self,
-            ) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
+            ) -> Arc<dyn everruns_durable_engine::core::session_task::SessionTaskRegistry> {
                 unimplemented!()
             }
         }

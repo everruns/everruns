@@ -14,6 +14,12 @@ source "$SCRIPT_DIR/guard-cargo.sh"
 source "$SCRIPT_DIR/core-feature-modules.sh"
 
 FAILED=0
+for shim in engine host builtins mcp ag-ui; do
+  if [ -e "crates/$shim/Cargo.toml" ]; then
+    echo "Retired core shim must not return: everruns-$shim"
+    FAILED=1
+  fi
+done
 fail() { echo "$1"; FAILED=1; }
 
 METADATA=$(cargo metadata --no-deps --format-version 1)

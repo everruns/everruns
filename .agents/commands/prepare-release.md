@@ -56,9 +56,10 @@ Tagging and publishing stay automated: on merge to `main` the **Crate Release** 
 version is not yet on crates.io and dispatches Publish Crate in dependency order. Under a single
 version that is the whole publish set, every release. You never push crate tags by hand.
 
-If a crate is **deleted or absorbed** this cycle, its crates.io package is orphaned: **yank** it with
-the **Yank Crate** workflow and record where its API moved. That is the one crate-level judgement a
-release still carries.
+Before deleting an absorbed crate, publish one deprecated shim release that forwards its API to
+the canonical owner. Confirm that release exists on crates.io before removing the shim from the
+next platform release. Keep published shim versions usable; absorption does not call for yanking.
+Record where the API moved so consumers can migrate.
 
 ## 4. Update versions
 
@@ -66,8 +67,10 @@ release still carries.
 - `apps/ui/package.json` → `version`
 
 That is the whole version change. Every published crate inherits `workspace.package.version`, so
-bumping it moves all 41 crates.io packages at once — do not edit crate manifests. Internal pins in
-`[workspace.dependencies]` carry the version literally and must move with it:
+bumping it moves every active published package at once — do not edit crate manifests. The
+release preflight derives the current publish set and reports its count; use that count rather
+than a fixed package total. Internal pins in `[workspace.dependencies]` carry the version literally
+and must move with it:
 
 ```bash
 python3 scripts/sync-publish-pin-versions.py --write

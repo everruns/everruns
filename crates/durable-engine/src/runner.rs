@@ -75,10 +75,10 @@ pub trait AgentRunner: Send + Sync {
 /// Configuration for creating an agent runner
 pub enum RunnerBackend {
     /// Use PostgreSQL for workflow persistence (production)
-    Postgres(sqlx::PgPool),
+    Postgres(everruns_durable::PostgresPool),
     /// Use PostgreSQL and publish task availability through the control-plane notifier.
     PostgresWithNotifier {
-        pool: sqlx::PgPool,
+        pool: everruns_durable::PostgresPool,
         task_notifier: Arc<dyn DurableTaskNotifier>,
     },
     /// Use in-memory storage (dev mode, no database required)
@@ -97,7 +97,9 @@ pub enum RunnerBackend {
 ///
 /// This is used by the control-plane API to start workflows.
 /// Pass a database pool for direct access (control-plane) or None for gRPC (workers).
-pub async fn create_runner(db_pool: Option<sqlx::PgPool>) -> Result<Arc<dyn AgentRunner>> {
+pub async fn create_runner(
+    db_pool: Option<everruns_durable::PostgresPool>,
+) -> Result<Arc<dyn AgentRunner>> {
     if let Some(pool) = db_pool {
         tracing::info!("Creating Durable execution engine runner (direct DB mode)");
         let runner = DurableRunner::new_with_pool(pool);

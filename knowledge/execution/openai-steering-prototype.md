@@ -15,7 +15,7 @@ tags:
 Mid-turn user corrections are a concrete benefit unavailable through the current
 HTTP reason activity. The normal worker consumes persisted user-message wakes at
 activity boundaries (see [the worker boundary](../../crates/worker/src/unified_worker.rs)
-and [durable runner](../../crates/worker/src/durable_runner.rs)). A socket cannot
+and [durable runner](../../crates/durable-engine/src/durable_runner.rs)). A socket cannot
 follow arbitrary activity placement across stateless workers.
 
 The [runnable prototype](../../examples/openai-steering/README.md) therefore has

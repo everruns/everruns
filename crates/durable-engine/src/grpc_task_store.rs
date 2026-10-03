@@ -1,19 +1,18 @@
 // gRPC-backed TaskStore for standalone workers.
 //
-// Decision: lives beside `unified_worker` rather than inside it, which is on
-// the file-size debt list; the worker loop only sees the `TaskStore` trait.
+// The private durable entry owns both adapters; the worker loop consumes
+// the shared TaskStore interface.
 
-use async_trait::async_trait;
-use everruns_durable::{
+use crate::durable::{
     ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome, WorkerInfo, WorkflowError,
     WorkflowStatus,
 };
+use async_trait::async_trait;
 use std::time::Duration;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::{GrpcDurableStore, TaskNotificationEvent};
-use crate::task_wakeup::TaskWakeups;
-use crate::unified_worker::TaskStore;
+use crate::task_store::{TaskStore, TaskWakeups};
 
 #[async_trait]
 impl TaskStore for GrpcDurableStore {
@@ -171,7 +170,7 @@ impl TaskStore for GrpcDurableStore {
     async fn consume_pending_signals(
         &self,
         workflow_id: Uuid,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+    ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
         let mut store = self.clone();
         GrpcDurableStore::get_and_consume_signals(&mut store, workflow_id)
             .await
@@ -182,7 +181,7 @@ impl TaskStore for GrpcDurableStore {
         &self,
         workflow_id: Uuid,
         signal_type: &str,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+    ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
         let mut store = self.clone();
         GrpcDurableStore::get_and_consume_signals_by_type(&mut store, workflow_id, signal_type)
             .await
