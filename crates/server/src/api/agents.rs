@@ -49,7 +49,6 @@ use crate::domains::common::Command;
 use crate::domains::harnesses::HARNESS_VIEW;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
