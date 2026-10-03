@@ -321,6 +321,9 @@ jobs:
             # `provider_live` below.
             postgres_integration:
               - 'crates/server/**'
+              # The server domain suites drive platform capabilities directly;
+              # #4068 changed A2A policy here and the shards never ran.
+              - 'crates/platform/**'
               - 'crates/durable/**'
               - 'crates/core/**'
               - 'crates/config/**'
@@ -1419,7 +1422,8 @@ jobs:
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
             if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
-              cargo install cargo-binstall --locked
+              # 1.25+ needs rustc newer than rust-toolchain.toml; bump with the toolchain.
+              cargo install cargo-binstall --locked --version 1.24.0
             fi
             cargo binstall sqlx-cli --no-confirm --version '~0.9'
           fi
@@ -1585,7 +1589,7 @@ jobs:
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
             if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
-              cargo install cargo-binstall --locked
+              cargo install cargo-binstall --locked --version 1.24.0
             fi
             cargo binstall sqlx-cli --no-confirm --version '~0.9'
           fi
@@ -1794,7 +1798,7 @@ jobs:
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
             if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
-              cargo install cargo-binstall --locked
+              cargo install cargo-binstall --locked --version 1.24.0
             fi
             cargo binstall sqlx-cli --no-confirm --version '~0.9'
           fi
@@ -2010,7 +2014,7 @@ jobs:
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
             if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
-              cargo install cargo-binstall --locked
+              cargo install cargo-binstall --locked --version 1.24.0
             fi
             cargo binstall sqlx-cli --no-confirm --version '~0.9'
           fi
