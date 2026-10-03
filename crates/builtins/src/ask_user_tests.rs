@@ -371,6 +371,10 @@ fn prompt_and_localization_preserve_the_safety_boundary() {
     assert!(prompt.contains("`input_required`"));
     assert!(prompt.contains("`message_task`"));
     assert!(prompt.contains("never answer for them"));
+    assert!(prompt.contains("Invoke the `ask_user` tool"));
+    assert!(prompt.contains("do not print its JSON arguments"));
+    assert!(prompt.contains("`header` and `question`"));
+    assert!(prompt.contains("wait for the tool result"));
     assert_eq!(
         capability.localized_name(Some("uk-UA")),
         "Запитати користувача"

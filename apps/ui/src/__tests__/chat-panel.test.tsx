@@ -3,6 +3,7 @@ import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { ApiError } from "@/lib/api/client";
 import type { Event, ModelWithProvider } from "@/lib/api/types";
+import { sendUserMessageWithImages } from "@/lib/api/messages";
 
 const mockUseSessionCommands = jest.fn();
 const mockExecuteSessionCommand = jest.fn();
@@ -14,6 +15,8 @@ const mockRefetchParticipants = jest.fn();
 const mockParticipants: Array<Record<string, unknown>> = [];
 const mockAgents: Array<Record<string, unknown>> = [];
 const mockModels: ModelWithProvider[] = [];
+let mockHasImages = false;
+let mockHasFiles = false;
 
 const availableDefaultModel: ModelWithProvider = {
   id: "model-default",
@@ -122,24 +125,24 @@ jest.mock("@/hooks", () => ({
   useImageAttachments: () => ({
     pendingImages: [],
     allUploaded: true,
-    uploadedImageIds: [],
+    uploadedImageIds: mockHasImages ? [{ imageId: "image-1" }] : [],
     addFiles: jest.fn(),
     removeImage: jest.fn(),
     clearImages: jest.fn(),
-    hasImages: false,
+    hasImages: mockHasImages,
     isUploading: false,
   }),
   useFileAttachments: () => ({
     pendingFiles: [],
     allUploaded: true,
-    uploadedFileIds: [],
+    uploadedFileIds: mockHasFiles ? [{ fileId: "file-1" }] : [],
     addFiles: jest.fn(),
     removeFile: jest.fn(),
     clearFiles: jest.fn(),
     handlePaste: jest.fn(),
     handleDragOver: jest.fn(),
     handleDrop: jest.fn(),
-    hasFiles: false,
+    hasFiles: mockHasFiles,
     isUploading: false,
   }),
   useSessionCommands: (...args: unknown[]) => mockUseSessionCommands(...args),
@@ -519,6 +522,8 @@ describe("ChatPanel model change divider", () => {
 describe("ChatPanel placeholder", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockHasImages = false;
+    mockHasFiles = false;
     mockExecuteSessionCommand.mockReset();
     mockSessionContext.chatEvents = [];
     mockSessionContext.llmModel = availableDefaultModel;
@@ -608,7 +613,11 @@ describe("ChatPanel placeholder", () => {
       expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
         sessionId: "session-1",
         content: "hello",
-        controls: { locale: "en-US", model_id: "model-explicit" },
+        controls: {
+          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          locale: "en-US",
+          model_id: "model-explicit",
+        },
         addressedParticipantId: null,
       }),
     );
@@ -632,7 +641,7 @@ describe("ChatPanel placeholder", () => {
     expect(screen.getByText(/Choose a model/)).toBeInTheDocument();
   });
 
-  it("inherits a resolved default without adding a message override", async () => {
+  it("advertises interactive cards on an existing thread with the default model", async () => {
     mockSessionContext.llmModel = availableDefaultModel;
     mockSessionContext.sendMessage.mutateAsync.mockResolvedValueOnce(undefined);
 
@@ -645,9 +654,37 @@ describe("ChatPanel placeholder", () => {
       expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
         sessionId: "session-1",
         content: "hello",
-        controls: { locale: "en-US" },
+        controls: {
+          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          locale: "en-US",
+        },
         addressedParticipantId: null,
       }),
+    );
+  });
+
+  it.each(["image", "file"])("advertises interactive cards with a %s attachment", async (kind) => {
+    mockHasImages = kind === "image";
+    mockHasFiles = kind === "file";
+    jest.mocked(sendUserMessageWithImages).mockResolvedValueOnce({ id: "message-1" } as never);
+
+    render(<ChatPanel />);
+    const textarea = screen.getByRole("combobox");
+    fireEvent.change(textarea, { target: { value: "Ask me which guide to use" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    await waitFor(() =>
+      expect(sendUserMessageWithImages).toHaveBeenCalledWith(
+        "session-1",
+        "Ask me which guide to use",
+        mockHasImages ? [{ imageId: "image-1" }] : [],
+        {
+          locale: "en-US",
+          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+        },
+        null,
+        mockHasFiles ? [{ fileId: "file-1" }] : [],
+      ),
     );
   });
 
@@ -715,7 +752,10 @@ describe("ChatPanel placeholder", () => {
       expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
         sessionId: "session-1",
         content: "Summarize the findings",
-        controls: { locale: "en-US" },
+        controls: {
+          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          locale: "en-US",
+        },
         addressedParticipantId: "part_guest_123456",
       }),
     );
@@ -886,7 +926,10 @@ describe("ChatPanel placeholder", () => {
       expect(mockExecuteSessionCommand).toHaveBeenCalledWith("session-1", {
         name: "btw",
         arguments: "why is this running",
-        controls: { locale: "en-US" },
+        controls: {
+          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          locale: "en-US",
+        },
       }),
     );
 
@@ -979,7 +1022,10 @@ describe("ChatPanel placeholder", () => {
       expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
         sessionId: "session-1",
         content: "/review inspect this",
-        controls: { locale: "en-US" },
+        controls: {
+          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
+          locale: "en-US",
+        },
         addressedParticipantId: null,
       }),
     );

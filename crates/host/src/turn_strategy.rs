@@ -18,7 +18,7 @@ use everruns_engine::{
     TurnLifecycleEffect, TurnPlan, TurnState, reason_schedules_act,
 };
 use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::{SessionId, TurnId};
+use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 
 /// Determine the next host step after an activity finishes.
 ///
@@ -105,7 +105,14 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                 ),
             };
 
-            let hints = resolve_pause_hints(adapter, state.org_id, state.session_id, outcome).await;
+            let hints = resolve_pause_hints(
+                adapter,
+                state.org_id,
+                state.session_id,
+                state.input_message_id,
+                outcome,
+            )
+            .await?;
 
             let transition = execution.advance(
                 ActivityOutcome::Act(outcome),
@@ -172,27 +179,38 @@ pub(crate) async fn resolve_pause_hints<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     session_id: SessionId,
+    input_message_id: MessageId,
     outcome: ActOutcome,
-) -> PauseHints {
+) -> Result<PauseHints> {
     if outcome.blocked || !outcome.waiting_for_tool_results {
-        return PauseHints::default();
+        return Ok(PauseHints::default());
     }
     match adapter.session_store(org_id).get_session(session_id).await {
         Ok(Some(session)) => {
-            let hints = Controls::resolve_hints(session.hints.as_ref(), None);
+            // Resolve against this turn's input, not the latest message: a new
+            // caller can override older session defaults without changing them.
+            let message = adapter
+                .message_store()
+                .get(session_id, input_message_id)
+                .await?;
+            let message_hints = message
+                .as_ref()
+                .and_then(|message| message.controls.as_ref())
+                .and_then(|controls| controls.hints.as_ref());
+            let hints = Controls::resolve_hints(session.hints.as_ref(), message_hints);
             let flag = |name: &str| {
                 hints
                     .get(name)
                     .and_then(|value| value.as_bool())
                     .unwrap_or(false)
             };
-            PauseHints {
+            Ok(PauseHints {
                 setup_connection: flag("setup_connection"),
                 url_elicitation: flag("url_elicitation"),
                 ask_user: flag("ask_user"),
-            }
+            })
         }
-        _ => PauseHints::default(),
+        _ => Ok(PauseHints::default()),
     }
 }
 

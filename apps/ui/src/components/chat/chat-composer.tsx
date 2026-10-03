@@ -29,6 +29,7 @@ import {
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { COMPOSER_AUTOCOMPLETE_LISTBOX_ID } from "@/components/chat/composer-autocomplete";
 import { cn } from "@/lib/utils";
+import { CHAT_CLIENT_HINTS } from "@/lib/chat-client-hints";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
 import { ALLOWED_FILE_EXTENSIONS } from "@/lib/api/files";
 import type {
@@ -169,10 +170,11 @@ export function ChatComposer({
       ? {
           ...(selectedModelId && { model_id: selectedModelId }),
           locale: backendLocale,
+          hints: CHAT_CLIENT_HINTS,
           ...(reasoningEffort && supportsReasoning && { reasoning: { effort: reasoningEffort } }),
           ...(verbosity && supportsVerbosity && { verbosity }),
         }
-      : { locale: backendLocale };
+      : { locale: backendLocale, hints: CHAT_CLIENT_HINTS };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

@@ -48,6 +48,12 @@ session rather than held only in the browser.
 5. **No double submit.** On a fresh pending card, press **Continue** and, while
    it reads *Submitting…*, confirm the buttons are disabled so a second submit
    cannot be issued.
+6. **Existing Platform Chat.** Open a Platform Chat thread created before the
+   client advertised question support (no session hints). Ask it to collect a
+   choice using Ask User. Confirm it renders a pending card and waits for an
+   answer rather than selecting an unattended default. Answer and confirm the
+   turn resumes with the selected choice. Repeat with an image or file attached
+   to the message and with an explicit model override.
 
 ## Expected Result
 
