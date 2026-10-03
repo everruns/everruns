@@ -468,10 +468,10 @@ fn validate_endpoint_auth_config(
                         "OIDC auth requires a non-empty issuer",
                     ));
                 }
-                everruns_provider::url_validation::validate_safe_url(issuer)
+                everruns_contracts::url_validation::validate_safe_url(issuer)
                     .map_err(|e| CommandError::bad_request(format!("Invalid OIDC issuer: {e}")))?;
                 if let Some(jwks_url) = jwks_url {
-                    everruns_provider::url_validation::validate_safe_url(jwks_url).map_err(
+                    everruns_contracts::url_validation::validate_safe_url(jwks_url).map_err(
                         |e| CommandError::bad_request(format!("Invalid OIDC JWKS URL: {e}")),
                     )?;
                 }
@@ -485,7 +485,7 @@ fn validate_endpoint_auth_config(
             Some(EndpointAuthProviderConfig::OAuth2Introspection {
                 introspection_url, ..
             }) => {
-                everruns_provider::url_validation::validate_safe_url(introspection_url).map_err(
+                everruns_contracts::url_validation::validate_safe_url(introspection_url).map_err(
                     |e| CommandError::bad_request(format!("Invalid OAuth2 introspection URL: {e}")),
                 )?;
                 Ok(())

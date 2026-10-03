@@ -27,7 +27,7 @@
 //! }
 //! ```
 
-pub use everruns_capability::{CapabilityRef, CapabilitySpec, IntoCapability};
+pub use everruns_contracts::{CapabilityRef, CapabilitySpec, IntoCapability};
 
 use crate::agent::BuildError;
 
@@ -76,7 +76,7 @@ pub(crate) fn validate_registered_capability_config(
         })?;
     }
 
-    if everruns_core::is_declarative_capability(id) || everruns_capability::is_plugin_capability(id)
+    if everruns_core::is_declarative_capability(id) || everruns_contracts::is_plugin_capability(id)
     {
         let mut definition =
             serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(
@@ -88,7 +88,7 @@ pub(crate) fn validate_registered_capability_config(
             })?;
         // Plugin identities have already been validated by their compiler and
         // intentionally allow names outside the narrower declarative contract.
-        if everruns_capability::is_plugin_capability(id) {
+        if everruns_contracts::is_plugin_capability(id) {
             definition.name = "plugin".to_string();
         }
         everruns_core::validate_declarative_capability_definition(&definition).map_err(

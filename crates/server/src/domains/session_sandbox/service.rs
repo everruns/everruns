@@ -9,6 +9,7 @@
 
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use async_trait::async_trait;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::{
     Event, EventData, EventListener, connection_services::UserConnectionResolver,
     session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
@@ -18,7 +19,6 @@ use everruns_platform::session_sandbox::{
     SessionSandboxConfig, ensure_session_sandbox_running, pause_session_sandbox,
     session_sandbox_config_from_capabilities,
 };
-use everruns_provider::typed_id::SessionId;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -58,7 +58,7 @@ impl SessionSandboxService {
     pub async fn auto_start_for_capabilities(
         &self,
         session_id: SessionId,
-        effective_capabilities: &[everruns_capability::CapabilityRef],
+        effective_capabilities: &[everruns_contracts::CapabilityRef],
     ) {
         let config = match session_sandbox_config_from_capabilities(effective_capabilities) {
             Ok(Some(config)) if config.auto_start => config,
@@ -250,7 +250,7 @@ mod tests {
 
         async fn create(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxInstance {
@@ -264,7 +264,7 @@ mod tests {
 
         async fn resume(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
@@ -273,7 +273,7 @@ mod tests {
 
         async fn pause(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
@@ -282,7 +282,7 @@ mod tests {
 
         async fn delete(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<(), everruns_core::ToolExecutionResult> {
@@ -291,7 +291,7 @@ mod tests {
 
         async fn exec(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _request: &SessionSandboxExecRequest,
@@ -310,7 +310,7 @@ mod tests {
 
         async fn read_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -324,7 +324,7 @@ mod tests {
 
         async fn write_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -338,7 +338,7 @@ mod tests {
 
         async fn status(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             state: &SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, everruns_core::ToolExecutionResult> {
@@ -369,18 +369,10 @@ mod tests {
 
         async fn create(
             &self,
-            context: &ToolContext,
+            context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
-            let Some(resolver) = context.connection_resolver.as_ref() else {
-                return Err(everruns_core::ToolExecutionResult::tool_error(
-                    "missing connection resolver",
-                ));
-            };
-            let token = resolver
-                .get_connection_token(context.session_id, "daytona")
-                .await
-                .map_err(everruns_core::ToolExecutionResult::internal_error)?;
+            let token = context.connection_token("daytona").await?;
             if token.as_deref() != Some("resolver-token") {
                 return Err(everruns_core::ToolExecutionResult::tool_error(
                     "resolver token missing",
@@ -398,7 +390,7 @@ mod tests {
 
         async fn resume(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
@@ -407,7 +399,7 @@ mod tests {
 
         async fn pause(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
@@ -416,7 +408,7 @@ mod tests {
 
         async fn delete(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<(), everruns_core::ToolExecutionResult> {
@@ -425,7 +417,7 @@ mod tests {
 
         async fn exec(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _request: &SessionSandboxExecRequest,
@@ -444,7 +436,7 @@ mod tests {
 
         async fn read_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -458,7 +450,7 @@ mod tests {
 
         async fn write_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -472,7 +464,7 @@ mod tests {
 
         async fn status(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             state: &SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, everruns_core::ToolExecutionResult> {
@@ -495,7 +487,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             provider: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             if provider == "daytona" {
                 Ok(Some("resolver-token".to_string()))
             } else {
@@ -511,7 +503,7 @@ mod tests {
         }
     }
 
-    async fn create_test_harness(db: &StorageBackend) -> everruns_provider::typed_id::HarnessId {
+    async fn create_test_harness(db: &StorageBackend) -> everruns_contracts::typed_id::HarnessId {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
@@ -571,7 +563,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 virtual_user_id: None,
-                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("test".to_string()),
                 locale: None,
@@ -637,7 +629,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 virtual_user_id: None,
-                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("test".to_string()),
                 locale: None,
@@ -705,7 +697,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 virtual_user_id: None,
-                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("test".to_string()),
                 locale: None,

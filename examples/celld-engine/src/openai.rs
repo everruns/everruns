@@ -8,13 +8,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message,
     MessageRole,
 };
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::runtime_provider::ProviderEndpoint;
-use everruns_provider::tool_types::{ToolCall, ToolDefinition};
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::runtime_provider::ProviderEndpoint;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use serde_json::{Value, json};
 
 /// POST a JSON body and return the JSON reply.

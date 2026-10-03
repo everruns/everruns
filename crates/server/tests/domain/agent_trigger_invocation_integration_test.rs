@@ -11,9 +11,9 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId, TriggerId, VirtualUserId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_platform::{AgentEndpointId, SessionSource};
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId, TriggerId, VirtualUserId};
 use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::budgets::BudgetService;
 use everruns_server::domains::messages::MessageService;
@@ -197,7 +197,7 @@ async fn create_migrated_webhook_trigger(
             agent_version_policy: Some(app_row.agent_version_policy),
             agent_version_id: app_row
                 .agent_version_id
-                .map(everruns_provider::typed_id::AgentVersionId::from_uuid),
+                .map(everruns_contracts::typed_id::AgentVersionId::from_uuid),
         })
         .await
         .expect("seed migrated webhook trigger");

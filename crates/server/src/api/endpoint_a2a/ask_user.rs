@@ -454,7 +454,7 @@ pub(super) async fn handle_ask_user_answer(
             "an ask_user answer must carry message.taskId naming the task that asked",
         );
     };
-    let Ok(session_id) = task_id.parse::<everruns_provider::typed_id::SessionId>() else {
+    let Ok(session_id) = task_id.parse::<everruns_contracts::typed_id::SessionId>() else {
         return invalid(rpc_id, "message.taskId is not a known task id");
     };
 
@@ -804,7 +804,7 @@ mod tests {
     fn translate_parked_ask_user_emits_a_final_input_required_frame() {
         use everruns_core::events::ToolCallRequestedData;
         let data = EventData::ToolCallRequested(ToolCallRequestedData {
-            tool_calls: vec![everruns_provider::tool_types::ToolCall {
+            tool_calls: vec![everruns_contracts::tool_types::ToolCall {
                 id: "call_1".to_string(),
                 name: everruns_builtins::ask_user::ASK_USER_TOOL_NAME.to_string(),
                 arguments: json!({ "questions": [choice_question()] }),
@@ -830,7 +830,7 @@ mod tests {
     fn translate_non_ask_user_tool_call_is_filtered_out() {
         use everruns_core::events::ToolCallRequestedData;
         let data = EventData::ToolCallRequested(ToolCallRequestedData {
-            tool_calls: vec![everruns_provider::tool_types::ToolCall {
+            tool_calls: vec![everruns_contracts::tool_types::ToolCall {
                 id: "call_1".to_string(),
                 name: "setup_connection".to_string(),
                 arguments: json!({}),

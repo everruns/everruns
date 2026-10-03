@@ -4,9 +4,9 @@ use crate::domains::agent_endpoints::types::{
 };
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
+use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID};
 use everruns_platform::{EndpointStatus, EndpointTransport};
-use everruns_provider::typed_id::AgentId;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -200,13 +200,13 @@ async fn seed_version(
     db: &StorageBackend,
     agent_public_id: &str,
     is_published: bool,
-) -> everruns_provider::typed_id::AgentVersionId {
+) -> everruns_contracts::typed_id::AgentVersionId {
     let agent = db
         .get_agent_by_public_id(DEFAULT_ORG_ID, agent_public_id)
         .await
         .expect("load agent")
         .expect("agent exists");
-    let id = everruns_provider::typed_id::AgentVersionId::new();
+    let id = everruns_contracts::typed_id::AgentVersionId::new();
     db.create_agent_version(crate::storage::models::CreateAgentVersionRow {
         id,
         public_id: id.to_string(),
@@ -234,7 +234,7 @@ async fn seed_version(
 
 fn webhook_create(
     policy: Option<everruns_platform::AgentVersionPolicy>,
-    version: Option<everruns_provider::typed_id::AgentVersionId>,
+    version: Option<everruns_contracts::typed_id::AgentVersionId>,
 ) -> CreateAgentEndpointRequest {
     CreateAgentEndpointRequest {
         channel_type: EndpointTransport::Webhook,
@@ -328,7 +328,7 @@ async fn endpoint_version_pin_rejects_invalid_selections() {
         ),
         (
             Some(AgentVersionPolicy::Pinned),
-            Some(everruns_provider::typed_id::AgentVersionId::new()),
+            Some(everruns_contracts::typed_id::AgentVersionId::new()),
             "does not name a version of this agent",
         ),
         (

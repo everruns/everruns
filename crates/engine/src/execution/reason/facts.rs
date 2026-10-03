@@ -15,16 +15,16 @@ use chrono::{DateTime, Utc};
 
 use crate::message::{RuntimeMessage, RuntimeMessageRole};
 
-pub(super) fn supports_clear_at(provider: &everruns_provider::DriverId, model: &str) -> bool {
-    provider == &everruns_provider::DriverId::Anthropic
-        && everruns_provider::get_model_profile(provider, model).is_some_and(|profile| {
-            profile.supports_parameter(everruns_provider::model::MID_CONVERSATION_SYSTEM_PARAMETER)
-                && profile.supports_parameter(everruns_provider::model::CLEAR_AT_PARAMETER)
+pub(super) fn supports_clear_at(provider: &everruns_contracts::DriverId, model: &str) -> bool {
+    provider == &everruns_contracts::DriverId::Anthropic
+        && everruns_contracts::get_model_profile(provider, model).is_some_and(|profile| {
+            profile.supports_parameter(everruns_contracts::model::MID_CONVERSATION_SYSTEM_PARAMETER)
+                && profile.supports_parameter(everruns_contracts::model::CLEAR_AT_PARAMETER)
         })
 }
 
 pub(super) fn mark_turn_scoped(
-    target: &mut everruns_provider::driver_registry::Message,
+    target: &mut everruns_contracts::driver_registry::Message,
     source: &RuntimeMessage,
     supported: bool,
 ) {

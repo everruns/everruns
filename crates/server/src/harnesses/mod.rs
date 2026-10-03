@@ -84,7 +84,7 @@ mod tests {
             .iter()
             .map(|capability| capability.capability_id().to_string())
             .collect();
-        let shared: Vec<String> = everruns_capability::generic_capabilities()
+        let shared: Vec<String> = everruns_contracts::generic_capabilities()
             .iter()
             .map(|capability| capability.capability_id().to_string())
             .collect();

@@ -316,6 +316,8 @@ async fn live_no_resources_leaked_cdp() {
 mod computer_use {
     use super::api_token;
     use async_trait::async_trait;
+    use everruns_contracts::error::Result;
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::capabilities::Capability;
     use everruns_core::connection_services::UserConnectionResolver;
     use everruns_core::network_access::NetworkAccessList;
@@ -324,8 +326,6 @@ mod computer_use {
     use everruns_core::tools::{Tool, ToolExecutionResult};
     use everruns_integrations_browserless::computer::BrowserlessComputerUseCapability;
     use everruns_integrations_browserless::session_tools::BrowserlessCloseBrowserTool;
-    use everruns_provider::error::Result;
-    use everruns_provider::typed_id::SessionId;
     use serde_json::{Value, json};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};

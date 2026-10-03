@@ -7,8 +7,7 @@ publish = false
 [dependencies]
 async-trait = "0.1"
 everruns-core = { path = "../../../../../../crates/core" }
-everruns-capability = { path = "../../../../../../crates/capability" }
-everruns-provider = { path = "../../../../../../crates/provider", default-features = false }
+everruns-contracts = { path = "../../../../../../crates/contracts", default-features = false, features = ["definition"] }
 everruns-host = { path = "../../../../../../crates/host" }
 
 [dev-dependencies]

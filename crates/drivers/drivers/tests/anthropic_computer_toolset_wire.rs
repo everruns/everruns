@@ -7,13 +7,13 @@
 // the `computer` tool. Replay: `computer` calls go back as member calls and
 // their results echo `toolset_name`.
 
-use everruns_drivers::anthropic::AnthropicChatDriver;
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     LlmCallConfig, LlmContentPart, LlmStreamEvent, Message, MessageContent, MessageRole,
 };
-use everruns_provider::native_computer::NativeComputerUse;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::{Provider, StaticHeaderAuth, ToolDefinition};
+use everruns_contracts::native_computer::NativeComputerUse;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::{Provider, StaticHeaderAuth, ToolDefinition};
+use everruns_drivers::anthropic::AnthropicChatDriver;
 use futures::StreamExt;
 use serde_json::{Value, json};
 use wiremock::matchers::{method, path};

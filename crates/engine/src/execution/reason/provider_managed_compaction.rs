@@ -21,7 +21,7 @@ pub(super) fn replay_artifacts(
     guardrail_allowed: bool,
     rejected_tool_calls: bool,
 ) -> (
-    Option<everruns_provider::ProviderOpaqueContent>,
+    Option<everruns_contracts::ProviderOpaqueContent>,
     Option<crate::driver_registry::ProviderCheckpointCandidate>,
 ) {
     if !guardrail_allowed || rejected_tool_calls {
@@ -157,7 +157,7 @@ impl<'a> Lifecycle<'a> {
     ) -> Result<T> {
         if provider_managed
             && !error.rejected_provider_capability(
-                everruns_provider::RejectedProviderCapability::AnthropicServerCompaction,
+                everruns_contracts::RejectedProviderCapability::AnthropicServerCompaction,
             )
         {
             self.fail().await;
@@ -330,7 +330,7 @@ fn preflight_fallback_reason(
         .model
         .driver
         .provider_managed_reduction_fallback_reason(
-            &everruns_provider::ProviderEndpoint::default(),
+            &everruns_contracts::ProviderEndpoint::default(),
             &config,
         )
 }
@@ -429,7 +429,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
     if !native_provider
         || !result.as_ref().is_err_and(|error| {
             error.rejected_provider_capability(
-                everruns_provider::RejectedProviderCapability::AnthropicServerCompaction,
+                everruns_contracts::RejectedProviderCapability::AnthropicServerCompaction,
             )
         })
     {

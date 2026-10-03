@@ -34,13 +34,13 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_core::events::{
     OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_FAILED,
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
 use everruns_platform::{EndpointTransport, FcpChannelConfig};
-use everruns_provider::execution_phase::ExecutionPhase;
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;

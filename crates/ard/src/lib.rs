@@ -29,12 +29,12 @@ pub mod config;
 pub mod connection;
 pub mod tools;
 
+use everruns_contracts::connector::ConnectorPlugin;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
     SystemPromptContext,
 };
 use everruns_core::tools::Tool;
-use everruns_platform::connector::ConnectorPlugin;
 
 use config::ArdConfig;
 use connection::ArdConnector;

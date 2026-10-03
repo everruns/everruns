@@ -34,11 +34,11 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_core::{
     DecisionAnswer, DecisionDriver, DecisionDriverCapabilities, DecisionOutcome, DecisionQuestion,
     DecisionRequest, NativePrimitives,
 };
-use everruns_provider::error::{AgentLoopError, Result};
 use futures::future::try_join_all;
 use serde_json::Value;
 

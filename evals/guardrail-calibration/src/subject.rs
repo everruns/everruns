@@ -23,10 +23,10 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
 use everruns_host::SystemUtilityLlmConfig;
 use everruns_integrations_typesafe::TypeSafeAI;
-use everruns_provider::tool_types::{
+use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
 };
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use mira::{RunCx, Sample, Subject, Transcript};
 use serde_json::json;
 

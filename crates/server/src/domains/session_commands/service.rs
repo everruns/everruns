@@ -10,12 +10,13 @@ use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::domains::mcp_servers::McpServerService;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::kernel_imports::{
-    AgentDefinition, Caller, CapabilityRegistry,
-    everruns_provider::driver_registry::DriverRegistry, everruns_provider::error::AgentLoopError,
+    AgentDefinition, Caller, CapabilityRegistry, contracts::driver_registry::DriverRegistry,
+    contracts::error::AgentLoopError,
 };
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::StorageBackend;
 use anyhow::Result;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::command::{
     CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
 };
@@ -23,7 +24,6 @@ use everruns_core::execution_loading::AgentStore;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
 use everruns_host::StoreCommandHost;
 use everruns_platform::Harness;
-use everruns_provider::typed_id::SessionId;
 use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -35,7 +35,7 @@ pub struct SessionCommandService {
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
-    sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
+    sqldb_store: std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
     virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
@@ -49,7 +49,7 @@ impl SessionCommandService {
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
-        sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
+        sqldb_store: std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
     ) -> Self {
         Self {
             db,

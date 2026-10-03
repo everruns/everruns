@@ -36,7 +36,7 @@ own storage.
   engine's `tokio` dependency is narrowed to `rt`, `sync`, `time` and
   `macros`; `getrandom` and `uuid` take their JavaScript backends on that
   target only.
-- **Time and tasks go through `everruns_provider::rt`.** On native targets
+- **Time and tasks go through `everruns_contracts::rt`.** On native targets
   it re-exports Tokio's types unchanged, so paused-clock tests keep working.
   On wasm32 it uses the host clock (`web-time`), `setTimeout`
   (`gloo-timers`) and the microtask queue (`wasm-bindgen-futures`).

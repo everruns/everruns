@@ -21,7 +21,7 @@
 
 use crate::capabilities::{Capability, CapabilityLocalization};
 use crate::user_facing_error::ErrorDisclosure;
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
 pub const ERROR_DISCLOSURE_CAPABILITY_ID: &str = "error_disclosure";
 

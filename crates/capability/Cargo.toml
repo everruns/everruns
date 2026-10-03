@@ -1,10 +1,4 @@
-# The neutral capability contract (EVE-873).
-#
-# One open identity/configuration contract shared by the `everruns` Framework,
-# the hosted product composition (core/host/server/worker), and integration
-# crates. Deliberately dependency-light: no everruns-core, no everruns-host,
-# no Tokio, HTTP, SQLx, OpenAPI, inventory, or platform records — third-party
-# capability crates can depend on this crate alone.
+# Deprecated shim: publish once, then remove after the migration release.
 
 [package]
 name = "everruns-capability"
@@ -17,25 +11,16 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-capability"
 readme = "README.md"
-description = "Neutral capability contract for Everruns - capability identity, configuration, and code-defined capability authoring"
-keywords = ["agent", "agentic", "llm", "ai", "framework"]
+description = "Moved to everruns-contracts. Deprecated shim, no longer updated."
+keywords = ["deprecated", "everruns", "agents"]
 categories = ["development-tools", "asynchronous"]
 
-[features]
-# The code-defined capability authoring surface (`Definition`, `Handler`,
-# typed tool schemas). Pulls in schemars and async-trait; the bare
-# identity/configuration contract compiles without them.
-default = ["definition"]
-definition = ["dep:schemars", "dep:async-trait"]
-
 [dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
-schemars = { workspace = true, optional = true }
-async-trait = { workspace = true, optional = true }
+everruns-contracts = { workspace = true, default-features = false }
 
-[dev-dependencies]
-serde_json.workspace = true
+[features]
+default = ["definition"]
+definition = ["everruns-contracts/definition"]
 
 [lints]
 workspace = true

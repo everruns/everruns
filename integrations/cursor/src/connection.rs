@@ -6,7 +6,7 @@
 // connection setup.
 
 use async_trait::async_trait;
-use everruns_platform::connector::{
+use everruns_contracts::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 use serde_json::json;

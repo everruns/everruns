@@ -170,9 +170,9 @@ impl TestServer {
         channel_type: &str,
         mut channel_config: Value,
     ) -> Value {
+        use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_platform::AgentEndpointId;
-        use everruns_provider::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
         use everruns_server::storage::models::{
             CreateAppRow, CreateLegacyAliasEndpointRow, CreatePrincipalRow,
@@ -742,7 +742,7 @@ impl TestServer {
         );
         // Session SQL database store (in-memory for all test modes)
         let sqldb_backend = Arc::new(everruns_server::session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> = Arc::new(
+        let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> = Arc::new(
             everruns_server::session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
         let provider_resolver = Arc::new(services::ProviderResolverService::new(

@@ -12,7 +12,7 @@ impl Database {
     /// List all preferences for a user, ordered by key.
     pub async fn list_virtual_user_preferences(
         &self,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         limit: usize,
     ) -> Result<Vec<VirtualUserPreferenceRow>> {
         let rows = sqlx::query_as::<_, VirtualUserPreferenceRow>(
@@ -35,7 +35,7 @@ impl Database {
     /// Get a single preference for a user by key.
     pub async fn get_virtual_user_preference(
         &self,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         key: &str,
     ) -> Result<Option<VirtualUserPreferenceRow>> {
         let row = sqlx::query_as::<_, VirtualUserPreferenceRow>(
@@ -56,7 +56,7 @@ impl Database {
     /// Create or update a preference value for a user by key.
     pub async fn set_virtual_user_preference(
         &self,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         key: &str,
         value: &str,
         max_preferences: usize,
@@ -109,7 +109,7 @@ impl Database {
     /// Delete a user's preference by key. Returns true when a row was removed.
     pub async fn delete_virtual_user_preference(
         &self,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         key: &str,
     ) -> Result<bool> {
         let result = sqlx::query(

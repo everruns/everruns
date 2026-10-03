@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_provider::typed_id::TriggerId;
+use everruns_contracts::typed_id::TriggerId;
 
 use super::Database;
 use crate::storage::agent_trigger_mcp_subscriptions::{

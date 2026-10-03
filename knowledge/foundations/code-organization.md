@@ -75,12 +75,15 @@ publish slots.
 
 The `everruns-drivers` crate (vendor modules `openai`, `anthropic`, `gemini`,
 `bedrock`, `mai`, `fireworks`, `openrouter`, `meta`, `cloudflare`, `vercel`)
-depends on `everruns-provider`, **not** `everruns-core`. `everruns-provider` is the lean provider/LLM abstraction crate
+depends on `everruns-contracts`, **not** `everruns-core`. `everruns-contracts` is the lean provider/LLM abstraction crate
 that owns the driver surface (`ChatDriver`, the shared OpenAI/OpenResponses
 protocol drivers, model profiles, retry/stream helpers, typed IDs, the
 credential form schema, and the LLM error taxonomy). It carries none of core's
-hosted subtrees (`a2a` gRPC, knowledge/vector stores, platform delegation), so a
-standalone provider build never pulls them in. A provider is therefore a pure
+hosted subtrees (`a2a` gRPC, concrete knowledge/vector backends, platform delegation), so a
+standalone provider build never pulls them in. Connector, sandbox, SQL, knowledge, and vector extension traits share this owner;
+HTTP transports, schema derives, database ID codecs, and sandbox inventory
+registration are explicit features. The contracts crate has no core or platform
+dependency. A provider is therefore a pure
 `ChatDriver` implementation with no dependency on core's agent-loop runtime.
 Since EVE-874 provider crates carry **no** `everruns-core` edge at all, not
 even as a dev-dependency; wire-level tests build their fixtures in-crate, and
@@ -174,10 +177,10 @@ schedule and resource records stay while core execution still consumes them;
 their deployment-specific quota policy is resolved by local/server adapters,
 not from environment variables in the kernel.
 
-`everruns-core` depends on `everruns-provider` with default features disabled
+`everruns-core` depends on `everruns-contracts` with default features disabled
 and imports only the contracts needed by neutral execution. It does not
 re-export provider-owned modules. Low-level consumers declare
-`everruns-provider` directly; the application-facing `everruns` facade may
+`everruns-contracts` directly; the application-facing `everruns` facade may
 selectively expose the coherent Framework API from either owner. Crates that
 pull in the host (for example `everruns`'s `local` feature → `everruns-host`) still depend
 on full `everruns-core`.

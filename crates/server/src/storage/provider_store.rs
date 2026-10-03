@@ -7,9 +7,9 @@
 // matching the Grpc/Adapter store pattern.
 
 use crate::kernel_imports::{
-    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
-    everruns_provider::error::StoreResultExt, everruns_provider::model_spec::ModelSpec,
-    everruns_provider::typed_id::ModelId, provider_resolution::ProviderStore,
+    contracts::error::AgentLoopError, contracts::error::Result, contracts::error::StoreResultExt,
+    contracts::model_spec::ModelSpec, contracts::typed_id::ModelId,
+    provider_resolution::ProviderStore,
 };
 use async_trait::async_trait;
 
@@ -104,9 +104,9 @@ impl ProviderStore for DbProviderStore {
 
     async fn get_provider_config(
         &self,
-        provider: &everruns_provider::runtime_provider::ProviderKey,
-    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
-        let id: everruns_provider::typed_id::ProviderId =
+        provider: &everruns_contracts::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        let id: everruns_contracts::typed_id::ProviderId =
             provider.as_str().parse().map_err(|_| {
                 AgentLoopError::Configuration(format!(
                     "invalid persisted provider id '{}'",
@@ -125,7 +125,7 @@ impl ProviderStore for DbProviderStore {
             .db
             .get_provider_with_api_key(&row, &self.encryption)
             .store_err()?;
-        let mut config = everruns_provider::driver_registry::ProviderConfig::for_provider(
+        let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
             provider.clone(),
             parse_provider_type(&with_key.provider_type)?,
         );
@@ -142,7 +142,7 @@ impl ProviderStore for DbProviderStore {
 /// resolve to a usable provider type instead of erroring. An empty/whitespace
 /// value is a corrupt row and surfaces as a configuration error rather than a
 /// silent `External("")`.
-fn parse_provider_type(provider_type_str: &str) -> Result<everruns_provider::provider::DriverId> {
+fn parse_provider_type(provider_type_str: &str) -> Result<everruns_contracts::provider::DriverId> {
     if provider_type_str.trim().is_empty() {
         return Err(AgentLoopError::Configuration(
             "empty provider_type in database".to_string(),

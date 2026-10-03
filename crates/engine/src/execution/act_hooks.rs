@@ -424,7 +424,7 @@ impl PostActHook for UrlElicitationHook {
 pub(super) fn runs_on_server(call: &ToolCall, tool_definitions: &[ToolDefinition]) -> bool {
     match tool_definitions.iter().find(|td| td.name() == call.name) {
         Some(td) => !matches!(td, ToolDefinition::ClientSide(_)),
-        None => call.name != everruns_provider::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL,
+        None => call.name != everruns_contracts::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL,
     }
 }
 
@@ -643,7 +643,7 @@ mod tests {
             name: name.into(),
             arguments: json!({}),
         };
-        let approval = everruns_provider::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL;
+        let approval = everruns_contracts::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL;
         assert!(!runs_on_server(&call(approval), &[]));
         assert!(runs_on_server(&call("missing_tool"), &[]));
     }
@@ -1199,11 +1199,11 @@ mod tests {
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
             images: Some(vec![
-                everruns_provider::ToolResultImage {
+                everruns_contracts::ToolResultImage {
                     base64: "a".repeat(32),
                     media_type: "image/png".to_string(),
                 },
-                everruns_provider::ToolResultImage {
+                everruns_contracts::ToolResultImage {
                     base64: "b".repeat(MAX_TOOL_RESULT_BYTES + 1),
                     media_type: "image/png".to_string(),
                 },
@@ -1234,15 +1234,15 @@ mod tests {
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
             images: Some(vec![
-                everruns_provider::ToolResultImage {
+                everruns_contracts::ToolResultImage {
                     base64: "a".repeat(half),
                     media_type: "image/png".to_string(),
                 },
-                everruns_provider::ToolResultImage {
+                everruns_contracts::ToolResultImage {
                     base64: "b".repeat(half),
                     media_type: "image/png".to_string(),
                 },
-                everruns_provider::ToolResultImage {
+                everruns_contracts::ToolResultImage {
                     base64: "c".repeat(half),
                     media_type: "image/png".to_string(),
                 },
@@ -1273,7 +1273,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
-            images: Some(vec![everruns_provider::ToolResultImage {
+            images: Some(vec![everruns_contracts::ToolResultImage {
                 base64: "a".repeat(MAX_TOOL_RESULT_BYTES + 1),
                 media_type: "image/png".to_string(),
             }]),

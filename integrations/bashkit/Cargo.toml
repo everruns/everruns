@@ -17,9 +17,8 @@ categories = ["development-tools", "asynchronous"]
 default = []
 
 [dependencies]
-everruns-capability.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 everruns-core.workspace = true
-everruns-provider.workspace = true
 async-trait.workspace = true
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).

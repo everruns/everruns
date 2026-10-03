@@ -1,10 +1,10 @@
 //! The hosted `typesafe` capability and its tool.
 
 use async_trait::async_trait;
+use everruns_contracts::tool_types::ToolHints;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
 use serde_json::Value;
 use tracing::debug;
 
@@ -23,8 +23,8 @@ pub const CAPABILITY_PLUGINS: &[everruns_core::capabilities::IntegrationPlugin] 
 
 /// This crate's connector contributions, named by `everruns-integrations-catalog`.
 #[cfg(feature = "hosted")]
-pub const CONNECTOR_PLUGINS: &[everruns_platform::connector::ConnectorPlugin] =
-    &[everruns_platform::connector::ConnectorPlugin {
+pub const CONNECTOR_PLUGINS: &[everruns_contracts::connector::ConnectorPlugin] =
+    &[everruns_contracts::connector::ConnectorPlugin {
         experimental_only: true,
         factory: || Box::new(crate::TypeSafeAIConnector),
     }];
@@ -186,10 +186,10 @@ impl Tool for JevDecisionTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::error::{AgentLoopError, Result};
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::connection_services::UserConnectionResolver;
     use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
-    use everruns_provider::error::{AgentLoopError, Result};
-    use everruns_provider::typed_id::SessionId;
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -309,7 +309,7 @@ mod tests {
 
     #[tokio::test]
     async fn malformed_arguments_never_reach_the_network() {
-        let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let context = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
         let result = JevDecisionTool
             .execute_with_context(json!({"state": "x"}), &context)
             .await;
@@ -321,7 +321,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_credentials_explain_how_to_configure_them() {
-        let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let context = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
         let result = JevDecisionTool
             .execute_with_context(
                 json!({

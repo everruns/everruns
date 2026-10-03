@@ -6,8 +6,8 @@
 //! to X?", so a driver gaining a service, or a new driver landing unlisted, has
 //! to show up here rather than silently making the page wrong.
 
-use everruns_provider::driver_registry::ServiceKind;
-use everruns_provider::provider::DriverId;
+use everruns_contracts::driver_registry::ServiceKind;
+use everruns_contracts::provider::DriverId;
 use everruns_worker::adapters::create_driver_registry;
 
 /// The published table, in `docs/framework/models-and-providers.md` order:

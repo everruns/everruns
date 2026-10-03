@@ -16,7 +16,7 @@ impl WorkerServiceImpl {
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
         // Get agent with capabilities via domain query
-        let public_id = everruns_provider::typed_id::AgentId::from_uuid(agent_id).to_string();
+        let public_id = everruns_contracts::typed_id::AgentId::from_uuid(agent_id).to_string();
         let agent =
             crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
                 .await
@@ -37,7 +37,7 @@ impl WorkerServiceImpl {
         let harness = crate::domains::harnesses::queries::resolve_effective(
             &self.db,
             req.org_id,
-            everruns_provider::typed_id::HarnessId::from_uuid(harness_id),
+            everruns_contracts::typed_id::HarnessId::from_uuid(harness_id),
         )
         .await
         .map_err(|e| internal_status("Failed to get harness", e))?;

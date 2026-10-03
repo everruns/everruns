@@ -204,7 +204,7 @@ impl UserConnectionResolver for IdentityCacheResolver {
         &self,
         _session_id: SessionId,
         _provider: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         panic!("identity-scoped discovery must not use the legacy resolver")
     }
 
@@ -213,7 +213,7 @@ impl UserConnectionResolver for IdentityCacheResolver {
         session_id: SessionId,
         _provider: &str,
         _acts_as: McpServerActsAs,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         Ok(self
             .tokens
             .read()

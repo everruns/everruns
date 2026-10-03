@@ -2393,7 +2393,7 @@ mod tests {
             .map(|s| s.capability_id().to_string())
             .collect();
         let ctx =
-            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
         // Build a ToolRegistry exactly as the worker does
@@ -2424,8 +2424,8 @@ mod tests {
     /// Verify server-executed Generic tools have implementations.
     #[tokio::test]
     async fn test_generic_harness_collected_tools_have_implementations() {
+        use everruns_contracts::tool_types::ToolPolicy;
         use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
-        use everruns_provider::tool_types::ToolPolicy;
 
         let registry =
             crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
@@ -2442,7 +2442,7 @@ mod tests {
             .map(|s| s.capability_id().to_string())
             .collect();
         let ctx =
-            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
         // Client-side definitions deliberately park for an external result.
@@ -2492,7 +2492,7 @@ mod tests {
             .map(|s| s.capability_id().to_string())
             .collect();
         let ctx =
-            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
         let tool_names: Vec<&str> = collected

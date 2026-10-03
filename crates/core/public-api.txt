@@ -1731,13 +1731,6 @@ everruns_core::tools::Tool	trait
 everruns_core::tools::Tool::cli_spelling	function
 everruns_core::tools::Tool::narrate	function
 everruns_core::tools::Tool::required_context_services	function
-everruns_core::tools::ToolExecutionResult	enum
-everruns_core::tools::ToolExecutionResult::ConnectionRequired	variant
-everruns_core::tools::ToolExecutionResult::InternalError	variant
-everruns_core::tools::ToolExecutionResult::Success	variant
-everruns_core::tools::ToolExecutionResult::SuccessWithImages	variant
-everruns_core::tools::ToolExecutionResult::ToolError	variant
-everruns_core::tools::ToolInternalError	struct
 everruns_core::tools::ToolRegistry	struct
 everruns_core::tools::ToolRegistryBuilder	struct
 everruns_core::truncation_info	module

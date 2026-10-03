@@ -66,7 +66,7 @@ use crate::{
     image_services::ImageResolver,
     image_services::ResolvedImage,
 };
-use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
+use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod background_call;
 mod compaction;
@@ -100,7 +100,7 @@ use stream_state::{
 use transcript::repair_dangling_tool_calls;
 
 fn unix_now_secs() -> u64 {
-    everruns_provider::rt::unix_now_secs()
+    everruns_contracts::rt::unix_now_secs()
 }
 
 /// Input for ReasonAtom
@@ -266,7 +266,7 @@ pub struct ReasonAtom {
     /// Optional durable store for replacement context checkpoints.
     compaction_checkpoint_store: Option<Arc<dyn crate::CompactionCheckpointStore>>,
     /// Durable re-attach journal and turn-cancel signal for background calls.
-    background_call: everruns_provider::background_call::BackgroundCallContext,
+    background_call: everruns_contracts::background_call::BackgroundCallContext,
 }
 
 impl ReasonAtom {
@@ -1338,7 +1338,7 @@ impl ReasonAtom {
         // classified — treat as assistant text") and is refined monotonically
         // once a provider reveals a native phase mid-stream. Declared outside the
         // retry loop so it is available to the post-loop guarded delta emission.
-        let mut streamed_phase: Option<everruns_provider::ExecutionPhase> = None;
+        let mut streamed_phase: Option<everruns_contracts::ExecutionPhase> = None;
         let mut native_calls = std::collections::BTreeMap::new();
         let mut compaction_started_at: Option<Instant> = None;
         let (
@@ -1354,7 +1354,7 @@ impl ReasonAtom {
             let stream_result = if let Some(remaining) =
                 remaining_retry_time(&retry_config, retry_started_at)
             {
-                match everruns_provider::rt::timeout(
+                match everruns_contracts::rt::timeout(
                     remaining,
                     chat_driver.chat_completion_stream(
                         &crate::ProviderEndpoint::default(),
@@ -1469,7 +1469,7 @@ impl ReasonAtom {
                         "ReasonAtom: transient provider failure before stream, retrying"
                     );
                     stream_retry_metadata.record_retry(wait_duration, None);
-                    everruns_provider::rt::sleep(wait_duration).await;
+                    everruns_contracts::rt::sleep(wait_duration).await;
                     continue 'stream_attempt;
                 }
                 Err(error) => {
@@ -1522,9 +1522,9 @@ impl ReasonAtom {
                 .unwrap_or(std::time::Duration::from_secs(120));
             let initial_stall_timeout = remaining_retry_time(&retry_config, retry_started_at)
                 .map_or(stall_timeout, |remaining| remaining.min(stall_timeout));
-            let mut stall_sleep = Box::pin(everruns_provider::rt::sleep(initial_stall_timeout));
+            let mut stall_sleep = Box::pin(everruns_contracts::rt::sleep(initial_stall_timeout));
             let mut keepalive_ticker =
-                everruns_provider::rt::Interval::new(std::time::Duration::from_secs(12));
+                everruns_contracts::rt::Interval::new(std::time::Duration::from_secs(12));
             keepalive_ticker.tick().await; // consume immediate first tick
             let mut last_stream_heartbeat = Instant::now();
             // Tracks the wall-clock time of the last actual token received.
@@ -1595,7 +1595,7 @@ impl ReasonAtom {
                                 "ReasonAtom: provider stream stall, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
-                            everruns_provider::rt::sleep(wait_duration).await;
+                            everruns_contracts::rt::sleep(wait_duration).await;
                             continue 'stream_attempt;
                         }
                         compaction_lifecycle
@@ -1627,7 +1627,7 @@ impl ReasonAtom {
                 replay_state.observe(&event);
                 let advanced_stall_deadline = advances_stall_deadline(&event);
                 if advanced_stall_deadline {
-                    stall_sleep = Box::pin(everruns_provider::rt::sleep(stall_timeout));
+                    stall_sleep = Box::pin(everruns_contracts::rt::sleep(stall_timeout));
                     last_token_at_unix = unix_now_secs();
                 }
                 match event {
@@ -1803,7 +1803,7 @@ impl ReasonAtom {
                         if self.native_async.is_some() {
                             for call in &calls {
                                 native_calls.entry(call.id.clone()).or_insert_with(|| {
-                                    everruns_provider::native_async::NativeToolCall::Function {
+                                    everruns_contracts::native_async::NativeToolCall::Function {
                                         call_id: call.id.clone(),
                                         name: call.name.clone(),
                                         arguments: call.arguments.to_string(),
@@ -1829,7 +1829,7 @@ impl ReasonAtom {
                         // count as stream output. The completed message's phase stays
                         // authoritative, and the hint is deliberately not derived
                         // from later tool-call presence (EVE-448 anti-pattern).
-                        streamed_phase = everruns_provider::ExecutionPhase::refine_streamed_hint(
+                        streamed_phase = everruns_contracts::ExecutionPhase::refine_streamed_hint(
                             streamed_phase,
                             phase,
                         );
@@ -1977,7 +1977,7 @@ impl ReasonAtom {
                                 "ReasonAtom: transient stream error before output, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
-                            everruns_provider::rt::sleep(wait_duration).await;
+                            everruns_contracts::rt::sleep(wait_duration).await;
                             continue 'stream_attempt;
                         }
 
@@ -2469,12 +2469,12 @@ impl ReasonAtom {
         let provider_phase = completion_metadata
             .as_ref()
             .and_then(|meta| meta.phase.as_deref())
-            .and_then(everruns_provider::ExecutionPhase::from_provider_str);
+            .and_then(everruns_contracts::ExecutionPhase::from_provider_str);
         let (phase, phase_source) = match provider_phase {
-            Some(phase) => (phase, everruns_provider::PhaseSource::Provider),
+            Some(phase) => (phase, everruns_contracts::PhaseSource::Provider),
             None => (
-                everruns_provider::ExecutionPhase::from_has_tool_calls(has_tool_calls),
-                everruns_provider::PhaseSource::Derived,
+                everruns_contracts::ExecutionPhase::from_has_tool_calls(has_tool_calls),
+                everruns_contracts::PhaseSource::Derived,
             ),
         };
         assistant_message.phase = Some(phase);

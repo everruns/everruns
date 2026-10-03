@@ -31,8 +31,7 @@ async-trait
 base64
 chrono
 cron
-everruns-capability
-everruns-provider
+everruns-contracts
 futures
 globset
 inventory
@@ -86,8 +85,8 @@ if printf '%s' "$CORE_PACKAGE" | jq -e '.dependencies[] | select(.kind == "build
   fail "everruns-core must not add build dependencies without an explicit audit"
 fi
 
-if ! printf '%s' "$CORE_PACKAGE" | jq -e '.dependencies[] | select(.name == "everruns-provider" and .uses_default_features == false)' >/dev/null; then
-  fail "everruns-core must consume everruns-provider with default features disabled"
+if ! printf '%s' "$CORE_PACKAGE" | jq -e '.dependencies[] | select(.name == "everruns-contracts" and .uses_default_features == false)' >/dev/null; then
+  fail "everruns-core must consume everruns-contracts with default features disabled"
 fi
 
 SOURCE_PATTERN='(rustls|reqwest|hyper|sqlx|opentelemetry|tracing_opentelemetry)::|tokio::(net|process)|OpenAIProtocolChatDriver|OpenResponsesProtocolChatDriver'

@@ -26,8 +26,8 @@ use super::{
 };
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
-use everruns_capability::json_schema_for;
-use everruns_capability::schemars::JsonSchema;
+use everruns_contracts::capability::json_schema_for;
+use everruns_contracts::capability::schemars::JsonSchema;
 use everruns_core::tool_context::ToolContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -136,7 +136,7 @@ Guard rails:
 /// Configuration for the OpenRouter model scout.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
-#[schemars(crate = "everruns_capability::schemars")]
+#[schemars(crate = "everruns_contracts::capability::schemars")]
 pub struct ScoutConfig {
     /// Model used to run the scout. If omitted, the blueprint default is used.
     #[schemars(length(min = 1))]
@@ -176,7 +176,7 @@ impl Default for ScoutConfig {
 
 /// A single probe task definition.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(crate = "everruns_capability::schemars")]
+#[schemars(crate = "everruns_contracts::capability::schemars")]
 pub struct ProbeTask {
     pub id: String,
     pub prompt: String,

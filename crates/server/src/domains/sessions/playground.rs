@@ -1,7 +1,7 @@
 //! Playground is a shared session, with an immutable end-user test subject.
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
 use everruns_core::{Permission, Policy, Rule};
-use everruns_provider::typed_id::{PrincipalId, VirtualUserId};
+use everruns_contracts::typed_id::{PrincipalId, VirtualUserId};
 
 const IMPERSONATE: Policy = Policy {
     id: "playground.impersonate",

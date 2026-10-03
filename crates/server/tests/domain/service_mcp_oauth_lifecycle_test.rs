@@ -15,12 +15,12 @@ use async_trait::async_trait;
 use axum::extract::{Path, Query, State};
 use axum_extra::extract::cookie::CookieJar;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use everruns_contracts::connector::ConnectorRegistry;
+use everruns_contracts::typed_id::{HarnessId, PrincipalId, SessionId, VirtualUserId};
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::{
     Caller, EgressRequest, EgressResponse, EgressService, McpServerActsAs, OrgRole,
 };
-use everruns_platform::connector::ConnectorRegistry;
-use everruns_provider::typed_id::{HarnessId, PrincipalId, SessionId, VirtualUserId};
 use everruns_server::api::user_connections::{
     AppState, OAuthAuthorizeQuery, OAuthCallbackQuery, authorize_connection,
     connection_oauth_callback,
@@ -164,7 +164,7 @@ async fn create_user_principal(db: &StorageBackend, user_id: Uuid) -> PrincipalI
 
 async fn create_session(
     db: &StorageBackend,
-    agent_id: everruns_provider::typed_id::AgentId,
+    agent_id: everruns_contracts::typed_id::AgentId,
     identity_id: VirtualUserId,
     harness_id: HarnessId,
     owner_principal_id: PrincipalId,
@@ -326,7 +326,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("service-oauth-{}", &server_id.to_string()[..8]),
                 display_name: None,
                 description: None,

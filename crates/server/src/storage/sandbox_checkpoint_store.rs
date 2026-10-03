@@ -25,7 +25,7 @@ use everruns_platform::sandbox_state::{
 use everruns_platform::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use sqlx::PgPool;
 use uuid::Uuid;
 

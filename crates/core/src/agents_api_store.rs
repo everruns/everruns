@@ -12,8 +12,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;

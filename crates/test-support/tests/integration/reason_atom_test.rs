@@ -1,11 +1,12 @@
-// Integration tests for ReasonAtom with LlmSimDriver
-//
-// These tests verify the full ReasonAtom workflow using the simulated LLM driver,
-// enabling deterministic testing without real LLM API calls.
-//
+// Deterministic reason-phase workflows driven by the simulated LLM driver.
 // Run with: cargo test -p everruns-test-support --test integration reason_atom_test::
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::ProviderConfig;
+use everruns_contracts::driver_registry::{DriverId, DriverRegistry, LlmCompletionMetadata};
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::AgentDefinition;
 use everruns_core::ExecutionContext;
 use everruns_core::MessageRetriever;
@@ -18,12 +19,6 @@ use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver, register_driver};
-use everruns_provider::driver_registry::ProviderConfig;
-use everruns_provider::driver_registry::{DriverId, DriverRegistry, LlmCompletionMetadata};
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::AgentId;
-use everruns_provider::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, reason_atom_with_stores,
 };
@@ -96,7 +91,7 @@ async fn setup_test_environment() -> (
     let session_id = Uuid::now_v7();
     let session = ExecutionSession {
         id: session_id.into(),
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
         organization_id: "default".to_string(),
         harness_id,
         agent_id: Some(agent_id.into()),
@@ -168,14 +163,14 @@ struct FlakyStreamDriver {
 #[derive(Clone, Debug)]
 struct NativeCompactRetryDriver {
     attempts: Arc<AtomicUsize>,
-    compact_request: Arc<Mutex<Option<everruns_provider::compact::CompactRequest>>>,
+    compact_request: Arc<Mutex<Option<everruns_contracts::compact::CompactRequest>>>,
     calls: Arc<Mutex<Vec<CapturedLlmCall>>>,
     expect_opaque: Arc<AtomicBool>,
 }
 
 type CapturedLlmCall = (
-    Vec<everruns_provider::driver_registry::Message>,
-    everruns_provider::driver_registry::LlmCallConfig,
+    Vec<everruns_contracts::driver_registry::Message>,
+    everruns_contracts::driver_registry::LlmCallConfig,
 );
 
 /// Cost the fake gateway reports for each compaction call, mirroring an
@@ -185,7 +180,7 @@ const PROACTIVE_COMPACT_COST_USD: f64 = 0.0125;
 #[derive(Clone, Debug)]
 struct ProactiveCompactDriver {
     compact_attempts: Arc<AtomicUsize>,
-    compact_requests: Arc<Mutex<Vec<everruns_provider::compact::CompactRequest>>>,
+    compact_requests: Arc<Mutex<Vec<everruns_contracts::compact::CompactRequest>>>,
     chat_attempts: Arc<AtomicUsize>,
     request_too_large_attempt: Arc<Mutex<Option<usize>>>,
     calls: Arc<Mutex<Vec<CapturedLlmCall>>>,
@@ -196,24 +191,26 @@ struct ProactiveCompactDriver {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for ProactiveCompactDriver {
+impl everruns_contracts::driver_registry::ChatDriver for ProactiveCompactDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         self.calls.lock().await.push((messages, config.clone()));
         let attempt = self.chat_attempts.fetch_add(1, Ordering::SeqCst);
         if *self.request_too_large_attempt.lock().await == Some(attempt) {
-            return Err(everruns_provider::error::AgentLoopError::request_too_large(
-                "forced reactive compaction",
-            ));
+            return Err(
+                everruns_contracts::error::AgentLoopError::request_too_large(
+                    "forced reactive compaction",
+                ),
+            );
         }
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::default(),
             )),
         ])))
@@ -233,21 +230,22 @@ impl everruns_provider::driver_registry::ChatDriver for ProactiveCompactDriver {
 
     async fn compact(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        request: everruns_provider::compact::CompactRequest,
-    ) -> everruns_provider::error::Result<Option<everruns_provider::compact::CompactResponse>> {
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        request: everruns_contracts::compact::CompactRequest,
+    ) -> everruns_contracts::error::Result<Option<everruns_contracts::compact::CompactResponse>>
+    {
         self.compact_attempts.fetch_add(1, Ordering::SeqCst);
         self.compact_requests.lock().await.push(request);
         if self.fail_compact {
-            return Err(everruns_provider::error::AgentLoopError::llm(
+            return Err(everruns_contracts::error::AgentLoopError::llm(
                 "compact failed",
             ));
         }
-        Ok(Some(everruns_provider::compact::CompactResponse {
-            output: vec![everruns_provider::compact::CompactOutputItem::Compaction {
+        Ok(Some(everruns_contracts::compact::CompactResponse {
+            output: vec![everruns_contracts::compact::CompactOutputItem::Compaction {
                 encrypted_content: "proactive-opaque-payload".to_string(),
             }],
-            usage: Some(everruns_provider::compact::CompactUsage {
+            usage: Some(everruns_contracts::compact::CompactUsage {
                 input_tokens: Some(self.usage.0),
                 output_tokens: Some(self.usage.1),
                 total_tokens: Some(self.usage.0.saturating_add(self.usage.1)),
@@ -271,7 +269,7 @@ struct ProactiveTestRig {
     agent_id: Uuid,
     session_id: Uuid,
     compact_attempts: Arc<AtomicUsize>,
-    compact_requests: Arc<Mutex<Vec<everruns_provider::compact::CompactRequest>>>,
+    compact_requests: Arc<Mutex<Vec<everruns_contracts::compact::CompactRequest>>>,
     request_too_large_attempt: Arc<Mutex<Option<usize>>>,
     calls: Arc<Mutex<Vec<CapturedLlmCall>>>,
     provider_type: DriverId,
@@ -287,7 +285,7 @@ impl ProactiveTestRig {
         fail_compact: bool,
     ) -> Self {
         use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
-        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+        use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
         use everruns_core::execution_loading::SessionStore;
 
         let (
@@ -370,14 +368,14 @@ impl ProactiveTestRig {
     async fn execute(
         &self,
         previous_response_id: Option<&str>,
-    ) -> everruns_provider::error::Result<ReasonResult> {
+    ) -> everruns_contracts::error::Result<ReasonResult> {
         self.execute_with_checkpoint_store(previous_response_id, self.checkpoint_store.clone())
             .await
     }
 
     async fn configure_cost_pressure(&self, messages: Vec<RuntimeMessage>) {
         use everruns_builtins::COMPACTION_CAPABILITY_ID;
-        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+        use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
         use everruns_core::execution_loading::SessionStore;
 
         self.message_retriever
@@ -410,7 +408,7 @@ impl ProactiveTestRig {
         &self,
         previous_response_id: Option<&str>,
         checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
-    ) -> everruns_provider::error::Result<ReasonResult> {
+    ) -> everruns_contracts::error::Result<ReasonResult> {
         let atom = reason_atom_with_stores(
             self.harness_store.clone(),
             self.agent_store.clone(),
@@ -446,7 +444,7 @@ impl everruns_core::CompactionCheckpointStore for FailingProactiveAttemptStore {
         session_id: SessionId,
         provider_type: &str,
         model: &str,
-    ) -> everruns_provider::error::Result<Option<everruns_core::CompactionCheckpoint>> {
+    ) -> everruns_contracts::error::Result<Option<everruns_core::CompactionCheckpoint>> {
         self.checkpoints
             .get_latest(session_id, provider_type, model)
             .await
@@ -455,7 +453,7 @@ impl everruns_core::CompactionCheckpointStore for FailingProactiveAttemptStore {
     async fn install(
         &self,
         checkpoint: everruns_core::CompactionCheckpoint,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         self.checkpoints.install(checkpoint).await
     }
 
@@ -464,8 +462,8 @@ impl everruns_core::CompactionCheckpointStore for FailingProactiveAttemptStore {
         _session_id: SessionId,
         _provider_type: &str,
         _model: &str,
-    ) -> everruns_provider::error::Result<Option<everruns_core::ProactiveCompactionAttempt>> {
-        Err(everruns_provider::error::AgentLoopError::store(
+    ) -> everruns_contracts::error::Result<Option<everruns_core::ProactiveCompactionAttempt>> {
+        Err(everruns_contracts::error::AgentLoopError::store(
             "attempt lookup unavailable",
         ))
     }
@@ -476,38 +474,38 @@ impl everruns_core::CompactionCheckpointStore for FailingProactiveAttemptStore {
         _provider_type: &str,
         _model: &str,
         _attempt: everruns_core::ProactiveCompactionAttempt,
-    ) -> everruns_provider::error::Result<()> {
-        Err(everruns_provider::error::AgentLoopError::store(
+    ) -> everruns_contracts::error::Result<()> {
+        Err(everruns_contracts::error::AgentLoopError::store(
             "attempt write unavailable",
         ))
     }
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver {
+impl everruns_contracts::driver_registry::ChatDriver for NativeCompactRetryDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         self.calls.lock().await.push((messages, config.clone()));
         if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
-            return Err(everruns_provider::error::AgentLoopError::request_too_large(
-                "test context limit",
-            ));
+            return Err(
+                everruns_contracts::error::AgentLoopError::request_too_large("test context limit"),
+            );
         }
 
         if !self.expect_opaque.load(Ordering::SeqCst) {
             assert!(config.provider_opaque_context.is_none());
             return Ok(Box::pin(stream::iter(vec![
                 Ok(
-                    everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                    everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                         "Used raw history for incompatible model.".to_string(),
                     ),
                 ),
-                Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+                Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                     Box::default(),
                 )),
             ])));
@@ -518,7 +516,7 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver
             .provider_opaque_context
             .as_ref()
             .expect("retry must carry the standalone compact output");
-        let everruns_provider::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
+        let everruns_contracts::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
             output,
             ..
         } = context
@@ -527,29 +525,29 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver
         };
         assert!(matches!(
             &output[0],
-            everruns_provider::compact::CompactOutputItem::Message { role, content }
+            everruns_contracts::compact::CompactOutputItem::Message { role, content }
                 if role == "user"
-                    && matches!(content, everruns_provider::compact::CompactContent::Text(text) if text == "first")
+                    && matches!(content, everruns_contracts::compact::CompactContent::Text(text) if text == "first")
         ));
         assert!(matches!(
             &output[1],
-            everruns_provider::compact::CompactOutputItem::Compaction { encrypted_content }
+            everruns_contracts::compact::CompactOutputItem::Compaction { encrypted_content }
                 if encrypted_content == "encrypted-compact-context"
         ));
         assert!(matches!(
             &output[2],
-            everruns_provider::compact::CompactOutputItem::Message { role, content }
+            everruns_contracts::compact::CompactOutputItem::Message { role, content }
                 if role == "user"
-                    && matches!(content, everruns_provider::compact::CompactContent::Text(text) if text == "last")
+                    && matches!(content, everruns_contracts::compact::CompactContent::Text(text) if text == "last")
         ));
 
         Ok(Box::pin(stream::iter(vec![
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                     "Recovered from native compact context.".to_string(),
                 ),
             ),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::new({
                     let mut metadata = LlmCompletionMetadata::default();
                     metadata.total_tokens = Some(8);
@@ -573,25 +571,26 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver
 
     async fn compact(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        request: everruns_provider::compact::CompactRequest,
-    ) -> everruns_provider::error::Result<Option<everruns_provider::compact::CompactResponse>> {
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        request: everruns_contracts::compact::CompactRequest,
+    ) -> everruns_contracts::error::Result<Option<everruns_contracts::compact::CompactResponse>>
+    {
         *self.compact_request.lock().await = Some(request);
-        Ok(Some(everruns_provider::compact::CompactResponse {
+        Ok(Some(everruns_contracts::compact::CompactResponse {
             output: vec![
-                everruns_provider::compact::CompactOutputItem::Message {
+                everruns_contracts::compact::CompactOutputItem::Message {
                     role: "user".to_string(),
-                    content: everruns_provider::compact::CompactContent::Text("first".to_string()),
+                    content: everruns_contracts::compact::CompactContent::Text("first".to_string()),
                 },
-                everruns_provider::compact::CompactOutputItem::Compaction {
+                everruns_contracts::compact::CompactOutputItem::Compaction {
                     encrypted_content: "encrypted-compact-context".to_string(),
                 },
-                everruns_provider::compact::CompactOutputItem::Message {
+                everruns_contracts::compact::CompactOutputItem::Message {
                     role: "user".to_string(),
-                    content: everruns_provider::compact::CompactContent::Text("last".to_string()),
+                    content: everruns_contracts::compact::CompactContent::Text("last".to_string()),
                 },
             ],
-            usage: Some(everruns_provider::compact::CompactUsage {
+            usage: Some(everruns_contracts::compact::CompactUsage {
                 input_tokens: Some(1_000),
                 output_tokens: Some(100),
                 total_tokens: Some(1_100),
@@ -602,20 +601,20 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for FlakyStreamDriver {
+impl everruns_contracts::driver_registry::ChatDriver for FlakyStreamDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
 
         if attempt == 0 {
             return Ok(Box::pin(stream::iter(vec![Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::Error(
-                    everruns_provider::driver_registry::LlmStreamError::provider(
+                everruns_contracts::driver_registry::LlmStreamEvent::Error(
+                    everruns_contracts::driver_registry::LlmStreamError::provider(
                         Some("processing_error"),
                         None,
                         "An error occurred while processing your request.",
@@ -626,11 +625,11 @@ impl everruns_provider::driver_registry::ChatDriver for FlakyStreamDriver {
 
         Ok(Box::pin(stream::iter(vec![
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                     "Recovered after retry.".to_string(),
                 ),
             ),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::new({
                     let mut metadata = LlmCompletionMetadata::default();
                     metadata.total_tokens = Some(8);
@@ -659,13 +658,13 @@ struct StallingStreamDriver {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for StallingStreamDriver {
+impl everruns_contracts::driver_registry::ChatDriver for StallingStreamDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         self.seen_message_counts.lock().await.push(messages.len());
         let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
@@ -673,19 +672,19 @@ impl everruns_provider::driver_registry::ChatDriver for StallingStreamDriver {
         if attempt < self.max_stalls {
             // A stream that never yields a token: the watchdog must abort it.
             return Ok(Box::pin(stream::pending::<
-                everruns_provider::error::Result<
-                    everruns_provider::driver_registry::LlmStreamEvent,
+                everruns_contracts::error::Result<
+                    everruns_contracts::driver_registry::LlmStreamEvent,
                 >,
             >()));
         }
 
         Ok(Box::pin(stream::iter(vec![
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                     "Recovered after stall.".to_string(),
                 ),
             ),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::new({
                     let mut metadata = LlmCompletionMetadata::default();
                     metadata.total_tokens = Some(8);
@@ -707,23 +706,23 @@ struct ThinkingLeakDriver {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for ThinkingLeakDriver {
+impl everruns_contracts::driver_registry::ChatDriver for ThinkingLeakDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         Ok(Box::pin(stream::iter(vec![
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::ReasoningDelta {
+                everruns_contracts::driver_registry::LlmStreamEvent::ReasoningDelta {
                     delta: self.thinking.clone(),
                     summary: false,
                 },
             ),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta(self.answer.clone())),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(self.answer.clone())),
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::new({
                     let mut metadata = LlmCompletionMetadata::default();
                     metadata.total_tokens = Some(8);
@@ -744,19 +743,19 @@ struct SpeedCapturingDriver {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for SpeedCapturingDriver {
+impl everruns_contracts::driver_registry::ChatDriver for SpeedCapturingDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         *self.captured_speed.lock().await = config.speed.clone();
 
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::new({
                     let mut metadata = LlmCompletionMetadata::default();
                     metadata.total_tokens = Some(4);
@@ -858,7 +857,7 @@ async fn test_reason_atom_with_fixed_response() {
 #[tokio::test]
 async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_response_id() {
     use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
     let (
         harness_store,
@@ -958,9 +957,9 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     assert_eq!(compact_request.input.len(), 1);
     assert!(matches!(
         &compact_request.input[0],
-        everruns_provider::compact::CompactInputItem::Message { role, content }
+        everruns_contracts::compact::CompactInputItem::Message { role, content }
             if role == "user"
-                && matches!(content, everruns_provider::compact::CompactContent::Text(text) if text == "latest delta")
+                && matches!(content, everruns_contracts::compact::CompactContent::Text(text) if text == "latest delta")
     ));
 
     let public_events = serde_json::to_string(&event_emitter.events().await).unwrap();
@@ -1005,10 +1004,10 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     assert!(resumed_config.provider_opaque_context.is_some());
     assert!(resumed_config.previous_response_id.is_none());
     assert!(resumed_messages.iter().any(|message| {
-        matches!(&message.content, everruns_provider::driver_registry::MessageContent::Text(text) if text == "surviving raw suffix")
+        matches!(&message.content, everruns_contracts::driver_registry::MessageContent::Text(text) if text == "surviving raw suffix")
     }));
     assert!(!resumed_messages.iter().any(|message| {
-        matches!(&message.content, everruns_provider::driver_registry::MessageContent::Text(text) if text == "latest delta")
+        matches!(&message.content, everruns_contracts::driver_registry::MessageContent::Text(text) if text == "latest delta")
     }));
     drop(resumed_calls);
 
@@ -1053,7 +1052,7 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     let (messages, config) = calls.last().unwrap();
     assert!(config.provider_opaque_context.is_none());
     assert!(messages.iter().any(|message| {
-        matches!(&message.content, everruns_provider::driver_registry::MessageContent::Text(text) if text == "latest delta")
+        matches!(&message.content, everruns_contracts::driver_registry::MessageContent::Text(text) if text == "latest delta")
     }));
 }
 
@@ -1258,7 +1257,7 @@ async fn cumulative_cost_compacts_below_window_budget_and_preserves_raw_history(
     assert!(messages.iter().any(|message| {
         matches!(
             &message.content,
-            everruns_provider::driver_registry::MessageContent::Text(text)
+            everruns_contracts::driver_registry::MessageContent::Text(text)
                 if text.contains("Latest validation passed")
         )
     }));
@@ -1526,14 +1525,14 @@ async fn proactive_chained_checkpoint_compacts_prior_opaque_context_then_suffix_
     assert!(chained.previous_response_id.is_none());
     assert!(matches!(
         &chained.input[0],
-        everruns_provider::compact::CompactInputItem::Compaction { encrypted_content }
+        everruns_contracts::compact::CompactInputItem::Compaction { encrypted_content }
             if encrypted_content == "proactive-opaque-payload"
     ));
     let suffix_texts: Vec<&str> = chained.input[1..]
         .iter()
         .map(|item| match item {
-            everruns_provider::compact::CompactInputItem::Message {
-                content: everruns_provider::compact::CompactContent::Text(text),
+            everruns_contracts::compact::CompactInputItem::Message {
+                content: everruns_contracts::compact::CompactContent::Text(text),
                 ..
             } => text.as_str(),
             other => panic!("unexpected chained suffix item: {other:?}"),
@@ -1574,13 +1573,13 @@ async fn reactive_compaction_composes_restored_checkpoint_with_raw_suffix() {
     assert_eq!(requests.len(), 2);
     assert!(matches!(
         &requests[1].input[0],
-        everruns_provider::compact::CompactInputItem::Compaction { encrypted_content }
+        everruns_contracts::compact::CompactInputItem::Compaction { encrypted_content }
             if encrypted_content == "proactive-opaque-payload"
     ));
     assert!(matches!(
         &requests[1].input[1],
-        everruns_provider::compact::CompactInputItem::Message {
-            content: everruns_provider::compact::CompactContent::Text(text),
+        everruns_contracts::compact::CompactInputItem::Message {
+            content: everruns_contracts::compact::CompactContent::Text(text),
             ..
         } if text == "reactive-suffix"
     ));
@@ -2588,7 +2587,7 @@ async fn test_driver_registry_integration() {
     assert!(registry.has_driver(&DriverId::LlmSim));
 
     // Create driver via registry
-    let config = everruns_provider::driver_registry::ProviderConfig::new(DriverId::LlmSim)
+    let config = everruns_contracts::driver_registry::ProviderConfig::new(DriverId::LlmSim)
         .with_api_key("test-key");
 
     let driver = registry
@@ -2596,14 +2595,14 @@ async fn test_driver_registry_integration() {
         .expect("Should create LlmSim driver");
 
     // Test the driver
-    use everruns_provider::driver_registry::{ChatDriver, LlmCallConfig, Message, MessageRole};
+    use everruns_contracts::driver_registry::{ChatDriver, LlmCallConfig, Message, MessageRole};
 
     let messages = vec![Message::text(MessageRole::User, "Hello")];
     let call_config = LlmCallConfig::new("test");
 
     let response = driver
         .chat_completion(
-            &everruns_provider::runtime_provider::ProviderEndpoint::default(),
+            &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
             messages,
             &call_config,
         )
@@ -2917,25 +2916,25 @@ async fn test_previous_response_id_round_trips_through_serde() {
 struct ToolCallsThenErrorDriver;
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for ToolCallsThenErrorDriver {
+impl everruns_contracts::driver_registry::ChatDriver for ToolCallsThenErrorDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
-        _config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::driver_registry::Message>,
+        _config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         Ok(Box::pin(stream::iter(vec![
             // Tool calls arrive first (fully streamed)
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::ToolCalls(vec![ToolCall {
+                everruns_contracts::driver_registry::LlmStreamEvent::ToolCalls(vec![ToolCall {
                     id: "call_session_1".to_string(),
                     name: "manage_sessions".to_string(),
                     arguments: json!({"operation": "create", "agent_id": "agent_123"}),
                 }]),
             ),
             // Trailing server error after valid output
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Error(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Error(
                 "server_error: An error occurred while processing your request.".into(),
             )),
         ])))
@@ -3015,21 +3014,21 @@ async fn test_reason_atom_preserves_tool_calls_on_trailing_stream_error() {
 struct TextThenErrorDriver;
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for TextThenErrorDriver {
+impl everruns_contracts::driver_registry::ChatDriver for TextThenErrorDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
-        _config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::driver_registry::Message>,
+        _config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         Ok(Box::pin(stream::iter(vec![
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                     "Here are the links:\n\n- Research Agent:".to_string(),
                 ),
             ),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Error(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Error(
                 "server_error: internal failure".into(),
             )),
         ])))
@@ -3110,18 +3109,18 @@ struct PureErrorDriver {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for PureErrorDriver {
+impl everruns_contracts::driver_registry::ChatDriver for PureErrorDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
-        _config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::driver_registry::Message>,
+        _config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         self.attempts.fetch_add(1, Ordering::SeqCst);
         Ok(Box::pin(stream::iter(vec![Ok(
-            everruns_provider::driver_registry::LlmStreamEvent::Error(
-                everruns_provider::driver_registry::LlmStreamError::provider(
+            everruns_contracts::driver_registry::LlmStreamEvent::Error(
+                everruns_contracts::driver_registry::LlmStreamError::provider(
                     Some(self.code),
                     None,
                     "An error occurred while processing your request.",
@@ -3464,7 +3463,7 @@ async fn test_reason_atom_keeps_non_placeholder_messages_that_share_prefixes() {
     let assistant_messages: Vec<String> = captured
         .iter()
         .filter(|message| {
-            message.role == everruns_provider::driver_registry::MessageRole::Assistant
+            message.role == everruns_contracts::driver_registry::MessageRole::Assistant
         })
         .map(|message| message.content_as_text())
         .collect();
@@ -3483,25 +3482,25 @@ struct SystemPromptCapturingDriver {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for SystemPromptCapturingDriver {
+impl everruns_contracts::driver_registry::ChatDriver for SystemPromptCapturingDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         // Capture the system message
         if let Some(sys) = messages
             .iter()
-            .find(|m| m.role == everruns_provider::driver_registry::MessageRole::System)
+            .find(|m| m.role == everruns_contracts::driver_registry::MessageRole::System)
         {
             *self.captured_system.lock().await = Some(sys.content_as_text());
         }
 
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::new({
                     let mut metadata = LlmCompletionMetadata::default();
                     metadata.total_tokens = Some(4);
@@ -3518,23 +3517,23 @@ impl everruns_provider::driver_registry::ChatDriver for SystemPromptCapturingDri
 
 #[derive(Clone, Debug)]
 struct ConversationCapturingDriver {
-    captured_messages: Arc<Mutex<Vec<everruns_provider::driver_registry::Message>>>,
+    captured_messages: Arc<Mutex<Vec<everruns_contracts::driver_registry::Message>>>,
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for ConversationCapturingDriver {
+impl everruns_contracts::driver_registry::ChatDriver for ConversationCapturingDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         *self.captured_messages.lock().await = messages;
 
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::new({
                     let mut metadata = LlmCompletionMetadata::default();
                     metadata.total_tokens = Some(4);
@@ -3550,7 +3549,7 @@ impl everruns_provider::driver_registry::ChatDriver for ConversationCapturingDri
 }
 
 fn create_conversation_capturing_driver_registry(
-    captured_messages: Arc<Mutex<Vec<everruns_provider::driver_registry::Message>>>,
+    captured_messages: Arc<Mutex<Vec<everruns_contracts::driver_registry::Message>>>,
 ) -> DriverRegistry {
     let mut registry = DriverRegistry::new();
     registry.register(DriverId::LlmSim, move |_config| {
@@ -3579,7 +3578,7 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
         session_store
             .add_session(ExecutionSession {
                 id: session_id.into(),
-                workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id),
+                workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
                 harness_id,
                 agent_id: Some(agent_id.into()),
@@ -3688,7 +3687,7 @@ async fn test_empty_session_system_prompt_is_ignored() {
         session_store
             .add_session(ExecutionSession {
                 id: session_id.into(),
-                workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id),
+                workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
                 harness_id,
                 agent_id: Some(agent_id.into()),
@@ -3783,7 +3782,7 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
         REASON_CODE_SYSTEM_PROMPT_LEAK,
     };
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
     // Reuse the standard test environment, then patch the agent to (a) carry
     // a system prompt long enough to produce a canary needle and (b) enable
@@ -3938,7 +3937,7 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
     use everruns_builtins::{
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     };
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
     let (
         harness_store,
@@ -4106,7 +4105,7 @@ fn astra_history() -> Vec<RuntimeMessage> {
     let mut first = RuntimeMessage::user("original task");
     first.controls = Some(Controls {
         reasoning: Some(everruns_core::message::ReasoningConfig {
-            effort: Some(everruns_provider::ReasoningEffort::Low),
+            effort: Some(everruns_contracts::ReasoningEffort::Low),
         }),
         ..Default::default()
     });
@@ -4122,7 +4121,7 @@ fn astra_history() -> Vec<RuntimeMessage> {
     let mut next = RuntimeMessage::user("hard follow-up ".repeat(30_000));
     next.controls = Some(Controls {
         reasoning: Some(everruns_core::message::ReasoningConfig {
-            effort: Some(everruns_provider::ReasoningEffort::High),
+            effort: Some(everruns_contracts::ReasoningEffort::High),
         }),
         ..Default::default()
     });
@@ -4150,7 +4149,7 @@ async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_re
                 .await
                 .unwrap()
                 .unwrap();
-            session.capabilities = vec![everruns_capability::CapabilityRef::with_config(
+            session.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
                 "compaction",
                 json!({"strategy":"native","proactive":false}),
             )];
@@ -4166,11 +4165,11 @@ async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_re
             .expect("explicit compaction selected");
         assert_eq!(
             state.baseline,
-            Some(everruns_provider::ReasoningEffort::Low)
+            Some(everruns_contracts::ReasoningEffort::Low)
         );
         assert_eq!(
             state.effective,
-            Some(everruns_provider::ReasoningEffort::High)
+            Some(everruns_contracts::ReasoningEffort::High)
         );
         let input = serde_json::to_value(&requests[0].input).unwrap();
         let items = input.as_array().unwrap();
@@ -4194,7 +4193,7 @@ async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_re
             .unwrap();
         let everruns_core::CompactionCheckpointPayload::ProviderOpaque {
             context:
-                everruns_provider::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
+                everruns_contracts::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
                     reasoning_state,
                     ..
                 },
@@ -4203,16 +4202,16 @@ async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_re
             panic!("native checkpoint required")
         };
         let persisted = serde_json::from_value::<
-            everruns_provider::reasoning_updates::ReasoningState,
+            everruns_contracts::reasoning_updates::ReasoningState,
         >(serde_json::to_value(reasoning_state.unwrap()).unwrap())
         .unwrap();
         assert_eq!(
             persisted.baseline,
-            Some(everruns_provider::ReasoningEffort::Low)
+            Some(everruns_contracts::ReasoningEffort::Low)
         );
         assert_eq!(
             persisted.effective,
-            Some(everruns_provider::ReasoningEffort::High)
+            Some(everruns_contracts::ReasoningEffort::High)
         );
         assert_eq!(persisted.pending, None);
         // Each execute creates a new atom, simulating a process-local state reset.
@@ -4221,11 +4220,11 @@ async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_re
         let (_, config) = calls.last().unwrap();
         assert_eq!(
             config.reasoning_effort,
-            Some(everruns_provider::ReasoningEffort::Low)
+            Some(everruns_contracts::ReasoningEffort::Low)
         );
         assert_eq!(
             config.reasoning_state.as_ref().unwrap().effective,
-            Some(everruns_provider::ReasoningEffort::High)
+            Some(everruns_contracts::ReasoningEffort::High)
         );
         assert!(config.provider_opaque_context.is_some());
         let events = rig.event_emitter.events().await;
@@ -4251,7 +4250,7 @@ async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_re
         let mut next = RuntimeMessage::user("another hard follow-up");
         next.controls = Some(Controls {
             reasoning: Some(everruns_core::message::ReasoningConfig {
-                effort: Some(everruns_provider::ReasoningEffort::Max),
+                effort: Some(everruns_contracts::ReasoningEffort::Max),
             }),
             ..Default::default()
         });
@@ -4278,7 +4277,7 @@ async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_re
             .await
             .unwrap()
             .unwrap();
-        session.capabilities = vec![everruns_capability::CapabilityRef::with_config(
+        session.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
             "compaction",
             json!({"strategy":"summarization","proactive":false}),
         )];
@@ -4306,7 +4305,7 @@ impl everruns_core::durability::PartialStreamStore for AstraPartialStore {
         &self,
         _: SessionId,
         _: &str,
-    ) -> everruns_provider::error::Result<Option<everruns_core::durability::PartialStreamState>>
+    ) -> everruns_contracts::error::Result<Option<everruns_core::durability::PartialStreamState>>
     {
         Ok(Some(self.0.clone()))
     }
@@ -4314,7 +4313,7 @@ impl everruns_core::durability::PartialStreamStore for AstraPartialStore {
 
 #[tokio::test]
 async fn astra_interrupted_worker_restores_prepared_effort_with_or_without_text() {
-    use everruns_provider::ReasoningEffort::{Low, Max};
+    use everruns_contracts::ReasoningEffort::{Low, Max};
     for text in ["", "partial answer"] {
         let mut rig =
             ProactiveTestRig::new(DriverId::OpenAI, 1_050_000, (1000, 100), true, false).await;
@@ -4324,7 +4323,7 @@ async fn astra_interrupted_worker_restores_prepared_effort_with_or_without_text(
         rig.message_retriever
             .seed(rig.session_id.into(), history[..2].to_vec())
             .await;
-        let state = everruns_provider::reasoning_updates::ReasoningState {
+        let state = everruns_contracts::reasoning_updates::ReasoningState {
             epoch: "epoch".into(),
             baseline: Some(Low),
             effective: Some(Max),
@@ -4406,7 +4405,7 @@ async fn astra_failed_explicit_compaction_keeps_history_and_checkpoint_unchanged
         .await
         .unwrap()
         .unwrap();
-    session.capabilities = vec![everruns_capability::CapabilityRef::with_config(
+    session.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
         "compaction",
         json!({"strategy":"auto","proactive":false}),
     )];

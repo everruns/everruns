@@ -108,9 +108,9 @@ impl WorkerServiceImpl {
         &self,
         request: Request<ExecuteMachinePaymentRequest>,
     ) -> Result<Response<ExecuteMachinePaymentResponse>, Status> {
+        use everruns_contracts::typed_id::{AgentId, SessionId};
         use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
         use everruns_core::tool_execution::PaymentAuthority;
-        use everruns_provider::typed_id::{AgentId, SessionId};
 
         let req = request.into_inner();
         let session_id = SessionId::parse(&req.session_id)
@@ -187,10 +187,10 @@ impl WorkerServiceImpl {
         // THREAT[TM-AUTHZ-014]: Resolve the current session owner server-side;
         // the worker cannot supply a user identity for this decision.
         let req = request.into_inner();
-        let session_id = everruns_provider::typed_id::SessionId::parse(&req.session_id)
+        let session_id = everruns_contracts::typed_id::SessionId::parse(&req.session_id)
             .or_else(|_| {
                 uuid::Uuid::parse_str(&req.session_id)
-                    .map(everruns_provider::typed_id::SessionId::from_uuid)
+                    .map(everruns_contracts::typed_id::SessionId::from_uuid)
             })
             .map_err(|error| Status::invalid_argument(format!("Invalid session_id: {error}")))?;
         let session = self

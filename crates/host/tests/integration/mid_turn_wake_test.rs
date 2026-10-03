@@ -14,6 +14,11 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use everruns_builtins::InfinityContextCapability;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::error::Result;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::capabilities::{Capability, CapabilityStatus};
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
@@ -25,11 +30,6 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::error::Result;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 const CHILD_TASK_ID: &str = "task_wakedemo_child";
 

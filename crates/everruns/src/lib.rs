@@ -280,35 +280,37 @@ pub use everruns_core::turn::TurnStopReason;
 // (`SessionMessage`, `ContextMessage`) — the common path. The wire message and
 // role that travel on a direct model call live in [`llm`], so both keep the
 // plain name on their own surface.
+pub use everruns_contracts::driver_registry::{
+    ChatDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart,
+    LlmResponse, LlmResponseStream, LlmStreamEvent,
+};
 pub use everruns_core::{
     ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, ReasoningConfig,
     RuntimeMessageRole as MessageRole, WorkspacePolicy, WorkspacePolicyBuilder,
     WorkspacePolicyError,
 };
-pub use everruns_provider::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart,
-    LlmResponse, LlmResponseStream, LlmStreamEvent,
-};
 // Pre-0.31 names for the provider message types, which now live in [`llm`] as
 // `Message`, `MessageContent` and `MessageRole`. Deprecated aliases, so an
 // application that defines its own `Message` upgrades with a warning.
 #[allow(deprecated)]
-pub use everruns_provider::message::{LlmMessage, LlmMessageContent, LlmMessageRole};
+pub use everruns_contracts::message::{LlmMessage, LlmMessageContent, LlmMessageRole};
 // Reasoning is part of the public surface: `ReasoningConfig` above carries a
 // `ReasoningEffort`, and the artifact types appear on assistant messages.
-pub use everruns_provider::model::ReasoningEffort;
+pub use everruns_contracts::model::ReasoningEffort;
 // Model identity and capability metadata: what a picker renders next to an id,
 // and what an application checks before selecting one.
-pub use everruns_provider::model::{
+pub use everruns_contracts::model::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
 };
-pub use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
-pub use everruns_provider::{ExecutionPhase, PhaseSource};
+pub use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
+pub use everruns_contracts::{ExecutionPhase, PhaseSource};
 // Required by the public `ChatDriver` SPI and runtime error contract:
 // downstream consumers can inspect provider failures without depending on an
 // implementation crate.
-pub use everruns_provider::error::{AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind};
-pub use everruns_provider::runtime_provider::{
+pub use everruns_contracts::error::{
+    AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind,
+};
+pub use everruns_contracts::runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
     StaticHeaderAuth,
 };
@@ -316,17 +318,17 @@ pub use everruns_provider::runtime_provider::{
 // on its own descriptor, following its vendor's SDK; `EnvCredentialProvider` is
 // the one place that pairs those declarations with the process environment, and
 // is for standalone/CLI/dev use only.
-pub use everruns_provider::credential_provider::{
+pub use everruns_contracts::credential_provider::{
     CredentialProvider, EnvCredentialError, EnvCredentialProvider, ProviderCredentials,
     provider_from_env,
 };
-pub use everruns_provider::credential_schema::{CredentialFormSchema, FieldType, FormField};
-pub use everruns_provider::driver_registry::{
+pub use everruns_contracts::credential_schema::{CredentialFormSchema, FieldType, FormField};
+pub use everruns_contracts::driver_registry::{
     BoxedChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverRegistry,
 };
-pub use everruns_provider::provider::DriverId;
-pub use everruns_provider::tool_types::{ToolCall, ToolDefinition};
-pub use everruns_provider::typed_id::{SessionId, WorkspaceId};
+pub use everruns_contracts::provider::DriverId;
+pub use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
+pub use everruns_contracts::typed_id::{SessionId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
 // `LlmSimConfig::scripted` takes `SimTurn`s, so the turn, tool-call, and

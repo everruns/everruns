@@ -15,6 +15,9 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::runtime_provider::Provider;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::InitialFile;
 use everruns_host::{
     AgentBuilder as RuntimeAgentBuilder, Environment, EnvironmentBindingError,
@@ -22,9 +25,6 @@ use everruns_host::{
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceBackend,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::runtime_provider::Provider;
-use everruns_provider::typed_id::SessionId;
 
 use crate::agent_state::AgentState;
 use crate::capability_config::{
@@ -129,7 +129,7 @@ impl Model {
     pub(crate) fn simulated_capturing(
         response: impl Into<String>,
         capture: std::sync::Arc<
-            std::sync::Mutex<Vec<Vec<everruns_provider::driver_registry::Message>>>,
+            std::sync::Mutex<Vec<Vec<everruns_contracts::driver_registry::Message>>>,
         >,
     ) -> Self {
         let mut sim = LlmSimConfig::fixed(response);
@@ -168,7 +168,7 @@ impl Model {
     /// end-to-end tool-execution loop for a function tool.
     pub(crate) fn simulated_scripted(
         response: impl Into<String>,
-        tool_call_sequence: Vec<Vec<everruns_provider::tool_types::ToolCall>>,
+        tool_call_sequence: Vec<Vec<everruns_contracts::tool_types::ToolCall>>,
     ) -> Self {
         let sim = LlmSimConfig::fixed(response).with_tool_call_sequence(tool_call_sequence);
         Self::bundled(
@@ -331,7 +331,7 @@ pub struct Agent {
     instructions: String,
     model: ModelSpec,
     provider: Provider,
-    capabilities: Vec<everruns_capability::CapabilityRef>,
+    capabilities: Vec<everruns_contracts::CapabilityRef>,
     capability_implementations: Vec<CapabilityImplementation>,
     initial_files: Vec<InitialFile>,
     max_iterations: Option<usize>,
@@ -354,7 +354,7 @@ impl fmt::Debug for Agent {
         let capability_ids = self
             .capabilities
             .iter()
-            .map(everruns_capability::CapabilityRef::capability_id)
+            .map(everruns_contracts::CapabilityRef::capability_id)
             .collect::<Vec<_>>();
         f.debug_struct("Agent")
             .field("name", &self.name)
@@ -380,14 +380,14 @@ impl fmt::Debug for Agent {
 #[allow(dead_code)] // Only constructed by the optional local persistence edge.
 pub(crate) enum BackendInitError {
     Event(EventLogError),
-    Host(everruns_provider::error::AgentLoopError),
+    Host(everruns_contracts::error::AgentLoopError),
 }
 
 impl BackendInitError {
-    pub(crate) fn into_agent_loop(self) -> everruns_provider::error::AgentLoopError {
+    pub(crate) fn into_agent_loop(self) -> everruns_contracts::error::AgentLoopError {
         match self {
             Self::Event(error) => {
-                everruns_provider::error::AgentLoopError::store(error.to_string())
+                everruns_contracts::error::AgentLoopError::store(error.to_string())
             }
             Self::Host(error) => error,
         }
@@ -527,7 +527,7 @@ impl Agent {
         // Catalog identity is intentionally independent from event presence.
         // A zero-message session becomes resumable without inventing a history
         // event or treating orphan events as a session record.
-        let session = SessionBuilder::new(everruns_provider::typed_id::HarnessId::new())
+        let session = SessionBuilder::new(everruns_contracts::typed_id::HarnessId::new())
             .id(session_id)
             .build();
         backends
@@ -553,7 +553,7 @@ impl Agent {
         harness: Option<&crate::Harness>,
         event_sink: Arc<dyn EventSink>,
         hook_state: Arc<crate::hooks::HookRunState>,
-    ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
+    ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
         self.build_runtime_with_backends(
             backends,
             session_id,
@@ -577,14 +577,14 @@ impl Agent {
         bound_harness: Option<&crate::Harness>,
         event_sink: Option<Arc<dyn EventSink>>,
         hook_state: Option<Arc<crate::hooks::HookRunState>>,
-    ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
+    ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
         let hook_capability = hook_state.and_then(|state| state.capability());
         let mut capabilities = self.capabilities.clone();
         if hook_capability.is_some() {
             capabilities.retain(|capability| {
                 capability.capability_id() != crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID
             });
-            capabilities.push(everruns_capability::CapabilityRef::new(
+            capabilities.push(everruns_contracts::CapabilityRef::new(
                 crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID,
             ));
         }
@@ -670,7 +670,7 @@ impl Agent {
             };
             let platform = everruns_host::HostComposition::builder()
                 .capability_registry(registry)
-                .driver_registry(everruns_provider::driver_registry::DriverRegistry::new())
+                .driver_registry(everruns_contracts::driver_registry::DriverRegistry::new())
                 .egress_service(everruns_host::runtime_egress_service())
                 .session_file_system_factory(Arc::new(
                     everruns_host::FixedSessionFileSystemFactory::new(
@@ -700,7 +700,7 @@ impl Agent {
             };
             let platform = everruns_host::HostComposition::builder()
                 .capability_registry(registry)
-                .driver_registry(everruns_provider::DriverRegistry::new())
+                .driver_registry(everruns_contracts::DriverRegistry::new())
                 .egress_service(everruns_host::runtime_egress_service())
                 .session_file_system_factory(Arc::new(
                     everruns_host::RealDiskSessionFileSystemFactory::new(root),
@@ -1203,18 +1203,18 @@ impl AgentBuilder {
         let mut capabilities = Vec::new();
         let mut capability_implementations = Vec::new();
         // Neutral duplicate/collision rejection shared with product registries.
-        let mut activated_capabilities = everruns_capability::ActivationSet::new();
+        let mut activated_capabilities = everruns_contracts::ActivationSet::new();
 
         for input in self.capabilities {
             let parts = input.into_parts();
             let input_id = parts.reference.id().to_string();
-            everruns_capability::validate_capability_id(&input_id).map_err(|error| {
+            everruns_contracts::validate_capability_id(&input_id).map_err(|error| {
                 BuildError::InvalidCapability {
                     id: input_id.clone(),
                     reason: error.reason(),
                 }
             })?;
-            everruns_capability::validate_capability_config(
+            everruns_contracts::validate_capability_config(
                 &input_id,
                 parts.reference.config_value(),
             )
@@ -1277,7 +1277,7 @@ impl AgentBuilder {
                 .map_err(|error| BuildError::DuplicateCapability {
                     id: error.id().to_string(),
                 })?;
-            capabilities.push(everruns_capability::CapabilityRef::with_config(
+            capabilities.push(everruns_contracts::CapabilityRef::with_config(
                 canonical_id,
                 parts.reference.config_value().clone(),
             ));
@@ -1307,7 +1307,7 @@ impl AgentBuilder {
                 {
                     return Err(BuildError::DuplicateCapability { id });
                 }
-                capabilities.push(everruns_capability::CapabilityRef::new(id.as_str()));
+                capabilities.push(everruns_contracts::CapabilityRef::new(id.as_str()));
                 capability_implementations.push(CapabilityImplementation::Approval(
                     approval::approval_capability(
                         approver,
@@ -1323,7 +1323,7 @@ impl AgentBuilder {
 
         for function_tool in function_tools {
             let id = function_tool.name().to_string();
-            everruns_capability::validate_capability_id(&id).map_err(|error| {
+            everruns_contracts::validate_capability_id(&id).map_err(|error| {
                 BuildError::InvalidCapability {
                     id: id.clone(),
                     reason: error.reason(),
@@ -1334,7 +1334,7 @@ impl AgentBuilder {
             {
                 return Err(BuildError::DuplicateCapability { id });
             }
-            capabilities.push(everruns_capability::CapabilityRef::new(id.as_str()));
+            capabilities.push(everruns_contracts::CapabilityRef::new(id.as_str()));
             capability_implementations.push(CapabilityImplementation::Function(function_tool));
         }
         #[cfg(feature = "builtins")]

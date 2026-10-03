@@ -1,11 +1,11 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration test: verify Cursor plugin and connection provider registration.
 
+use everruns_contracts::connector::ConnectorPlugin;
+use everruns_contracts::tool_types::ToolCall;
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::tool_narration::ToolNarrationPhase;
-use everruns_platform::connector::ConnectorPlugin;
-use everruns_provider::tool_types::ToolCall;
 use serde_json::json;
 
 use everruns_integrations_cursor::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};

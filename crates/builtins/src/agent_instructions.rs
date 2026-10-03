@@ -99,9 +99,9 @@ impl AgentInstructionsConfig {
     }
 }
 
-impl everruns_capability::IntoCapability for AgentInstructionsConfig {
-    fn into_capability(self) -> everruns_capability::CapabilitySpec {
-        everruns_capability::CapabilityRef::new(AGENT_INSTRUCTIONS_CAPABILITY_ID)
+impl everruns_contracts::IntoCapability for AgentInstructionsConfig {
+    fn into_capability(self) -> everruns_contracts::CapabilitySpec {
+        everruns_contracts::CapabilityRef::new(AGENT_INSTRUCTIONS_CAPABILITY_ID)
             .config(serde_json::json!({ "files": self.files }))
             .into()
     }

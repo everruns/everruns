@@ -9,14 +9,14 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::{Arc, OnceLock};
 
+use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::turn::TurnStopReason;
 use everruns_host::{
     AcceptedTurnInput, InProcessRuntime, TurnResult, TurnSteering, TurnSteeringPushError,
 };
-use everruns_provider::error::AgentLoopError;
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
 
 use crate::engine::SessionExecution;
@@ -623,7 +623,7 @@ pub(crate) struct SessionOverrides {
     /// The session's client-side tools, replacing any set before. A
     /// non-empty set also declares that the client answers a pause, so a
     /// turn parks on a call to one instead of running past it.
-    pub(crate) client_tools: Option<Vec<everruns_provider::tool_types::ToolDefinition>>,
+    pub(crate) client_tools: Option<Vec<everruns_contracts::tool_types::ToolDefinition>>,
 }
 
 struct ActorSentMessage {
@@ -953,8 +953,9 @@ impl SessionActor {
         let (outcome, cancelled) = {
             let mut run: std::pin::Pin<
                 Box<
-                    dyn Future<Output = everruns_provider::error::Result<everruns_host::TurnResult>>
-                        + Send
+                    dyn Future<
+                            Output = everruns_contracts::error::Result<everruns_host::TurnResult>,
+                        > + Send
                         + '_,
                 >,
             > = match entry {
@@ -1103,7 +1104,7 @@ impl SessionActor {
                 .ensure_harness_requirement()
                 .await
                 .map_err(|error| {
-                    everruns_provider::error::AgentLoopError::store(error.to_string())
+                    everruns_contracts::error::AgentLoopError::store(error.to_string())
                 })?;
             self.runtime = Some(
                 self.agent

@@ -135,7 +135,7 @@ binary carrying web-fetch, and was the only reason the workspace resolved a
   choose on its own. Every TLS-carrying dependency in the root manifest therefore names
   the backend explicitly — `rustls`, `sqlx`, `fred`, `tonic`, `async-nats`, `bashkit` —
   so a bump cannot re-enable `ring` by inheriting a default. `cargo tree -i ring --target
-  all` printing nothing is the invariant; `crates/provider/tests/tls_startup.rs` asserts
+  all` printing nothing is the invariant; `crates/contracts/tests/tls_startup.rs` asserts
   the runtime half.
 
 ## Success Bar

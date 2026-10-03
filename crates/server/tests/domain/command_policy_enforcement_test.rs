@@ -19,13 +19,13 @@
 
 use std::sync::Arc;
 
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::typed_id::AgentId;
 use everruns_core::{
     Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole, Permission,
     PermissionResolver, SessionSeedMode,
 };
 use everruns_platform::FeatureFlags;
-use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::AgentId;
 use everruns_server::api::evals::CreateEvalRunRequest;
 use everruns_server::api::sessions::CreateSessionRequest;
 use everruns_server::domains::agents::health_check::commands::TriggerAgentHealthCheck;
@@ -106,7 +106,7 @@ async fn agent_preview_requires_harness_view_before_resolving_inheritance() {
         .run(&ctx)
         .await
         .expect("agent-only preview is allowed");
-    let error = preview(Some(everruns_provider::typed_id::HarnessId::new()))
+    let error = preview(Some(everruns_contracts::typed_id::HarnessId::new()))
         .run(&ctx)
         .await
         .expect_err("harness contents require harness.view, even for agent viewers");

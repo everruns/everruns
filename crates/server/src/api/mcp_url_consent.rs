@@ -23,11 +23,11 @@ use axum::{
     http::StatusCode,
     routing::post,
 };
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
 use everruns_mcp::{StoredConsent, consent_storage_key};
 use everruns_platform::SessionStatus;
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -37,8 +37,8 @@ use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{
     ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
 };
+use everruns_contracts::tool_types::CONFIRM_URL_ELICITATION_TOOL;
 use everruns_core::Caller;
-use everruns_provider::tool_types::CONFIRM_URL_ELICITATION_TOOL;
 
 /// How far back to look for the elicitation being answered. The card is emitted
 /// by the act that just paused, so it is within the last handful of events; the

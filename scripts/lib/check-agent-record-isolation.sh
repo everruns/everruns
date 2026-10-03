@@ -64,8 +64,7 @@ FAILED=0
 KERNEL_TREES=(
   crates/core
   crates/engine
-  crates/provider
-  crates/capability
+  crates/contracts
 )
 if matches=$(grep -rnE 'everruns_platform(::|;)' "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
   echo "Kernel crates must not reference everruns_platform (EVE-877, EVE-881, EVE-882, EVE-878):"
@@ -92,8 +91,15 @@ RECORD_TYPES="${RECORD_TYPES}|SessionSandboxConfig|SessionSandboxInitConfig|Sess
 # kernel: integration crates register providers against platform, and a turn
 # reaches a sandbox only through the capability.
 if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum|trait) (${RECORD_TYPES})[[:space:]{<(]" \
-  "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
+  crates/core crates/engine --include='*.rs' 2>/dev/null); then
   echo "Kernel crates must not declare stored platform record types or moved connector/OAuth/email infrastructure (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880):"
+  echo "$matches"
+  FAILED=1
+fi
+
+# Contracts own extension SPIs, never persisted control-plane records.
+if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum) (Agent|AgentVersion|AgentStatus|Harness|HarnessStatus|Session|SessionStatus|SessionParticipant|Organization|Principal|Workspace|Eval|Observer|FeatureFlags)[[:space:]{<(]" crates/contracts --include='*.rs' 2>/dev/null); then
+  echo "Contracts must not declare control-plane records:"
   echo "$matches"
   FAILED=1
 fi
@@ -102,8 +108,7 @@ fi
 KERNEL_CRATES=(
   everruns-core
   everruns-engine
-  everruns-provider
-  everruns-capability
+  everruns-contracts
 )
 for crate in "${KERNEL_CRATES[@]}"; do
   tree=$(guard_cargo_tree -p "$crate" --edges normal,build,dev --prefix none)

@@ -3,11 +3,11 @@
 //! `everruns`, `everruns-core`, or `everruns-host` imports (EVE-874).
 
 use async_trait::async_trait;
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     ChatDriver, DriverRegistry, LlmCallConfig, LlmCompletionMetadata, Message,
     LlmResponseStream, LlmStreamEvent,
 };
-use everruns_provider::runtime_provider::{Provider, ProviderEndpoint};
+use everruns_contracts::runtime_provider::{Provider, ProviderEndpoint};
 
 /// Canonical wire id of the fixture's external driver.
 pub const ACME_DRIVER_ID: &str = "acme_llm";
@@ -23,7 +23,7 @@ impl ChatDriver for AcmeChatDriver {
         _endpoint: &ProviderEndpoint,
         messages: Vec<Message>,
         _config: &LlmCallConfig,
-    ) -> everruns_provider::Result<LlmResponseStream> {
+    ) -> everruns_contracts::Result<LlmResponseStream> {
         let last = messages
             .last()
             .map(|message| message.content.to_text())
@@ -52,7 +52,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{DriverId, MessageRole, ProviderConfig};
+    use everruns_contracts::driver_registry::{DriverId, MessageRole, ProviderConfig};
 
     fn call_config() -> LlmCallConfig {
         LlmCallConfig::new("acme-1")

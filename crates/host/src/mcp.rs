@@ -9,6 +9,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use everruns_contracts::tool_types::ToolDefinition;
 use everruns_core::capabilities::Capability;
 use everruns_core::{
     AgentDefinition, ExecutionSession, HarnessDefinition, McpServerTransportType, ScopedMcpServer,
@@ -17,7 +18,6 @@ use everruns_core::{
 use everruns_mcp::{
     McpCapability, McpClient, McpConnection, McpEndpoint, McpExecutor, StaticConnectionResolver,
 };
-use everruns_provider::tool_types::ToolDefinition;
 use futures::{StreamExt, stream};
 use uuid::Uuid;
 

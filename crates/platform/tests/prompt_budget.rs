@@ -12,12 +12,12 @@
 // always fine.
 
 use everruns_builtins::{InfinityContextCapability, SkillsCapability};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::capabilities::{Capability, SystemPromptContext};
 use everruns_platform::capabilities::SessionSandboxCapability;
 use everruns_platform::capabilities::{
     DataKnowledgeCapability, MemoryCapability, SubagentCapability,
 };
-use everruns_provider::typed_id::SessionId;
 
 async fn assert_contribution_under(cap: &dyn Capability, max_bytes: usize) {
     let ctx = SystemPromptContext::without_file_store(SessionId::new());

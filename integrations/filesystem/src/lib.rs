@@ -30,17 +30,17 @@ use crate::tool_types::{ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
+#[cfg(test)]
+use everruns_contracts::error::AgentLoopError;
+#[cfg(test)]
+use everruns_contracts::typed_id;
+use everruns_contracts::{ToolResultImage, error, tool_types};
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
 };
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::tool_context::{ToolContext, ToolContextService};
 use everruns_core::*;
-#[cfg(test)]
-use everruns_provider::error::AgentLoopError;
-#[cfg(test)]
-use everruns_provider::typed_id;
-use everruns_provider::{ToolResultImage, error, tool_types};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use similar::TextDiff;
@@ -867,9 +867,9 @@ pub const SESSION_FILE_SYSTEM_CAPABILITY_ID: &str = "session_file_system";
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FileSystem;
 
-impl everruns_capability::IntoCapability for FileSystem {
-    fn into_capability(self) -> everruns_capability::CapabilitySpec {
-        everruns_capability::CapabilityRef::new(SESSION_FILE_SYSTEM_CAPABILITY_ID).into()
+impl everruns_contracts::IntoCapability for FileSystem {
+    fn into_capability(self) -> everruns_contracts::CapabilitySpec {
+        everruns_contracts::CapabilityRef::new(SESSION_FILE_SYSTEM_CAPABILITY_ID).into()
     }
 }
 
@@ -4421,7 +4421,7 @@ mod tests {
     #[tokio::test]
     async fn assembled_prompt_uses_host_root_without_workspace_guidance() {
         use crate::capabilities::{CapabilityRegistry, collect_capabilities_with_configs};
-        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+        use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
         let store = Arc::new(MockFileStore::with_display_root("/repo"));
         let ctx = SystemPromptContext {

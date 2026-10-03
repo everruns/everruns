@@ -4,6 +4,12 @@
 // Decision: Used by external workers that connect to control-plane via gRPC
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::typed_id::{
+    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
+};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
@@ -20,12 +26,6 @@ use everruns_core::{
 };
 use everruns_host::HostComposition;
 use everruns_platform::{Agent, Harness};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::typed_id::{
-    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
-};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -211,8 +211,8 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     async fn get_provider_config(
         &self,
         org_id: i64,
-        provider: &everruns_provider::runtime_provider::ProviderKey,
-    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
+        provider: &everruns_contracts::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         self.client
             .get_provider_config(org_id, provider.as_str())
             .await
@@ -490,7 +490,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     fn sqldb_store(
         &self,
         org_id: i64,
-    ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
+    ) -> std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> {
         Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
     }
 
@@ -609,7 +609,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     fn slack_action_invoker(
         &self,
         org_id: i64,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
     ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
         Some(Arc::new(
             crate::grpc_slack_actions::GrpcSlackActionInvoker::new(
@@ -727,7 +727,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_provider::typed_id::SessionId, String)>> {
+    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
         self.client
             .list_orphaned_session_tasks(stale_after.num_seconds(), limit)
             .await

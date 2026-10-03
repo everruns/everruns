@@ -14,10 +14,10 @@ use crate::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use everruns_durable::{InMemoryWorkflowEventStore, Schedules};
 use everruns_platform::SessionBinding;
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::sync::{Arc, Mutex};
 
@@ -65,7 +65,7 @@ impl AgentRunner for RecordingRunner {
     }
 }
 
-async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_provider::typed_id::HarnessId) {
+async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::typed_id::HarnessId) {
     let harness = db
         .create_harness(
             DEFAULT_ORG_ID,
@@ -251,11 +251,11 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
 #[tokio::test]
 async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let db = Arc::new(StorageBackend::in_memory());
-    let agent_harness_id = everruns_provider::typed_id::HarnessId::from_seed(10);
-    let app_harness_id = everruns_provider::typed_id::HarnessId::from_seed(20);
-    let owner_principal_id = everruns_provider::typed_id::PrincipalId::from_seed(30);
+    let agent_harness_id = everruns_contracts::typed_id::HarnessId::from_seed(10);
+    let app_harness_id = everruns_contracts::typed_id::HarnessId::from_seed(20);
+    let owner_principal_id = everruns_contracts::typed_id::PrincipalId::from_seed(30);
     let resolved_owner_user_id = Some(uuid::Uuid::from_u128(40));
-    let virtual_user_id = Some(everruns_provider::typed_id::VirtualUserId::from_uuid(
+    let virtual_user_id = Some(everruns_contracts::typed_id::VirtualUserId::from_uuid(
         uuid::Uuid::from_u128(50),
     ));
     let app_id = Some(uuid::Uuid::from_u128(60));
@@ -303,7 +303,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         is_built_in: false,
     };
     let trigger = crate::storage::models::AgentTriggerRow {
-        id: everruns_provider::typed_id::TriggerId::from_uuid(uuid::Uuid::from_u128(80)),
+        id: everruns_contracts::typed_id::TriggerId::from_uuid(uuid::Uuid::from_u128(80)),
         org_id: DEFAULT_ORG_ID,
         agent_id: agent.id,
         trigger_type: "schedule".to_string(),
@@ -320,7 +320,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         legacy_alias_id: Some("app_frozen".to_string()),
         legacy_alias_name: Some("Frozen App".to_string()),
         agent_version_policy: Some("pinned".to_string()),
-        agent_version_id: Some(everruns_provider::typed_id::AgentVersionId::from_uuid(
+        agent_version_id: Some(everruns_contracts::typed_id::AgentVersionId::from_uuid(
             uuid::Uuid::from_u128(61),
         )),
         status: "active".to_string(),
@@ -533,7 +533,7 @@ async fn native_trigger_version_pin_is_written_surfaced_and_honoured() {
         .await
         .unwrap()
         .expect("agent row");
-    let version_id = everruns_provider::typed_id::AgentVersionId::new();
+    let version_id = everruns_contracts::typed_id::AgentVersionId::new();
     db.create_agent_version(crate::storage::models::CreateAgentVersionRow {
         id: version_id,
         public_id: version_id.to_string(),
@@ -902,7 +902,7 @@ async fn ensure_identity_for_agent_is_idempotent_across_fires() {
 #[tokio::test]
 async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
     use crate::storage::models::CreateVirtualUserRow;
-    use everruns_provider::typed_id::VirtualUserId;
+    use everruns_contracts::typed_id::VirtualUserId;
 
     let db = Arc::new(StorageBackend::in_memory());
     let mut agent = seed_agent_row(&db).await;
@@ -956,7 +956,7 @@ async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
 #[tokio::test]
 async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
     use crate::storage::models::CreateVirtualUserRow;
-    use everruns_provider::typed_id::VirtualUserId;
+    use everruns_contracts::typed_id::VirtualUserId;
 
     let db = Arc::new(StorageBackend::in_memory());
     let mut agent = seed_agent_row(&db).await;

@@ -2,7 +2,7 @@
 //! The lease token fences every read/write; a worker must renew before expiry.
 
 use async_trait::async_trait;
-use everruns_provider::{
+use everruns_contracts::{
     error::Result,
     native_async::NativeAsyncCheckpoint,
     typed_id::{SessionId, TurnId},

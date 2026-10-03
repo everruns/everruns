@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use everruns_provider::error::{AgentLoopError, Result as EngineResult};
+use everruns_contracts::error::{AgentLoopError, Result as EngineResult};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use wasm_bindgen::JsValue;

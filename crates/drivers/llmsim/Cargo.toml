@@ -20,7 +20,7 @@ default = []
 host = ["dep:everruns-host"]
 
 [dependencies]
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 everruns-host = { workspace = true, optional = true }
 
 async-trait.workspace = true

@@ -15,7 +15,7 @@ use everruns_server::storage::{CreateModelRow, CreateProviderRow, InMemoryDataba
 
 const TEST_ORG_ID: i64 = 1;
 
-async fn setup() -> (InMemoryDatabase, everruns_provider::typed_id::ProviderId) {
+async fn setup() -> (InMemoryDatabase, everruns_contracts::typed_id::ProviderId) {
     let db = InMemoryDatabase::default();
     let provider = db
         .create_provider(
@@ -34,7 +34,7 @@ async fn setup() -> (InMemoryDatabase, everruns_provider::typed_id::ProviderId) 
 }
 
 fn model_input(
-    provider_id: everruns_provider::typed_id::ProviderId,
+    provider_id: everruns_contracts::typed_id::ProviderId,
     name: &str,
     enabled: bool,
 ) -> CreateModelRow {

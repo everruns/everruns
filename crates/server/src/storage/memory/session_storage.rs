@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -230,7 +230,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
         session_id: SessionId,
         key: &str,
         value: &str,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let now = Self::now();
         let mut storage = self.session_key_values.write();
         let map_key = (session_id, key.to_string());
@@ -255,7 +255,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
         &self,
         session_id: SessionId,
         key: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         let storage = self.session_key_values.read();
         Ok(storage
             .get(&(session_id, key.to_string()))
@@ -266,7 +266,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
         &self,
         session_id: SessionId,
         key: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         let mut storage = self.session_key_values.write();
         Ok(storage
             .remove(&(session_id, key.to_string()))
@@ -277,7 +277,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
         &self,
         session_id: SessionId,
         key: &str,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         let mut storage = self.session_key_values.write();
         Ok(storage.remove(&(session_id, key.to_string())).is_some())
     }
@@ -285,7 +285,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
     async fn list_keys(
         &self,
         session_id: SessionId,
-    ) -> everruns_provider::error::Result<Vec<everruns_core::session_services::KeyInfo>> {
+    ) -> everruns_contracts::error::Result<Vec<everruns_core::session_services::KeyInfo>> {
         let storage = self.session_key_values.read();
         let mut keys: Vec<_> = storage
             .iter()
@@ -305,7 +305,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
         session_id: SessionId,
         name: &str,
         value: &str,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let now = Self::now();
         let mut storage = self.session_secrets.write();
         let map_key = (session_id, name.to_string());
@@ -332,7 +332,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
         &self,
         session_id: SessionId,
         name: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         let storage = self.session_secrets.read();
         Ok(storage
             .get(&(session_id, name.to_string()))
@@ -343,7 +343,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
         &self,
         session_id: SessionId,
         name: &str,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         let mut storage = self.session_secrets.write();
         Ok(storage.remove(&(session_id, name.to_string())).is_some())
     }
@@ -351,7 +351,7 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
     async fn list_secrets(
         &self,
         session_id: SessionId,
-    ) -> everruns_provider::error::Result<Vec<everruns_core::session_services::SecretInfo>> {
+    ) -> everruns_contracts::error::Result<Vec<everruns_core::session_services::SecretInfo>> {
         let storage = self.session_secrets.read();
         let mut secrets: Vec<_> = storage
             .iter()

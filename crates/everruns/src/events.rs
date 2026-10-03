@@ -29,6 +29,7 @@
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 
+use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_core::events::{
     self, Event, EventContext, EventData, EventRequest, InputMessageData,
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
@@ -36,7 +37,6 @@ use everruns_core::events::{
     ToolProgressData, ToolStartedData, TurnCancelledData, TurnFailedData,
 };
 use everruns_host::{EventSink, EventSinkError};
-use everruns_provider::typed_id::{SessionId, TurnId};
 use serde_json::Value;
 use tokio::sync::broadcast;
 

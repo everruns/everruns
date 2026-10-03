@@ -252,7 +252,7 @@ pub use app::{
 };
 /// Endpoint ID. Lives in `everruns-provider` and keeps its `appchan_` wire
 /// prefix, which is stored in rows, tags, and third-party registrations.
-pub use everruns_provider::typed_id::AgentEndpointId;
+pub use everruns_contracts::typed_id::AgentEndpointId;
 // EVE-1131 dropped the App-era Rust aliases (`AppChannel`, `ChannelType`,
 // `AppEndpointAuth*`). Their OpenAPI component names stay via `schema(as = ...)`.
 // `App`/`AppStatus` are the frozen `apps` row and keep their names.

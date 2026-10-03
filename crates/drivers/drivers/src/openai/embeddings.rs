@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use everruns_provider::driver_helpers::shared_request_http_client;
-use everruns_provider::llm_retry::{LlmRetryConfig, is_transient_error};
-use everruns_provider::{EmbedRequest, EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError};
+use everruns_contracts::driver_helpers::shared_request_http_client;
+use everruns_contracts::llm_retry::{LlmRetryConfig, is_transient_error};
+use everruns_contracts::{EmbedRequest, EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError};
 use serde::{Deserialize, Serialize};
 
 /// Embeddings driver for OpenAI's `/v1/embeddings` endpoint.
@@ -13,7 +13,7 @@ impl OpenAIEmbeddingsDriver {
         // client installs it as well, but that now happens on the first
         // request, and products expect the process-wide choice to be settled
         // while providers are being constructed.
-        everruns_provider::install_default_crypto_provider();
+        everruns_contracts::install_default_crypto_provider();
         Self
     }
 
@@ -58,7 +58,7 @@ struct EmbeddingsUsage {
 impl EmbeddingsDriver for OpenAIEmbeddingsDriver {
     async fn embed(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         request: EmbedRequest,
     ) -> Result<EmbedResponse, EmbeddingsDriverError> {
         let url = endpoint

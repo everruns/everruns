@@ -4,14 +4,14 @@
 // the ToolExecutor trait work correctly together.
 
 use async_trait::async_trait;
+use everruns_contracts::ToolResultImage;
+use everruns_contracts::tool_types::{
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy,
+};
 use everruns_core::{
     RuntimeMessage, RuntimeMessageRole,
     tool_execution::ToolExecutor,
     tools::{Tool, ToolExecutionResult, ToolRegistry},
-};
-use everruns_provider::ToolResultImage;
-use everruns_provider::tool_types::{
-    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -464,27 +464,27 @@ async fn test_tool_result_with_images_llm_conversion() {
     // Should be Tool role with tool_call_id
     assert_eq!(
         llm_msg.role,
-        everruns_provider::driver_registry::MessageRole::Tool
+        everruns_contracts::driver_registry::MessageRole::Tool
     );
     assert_eq!(llm_msg.tool_call_id, Some("call_456".to_string()));
 
     // Content should have text (JSON result) + 2 images
     match &llm_msg.content {
-        everruns_provider::driver_registry::MessageContent::Parts(parts) => {
+        everruns_contracts::driver_registry::MessageContent::Parts(parts) => {
             assert_eq!(parts.len(), 3, "should have 1 text + 2 images");
             assert!(matches!(
                 &parts[0],
-                everruns_provider::driver_registry::LlmContentPart::Text { .. }
+                everruns_contracts::driver_registry::LlmContentPart::Text { .. }
             ));
             match &parts[1] {
-                everruns_provider::driver_registry::LlmContentPart::Image { url } => {
+                everruns_contracts::driver_registry::LlmContentPart::Image { url } => {
                     assert!(url.starts_with("data:image/png;base64,"));
                     assert!(url.contains("AAAA"));
                 }
                 _ => panic!("Expected Image part"),
             }
             match &parts[2] {
-                everruns_provider::driver_registry::LlmContentPart::Image { url } => {
+                everruns_contracts::driver_registry::LlmContentPart::Image { url } => {
                     assert!(url.starts_with("data:image/jpeg;base64,"));
                     assert!(url.contains("BBBB"));
                 }
@@ -511,7 +511,7 @@ fn test_tool_result_image_serialization() {
 
 #[test]
 fn test_tool_result_with_images_serialization() {
-    let result = everruns_provider::tool_types::ToolResult {
+    let result = everruns_contracts::tool_types::ToolResult {
         tool_call_id: "call_1".to_string(),
         result: Some(json!({"ok": true})),
         images: Some(vec![ToolResultImage {
@@ -524,7 +524,7 @@ fn test_tool_result_with_images_serialization() {
     };
 
     let json_str = serde_json::to_string(&result).unwrap();
-    let parsed: everruns_provider::tool_types::ToolResult =
+    let parsed: everruns_contracts::tool_types::ToolResult =
         serde_json::from_str(&json_str).unwrap();
 
     assert_eq!(parsed.images.as_ref().unwrap().len(), 1);
@@ -535,7 +535,8 @@ fn test_tool_result_with_images_serialization() {
 fn test_tool_result_without_images_backward_compat() {
     // Ensure old JSON without `images` field still deserializes
     let json_str = r#"{"tool_call_id":"call_1","result":{"ok":true},"error":null}"#;
-    let parsed: everruns_provider::tool_types::ToolResult = serde_json::from_str(json_str).unwrap();
+    let parsed: everruns_contracts::tool_types::ToolResult =
+        serde_json::from_str(json_str).unwrap();
 
     assert!(parsed.images.is_none());
     assert_eq!(parsed.tool_call_id, "call_1");
@@ -558,7 +559,7 @@ fn test_connection_required_into_tool_result() {
     assert_eq!(tool_result.tool_call_id, "call_conn");
     assert_eq!(
         tool_result.connection_required,
-        Some(everruns_provider::ConnectionRequired::provider_only(
+        Some(everruns_contracts::ConnectionRequired::provider_only(
             "daytona"
         ))
     );
@@ -571,24 +572,24 @@ fn test_connection_required_into_tool_result() {
 
 #[test]
 fn test_connection_required_serialization_roundtrip() {
-    let result = everruns_provider::tool_types::ToolResult {
+    let result = everruns_contracts::tool_types::ToolResult {
         tool_call_id: "call_conn".to_string(),
         result: Some(json!({"connection_required": "daytona"})),
         images: None,
         error: None,
-        connection_required: Some(everruns_provider::ConnectionRequired::provider_only(
+        connection_required: Some(everruns_contracts::ConnectionRequired::provider_only(
             "daytona",
         )),
         raw_output: None,
     };
 
     let json_str = serde_json::to_string(&result).unwrap();
-    let parsed: everruns_provider::tool_types::ToolResult =
+    let parsed: everruns_contracts::tool_types::ToolResult =
         serde_json::from_str(&json_str).unwrap();
 
     assert_eq!(
         parsed.connection_required,
-        Some(everruns_provider::ConnectionRequired::provider_only(
+        Some(everruns_contracts::ConnectionRequired::provider_only(
             "daytona"
         ))
     );
@@ -599,7 +600,8 @@ fn test_connection_required_serialization_roundtrip() {
 fn test_tool_result_without_connection_required_backward_compat() {
     // Old JSON without connection_required field still deserializes
     let json_str = r#"{"tool_call_id":"call_1","result":{"ok":true},"error":null}"#;
-    let parsed: everruns_provider::tool_types::ToolResult = serde_json::from_str(json_str).unwrap();
+    let parsed: everruns_contracts::tool_types::ToolResult =
+        serde_json::from_str(json_str).unwrap();
 
     assert!(parsed.connection_required.is_none());
 }

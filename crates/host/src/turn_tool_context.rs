@@ -3,9 +3,9 @@
 //! Split out of `host.rs` (EVE / #3709): the file is on the size ratchet's
 //! debt list, and this is the part of it a capability-gated extension touches.
 
-use everruns_capability::CapabilityRef;
+use everruns_contracts::CapabilityRef;
+use everruns_contracts::typed_id::{AgentId, SessionId};
 use everruns_core::tool_context::ToolContextServices;
-use everruns_provider::typed_id::{AgentId, SessionId};
 use std::sync::Arc;
 
 use crate::SessionMutatorExt;

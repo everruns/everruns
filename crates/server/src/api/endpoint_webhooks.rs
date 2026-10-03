@@ -94,7 +94,7 @@ pub struct WebhookInvocationResponse {
     /// filtered out or was a duplicate delivery.
     #[schema(value_type = Option<String>)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<everruns_provider::typed_id::SessionId>,
+    pub session_id: Option<everruns_contracts::typed_id::SessionId>,
     pub created_session: bool,
     /// What happened to the event: `dispatched`, `filtered` or `duplicate`.
     pub delivery: String,

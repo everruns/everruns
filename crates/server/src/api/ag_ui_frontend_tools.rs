@@ -21,9 +21,9 @@
 use std::collections::HashSet;
 
 use everruns_ag_ui::{Message as AgUiMessage, Tool as AgUiTool, ToolCall as AgUiToolCall};
+use everruns_contracts::tool_types::{ClientSideTool, ToolDefinition};
 use everruns_core::events::ToolCallRequestedData;
 use everruns_platform::SessionStatus;
-use everruns_provider::tool_types::{ClientSideTool, ToolDefinition};
 use serde_json::Value;
 
 use crate::api::ag_ui_interrupts::{ParkedCalls, ResumeError, ResumeOutcome, ResumeServices};

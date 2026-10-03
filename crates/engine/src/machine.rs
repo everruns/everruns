@@ -109,7 +109,7 @@ impl Execution for TurnExecution {
 
 #[cfg(test)]
 mod tests {
-    use everruns_provider::typed_id::{HarnessId, MessageId, SessionId, TurnId};
+    use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 
     use super::*;
 

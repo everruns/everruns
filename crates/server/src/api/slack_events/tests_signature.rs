@@ -710,7 +710,7 @@ async fn test_has_event_with_slack_ts_wrong_session() {
 
     let db = StorageBackend::in_memory();
     let session_id = setup_test_session(&db).await;
-    let other_session_id = everruns_provider::typed_id::SessionId::from_uuid(uuid::Uuid::now_v7());
+    let other_session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid::Uuid::now_v7());
 
     // Insert event in session_id
     let event = CreateEventRow {
@@ -823,7 +823,7 @@ mod pane_rename_tests {
     async fn state_with_pane_session(
         app: &TestIngress,
         stored_title: &str,
-    ) -> (SlackState, everruns_provider::typed_id::SessionId) {
+    ) -> (SlackState, everruns_contracts::typed_id::SessionId) {
         let db = Arc::new(StorageBackend::in_memory());
         let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
         let state = SlackState::new(
@@ -854,14 +854,14 @@ mod pane_rename_tests {
                 app_id: Some(app.internal_id),
                 endpoint_id: None,
                 trigger_id: None,
-                harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
+                harness_id: Some(everruns_contracts::typed_id::HarnessId::from_uuid(
                     uuid::Uuid::nil(),
                 )),
                 agent_id: None,
                 agent_version_id: None,
                 agent_config_hash: None,
                 virtual_user_id: None,
-                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some(stored_title.to_string()),
                 locale: None,
@@ -888,7 +888,7 @@ mod pane_rename_tests {
 
     async fn title_events(
         state: &SlackState,
-        session: everruns_provider::typed_id::SessionId,
+        session: everruns_contracts::typed_id::SessionId,
     ) -> usize {
         state
             .db
@@ -991,7 +991,7 @@ mod pane_rename_tests {
         let mut other_app = test_app();
         other_app.internal_id = uuid::Uuid::from_u128(9_999);
         other_app.public_id =
-            everruns_provider::typed_id::AppId::from_uuid(uuid::Uuid::from_u128(9_999));
+            everruns_contracts::typed_id::AppId::from_uuid(uuid::Uuid::from_u128(9_999));
 
         handle_agent_session_title_changed(
             &state,

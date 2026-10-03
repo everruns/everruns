@@ -9,8 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::kernel_imports::{
-    everruns_provider::url_validation::is_blocked_ip,
-    everruns_provider::url_validation::validate_safe_url,
+    contracts::url_validation::is_blocked_ip, contracts::url_validation::validate_safe_url,
 };
 use axum::http::{HeaderMap, header::AUTHORIZATION};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};

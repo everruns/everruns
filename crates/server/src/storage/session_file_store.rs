@@ -5,9 +5,9 @@
 
 use crate::kernel_imports::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
-    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
-    everruns_provider::error::StoreResultExt, everruns_provider::typed_id::SessionId,
-    session_file::build_grep_search_result, session_files::SessionFileSystem,
+    contracts::error::AgentLoopError, contracts::error::Result, contracts::error::StoreResultExt,
+    contracts::typed_id::SessionId, session_file::build_grep_search_result,
+    session_files::SessionFileSystem,
 };
 use async_trait::async_trait;
 use regex::Regex;

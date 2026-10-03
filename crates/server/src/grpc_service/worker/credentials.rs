@@ -123,7 +123,7 @@ impl WorkerServiceImpl {
                         .runtime_invocation_responder(session.id, message)
                         .await
                         .map_err(|_| Status::internal("Invocation unavailable"))?
-                        .map(everruns_provider::typed_id::AgentId::from_uuid);
+                        .map(everruns_contracts::typed_id::AgentId::from_uuid);
 
                     if session.agent_id != responder {
                         session.agent_version_id = None;

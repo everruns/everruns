@@ -33,9 +33,9 @@ fn org_with_role(role: OrgRole) -> ResolvedOrg {
     }
 }
 
-fn caps(refs: &[&str]) -> Vec<everruns_capability::CapabilityRef> {
+fn caps(refs: &[&str]) -> Vec<everruns_contracts::CapabilityRef> {
     refs.iter()
-        .map(|r| everruns_capability::CapabilityRef::new((*r).to_string()))
+        .map(|r| everruns_contracts::CapabilityRef::new((*r).to_string()))
         .collect()
 }
 

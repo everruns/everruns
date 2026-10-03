@@ -125,7 +125,7 @@ mod tests {
 
         async fn create(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
             unreachable!()
@@ -133,7 +133,7 @@ mod tests {
 
         async fn resume(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -142,7 +142,7 @@ mod tests {
 
         async fn pause(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -151,7 +151,7 @@ mod tests {
 
         async fn delete(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<(), ToolExecutionResult> {
@@ -160,7 +160,7 @@ mod tests {
 
         async fn exec(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _request: &SessionSandboxExecRequest,
@@ -170,7 +170,7 @@ mod tests {
 
         async fn read_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _path: &str,
@@ -180,7 +180,7 @@ mod tests {
 
         async fn write_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -198,7 +198,7 @@ mod tests {
 
         async fn status(
             &self,
-            _context: &ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _state: &SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
@@ -208,7 +208,7 @@ mod tests {
 
     #[tokio::test]
     async fn seeds_initial_files_into_the_provider_workspace() {
-        let session_id = everruns_provider::typed_id::SessionId::new();
+        let session_id = everruns_contracts::typed_id::SessionId::new();
         let files = Arc::new(InMemorySessionFileStore::new());
         files
             .seed_initial_file(

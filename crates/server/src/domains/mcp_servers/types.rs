@@ -177,7 +177,7 @@ mod tests {
 
     // --- SSRF validation tests (URL safety) ---
 
-    use everruns_provider::url_validation::validate_safe_url;
+    use everruns_contracts::url_validation::validate_safe_url;
 
     #[test]
     fn ssrf_rejects_localhost_url() {

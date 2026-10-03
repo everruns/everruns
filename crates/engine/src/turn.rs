@@ -8,15 +8,15 @@
 
 use crate::{ActInput, ExecutionContext, ReasonResult};
 use chrono::{DateTime, Utc};
-use everruns_core::events::{TokenUsage, TurnCompletedData};
-use everruns_core::turn::TurnStopReason;
-use everruns_provider::typed_id::{
+use everruns_contracts::typed_id::{
     AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId, WorkspaceId,
 };
-use everruns_provider::user_facing_error::codes as user_facing_error_codes;
-use everruns_provider::user_facing_error::{
+use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
+use everruns_contracts::user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
 };
+use everruns_core::events::{TokenUsage, TurnCompletedData};
+use everruns_core::turn::TurnStopReason;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 

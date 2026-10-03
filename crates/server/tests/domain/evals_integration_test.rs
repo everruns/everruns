@@ -9,8 +9,8 @@ use axum::http::StatusCode;
 use serde_json::json;
 use test_harness::TestServer;
 
+use everruns_contracts::typed_id::{EvalResultId, EvalRunId};
 use everruns_platform::eval::{Eval, EvalCase, EvalDatasetStatus};
-use everruns_provider::typed_id::{EvalResultId, EvalRunId};
 use everruns_server::storage::models::{
     CreateEvalCaseResultRow, CreateEvalRunRow, UpdateEvalCaseResultRow,
 };
@@ -502,8 +502,8 @@ async fn run_completed_at(server: &TestServer, run_id: &str) -> String {
 // Async dataset export (knowledge/evaluation/dataset-export.md, Phase 2)
 // ============================================================================
 
+use everruns_contracts::typed_id::{EvalDatasetId, SessionId};
 use everruns_core::Caller;
-use everruns_provider::typed_id::{EvalDatasetId, SessionId};
 use everruns_server::domains::evals::EvalService;
 use everruns_server::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use everruns_server::storage::models::{CreateEventRow, CreatePrincipalRow, CreateSessionRow};
@@ -556,7 +556,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
     let principal = server
         .db
         .create_principal(CreatePrincipalRow {
-            id: everruns_provider::typed_id::PrincipalId::new(),
+            id: everruns_contracts::typed_id::PrincipalId::new(),
             org_id: TEST_ORG_ID,
             kind: "system".to_string(),
             subject_id: Some(Uuid::now_v7()),
@@ -923,9 +923,9 @@ async fn seed_run_with_tool_iterations(
     server: &TestServer,
     n: usize,
 ) -> (String, String, SessionId) {
+    use everruns_contracts::tool_types::ToolCall;
     use everruns_core::events::{InputMessageData, OutputMessageCompletedData, ToolCompletedData};
     use everruns_core::message::{ContentPart, RuntimeMessage};
-    use everruns_provider::tool_types::ToolCall;
     use uuid::Uuid;
 
     let eval: Eval = server
@@ -961,7 +961,7 @@ async fn seed_run_with_tool_iterations(
     let principal = server
         .db
         .create_principal(CreatePrincipalRow {
-            id: everruns_provider::typed_id::PrincipalId::new(),
+            id: everruns_contracts::typed_id::PrincipalId::new(),
             org_id: TEST_ORG_ID,
             kind: "system".to_string(),
             subject_id: Some(Uuid::now_v7()),
@@ -1294,7 +1294,7 @@ async fn seed_session_with_raw_events(
     let principal = server
         .db
         .create_principal(CreatePrincipalRow {
-            id: everruns_provider::typed_id::PrincipalId::new(),
+            id: everruns_contracts::typed_id::PrincipalId::new(),
             org_id: TEST_ORG_ID,
             kind: "system".to_string(),
             subject_id: Some(Uuid::now_v7()),
@@ -1337,11 +1337,11 @@ async fn seed_session_with_raw_events(
 
 #[tokio::test]
 async fn test_session_export_atif_image_content_multimodal() {
+    use everruns_contracts::typed_id::ImageId;
     use everruns_core::events::InputMessageData;
     use everruns_core::message::{
         ContentPart, ImageContentPart, ImageFileContentPart, RuntimeMessage,
     };
-    use everruns_provider::typed_id::ImageId;
 
     let server = TestServer::in_memory().await;
     let image_id = ImageId::new();
@@ -1491,10 +1491,10 @@ async fn test_session_export_atif_over_cap_returns_413() {
 
 #[tokio::test]
 async fn test_session_export_atif_subagent_trajectory_ref() {
+    use everruns_contracts::tool_types::ToolCall;
+    use everruns_contracts::typed_id::SessionId as CoreSessionId;
     use everruns_core::events::{InputMessageData, OutputMessageCompletedData, ToolCompletedData};
     use everruns_core::message::{ContentPart, RuntimeMessage};
-    use everruns_provider::tool_types::ToolCall;
-    use everruns_provider::typed_id::SessionId as CoreSessionId;
 
     let server = TestServer::in_memory().await;
     let child = CoreSessionId::new();

@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     BoxedEmbeddingsDriver, DriverRegistry, ProviderConfig, ServiceKind,
 };
 
@@ -57,7 +57,7 @@ pub async fn build_embeddings_driver(
         .parse()
         .expect("DriverId::from_str is infallible");
     let mut provider_config = ProviderConfig::for_provider(
-        everruns_provider::runtime_provider::ProviderKey::new(provider.id.to_string()),
+        everruns_contracts::runtime_provider::ProviderKey::new(provider.id.to_string()),
         provider_type,
     );
     provider_config.api_key = Some(resolved.credentials.api_key);

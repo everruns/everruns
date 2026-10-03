@@ -22,9 +22,9 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 
-use everruns_provider::driver_registry::{Message, MessageRole};
-use everruns_provider::message::TURN_SCOPED_SYSTEM_MARKER;
-use everruns_provider::model::{CLEAR_AT_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER};
+use everruns_contracts::driver_registry::{Message, MessageRole};
+use everruns_contracts::message::TURN_SCOPED_SYSTEM_MARKER;
+use everruns_contracts::model::{CLEAR_AT_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER};
 
 use super::{
     AnthropicCacheControl, AnthropicContentBlock, AnthropicMessage, MESSAGE_CACHE_BREAKPOINTS,
@@ -59,7 +59,7 @@ fn in_families(model: &str, families: &[&str]) -> bool {
 }
 
 fn supports_parameter(model: &str, parameter: &str) -> bool {
-    everruns_provider::get_model_profile(&everruns_provider::DriverId::Anthropic, model)
+    everruns_contracts::get_model_profile(&everruns_contracts::DriverId::Anthropic, model)
         .is_some_and(|profile| profile.supports_parameter(parameter))
 }
 

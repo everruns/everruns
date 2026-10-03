@@ -6,10 +6,10 @@
 
 use std::collections::HashMap;
 
+use everruns_contracts::typed_id::{HarnessId, SessionId};
 use everruns_core::execution_loading::SessionStore;
 use everruns_core::{Controls, EventData, InputMessage, SessionExecutionState};
 use everruns_engine::TurnPlan;
-use everruns_provider::typed_id::{HarnessId, SessionId};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -29,7 +29,7 @@ async fn durable_ask_user_pause_honors_the_session_hint() {
         "waiting_for_tool_results": true,
         "client_tool_calls": [{
             "id": "toolu_ask_1",
-            "name": everruns_provider::ASK_USER_TOOL_NAME,
+            "name": everruns_contracts::ASK_USER_TOOL_NAME,
             "arguments": {"questions": []}
         }]
     });
@@ -92,7 +92,7 @@ async fn durable_ask_user_pause_honors_current_message_overrides() {
             "waiting_for_tool_results": true,
             "client_tool_calls": [{
                 "id": "toolu_ask_1",
-                "name": everruns_provider::ASK_USER_TOOL_NAME,
+                "name": everruns_contracts::ASK_USER_TOOL_NAME,
                 "arguments": {"questions": []}
             }]
         });
@@ -122,7 +122,7 @@ async fn durable_ask_user_pause_without_hint_emits_unattended_completion() {
         "waiting_for_tool_results": true,
         "client_tool_calls": [{
             "id": "toolu_ask_1",
-            "name": everruns_provider::ASK_USER_TOOL_NAME,
+            "name": everruns_contracts::ASK_USER_TOOL_NAME,
             "arguments": {"questions": []}
         }]
     });
@@ -142,5 +142,5 @@ async fn durable_ask_user_pause_without_hint_emits_unattended_completion() {
             _ => None,
         })
         .expect("unattended ask_user completion emitted");
-    assert_eq!(completion.tool_name, everruns_provider::ASK_USER_TOOL_NAME);
+    assert_eq!(completion.tool_name, everruns_contracts::ASK_USER_TOOL_NAME);
 }

@@ -9,11 +9,11 @@ use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
     AgentCapabilityConfig, Policy, ScopedMcpServers,
-    everruns_provider::openresponses_types::{
+    contracts::openresponses_types::{
         MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH,
     },
-    everruns_provider::tool_types::ToolDefinition,
-    everruns_provider::typed_id::HarnessId,
+    contracts::tool_types::ToolDefinition,
+    contracts::typed_id::HarnessId,
     merge_scoped_mcp_servers,
 };
 use everruns_platform::{Harness, HarnessStatus};

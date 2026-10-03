@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::{HarnessId, SessionId};
 use everruns_core::execution_loading::SessionStore;
 use everruns_core::session::ExecutionSession;
 use everruns_host::{
@@ -12,8 +14,6 @@ use everruns_host::{
     WorkspaceBinding,
 };
 use everruns_platform::SessionMutator;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::{HarnessId, SessionId};
 use rusqlite::{OptionalExtension, params};
 
 use super::SqliteDb;
@@ -357,12 +357,12 @@ fn store_error(error: impl std::fmt::Display) -> AgentLoopError {
 
 #[cfg(test)]
 mod tests {
+    use everruns_contracts::typed_id::WorkspaceId;
     use everruns_core::execution_loading::SessionStore;
     use everruns_host::{
         EnvironmentBindingStore, RuntimeSessionStore, WorkspaceBackendId, WorkspaceHeadAccess,
         WorkspaceHeadId,
     };
-    use everruns_provider::typed_id::WorkspaceId;
 
     use super::*;
 

@@ -3,8 +3,8 @@ use crate::{
     CompactionCheckpoint, CompactionCheckpointPayload, CompactionCheckpointStore,
     ProviderOpaqueContext,
 };
-use everruns_provider::driver_registry::ProviderCheckpointCandidate;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::driver_registry::ProviderCheckpointCandidate;
+use everruns_contracts::typed_id::SessionId;
 use uuid::Uuid;
 
 #[derive(Default)]
@@ -72,7 +72,7 @@ pub(super) fn is_restorable(
 
 pub(super) fn reasoning_state(
     checkpoint: Option<&CompactionCheckpoint>,
-) -> Option<&everruns_provider::reasoning_updates::ReasoningState> {
+) -> Option<&everruns_contracts::reasoning_updates::ReasoningState> {
     let CompactionCheckpointPayload::ProviderOpaque {
         context:
             ProviderOpaqueContext::OpenResponsesCompact {

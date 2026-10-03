@@ -17,9 +17,8 @@ categories = ["development-tools", "asynchronous"]
 # The bundle consumes only the neutral capability contract and provider-neutral
 # execution values. It owns no host, platform, database, network, process, or
 # interpreter implementation edge.
-everruns-capability.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 everruns-core = { path = "../core", version = "0.36.0", default-features = false }
-everruns-provider.workspace = true
 
 async-trait.workspace = true
 chrono.workspace = true

@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 # Core types from main crate
 everruns-core = { path = "../../crates/core" }
-everruns-provider = { path = "../../crates/provider", default-features = false }
+everruns-contracts = { path = "../../crates/contracts", default-features = false }
 everruns-test-support = { path = "../../crates/test-support" }
 
 # LLM provider drivers

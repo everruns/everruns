@@ -50,7 +50,7 @@ above):
 | Provider | Input | Output | Cache Read | Cache Creation |
 |----------|-------|--------|------------|----------------|
 | OpenAI Chat Completions | `usage.prompt_tokens` (less cached) | `usage.completion_tokens` | `usage.prompt_tokens_details.cached_tokens` | N/A |
-| OpenAI Responses | Inclusive input less reads and writes | Output count | Cached input | Cache writes; see [wire parser](../../crates/provider/src/openresponses_protocol/mod.rs) |
+| OpenAI Responses | Inclusive input less reads and writes | Output count | Cached input | Cache writes; see [wire parser](../../crates/contracts/src/openresponses_protocol/mod.rs) |
 | Anthropic | `usage.input_tokens` | `usage.output_tokens` | `usage.cache_read_input_tokens` | `usage.cache_creation_input_tokens` |
 
 ### OpenAI Streaming Requirement
@@ -117,7 +117,7 @@ model's cheaper cache-read rate, and cache creations at the cache-write rate
 when known (otherwise the applicable input rate). GPT-5.6 and Astra writes cost
 1.25 times ordinary input; reads cost 0.1 times input. All three input buckets
 count toward the long-context threshold, whose rates apply to the whole request.
-The [price-table implementation](../../crates/model-profiles/src/profiles.rs)
+The [price-table implementation](../../crates/contracts/src/model_profile_data/profiles.rs)
 owns exact model rates and tiers, following [OpenAI's cache billing contract](https://developers.openai.com/api/docs/guides/prompt-caching).
 Estimates use Standard pricing; service-tier adjustments are not modeled.
 Both cost figures are computed when the `llm.generation` event's `TokenUsage` is built.

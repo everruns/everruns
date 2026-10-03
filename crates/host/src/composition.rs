@@ -23,11 +23,11 @@
 //! binary crate.
 
 use crate::{DisabledSessionFileSystemFactory, SessionFileSystemFactory};
+use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_core::{
     Capability, CapabilityRegistry, DecisionsService, EgressService, UtilityLlmService,
     tool_context::ToolContextExtensions,
 };
-use everruns_provider::driver_registry::DriverRegistry;
 use std::sync::{Arc, RwLock};
 
 /// The execution surface a deployment runs with.
@@ -39,7 +39,7 @@ use std::sync::{Arc, RwLock};
 /// # Example
 ///
 /// ```rust,ignore
-/// use everruns_provider::driver_registry::DriverRegistry;
+/// use everruns_contracts::driver_registry::DriverRegistry;
 /// use everruns_host::HostComposition;
 ///
 /// let mut drivers = DriverRegistry::new();
@@ -104,7 +104,7 @@ impl HostComposition {
     pub fn register_capability(
         &self,
         capability: Arc<dyn Capability>,
-    ) -> Result<(), everruns_capability::CapabilityError> {
+    ) -> Result<(), everruns_contracts::CapabilityError> {
         self.update_registry(|registry| registry.try_register_arc(capability))
     }
 
@@ -117,7 +117,7 @@ impl HostComposition {
     pub fn register_capability_overriding(&self, capability: Arc<dyn Capability>) {
         let _ = self.update_registry(|registry| {
             registry.register_arc(capability);
-            Ok::<(), everruns_capability::CapabilityError>(())
+            Ok::<(), everruns_contracts::CapabilityError>(())
         });
     }
 
@@ -324,13 +324,13 @@ mod tests {
     struct StubChatDriver;
 
     #[async_trait]
-    impl everruns_provider::driver_registry::ChatDriver for StubChatDriver {
+    impl everruns_contracts::driver_registry::ChatDriver for StubChatDriver {
         async fn chat_completion_stream(
             &self,
-            _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-            _messages: Vec<everruns_provider::driver_registry::Message>,
-            _config: &everruns_provider::driver_registry::LlmCallConfig,
-        ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+            _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+            _messages: Vec<everruns_contracts::driver_registry::Message>,
+            _config: &everruns_contracts::driver_registry::LlmCallConfig,
+        ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
         {
             Ok(Box::pin(futures::stream::empty()))
         }
@@ -339,10 +339,10 @@ mod tests {
     #[test]
     fn composition_builder_registers_capabilities_and_drivers() {
         let mut drivers = DriverRegistry::new();
-        let mut descriptor = everruns_provider::driver_registry::DriverDescriptor::chat_only(
-            everruns_provider::provider::DriverId::LlmSim,
+        let mut descriptor = everruns_contracts::driver_registry::DriverDescriptor::chat_only(
+            everruns_contracts::provider::DriverId::LlmSim,
             |_config| {
-                Box::new(StubChatDriver) as everruns_provider::driver_registry::BoxedChatDriver
+                Box::new(StubChatDriver) as everruns_contracts::driver_registry::BoxedChatDriver
             },
         );
         descriptor.display_name = "Stub".into();
@@ -357,7 +357,7 @@ mod tests {
         assert!(
             composition
                 .driver_registry()
-                .has_driver(&everruns_provider::provider::DriverId::LlmSim)
+                .has_driver(&everruns_contracts::provider::DriverId::LlmSim)
         );
     }
 

@@ -3,9 +3,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
-use crate::kernel_imports::{
-    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::SkillId,
-};
+use crate::kernel_imports::{contracts::typed_id::ImageId, contracts::typed_id::SkillId};
 use anyhow::Result;
 use anyhow::anyhow;
 use uuid::Uuid;

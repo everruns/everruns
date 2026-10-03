@@ -38,7 +38,7 @@ pub async fn connection_target(
     resolver: &dyn everruns_core::PermissionResolver,
     caller: &everruns_core::Caller,
     raw: &str,
-) -> Result<everruns_provider::typed_id::VirtualUserId, crate::domains::common::CommandError> {
+) -> Result<everruns_contracts::typed_id::VirtualUserId, crate::domains::common::CommandError> {
     use crate::domains::common::{CommandError, classify_anyhow};
     let id = if raw == "me" {
         let uid = caller

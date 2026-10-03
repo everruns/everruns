@@ -1,9 +1,9 @@
 // PostgreSQL implementation of PartialStreamStore (EVE-532).
 
 use async_trait::async_trait;
+use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::{durability::PartialStreamState, durability::PartialStreamStore};
-use everruns_provider::error::AgentLoopError;
-use everruns_provider::typed_id::{MessageId, SessionId};
 use sqlx::PgPool;
 
 /// PostgreSQL-backed partial-stream store.

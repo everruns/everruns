@@ -7,7 +7,7 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 
 use crate::sandbox_checkpoint::SandboxRef;
 use crate::session_sandbox::{SESSION_SANDBOX_SECRET_NAME, SessionSandboxState};
@@ -324,7 +324,7 @@ mod tests {
             _session_id: SessionId,
             _key: &str,
             _value: &str,
-        ) -> everruns_provider::error::Result<()> {
+        ) -> everruns_contracts::error::Result<()> {
             unreachable!()
         }
 
@@ -332,7 +332,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _key: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             unreachable!()
         }
 
@@ -340,14 +340,14 @@ mod tests {
             &self,
             _session_id: SessionId,
             _key: &str,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             unreachable!()
         }
 
         async fn list_keys(
             &self,
             _session_id: SessionId,
-        ) -> everruns_provider::error::Result<Vec<KeyInfo>> {
+        ) -> everruns_contracts::error::Result<Vec<KeyInfo>> {
             unreachable!()
         }
 
@@ -356,7 +356,7 @@ mod tests {
             _session_id: SessionId,
             name: &str,
             value: &str,
-        ) -> everruns_provider::error::Result<()> {
+        ) -> everruns_contracts::error::Result<()> {
             self.0
                 .lock()
                 .unwrap()
@@ -368,7 +368,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             name: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             Ok(self.0.lock().unwrap().get(name).cloned())
         }
 
@@ -376,14 +376,14 @@ mod tests {
             &self,
             _session_id: SessionId,
             name: &str,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             Ok(self.0.lock().unwrap().remove(name).is_some())
         }
 
         async fn list_secrets(
             &self,
             _session_id: SessionId,
-        ) -> everruns_provider::error::Result<Vec<SecretInfo>> {
+        ) -> everruns_contracts::error::Result<Vec<SecretInfo>> {
             Ok(Vec::new())
         }
     }

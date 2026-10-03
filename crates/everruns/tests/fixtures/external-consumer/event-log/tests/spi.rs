@@ -4,19 +4,19 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_provider::error::Result as CoreResult;
+use everruns_contracts::error::Result as CoreResult;
 use everruns_core::events::{Event, EventContext, EventRequest, InputMessageData};
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message::RuntimeMessage;
 use everruns_core::{
     execution_loading::AgentStore, execution_loading::HarnessStore, session_services::KeyInfo, provider_resolution::ProviderStore, session_services::SecretInfo, session_services::SessionStorageStore, execution_loading::SessionStore,
 };
-use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use everruns_core::{
     AgentDefinition, CompactionCheckpoint, CompactionCheckpointStore, ExecutionSession,
     ProactiveCompactionAttempt,
 };
-use everruns_provider::{model_spec::ModelSpec, provider::DriverId};
+use everruns_contracts::{model_spec::ModelSpec, provider::DriverId};
 use everruns_host::{
     EventCursor, EventDurability, EventHistory, EventLog, EventLogError, EventPage, EventReadLimit,
     EventReadRequest, EventReader, EventSink, EventSinkError, HostBackends,
@@ -85,7 +85,7 @@ impl SessionMutator for ExternalSessionStore {
     async fn upsert_session_capability(
         &self,
         session_id: SessionId,
-        capability: everruns_capability::CapabilityRef,
+        capability: everruns_contracts::CapabilityRef,
     ) -> CoreResult<ExecutionSession> {
         self.0
             .upsert_session_capability(session_id, capability)
@@ -124,8 +124,8 @@ impl ProviderStore for ExternalProviderStore {
 
     async fn get_provider_config(
         &self,
-        provider: &everruns_provider::runtime_provider::ProviderKey,
-    ) -> CoreResult<Option<everruns_provider::driver_registry::ProviderConfig>> {
+        provider: &everruns_contracts::runtime_provider::ProviderKey,
+    ) -> CoreResult<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         self.0.get_provider_config(provider).await
     }
 }
@@ -413,7 +413,7 @@ fn cursor_and_page_construction_reject_inconsistent_positions() {
     ));
 
     // A page may not return events beyond the snapshot it claims.
-    let event: Event = input(session, "one").into_event(everruns_provider::typed_id::EventId::new(), 5);
+    let event: Event = input(session, "one").into_event(everruns_contracts::typed_id::EventId::new(), 5);
     assert!(matches!(
         EventPage::new(vec![event], None, 4).expect_err("sequence beyond snapshot"),
         EventLogError::InvalidRead { .. }

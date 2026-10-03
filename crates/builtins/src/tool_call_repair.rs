@@ -621,12 +621,12 @@ pub fn tool_call_repair_capability() -> Arc<dyn Capability> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+    use everruns_contracts::typed_id::{EventId, MessageId, SessionId, TurnId};
     use everruns_core::Event;
     use everruns_core::ExecutionContext;
     use everruns_core::event_emitter::EventEmitter;
     use everruns_core::events::{EventData, EventRequest};
-    use everruns_provider::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
-    use everruns_provider::typed_id::{EventId, MessageId, SessionId, TurnId};
     use serde_json::json;
     use std::sync::Mutex;
 
@@ -637,7 +637,7 @@ mod tests {
 
     #[async_trait]
     impl EventEmitter for RecordingEmitter {
-        async fn emit(&self, request: EventRequest) -> everruns_provider::error::Result<Event> {
+        async fn emit(&self, request: EventRequest) -> everruns_contracts::error::Result<Event> {
             let event = request.clone().into_event(EventId::new(), 0);
             self.requests.lock().unwrap().push(request);
             Ok(event)

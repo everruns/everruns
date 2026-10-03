@@ -17,9 +17,9 @@ use llm_test_matrix::*;
 use std::time::Instant;
 
 use everruns_builtins::CurrentTimeCapability;
+use everruns_contracts::model::ReasoningEffort;
 use everruns_core::message::{ContentPart, Controls, ReasoningConfig, RuntimeMessageRole};
 use everruns_core::message_retriever::InputMessage;
-use everruns_provider::model::ReasoningEffort;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 
 // ============================================================================

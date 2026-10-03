@@ -54,17 +54,17 @@ use async_trait::async_trait;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use serde::Deserialize;
 
-use everruns_provider::OpenAIProtocolChatDriver;
-use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
-use everruns_provider::driver_helpers::fetch_models;
-use everruns_provider::driver_registry::{
+use everruns_contracts::OpenAIProtocolChatDriver;
+use everruns_contracts::credential_schema::{CredentialFormSchema, FormField};
+use everruns_contracts::driver_helpers::fetch_models;
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmResponse, LlmResponseStream, Message,
 };
-use everruns_provider::error::Result;
-use everruns_provider::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
-use everruns_provider::openai_protocol::url_host_eq;
-use everruns_provider::{Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint};
+use everruns_contracts::error::Result;
+use everruns_contracts::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
+use everruns_contracts::openai_protocol::url_host_eq;
+use everruns_contracts::{Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint};
 
 /// Host serving Cloudflare's REST API.
 pub const CLOUDFLARE_API_HOST: &str = "api.cloudflare.com";
@@ -92,7 +92,7 @@ pub fn account_base_url(account_id: &str) -> String {
 /// `gateway_id` to pin a gateway; `None` uses the account's default, which
 /// Workers AI models do not accept.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     account_id: &str,
     api_token: impl Into<String>,
     gateway_id: Option<&str>,
@@ -505,12 +505,12 @@ pub fn descriptor() -> DriverDescriptor {
 /// # Example
 ///
 /// ```
-/// use everruns_provider::DriverRegistry;
+/// use everruns_contracts::DriverRegistry;
 /// use everruns_drivers::cloudflare::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
-/// assert!(registry.has_driver(&everruns_provider::DriverId::Cloudflare));
+/// assert!(registry.has_driver(&everruns_contracts::DriverId::Cloudflare));
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(descriptor());
@@ -521,12 +521,12 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 #[cfg(test)]

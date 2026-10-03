@@ -9,22 +9,22 @@ use async_trait::async_trait;
 use chrono::TimeZone;
 use serde::Deserialize;
 
-use everruns_provider::OpenAIProtocolChatDriver;
-use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
-use everruns_provider::driver_helpers::fetch_models;
-use everruns_provider::driver_registry::{
+use everruns_contracts::OpenAIProtocolChatDriver;
+use everruns_contracts::credential_schema::{CredentialFormSchema, FormField};
+use everruns_contracts::driver_helpers::fetch_models;
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmResponse, LlmResponseStream, Message,
 };
-use everruns_provider::error::Result;
-use everruns_provider::openai_protocol::{is_azure_openai_api_url, models_url_for_api_url};
-use everruns_provider::{Provider, ProviderEndpoint};
+use everruns_contracts::error::Result;
+use everruns_contracts::openai_protocol::{is_azure_openai_api_url, models_url_for_api_url};
+use everruns_contracts::{Provider, ProviderEndpoint};
 
 use crate::mai::auth::{DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, MaiAuth, failing_provider};
 
 /// Ready-to-use Microsoft MAI provider assembly.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     base_url: impl Into<String>,
     auth: MaiAuth,
 ) -> Provider {
@@ -107,7 +107,7 @@ impl ChatDriver for MaiChatDriver {
 
     async fn chat_completion_non_streaming(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
@@ -302,12 +302,12 @@ fn mai_credential_schema() -> CredentialFormSchema {
 /// # Example
 ///
 /// ```
-/// use everruns_provider::DriverRegistry;
+/// use everruns_contracts::DriverRegistry;
 /// use everruns_drivers::mai::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
-/// assert!(registry.has_driver(&everruns_provider::DriverId::Mai));
+/// assert!(registry.has_driver(&everruns_contracts::DriverId::Mai));
 /// ```
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
@@ -342,12 +342,12 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for MaiChatDriver {
@@ -359,7 +359,7 @@ impl Default for MaiChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{
+    use everruns_contracts::driver_registry::{
         MessageRole, ProviderConfig, ProviderMetadata, ServiceKind,
     };
     use serde_json::{Value, json};
@@ -488,7 +488,7 @@ mod tests {
     }
     #[tokio::test]
     async fn discovery_rejects_non_azure_and_lookalike_hosts_before_auth() {
-        use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+        use everruns_contracts::runtime_provider::{ProviderAuth, ProviderAuthRequest};
         struct ForbiddenAuth;
         #[async_trait]
         impl ProviderAuth for ForbiddenAuth {

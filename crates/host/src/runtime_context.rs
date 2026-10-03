@@ -2,6 +2,13 @@
 
 use std::sync::Arc;
 
+use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::hosted_mcp::{HostedMcpDriver, HostedMcpResolver};
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::tool_types::ToolDefinition;
+use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use everruns_core::ResolvedExecutionSnapshot;
 use everruns_core::capabilities::{
     CapabilityRegistry, collect_message_filters_only, collect_message_filters_only_with_context,
@@ -17,13 +24,6 @@ use everruns_core::runtime_context::{
     TurnContextResolver, assemble_resolved_turn_context, resolve_snapshot_capabilities,
 };
 use everruns_core::session_files::SessionFileSystem;
-use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::hosted_mcp::{HostedMcpDriver, HostedMcpResolver};
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::tool_types::ToolDefinition;
-use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 
 use crate::execution_snapshot::load_execution_snapshot;
 
@@ -309,7 +309,7 @@ async fn assemble_from_snapshot(
         .flatten()
         .and_then(|budget| {
             model.driver.provider_managed_reduction_option(
-                &everruns_provider::ProviderEndpoint::default(),
+                &everruns_contracts::ProviderEndpoint::default(),
                 &model.model,
                 budget,
             )
@@ -402,7 +402,7 @@ pub(crate) async fn resolve_model_execution(
         .get_provider_config(&spec.provider)
         .await?
         .unwrap_or_else(|| {
-            everruns_provider::driver_registry::ProviderConfig::for_provider(
+            everruns_contracts::driver_registry::ProviderConfig::for_provider(
                 spec.provider.clone(),
                 DriverId::external(spec.provider.as_str()),
             )

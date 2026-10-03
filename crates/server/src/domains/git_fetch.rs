@@ -18,8 +18,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
-use everruns_provider::driver_helpers::SsrfGuardResolver;
-use everruns_provider::url_validation::validate_safe_url;
+use everruns_contracts::driver_helpers::SsrfGuardResolver;
+use everruns_contracts::url_validation::validate_safe_url;
 
 /// Ceiling on a packfile response, overridable with `GIT_FETCH_MAX_PACK_BYTES`.
 ///

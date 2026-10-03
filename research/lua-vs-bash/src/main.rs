@@ -17,10 +17,10 @@ use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_lua::LuaCapability;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 
 const HARNESS_PROMPT: &str = "You are a data-processing assistant. You have exactly one \
 code-execution tool. To complete a task you MUST use that tool to read and write files in \

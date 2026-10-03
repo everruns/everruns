@@ -254,16 +254,16 @@ their effectful owners:
 
 | 0.17 (`everruns_core::`) | 0.18 |
 |---|---|
-| `OpenAIProtocolChatDriver`, `openai_protocol` | `everruns_provider::` |
-| `OpenResponsesProtocolChatDriver`, `openresponses_protocol` | `everruns_provider::` |
-| `driver_helpers`, `stream_reconnect` | `everruns_provider::` |
+| `OpenAIProtocolChatDriver`, `openai_protocol` | `everruns_contracts::` |
+| `OpenResponsesProtocolChatDriver`, `openresponses_protocol` | `everruns_contracts::` |
+| `driver_helpers`, `stream_reconnect` | `everruns_contracts::` |
 | `OpenAiUtilityLlmService` (now `ProviderUtilityLlmService`), `SystemUtilityLlmConfig`, `UTILITY_OPENAI_API_KEY_ENV` | `everruns_host::` with `features = ["utility-llm"]` |
 
 Core no longer initializes Rustls. Provider HTTP clients install the workspace
 crypto provider when they are first constructed, while server, worker, and CLI
 startup owners install it eagerly. Custom binaries that combine TLS stacks can
 depend on `everruns-provider` with `features = ["tls-aws-lc-rs"]` and call
-`everruns_provider::install_default_crypto_provider()` once during startup; the
+`everruns_contracts::install_default_crypto_provider()` once during startup; the
 call is idempotent and safe under concurrent initialization.
 
 ### Provider and typed-ID imports
@@ -292,20 +292,20 @@ literal so they can be applied with ordinary search-and-replace:
 
 | 0.17 core path | 0.18 direct path |
 |---|---|
-| `everruns_core::driver_registry::*` | `everruns_provider::driver_registry::*` |
-| `everruns_core::model::*` | `everruns_provider::model::*` |
-| `everruns_core::model_profiles::*` | `everruns_provider::model_profiles::*` |
-| `everruns_core::model_spec::ModelSpec` | `everruns_provider::model_spec::ModelSpec` |
-| `everruns_core::provider::*` | `everruns_provider::provider::*` |
-| `everruns_core::runtime_provider::*` | `everruns_provider::runtime_provider::*` |
-| `everruns_core::typed_id::*` | `everruns_provider::typed_id::*` |
-| `everruns_core::error::*` | `everruns_provider::error::*` |
-| `everruns_core::tool_types::*` | `everruns_provider::tool_types::*` |
-| `everruns_core::capability_types::{CapabilityId, CapabilityRef, CapabilityError}` | `everruns_capability::{CapabilityId, CapabilityRef, CapabilityError}` |
-| `everruns_core::AgentCapabilityConfig` | `everruns_capability::CapabilityRef` |
+| `everruns_core::driver_registry::*` | `everruns_contracts::driver_registry::*` |
+| `everruns_core::model::*` | `everruns_contracts::model::*` |
+| `everruns_core::model_profiles::*` | `everruns_contracts::model_profiles::*` |
+| `everruns_core::model_spec::ModelSpec` | `everruns_contracts::model_spec::ModelSpec` |
+| `everruns_core::provider::*` | `everruns_contracts::provider::*` |
+| `everruns_core::runtime_provider::*` | `everruns_contracts::runtime_provider::*` |
+| `everruns_core::typed_id::*` | `everruns_contracts::typed_id::*` |
+| `everruns_core::error::*` | `everruns_contracts::error::*` |
+| `everruns_core::tool_types::*` | `everruns_contracts::tool_types::*` |
+| `everruns_core::capability_types::{CapabilityId, CapabilityRef, CapabilityError}` | `everruns_contracts::capability::{CapabilityId, CapabilityRef, CapabilityError}` |
+| `everruns_core::AgentCapabilityConfig` | `everruns_contracts::capability::CapabilityRef` |
 | core plugin capability ID/validation helpers | the same symbol in `everruns_capability` |
-| `everruns_core::ExecutionPhase` or `message::ExecutionPhase` | `everruns_provider::execution_phase::ExecutionPhase` |
-| `everruns_core::ToolResultImage` or `tools::ToolResultImage` | `everruns_provider::tool_types::ToolResultImage` |
+| `everruns_core::ExecutionPhase` or `message::ExecutionPhase` | `everruns_contracts::execution_phase::ExecutionPhase` |
+| `everruns_core::ToolResultImage` or `tools::ToolResultImage` | `everruns_contracts::tool_types::ToolResultImage` |
 | other root-level provider symbols | the same root symbol in `everruns_provider` |
 
 The credential-bearing `everruns_core::ResolvedModel` is removed. Store and

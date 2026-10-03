@@ -1,8 +1,8 @@
 use crate::domains::agents::queries::row_to_agent;
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
 use crate::kernel_imports::{
-    AgentCapabilityConfig, SessionTask, everruns_provider::error::from_json,
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::SessionId,
+    AgentCapabilityConfig, SessionTask, contracts::error::from_json,
+    contracts::typed_id::HarnessId, contracts::typed_id::SessionId,
 };
 use crate::kernel_imports::{
     session_services::SessionScheduleStore, session_services::SessionStorageStore,

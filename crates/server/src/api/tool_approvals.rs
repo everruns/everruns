@@ -32,11 +32,11 @@ use chrono::{DateTime, Utc};
 use everruns_builtins::{
     StoredToolApproval, always_decision_storage_key, one_off_decision_storage_key,
 };
+use everruns_contracts::tool_types::{APPROVE_TOOL_CALL_TOOL, ToolApprovalRequired};
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::Caller;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, ToolCompletedData};
 use everruns_core::message::{ContentPart, RuntimeMessage};
-use everruns_provider::tool_types::{APPROVE_TOOL_CALL_TOOL, ToolApprovalRequired};
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -747,7 +747,7 @@ mod tests {
         let row = |calls: serde_json::Value| {
             let now = Utc::now();
             EventRow {
-                id: everruns_provider::typed_id::EventId::new(),
+                id: everruns_contracts::typed_id::EventId::new(),
                 session_id: SessionId::new(),
                 sequence: 1,
                 event_type: "tool.call_requested".to_string(),

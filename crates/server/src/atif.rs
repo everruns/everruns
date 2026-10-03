@@ -1690,13 +1690,13 @@ fn truncate_chars(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
+    use everruns_contracts::tool_types::ToolCall;
+    use everruns_contracts::typed_id::{SessionId, TurnId};
     use everruns_core::events::{
         EventContext, InputMessageData, ModelMetadata, OutputMessageCompletedData,
         ReasonCompletedData, ToolCompletedData, TurnCompletedData, TurnFailedData,
     };
-    use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
-    use everruns_provider::tool_types::ToolCall;
-    use everruns_provider::typed_id::{SessionId, TurnId};
 
     fn event(session: SessionId, data: impl Into<EventData>) -> Event {
         Event::new(session, EventContext::empty(), data)
@@ -1924,8 +1924,8 @@ mod tests {
 
     #[test]
     fn images_export_as_multimodal_content_parts() {
+        use everruns_contracts::typed_id::ImageId;
         use everruns_core::message::{ImageContentPart, ImageFileContentPart};
-        use everruns_provider::typed_id::ImageId;
 
         let session = SessionId::new();
         let image_id = ImageId::new();
@@ -2042,8 +2042,8 @@ mod tests {
 
     #[test]
     fn redaction_blanks_image_sources() {
+        use everruns_contracts::typed_id::ImageId;
         use everruns_core::message::{ImageContentPart, ImageFileContentPart};
-        use everruns_provider::typed_id::ImageId;
 
         let session = SessionId::new();
         let image_id = ImageId::new();
@@ -2206,10 +2206,10 @@ mod tests {
 
     #[test]
     fn case_record_carries_reward_and_identity_in_extra() {
+        use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
         use everruns_platform::eval::{
             CaseResultStatus, EvalCaseResult, EvalRun, EvalRunSource, EvalRunStatus,
         };
-        use everruns_provider::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
 
         let session = SessionId::new();
         let run = EvalRun {
@@ -2281,10 +2281,10 @@ mod tests {
         everruns_platform::eval::EvalRun,
         everruns_platform::eval::EvalCaseResult,
     ) {
+        use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
         use everruns_platform::eval::{
             CaseResultStatus, EvalCaseResult, EvalRun, EvalRunSource, EvalRunStatus,
         };
-        use everruns_provider::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
 
         let run = EvalRun {
             public_id: EvalRunId::new(),

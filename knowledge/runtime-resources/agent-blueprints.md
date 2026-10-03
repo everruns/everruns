@@ -27,7 +27,7 @@ do not introduce a second execution engine.
 - [`crates/platform/src/capabilities/subagents.rs`](../../crates/platform/src/capabilities/subagents.rs)
   owns discovery, invocation schema, task creation, and governed-depth
   behavior.
-- [`crates/capability/src/definition.rs`](../../crates/capability/src/definition.rs)
+- [`crates/contracts/src/capability/definition.rs`](../../crates/contracts/src/capability/definition.rs)
   owns schema derivation from a Rust type (`json_schema_for`), shared with
   typed capability tool schemas.
 - [`crates/core/src/session.rs`](../../crates/core/src/session.rs) owns persisted

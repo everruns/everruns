@@ -60,7 +60,7 @@ mod tests {
     use crate::grpc_service::tests::{
         create_grpc_test_session, start_grpc_test_server, test_worker_service,
     };
-    use everruns_platform::session_sqldb::SessionSqlDbStore;
+    use everruns_contracts::session_sqldb::SessionSqlDbStore;
     use std::sync::Arc;
 
     /// The session-database CRUD operations reach the server through

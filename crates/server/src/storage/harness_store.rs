@@ -12,10 +12,9 @@
 // to server-side callers via the inherent `get_harness_chain`.
 
 use crate::kernel_imports::{
-    AgentCapabilityConfig, HarnessDefinition, everruns_provider::error::AgentLoopError,
-    everruns_provider::error::Result, everruns_provider::error::StoreResultExt,
-    everruns_provider::error::from_json, everruns_provider::typed_id::HarnessId,
-    execution_loading::HarnessStore,
+    AgentCapabilityConfig, HarnessDefinition, contracts::error::AgentLoopError,
+    contracts::error::Result, contracts::error::StoreResultExt, contracts::error::from_json,
+    contracts::typed_id::HarnessId, execution_loading::HarnessStore,
 };
 use async_trait::async_trait;
 use everruns_platform::{Harness, HarnessStatus, resolve_execution_harness};

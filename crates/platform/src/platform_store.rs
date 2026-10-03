@@ -10,11 +10,11 @@
 use crate::agent::Agent;
 use crate::harness::{Harness, resolve_execution_harness};
 use async_trait::async_trait;
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionParticipantId;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::SessionParticipantId;
 
 use crate::session::{Session, SessionParticipant};
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use std::collections::HashSet;
 
 // The narrow session-delegation DTOs live in `everruns-core` (they are part of
@@ -43,21 +43,21 @@ pub trait PlatformStore: Send + Sync {
 
     /// Search the authoritative domain-command catalog.
     async fn platform_discover(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(everruns_provider::error::AgentLoopError::config(
+        Err(everruns_contracts::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
 
     /// Execute a bounded script against read-only domain commands.
     async fn platform_query(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(everruns_provider::error::AgentLoopError::config(
+        Err(everruns_contracts::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
 
     /// Execute a bounded script against the full authorized command catalog.
     async fn platform_execute(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(everruns_provider::error::AgentLoopError::config(
+        Err(everruns_contracts::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
@@ -81,7 +81,7 @@ pub trait PlatformStore: Send + Sync {
 
         while let Some(harness_id) = current_id {
             if !seen.insert(harness_id) {
-                return Err(everruns_provider::error::AgentLoopError::tool(format!(
+                return Err(everruns_contracts::error::AgentLoopError::tool(format!(
                     "Harness inheritance cycle detected at {harness_id}"
                 )));
             }
@@ -263,7 +263,7 @@ pub mod tests {
     use crate::agent::{Agent, AgentStatus};
     use crate::harness::HarnessStatus;
     use crate::session::{Session, SessionStatus};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
     /// Mock PlatformStore for unit tests.
     ///
@@ -332,7 +332,7 @@ pub mod tests {
                 agent: Agent {
                     service_virtual_user_id: None,
 
-                    public_id: everruns_provider::typed_id::AgentId::new(),
+                    public_id: everruns_contracts::typed_id::AgentId::new(),
                     internal_id: uuid::Uuid::now_v7(),
                     name: "test-agent".to_string(),
                     display_name: Some("Test Agent".to_string()),
@@ -343,7 +343,9 @@ pub mod tests {
                     system_prompt: "You are helpful.".to_string(),
                     default_model_id: None,
 
-                    harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+                    harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(
+                        uuid::Uuid::nil(),
+                    ),
                     default_version_id: None,
                     forked_from_agent_id: None,
                     forked_from_version_id: None,
@@ -375,7 +377,7 @@ pub mod tests {
                         run_summary: None,
                         // Default 1:1 session<->workspace: workspace.id mirrors the session id.
                         id: session_id,
-                        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(
+                        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(
                             session_id.uuid(),
                         ),
                         organization_id: "org_00000000000000000000000000000001".to_string(),
@@ -383,7 +385,7 @@ pub mod tests {
                         agent_id: None,
                         agent_version_id: None,
                         virtual_user_id: None,
-                        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+                        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
                         resolved_owner_user_id: None,
                         owner: None,
                         effective_owner: None,
@@ -461,7 +463,7 @@ pub mod tests {
         }
         async fn get_agent_by_id(
             &self,
-            _id: everruns_provider::typed_id::AgentId,
+            _id: everruns_contracts::typed_id::AgentId,
         ) -> Result<Option<Agent>> {
             Ok(Some(self.agent.clone()))
         }
@@ -512,7 +514,7 @@ pub mod tests {
             agent_id: AgentId,
         ) -> Result<SessionParticipant> {
             let participant = SessionParticipant {
-                id: everruns_provider::typed_id::SessionParticipantId::new(),
+                id: everruns_contracts::typed_id::SessionParticipantId::new(),
                 session_id,
                 kind: crate::session::SessionParticipantKind::Agent,
                 agent_id: Some(agent_id),

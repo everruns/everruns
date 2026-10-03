@@ -4,18 +4,18 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::vector_store::{
-    InMemoryVectorStore, KnowledgeIndexSearch, VectorRecord, VectorStore, index_namespace,
-};
-use everruns_provider::credential_schema::CredentialFormSchema;
-use everruns_provider::driver_registry::{
+use everruns_contracts::credential_schema::CredentialFormSchema;
+use everruns_contracts::driver_registry::{
     BoxedEmbeddingsDriver, DriverDescriptor, DriverId, DriverRegistry, EmbedRequest, EmbedResponse,
     EmbeddingsDriver, EmbeddingsDriverError, ServiceKind,
 };
-use everruns_provider::typed_id::{
+use everruns_contracts::typed_id::{
     KnowledgeIndexChunkId, KnowledgeIndexDocumentId, KnowledgeIndexId,
 };
+use everruns_contracts::vector_store::{
+    InMemoryVectorStore, KnowledgeIndexSearch, VectorRecord, VectorStore, index_namespace,
+};
+use everruns_core::DEFAULT_ORG_ID;
 use uuid::Uuid;
 
 use super::KnowledgeIndexSearchService;
@@ -36,7 +36,7 @@ struct DeterministicEmbeddingsDriver;
 impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
     async fn embed(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
         request: EmbedRequest,
     ) -> std::result::Result<EmbedResponse, EmbeddingsDriverError> {
         let embeddings = request
@@ -80,7 +80,7 @@ async fn seed_embedding_model(
     db: &StorageBackend,
     encryption: &EncryptionService,
     org_id: i64,
-) -> everruns_provider::typed_id::ModelId {
+) -> everruns_contracts::typed_id::ModelId {
     let encrypted = encryption.encrypt_string("test-key").expect("encrypt");
     let provider = db
         .create_provider(
@@ -120,7 +120,7 @@ async fn seed_populated_index(
     db: &StorageBackend,
     vector_store: &Arc<dyn VectorStore>,
     org_id: i64,
-    model_id: everruns_provider::typed_id::ModelId,
+    model_id: everruns_contracts::typed_id::ModelId,
     chunks: &[(&str, &str)], // (source_file, chunk_text)
 ) -> (String, String) {
     let public_id = KnowledgeIndexId::new().to_string();

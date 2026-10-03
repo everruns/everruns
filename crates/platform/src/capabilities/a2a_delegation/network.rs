@@ -6,7 +6,7 @@
 //! client. Unless the development hatch is on, each URL is DNS-pinned so the
 //! connected address is the one that passed the public-IP checks.
 
-use everruns_provider::url_validation::{validate_url_dns_pinned, validate_url_with_resolver};
+use everruns_contracts::url_validation::{validate_url_dns_pinned, validate_url_with_resolver};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;

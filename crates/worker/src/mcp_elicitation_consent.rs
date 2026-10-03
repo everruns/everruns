@@ -17,12 +17,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_services::SessionStorageStore;
 use everruns_mcp::{
     ElicitationConsentStore, FormAnswerStore, GrantedConsent, StoredConsent, StoredFormAnswer,
     consent_storage_key, form_answer_storage_key,
 };
-use everruns_provider::typed_id::SessionId;
 
 /// Session-storage-backed [`ElicitationConsentStore`] for one session.
 pub struct SessionElicitationConsents {
@@ -98,10 +98,10 @@ impl FormAnswerStore for SessionElicitationConsents {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::error::Result as CoreResult;
     use everruns_core::session_services::{KeyInfo, SecretInfo};
     use everruns_core::tool_context::ToolContext;
     use everruns_core::tools::{Tool, ToolExecutionResult};
-    use everruns_provider::error::Result as CoreResult;
     use std::collections::HashMap;
     use std::sync::Mutex;
 

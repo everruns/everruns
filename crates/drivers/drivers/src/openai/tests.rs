@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod driver_tests {
     use crate::openai::{azure_provider, completions_provider, provider, register_driver};
-    use everruns_provider::ProviderEndpoint;
-    use everruns_provider::driver_registry::{
+    use everruns_contracts::ProviderEndpoint;
+    use everruns_contracts::driver_registry::{
         DriverId, DriverRegistry, EmbedRequest, LlmCallConfig, Message, MessageRole,
         ProviderConfig, ServiceKind,
     };
@@ -215,7 +215,7 @@ mod driver_tests {
 #[cfg(test)]
 mod provider_tests {
     use crate::openai::types::{ChatMessage, MessageRole};
-    use everruns_provider::ToolCall;
+    use everruns_contracts::ToolCall;
     use serde_json::json;
     #[test]
     fn message_conversion_preserves_roles_empty_text_and_complete_tool_exchange() {

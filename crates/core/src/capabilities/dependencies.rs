@@ -20,7 +20,7 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
-use everruns_capability::is_plugin_capability;
+use everruns_contracts::is_plugin_capability;
 
 use super::*;
 

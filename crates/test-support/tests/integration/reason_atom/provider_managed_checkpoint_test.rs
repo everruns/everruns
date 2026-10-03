@@ -18,16 +18,16 @@ impl everruns_core::CompactionCheckpointStore for FailingProviderInstallStore {
         _session_id: SessionId,
         _provider_type: &str,
         _model: &str,
-    ) -> everruns_provider::error::Result<Option<everruns_core::CompactionCheckpoint>> {
+    ) -> everruns_contracts::error::Result<Option<everruns_core::CompactionCheckpoint>> {
         Ok(None)
     }
 
     async fn install(
         &self,
         _checkpoint: everruns_core::CompactionCheckpoint,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         self.install_attempts.fetch_add(1, Ordering::SeqCst);
-        Err(everruns_provider::error::AgentLoopError::store(
+        Err(everruns_contracts::error::AgentLoopError::store(
             "checkpoint payload rejected",
         ))
     }
@@ -37,7 +37,7 @@ impl everruns_core::CompactionCheckpointStore for FailingProviderInstallStore {
         _session_id: SessionId,
         _provider_type: &str,
         _model: &str,
-    ) -> everruns_provider::error::Result<Option<everruns_core::ProactiveCompactionAttempt>> {
+    ) -> everruns_contracts::error::Result<Option<everruns_core::ProactiveCompactionAttempt>> {
         Ok(None)
     }
 
@@ -47,7 +47,7 @@ impl everruns_core::CompactionCheckpointStore for FailingProviderInstallStore {
         _provider_type: &str,
         _model: &str,
         _attempt: everruns_core::ProactiveCompactionAttempt,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         Ok(())
     }
 }
@@ -98,16 +98,16 @@ impl everruns_core::finalized_tool_calls::FinalizedToolCallsHook for NormalizeRe
 struct ReplayProjectionDriver;
 
 #[async_trait]
-impl everruns_provider::ChatDriver for ReplayProjectionDriver {
+impl everruns_contracts::ChatDriver for ReplayProjectionDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::Message>,
-        config: &everruns_provider::LlmCallConfig,
-    ) -> everruns_provider::Result<everruns_provider::LlmResponseStream> {
-        let candidate = everruns_provider::driver_registry::ProviderCheckpointCandidate {
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::Message>,
+        config: &everruns_contracts::LlmCallConfig,
+    ) -> everruns_contracts::Result<everruns_contracts::LlmResponseStream> {
+        let candidate = everruns_contracts::driver_registry::ProviderCheckpointCandidate {
             format_version: everruns_core::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
-            context: everruns_provider::ProviderOpaqueContext::AnthropicMessagesPrefix {
+            context: everruns_contracts::ProviderOpaqueContext::AnthropicMessagesPrefix {
                 messages_json: serde_json::to_string(&json!([
                     {"role":"user","content":[{"type":"text","text":"request"}]},
                     {"role":"assistant","content":[
@@ -120,7 +120,7 @@ impl everruns_provider::ChatDriver for ReplayProjectionDriver {
             },
         };
         let mut metadata = LlmCompletionMetadata::default();
-        metadata.provider_opaque_content = Some(everruns_provider::ProviderOpaqueContent::new(
+        metadata.provider_opaque_content = Some(everruns_contracts::ProviderOpaqueContent::new(
             "anthropic",
             json!([
                 {"type":"text","text":"provider text"},
@@ -130,24 +130,24 @@ impl everruns_provider::ChatDriver for ReplayProjectionDriver {
         metadata.provider_checkpoint_candidate = Some(candidate);
         metadata.model = Some(config.model.clone());
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::LlmStreamEvent::ProviderCompactionStarted),
-            Ok(everruns_provider::LlmStreamEvent::TextDelta(
+            Ok(everruns_contracts::LlmStreamEvent::ProviderCompactionStarted),
+            Ok(everruns_contracts::LlmStreamEvent::TextDelta(
                 "provider text".to_string(),
             )),
-            Ok(everruns_provider::LlmStreamEvent::ToolCalls(vec![
+            Ok(everruns_contracts::LlmStreamEvent::ToolCalls(vec![
                 ToolCall {
                     id: "call_1".to_string(),
                     name: "lookup".to_string(),
                     arguments: json!({"raw":true}),
                 },
             ])),
-            Ok(everruns_provider::LlmStreamEvent::Done(Box::new(metadata))),
+            Ok(everruns_contracts::LlmStreamEvent::Done(Box::new(metadata))),
         ])))
     }
 
     fn provider_managed_reduction_option(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
         _model: &str,
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
@@ -161,7 +161,7 @@ impl everruns_provider::ChatDriver for ReplayProjectionDriver {
 #[tokio::test]
 async fn response_and_tool_projections_preserve_native_replay_state() {
     use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::execution_loading::SessionStore;
 
     let (
@@ -254,7 +254,8 @@ async fn response_and_tool_projections_preserve_native_replay_state() {
         .unwrap()
         .expect("projection changes must not discard the native checkpoint");
     let everruns_core::CompactionCheckpointPayload::ProviderOpaque {
-        context: everruns_provider::ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json },
+        context:
+            everruns_contracts::ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json },
     } = checkpoint.payload
     else {
         panic!("expected Anthropic checkpoint");
@@ -264,25 +265,25 @@ async fn response_and_tool_projections_preserve_native_replay_state() {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpointDriver {
+impl everruns_contracts::driver_registry::ChatDriver for ProviderManagedCheckpointDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::Message>,
-        config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         self.calls.lock().await.push((messages, config.clone()));
         if self.fail_stream.load(Ordering::SeqCst) {
             return Ok(Box::pin(stream::iter(vec![
-                Ok(everruns_provider::driver_registry::LlmStreamEvent::ProviderCompactionStarted),
+                Ok(everruns_contracts::driver_registry::LlmStreamEvent::ProviderCompactionStarted),
                 Ok(
-                    everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                    everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                         "partial output after secret compaction content".to_string(),
                     ),
                 ),
-                Ok(everruns_provider::driver_registry::LlmStreamEvent::Error(
-                    everruns_provider::driver_registry::LlmStreamError::new(
+                Ok(everruns_contracts::driver_registry::LlmStreamEvent::Error(
+                    everruns_contracts::driver_registry::LlmStreamError::new(
                         "invalid compaction block with secret content",
                     ),
                 )),
@@ -290,9 +291,9 @@ impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpoin
         }
         if self.exhaust_stream.load(Ordering::SeqCst) {
             return Ok(Box::pin(stream::iter(vec![
-                Ok(everruns_provider::driver_registry::LlmStreamEvent::ProviderCompactionStarted),
+                Ok(everruns_contracts::driver_registry::LlmStreamEvent::ProviderCompactionStarted),
                 Ok(
-                    everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                    everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                         "incomplete provider-managed output".to_string(),
                     ),
                 ),
@@ -303,7 +304,7 @@ impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpoin
             .as_ref()
             .and_then(|context| {
                 match context {
-                everruns_provider::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                everruns_contracts::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
                     messages_json,
                 } => Some(messages_json.clone()),
                 _ => None,
@@ -327,13 +328,13 @@ impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpoin
                 .unwrap()
             });
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::ProviderCompactionStarted),
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::ProviderCompactionStarted),
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                     "provider-managed response".to_string(),
                 ),
             ),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::new({
                     let mut metadata = LlmCompletionMetadata::default();
                     metadata.model = Some(config.model.clone());
@@ -343,10 +344,10 @@ impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpoin
                     metadata.cache_read_tokens = Some(40_000);
                     metadata.cache_creation_tokens = Some(2_000);
                     metadata.provider_checkpoint_candidate =
-                        Some(everruns_provider::driver_registry::ProviderCheckpointCandidate {
+                        Some(everruns_contracts::driver_registry::ProviderCheckpointCandidate {
                             format_version:
                                 everruns_core::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
-                            context: everruns_provider::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                            context: everruns_contracts::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
                                 messages_json: prefix,
                             },
                         });
@@ -358,7 +359,7 @@ impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpoin
 
     fn provider_managed_reduction_option(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
         _model: &str,
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
@@ -370,10 +371,10 @@ impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpoin
 
     fn validate_provider_opaque_context(
         &self,
-        context: &everruns_provider::driver_registry::ProviderOpaqueContext,
+        context: &everruns_contracts::driver_registry::ProviderOpaqueContext,
     ) -> bool {
         match context {
-            everruns_provider::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
+            everruns_contracts::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
                 messages_json,
             } => serde_json::from_str::<Vec<serde_json::Value>>(messages_json).is_ok(),
             _ => true,
@@ -384,7 +385,7 @@ impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpoin
 #[tokio::test]
 async fn provider_managed_checkpoint_installs_after_completion_and_restores_on_restart() {
     use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::execution_loading::SessionStore;
     let (
         harness_store,
@@ -539,7 +540,7 @@ async fn provider_managed_checkpoint_installs_after_completion_and_restores_on_r
         checkpoint.payload,
         everruns_core::CompactionCheckpointPayload::ProviderOpaque {
             context:
-                everruns_provider::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix { .. }
+                everruns_contracts::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix { .. }
         }
     ));
     let mut canonical_history = vec![RuntimeMessage::user("first request")];
@@ -573,7 +574,7 @@ async fn provider_managed_checkpoint_installs_after_completion_and_restores_on_r
         .provider_opaque_context
         .as_ref()
         .expect("restart should restore provider-owned context");
-    let everruns_provider::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
+    let everruns_contracts::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
         messages_json,
     } = restored
     else {
@@ -583,14 +584,14 @@ async fn provider_managed_checkpoint_installs_after_completion_and_restores_on_r
     assert!(captured_calls[1].0.iter().any(|message| {
         matches!(
             &message.content,
-            everruns_provider::driver_registry::MessageContent::Text(text)
+            everruns_contracts::driver_registry::MessageContent::Text(text)
                 if text == "second request"
         )
     }));
     assert!(!captured_calls[1].0.iter().any(|message| {
         matches!(
             &message.content,
-            everruns_provider::driver_registry::MessageContent::Text(text)
+            everruns_contracts::driver_registry::MessageContent::Text(text)
                 if text == "first request"
         )
     }));
@@ -732,7 +733,7 @@ async fn provider_managed_checkpoint_installs_after_completion_and_restores_on_r
 #[tokio::test]
 async fn corrupt_provider_checkpoint_rebuilds_from_full_raw_history() {
     use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::execution_loading::SessionStore;
 
     let (
@@ -796,7 +797,7 @@ async fn corrupt_provider_checkpoint_rebuilds_from_full_raw_history() {
             model: model.to_string(),
             format_version: everruns_core::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
             payload: everruns_core::CompactionCheckpointPayload::ProviderOpaque {
-                context: everruns_provider::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                context: everruns_contracts::ProviderOpaqueContext::AnthropicMessagesPrefix {
                     messages_json: "{not-json".to_string(),
                 },
             },
@@ -834,7 +835,7 @@ async fn corrupt_provider_checkpoint_rebuilds_from_full_raw_history() {
     assert!(calls[0].0.iter().any(|message| {
         matches!(
             &message.content,
-            everruns_provider::MessageContent::Text(text) if text == "first raw message"
+            everruns_contracts::MessageContent::Text(text) if text == "first raw message"
         )
     }));
 }
@@ -845,25 +846,25 @@ struct DynamicContextFallbackDriver {
 }
 
 #[async_trait]
-impl everruns_provider::ChatDriver for DynamicContextFallbackDriver {
+impl everruns_contracts::ChatDriver for DynamicContextFallbackDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::Message>,
-        config: &everruns_provider::LlmCallConfig,
-    ) -> everruns_provider::Result<everruns_provider::LlmResponseStream> {
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<everruns_contracts::Message>,
+        config: &everruns_contracts::LlmCallConfig,
+    ) -> everruns_contracts::Result<everruns_contracts::LlmResponseStream> {
         self.calls.lock().await.push((messages, config.clone()));
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::LlmStreamEvent::TextDelta(
+            Ok(everruns_contracts::LlmStreamEvent::TextDelta(
                 "legacy context response".to_string(),
             )),
-            Ok(everruns_provider::LlmStreamEvent::Done(Box::default())),
+            Ok(everruns_contracts::LlmStreamEvent::Done(Box::default())),
         ])))
     }
 
     fn provider_managed_reduction_option(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
         _model: &str,
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
@@ -881,7 +882,7 @@ async fn changing_agents_and_channel_context_bypass_a_native_checkpoint() {
         CHANNEL_CONTEXT_CAPABILITY_ID, ChannelContextCapability, INFINITY_CONTEXT_CAPABILITY_ID,
         InfinityContextCapability,
     };
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::channel::{ChannelViewContext, ThreadContext, save_thread_context};
     use everruns_core::execution_loading::SessionStore;
     use everruns_core::message::ExternalActor;
@@ -976,7 +977,7 @@ async fn changing_agents_and_channel_context_bypass_a_native_checkpoint() {
             model: model.to_string(),
             format_version: everruns_core::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
             payload: everruns_core::CompactionCheckpointPayload::ProviderOpaque {
-                context: everruns_provider::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                context: everruns_contracts::ProviderOpaqueContext::AnthropicMessagesPrefix {
                     messages_json: serde_json::to_string(&json!([
                         {"role":"user","content":[{"type":"text","text":"checkpoint prefix"}]}
                     ]))

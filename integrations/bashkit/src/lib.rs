@@ -38,15 +38,15 @@ use bashkit::{
     SearchCapable, SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
     Tool as BashkitToolTrait, TraceEventKind, TraceMode,
 };
+#[cfg(test)]
+use everruns_contracts::error;
+use everruns_contracts::{tool_types, typed_id};
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::*;
-#[cfg(test)]
-use everruns_provider::error;
-use everruns_provider::{tool_types, typed_id};
 pub use hook_dispatch::BashkitShellHookDispatcher;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -161,9 +161,9 @@ impl BashkitShell {
     }
 }
 
-impl everruns_capability::IntoCapability for BashkitShell {
-    fn into_capability(self) -> everruns_capability::CapabilitySpec {
-        everruns_capability::CapabilityRef::new(BASHKIT_SHELL_CAPABILITY_ID)
+impl everruns_contracts::IntoCapability for BashkitShell {
+    fn into_capability(self) -> everruns_contracts::CapabilitySpec {
+        everruns_contracts::CapabilityRef::new(BASHKIT_SHELL_CAPABILITY_ID)
             .config(serde_json::json!({ "enable_http": self.enable_http }))
             .into()
     }
@@ -1465,7 +1465,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<Option<SessionFile>> {
+        ) -> everruns_contracts::error::Result<Option<SessionFile>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, encoding)) = files.get(&(session_id, path.clone())) {
@@ -1515,7 +1515,7 @@ mod tests {
             path: &str,
             content: &str,
             encoding: &str,
-        ) -> everruns_provider::error::Result<SessionFile> {
+        ) -> everruns_contracts::error::Result<SessionFile> {
             let path = Self::normalize_path(path);
             let mut files = self.files.lock().unwrap();
             files.insert(
@@ -1542,7 +1542,7 @@ mod tests {
             session_id: SessionId,
             path: &str,
             _recursive: bool,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             let path = Self::normalize_path(path);
             let mut files = self.files.lock().unwrap();
             Ok(files.remove(&(session_id, path)).is_some())
@@ -1552,7 +1552,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<Vec<FileInfo>> {
+        ) -> everruns_contracts::error::Result<Vec<FileInfo>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             let dirs = self.directories.lock().unwrap();
@@ -1649,7 +1649,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<Option<FileStat>> {
+        ) -> everruns_contracts::error::Result<Option<FileStat>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, _)) = files.get(&(session_id, path.clone())) {
@@ -1672,7 +1672,7 @@ mod tests {
             session_id: SessionId,
             pattern: &str,
             path_pattern: Option<&str>,
-        ) -> everruns_provider::error::Result<Vec<GrepMatch>> {
+        ) -> everruns_contracts::error::Result<Vec<GrepMatch>> {
             let regex = regex::Regex::new(pattern)
                 .map_err(|e| anyhow::anyhow!("invalid pattern: {}", e))?;
             let files = self.files.lock().unwrap();
@@ -1707,7 +1707,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<FileInfo> {
+        ) -> everruns_contracts::error::Result<FileInfo> {
             let path = Self::normalize_path(path);
             let mut dirs = self.directories.lock().unwrap();
             dirs.insert((session_id, path.clone()), true);

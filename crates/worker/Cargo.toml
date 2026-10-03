@@ -21,10 +21,9 @@ uuid.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 
-everruns-capability = { workspace = true }
+everruns-contracts = { workspace = true, default-features = false }
 everruns-core = { path = "../core", features = ["tree-sitter-outlines"] }
 everruns-engine.workspace = true
-everruns-provider.workspace = true
 # Telemetry init is installed explicitly by the worker through the host's
 # observability feature; core carries neutral contracts only.
 # Production-safe deterministic `llmsim` provider (seeded LlmSim models and

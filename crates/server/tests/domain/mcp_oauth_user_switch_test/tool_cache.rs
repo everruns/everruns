@@ -1,14 +1,14 @@
 use super::test_harness::TestServer;
 use async_trait::async_trait;
 use axum::http::StatusCode;
-use everruns_capability::CapabilityRef;
+use everruns_contracts::CapabilityRef;
+use everruns_contracts::typed_id::{AgentId, PrincipalId, SessionId, VirtualUserId};
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::{
     Caller, DEFAULT_ORG_ID, EgressRequest, EgressResponse, EgressResult, EgressService,
     EgressStreamResponse, McpServerActsAs, McpServerAuthMode, ScopedMcpServer, ScopedMcpServers,
     mcp_oauth_provider_id_for_uuid,
 };
-use everruns_provider::typed_id::{AgentId, PrincipalId, SessionId, VirtualUserId};
 use everruns_server::CapabilityService;
 use everruns_server::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions;
 use everruns_server::domains::mcp_servers::{McpServerService, McpServerSettings};
@@ -216,7 +216,7 @@ impl CacheFixture {
         &self,
         session_id: SessionId,
         acts_as: McpServerActsAs,
-    ) -> Vec<everruns_provider::tool_types::ToolDefinition> {
+    ) -> Vec<everruns_contracts::tool_types::ToolDefinition> {
         let name = self
             .db
             .get_mcp_server(DEFAULT_ORG_ID, self.server_id)

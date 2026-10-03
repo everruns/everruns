@@ -17,8 +17,8 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_core::Caller;
-use everruns_provider::driver_registry::DriverRegistry;
 use std::sync::Arc;
 
 use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};

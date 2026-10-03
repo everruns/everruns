@@ -9,7 +9,7 @@ use super::types::{
 };
 use super::{VIRTUAL_USER_DANGEROUS, VIRTUAL_USER_MANAGE, VIRTUAL_USER_VIEW};
 use crate::domains::common::*;
-use crate::kernel_imports::{Policy, VirtualUser, everruns_provider::typed_id::VirtualUserId};
+use crate::kernel_imports::{Policy, VirtualUser, contracts::typed_id::VirtualUserId};
 use crate::services::PrincipalService;
 use everruns_platform::PrincipalStatus;
 use serde::Deserialize;

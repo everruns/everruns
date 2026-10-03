@@ -12,7 +12,7 @@ impl InMemoryDatabase {
 
     pub async fn list_virtual_user_preferences(
         &self,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         limit: usize,
     ) -> Result<Vec<VirtualUserPreferenceRow>> {
         let mut prefs: Vec<_> = self
@@ -29,7 +29,7 @@ impl InMemoryDatabase {
 
     pub async fn get_virtual_user_preference(
         &self,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         key: &str,
     ) -> Result<Option<VirtualUserPreferenceRow>> {
         Ok(self
@@ -41,7 +41,7 @@ impl InMemoryDatabase {
 
     pub async fn set_virtual_user_preference(
         &self,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         key: &str,
         value: &str,
         max_preferences: usize,
@@ -81,7 +81,7 @@ impl InMemoryDatabase {
 
     pub async fn delete_virtual_user_preference(
         &self,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         key: &str,
     ) -> Result<bool> {
         Ok(self

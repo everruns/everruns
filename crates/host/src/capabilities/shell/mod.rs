@@ -155,8 +155,8 @@ impl HostShell {
     }
 }
 
-impl everruns_capability::IntoCapability for HostShell {
-    fn into_capability(self) -> everruns_capability::CapabilitySpec {
+impl everruns_contracts::IntoCapability for HostShell {
+    fn into_capability(self) -> everruns_contracts::CapabilitySpec {
         let mut config = serde_json::Map::new();
         if let Some(containment) = self.containment {
             config.insert("containment".into(), containment.as_str().into());
@@ -181,7 +181,7 @@ impl everruns_capability::IntoCapability for HostShell {
                 },
             );
         }
-        everruns_capability::CapabilityRef::new(HOST_SHELL_CAPABILITY_ID)
+        everruns_contracts::CapabilityRef::new(HOST_SHELL_CAPABILITY_ID)
             .config(Value::Object(config))
             .into()
     }
@@ -358,8 +358,8 @@ impl Capability for HostShellCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_capability::IntoCapability;
-    use everruns_provider::typed_id::SessionId;
+    use everruns_contracts::IntoCapability;
+    use everruns_contracts::typed_id::SessionId;
     use serde_json::json;
 
     #[test]

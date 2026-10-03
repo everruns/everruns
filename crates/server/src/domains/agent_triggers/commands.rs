@@ -30,6 +30,7 @@ use crate::storage::models::{
     AgentRow, AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger,
 };
 use chrono::Utc;
+use everruns_contracts::typed_id::{AgentId, SessionId, TriggerId};
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
@@ -39,7 +40,6 @@ use everruns_platform::{AgentAction, AuditEvent};
 use everruns_platform::{
     AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, SessionBinding, WebhookTriggerConfig,
 };
-use everruns_provider::typed_id::{AgentId, SessionId, TriggerId};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::str::FromStr;
@@ -1094,13 +1094,13 @@ pub async fn invoke_agent_trigger(
 
 #[derive(Debug, Clone)]
 pub(super) struct TriggerExecutionContext {
-    pub(super) harness_id: everruns_provider::typed_id::HarnessId,
-    pub(super) owner_principal_id: everruns_provider::typed_id::PrincipalId,
+    pub(super) harness_id: everruns_contracts::typed_id::HarnessId,
+    pub(super) owner_principal_id: everruns_contracts::typed_id::PrincipalId,
     resolved_owner_user_id: Option<Uuid>,
-    virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+    virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     app_id: Option<Uuid>,
     agent_version_policy: everruns_platform::AgentVersionPolicy,
-    agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
 }
 
 /// Legacy App attribution for webhook triggers migrated from App channels.
@@ -1357,8 +1357,8 @@ pub(super) async fn dispatch_trigger_message(
     agent: &AgentRow,
     trigger_id: TriggerId,
     session_id: SessionId,
-    harness_id: everruns_provider::typed_id::HarnessId,
-    owner_principal_id: everruns_provider::typed_id::PrincipalId,
+    harness_id: everruns_contracts::typed_id::HarnessId,
+    owner_principal_id: everruns_contracts::typed_id::PrincipalId,
     rendered_message: String,
     request_id: Option<String>,
 ) -> Result<(), CommandError> {
@@ -1420,7 +1420,7 @@ pub(super) fn emit_agent_trigger_audit_event(
     agent: &AgentRow,
     trigger_id: TriggerId,
     session_id: SessionId,
-    owner_principal_id: everruns_provider::typed_id::PrincipalId,
+    owner_principal_id: everruns_contracts::typed_id::PrincipalId,
     created_session: bool,
 ) {
     // Reuse the AppInvocationStarted action — the audit token space has no

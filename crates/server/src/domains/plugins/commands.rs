@@ -13,11 +13,11 @@ use super::types::*;
 use super::{PLUGIN_MANAGE, PLUGIN_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    DeploymentGrade, Policy, everruns_provider::typed_id::PluginInstallId,
-    everruns_provider::typed_id::PluginMarketplaceId,
+    DeploymentGrade, Policy, contracts::typed_id::PluginInstallId,
+    contracts::typed_id::PluginMarketplaceId,
 };
+use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::plugins::compile_plugin;
-use everruns_provider::url_validation::validate_safe_url;
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;

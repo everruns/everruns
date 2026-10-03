@@ -23,9 +23,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::{Event, EventData, EventListener, TOOL_COMPLETED};
 use everruns_platform::{AgentAction, AuditEvent};
-use everruns_provider::typed_id::{MessageId, SessionId};
 use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
