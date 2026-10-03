@@ -4,7 +4,7 @@
 // Viewing renders the markdown at reading size; editing turns the same pane
 // into a mono textarea in the same place, so moving between the two never
 // changes the layout. One header row, no second row of tabs: "Source" is a
-// plain toggle for the raw text, not a tab.
+// ghost sm toggle for the raw text, sized with Edit prompt.
 
 import { useEffect, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
@@ -72,18 +72,19 @@ export function AgentPromptPane({
           {words} {pluralize(words, "word")} · ~{formatTokens(tokens)} {pluralize(tokens, "token")}
         </span>
         {!editing && (
-          <div className="ml-auto flex items-center gap-3">
-            <button
+          <div className="ml-auto flex items-center gap-2">
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setShowSource((current) => !current)}
               aria-pressed={showSource}
-              className="text-[13px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
               {showSource ? "Rendered" : "Source"}
-            </button>
+            </Button>
             {onEdit && (
               <Button variant="outline" size="sm" onClick={handleEdit}>
-                <Pencil className="size-3.5" />
+                <Pencil className="size-4" />
                 Edit prompt
               </Button>
             )}

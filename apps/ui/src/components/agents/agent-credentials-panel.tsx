@@ -278,7 +278,7 @@ export function AgentCredentialsPanel({ agentId }: { agentId: string }) {
                     />
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon-sm"
                       aria-label={`Revoke ${binding.label}`}
                       className="text-destructive"
                       onClick={() => deleteBinding(binding.id, binding.label)}

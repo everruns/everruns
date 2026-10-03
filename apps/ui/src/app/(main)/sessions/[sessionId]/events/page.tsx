@@ -223,11 +223,12 @@ export default function EventsPage() {
             <div className="flex items-center justify-center gap-2">
               <Button
                 variant="outline"
-                size="sm"
+                size="icon-sm"
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
+                aria-label="Previous page"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="size-4" />
               </Button>
               <div className="flex items-center gap-1">
                 {/* Show page numbers with ellipsis for large page counts */}
@@ -245,9 +246,10 @@ export default function EventsPage() {
                       )}
                       <Button
                         variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => handlePageChange(page)}
-                        className="w-8 h-8 p-0"
+                        aria-label={`Page ${page}`}
+                        aria-current={currentPage === page ? "page" : undefined}
                       >
                         {page}
                       </Button>
@@ -256,11 +258,12 @@ export default function EventsPage() {
               </div>
               <Button
                 variant="outline"
-                size="sm"
+                size="icon-sm"
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
+                aria-label="Next page"
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="size-4" />
               </Button>
             </div>
           )}

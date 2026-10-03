@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   Clock3,
   ExternalLink,
@@ -38,7 +37,7 @@ import {
   versionSelectionOf,
 } from "@/components/agents/agent-version-policy-field";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -117,9 +116,9 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
             Wake this agent on a schedule or on events.
           </p>
         </div>
-        <Link href={`/agents/${agentId}/triggers/new`} className={buttonVariants({ size: "sm" })}>
+        <LinkButton href={`/agents/${agentId}/triggers/new`} size="sm">
           <Plus className="size-4" /> Add trigger
-        </Link>
+        </LinkButton>
       </CardHeader>
       <CardContent className="space-y-3">
         {isLoading ? (
@@ -208,13 +207,14 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                       }
                     />
                     {isGithub && (
-                      <Link
+                      <LinkButton
                         href={`/agents/${agentId}/triggers/${trigger.id}`}
-                        className={buttonVariants({ variant: "ghost", size: "icon" })}
+                        variant="ghost"
+                        size="icon-sm"
                         aria-label="Open trigger editor"
                       >
                         <ExternalLink className="size-4" />
-                      </Link>
+                      </LinkButton>
                     )}
                     {isSchedule && (
                       <>
@@ -226,21 +226,22 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                         >
                           <Play className="size-4" /> Run now
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(trigger)}>
+                        <Button size="icon-sm" variant="ghost" onClick={() => openEdit(trigger)}>
                           <Pencil className="size-4" />
                           <span className="sr-only">Quick edit trigger</span>
                         </Button>
-                        <Link
+                        <LinkButton
                           href={`/agents/${agentId}/triggers/${trigger.id}`}
-                          className={buttonVariants({ variant: "ghost", size: "icon" })}
+                          variant="ghost"
+                          size="icon-sm"
                           aria-label="Open trigger editor"
                         >
                           <ExternalLink className="size-4" />
-                        </Link>
+                        </LinkButton>
                       </>
                     )}
                     <Button
-                      size="icon"
+                      size="icon-sm"
                       variant="ghost"
                       onClick={() => deleteTrigger.mutate(trigger.id)}
                     >
