@@ -96,7 +96,7 @@ async fn wait_for_sessions_with_tag(
 async fn wait_for_session_with_tag(
     server: &TestServer,
     tag: &str,
-) -> everruns_provider::typed_id::SessionId {
+) -> everruns_contracts::typed_id::SessionId {
     let sessions = wait_for_sessions_with_tag(server, tag, 1).await;
     sessions[0]["id"]
         .as_str()
@@ -108,7 +108,7 @@ async fn wait_for_session_with_tag(
 /// Number of events currently recorded on a session.
 async fn session_event_count(
     server: &TestServer,
-    session_id: &everruns_provider::typed_id::SessionId,
+    session_id: &everruns_contracts::typed_id::SessionId,
 ) -> usize {
     let events: Value = server
         .get(&format!("/v1/sessions/{session_id}/events"))
@@ -134,7 +134,7 @@ fn stop_event(thread_ts: &str, channel: &str) -> Value {
 /// True when the session has recorded at least one event of this type.
 async fn session_has_event_type(
     server: &TestServer,
-    session_id: &everruns_provider::typed_id::SessionId,
+    session_id: &everruns_contracts::typed_id::SessionId,
     event_type: &str,
 ) -> bool {
     let events: Value = server
@@ -155,7 +155,7 @@ async fn session_has_event_type(
 /// Poll until the session records `event_type`, or give up.
 async fn wait_for_event_type(
     server: &TestServer,
-    session_id: &everruns_provider::typed_id::SessionId,
+    session_id: &everruns_contracts::typed_id::SessionId,
     event_type: &str,
 ) -> bool {
     for delay_ms in [100, 200, 400, 800, 1600, 3200] {

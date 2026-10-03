@@ -3,22 +3,25 @@
 // Moved from `everruns-core` (EVE-875): core no longer ships the simulator,
 // so these tests live with the test-support crate that does.
 
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::user_facing_error::UserFacingErrorContext;
 use everruns_core::{CapabilityRegistry, DisabledCommandHost};
 use everruns_core::{
     CommandHost, ExecutionSession, SessionCompletionError, SessionCompletionRequest,
 };
 use everruns_host::StoreCommandHost;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::error::AgentLoopError;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::typed_id::SessionId;
-use everruns_provider::user_facing_error::UserFacingErrorContext;
 use everruns_test_support::TestMathCapability;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use everruns_core::AgentDefinition;
 
+use everruns_contracts::driver_registry::LlmStreamEvent;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::typed_id::{AgentId, HarnessId};
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message_retriever::InputMessage;
 use everruns_core::session::SessionExecutionState;
@@ -26,9 +29,6 @@ use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
-use everruns_provider::driver_registry::LlmStreamEvent;
-use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::{AgentId, HarnessId};
 use everruns_test_support::InMemoryMessageRetriever;
 use futures::StreamExt;
 
@@ -60,7 +60,7 @@ async fn disabled_host_errors_clearly() {
 
 fn test_harness() -> HarnessDefinition {
     HarnessDefinition {
-        capabilities: vec![everruns_capability::CapabilityRef::new("test_math")],
+        capabilities: vec![everruns_contracts::CapabilityRef::new("test_math")],
         ..HarnessDefinition::new("h", "You are a test harness.")
     }
 }
@@ -79,7 +79,7 @@ fn test_session(
 ) -> ExecutionSession {
     ExecutionSession {
         id: session_id,
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: Some(agent_id),
@@ -133,7 +133,7 @@ async fn llmsim_host(response: &str) -> StoreCommandHost {
         .await;
     provider_store
         .add_model(
-            everruns_provider::typed_id::ModelId::from_seed(905),
+            everruns_contracts::typed_id::ModelId::from_seed(905),
             ModelSpec::on((DriverId::LlmSim).as_str(), "override-model"),
         )
         .await;
@@ -177,13 +177,13 @@ async fn selected_but_unconfigured_host() -> StoreCommandHost {
 
     struct NetworkSentinel;
     #[async_trait::async_trait]
-    impl everruns_provider::driver_registry::ChatDriver for NetworkSentinel {
+    impl everruns_contracts::driver_registry::ChatDriver for NetworkSentinel {
         async fn chat_completion_stream(
             &self,
-            _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-            _messages: Vec<everruns_provider::driver_registry::Message>,
-            _config: &everruns_provider::driver_registry::LlmCallConfig,
-        ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+            _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+            _messages: Vec<everruns_contracts::driver_registry::Message>,
+            _config: &everruns_contracts::driver_registry::LlmCallConfig,
+        ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
         {
             panic!("missing credentials must be rejected before provider I/O")
         }
@@ -240,7 +240,7 @@ async fn store_host_resolves_per_completion_model_override() {
             system_prompts: vec![turn.system_prompt],
             messages: turn.messages,
             controls: Some(everruns_core::Controls {
-                model_id: Some(everruns_provider::typed_id::ModelId::from_seed(905)),
+                model_id: Some(everruns_contracts::typed_id::ModelId::from_seed(905)),
                 ..Default::default()
             }),
             metadata: HashMap::new(),

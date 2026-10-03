@@ -14,16 +14,16 @@ use serde_json::json;
 fn message_with_replay_state() -> RuntimeMessage {
     let mut message = RuntimeMessage::assistant("the answer");
     message.content.push(ContentPart::reasoning(
-        everruns_provider::reasoning::ReasoningContentPart::opaque("anthropic")
+        everruns_contracts::reasoning::ReasoningContentPart::opaque("anthropic")
             .with_item_id("rs_abc")
             .with_signature("sig-do-not-publish")
             .with_encrypted("enc-do-not-publish")
-            .with_text(everruns_provider::reasoning::ReasoningText::Plain {
+            .with_text(everruns_contracts::reasoning::ReasoningText::Plain {
                 text: "visible reasoning".to_string(),
             }),
     ));
     message.content.push(ContentPart::ProviderOpaque(
-        everruns_provider::ProviderOpaqueContent::new(
+        everruns_contracts::ProviderOpaqueContent::new(
             "anthropic",
             json!([{"type": "thinking", "signature": "OPAQUE-SIGNATURE"}]),
         ),
@@ -50,7 +50,9 @@ fn generation_metadata() -> LlmGenerationMetadata {
     }
 }
 
-fn reasoning_part(message: &RuntimeMessage) -> &everruns_provider::reasoning::ReasoningContentPart {
+fn reasoning_part(
+    message: &RuntimeMessage,
+) -> &everruns_contracts::reasoning::ReasoningContentPart {
     message
         .content
         .iter()

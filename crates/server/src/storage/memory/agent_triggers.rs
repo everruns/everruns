@@ -3,9 +3,7 @@
 use super::super::agent_trigger_deliveries::*;
 use super::super::models::*;
 use super::InMemoryDatabase;
-use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::TriggerId,
-};
+use crate::kernel_imports::{contracts::typed_id::AgentId, contracts::typed_id::TriggerId};
 use anyhow::Result;
 use uuid::Uuid;
 

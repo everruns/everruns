@@ -19,13 +19,13 @@ use serde_json::{Value, json};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::knowledge_store::KnowledgeIndexSearchExt;
 use crate::vector_store::EmbeddingCallUsage;
+use everruns_contracts::tool_types::ToolHints;
+use everruns_contracts::{model::DriverId, model_profiles::estimate_cost_usd};
 use everruns_core::events::{
     EventData, EventRequest, LLM_GENERATION, LlmGenerationData, TokenUsage,
 };
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
-use everruns_provider::{model::DriverId, model_profiles::estimate_cost_usd};
 
 /// Stable string id for the knowledge index capability.
 pub const KNOWLEDGE_INDEX_CAPABILITY_ID: &str = "knowledge_index";
@@ -237,7 +237,7 @@ pub struct SearchIndexTool {
 impl Tool for SearchIndexTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -570,8 +570,8 @@ mod tests {
         assert_eq!(tools.len(), 1);
 
         let seen_top_k = Arc::new(Mutex::new(None));
-        let mut ctx = ToolContext::new(everruns_provider::typed_id::SessionId::new());
-        ctx.org_id = Some(everruns_provider::typed_id::OrgId::new());
+        let mut ctx = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
+        ctx.org_id = Some(everruns_contracts::typed_id::OrgId::new());
         ctx.extensions
             .insert(Arc::new(KnowledgeIndexSearchExt(Arc::new(
                 RecordingSearch {
@@ -595,8 +595,8 @@ mod tests {
         let cap = KnowledgeIndexCapability;
         let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID] }));
         let tool = &tools[0];
-        let ctx = ToolContext::new(everruns_provider::typed_id::SessionId::new()).with_org_id(
-            everruns_provider::typed_id::OrgId::from_uuid(uuid::Uuid::from_u128(1)),
+        let ctx = ToolContext::new(everruns_contracts::typed_id::SessionId::new()).with_org_id(
+            everruns_contracts::typed_id::OrgId::from_uuid(uuid::Uuid::from_u128(1)),
         );
         let result = tool
             .execute_with_context(json!({ "query": "hello" }), &ctx)
@@ -611,7 +611,7 @@ mod tests {
     async fn search_index_requires_query() {
         let cap = KnowledgeIndexCapability;
         let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID] }));
-        let ctx = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let ctx = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
         let result = tools[0]
             .execute_with_context(json!({ "query": "  " }), &ctx)
             .await;
@@ -627,8 +627,8 @@ mod tests {
     /// the embedding call was billed regardless.
     #[tokio::test]
     async fn search_emits_llm_generation_events_for_embedding_usage() {
+        use everruns_contracts::typed_id::{EventId, MessageId, SessionId, TurnId};
         use everruns_core::events::{Event, EventContext};
-        use everruns_provider::typed_id::{EventId, MessageId, SessionId, TurnId};
         use std::sync::{Arc, Mutex};
 
         struct RecordingEmitter {
@@ -637,7 +637,10 @@ mod tests {
 
         #[async_trait]
         impl everruns_core::event_emitter::EventEmitter for RecordingEmitter {
-            async fn emit(&self, request: EventRequest) -> everruns_provider::error::Result<Event> {
+            async fn emit(
+                &self,
+                request: EventRequest,
+            ) -> everruns_contracts::error::Result<Event> {
                 self.requests
                     .lock()
                     .expect("poisoned")
@@ -676,7 +679,7 @@ mod tests {
         let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID] }));
 
         let mut ctx = ToolContext::new(SessionId::new());
-        ctx.org_id = Some(everruns_provider::typed_id::OrgId::new());
+        ctx.org_id = Some(everruns_contracts::typed_id::OrgId::new());
         ctx.event_emitter = Some(Arc::new(RecordingEmitter {
             requests: Arc::clone(&requests),
         }));

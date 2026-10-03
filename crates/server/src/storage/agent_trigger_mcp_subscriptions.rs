@@ -3,7 +3,7 @@
 //! `domains::agent_triggers::mcp_event`.
 
 use chrono::{DateTime, Utc};
-use everruns_provider::typed_id::TriggerId;
+use everruns_contracts::typed_id::TriggerId;
 use sqlx::FromRow;
 
 /// Subscription is being set up: the secret exists, the server has not

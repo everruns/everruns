@@ -13,11 +13,11 @@ use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers,
-    everruns_provider::tool_types::ToolDefinition,
+    contracts::tool_types::ToolDefinition,
 };
 use crate::max_iterations;
+use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId};
 use everruns_platform::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
-use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 

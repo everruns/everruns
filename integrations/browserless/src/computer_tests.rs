@@ -2,7 +2,7 @@ use super::*;
 use base64::Engine;
 use everruns_core::capabilities::Capability;
 use everruns_core::network_access::NetworkAccessList;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -165,7 +165,7 @@ mod tempdir {
         pub fn new() -> Self {
             let dir = std::env::temp_dir().join(format!(
                 "everruns-computer-use-{}",
-                everruns_provider::typed_id::SessionId::new()
+                everruns_contracts::typed_id::SessionId::new()
             ));
             std::fs::create_dir_all(&dir).expect("create profile dir");
             Self(dir)

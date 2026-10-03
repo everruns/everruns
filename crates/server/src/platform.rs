@@ -6,12 +6,12 @@
 //! the OSS preset, filter `everruns_integrations_catalog::CATALOG`, or
 //! construct a `HostComposition` manually.
 
+use everruns_contracts::connector::ConnectorRegistry;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_host::DirectEgressService;
 use everruns_host::{HostComposition, SystemUtilityLlmConfig};
 use everruns_platform::BuiltInHarnessDefinition;
-use everruns_platform::connector::ConnectorRegistry;
 use everruns_platform::email::{EmailSender, SystemEmailConfig};
 use std::sync::Arc;
 use uuid::Uuid;

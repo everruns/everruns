@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use everruns_provider::typed_id::PrincipalId;
+use everruns_contracts::typed_id::PrincipalId;
 
 /// Local environment configuration.
 #[derive(Debug, Clone)]

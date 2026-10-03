@@ -5,9 +5,9 @@ use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use axum_extra::extract::cookie::CookieJar;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use everruns_contracts::connector::ConnectorRegistry;
+use everruns_contracts::typed_id::{AgentId, HarnessId};
 use everruns_core::OrgRole;
-use everruns_platform::connector::ConnectorRegistry;
-use everruns_provider::typed_id::{AgentId, HarnessId};
 use everruns_server::api::user_connections::{
     AppState, OAuthAuthorizeQuery, OAuthCallbackQuery, authorize_connection,
     connection_oauth_callback,

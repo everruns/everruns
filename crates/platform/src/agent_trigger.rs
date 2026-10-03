@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 // Reuse the app-side invocation/schedule config so schedule triggers and
 // schedule channels share one shape. Do not duplicate these.
 use crate::app::default_invocation_binding;
+use everruns_contracts::typed_id::{AgentEndpointId, AgentId, TriggerId};
 use everruns_core::channel::SessionBinding;
-use everruns_provider::typed_id::{AgentEndpointId, AgentId, TriggerId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -269,7 +269,7 @@ pub struct AgentTriggerDelivery {
     /// Session that handled the event.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
-    pub session_id: Option<everruns_provider::typed_id::SessionId>,
+    pub session_id: Option<everruns_contracts::typed_id::SessionId>,
     /// When the event was received.
     pub created_at: DateTime<Utc>,
 }
@@ -305,7 +305,7 @@ pub struct AgentTrigger {
     /// Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
-    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     /// Creation timestamp.
     pub created_at: DateTime<Utc>,
     /// Last update timestamp.

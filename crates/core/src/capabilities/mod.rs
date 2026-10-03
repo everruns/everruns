@@ -83,7 +83,7 @@ pub struct IntegrationPlugin {
 pub use crate::capability_types::{
     CapabilityStatus, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
 };
-use everruns_capability::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
+use everruns_contracts::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 
 // ============================================================================
 // Capability contract modules

@@ -1,6 +1,6 @@
 //! Curated Framework configuration values for portable capabilities.
 
-use everruns_capability::{CapabilityRef, CapabilitySpec, IntoCapability};
+use everruns_contracts::{CapabilityRef, CapabilitySpec, IntoCapability};
 
 /// Strategy used when a conversation outgrows the model context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

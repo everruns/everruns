@@ -9,7 +9,7 @@ use everruns_core::session_task::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-fn registry_err(e: everruns_provider::error::AgentLoopError) -> CommandError {
+fn registry_err(e: everruns_contracts::error::AgentLoopError) -> CommandError {
     CommandError::internal(anyhow::anyhow!(e))
 }
 
@@ -561,7 +561,7 @@ impl Command for CreateTaskPushConfig {
 
         // SSRF: validate the URL against private/internal ranges before persist.
         // Delivery additionally pins DNS (see build_task_webhook_request).
-        everruns_provider::url_validation::validate_safe_url(&self.url)
+        everruns_contracts::url_validation::validate_safe_url(&self.url)
             .map_err(|e| CommandError::bad_request(format!("Invalid webhook URL: {e}")))?;
 
         let event_filter = normalize_event_filter(self.event_filter)?;
@@ -677,6 +677,7 @@ mod tests {
     use super::*;
     use crate::storage::models::CreateHarnessRow;
     use crate::storage::{CreateSessionRow, StorageBackend};
+    use everruns_contracts::typed_id::{HarnessId, PrincipalId};
     use everruns_core::network_access::NetworkAccessList;
     use everruns_core::session_task::{
         CreateSessionTask, NewTaskMessage, SessionTaskRegistry, SessionTaskState,
@@ -684,7 +685,6 @@ mod tests {
         TASK_KIND_SUBAGENT, TaskLinks, TaskMessagePart, TaskWakePolicy,
     };
     use everruns_core::{Caller, DEFAULT_ORG_ID};
-    use everruns_provider::typed_id::{HarnessId, PrincipalId};
     use std::sync::Arc;
 
     // -------------------------------------------------------------------------
@@ -743,7 +743,7 @@ mod tests {
     }
 
     /// Create a session in the in-memory database, returning its ID.
-    async fn create_session(db: &Arc<StorageBackend>) -> everruns_provider::typed_id::SessionId {
+    async fn create_session(db: &Arc<StorageBackend>) -> everruns_contracts::typed_id::SessionId {
         ensure_base_harness(db, None).await;
 
         db.create_session(CreateSessionRow {
@@ -761,7 +761,7 @@ mod tests {
     async fn create_session_in_org(
         db: &Arc<StorageBackend>,
         org_id: i64,
-    ) -> everruns_provider::typed_id::SessionId {
+    ) -> everruns_contracts::typed_id::SessionId {
         db.create_session(CreateSessionRow {
             org_id,
             owner_principal_id: PrincipalId::from_seed(1),
@@ -777,8 +777,8 @@ mod tests {
     /// returning its ID. Used to build a delegation tree in tests.
     async fn create_child_session(
         db: &Arc<StorageBackend>,
-        parent: everruns_provider::typed_id::SessionId,
-    ) -> everruns_provider::typed_id::SessionId {
+        parent: everruns_contracts::typed_id::SessionId,
+    ) -> everruns_contracts::typed_id::SessionId {
         db.create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             owner_principal_id: PrincipalId::from_seed(1),
@@ -1089,7 +1089,7 @@ mod tests {
                 spec: serde_json::json!({}),
                 state: SessionTaskState::Running,
                 links: TaskLinks {
-                    child_session_id: Some(everruns_provider::typed_id::SessionId::new()),
+                    child_session_id: Some(everruns_contracts::typed_id::SessionId::new()),
                     ..Default::default()
                 },
                 wake_policy: TaskWakePolicy::Silent,
@@ -1484,7 +1484,7 @@ mod tests {
 
     async fn make_task(
         db: &Arc<StorageBackend>,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
     ) -> String {
         let ctx = test_ctx(db.clone());
         q::registry_for_ctx(&ctx)

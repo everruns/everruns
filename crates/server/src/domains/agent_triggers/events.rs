@@ -370,7 +370,7 @@ pub(super) fn validate_trigger_binding(
 
 /// Which session an event lands in.
 pub(super) struct TriggerSessionRoute<'a> {
-    pub(super) trigger_id: everruns_provider::typed_id::TriggerId,
+    pub(super) trigger_id: everruns_contracts::typed_id::TriggerId,
     pub(super) session_mode: everruns_platform::SessionBinding,
     /// Event subject; with `per_thread` it keys one session per subject.
     pub(super) subject: Option<&'a str>,

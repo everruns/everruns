@@ -6,9 +6,9 @@
 //! earlier summary rather than stacking a new comment per push.
 
 use async_trait::async_trait;
+use everruns_contracts::tool_types::ToolHints;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 
 use crate::tools::{
@@ -336,7 +336,7 @@ impl Tool for UpsertGitHubCommentTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::typed_id::SessionId;
+    use everruns_contracts::typed_id::SessionId;
 
     async fn run(tool: &dyn Tool, arguments: Value) -> ToolExecutionResult {
         tool.execute_with_context(arguments, &ToolContext::new(SessionId::new()))

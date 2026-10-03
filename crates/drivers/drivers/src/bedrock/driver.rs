@@ -20,14 +20,14 @@ use aws_sdk_bedrockruntime::types::{
 };
 use aws_smithy_types::Document;
 use base64::prelude::*;
-use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
-use everruns_provider::driver_registry::{
+use everruns_contracts::credential_schema::{CredentialFormSchema, FormField};
+use everruns_contracts::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmResponseStream,
     LlmStreamEvent, Message, MessageContent, MessageRole,
 };
-use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_provider::tool_types::{ToolCall, ToolDefinition};
+use everruns_contracts::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use serde_json::Value;
 use std::collections::HashMap;
 use tokio_stream::wrappers::ReceiverStream;
@@ -93,10 +93,10 @@ impl std::fmt::Debug for BedrockAuth {
 }
 
 #[async_trait]
-impl everruns_provider::ProviderAuth for BedrockAuth {
+impl everruns_contracts::ProviderAuth for BedrockAuth {
     async fn headers(
         &self,
-        _request: everruns_provider::ProviderAuthRequest<'_>,
+        _request: everruns_contracts::ProviderAuthRequest<'_>,
     ) -> Result<Vec<(String, String)>> {
         Ok(Vec::new())
     }
@@ -118,10 +118,10 @@ impl BedrockChatDriver {
 
 /// Ready-to-use AWS Bedrock provider assembly.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     credential: BedrockCredential,
-) -> everruns_provider::Provider {
-    everruns_provider::Provider::new(id, BedrockChatDriver::new())
+) -> everruns_contracts::Provider {
+    everruns_contracts::Provider::new(id, BedrockChatDriver::new())
         .auth(BedrockAuth::new(credential))
 }
 
@@ -129,10 +129,10 @@ pub fn provider(
 /// [`BedrockAuth::default_chain`] for the chain and region resolution.
 #[cfg(feature = "bedrock-default-credentials")]
 pub fn provider_from_default_chain(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     region: Option<String>,
-) -> everruns_provider::Provider {
-    everruns_provider::Provider::new(id, BedrockChatDriver::new())
+) -> everruns_contracts::Provider {
+    everruns_contracts::Provider::new(id, BedrockChatDriver::new())
         .auth(BedrockAuth::default_chain(region))
 }
 
@@ -212,7 +212,7 @@ pub fn descriptor() -> DriverDescriptor {
         },
         ..DriverDescriptor::chat_only(DriverId::Bedrock, |config| {
             match BedrockAuth::from_config(config) {
-                Ok(auth) => everruns_provider::Provider::new(
+                Ok(auth) => everruns_contracts::Provider::new(
                     config.provider.clone(),
                     BedrockChatDriver::new(),
                 )
@@ -234,12 +234,12 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 /// Driver that immediately fails with a credential error.
@@ -249,7 +249,7 @@ struct FailDriver(String);
 impl ChatDriver for FailDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
         _messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -261,7 +261,7 @@ impl ChatDriver for FailDriver {
 impl ChatDriver for BedrockChatDriver {
     async fn chat_completion_stream(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -433,7 +433,7 @@ impl ChatDriver for BedrockChatDriver {
 
     async fn list_models(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
     ) -> Result<Option<Vec<DiscoveredModel>>> {
         // Converse-compatible model set is seeded statically; skip discovery.
         Ok(None)
@@ -1034,7 +1034,7 @@ mod tests {
                 .endpoint_url(server.uri())
                 .build(),
         );
-        let service = everruns_provider::Provider::new("bedrock", BedrockChatDriver::new())
+        let service = everruns_contracts::Provider::new("bedrock", BedrockChatDriver::new())
             .auth(BedrockAuth { client });
         let arguments = serde_json::json!({"values":[null,true,"hé🙂",42,-1,1.5,18446744073709551615_u64],"nested":{"id":9223372036854775809_u64}});
         let mut message = Message::text(MessageRole::Assistant, "");
@@ -1101,7 +1101,7 @@ mod tests {
                 .endpoint_url(server.uri())
                 .build(),
         );
-        let service = everruns_provider::Provider::new("bedrock", BedrockChatDriver::new())
+        let service = everruns_contracts::Provider::new("bedrock", BedrockChatDriver::new())
             .auth(BedrockAuth { client });
         let error = service
             .chat_completion(

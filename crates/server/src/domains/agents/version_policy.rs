@@ -6,8 +6,8 @@
 // valid pin is (EVE-1139).
 
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use everruns_contracts::typed_id::{AgentId, AgentVersionId};
 use everruns_platform::AgentVersionPolicy;
-use everruns_provider::typed_id::{AgentId, AgentVersionId};
 
 /// The stored version selection of an exposure.
 #[derive(Debug, Clone, PartialEq)]

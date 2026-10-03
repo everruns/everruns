@@ -8,9 +8,9 @@
 
 use crate::support::*;
 use chrono::{DateTime, Utc};
+use everruns_contracts::model::Model;
+use everruns_contracts::provider::Provider;
 use everruns_platform::{Agent, Session};
-use everruns_provider::model::Model;
-use everruns_provider::provider::Provider;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 

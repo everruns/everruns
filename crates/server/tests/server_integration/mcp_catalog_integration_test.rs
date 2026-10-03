@@ -43,7 +43,7 @@ async fn create_test_backend() -> StorageBackend {
 
 async fn ensure_test_harness_id(
     backend: &StorageBackend,
-) -> everruns_provider::typed_id::HarnessId {
+) -> everruns_contracts::typed_id::HarnessId {
     org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
         .await
         .expect("initialize built-in harnesses");
@@ -87,7 +87,7 @@ async fn create_test_user(
 async fn create_catalog_usage_agent(
     backend: &StorageBackend,
     org_id: i64,
-    harness_id: everruns_provider::typed_id::HarnessId,
+    harness_id: everruns_contracts::typed_id::HarnessId,
     name: &str,
     display_name: &str,
     mcp_servers: serde_json::Value,
@@ -96,7 +96,7 @@ async fn create_catalog_usage_agent(
         .create_agent(
             org_id,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("{name}-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some(display_name.to_string()),
                 description: None,
@@ -453,8 +453,8 @@ async fn user_mcp_connections_are_user_and_org_scoped_and_include_tombstones() {
         .await
         .expect("create other org server");
 
-    let insert_connection = |virtual_user_id: everruns_provider::typed_id::VirtualUserId,
-                             server_id: everruns_provider::typed_id::McpServerId,
+    let insert_connection = |virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
+                             server_id: everruns_contracts::typed_id::McpServerId,
                              username: &str| {
         let backend = &backend;
         let username = username.to_string();

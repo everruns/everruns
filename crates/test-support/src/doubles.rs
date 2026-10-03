@@ -5,12 +5,12 @@
 // chat driver that replays queued responses.
 
 use async_trait::async_trait;
-use everruns_core::tool_execution::ToolExecutor;
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     ChatDriver, LlmCallConfig, LlmResponseStream, LlmStreamEvent, Message,
 };
-use everruns_provider::error::Result;
-use everruns_provider::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use everruns_contracts::error::Result;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use everruns_core::tool_execution::ToolExecutor;
 use futures::stream;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -242,7 +242,7 @@ impl MockProvider {
 impl ChatDriver for MockProvider {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
         messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {

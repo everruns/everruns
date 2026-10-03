@@ -32,12 +32,12 @@ use futures::stream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     BoxedChatDriver, ChatDriver, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::tool_types::ToolCall;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
 use llmsim::openai::{ChatCompletionRequest, Message as SimMessage, Role, Usage};
@@ -320,7 +320,7 @@ impl SimError {
     }
 
     fn agent_error(&self) -> AgentLoopError {
-        use everruns_provider::error::LlmErrorKind;
+        use everruns_contracts::error::LlmErrorKind;
 
         match self {
             SimError::RateLimit => {
@@ -698,7 +698,7 @@ impl LlmSimDriver {
 impl ChatDriver for LlmSimDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -780,11 +780,11 @@ impl ChatDriver for LlmSimDriver {
             .reasoning_effort
             .is_some_and(|effort| effort.requests_reasoning())
         {
-            let part = everruns_provider::reasoning::ReasoningContentPart::opaque("llmsim")
+            let part = everruns_contracts::reasoning::ReasoningContentPart::opaque("llmsim")
                 .with_item_id("rs_llmsim_0")
                 .with_signature("llmsim-signature-opaque")
                 .with_encrypted("llmsim-encrypted-opaque")
-                .with_text(everruns_provider::reasoning::ReasoningText::Plain {
+                .with_text(everruns_contracts::reasoning::ReasoningText::Plain {
                     text: LLMSIM_REASONING_TEXT.to_string(),
                 })
                 .with_tokens(8);
@@ -1112,10 +1112,10 @@ mod tests {
             &self,
             messages: Vec<Message>,
             config: &LlmCallConfig,
-        ) -> Result<everruns_provider::driver_registry::LlmResponse> {
+        ) -> Result<everruns_contracts::driver_registry::LlmResponse> {
             ChatDriver::chat_completion(
                 self,
-                &everruns_provider::runtime_provider::ProviderEndpoint::default(),
+                &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
                 messages,
                 config,
             )
@@ -1129,7 +1129,7 @@ mod tests {
         ) -> Result<LlmResponseStream> {
             ChatDriver::chat_completion_stream(
                 self,
-                &everruns_provider::runtime_provider::ProviderEndpoint::default(),
+                &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
                 messages,
                 config,
             )
@@ -1614,7 +1614,7 @@ mod tests {
         assert!(registry.has_driver(&DriverId::LlmSim));
 
         // Creating a driver should work (with any API key since it's simulated)
-        let config = everruns_provider::driver_registry::ProviderConfig::new(DriverId::LlmSim)
+        let config = everruns_contracts::driver_registry::ProviderConfig::new(DriverId::LlmSim)
             .with_api_key("fake-key");
         let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());

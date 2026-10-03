@@ -1,6 +1,6 @@
 //! Environment profile validation, resolution, and runtime capability mapping.
 
-use everruns_capability::CapabilityRef;
+use everruns_contracts::capability::CapabilityRef;
 use everruns_platform::{
     EnvironmentContainmentLevel, EnvironmentContainmentProfile, EnvironmentDurability,
     EnvironmentEscalation, EnvironmentIdleAction, EnvironmentNetworkPolicy, EnvironmentProfile,

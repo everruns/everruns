@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use everruns_core::session_files::SessionFileSystem;
 
 use crate::compute::{Compute, ComputeCapabilities, Containment, ContainmentLevel, Durability};
-use everruns_provider::typed_id::{SessionId, WorkspaceId};
+use everruns_contracts::typed_id::{SessionId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;

@@ -66,7 +66,7 @@ effort controls and their selected compaction strategy. No default model changes
 Implementation and regression contracts live in
 [`reasoning_updates.rs`](../../crates/engine/src/execution/reason/reasoning_updates.rs),
 [`compaction.rs`](../../crates/engine/src/execution/reason/compaction.rs), and the
-[`Responses wire tests`](../../crates/provider/tests/openresponses_protocol_wire.rs).
+[`Responses wire tests`](../../crates/contracts/tests/openresponses_protocol_wire.rs).
 Provider contracts: [changing reasoning](https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation)
 and [compaction output handling](https://developers.openai.com/api/docs/guides/compaction).
 
@@ -669,5 +669,5 @@ visibility rather than changing the capability ownership model.
 - `knowledge/runtime-resources/infinity-context.md`, pull-based backstop capability; defers to compaction when both are enabled
 - `knowledge/execution/events.md`, event schema
 - `knowledge/execution/capabilities.md`, capability system
-- `crates/provider/src/driver_registry.rs`, `ChatDriver` trait with `supports_compact()` / `compact()`
-- `crates/provider/src/openresponses_protocol.rs`, `CompactRequest` / `CompactResponse` types
+- `crates/contracts/src/driver_registry.rs`, `ChatDriver` trait with `supports_compact()` / `compact()`
+- `crates/contracts/src/openresponses_protocol.rs`, `CompactRequest` / `CompactResponse` types

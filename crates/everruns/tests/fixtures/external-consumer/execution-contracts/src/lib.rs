@@ -6,7 +6,7 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
 use everruns_host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
-use everruns_provider::error::{AgentLoopError, Result};
+use everruns_contracts::error::{AgentLoopError, Result};
 use std::sync::Arc;
 
 /// Minimal external observer proving event emission is independently implementable.
@@ -15,7 +15,7 @@ pub struct ExternalEventEmitter;
 #[async_trait]
 impl EventEmitter for ExternalEventEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
-        Ok(request.into_event(everruns_provider::typed_id::EventId::new(), 1))
+        Ok(request.into_event(everruns_contracts::typed_id::EventId::new(), 1))
     }
 }
 
@@ -69,9 +69,9 @@ mod tests {
         assert_factory_contract::<ExternalSessionFileSystemFactory>();
         assert_turn_context_contract::<ExternalTurnContextResolver>();
         let context = ExecutionContext::new(
-            everruns_provider::typed_id::SessionId::new(),
-            everruns_provider::typed_id::TurnId::new(),
-            everruns_provider::typed_id::MessageId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::TurnId::new(),
+            everruns_contracts::typed_id::MessageId::new(),
         );
         let input = InputAtomInput { context };
         assert!(!input.context.exec_id.uuid().is_nil());

@@ -31,7 +31,7 @@ pub struct AgentExample {
     pub tags: Vec<String>,
     /// Capability IDs this example uses
     #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
-    pub capabilities: Vec<everruns_capability::CapabilityRef>,
+    pub capabilities: Vec<everruns_contracts::CapabilityRef>,
     /// Whether this example requires dev/experimental mode
     pub dev_only: bool,
     /// Guided setup to run after importing, for templates that need one.
@@ -100,7 +100,7 @@ fn seed_to_example(seed: &SeedAgent, setup: Option<&TemplateSetup>) -> AgentExam
             .iter()
             .map(|cap| {
                 let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
-                everruns_capability::CapabilityRef::with_config(cap.id.to_string(), config)
+                everruns_contracts::CapabilityRef::with_config(cap.id.to_string(), config)
             })
             .collect(),
         dev_only: seed.dev_only,

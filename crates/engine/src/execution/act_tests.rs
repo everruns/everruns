@@ -3,8 +3,8 @@ use crate::test_fixtures::NoopEventEmitter;
 use crate::tools::ToolRegistry;
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use async_trait::async_trait;
+use everruns_contracts::{BuiltinTool, ClientSideTool};
 use everruns_core::{Capability, DisabledUtilityLlmService, Tool, ToolExecutionResult};
-use everruns_provider::{BuiltinTool, ClientSideTool};
 use serde_json::json;
 
 pub(super) struct ArgumentEchoTool;

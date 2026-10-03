@@ -17,9 +17,9 @@ use axum::{
 };
 
 use super::common::{ApiPolicyResultExt, ApiResult, impl_auth_state};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
 use everruns_core::command::{CommandDescriptor, CommandResult, ExecuteCommandRequest};
-use everruns_provider::typed_id::SessionId;
 use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;

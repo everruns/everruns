@@ -26,7 +26,7 @@ exclude = ["spec/1.0/fixtures", "spec/1.0/conformance", "tests"]
 [features]
 default = []
 # `projection`: map Everruns runtime events onto an AG-UI run.
-core = ["dep:everruns-core", "dep:everruns-provider"]
+core = ["dep:everruns-core", "dep:everruns-contracts"]
 # `client`: an HTTP/SSE client for AG-UI agents. Off by default so the wire
 # types stay serde-only.
 client = ["dep:reqwest", "dep:futures-util"]
@@ -35,7 +35,7 @@ client = ["dep:reqwest", "dep:futures-util"]
 serde.workspace = true
 serde_json.workspace = true
 everruns-core = { workspace = true, optional = true }
-everruns-provider = { workspace = true, optional = true }
+everruns-contracts = { workspace = true, default-features = false, optional = true }
 reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls"] }
 futures-util = { workspace = true, optional = true }
 

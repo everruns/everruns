@@ -654,15 +654,15 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
+    use everruns_contracts::tool_types::ToolCall;
+    use everruns_contracts::typed_id::EventId;
+    use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
     use everruns_core::event_emitter::EventEmitter;
     #[cfg(any(feature = "otel", feature = "braintrust"))]
     use everruns_core::events::EventData;
     use everruns_core::events::OutputMessageDeltaData;
     use everruns_core::events::{EventContext, EventRequest, TurnStartedData};
     use everruns_host::{HostBackends, HostEventEmitter, InMemoryEventLog};
-    use everruns_provider::tool_types::ToolCall;
-    use everruns_provider::typed_id::EventId;
-    use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
     use serde_json::json;
     use tokio::sync::Notify;
 

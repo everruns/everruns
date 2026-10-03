@@ -5,7 +5,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::notifications::NotificationService;
 use crate::domains::notifications::{ListNotifications, MarkNotificationViewed};
-use crate::kernel_imports::{Caller, everruns_provider::typed_id::NotificationId};
+use crate::kernel_imports::{Caller, contracts::typed_id::NotificationId};
 use crate::notification_notifications::NotificationNotificationBroadcaster;
 use crate::storage::StorageBackend;
 use axum::{

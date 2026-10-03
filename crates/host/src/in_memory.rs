@@ -6,7 +6,14 @@ use crate::SessionMutator;
 use crate::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use everruns_capability::CapabilityRef;
+use everruns_contracts::CapabilityRef;
+use everruns_contracts::credential_provider::CredentialProvider;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::runtime_provider::ProviderKey;
+use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::session::ExecutionSession;
@@ -21,13 +28,6 @@ use everruns_core::{
     provider_resolution::ProviderStore, session_files::SessionFileSystem,
     session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
 };
-use everruns_provider::credential_provider::CredentialProvider;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::runtime_provider::ProviderKey;
-use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -193,7 +193,7 @@ pub struct InMemoryProviderStore {
     models: Arc<RwLock<HashMap<ModelId, ModelSpec>>>,
     default_model: Arc<RwLock<Option<ModelSpec>>>,
     provider_configs:
-        Arc<RwLock<HashMap<ProviderKey, everruns_provider::driver_registry::ProviderConfig>>>,
+        Arc<RwLock<HashMap<ProviderKey, everruns_contracts::driver_registry::ProviderConfig>>>,
 }
 
 impl InMemoryProviderStore {
@@ -230,7 +230,7 @@ impl InMemoryProviderStore {
             let Some(document) = resolved.document() else {
                 continue;
             };
-            let config = everruns_provider::driver_registry::ProviderConfig::new(driver.clone())
+            let config = everruns_contracts::driver_registry::ProviderConfig::new(driver.clone())
                 .with_api_key(document);
             let config = match resolved.base_url() {
                 Some(base_url) => config.with_base_url(base_url.to_string()),
@@ -265,7 +265,7 @@ impl InMemoryProviderStore {
     /// Set credential-bearing construction material independently from model identity.
     pub async fn set_provider_config(
         &self,
-        config: everruns_provider::driver_registry::ProviderConfig,
+        config: everruns_contracts::driver_registry::ProviderConfig,
     ) {
         self.provider_configs
             .write()
@@ -294,7 +294,7 @@ impl ProviderStore for InMemoryProviderStore {
     async fn get_provider_config(
         &self,
         provider: &ProviderKey,
-    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         Ok(self.provider_configs.read().await.get(provider).cloned())
     }
 }

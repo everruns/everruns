@@ -31,9 +31,9 @@ use super::{
 use crate::domains::common::Command;
 use crate::slack_approvals::{ApprovalDecision, ApprovalRequest, extract_approval_request};
 use everruns_builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
 use everruns_platform::SessionStatus;
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -729,7 +729,7 @@ mod tests {
 
     fn event(sequence: i32, event_type: &str, data: Value) -> EventRow {
         EventRow {
-            id: everruns_provider::typed_id::EventId::from_uuid(uuid::Uuid::now_v7()),
+            id: everruns_contracts::typed_id::EventId::from_uuid(uuid::Uuid::now_v7()),
             session_id: SessionId::from_uuid(uuid::Uuid::nil()),
             sequence,
             event_type: event_type.to_string(),

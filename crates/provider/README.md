@@ -1,52 +1,33 @@
 # everruns-provider
 
-> Lean provider and LLM abstractions shared by the Everruns Framework and provider crates.
+> Moved: its shared contracts now live in `everruns-contracts`.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-provider.svg)](https://crates.io/crates/everruns-provider)
-[![Documentation](https://docs.rs/everruns-provider/badge.svg)](https://docs.rs/everruns-provider)
-[![License](https://img.shields.io/crates/l/everruns-provider.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+Part of the [Everruns](https://everruns.com) ecosystem. **Deprecated:** this crate
+moved to [`everruns-contracts`](https://crates.io/crates/everruns-contracts).
+It publishes one compatibility release, then leaves the workspace and publish set.
 
-`everruns-provider` owns credential-free model identity, the `ChatDriver`
-boundary, provider assembly, protocol drivers, stream/retry helpers, typed
-IDs, credential schemas, and the LLM error taxonomy. Model profile types and
-data (`ModelProfile`, `ServiceKind`, and the built-in profile registry) live
-in [`everruns-model-profiles`](https://crates.io/crates/everruns-model-profiles)
-and are re-exported here for source compatibility.
+## Migrate
 
-It is a focused implementation crate in the [Everruns](https://everruns.com)
-ecosystem. Framework application authors normally use the curated surface
-through `everruns`; provider implementers and low-level hosts depend here
-directly to avoid pulling in the agent-loop kernel.
-
-The default `http` feature provides the shared protocol implementations and
-installs the Rustls crypto provider before constructing their clients. Contract-
-only consumers can use `default-features = false` to avoid HTTP and TLS
-dependencies entirely. The `tls-aws-lc-rs` feature exposes the idempotent startup
-initializer independently for binaries that assemble multiple TLS stacks.
-
-## Quick Example
+Replace the dependency with `everruns-contracts` and imports from
+`everruns_provider::` with `everruns_contracts::`. Enable its `http` feature to
+retain the protocol transport enabled by this shim's default feature.
 
 ```rust
-use everruns_provider::ModelSpec;
-
+use everruns_contracts::ModelSpec;
 let model = ModelSpec::on("company-gateway", "assistant-v2");
 assert_eq!(model.provider.as_str(), "company-gateway");
-assert_eq!(model.model, "assistant-v2");
 ```
 
 ## What It Provides
 
-- Open `ChatDriver` and provider registry contracts
-- Credential-free `ModelSpec` and redacting endpoint/auth values
-- Shared OpenAI and Open Responses protocol implementations
-- Streaming, retry, model discovery/profile, and error helpers
-- Provider-oriented tool and credential schema values
+- Existing APIs and feature names forward to the new implementation.
+- Deprecated representative type aliases point to the canonical contract types.
 
 ## Documentation
 
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Custom providers](https://docs.everruns.com/framework/models-and-providers/)
-- [API reference](https://docs.rs/everruns-provider)
+- [`everruns-contracts` API reference (docs.rs)](https://docs.rs/everruns-contracts)
+- [Everruns Framework](https://docs.everruns.com/framework/)
+- [Everruns documentation](https://docs.everruns.com)
 
 ## License
 

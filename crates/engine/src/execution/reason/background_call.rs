@@ -1,6 +1,6 @@
 //! Durable background-response context for the Reason LLM call (EVE-1134).
 
-use everruns_provider::background_call::BackgroundCallContext;
+use everruns_contracts::background_call::BackgroundCallContext;
 
 impl super::ReasonAtom {
     /// Let a background provider call survive a worker restart and stop on an

@@ -452,7 +452,7 @@ impl StorageBackend {
     pub async fn list_mcp_server_catalog_page(
         &self,
         org_id: i64,
-        cursor: Option<everruns_provider::typed_id::McpServerId>,
+        cursor: Option<everruns_contracts::typed_id::McpServerId>,
         limit: i64,
     ) -> Result<Vec<McpServerRow>> {
         dispatch!(self, list_mcp_server_catalog_page, org_id, cursor, limit)
@@ -484,7 +484,7 @@ impl StorageBackend {
     pub async fn get_mcp_server_agent_names(
         &self,
         org_id: i64,
-        server_id: everruns_provider::typed_id::McpServerId,
+        server_id: everruns_contracts::typed_id::McpServerId,
         limit: i64,
     ) -> Result<McpServerAgentNamesRow> {
         dispatch!(self, get_mcp_server_agent_names, org_id, server_id, limit)

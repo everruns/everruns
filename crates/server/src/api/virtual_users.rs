@@ -226,7 +226,7 @@ async fn authorized_profile(
     state: &AppState,
     org: &RuntimeAccount,
     raw: &str,
-) -> Result<everruns_provider::typed_id::VirtualUserId, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<everruns_contracts::typed_id::VirtualUserId, (StatusCode, Json<ErrorResponse>)> {
     if org.permits_self(raw) {
         return Ok(org.id);
     }

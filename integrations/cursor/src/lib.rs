@@ -17,13 +17,13 @@ pub mod client;
 pub mod connection;
 mod tools;
 
+use everruns_contracts::connector::ConnectorPlugin;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
 use everruns_core::tool_narration::ToolNarrationPhase;
 use everruns_core::tools::Tool;
-use everruns_platform::connector::ConnectorPlugin;
-use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 
 use connection::CursorConnector;
 use tools::{
@@ -227,7 +227,7 @@ mod tests {
     async fn system_prompt_within_budget() {
         let cap = CursorCapability;
         let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
-            everruns_provider::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(prompt.len() <= 475, "prompt is {} bytes", prompt.len());

@@ -13,7 +13,7 @@ use crate::domains::sessions::{CreateSession, SessionService};
 use crate::event_delivery::EventDelivery;
 use crate::kernel_imports::{
     Caller, ContentPart, Event, InputContentPart, LeasedResource, UpsertLeasedResource,
-    everruns_provider::driver_registry::ServiceKind, everruns_provider::tool_types::ToolCall,
+    contracts::driver_registry::ServiceKind, contracts::tool_types::ToolCall,
 };
 use crate::services::{
     EventService, ProviderResolverService,
@@ -26,6 +26,8 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     routing::post,
 };
+use everruns_contracts::execution_phase::ExecutionPhase;
+use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, VOICE_INPUT_TRANSCRIPT_COMPLETED,
     VOICE_INPUT_TRANSCRIPT_DELTA, VOICE_OUTPUT_TRANSCRIPT_COMPLETED, VOICE_OUTPUT_TRANSCRIPT_DELTA,
@@ -33,8 +35,6 @@ use everruns_core::events::{
 };
 use everruns_core::session_services::LeasedResourceStore;
 use everruns_platform::FeatureFlags;
-use everruns_provider::execution_phase::ExecutionPhase;
-use everruns_provider::typed_id::{AgentId, MessageId, SessionId};
 use futures_util::{SinkExt, StreamExt};
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
@@ -1816,12 +1816,12 @@ mod tests {
         message: everruns_core::RuntimeMessage,
     ) -> Event {
         Event {
-            id: everruns_provider::typed_id::EventId::new(),
+            id: everruns_contracts::typed_id::EventId::new(),
             event_type: everruns_core::events::OUTPUT_MESSAGE_COMPLETED.to_string(),
             ts: chrono::Utc::now(),
             session_id: SessionId::new(),
             context: EventContext::turn(
-                everruns_provider::typed_id::TurnId::new(),
+                everruns_contracts::typed_id::TurnId::new(),
                 input_message_id,
             ),
             data: EventData::OutputMessageCompleted(

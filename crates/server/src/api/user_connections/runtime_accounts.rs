@@ -8,9 +8,9 @@ pub(super) fn form_schema_to_response(schema: &CoreFormSchema) -> FormSchemaResp
             .iter()
             .map(|f| {
                 let field_type = match f.field_type {
-                    everruns_platform::connector::FieldType::Password => "password",
-                    everruns_platform::connector::FieldType::Text => "text",
-                    everruns_platform::connector::FieldType::Url => "url",
+                    everruns_contracts::connector::FieldType::Password => "password",
+                    everruns_contracts::connector::FieldType::Text => "text",
+                    everruns_contracts::connector::FieldType::Url => "url",
                 };
                 FormFieldResponse {
                     name: f.name.clone(),

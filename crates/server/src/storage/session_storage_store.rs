@@ -4,9 +4,9 @@
 // session key/value pairs and encrypted secrets to the database.
 
 use crate::kernel_imports::{
-    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
-    everruns_provider::error::StoreResultExt, everruns_provider::typed_id::SessionId,
-    session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
+    contracts::error::AgentLoopError, contracts::error::Result, contracts::error::StoreResultExt,
+    contracts::typed_id::SessionId, session_services::KeyInfo, session_services::SecretInfo,
+    session_services::SessionStorageStore,
 };
 use async_trait::async_trait;
 

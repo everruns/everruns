@@ -10,8 +10,8 @@ use everruns_platform::session_sandbox::{
     SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxInstance,
     create_session_sandbox_provider,
 };
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::SessionId;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;

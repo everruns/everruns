@@ -14,13 +14,13 @@ use crate::http::McpHttpStatusError;
 use crate::transport::McpConnection;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use everruns_core::mcp_server::sanitize_mcp_server_name;
-use everruns_core::{McpToolInvoker, parse_mcp_tool_name};
-use everruns_provider::error::{AgentLoopError, Result as CoreResult};
-use everruns_provider::tool_types::{
+use everruns_contracts::error::{AgentLoopError, Result as CoreResult};
+use everruns_contracts::tool_types::{
     FORM_ELICITATION_REQUIRED_CODE, FormElicitationRequired, ToolCall, ToolResult,
     URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
 };
+use everruns_core::mcp_server::sanitize_mcp_server_name;
+use everruns_core::{McpToolInvoker, parse_mcp_tool_name};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -178,8 +178,8 @@ impl McpExecutor {
         // connect prompt) instead of letting the call fail with a 401.
         if let Some(required) = &connection.pending_oauth_provider {
             let subject = match required.subject {
-                Some(everruns_provider::ConnectionRequiredSubject::Agent) => "agent",
-                Some(everruns_provider::ConnectionRequiredSubject::User) => "user",
+                Some(everruns_contracts::ConnectionRequiredSubject::Agent) => "agent",
+                Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
                 None => "user",
             };
             return Ok(connection_required_result(
@@ -260,8 +260,8 @@ impl McpExecutor {
                     && let Some(required) = &connection.pending_oauth_provider
                 {
                     let subject = match required.subject {
-                        Some(everruns_provider::ConnectionRequiredSubject::Agent) => "agent",
-                        Some(everruns_provider::ConnectionRequiredSubject::User) => "user",
+                        Some(everruns_contracts::ConnectionRequiredSubject::Agent) => "agent",
+                        Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
                         None => "user",
                     };
                     return Ok(connection_required_result(
@@ -325,7 +325,7 @@ fn connection_required_result(
     tool_call_id: String,
     connection_name: &str,
     subject: &str,
-    required: &everruns_provider::ConnectionRequired,
+    required: &everruns_contracts::ConnectionRequired,
 ) -> ToolResult {
     ToolResult {
         tool_call_id,

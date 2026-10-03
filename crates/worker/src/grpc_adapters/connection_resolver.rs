@@ -1,8 +1,8 @@
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_internal_protocol::proto;
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
 use uuid::Uuid;
 
 use super::{GrpcAdapter, grpc_status_to_error, proto_uuid_to_uuid, uuid_to_proto};

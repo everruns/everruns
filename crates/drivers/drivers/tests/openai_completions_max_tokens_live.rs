@@ -18,8 +18,8 @@
 //! doppler run -- cargo test -p everruns-openai --test completions_max_tokens_live -- --ignored --nocapture
 //! ```
 
+use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_drivers::openai::completions_provider;
-use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
 
 /// A capped request must succeed and be capped — not rejected for naming the
 /// deprecated field, and not silently uncapped.

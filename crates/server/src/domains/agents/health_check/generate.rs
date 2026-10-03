@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::kernel_imports::{
-    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::Message,
-    everruns_provider::driver_registry::MessageRole,
+    UtilityLlmRequest, UtilityLlmService, contracts::driver_registry::Message,
+    contracts::driver_registry::MessageRole,
 };
 use serde::Deserialize;
 

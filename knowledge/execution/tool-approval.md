@@ -29,7 +29,7 @@ blocks until it answers) is unchanged and lives with the capability.
 - [`crates/builtins/src/tool_approval.rs`](../../crates/builtins/src/tool_approval.rs)
   owns classification, the decision vocabulary, the hook, the durable approver,
   the stored record, the fingerprint, and the config schema.
-- [`crates/provider/src/tool_approval_types.rs`](../../crates/provider/src/tool_approval_types.rs)
+- [`crates/contracts/src/tool_approval_types.rs`](../../crates/contracts/src/tool_approval_types.rs)
   owns the parked-call payload and the synthetic request call the engine emits.
 - [`crates/engine/src/execution/act_hooks.rs`](../../crates/engine/src/execution/act_hooks.rs)
   (`ToolApprovalPauseHook`) and `plan_after_act` in

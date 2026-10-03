@@ -14,14 +14,14 @@ use everruns_host::HostComposition;
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
 use everruns_host::InProcessRuntimeBuilder;
 use everruns_llmsim::LlmSimConfig;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .harness(everruns_host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new("test_math")],
+                capabilities: vec![everruns_contracts::CapabilityRef::new("test_math")],
                 ..HarnessDefinition::new("math", "You are a math harness.")
             },
         })
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .session(ExecutionSession {
             id: session_id,
-            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
+            workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),

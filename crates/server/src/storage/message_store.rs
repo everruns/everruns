@@ -12,13 +12,13 @@
 use crate::kernel_imports::{
     ContentPart, Event, EventData, InputMessage, MessageFilter, MessageHistory, MessageQuery,
     MessageRetriever, RuntimeMessage, RuntimeMessageRole,
+    contracts::error::Result,
+    contracts::error::StoreResultExt,
+    contracts::typed_id::MessageId,
+    contracts::typed_id::SessionId,
     events::{
         EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     },
-    everruns_provider::error::Result,
-    everruns_provider::error::StoreResultExt,
-    everruns_provider::typed_id::MessageId,
-    everruns_provider::typed_id::SessionId,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -262,7 +262,7 @@ fn event_to_message(
 /// Convert ToolCompletedData to a ToolResult message
 fn tool_completed_to_message(data: ToolCompletedData) -> RuntimeMessage {
     // Separate text and image parts from the result content
-    let mut images: Vec<everruns_provider::tool_types::ToolResultImage> = Vec::new();
+    let mut images: Vec<everruns_contracts::tool_types::ToolResultImage> = Vec::new();
     let metadata = tool_result_metadata(&data);
     let result: Option<serde_json::Value> = data.result.map(|parts| {
         // Collect image parts
@@ -270,7 +270,7 @@ fn tool_completed_to_message(data: ToolCompletedData) -> RuntimeMessage {
             if let ContentPart::Image(img) = part
                 && let (Some(b64), Some(mt)) = (&img.base64, &img.media_type)
             {
-                images.push(everruns_provider::tool_types::ToolResultImage {
+                images.push(everruns_contracts::tool_types::ToolResultImage {
                     base64: b64.clone(),
                     media_type: mt.clone(),
                 });
@@ -341,8 +341,8 @@ mod tests {
     use crate::kernel_imports::{
         ContentPart, Event, ExcludedNoticeTransform, MessageRetriever, ToolCall,
     };
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::events::EventContext;
-    use everruns_provider::typed_id::SessionId;
     use serde_json::json;
 
     use super::*;

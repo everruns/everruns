@@ -1,6 +1,6 @@
 //! Transport-neutral context shared by execution phases and emitted events.
 
-use everruns_provider::typed_id::{ExecId, MessageId, SessionId, TurnId, WorkspaceId};
+use everruns_contracts::typed_id::{ExecId, MessageId, SessionId, TurnId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 
 /// Correlation and resource identity for one execution phase within a turn.

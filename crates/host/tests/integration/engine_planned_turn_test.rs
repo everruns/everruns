@@ -11,6 +11,9 @@
 //! carried state survives a serialize/reconstruct between every step, so a host
 //! that persists it between activities plans the identical turn.
 
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
 use everruns_core::{AgentDefinition, CapabilityRegistry, ExecutionSession};
 use everruns_engine::{
     ActOutcome, TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,
@@ -22,9 +25,6 @@ use everruns_host::{
 };
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, SimError, SimToolCall, SimTurn};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
 use everruns_test_support::TestMathCapability;
 use serde_json::json;
 
@@ -34,14 +34,17 @@ fn math_platform() -> HostComposition {
     HostComposition::new(capabilities, DriverRegistry::new())
 }
 
-fn harness(harness_id: everruns_provider::typed_id::HarnessId) -> everruns_host::SeededHarness {
+fn harness(harness_id: everruns_contracts::typed_id::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("math", "You are a math assistant.")
         .id(harness_id)
         .capability("test_math")
         .build()
 }
 
-fn agent(agent_id: everruns_provider::typed_id::AgentId, max_iterations: usize) -> AgentDefinition {
+fn agent(
+    agent_id: everruns_contracts::typed_id::AgentId,
+    max_iterations: usize,
+) -> AgentDefinition {
     AgentBuilder::new("math-agent", "Use tools when needed.")
         .id(agent_id)
         .display_name("Math Agent")
@@ -50,9 +53,9 @@ fn agent(agent_id: everruns_provider::typed_id::AgentId, max_iterations: usize) 
 }
 
 fn session(
-    session_id: everruns_provider::typed_id::SessionId,
-    harness_id: everruns_provider::typed_id::HarnessId,
-    agent_id: everruns_provider::typed_id::AgentId,
+    session_id: everruns_contracts::typed_id::SessionId,
+    harness_id: everruns_contracts::typed_id::HarnessId,
+    agent_id: everruns_contracts::typed_id::AgentId,
 ) -> ExecutionSession {
     SessionBuilder::new(harness_id)
         .id(session_id)
@@ -75,10 +78,10 @@ async fn runtime_running(
     seed: u128,
     max_iterations: usize,
     script: Vec<SimTurn>,
-) -> (InProcessRuntime, everruns_provider::typed_id::SessionId) {
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(seed);
-    let agent_id = everruns_provider::typed_id::AgentId::from_seed(seed);
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(seed);
+) -> (InProcessRuntime, everruns_contracts::typed_id::SessionId) {
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(seed);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(seed);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(seed);
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(math_platform())
@@ -170,14 +173,14 @@ async fn single_tool_turn_reports_two_iterations_and_one_tool_call() {
 #[tokio::test]
 async fn a_client_side_call_parks_the_turn_and_its_result_resumes_it() {
     let seed = 951;
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(seed);
-    let agent_id = everruns_provider::typed_id::AgentId::from_seed(seed);
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(seed);
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(seed);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(seed);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(seed);
     let mut client_session = SessionBuilder::new(harness_id)
         .id(session_id)
         .agent(agent_id)
-        .tool(everruns_provider::tool_types::ToolDefinition::ClientSide(
-            everruns_provider::tool_types::ClientSideTool::new(
+        .tool(everruns_contracts::tool_types::ToolDefinition::ClientSide(
+            everruns_contracts::tool_types::ClientSideTool::new(
                 "confirm",
                 "Ask the person to confirm.",
                 json!({ "type": "object" }),
@@ -434,10 +437,10 @@ fn planner_state_survives_a_restart_between_every_step() {
         serde_json::from_value(encoded).expect("state deserializes")
     }
 
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(907);
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(907);
-    let input_message_id = everruns_provider::typed_id::MessageId::from_seed(907);
-    let turn_id = everruns_provider::typed_id::TurnId::from_seed(907);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(907);
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(907);
+    let input_message_id = everruns_contracts::typed_id::MessageId::from_seed(907);
+    let turn_id = everruns_contracts::typed_id::TurnId::from_seed(907);
     let now = chrono::Utc::now();
 
     let initial = TurnState {
@@ -476,7 +479,7 @@ fn planner_state_survives_a_restart_between_every_step() {
         max_iterations: 8,
         text: "calling a tool".to_string(),
         response_id: Some("resp_1".to_string()),
-        tool_calls: vec![everruns_provider::tool_types::ToolCall {
+        tool_calls: vec![everruns_contracts::tool_types::ToolCall {
             id: "call_1".to_string(),
             name: "add".to_string(),
             arguments: json!({ "a": 1, "b": 1 }),

@@ -32,6 +32,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::error::Result;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
     SessionTaskRegistry, SessionTaskState, TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT,
@@ -45,12 +51,6 @@ use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
 use everruns_platform::capabilities::{AgentHandoffCapability, SubagentCapability};
 use everruns_platform::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::error::Result;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 /// Substrings that steer the content-keyed llmsim: a parent prompt containing
 /// one of these makes the model emit the matching `spawn_agent` call. Child
@@ -75,7 +75,7 @@ struct RuntimeRunner {
 impl RuntimeRunner {
     fn runtime(&self) -> Result<&InProcessRuntime> {
         self.runtime.get().ok_or_else(|| {
-            everruns_provider::error::AgentLoopError::config("runtime not initialized yet")
+            everruns_contracts::error::AgentLoopError::config("runtime not initialized yet")
         })
     }
 }
@@ -109,12 +109,12 @@ impl LocalSessionRunner for RuntimeRunner {
         let result = tokio::spawn(async move { runtime.run_text_turn(session_id, &content).await })
             .await
             .map_err(|e| {
-                everruns_provider::error::AgentLoopError::tool(format!("child turn panicked: {e}"))
+                everruns_contracts::error::AgentLoopError::tool(format!("child turn panicked: {e}"))
             })??;
         if result.success {
             Ok(())
         } else {
-            Err(everruns_provider::error::AgentLoopError::tool(format!(
+            Err(everruns_contracts::error::AgentLoopError::tool(format!(
                 "child turn failed: {}",
                 result.error.unwrap_or_default()
             )))
@@ -290,7 +290,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     let parent_harness = HarnessBuilder::new("orchestrator", "You delegate work to other agents.")
         .id(parent_harness_id)
         .capability("subagents")
-        .capability(everruns_capability::CapabilityRef::with_config(
+        .capability(everruns_contracts::CapabilityRef::with_config(
             "agent_handoff",
             serde_json::json!({
                 "targets": [{

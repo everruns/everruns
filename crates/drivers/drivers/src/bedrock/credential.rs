@@ -7,8 +7,8 @@
 // longer parses a JSON document out of `api_key`; the credential document is
 // parsed into typed fields once, centrally, in `DriverConfig`.
 
-use everruns_provider::driver_registry::DriverConfig;
-use everruns_provider::error::{AgentLoopError, Result};
+use everruns_contracts::driver_registry::DriverConfig;
+use everruns_contracts::error::{AgentLoopError, Result};
 
 pub(crate) const DEFAULT_REGION: &str = "us-east-1";
 
@@ -88,12 +88,12 @@ impl BedrockCredential {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::credential_schema::parse_credential_document;
-    use everruns_provider::driver_registry::DriverId;
+    use everruns_contracts::credential_schema::parse_credential_document;
+    use everruns_contracts::driver_registry::DriverId;
 
     fn config_from_document(document: &str) -> DriverConfig {
         DriverConfig {
-            provider: everruns_provider::ProviderKey::new("bedrock"),
+            provider: everruns_contracts::ProviderKey::new("bedrock"),
             provider_type: DriverId::Bedrock,
             credentials: parse_credential_document(Some(document)),
             api_key: Some(document.to_string()),

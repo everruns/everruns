@@ -19,6 +19,7 @@ categories = ["api-bindings", "development-tools"]
 readme = "README.md"
 
 [dependencies]
+everruns-contracts.workspace = true
 everruns-core.workspace = true
 everruns-platform.workspace = true
 

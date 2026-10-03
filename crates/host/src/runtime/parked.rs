@@ -16,7 +16,7 @@ pub struct ParkedToolCalls {
     /// The parked turn; [`InProcessRuntime::resume_steerable_turn`] continues it.
     pub turn_id: TurnId,
     /// The calls the turn waits on, in the order the model made them.
-    pub tool_calls: Vec<everruns_provider::tool_types::ToolCall>,
+    pub tool_calls: Vec<everruns_contracts::tool_types::ToolCall>,
 }
 
 /// A turn waiting for client-side tool results, with the engine state its
@@ -41,7 +41,7 @@ impl InProcessRuntime {
     /// parked and has not been resumed or superseded since.
     ///
     /// A turn whose model calls a client-side tool (a
-    /// [`ToolDefinition::ClientSide`](everruns_provider::tool_types::ToolDefinition::ClientSide)
+    /// [`ToolDefinition::ClientSide`](everruns_contracts::tool_types::ToolDefinition::ClientSide)
     /// on the session) pauses when the session's `setup_connection` hint
     /// says its client can answer, and [`run_steerable_turn`](Self::run_steerable_turn)
     /// returns. The calls wait here until

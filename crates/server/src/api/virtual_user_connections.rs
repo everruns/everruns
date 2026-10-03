@@ -7,7 +7,7 @@
 
 use crate::auth::AuthState;
 use crate::auth::runtime::RuntimeAccount;
-use crate::kernel_imports::everruns_provider::typed_id::VirtualUserId;
+use crate::kernel_imports::contracts::typed_id::VirtualUserId;
 use crate::storage::models::CreateVirtualUserConnectionRow;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -16,7 +16,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_platform::connector::{ConnectorRegistry, ConnectorType};
+use everruns_contracts::connector::{ConnectorRegistry, ConnectorType};
 use std::sync::Arc;
 
 use super::common::{ErrorResponse, impl_auth_state};

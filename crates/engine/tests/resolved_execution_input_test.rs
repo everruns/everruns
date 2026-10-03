@@ -6,6 +6,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::{
+    ChatDriver, LlmCallConfig, LlmResponseStream, LlmStreamEvent,
+};
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::runtime_provider::{ProviderEndpoint, ProviderKey};
+use everruns_contracts::typed_id::{MessageId, ModelId, SessionId, TurnId, WorkspaceId};
 use everruns_core::ExecutionContext;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
@@ -16,13 +23,6 @@ use everruns_core::{
     TurnContextRequest, TurnContextResolver, assemble_resolved_turn_context,
 };
 use everruns_engine::{ReasonAtom, ReasonInput};
-use everruns_provider::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmResponseStream, LlmStreamEvent,
-};
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::provider::DriverId;
-use everruns_provider::runtime_provider::{ProviderEndpoint, ProviderKey};
-use everruns_provider::typed_id::{MessageId, ModelId, SessionId, TurnId, WorkspaceId};
 use futures::stream;
 
 struct FixedDriver;
@@ -32,7 +32,7 @@ impl ChatDriver for FixedDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
+        _messages: Vec<everruns_contracts::driver_registry::Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         Ok(Box::pin(stream::iter([
@@ -84,13 +84,13 @@ struct RecordingEmitter(AtomicI32);
 impl EventEmitter for RecordingEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         let sequence = self.0.fetch_add(1, Ordering::Relaxed) + 1;
-        Ok(request.into_event(everruns_provider::typed_id::EventId::new(), sequence))
+        Ok(request.into_event(everruns_contracts::typed_id::EventId::new(), sequence))
     }
 }
 
 #[tokio::test]
 async fn kernel_executes_from_resolved_values_without_stores() {
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(905);
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(905);
     let session_id = SessionId::from_seed(905);
     let workspace_id = WorkspaceId::from_seed(905);
     let harness = HarnessDefinition::new("pure-kernel", "Answer directly.");

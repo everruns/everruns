@@ -13,7 +13,7 @@ use crate::domains::sessions::{
 };
 use crate::kernel_imports::{
     Caller, ResourceConfigResponse, ScopedMcpServers, SessionContextReport, SessionSeedMode,
-    evaluate_policies_with, everruns_provider::tool_types::ToolDefinition, is_mcp_tool,
+    contracts::tool_types::ToolDefinition, evaluate_policies_with, is_mcp_tool,
 };
 use crate::services::EventService;
 use crate::storage::StorageBackend;
@@ -23,15 +23,15 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::typed_id::{
+    AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
+};
 use everruns_host::HostComposition;
 use everruns_platform::BuiltInHarnessRole;
 use everruns_platform::{
     EnvironmentSelection, Session, SessionParticipant, SessionParticipantKind,
     SessionParticipantRole,
-};
-use everruns_provider::typed_id::{
-    AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
 };
 use everruns_worker::AgentRunner;
 
@@ -1281,7 +1281,7 @@ mod tests {
         // Only the client_side entry survives.
         assert!(matches!(
             req.tools[0],
-            everruns_provider::tool_types::ToolDefinition::ClientSide(_)
+            everruns_contracts::tool_types::ToolDefinition::ClientSide(_)
         ));
     }
 

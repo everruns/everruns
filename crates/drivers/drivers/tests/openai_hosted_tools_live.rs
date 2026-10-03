@@ -11,16 +11,16 @@
 //! run manually:
 //!   `doppler run -- cargo test -p everruns-drivers --features openai --test openai_hosted_tools_live -- --ignored --nocapture`
 
-use everruns_drivers::openai::provider;
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     HostedToolCallStatus, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
 };
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::openai_hosted_tools::{
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::openai_hosted_tools::{
     ContainerTool, FileSearchTool, McpServerTool, OPENAI_MCP_APPROVAL_TOOL, OpenAiHostedTools,
     SearchContextSize, WebSearchTool,
 };
-use everruns_provider::tool_types::ToolCall;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_drivers::openai::provider;
 use futures::StreamExt;
 
 const LIVE_MODEL: &str = "gpt-5.6-luna";

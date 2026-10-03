@@ -6,26 +6,26 @@ struct NativeCompactFailureDriver {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for NativeCompactFailureDriver {
+impl everruns_contracts::driver_registry::ChatDriver for NativeCompactFailureDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
-        _config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::driver_registry::Message>,
+        _config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
     {
         if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
-            return Err(everruns_provider::error::AgentLoopError::request_too_large(
-                "force compact",
-            ));
+            return Err(
+                everruns_contracts::error::AgentLoopError::request_too_large("force compact"),
+            );
         }
         Ok(Box::pin(stream::iter(vec![
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
+                everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(
                     "fallback succeeded".to_string(),
                 ),
             ),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
+            Ok(everruns_contracts::driver_registry::LlmStreamEvent::Done(
                 Box::default(),
             )),
         ])))
@@ -37,10 +37,11 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactFailureDriv
 
     async fn compact(
         &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _request: everruns_provider::compact::CompactRequest,
-    ) -> everruns_provider::error::Result<Option<everruns_provider::compact::CompactResponse>> {
-        Err(everruns_provider::error::AgentLoopError::llm(
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        _request: everruns_contracts::compact::CompactRequest,
+    ) -> everruns_contracts::error::Result<Option<everruns_contracts::compact::CompactResponse>>
+    {
+        Err(everruns_contracts::error::AgentLoopError::llm(
             "compact failed",
         ))
     }
@@ -49,7 +50,7 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactFailureDriv
 #[tokio::test]
 async fn native_compact_failure_does_not_install_checkpoint() {
     use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::execution_loading::SessionStore;
 
     let (

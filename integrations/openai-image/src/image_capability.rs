@@ -10,9 +10,9 @@ use everruns_core::capabilities::{
 use everruns_core::session_file::SessionFile;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{image_services::CreateStoredImage, tool_context::ToolContext};
-use everruns_provider::ToolResultImage;
-use everruns_provider::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
-use everruns_provider::typed_id::ImageId;
+use everruns_contracts::ToolResultImage;
+use everruns_contracts::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
+use everruns_contracts::typed_id::ImageId;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::LazyLock;

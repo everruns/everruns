@@ -29,7 +29,7 @@ use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolRegistry};
 use crate::typed_id::SessionId;
-use everruns_capability::is_plugin_capability;
+use everruns_contracts::is_plugin_capability;
 use std::collections::HashMap;
 use std::sync::Arc;
 

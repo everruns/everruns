@@ -8,6 +8,7 @@
 //! internal feature flag.
 
 use async_trait::async_trait;
+use everruns_contracts::tool_types::ToolHints;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
@@ -17,7 +18,6 @@ use everruns_core::tool_narration::{
     generic_phrase, labeled_phrase, safe_arg_str, truncate, url_display,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -101,7 +101,7 @@ pub struct ParallelSearchTool;
 impl Tool for ParallelSearchTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -196,7 +196,7 @@ pub struct ParallelExtractTool;
 impl Tool for ParallelExtractTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -311,7 +311,7 @@ pub struct ParallelTaskTool;
 impl Tool for ParallelTaskTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_provider::tool_types::ToolCall,
+        _tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -405,7 +405,7 @@ pub struct ParallelTaskStatusTool;
 impl Tool for ParallelTaskStatusTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_provider::tool_types::ToolCall,
+        _tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -554,8 +554,8 @@ mod tests {
     // Tool narration
     // ========================================================================
 
+    use everruns_contracts::tool_types::ToolCall;
     use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-    use everruns_provider::tool_types::ToolCall;
 
     fn narrate(tool: &dyn Tool, arguments: Value, phase: ToolNarrationPhase) -> Option<String> {
         let call = ToolCall {

@@ -775,7 +775,7 @@ fn decorate_mcp_capability_refs(value: &mut serde_json::Value) {
                 .and_then(serde_json::Value::as_str)
                 .and_then(|value| {
                     value
-                        .parse::<everruns_provider::typed_id::McpServerId>()
+                        .parse::<everruns_contracts::typed_id::McpServerId>()
                         .ok()
                 })
                 .map(|id| format!("mcp:{}", id.uuid()));

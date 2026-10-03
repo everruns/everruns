@@ -19,12 +19,12 @@
 //! assert_eq!(OpenRouterWorkspaceCapability.id(), "openrouter_workspace");
 //! ```
 
+#[cfg(test)]
+use everruns_contracts::{error, typed_id::SessionId};
 use everruns_core::capabilities::{
     AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
 use everruns_core::*;
-#[cfg(test)]
-use everruns_provider::{error, typed_id::SessionId};
 
 mod model_scout;
 mod server_tools;

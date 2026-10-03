@@ -37,8 +37,8 @@ mod pull_requests;
 mod reviews;
 mod tools;
 
-use everruns_capability::json_schema_for;
-use everruns_capability::schemars::JsonSchema;
+use everruns_contracts::capability::json_schema_for;
+use everruns_contracts::capability::schemars::JsonSchema;
 use everruns_core::capabilities::{
     AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus,
     IntegrationPlugin,
@@ -80,7 +80,7 @@ pub struct GitHubCapability;
 /// agent that just lists `github` gets the least it can do.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
-#[schemars(crate = "everruns_capability::schemars")]
+#[schemars(crate = "everruns_contracts::capability::schemars")]
 pub struct GitHubConfig {
     /// Offer `create_github_pull_request`, so the agent can open (draft) pull
     /// requests from branches it pushed. Pushing also needs the GitHub App's
@@ -237,7 +237,7 @@ impl Capability for GitHubScoutCapability {
 /// Configuration for the GitHub scout.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
-#[schemars(crate = "everruns_capability::schemars")]
+#[schemars(crate = "everruns_contracts::capability::schemars")]
 pub struct GitHubScoutConfig {
     /// Repository list to scope searches, in owner/repo format.
     #[schemars(inner(regex(pattern = REPO_PATTERN)))]

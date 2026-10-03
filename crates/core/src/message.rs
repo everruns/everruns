@@ -12,9 +12,9 @@ use crate::typed_id::{FileId, ImageId, MessageId, ModelId};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-use everruns_provider::execution_phase::{ExecutionPhase, PhaseSource};
-use everruns_provider::message::ProviderOpaqueContent;
-use everruns_provider::reasoning::ReasoningContentPart;
+use everruns_contracts::execution_phase::{ExecutionPhase, PhaseSource};
+use everruns_contracts::message::ProviderOpaqueContent;
+use everruns_contracts::reasoning::ReasoningContentPart;
 mod turn_scope;
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,7 +105,7 @@ pub struct ReasoningConfig {
     /// driver previously re-parsed the string with its own case handling, which
     /// let `minimal` silently mean "no reasoning" on budget-based models.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub effort: Option<everruns_provider::model::ReasoningEffort>,
+    pub effort: Option<everruns_contracts::model::ReasoningEffort>,
 }
 
 /// Runtime controls for message processing
@@ -183,7 +183,7 @@ impl Controls {
 // The canonical runtime/event message, and the Rust name is the published
 // schema name. Distinct from the REST resource `api::messages::Message` (which
 // adds `session_id` and `sequence`) and from the request-shaped
-// `everruns_provider::driver_registry::Message` a driver sends upstream; both
+// `everruns_contracts::driver_registry::Message` a driver sends upstream; both
 // of the first two once claimed plain `Message` in one OpenAPI document, so
 // generated clients saw whichever won.
 pub struct RuntimeMessage {
@@ -501,7 +501,7 @@ impl FileContentPart {
 pub struct ToolCallContentPart {
     /// Original native call, including raw custom input and async metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native: Option<everruns_provider::native_async::NativeToolCall>,
+    pub native: Option<everruns_contracts::native_async::NativeToolCall>,
     pub id: String,
     pub name: String,
     pub arguments: serde_json::Value,
@@ -510,9 +510,9 @@ pub struct ToolCallContentPart {
 impl ToolCallContentPart {
     /// Validate and retain a native call alongside its portable tool arguments.
     pub fn from_native(
-        call: everruns_provider::native_async::NativeToolCall,
+        call: everruns_contracts::native_async::NativeToolCall,
     ) -> crate::error::Result<Self> {
-        use everruns_provider::native_async::NativeToolCall;
+        use everruns_contracts::native_async::NativeToolCall;
         call.validate()?;
         let arguments = match &call {
             NativeToolCall::Function { arguments, .. } => serde_json::from_str(arguments)
@@ -973,7 +973,7 @@ impl RuntimeMessage {
     pub fn tool_result_with_images(
         tool_call_id: impl Into<String>,
         result: Option<serde_json::Value>,
-        images: Vec<everruns_provider::tool_types::ToolResultImage>,
+        images: Vec<everruns_contracts::tool_types::ToolResultImage>,
     ) -> Self {
         let tool_call_id = tool_call_id.into();
         let mut content = vec![ContentPart::ToolResult(ToolResultContentPart::new(

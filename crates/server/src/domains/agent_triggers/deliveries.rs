@@ -3,7 +3,7 @@
 use crate::domains::agents::AGENT_VIEW;
 use crate::domains::common::*;
 use crate::kernel_imports::Policy;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

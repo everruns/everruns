@@ -8,16 +8,16 @@ use async_trait::async_trait;
 use chrono::TimeZone;
 use serde::Deserialize;
 
-use everruns_provider::OpenResponsesProtocolChatDriver;
-use everruns_provider::credential_schema::CredentialFormSchema;
-use everruns_provider::driver_helpers::fetch_models;
-use everruns_provider::driver_registry::{
+use everruns_contracts::OpenResponsesProtocolChatDriver;
+use everruns_contracts::credential_schema::CredentialFormSchema;
+use everruns_contracts::driver_helpers::fetch_models;
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmResponse, LlmResponseStream, Message,
 };
-use everruns_provider::error::Result;
-use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
-use everruns_provider::{BearerAuth, Provider, ProviderEndpoint};
+use everruns_contracts::error::Result;
+use everruns_contracts::openai_protocol::{models_url_for_api_url, url_host_eq};
+use everruns_contracts::{BearerAuth, Provider, ProviderEndpoint};
 
 /// Meta Model API Responses endpoint.
 pub const META_DEFAULT_API_URL: &str = "https://api.meta.ai/v1/responses";
@@ -25,7 +25,7 @@ const META_API_HOST: &str = "api.meta.ai";
 
 /// Ready-to-use Meta Model API provider assembly.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> Provider {
     Provider::new(id, MetaChatDriver::new())
@@ -77,7 +77,7 @@ impl ChatDriver for MetaChatDriver {
 
     async fn chat_completion_non_streaming(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
@@ -199,12 +199,12 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for MetaChatDriver {
@@ -216,7 +216,7 @@ impl Default for MetaChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{MessageRole, ProviderConfig, ServiceKind};
+    use everruns_contracts::driver_registry::{MessageRole, ProviderConfig, ServiceKind};
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -266,7 +266,7 @@ mod tests {
                 let mut config = config();
                 config.previous_response_id = continuation.then(|| "prior-response".into());
                 let mut prior = Message::text(MessageRole::Assistant, "prior answer");
-                prior.phase = Some(everruns_provider::execution_phase::ExecutionPhase::Commentary);
+                prior.phase = Some(everruns_contracts::execution_phase::ExecutionPhase::Commentary);
                 let messages = vec![
                     Message::text(MessageRole::System, "rules"),
                     Message::text(MessageRole::User, "old question"),
@@ -337,12 +337,12 @@ mod tests {
             .unwrap_err();
         assert_eq!(
             error.llm_error_kind(),
-            Some(everruns_provider::error::LlmErrorKind::Authentication)
+            Some(everruns_contracts::error::LlmErrorKind::Authentication)
         );
     }
     #[tokio::test]
     async fn discovery_rejects_lookalike_hosts_before_resolving_credentials() {
-        use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+        use everruns_contracts::runtime_provider::{ProviderAuth, ProviderAuthRequest};
         struct ForbiddenAuth;
         #[async_trait]
         impl ProviderAuth for ForbiddenAuth {

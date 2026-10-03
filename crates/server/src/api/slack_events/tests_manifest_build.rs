@@ -41,10 +41,10 @@ impl AgentRunner for NoopRunner {
     async fn start_run(
         &self,
         _org_id: i64,
-        _session_id: everruns_provider::typed_id::SessionId,
-        _harness_id: everruns_provider::typed_id::HarnessId,
-        _agent_id: Option<everruns_provider::typed_id::AgentId>,
-        _input_message_id: everruns_provider::typed_id::MessageId,
+        _session_id: everruns_contracts::typed_id::SessionId,
+        _harness_id: everruns_contracts::typed_id::HarnessId,
+        _agent_id: Option<everruns_contracts::typed_id::AgentId>,
+        _input_message_id: everruns_contracts::typed_id::MessageId,
         _request_id: Option<String>,
     ) -> anyhow::Result<()> {
         Ok(())
@@ -52,7 +52,7 @@ impl AgentRunner for NoopRunner {
 
     async fn resume_after_tool_results(
         &self,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
         _resolution_id: uuid::Uuid,
     ) -> anyhow::Result<()> {
         Ok(())
@@ -60,12 +60,12 @@ impl AgentRunner for NoopRunner {
 
     async fn cancel_run(
         &self,
-        _run_id: everruns_provider::typed_id::SessionId,
+        _run_id: everruns_contracts::typed_id::SessionId,
     ) -> anyhow::Result<()> {
         Ok(())
     }
 
-    async fn is_running(&self, _run_id: everruns_provider::typed_id::SessionId) -> bool {
+    async fn is_running(&self, _run_id: everruns_contracts::typed_id::SessionId) -> bool {
         false
     }
 

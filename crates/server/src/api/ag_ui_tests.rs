@@ -8,12 +8,12 @@ use crate::kernel_imports::{
     RuntimeMessage, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
 };
 use chrono::Duration as ChronoDuration;
+use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_core::events::{
     ReasonItemData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
     ReasonThinkingStartedData, TurnFailedData,
 };
 use everruns_platform::PublicToolVisibility;
-use everruns_provider::execution_phase::ExecutionPhase;
 
 #[test]
 fn test_expired_age_seconds_within_window() {

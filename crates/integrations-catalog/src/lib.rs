@@ -47,9 +47,9 @@
 #[cfg(test)]
 mod docs_catalog;
 
+use everruns_contracts::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::{DeploymentGrade, ExecutionFeatureDecisions};
-use everruns_platform::connector::{ConnectorPlugin, ConnectorRegistry};
 
 /// One integration crate's contribution to the hosted product.
 pub struct CatalogEntry {

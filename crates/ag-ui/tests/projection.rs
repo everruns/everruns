@@ -5,9 +5,9 @@ use everruns_ag_ui::projection::{ProjectionPolicy, Projector};
 use everruns_ag_ui::{
     Event, RunErrorEvent, RunFinishedOutcome, SCHEMA_JSON, SubagentFinishedOutcome,
 };
+use everruns_contracts::typed_id::{MessageId, TurnId};
 use everruns_core::RuntimeMessage;
 use everruns_core::events::{OutputMessageCompletedData, OutputMessageDeltaData};
-use everruns_provider::typed_id::{MessageId, TurnId};
 use serde_json::{Value, json};
 
 fn policy() -> ProjectionPolicy {
@@ -288,7 +288,7 @@ fn interrupt_closes_open_messages_and_ends_the_run() {
 fn frontend_tool_calls_stream_under_their_message_and_end_in_success() {
     let mut projector = Projector::new("t", "r", policy());
     let carrier = MessageId::new();
-    let call = everruns_provider::tool_types::ToolCall {
+    let call = everruns_contracts::tool_types::ToolCall {
         id: "call_1".into(),
         name: "confirm".into(),
         arguments: json!({ "text": "ok?" }),
@@ -374,7 +374,7 @@ fn frontend_tool_calls_beside_an_interrupt_end_in_the_interrupt() {
 fn task(id: &str, kind: &str, mode: &str, state: &str, extra: Value) -> Value {
     let mut task = json!({
         "id": id,
-        "session_id": everruns_provider::typed_id::SessionId::new().to_string(),
+        "session_id": everruns_contracts::typed_id::SessionId::new().to_string(),
         "kind": kind,
         "display_name": "Researcher",
         "spec": { "instructions": "secret instructions", "mode": mode },

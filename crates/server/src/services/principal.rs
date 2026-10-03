@@ -4,8 +4,8 @@
 // owner assignment for first-wave owned entities.
 
 use crate::kernel_imports::{
-    Caller, ExternalActor, PrincipalKind, PrincipalSummary,
-    everruns_provider::typed_id::PrincipalId, org_public_id_from_internal,
+    Caller, ExternalActor, PrincipalKind, PrincipalSummary, contracts::typed_id::PrincipalId,
+    org_public_id_from_internal,
 };
 use anyhow::{Result, anyhow};
 use everruns_durable::UpdateField;
@@ -124,7 +124,7 @@ impl PrincipalService {
     pub async fn default_runtime_owner_principal(
         &self,
         caller: &Caller,
-        service: Option<everruns_provider::typed_id::VirtualUserId>,
+        service: Option<everruns_contracts::typed_id::VirtualUserId>,
     ) -> Result<PrincipalRow> {
         if service.is_none()
             && !caller.is_internal
@@ -168,7 +168,7 @@ impl PrincipalService {
     pub async fn ensure_virtual_user_principal(
         &self,
         org_id: i64,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         parent_principal_id: PrincipalId,
     ) -> Result<PrincipalRow> {
         let parent = self
@@ -229,7 +229,7 @@ impl PrincipalService {
     pub async fn default_owner_principal(
         &self,
         caller: &Caller,
-        virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+        virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     ) -> Result<PrincipalRow> {
         let base_user_id = caller.user_id.or({
             if !caller.is_internal && caller.org_id == everruns_core::DEFAULT_ORG_ID {
@@ -261,7 +261,7 @@ impl PrincipalService {
         org_id: i64,
         current_owner_principal_id: PrincipalId,
         current_resolved_owner_user_id: Option<Uuid>,
-        virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+        virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     ) -> Result<PrincipalRow> {
         let current_owner = self
             .db
@@ -311,7 +311,7 @@ impl PrincipalService {
     pub async fn sync_virtual_user_status(
         &self,
         org_id: i64,
-        virtual_user_id: everruns_provider::typed_id::VirtualUserId,
+        virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         status: PrincipalStatus,
     ) -> Result<()> {
         let Some(existing) = self

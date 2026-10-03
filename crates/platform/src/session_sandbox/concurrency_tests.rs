@@ -18,7 +18,7 @@ async fn concurrent_tools_share_one_lifecycle_recovery() {
 
     let storage = Arc::new(MemorySecrets::default());
     let context = Arc::new(ToolContext::with_storage_store(
-        everruns_provider::typed_id::SessionId::new(),
+        everruns_contracts::typed_id::SessionId::new(),
         storage,
     ));
     let mut state = SessionSandboxState {

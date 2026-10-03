@@ -44,7 +44,7 @@ use serde_json::{Value, json};
 
 use crate::tool_context::ToolContext;
 use crate::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::{ToolHints, ToolResultImage};
+use everruns_contracts::tool_types::{ToolHints, ToolResultImage};
 
 /// Name of the provider-neutral computer tool.
 pub const COMPUTER_TOOL_NAME: &str = "computer";
@@ -632,13 +632,13 @@ impl ComputerUseConfig {
 
     /// Driver options this config contributes: the provider-neutral request
     /// for a native computer tool, which drivers without one ignore. See
-    /// [`everruns_provider::native_computer`].
+    /// [`everruns_contracts::native_computer`].
     pub fn driver_options(&self) -> Vec<(String, Value)> {
         if !self.native_tools {
             return Vec::new();
         }
         vec![
-            everruns_provider::native_computer::NativeComputerUse {
+            everruns_contracts::native_computer::NativeComputerUse {
                 display_width: self.display_width,
                 display_height: self.display_height,
             }
@@ -843,7 +843,7 @@ fn tool_schema(navigation: bool) -> Value {
         "items": single,
         "description": "Several actions run in order instead of `action`"
     });
-    properties[everruns_provider::openai_computer::PENDING_SAFETY_CHECKS_KEY] = json!({
+    properties[everruns_contracts::openai_computer::PENDING_SAFETY_CHECKS_KEY] = json!({
         "type": "array",
         "description": "Provider safety checks a person must acknowledge (set by native adapters)"
     });

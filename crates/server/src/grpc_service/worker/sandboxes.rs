@@ -133,7 +133,7 @@ impl WorkerServiceImpl {
 
         let response = match request.operation.as_str() {
             "load_current_state" => {
-                let session_id = everruns_provider::typed_id::SessionId::from_uuid(uuid_field(
+                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
                     &value,
                     "session_id",
                 )?);
@@ -143,7 +143,7 @@ impl WorkerServiceImpl {
                 }
             }
             "load_state" => {
-                let session_id = everruns_provider::typed_id::SessionId::from_uuid(uuid_field(
+                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
                     &value,
                     "session_id",
                 )?);
@@ -156,7 +156,7 @@ impl WorkerServiceImpl {
                 }
             }
             "save_state" => {
-                let session_id = everruns_provider::typed_id::SessionId::from_uuid(uuid_field(
+                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
                     &value,
                     "session_id",
                 )?);
@@ -179,7 +179,7 @@ impl WorkerServiceImpl {
                 }
             }
             "delete_state" => {
-                let session_id = everruns_provider::typed_id::SessionId::from_uuid(uuid_field(
+                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
                     &value,
                     "session_id",
                 )?);
@@ -193,7 +193,7 @@ impl WorkerServiceImpl {
                 }
             }
             "ensure_sandbox" => {
-                let session_id = everruns_provider::typed_id::SessionId::from_uuid(uuid_field(
+                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
                     &value,
                     "session_id",
                 )?);

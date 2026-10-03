@@ -37,13 +37,13 @@ mod session_sandbox_provider;
 pub mod state;
 mod tools;
 
+use everruns_contracts::connector::ConnectorPlugin;
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, MountDirectoryBuilder,
     MountPoint, RiskLevel, SystemPromptContext,
 };
 use everruns_core::tools::Tool;
-use everruns_platform::connector::ConnectorPlugin;
 
 use connection::DaytonaConnector;
 use session_sandbox_provider::DaytonaSessionSandboxProvider;
@@ -74,7 +74,7 @@ pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
     factory: || Box::new(DaytonaConnector),
 }];
 inventory::submit! {
-    everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
+    everruns_contracts::session_sandbox::SessionSandboxProviderPlugin {
         factory: || Box::new(DaytonaSessionSandboxProvider),
     }
 }
@@ -325,11 +325,9 @@ mod tests {
     // constant (crate layering). Pin them so a rename cannot reopen forgery.
     #[test]
     fn the_daytona_sandbox_secret_prefix_is_reserved_from_session_storage() {
-        assert!(
-            everruns_platform::capabilities::is_internal_session_secret_name(&format!(
-                "{DAYTONA_SANDBOX_SECRET_PREFIX}sbx-example"
-            ))
-        );
+        assert!(everruns_host::is_internal_session_secret_name(&format!(
+            "{DAYTONA_SANDBOX_SECRET_PREFIX}sbx-example"
+        )));
     }
 
     #[test]
@@ -375,7 +373,7 @@ mod tests {
     async fn system_prompt_within_budget() {
         let cap = DaytonaCapability;
         let ctx =
-            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         // Bumped 1300 → 1600: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
         // single-read/contextual-search policy (+438 bytes), taking this
@@ -506,7 +504,7 @@ mod tests {
     async fn test_system_prompt_with_api_calling_enabled() {
         let cap = DaytonaCapability;
         let ctx =
-            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
         let prompt = cap
             .system_prompt_contribution_with_config(&ctx, &json!({"enable_api_calling": true}))
             .await
@@ -519,7 +517,7 @@ mod tests {
     async fn test_system_prompt_without_api_calling() {
         let cap = DaytonaCapability;
         let ctx =
-            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
         let prompt = cap
             .system_prompt_contribution_with_config(&ctx, &json!({}))
             .await

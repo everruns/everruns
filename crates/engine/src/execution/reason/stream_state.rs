@@ -1,7 +1,7 @@
 use crate::driver_registry::{LlmCompletionMetadata, LlmStreamError, LlmStreamEvent};
 use crate::llm_retry::{RetryMetadata, is_transient_stream_error};
 use crate::output_guardrail::{ArmedGuardrail, TrippedGuardrail, evaluate_guardrails};
-use everruns_provider::reasoning::ReasoningContentPart;
+use everruns_contracts::reasoning::ReasoningContentPart;
 
 /// Whether replaying the current provider attempt can duplicate externally
 /// visible output or tool side effects.
@@ -175,7 +175,7 @@ mod tests {
             summary: false,
         });
         state.observe(&LlmStreamEvent::ReasoningItem(
-            everruns_provider::reasoning::ReasoningContentPart::opaque("openai")
+            everruns_contracts::reasoning::ReasoningContentPart::opaque("openai")
                 .with_item_id("item")
                 .with_encrypted("opaque")
                 .with_tokens(1),

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use everruns_capability::CapabilityRef;
+use everruns_contracts::CapabilityRef;
 use everruns_core::capabilities::Capability;
 use everruns_core::tools::{Tool, ToolExecutionResult, ToolRegistry};
 use everruns_core::{CapabilityRegistry, HarnessDefinition};
@@ -80,7 +80,7 @@ impl Tool for LookUp {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        everruns_provider::rt::sleep(self.delay).await;
+        everruns_contracts::rt::sleep(self.delay).await;
         let topic = arguments["topic"].as_str().unwrap_or("celld");
         ToolExecutionResult::success(json!({
             "topic": topic,

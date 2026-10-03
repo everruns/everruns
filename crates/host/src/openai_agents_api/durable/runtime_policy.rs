@@ -201,7 +201,7 @@ impl Run<'_> {
                     .collect::<String>();
                 let safe_id = format!("rejected-{digest}");
                 let priced_kind = if kind == "mcp_call"
-                    || everruns_provider::openai_hosted_tools::hosted_call_tool(kind).is_some()
+                    || everruns_contracts::openai_hosted_tools::hosted_call_tool(kind).is_some()
                 {
                     kind
                 } else {

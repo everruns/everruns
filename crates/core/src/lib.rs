@@ -55,7 +55,7 @@
 //!
 //! ```
 //! use everruns_core::CapabilityRegistry;
-//! use everruns_provider::DriverRegistry;
+//! use everruns_contracts::DriverRegistry;
 //!
 //! let capabilities = CapabilityRegistry::new();
 //! assert!(capabilities.is_empty());
@@ -74,7 +74,7 @@ pub mod annotation_hook;
 mod capability_mcp_server;
 pub mod capability_types;
 pub mod tool_fingerprint;
-use everruns_provider::tool_types;
+use everruns_contracts::tool_types;
 
 // User-defined hooks (see knowledge/runtime-resources/user-hooks.md)
 pub mod hook_adapter;
@@ -122,7 +122,7 @@ pub mod database_failure;
 
 // Typed ID system (type-safe prefixed identifiers)
 // See knowledge/foundations/id-schema.md for specification
-use everruns_provider::typed_id;
+use everruns_contracts::typed_id;
 
 // Budget types (budgets, ledger, rules, actions)
 pub mod background;
@@ -144,7 +144,7 @@ pub mod harness_definition;
 pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
-use everruns_provider::model_profiles;
+use everruns_contracts::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
@@ -158,9 +158,9 @@ pub mod network_access;
 pub mod organization;
 pub mod payment;
 pub mod principal;
-use everruns_provider::model_spec;
-use everruns_provider::provider;
-use everruns_provider::runtime_provider;
+use everruns_contracts::model_spec;
+use everruns_contracts::provider;
+use everruns_contracts::runtime_provider;
 pub mod session;
 pub mod session_file;
 pub mod session_path;
@@ -202,8 +202,8 @@ pub mod context_report;
 pub mod dependency_blocker;
 /// Shared lease and persistence contracts for native asynchronous tools.
 pub mod native_async_store;
-use everruns_provider::driver_registry;
-use everruns_provider::error;
+use everruns_contracts::driver_registry;
+use everruns_contracts::error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
 pub mod llm_error_hook;
@@ -243,7 +243,7 @@ pub mod tool_hooks;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod truncation_info;
-use everruns_provider::user_facing_error;
+use everruns_contracts::user_facing_error;
 
 // Private doubles for collocated unit tests. Public application backends live
 // in everruns-host; reusable deterministic fixtures live in test-support.
@@ -378,7 +378,7 @@ pub(crate) use driver_registry::{
 // Transport-neutral native compaction contracts. Concrete OpenAI/OpenResponses
 // protocol drivers live in everruns-provider and the focused provider crates.
 #[cfg(test)]
-pub(crate) use everruns_provider::compact::CompactOutputItem;
+pub(crate) use everruns_contracts::compact::CompactOutputItem;
 
 // Tool abstraction re-exports
 pub use tools::{
@@ -430,7 +430,7 @@ pub(crate) use tool_types::ToolDefinition;
 #[cfg(test)]
 pub(crate) use tool_types::{BuiltinTool, ToolCall};
 
-pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+pub(crate) use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
 // Domain entity re-exports
 // Provider entities live in `everruns-provider`; import them from that crate.
@@ -585,3 +585,5 @@ pub use deployment::DeploymentGrade;
 // catalog live in `everruns-platform`; core re-exports only the resolved
 // execution-facing values.
 pub use execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
+
+mod sandbox_context;

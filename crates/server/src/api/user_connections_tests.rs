@@ -2,10 +2,10 @@ use super::mcp_oauth::discover_oauth_server_metadata;
 use super::*;
 use crate::oauth_client::egress_oauth_json;
 use crate::storage::models::{CreateAgentRow, CreateMcpServerRow, UpdateMcpServer};
+use everruns_contracts::typed_id::{AgentId, HarnessId};
 use everruns_core::{
     EgressRequest, EgressResponse, EgressService, OrgRole, Permission, PermissionResolver,
 };
-use everruns_provider::typed_id::{AgentId, HarnessId};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 

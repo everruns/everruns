@@ -8,7 +8,7 @@ pub(crate) async fn execute_reason<A: crate::RuntimeHostAdapter>(
     input: everruns_engine::ReasonInput,
     assembled: everruns_core::AssembledTurnContext,
     atom: everruns_engine::ReasonAtom,
-) -> everruns_provider::error::Result<everruns_engine::ReasonResult> {
+) -> everruns_contracts::error::Result<everruns_engine::ReasonResult> {
     #[cfg(feature = "openai-agents-api")]
     if let Some(result) =
         crate::openai_agents_api::backend::try_execute_reason(adapter, org_id, &input, &assembled)

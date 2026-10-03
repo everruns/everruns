@@ -17,13 +17,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use everruns_contracts::execution_phase::ExecutionPhase;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::ContentPart;
 use everruns_core::events::{
     EventData, OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED,
     TURN_COMPLETED, TURN_FAILED, TURN_STARTED,
 };
-use everruns_provider::execution_phase::ExecutionPhase;
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 
 use super::{AuthorizedA2a, EndpointA2aState, ask_user};
@@ -228,8 +228,8 @@ pub(super) async fn wait_until_settled(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::typed_id::EventId;
     use everruns_core::message::RuntimeMessage;
-    use everruns_provider::typed_id::EventId;
 
     fn row(event_type: &str, data: Value) -> EventRow {
         EventRow {

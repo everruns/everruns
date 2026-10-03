@@ -9,6 +9,7 @@
 //! rejected, so a real server can't be used for the happy path).
 
 use async_trait::async_trait;
+use everruns_contracts::tool_types::{ConnectionRequired, ConnectionRequiredSubject, ToolCall};
 use everruns_core::{
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
     McpServerAuthMode,
@@ -17,7 +18,6 @@ use everruns_mcp::{
     McpClient, McpConnection, McpExecutor, McpSecretBinding, NoAuthProvider, StaticAuthProvider,
     StaticConnectionResolver,
 };
-use everruns_provider::tool_types::{ConnectionRequired, ConnectionRequiredSubject, ToolCall};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 

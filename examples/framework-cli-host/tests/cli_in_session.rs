@@ -8,6 +8,9 @@
 
 use std::sync::Arc;
 
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::InputMessage;
 use everruns_framework_cli_host::{Fleet, FleetCommands};
 use everruns_host::{
@@ -16,9 +19,6 @@ use everruns_host::{
 };
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 /// Build a session whose shell carries `fleet`'s commands, and run one turn in
 /// which the model issues `scripts` through bash.

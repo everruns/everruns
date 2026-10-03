@@ -71,7 +71,7 @@ graph TD
 
 ### ChatDriver Trait
 
-1. **Trait Definition**: See `crates/provider/src/driver_registry.rs` for `ChatDriver` trait, `ProviderType`, and `LlmCallConfig`, and `crates/provider/src/stream_event.rs` for `LlmStreamEvent`.
+1. **Trait Definition**: See `crates/contracts/src/driver_registry.rs` for `ChatDriver` trait, `ProviderType`, and `LlmCallConfig`, and `crates/contracts/src/stream_event.rs` for `LlmStreamEvent`.
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error). In-band provider failures use `LlmStreamError` so stable provider code and HTTP status survive the driver boundary.
 
@@ -117,7 +117,7 @@ Drivers MUST use the following error types from `AgentLoopError`:
 ### Error Detection Requirements
 
 Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. A per-window quota or rate-limit rejection (a 429 whose request would fit once the window resets) is transient and MUST stay on the retry path, even when its wording mentions tokens and limits; only a request that exceeds the limit on its own is `RequestTooLarge`. See the individual driver crates for the detection logic:
-- `crates/provider/src/openai_errors.rs`, shared OpenAI-compatible (Chat Completions and Responses) detection
+- `crates/contracts/src/openai_errors.rs`, shared OpenAI-compatible (Chat Completions and Responses) detection
 - `crates/drivers/drivers/src/openai/`, OpenAI error detection
 - `crates/drivers/drivers/src/anthropic/`, Anthropic error detection
 - `crates/drivers/drivers/src/gemini/`, Gemini error detection
@@ -177,7 +177,7 @@ Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Dri
 
 Current provider mappings:
 
-- **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/provider/src/openresponses_protocol/mod.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
+- **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/contracts/src/openresponses_protocol/mod.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
 - **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Trailing content the caller marks volatile (`volatile_suffix_len`) and mid-conversation system messages are skipped
 - **Gemini**: uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
 
@@ -187,7 +187,7 @@ Current provider mappings:
 
 Cache accounting and persistence follow the [disjoint usage contract](../security/usage-tracking.md#disjoint-bucket-convention).
 
-[Compatibility validation](../../crates/provider/src/openai_compat.rs) rejects
+[Compatibility validation](../../crates/contracts/src/openai_compat.rs) rejects
 unsupported reasoning effort before omission/serialization can hide an invalid
 selection. Astra sampling and Chat Completions tool use are rejected before
 network I/O. EU Fast/Priority restrictions follow the actual OpenAI regional
@@ -199,7 +199,7 @@ follow the [Astra migration contract](https://developers.openai.com/api/docs/gui
 `LlmCallConfig.extra_headers` carries caller-supplied HTTP headers for a single
 call, distinct from the provider-owned service headers on `ProviderEndpoint`
 (which describe the service, not the call). Drivers apply them through
-[`merge_request_headers`](../../crates/provider/src/driver_helpers.rs): matching
+[`merge_request_headers`](../../crates/contracts/src/driver_helpers.rs): matching
 is case-insensitive and a caller header **replaces** the driver's or provider's
 value instead of appending a second copy, so a call can override a protocol
 header (for example `anthropic-version`) without producing a duplicate. Headers
@@ -287,7 +287,7 @@ guardrails.
 ### Reasoning Support
 
 Reasoning is modelled as an ordered list of provider artifacts, not as text on
-the message. The shape lives in `crates/provider/src/reasoning.rs`.
+the message. The shape lives in `crates/contracts/src/reasoning.rs`.
 
 Ordering is the reason it is a list rather than a pair of fields. Providers
 interleave reasoning with text and tool calls, and each one requires its
@@ -304,7 +304,7 @@ replay state (signature / encrypted payload), and identity (provider, item id,
 bound tool call). Only readable text is ever rendered or published; replay state
 is carried verbatim and never leaves the driver boundary.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/drivers/src/anthropic/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/model-profiles/src/profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/drivers/src/anthropic/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/contracts/src/model_profile_data/profiles.rs`.
 
 #### Stream Events
 
@@ -337,7 +337,7 @@ replayable and nothing reaches the reasoning channel.
 
 Provider-specific wire format details live in the driver implementations:
 - `crates/drivers/drivers/src/anthropic/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, per-block signature capture, message ordering
-- `crates/provider/src/openresponses_protocol/mod.rs` -- reasoning config, `include`, encrypted content, reasoning item ids
+- `crates/contracts/src/openresponses_protocol/mod.rs` -- reasoning config, `include`, encrypted content, reasoning item ids
 - `crates/drivers/drivers/src/gemini/driver.rs` -- thinking budget, thought parts, thought signatures
 
 #### Reasoning Guard Logic
@@ -375,7 +375,7 @@ The two OpenAI drivers place the field differently: the Responses API nests it u
 
 ### Structured Output
 
-A call can require its answer to validate against a JSON Schema: `LlmCallConfig.response_format` carries a provider-neutral `ResponseFormat` (see `crates/provider/src/structured_output.rs`), and each driver maps it to its native control. The OpenAI Responses driver sends it as `text.format` (next to `text.verbosity`), the Chat Completions driver as the top-level `response_format`. Strict adherence is the default because a caller asking for a schema wants it enforced, not approximated; `non_strict()` opts out for schemas that cannot meet OpenAI's strict-mode rules.
+A call can require its answer to validate against a JSON Schema: `LlmCallConfig.response_format` carries a provider-neutral `ResponseFormat` (see `crates/contracts/src/structured_output.rs`), and each driver maps it to its native control. The OpenAI Responses driver sends it as `text.format` (next to `text.verbosity`), the Chat Completions driver as the top-level `response_format`. Strict adherence is the default because a caller asking for a schema wants it enforced, not approximated; `non_strict()` opts out for schemas that cannot meet OpenAI's strict-mode rules.
 
 A driver declares support through `ChatDriver::supports_response_format`, which defaults to false and must be forwarded by wrapper drivers like the other capability hooks. The provider refuses a call carrying a format on a driver without support, with a configuration error, before any request is sent. Silently dropping the schema would return free text to a caller that believes it holds validated JSON. The simulator reports support, so offline tests and examples can exercise the path. Anthropic (`output_config.format`) and Gemini (`responseJsonSchema`) have native equivalents and are the next drivers to wire.
 
@@ -385,9 +385,9 @@ Scope: single completions (Framework `Completion::response_format`, evals, utili
 
 A long `xhigh`/`max` reasoning call on the OpenAI driver runs with `background: true` and `store: true`, so the response lives at OpenAI rather than on one HTTP connection. The driver tracks the response id and each event's `sequence_number`; when the connection fails or closes before a terminal event, it re-attaches with `GET /responses/{id}?stream=true&starting_after=N` and the parser sees one gapless stream. The call is never posted twice, so a dropped connection no longer loses or re-bills minutes of reasoning. Dropping the stream before a terminal event (turn cancellation, the stall timeout, a worker shutdown) sends `POST /responses/{id}/cancel`, because a background response otherwise keeps generating and billing with nobody reading it.
 
-Policy lives in `crates/provider/src/openresponses_protocol/background.rs`: on for `xhigh`/`max`, forced on or off by the `openai/background` driver option, and limited to OpenAI and Azure hosts (OpenRouter and custom gateways have no resume API). Background mode requires stored responses, so it is not zero-data-retention compatible: a 400 naming the background fields retries once in the foreground, and ZDR deployments can set the option to `false`.
+Policy lives in `crates/contracts/src/openresponses_protocol/background.rs`: on for `xhigh`/`max`, forced on or off by the `openai/background` driver option, and limited to OpenAI and Azure hosts (OpenRouter and custom gateways have no resume API). Background mode requires stored responses, so it is not zero-data-retention compatible: a 400 naming the background fields retries once in the foreground, and ZDR deployments can set the option to `false`.
 
-Re-attaching survives a worker restart (EVE-1134). A durable host passes a `BackgroundCallContext` (`crates/provider/src/background_call.rs`) on `LlmCallConfig`: a journal for the response id and an explicit turn-cancel signal. The id is saved when `response.created` arrives, before the parser sees any event, into the turn's native-async checkpoint (`crates/host/src/background_call.rs`; each write takes and releases the turn lease, so no lease is held across the call). The durable retry of the same call re-attaches with `GET /responses/{id}?stream=true` from the first event, because its parser starts empty, instead of posting again. The record carries a fingerprint of the request (metadata excluded, since it holds per-attempt ids); a record for a different request is cancelled rather than resumed, and a record that can no longer be fetched falls back to posting. The record is cleared at the terminal event.
+Re-attaching survives a worker restart (EVE-1134). A durable host passes a `BackgroundCallContext` (`crates/contracts/src/background_call.rs`) on `LlmCallConfig`: a journal for the response id and an explicit turn-cancel signal. The id is saved when `response.created` arrives, before the parser sees any event, into the turn's native-async checkpoint (`crates/host/src/background_call.rs`; each write takes and releases the turn lease, so no lease is held across the call). The durable retry of the same call re-attaches with `GET /responses/{id}?stream=true` from the first event, because its parser starts empty, instead of posting again. The record carries a fingerprint of the request (metadata excluded, since it holds per-attempt ids); a record for a different request is cancelled rather than resumed, and a record that can no longer be fetched falls back to posting. The record is cleared at the terminal event.
 
 With a journal, dropping the stream no longer cancels the response: the drop may be a worker shutdown or a stall whose retry re-attaches. Cancellation is explicit instead: the worker heartbeat reports a cancelled workflow to the worker that still owns the task (see [durable execution](../operations/durable-execution-engine.md#task-heartbeat-cancellation)), and the driver sends `POST /responses/{id}/cancel` while it is still reading the stream. Ownership loss never cancels, because the next owner is re-attaching to that response. Without a journal (embedded hosts, or a journal write that fails) the in-process behaviour stays: an abandoned response is cancelled on drop.
 
@@ -420,7 +420,7 @@ disjoint (drivers normalize inclusive providers at the boundary; see
 ### Turn Collection and Per-Call Limits
 
 Folding a provider stream into one finished turn is one shared loop,
-`turn_collector::collect_turn` ([source](../../crates/provider/src/turn_collector.rs)),
+`turn_collector::collect_turn` ([source](../../crates/contracts/src/turn_collector.rs)),
 not a per-driver or per-embedder reimplementation. The `ChatDriver`
 non-streaming default runs through it, so an agent turn and a direct call fold
 identically.
@@ -528,11 +528,11 @@ re-executes a completed tool.
 
 | Component | Location |
 |-----------|----------|
-| ChatDriver trait | `crates/provider/src/driver_registry.rs` |
-| AgentLoopError | `crates/provider/src/error.rs` |
+| ChatDriver trait | `crates/contracts/src/driver_registry.rs` |
+| AgentLoopError | `crates/contracts/src/error.rs` |
 | OpenAI driver | `crates/drivers/drivers/src/openai/driver.rs` |
-| Open Responses protocol | `crates/provider/src/openresponses_protocol/mod.rs` |
-| Chat Completions protocol | `crates/provider/src/openai_protocol.rs` |
+| Open Responses protocol | `crates/contracts/src/openresponses_protocol/mod.rs` |
+| Chat Completions protocol | `crates/contracts/src/openai_protocol.rs` |
 | Anthropic driver | `crates/drivers/drivers/src/anthropic/driver.rs` |
 | Gemini driver | `crates/drivers/drivers/src/gemini/driver.rs` |
 | Bedrock driver | `crates/drivers/drivers/src/bedrock/driver.rs` |
@@ -639,7 +639,7 @@ behind an OpenAI-compatible Chat Completions API. The `mai` module of
 `everruns-drivers` wraps the shared
 `OpenAIProtocolChatDriver` (from `everruns-provider`) and tags it with
 `DriverId::Mai`. Model ids resolve
-to the Microsoft-vendor profiles in `crates/model-profiles/src/profiles.rs` (the
+to the Microsoft-vendor profiles in `crates/contracts/src/model_profile_data/profiles.rs` (the
 `MICROSOFT_MAI` surface).
 
 ### Catalog Fallback for Unrecognized Endpoints
@@ -838,7 +838,7 @@ loop therefore never dispatches them; the only client-visible artifact is
 OpenAI hosted tools (EVE-1115: `web_search`, `code_interpreter`, `shell`, `file_search`, `mcp`) are the OpenAI counterpart of OpenRouter
 server tools: model-decided, executed inside the response, never dispatched by the agent loop.
 
-- **Contract**: `everruns_provider::openai_hosted_tools` owns the typed selection and the
+- **Contract**: `everruns_contracts::openai_hosted_tools` owns the typed selection and the
   `openai/hosted_tools` driver option; the `openai_server_tools` capability contributes it.
 - **Rendering**: the Open Responses driver appends the wire entries only when built
   `with_hosted_tools(true)` (the OpenAI and Azure OpenAI driver). Any other Responses endpoint
@@ -862,7 +862,7 @@ server tools: model-decided, executed inside the response, never dispatched by t
   its result become `mcp_approval_request` / `mcp_approval_response` items
   (`replay_mcp_approvals`), and the delta window treats the request as prior output.
 - **MCP credentials**: config never holds one. An entry names a registered Everruns MCP server
-  (`mcp_server`) instead of a URL; `everruns_provider::hosted_mcp::HostedMcpDriver` wraps the
+  (`mcp_server`) instead of a URL; `everruns_contracts::hosted_mcp::HostedMcpDriver` wraps the
   turn driver (`StoreTurnContextResolver::with_hosted_mcp_resolver`, fed by
   `RuntimeHostAdapter::hosted_mcp_resolver`) and fills URL and headers per call from the same
   lookup `mcp_*` execution uses, so OAuth refreshes land on the next request. The headers live
@@ -919,7 +919,7 @@ When a request to the OpenAI Responses API sets `previous_response_id`, the prov
 
 Invariant: **a request with `previous_response_id` only carries delta items in `input`**: typically tool results (`function_call_output`) for the prior assistant turn plus any fresh user messages. Prior assistant messages, reasoning items, and the assistant's own function calls are dropped because they live in server-side state. `instructions` (system message) is sent separately and is exempt. Empty `input` is allowed.
 
-`OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/provider/src/openresponses_protocol/mod.rs`).
+`OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/contracts/src/openresponses_protocol/mod.rs`).
 
 ### Provider-declared statefulness
 
@@ -996,7 +996,7 @@ Drivers parse provider-specific headers to determine retry timing:
 
 ### Retry Metadata
 
-On successful completion after retries, `LlmCompletionMetadata` includes retry info (attempts, total wait time, rate limit info). The `llm.generation` event also includes retry info. See `crates/provider/src/driver_registry.rs` for `RetryMetadata`.
+On successful completion after retries, `LlmCompletionMetadata` includes retry info (attempts, total wait time, rate limit info). The `llm.generation` event also includes retry info. See `crates/contracts/src/driver_registry.rs` for `RetryMetadata`.
 
 ### Implementation Details
 
@@ -1037,7 +1037,7 @@ this ordering rule is identical for proactive and reactive compaction.
 
 ### ChatDriver Compact Methods
 
-The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/provider/src/driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
+The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/contracts/src/driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
 
 The trait also exposes an optional effective context-window boundary. A driver
 whose runtime model aliases or profiles are not represented in Everruns'

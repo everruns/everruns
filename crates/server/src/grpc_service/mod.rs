@@ -386,7 +386,7 @@ struct GrpcSessionTaskWaker {
 impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWaker {
     async fn wake(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         text: &str,
     ) -> anyhow::Result<()> {
         let session = self
@@ -405,7 +405,7 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
             return Ok(());
         };
 
-        let message_id = everruns_provider::typed_id::MessageId::new();
+        let message_id = everruns_contracts::typed_id::MessageId::new();
         let now = chrono::Utc::now();
         let core_message = everruns_core::RuntimeMessage {
             id: message_id,
@@ -470,7 +470,7 @@ pub struct WorkerServiceImpl {
     /// Session storage store for key/value and secret operations
     session_storage_store: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
     /// Session SQL database store for session-scoped databases
-    sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>>,
+    sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,
     /// Agent runner for triggering turn workflows (platform management send_message)
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
@@ -489,7 +489,7 @@ pub struct WorkerServiceImpl {
     permission_resolver: Arc<dyn PermissionResolver>,
     /// System utility LLM for sanctioned internal analysis commands.
     utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    connector_registry: everruns_platform::connector::ConnectorRegistry,
+    connector_registry: everruns_contracts::connector::ConnectorRegistry,
 }
 
 impl WorkerServiceImpl {
@@ -596,7 +596,7 @@ impl WorkerServiceImpl {
 
         // Create session SQL database store (always available, in-memory backend)
         let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>> =
+        let sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>> =
             Some(Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(
                 sqldb_backend,
             )));
@@ -638,7 +638,7 @@ impl WorkerServiceImpl {
     /// Set the task notification broadcaster (must be called after async initialization)
     pub fn set_connector_registry(
         &mut self,
-        registry: everruns_platform::connector::ConnectorRegistry,
+        registry: everruns_contracts::connector::ConnectorRegistry,
     ) {
         self.connector_registry = registry;
     }
@@ -664,7 +664,7 @@ impl WorkerServiceImpl {
     /// their own isolated backend still get one.
     pub fn set_sqldb_store(
         &mut self,
-        store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
+        store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
     ) {
         self.sqldb_store = Some(store);
     }
@@ -861,7 +861,7 @@ impl WorkerServiceImpl {
     #[allow(clippy::result_large_err)]
     fn sqldb_store(
         &self,
-    ) -> Result<&Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>, Status> {
+    ) -> Result<&Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>, Status> {
         self.sqldb_store
             .as_ref()
             .ok_or_else(|| Status::unavailable("Session SQL database not available"))
@@ -1108,8 +1108,8 @@ fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedR
 }
 
 /// Convert a SessionSqlDbError to a gRPC Status with appropriate error codes.
-fn sqldb_error_to_status(e: everruns_platform::session_sqldb::SessionSqlDbError) -> Status {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
+fn sqldb_error_to_status(e: everruns_contracts::session_sqldb::SessionSqlDbError) -> Status {
+    use everruns_contracts::session_sqldb::SessionSqlDbError;
     match &e {
         SessionSqlDbError::DatabaseNotFound(_) => Status::not_found(e.to_string()),
         SessionSqlDbError::DatabaseAlreadyExists(_) => Status::already_exists(e.to_string()),

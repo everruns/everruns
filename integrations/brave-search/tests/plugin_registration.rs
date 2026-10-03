@@ -3,9 +3,9 @@
 
 #![cfg(feature = "hosted")]
 
+use everruns_contracts::connector::ConnectorPlugin;
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
-use everruns_platform::connector::ConnectorPlugin;
 
 use everruns_integrations_brave_search::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 

@@ -2,7 +2,7 @@ use crate::api::common::{AllowedAction, ApiResultExt, ErrorResponse, ResourceUrl
 use crate::storage::StorageBackend;
 use axum::{Json, http::StatusCode};
 use everruns_platform::{Agent, EndpointStatus, EndpointTransport};
-use everruns_provider::typed_id::{AgentId, HarnessId};
+use everruns_contracts::typed_id::{AgentId, HarnessId};
 use futures::future::try_join_all;
 use serde::Serialize;
 use std::collections::HashMap;

@@ -3,8 +3,8 @@
 // Handles cron parsing, next-trigger computation, and schedule lifecycle.
 
 use crate::kernel_imports::{
-    everruns_provider::typed_id::ScheduleId,
-    everruns_provider::typed_id::SessionId,
+    contracts::typed_id::ScheduleId,
+    contracts::typed_id::SessionId,
     session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule},
 };
 use anyhow::{Context, Result, anyhow};

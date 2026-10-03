@@ -65,7 +65,7 @@ pub mod openrouter;
 pub mod vercel;
 
 // Re-export core types for convenience.
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
 
 /// Register every driver this crate's enabled features provide.
 ///

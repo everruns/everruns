@@ -8,11 +8,9 @@
 // all orgs for background sync, not just DEFAULT_ORG_ID.
 
 use crate::kernel_imports::{
-    everruns_provider::driver_registry::DiscoveredModel,
-    everruns_provider::driver_registry::DriverRegistry,
-    everruns_provider::driver_registry::ProviderConfig,
-    everruns_provider::model_profiles::get_model_profile, everruns_provider::provider::DriverId,
-    everruns_provider::typed_id::ProviderId,
+    contracts::driver_registry::DiscoveredModel, contracts::driver_registry::DriverRegistry,
+    contracts::driver_registry::ProviderConfig, contracts::model_profiles::get_model_profile,
+    contracts::provider::DriverId, contracts::typed_id::ProviderId,
 };
 use crate::services::provider_resolver::resolve_provider_api_key;
 use crate::storage::{
@@ -95,7 +93,7 @@ impl ModelSyncService {
         }
 
         let mut config = ProviderConfig::for_provider(
-            everruns_provider::runtime_provider::ProviderKey::new(provider_id.to_string()),
+            everruns_contracts::runtime_provider::ProviderKey::new(provider_id.to_string()),
             driver_type,
         );
         config.api_key = Some(api_key);
@@ -110,7 +108,7 @@ impl ModelSyncService {
 
         // Call list_models on the driver
         let discovered = match driver
-            .list_models(&everruns_provider::runtime_provider::ProviderEndpoint::default())
+            .list_models(&everruns_contracts::runtime_provider::ProviderEndpoint::default())
             .await
         {
             Ok(Some(models)) => models,

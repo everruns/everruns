@@ -93,7 +93,7 @@ pub(super) async fn try_apply_native_compaction(
         && let Some(effort) = reasoning_state.as_ref().and_then(|state| state.effective)
     {
         standalone_input.push(crate::CompactInputItem::ConfigurationUpdate {
-            reasoning: everruns_provider::compact::ConfigurationReasoning { effort },
+            reasoning: everruns_contracts::compact::ConfigurationReasoning { effort },
         });
     }
     let prefix_len = standalone_input.len();
@@ -113,7 +113,7 @@ pub(super) async fn try_apply_native_compaction(
         standalone_input.insert(
             boundary,
             crate::CompactInputItem::ConfigurationUpdate {
-                reasoning: everruns_provider::compact::ConfigurationReasoning { effort },
+                reasoning: everruns_contracts::compact::ConfigurationReasoning { effort },
             },
         );
     }
@@ -324,7 +324,7 @@ pub(super) async fn apply_proactive_compaction(
         .effective_context_window(context.model)
         .or_else(|| {
             crate::model_profiles::get_model_profile(
-                &everruns_provider::DriverId::external(context.provider_type),
+                &everruns_contracts::DriverId::external(context.provider_type),
                 context.model,
             )
             .and_then(|profile| profile.limits.map(|limits| limits.context as usize))

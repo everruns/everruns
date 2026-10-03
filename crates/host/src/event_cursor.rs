@@ -1,7 +1,7 @@
 //! Cursor constructors for [`EventReader`](crate::EventReader) implementations
 //! that live outside this crate.
 
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 
 use crate::events::{EventCursor, EventLogError};
 

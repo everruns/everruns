@@ -36,13 +36,13 @@ use everruns_ag_ui::{
     RunAgentInput as AgUiRunAgentInput, RunErrorEvent as AgUiRunErrorEvent,
     RunStartedEvent as AgUiRunStartedEvent, ToolCall as AgUiToolCall,
 };
+use everruns_contracts::execution_phase::ExecutionPhase;
+use everruns_contracts::typed_id::ImageId;
+#[cfg(test)]
+use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_platform::exposure::public_tool_activity_text;
 use everruns_platform::{AgUiChannelConfig, EndpointTransport};
-use everruns_provider::execution_phase::ExecutionPhase;
-use everruns_provider::typed_id::ImageId;
-#[cfg(test)]
-use everruns_provider::user_facing_error::codes as user_facing_error_codes;
 use futures::{
     StreamExt,
     stream::{self, Stream},
@@ -166,7 +166,7 @@ struct AuthorizedAgUiRequest {
     /// any session it creates (EVE-1004).
     endpoint_internal_id: uuid::Uuid,
     channel_config: AgUiChannelConfig,
-    runtime_user: Option<everruns_provider::typed_id::VirtualUserId>,
+    runtime_user: Option<everruns_contracts::typed_id::VirtualUserId>,
 }
 
 async fn upload_image_legacy(
@@ -406,7 +406,7 @@ pub(crate) async fn run_app_agent_stream(
     channel_config: AgUiChannelConfig,
     tag_prefix: &str,
     extra_routing_tags: Vec<String>,
-    runtime_user: Option<everruns_provider::typed_id::VirtualUserId>,
+    runtime_user: Option<everruns_contracts::typed_id::VirtualUserId>,
     request: Request,
     request_id: Option<String>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {

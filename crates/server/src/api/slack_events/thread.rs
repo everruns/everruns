@@ -180,7 +180,7 @@ pub(crate) async fn inject_thread_context(
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     exclude_ts: Option<&str>,
 ) -> anyhow::Result<()> {
     let backfill = fetch_thread_replies(bot_token, channel, thread_ts).await;
@@ -201,7 +201,7 @@ pub(crate) async fn inject_thread_context(
             "Thread backfill truncated; telling the agent"
         );
         let message = everruns_core::RuntimeMessage {
-            id: everruns_provider::typed_id::MessageId::new(),
+            id: everruns_contracts::typed_id::MessageId::new(),
             role: everruns_core::RuntimeMessageRole::System,
             content: vec![everruns_core::ContentPart::text(&notice)],
             phase: None,
@@ -247,7 +247,7 @@ pub(crate) async fn inject_thread_context(
         };
 
         let message = everruns_core::RuntimeMessage {
-            id: everruns_provider::typed_id::MessageId::new(),
+            id: everruns_contracts::typed_id::MessageId::new(),
             role: everruns_core::RuntimeMessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
@@ -321,7 +321,7 @@ pub(crate) fn truncation_notice(backfill: &ThreadBackfill) -> String {
 /// the two paths cannot drift (EVE-977).
 pub(crate) async fn load_thread_context(
     state: &SlackState,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
 ) -> Option<ThreadContext> {
     match state
         .db
@@ -343,7 +343,7 @@ pub(crate) async fn load_thread_context(
 /// Persist the session's `ThreadContext`, replacing any previous record.
 pub(crate) async fn save_thread_context(
     state: &SlackState,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     context: &ThreadContext,
 ) -> anyhow::Result<()> {
     let value = everruns_core::channel::encode_thread_context(context)?;
@@ -415,13 +415,13 @@ pub(crate) fn event_belongs_to_input_message(
 pub(crate) async fn wait_and_post_response(
     db: &StorageBackend,
     session_id: uuid::Uuid,
-    input_message_id: everruns_provider::typed_id::MessageId,
+    input_message_id: everruns_contracts::typed_id::MessageId,
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
     reply_mode: SlackReplyMode,
 ) -> anyhow::Result<()> {
-    use everruns_provider::typed_id::{EventId, SessionId};
+    use everruns_contracts::typed_id::{EventId, SessionId};
 
     let session_id_typed = SessionId::from_uuid(session_id);
     let input_msg_str = input_message_id.to_string();

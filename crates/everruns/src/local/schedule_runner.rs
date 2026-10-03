@@ -113,7 +113,7 @@ impl LocalScheduleRunner {
         })
     }
 
-    async fn poll_once(&self, runner_id: &str) -> everruns_provider::error::Result<()> {
+    async fn poll_once(&self, runner_id: &str) -> everruns_contracts::error::Result<()> {
         let routable_session_ids = self.session_runner.routable_session_ids().await?;
         let claimed = self.store.claim_due(
             runner_id,
@@ -191,7 +191,7 @@ impl LocalScheduleRunner {
         &self,
         claim: &super::schedule_store::ClaimedSchedule,
         runner_id: &str,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let schedule = &claim.schedule;
         let delivery = self
             .session_runner
@@ -206,7 +206,7 @@ impl LocalScheduleRunner {
                 result = &mut delivery => return result,
                 _ = heartbeat.tick() => {
                     if !self.store.renew_claim(claim, runner_id, Utc::now())? {
-                        return Err(everruns_provider::error::AgentLoopError::store(format!(
+                        return Err(everruns_contracts::error::AgentLoopError::store(format!(
                             "local schedule claim {} was lost during delivery",
                             claim.claim_id
                         )));

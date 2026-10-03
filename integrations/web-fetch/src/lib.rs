@@ -22,15 +22,15 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use base64::Engine as _;
+#[cfg(test)]
+use everruns_contracts::error;
+use everruns_contracts::{tool_types, typed_id};
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
 };
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::*;
-#[cfg(test)]
-use everruns_provider::error;
-use everruns_provider::{tool_types, typed_id};
 use fetchkit::file_saver::{FileSaveError, FileSaver, SaveResult};
 use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
 use serde_json::Value;
@@ -59,9 +59,9 @@ impl WebFetch {
     }
 }
 
-impl everruns_capability::IntoCapability for WebFetch {
-    fn into_capability(self) -> everruns_capability::CapabilitySpec {
-        everruns_capability::CapabilityRef::new(WEB_FETCH_CAPABILITY_ID)
+impl everruns_contracts::IntoCapability for WebFetch {
+    fn into_capability(self) -> everruns_contracts::CapabilitySpec {
+        everruns_contracts::CapabilityRef::new(WEB_FETCH_CAPABILITY_ID)
             .config(serde_json::json!({
                 "enable_file_download": self.enable_file_download,
             }))

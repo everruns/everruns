@@ -21,7 +21,7 @@ mira-eval = "0.4"
 # decision path, not a reimplementation of it.
 everruns-builtins = { path = "../../crates/builtins" }
 everruns-core = { path = "../../crates/core" }
-everruns-provider = { path = "../../crates/provider" }
+everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["http"] }
 # Both engines' concrete services live here.
 everruns-host = { path = "../../crates/host", features = ["utility-llm"] }
 # The decisions moved here with the vendor client it uses.

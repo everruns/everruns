@@ -162,11 +162,11 @@ fn env_value(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::{DecisionQuestion, DecisionRequest, DisabledUtilityLlmService};
-    use everruns_provider::driver_registry::{
+    use everruns_contracts::driver_registry::{
         LlmCompletionMetadata, LlmResponse, LlmResponseStream,
     };
-    use everruns_provider::error::Result;
+    use everruns_contracts::error::Result;
+    use everruns_core::{DecisionQuestion, DecisionRequest, DisabledUtilityLlmService};
 
     /// A utility model that answers yes to everything.
     struct YesModel;

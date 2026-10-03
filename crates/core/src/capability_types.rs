@@ -23,12 +23,12 @@ use std::sync::Arc;
 
 /// Per-agent capability configuration — the persisted attachment row shape.
 ///
-/// This is the neutral [`CapabilityRef`](everruns_capability::CapabilityRef)
+/// This is the neutral [`CapabilityRef`](everruns_contracts::CapabilityRef)
 /// under its historical product name:
 /// one semantic model for "capability id + per-agent JSON config" shared by
 /// the Framework, persisted attachments, and worker resolution. It serializes
 /// as `{"ref": "<id>", "config": {…}}`.
-pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+pub(crate) use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
 // OpenAPI schema surrogate for `AgentCapabilityConfig`.
 //

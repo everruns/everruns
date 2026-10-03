@@ -9,6 +9,8 @@ pub use std::sync::{Arc, Mutex};
 pub use std::time::Duration;
 
 pub use async_trait::async_trait;
+pub use everruns_contracts::tool_types::{ClientSideTool, ToolCall, ToolDefinition};
+pub use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 pub use everruns_core::agents_api_store::{
     AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, InMemoryAgentsApiStore, OutboxState,
     ParkReason, ToolResultState,
@@ -23,8 +25,6 @@ pub use everruns_host::openai_agents_api::durable::{
     PARKED_CALL_EXPIRED,
 };
 pub use everruns_host::openai_agents_api::{AgentsApiClient, AgentsApiError};
-pub use everruns_provider::tool_types::{ClientSideTool, ToolCall, ToolDefinition};
-pub use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 pub use serde_json::{Value, json};
 pub use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate, matchers::any};
 
@@ -1033,17 +1033,17 @@ impl AgentsApiStore for CrashingStore {
     async fn acquire(
         &self,
         lease: AgentsApiLease,
-    ) -> everruns_provider::error::Result<AgentsApiCheckpoint> {
+    ) -> everruns_contracts::error::Result<AgentsApiCheckpoint> {
         self.inner.acquire(lease).await
     }
-    async fn renew(&self, lease: AgentsApiLease) -> everruns_provider::error::Result<()> {
+    async fn renew(&self, lease: AgentsApiLease) -> everruns_contracts::error::Result<()> {
         self.inner.renew(lease).await
     }
     async fn save(
         &self,
         lease: AgentsApiLease,
         checkpoint: &AgentsApiCheckpoint,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let crashed = {
             let mut crash = self.crash.lock().unwrap();
             let hit = crash.as_ref().is_some_and(|point| point(checkpoint));
@@ -1053,13 +1053,13 @@ impl AgentsApiStore for CrashingStore {
             hit
         };
         if crashed {
-            return Err(everruns_provider::error::AgentLoopError::store(
+            return Err(everruns_contracts::error::AgentLoopError::store(
                 "worker crashed before save",
             ));
         }
         self.inner.save(lease, checkpoint).await
     }
-    async fn release(&self, lease: AgentsApiLease) -> everruns_provider::error::Result<()> {
+    async fn release(&self, lease: AgentsApiLease) -> everruns_contracts::error::Result<()> {
         self.inner.release(lease).await
     }
 }

@@ -10,7 +10,7 @@
 //! the process environment; only `EnvCredentialProvider`, constructed by
 //! standalone/CLI/dev entrypoints, pairs a declaration with a real lookup.
 
-use everruns_provider::provider::DriverId;
+use everruns_contracts::provider::DriverId;
 use everruns_worker::adapters::create_driver_registry;
 
 /// The published table, in `docs/framework/models-and-providers.md` credentials table order.

@@ -3,12 +3,12 @@
 use super::support::seed_archival_app;
 use crate::test_harness;
 use axum::http::StatusCode;
+use everruns_contracts::typed_id::AgentId;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_durable::UpdateField;
 use everruns_platform::Agent;
 use everruns_platform::Harness;
 use everruns_platform::Session;
-use everruns_provider::typed_id::AgentId;
 use everruns_server::storage::models::UpdateOrganizationSettings;
 use serde_json::{Value, json};
 use test_harness::TestServer;

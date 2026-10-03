@@ -12,6 +12,10 @@
 //! so assertions are deterministic and do not depend on wall-clock timing.
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::tool_types::{ToolCall, ToolHints};
 use everruns_core::capabilities::{Capability, CapabilityStatus};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{AgentDefinition, CapabilityRegistry, ExecutionSession};
@@ -19,10 +23,6 @@ use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_llmsim::LlmSimConfig;
 use everruns_llmsim::LlmSimRuntimeExt;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::tool_types::{ToolCall, ToolHints};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -151,14 +151,14 @@ fn platform_with_recording(log: Arc<Mutex<SchedLog>>) -> HostComposition {
     HostComposition::new(capabilities, DriverRegistry::new())
 }
 
-fn harness(harness_id: everruns_provider::typed_id::HarnessId) -> everruns_host::SeededHarness {
+fn harness(harness_id: everruns_contracts::typed_id::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("sched", "You are a scheduler test assistant.")
         .id(harness_id)
         .capability(TEST_CAPABILITY_ID)
         .build()
 }
 
-fn agent(agent_id: everruns_provider::typed_id::AgentId) -> AgentDefinition {
+fn agent(agent_id: everruns_contracts::typed_id::AgentId) -> AgentDefinition {
     AgentBuilder::new("sched-agent", "Use the tools provided.")
         .id(agent_id)
         .display_name("Scheduler Agent")
@@ -167,9 +167,9 @@ fn agent(agent_id: everruns_provider::typed_id::AgentId) -> AgentDefinition {
 }
 
 fn session(
-    session_id: everruns_provider::typed_id::SessionId,
-    harness_id: everruns_provider::typed_id::HarnessId,
-    agent_id: everruns_provider::typed_id::AgentId,
+    session_id: everruns_contracts::typed_id::SessionId,
+    harness_id: everruns_contracts::typed_id::HarnessId,
+    agent_id: everruns_contracts::typed_id::AgentId,
 ) -> ExecutionSession {
     SessionBuilder::new(harness_id)
         .id(session_id)
@@ -193,9 +193,9 @@ async fn runtime_emitting_batch(
     batch: Vec<ToolCall>,
 ) -> (everruns_host::InProcessRuntime, Arc<Mutex<SchedLog>>) {
     let log = Arc::new(Mutex::new(SchedLog::default()));
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(seed);
-    let agent_id = everruns_provider::typed_id::AgentId::from_seed(seed);
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(seed);
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(seed);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(seed);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(seed);
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform_with_recording(log.clone()))
@@ -219,7 +219,7 @@ async fn same_class_tool_calls_serialize_through_runtime() {
     // Two tools sharing concurrency_class "workspace", emitted in one batch.
     let batch = vec![call("c1", "ws_write_a"), call("c2", "ws_write_b")];
     let (runtime, log) = runtime_emitting_batch(61, batch).await;
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(61);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(61);
 
     let result = runtime
         .run_text_turn(session_id, "Write to the workspace twice.")
@@ -249,7 +249,7 @@ async fn classless_tool_calls_run_in_parallel_through_runtime() {
         call("c3", "free_read_c"),
     ];
     let (runtime, log) = runtime_emitting_batch(62, batch).await;
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(62);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(62);
 
     let result = runtime
         .run_text_turn(session_id, "Read three things at once.")
@@ -275,7 +275,7 @@ async fn mixed_batch_serializes_class_and_parallelizes_rest_through_runtime() {
         call("c5", "free_read_c"),
     ];
     let (runtime, log) = runtime_emitting_batch(63, batch).await;
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(63);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(63);
 
     let result = runtime
         .run_text_turn(session_id, "Do a mix of writes and reads.")

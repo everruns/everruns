@@ -4,11 +4,11 @@
 // allowing scheduling tools to create/cancel/list schedules.
 
 use crate::kernel_imports::{
-    everruns_provider::error::AgentLoopError,
-    everruns_provider::error::Result,
-    everruns_provider::error::StoreResultExt,
-    everruns_provider::typed_id::ScheduleId,
-    everruns_provider::typed_id::SessionId,
+    contracts::error::AgentLoopError,
+    contracts::error::Result,
+    contracts::error::StoreResultExt,
+    contracts::typed_id::ScheduleId,
+    contracts::typed_id::SessionId,
     session_schedule::{
         DEFAULT_MAX_SCHEDULES_PER_ORG, DEFAULT_MIN_INTERVAL_SECONDS,
         MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleLimitError, SessionSchedule,

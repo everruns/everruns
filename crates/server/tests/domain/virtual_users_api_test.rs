@@ -151,7 +151,7 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
             "GET",
             &format!(
                 "/v1/virtual-users/{}",
-                everruns_provider::typed_id::VirtualUserId::new()
+                everruns_contracts::typed_id::VirtualUserId::new()
             ),
             Value::Null
         )
@@ -203,7 +203,7 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
             "GET",
             &format!(
                 "/v1/virtual-users/{}/connections",
-                everruns_provider::typed_id::VirtualUserId::from_uuid(Uuid::new_v4())
+                everruns_contracts::typed_id::VirtualUserId::from_uuid(Uuid::new_v4())
             ),
             Value::Null
         )

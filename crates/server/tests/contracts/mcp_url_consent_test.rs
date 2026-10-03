@@ -15,7 +15,7 @@ use axum::http::StatusCode;
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_mcp::{StoredConsent, consent_storage_key};
 use everruns_platform::{Agent, Session};
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};

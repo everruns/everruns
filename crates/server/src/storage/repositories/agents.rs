@@ -4,8 +4,8 @@ use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
-use everruns_provider::typed_id::AgentId;
-use everruns_provider::typed_id::VirtualUserId;
+use everruns_contracts::typed_id::AgentId;
+use everruns_contracts::typed_id::VirtualUserId;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -660,7 +660,7 @@ impl Database {
     pub async fn get_agent_version(
         &self,
         org_id: i64,
-        id: everruns_provider::typed_id::AgentVersionId,
+        id: everruns_contracts::typed_id::AgentVersionId,
     ) -> Result<Option<AgentVersionRow>> {
         Ok(sqlx::query_as::<_, AgentVersionRow>(
             r#"

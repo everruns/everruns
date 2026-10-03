@@ -5,9 +5,9 @@
 use crate::domains::common::CommandError;
 use crate::max_iterations;
 use crate::storage::StorageBackend;
+use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId};
 use everruns_core::{InitialFile, TokenUsage, is_declarative_capability};
 use everruns_platform::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
-use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId};
 use uuid::Uuid;
 
 use super::types::AgentRow;
@@ -17,7 +17,7 @@ use crate::storage::models::AgentVersionRow;
 // Row mapping
 // ============================================================================
 
-pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_capability::CapabilityRef>) -> Agent {
+pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::CapabilityRef>) -> Agent {
     let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
         // Actual and estimated cost totals are tracked separately; the aggregate
         // carries each so consumers can prefer actual and reconcile drift.
@@ -272,11 +272,11 @@ pub async fn get_capabilities(
     db: &StorageBackend,
     org_id: i64,
     agent_uuid: Uuid,
-) -> anyhow::Result<Vec<everruns_capability::CapabilityRef>> {
+) -> anyhow::Result<Vec<everruns_contracts::CapabilityRef>> {
     let rows = db.get_agent_capabilities(agent_uuid).await?;
     let capabilities = rows
         .into_iter()
-        .map(|row| everruns_capability::CapabilityRef::with_config(row.capability_id, row.config))
+        .map(|row| everruns_contracts::CapabilityRef::with_config(row.capability_id, row.config))
         .collect();
     crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
         db,
@@ -489,8 +489,8 @@ pub async fn find_unique_name(
 pub async fn validate_model_id(
     db: &StorageBackend,
     org_id: i64,
-    model_id: Option<everruns_provider::typed_id::ModelId>,
-) -> anyhow::Result<Option<everruns_provider::typed_id::ModelId>> {
+    model_id: Option<everruns_contracts::typed_id::ModelId>,
+) -> anyhow::Result<Option<everruns_contracts::typed_id::ModelId>> {
     let Some(model_id) = model_id else {
         return Ok(None);
     };
@@ -502,9 +502,9 @@ pub async fn validate_model_id(
 
 /// Ensure file_system capability is present when initial_files are provided.
 pub fn ensure_file_system_capability(
-    mut caps: Vec<everruns_capability::CapabilityRef>,
+    mut caps: Vec<everruns_contracts::CapabilityRef>,
     has_files: bool,
-) -> Vec<everruns_capability::CapabilityRef> {
+) -> Vec<everruns_contracts::CapabilityRef> {
     if has_files
         && !caps
             .iter()
@@ -512,7 +512,7 @@ pub fn ensure_file_system_capability(
     {
         caps.insert(
             0,
-            everruns_capability::CapabilityRef::new("session_file_system"),
+            everruns_contracts::CapabilityRef::new("session_file_system"),
         );
     }
     caps
@@ -520,7 +520,7 @@ pub fn ensure_file_system_capability(
 
 /// Build capability tuples for DB storage.
 pub fn cap_tuples(
-    caps: &[everruns_capability::CapabilityRef],
+    caps: &[everruns_contracts::CapabilityRef],
 ) -> Vec<(String, i32, serde_json::Value)> {
     caps.iter()
         .enumerate()

@@ -1,7 +1,7 @@
 //! Verified runtime subjects; management identity is never a credential subject.
 use super::{StorageBackend, models::*};
 use anyhow::{Result, bail};
-use everruns_provider::typed_id::{SessionId, VirtualUserId};
+use everruns_contracts::typed_id::{SessionId, VirtualUserId};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]

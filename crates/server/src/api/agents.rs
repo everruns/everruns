@@ -21,6 +21,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
+use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use everruns_core::{
     Caller, DeploymentGrade, InitialFile, OrgRole, PermissionResolver, ResourceConfigResponse,
     ScopedMcpServers, evaluate_policies_with,
@@ -28,7 +29,6 @@ use everruns_core::{
 use everruns_host::HostComposition;
 use everruns_platform::Agent;
 use everruns_platform::BuiltInHarnessRole;
-use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 
 use super::common::{
     ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, ResourceStatsResponse, UrlBuilder,
@@ -63,13 +63,13 @@ enum AgentFileCapability {
 }
 
 impl AgentFileCapability {
-    fn to_agent_capability_config(&self) -> everruns_capability::CapabilityRef {
+    fn to_agent_capability_config(&self) -> everruns_contracts::CapabilityRef {
         match self {
-            AgentFileCapability::Simple(id) => everruns_capability::CapabilityRef::new(id.clone()),
+            AgentFileCapability::Simple(id) => everruns_contracts::CapabilityRef::new(id.clone()),
             AgentFileCapability::WithConfig {
                 capability_ref,
                 config,
-            } => everruns_capability::CapabilityRef::with_config(
+            } => everruns_contracts::CapabilityRef::with_config(
                 capability_ref.clone(),
                 config.clone(),
             ),
@@ -352,7 +352,7 @@ pub fn routes(state: AppState) -> Router {
 /// caller does not have at least Admin role.
 pub(crate) fn require_admin_for_high_risk(
     org: &ResolvedOrg,
-    caps: &[everruns_capability::CapabilityRef],
+    caps: &[everruns_contracts::CapabilityRef],
     capability_service: &CapabilityService,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if caps.is_empty() || org.role.has_permission(OrgRole::Admin) {
@@ -1058,12 +1058,12 @@ async fn import_from_example(
         .into_response(StatusCode::BAD_REQUEST));
     }
 
-    let capabilities: Vec<everruns_capability::CapabilityRef> = seed
+    let capabilities: Vec<everruns_contracts::CapabilityRef> = seed
         .capabilities
         .iter()
         .map(|cap| {
             let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
-            everruns_capability::CapabilityRef::with_config(cap.id.to_string(), config)
+            everruns_contracts::CapabilityRef::with_config(cap.id.to_string(), config)
         })
         .collect();
 

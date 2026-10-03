@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::{AppState, mcp_oauth_redirect_uri, parse_and_validate_url, resource_origin};
 use crate::api::common::{sanitized_bad_gateway, sanitized_internal_error};
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerSettings};
-use crate::kernel_imports::everruns_provider::url_validation::validate_safe_url;
+use crate::kernel_imports::contracts::url_validation::validate_safe_url;
 use crate::oauth_client::egress_oauth_json;
 
 #[derive(Debug, Deserialize)]

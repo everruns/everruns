@@ -3,7 +3,7 @@
 use super::session_row_fixture::base_session_row;
 use crate::test_harness;
 use everruns_durable::UpdateField;
-use everruns_provider::typed_id::{AgentId, PrincipalId};
+use everruns_contracts::typed_id::{AgentId, PrincipalId};
 use everruns_server::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use everruns_server::{
     org_init,
@@ -161,7 +161,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
     let trigger = db
         .create_agent_trigger(CreateAgentTriggerRow {
             org_id,
-            id: everruns_provider::typed_id::TriggerId::new(),
+            id: everruns_contracts::typed_id::TriggerId::new(),
             agent_id: agent.id,
             trigger_type: "schedule".to_string(),
             ingress_id: None,
@@ -232,7 +232,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             .create_memory(
                 org_id,
                 CreateMemoryRow {
-                    public_id: everruns_provider::typed_id::MemoryId::new().to_string(),
+                    public_id: everruns_contracts::typed_id::MemoryId::new().to_string(),
                     name: "platform-chat-shared".to_string(),
                     description: None,
                     scope: "org".to_string(),

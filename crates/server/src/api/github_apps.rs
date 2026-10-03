@@ -40,7 +40,7 @@ use crate::github_apps::{
     AppCredentials, GitHubAppApi, ManifestInput, SetupState, build_manifest, default_app_name,
     install_url, manifest_form_action,
 };
-use crate::kernel_imports::{Caller, everruns_provider::typed_id::VirtualUserId};
+use crate::kernel_imports::{Caller, contracts::typed_id::VirtualUserId};
 use crate::storage::github_app_rows::{CreateGitHubAppRow, GitHubAppRow};
 use crate::storage::models::CreateVirtualUserConnectionRow;
 use crate::storage::{EncryptionService, StorageBackend};
@@ -1073,8 +1073,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let public_id =
-            crate::kernel_imports::everruns_provider::typed_id::AgentId::new().to_string();
+        let public_id = crate::kernel_imports::contracts::typed_id::AgentId::new().to_string();
         db.create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {

@@ -1,5 +1,5 @@
 use crate::domains::common::CommandError;
-use crate::kernel_imports::{SessionResourceEntry, everruns_provider::typed_id::SessionId};
+use crate::kernel_imports::{SessionResourceEntry, contracts::typed_id::SessionId};
 use crate::storage::StorageBackend;
 use crate::storage::session_resource_store::DbSessionResourceRegistry;
 use everruns_core::session_services::SessionResourceRegistry;

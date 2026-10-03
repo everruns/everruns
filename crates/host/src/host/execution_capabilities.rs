@@ -8,14 +8,14 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     agent_id: Option<AgentId>,
     locale: Option<String>,
     blueprint_id: Option<&str>,
-) -> everruns_provider::error::Result<RuntimeExecutionCapabilities> {
+) -> everruns_contracts::error::Result<RuntimeExecutionCapabilities> {
     let capability_registry = adapter.capability_registry();
     if let Some(blueprint_id) = blueprint_id {
         let mut registry = ToolRegistry::with_defaults();
         #[cfg(feature = "builtins")]
         everruns_builtins::register_default_tools(&mut registry);
         let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
-            everruns_provider::error::AgentLoopError::config(format!(
+            everruns_contracts::error::AgentLoopError::config(format!(
                 "Blueprint \"{blueprint_id}\" not found in registry"
             ))
         })?;
@@ -37,19 +37,19 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         .harness_store(org_id)
         .get_harness(harness_id)
         .await?
-        .ok_or_else(|| everruns_provider::error::AgentLoopError::harness_not_found(harness_id))?;
+        .ok_or_else(|| everruns_contracts::error::AgentLoopError::harness_not_found(harness_id))?;
 
     let session = adapter
         .session_store(org_id)
         .get_session(session_id)
         .await?
-        .ok_or_else(|| everruns_provider::error::AgentLoopError::session_not_found(session_id))?;
+        .ok_or_else(|| everruns_contracts::error::AgentLoopError::session_not_found(session_id))?;
 
     let agent_store = adapter.agent_store(org_id);
     let agent =
         match agent_id {
             Some(agent_id) => Some(agent_store.get_agent(agent_id).await?.ok_or_else(|| {
-                everruns_provider::error::AgentLoopError::agent_not_found(agent_id)
+                everruns_contracts::error::AgentLoopError::agent_not_found(agent_id)
             })?),
             None => None,
         };

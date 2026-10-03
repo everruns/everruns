@@ -9,8 +9,8 @@
 //! Ignored by default (requires network + `FIREWORKS_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-drivers --features fireworks --test fireworks_chat_live -- --ignored --nocapture`
 
+use everruns_contracts::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
 use everruns_drivers::fireworks::provider;
-use everruns_provider::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
 use futures::StreamExt;
 
 const LIVE_MODEL: &str = "accounts/fireworks/models/gpt-oss-120b";

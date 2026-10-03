@@ -91,13 +91,13 @@ pub fn org_public_id_from_internal(org_id: i64) -> String {
 }
 
 /// Recover the internal `org_id` from an
-/// [`OrgId`](everruns_provider::typed_id::OrgId) derived via
+/// [`OrgId`](everruns_contracts::typed_id::OrgId) derived via
 /// [`org_public_id_from_internal`].
 ///
 /// `org_public_id_from_internal` encodes the internal `i64` as the low bits of
 /// the public id's 32-hex payload, which round-trips through the `OrgId` UUID.
 /// Used at host boundaries where a public
-/// [`OrgId`](everruns_provider::typed_id::OrgId) must be projected back to
+/// [`OrgId`](everruns_contracts::typed_id::OrgId) must be projected back to
 /// the deployment's internal organization key.
 pub fn org_internal_id_from_public(org_id: crate::typed_id::OrgId) -> i64 {
     org_id.uuid().as_u128() as i64

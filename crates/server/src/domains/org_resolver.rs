@@ -18,7 +18,7 @@ use std::pin::Pin;
 
 use crate::kernel_imports::{
     CapabilityId,
-    everruns_provider::typed_id::{McpServerId, SessionId, SkillId},
+    contracts::typed_id::{McpServerId, SessionId, SkillId},
 };
 use anyhow::Result;
 use everruns_core::capabilities::SkillCapabilityIdExt;
@@ -252,7 +252,7 @@ mod tests {
             starters: serde_json::json!([]),
             system_prompt: String::new(),
             default_model_id: None,
-            harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+            harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             tags: vec![],
             initial_files: serde_json::json!([]),
             tools: serde_json::json!([]),

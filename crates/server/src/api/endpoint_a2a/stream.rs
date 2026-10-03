@@ -185,8 +185,8 @@ mod tests {
 
     #[test]
     fn translate_turn_completed_emits_terminal_status_update() {
+        use everruns_contracts::typed_id::TurnId;
         use everruns_core::events::TurnCompletedData;
-        use everruns_provider::typed_id::TurnId;
         let data = EventData::TurnCompleted(TurnCompletedData {
             turn_id: TurnId::new(),
             iterations: 1,
@@ -210,8 +210,8 @@ mod tests {
 
     #[test]
     fn translate_turn_failed_emits_terminal_status_update() {
+        use everruns_contracts::typed_id::TurnId;
         use everruns_core::events::TurnFailedData;
-        use everruns_provider::typed_id::TurnId;
         let data = EventData::TurnFailed(TurnFailedData {
             turn_id: TurnId::new(),
             error: "boom".into(),
@@ -243,8 +243,8 @@ mod tests {
 
     #[test]
     fn translate_unrelated_event_returns_none() {
+        use everruns_contracts::typed_id::{MessageId, TurnId};
         use everruns_core::events::OutputMessageStartedData;
-        use everruns_provider::typed_id::{MessageId, TurnId};
         let data = EventData::OutputMessageStarted(OutputMessageStartedData {
             reasoning_state: None,
             turn_id: TurnId::new(),
