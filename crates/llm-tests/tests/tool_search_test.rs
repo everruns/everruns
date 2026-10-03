@@ -15,6 +15,9 @@
 //
 // Required env vars (tests skip gracefully if missing):
 //   OPENAI_API_KEY / ANTHROPIC_API_KEY (per case)
+//
+// Out-of-quota/credits turns skip via `skip_if_quota!` and are reported as unverified
+// cells, matching the other live-matrix targets; an exhausted account is not a regression.
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
@@ -116,6 +119,7 @@ async fn test_openai_tool_search_with_many_capabilities(#[case] config: Provider
 
         let result = runner.run_turn("What time is it right now?").await.unwrap();
 
+        skip_if_quota!(result, cell = config);
         assert!(result.success, "Turn should succeed: {:?}", result.error);
         if result.tool_calls_count > 0 && generation_called_tool(&runner, "get_current_time").await
         {
@@ -166,6 +170,7 @@ async fn test_openai_tool_search_low_threshold(#[case] config: ProviderModelConf
 
         let result = runner.run_turn("What is 7 + 3?").await.unwrap();
 
+        skip_if_quota!(result, cell = config);
         assert!(result.success, "Turn should succeed: {:?}", result.error);
         assert_hosted_tool_search_was_enabled(&runner).await;
         if result.tool_calls_count > 0 && generation_called_tool(&runner, "add").await {
@@ -217,6 +222,7 @@ async fn test_gpt55_tool_search_file_operations_namespace() {
             .run_turn("List the files in the current directory using list_directory.")
             .await
             .unwrap();
+        skip_if_quota!(result, cell = OPENAI_GPT55);
         assert!(
             result.success,
             "hosted search over File Operations must not fail: {:?}",
@@ -279,6 +285,7 @@ async fn test_gpt55_tool_search_low_threshold() {
 
     let result = runner.run_turn("What is 7 + 3?").await.unwrap();
 
+    skip_if_quota!(result, cell = OPENAI_GPT55);
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -344,6 +351,7 @@ async fn test_openai_auto_tool_search_resolves_to_hosted(#[case] config: Provide
             .unwrap();
 
         let result = runner.run_turn("What time is it right now?").await.unwrap();
+        skip_if_quota!(result, cell = config);
         assert!(result.success, "Turn should succeed: {:?}", result.error);
 
         let generations = runner.events_by_type(LLM_GENERATION).await;
@@ -411,6 +419,7 @@ async fn test_gpt55_auto_tool_search_resolves_to_hosted() {
 
     let result = runner.run_turn("What is 7 + 3?").await.unwrap();
 
+    skip_if_quota!(result, cell = OPENAI_GPT55);
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -466,6 +475,7 @@ async fn test_anthropic_generic_tool_search() {
 
     let result = runner.run_turn("What is 21 + 21?").await.unwrap();
 
+    skip_if_quota!(result, cell = ANTHROPIC_HAIKU);
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -497,6 +507,7 @@ async fn test_anthropic_generic_tool_search_low_threshold() {
 
     let result = runner.run_turn("What is 7 + 3?").await.unwrap();
 
+    skip_if_quota!(result, cell = ANTHROPIC_HAIKU);
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -543,6 +554,7 @@ async fn test_anthropic_claude_tool_search_low_threshold() {
 
         let result = runner.run_turn("What is 7 + 3?").await.unwrap();
 
+        skip_if_quota!(result, cell = ANTHROPIC_HAIKU);
         assert!(result.success, "Turn should succeed: {:?}", result.error);
         assert_hosted_tool_search_was_enabled(&runner).await;
 
@@ -608,6 +620,7 @@ async fn test_anthropic_auto_tool_search_resolves_to_hosted(#[case] config: Prov
 
     let result = runner.run_turn("What is 7 + 3?").await.unwrap();
 
+    skip_if_quota!(result, cell = config);
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -664,6 +677,7 @@ async fn test_anthropic_opus_hosted_search_calls_bash_contract(
         .await
         .unwrap();
 
+    skip_if_quota!(result, cell = config);
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert_hosted_tool_search_was_enabled(&runner).await;
 
@@ -713,6 +727,7 @@ async fn test_gpt54_tool_search_below_threshold_fallback() {
 
     let result = runner.run_turn("What time is it?").await.unwrap();
 
+    skip_if_quota!(result, cell = OPENAI_GPT54);
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
