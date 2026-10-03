@@ -68,7 +68,7 @@ async fn exercise_install(server: test_harness::TestServer) {
     let agent: Value = server
         .post(
             "/v1/agents",
-            json!({"name":"slack-setup", "system_prompt":"Test"}),
+            json!({"name":format!("slack-setup-{}", uuid::Uuid::now_v7().simple()), "system_prompt":"Test"}),
         )
         .await
         .assert_status(axum::http::StatusCode::CREATED)
