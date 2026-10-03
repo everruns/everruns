@@ -6,11 +6,11 @@
 //! transport, plus which lookup the worker chose.
 
 use super::*;
+use crate::core::McpServerActsAs;
+use crate::core::connection_services::UserConnectionResolver;
 use crate::worker_adapters::WorkerAdapters;
 use everruns_contracts::error::Result as CoreResult;
 use everruns_contracts::typed_id::SessionId as CoreSessionId;
-use crate::core::McpServerActsAs;
-use crate::core::connection_services::UserConnectionResolver;
 use std::collections::HashMap;
 use std::sync::Mutex as StdMutex;
 
@@ -702,9 +702,7 @@ impl WorkerAdapters for StubAdapters {
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
         self.resolver.clone()
     }
-    fn leased_resource_store(
-        &self,
-    ) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
+    fn leased_resource_store(&self) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
         unimplemented!()
     }
     fn schedule_store(
