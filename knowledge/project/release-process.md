@@ -131,7 +131,13 @@ version choice and keep their guards:
   [#3648](https://github.com/everruns/everruns/pull/3648), and a bigger publish
   set makes it costlier, not cheaper. Confirm a new package name is publishable
   with the current `CARGO_REGISTRY_TOKEN` **before** merging the change that adds
-  it; until then keep it `publish = false`.
+  it; until then keep it `publish = false`. The publish set is listed in
+  `.github/crates-publish-set.txt`, and `scripts/release-preflight.py` fails when
+  a package drops `publish = false` without joining that list, so a new name is
+  always a reviewed edit. It also fails when a never-published name is held by
+  another crates.io owner, or when one release would create more names than the
+  crates.io new-crate burst (5) allows. It cannot see the token's scopes, so it
+  prints the new names for the person merging to confirm.
 - A crate **joining the publish set between releases**. Crate Release plans by
   crates.io presence, so a crate flipped off `publish = false` mid-cycle looks
   unpublished at the current platform version and is dispatched at once. It
@@ -243,6 +249,24 @@ touching `.github/workflows/` merges. Pushing all tags right after the release
 commit lands means a re-run only reuses them, and a refused push fails before
 anything publishes.
 
+**Release preflight checks the number before it is spent.** 0.34.0 and 0.34.1
+were each burnt by a cascade that failed part-way, and a version any crate
+already holds can only be finished by the next one. `scripts/release-preflight.py`
+runs at three points:
+
+- every PR (CI **Lockfile** job, offline): the publish-set list, and that
+  `apps/ui/package.json` and the newest `CHANGELOG.md` section carry the
+  workspace version;
+- release PRs (`.github/workflows/release-preflight.yml`, when
+  `workspace.package.version` changes): the new version is higher than anything
+  the publish set has on crates.io and no crate already holds it, new names are
+  free, and every published crate packages **with verification** in one
+  `cargo package` invocation, which builds each crate against its packaged
+  siblings the way Publish Crate will;
+- after every Crate Release run and daily (`--audit`, or `just release-status`):
+  every crate in the publish set has the workspace version on crates.io. Before
+  this nothing on `main` reported a crate a halted cascade left a version behind.
+
 **Publish Crate** validates the selected manifest version, derives internal pins
 from Cargo metadata, and publishes only that package. Publishing cannot be
 completed from a sandbox whose egress policy blocks tag pushes — the CI workflow
@@ -353,6 +377,7 @@ When a Dockerfile change is the *point* of a PR, the workflow runs and validates
 - **git log**: Lists commits since last tag for changelog generation
 - **GitHub Actions**: Auto-creates tag and release on merge
 - **`/prepare-release` command**: Agent-invocable command for release preparation
+- **`just release-preflight` / `just release-status`**: crates.io checks before a release merges, and what a cascade left unpublished after
 
 ## Non-Requirements
 

@@ -184,6 +184,8 @@ jobs:
               - 'scripts/sync-publish-pin-versions.py'
               - 'scripts/check-publish-order.py'
               - '.github/workflows/crate-release.yml'
+              - 'scripts/release-preflight.py'
+              - '.github/crates-publish-set.txt'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -213,6 +215,10 @@ jobs:
               - 'scripts/lib/**'
               - 'scripts/select_publish_run.py'
               - 'scripts/sync-publish-pin-versions.py'
+              # scripts/test-release-preflight.sh drives the preflight and reads
+              # the publish-set list.
+              - 'scripts/release-preflight.py'
+              - '.github/crates-publish-set.txt'
               # scripts/test-publish-crates-order.sh reads the publish workflow
               # and the workspace member manifests it publishes.
               - '.github/workflows/publish-crates.yml'
@@ -447,6 +453,13 @@ jobs:
       # everruns-core it dev-depends on).
       - name: Check the crates.io publish order
         run: python3 scripts/check-publish-order.py
+
+      # A crate joins or leaves crates.io only through a reviewed edit to
+      # .github/crates-publish-set.txt, and package.json plus the newest
+      # CHANGELOG section carry the workspace version. Release PRs get the
+      # crates.io half in release-preflight.yml.
+      - name: Check the publish set and version files
+        run: python3 scripts/release-preflight.py
 
   msrv:
     name: Published Crate MSRV

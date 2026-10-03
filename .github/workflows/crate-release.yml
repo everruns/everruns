@@ -193,6 +193,12 @@ jobs:
         if: steps.plan.outputs.count != '0'
         run: python3 scripts/check-publish-order.py --plan release-plan.json
 
+      # A never-published name someone else holds, or more new names than the
+      # crates.io burst allows, would halt the cascade part-way.
+      - name: Check new crate names against crates.io
+        if: steps.plan.outputs.count != '0'
+        run: python3 scripts/release-preflight.py --names
+
       - name: Tag and publish in dependency order
         if: steps.plan.outputs.count != '0' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
         env:

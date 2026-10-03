@@ -73,6 +73,18 @@ bumping it moves all 41 crates.io packages at once — do not edit crate manifes
 python3 scripts/sync-publish-pin-versions.py --write
 ```
 
+Then check the number against crates.io before spending it:
+
+```bash
+just release-preflight   # python3 scripts/release-preflight.py --registry
+```
+
+It fails if any published crate already holds the version (a halted cascade burnt it, take the
+next), if the version is not above what crates.io has, or if a never-published name is taken or
+too many new names land at once. It lists first-time names: confirm the registry token may
+create each before merging. CI reruns it, plus a verified packaging rehearsal of every published
+crate, on the release PR.
+
 The minor component is the breaking slot at `0.x`, and a release moves it for every crate whether or
 not that crate changed. That is the deliberate trade: a version number no longer claims "this crate
 changed" — `CHANGELOG.md` says that — in exchange for cascades and strandings being unrepresentable.
