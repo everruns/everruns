@@ -14,8 +14,10 @@
 //!
 //! `everruns` is the primary Rust library in the
 //! [Everruns](https://everruns.com) ecosystem. Ordinary applications begin
-//! here; advanced execution hosts use `everruns` plus
-//! [`everruns-host`](https://docs.rs/everruns-host) and focused sibling crates.
+//! here; advanced execution hosts select the `host`, `engine`, `builtins`, MCP
+//! or AG-UI features of [`everruns-core`](https://docs.rs/everruns-core), with
+//! [`everruns-contracts`](https://docs.rs/everruns-contracts) for neutral extension
+//! types and `everruns::batteries` for concrete integration presets.
 //!
 //! # Example
 //!
@@ -266,7 +268,7 @@ pub use providers::openrouter::{OpenRouter, OpenRouterError};
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the
 // low-level host `AgentBuilder` at the facade root. Advanced hosts that need
-// the low-level builders depend on `everruns-host` directly.
+// the low-level builders select `everruns-core/host` and import its host module.
 pub use everruns_core::host::{
     Environment, EnvironmentBuilder, Workspace, WorkspaceBackend, WorkspaceBackendId,
     WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,

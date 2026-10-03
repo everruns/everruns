@@ -1,4 +1,4 @@
-//! An HTTP client for AG-UI agents (feature `client`).
+//! An HTTP client for AG-UI agents (feature `ag-ui-client`).
 //!
 //! [`AgUiClient::run`] POSTs a [`RunAgentInput`] to an agent's URL and
 //! returns an [`EventStream`]: the agent's server-sent events, decoded and

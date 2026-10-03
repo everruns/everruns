@@ -26,7 +26,7 @@ use tracing::{debug, info};
 /// it directly in memory. The type itself is engine-level and has no host,
 /// store, or durable-engine coupling.
 ///
-/// Hosts are expected to serialize this however they want. `everruns-engine`
+/// Hosts are expected to serialize this however they want. `everruns_core::engine`
 /// only defines the fields required to resume the next semantic step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnState {

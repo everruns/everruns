@@ -1,9 +1,9 @@
 //! Framework batteries: default capability and outbound-transport wiring.
 //!
-//! `everruns-core` owns only neutral capability contracts and registry
-//! algorithms. This module is the opt-in host composition boundary for
-//! environment-backed implementations, and the home for the capability
-//! implementations `everruns-host` owns itself.
+//! Default `everruns-core` owns neutral execution contracts and registry
+//! algorithms. Its optional modules provide portable built-ins and injected
+//! host orchestration. This facade module selects concrete integrations and
+//! wires the feature-selected capability and outbound-transport presets.
 //!
 //! A capability lands here when it is an *embedder* capability: something a CLI
 //! host, a CI runner, or an operator's own box opts into, rather than something
@@ -46,9 +46,9 @@ pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> 
 
 /// Register the session-service capabilities an in-process host can serve.
 ///
-/// `session` and `session_storage` moved to the product crate with the rest of
-/// the service-backed families (EVE-886), but the default in-process runtime
-/// supplies both services, so the Framework keeps advertising them. The SQL and
+/// `session` and `session_storage` belong to core’s host session-service seam.
+/// The default in-process runtime supplies both services, so the Framework
+/// keeps advertising them. The SQL and
 /// sandbox capabilities need backends this host does not provide and stay with
 /// product composition.
 fn register_session_service_capabilities(registry: &mut CapabilityRegistry) {

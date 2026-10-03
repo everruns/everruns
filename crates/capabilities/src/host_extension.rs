@@ -19,7 +19,7 @@ use crate::capabilities::{
 /// Factory producing a platform store scoped to one organization and session.
 pub type PlatformStoreFactory = Arc<dyn Fn(i64, SessionId) -> Arc<dyn PlatformStore> + Send + Sync>;
 
-/// Hosted tool policy installed into `everruns-host` by platform compositions.
+/// Hosted tool policy installed into `everruns_core::host` by platform compositions.
 #[derive(Debug, Default)]
 pub struct PlatformToolAugmentor;
 

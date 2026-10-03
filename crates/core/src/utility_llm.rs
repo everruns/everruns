@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 /// Default utility model. A deployment can override it (see
-/// `everruns-host`'s `UTILITY_LLM_MODEL` environment variable); the model is
+/// the facade’s `utility-llm` feature and `UTILITY_LLM_MODEL` variable); the model is
 /// chosen once per deployment and never by a caller, agent, or session.
 pub const UTILITY_LLM_MODEL: &str = "gpt-6-luna";
 

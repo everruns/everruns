@@ -1,7 +1,7 @@
-// Thin host I/O wrapper over the pure turn planner in `everruns-engine`.
+// Thin host I/O wrapper over the pure turn planner in `everruns_core::engine`.
 //
 // Decision (EVE-840, Sans-IO Turn State epic): the authoritative turn-planning
-// brain lives in `everruns-engine` as pure, deterministic functions. This
+// brain lives in `everruns_core::engine` as pure, deterministic functions. This
 // module is the runtime host's I/O shell around it: it resolves the same facts
 // via the adapter *in exactly the same conditions as before* (fetch the session
 // only when scheduling an act; read the setup_connection hint only when the act

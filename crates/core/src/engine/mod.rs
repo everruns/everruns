@@ -7,18 +7,18 @@
 //! execution driver. Given a parsed [`ActivityOutcome`] and host-resolved
 //! [`HostFacts`], it returns the next [`TurnPlan`] and ordered
 //! [`TurnLifecycleEffect`]s. Framework applications use `everruns`; this
-//! focused crate lets in-process, durable, and custom hosts share one turn
-//! model.
+//! optional `engine` module lets in-process, durable, and custom hosts share
+//! one turn model.
 //!
 //! Planning is sans I/O: hosts pass resolved facts and perform returned
 //! lifecycle effects. The execution phases are portable async algorithms over
 //! injected core/provider contracts such as [`everruns_core::MessageRetriever`],
 //! [`everruns_core::EventEmitter`], and [`everruns_core::ToolExecutor`]. The
-//! crate does not select stores, transports, processes, or deployment services.
-//! [`Execution`] is the driver boundary. `everruns-host` implements it with
-//! process-local state; `everruns-durable` implements it with checkpointed
-//! state between scheduled activities. Both share phase behavior and turn
-//! transitions without introducing an engine-to-host dependency.
+//! module does not select stores, transports, processes, or deployment services.
+//! [`Execution`] is the driver boundary. Core’s optional host module implements
+//! it with process-local state; the worker’s durable driver checkpoints the
+//! same state between activities scheduled by `everruns-durable`. Both share
+//! phase behavior and turn transitions without an engine-to-host dependency.
 //!
 //! # Example
 //!

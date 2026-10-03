@@ -24,7 +24,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Host-provided backend that executes an MCP tool call against the right
-/// server. Implemented in `everruns-mcp` over the shared MCP client; the
+/// server. Implemented in `everruns_core::mcp` over the shared MCP client; the
 /// implementation owns connection resolution and credentials so the proxy tool
 /// stays host-agnostic.
 #[async_trait]

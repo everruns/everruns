@@ -136,6 +136,6 @@ impl<T: SessionStore + ?Sized> SessionStore for std::sync::Arc<T> {
     }
 }
 
-// EVE-897: `SessionMutator` is a neutral host service in `everruns-host`. Mutating stored
+// EVE-897: `SessionMutator` is a neutral host service in `everruns_core::host`. Mutating stored
 // session metadata is a hosted control-plane service; the capability that
 // uses it resolves `SessionMutatorExt` from the typed extension bag.

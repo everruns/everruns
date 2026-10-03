@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 /// Turn execution whose state lives in the current process.
 ///
 /// The host performs each planned phase immediately. All semantic state
-/// advancement remains delegated to [`TurnExecution`] in `everruns-engine`.
+/// advancement remains delegated to [`TurnExecution`] in `everruns_core::engine`.
 #[derive(Debug, Clone)]
 pub struct InProcessExecution {
     inner: TurnExecution,

@@ -2,7 +2,7 @@
 //!
 //! Resolves the effective scoped MCP servers for a session (harness chain →
 //! agent → session, last wins), turns them into transport connections, and
-//! drives discovery + execution through the shared `everruns-mcp` client.
+//! drives discovery + execution through the shared `everruns_core::mcp` client.
 //! HTTP scoped servers are always wired; stdio scoped servers are wired only
 //! when the crate is built with the `mcp-stdio` feature (off in hosted
 //! builds), and are otherwise skipped with a warning.

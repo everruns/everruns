@@ -4,7 +4,7 @@ use crate::skill::{CommandExecutor, CommandResult};
 
 /// Execute trusted preprocessing commands through the host's `bash` process.
 ///
-/// This implementation is intentionally behind `everruns-host/process`; the
+/// This implementation is intentionally behind `everruns-core/process`; the
 /// neutral kernel and default Framework do not compile or install it.
 pub struct ProcessCommandExecutor {
     /// Timeout per command in seconds (default: 30).

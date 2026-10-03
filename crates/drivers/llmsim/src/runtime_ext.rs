@@ -1,6 +1,6 @@
 // Deterministic-simulator conveniences for the in-process host runtime builder.
 //
-// `everruns-host` stays free of simulation code: its builder exposes the
+// `everruns_core::host` stays free of simulation code: its builder exposes the
 // neutral provider seams, and this extension trait adapts an `LlmSimConfig`
 // into an `llmsim` provider on top of them.
 

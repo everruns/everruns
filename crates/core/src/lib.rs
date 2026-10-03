@@ -106,11 +106,11 @@ pub mod error_reporter;
 // once, so one incident reports as one incident (EVE-1071).
 pub mod database_failure;
 
-// Observability implementations live behind `everruns-host/observability`
+// Observability implementations live behind the opt-in `otel`/`braintrust` host features
 // (EVE-651, EVE-876): exporter listeners (Braintrust, OpenTelemetry), the
 // CompositeEventListener fan-out, and OpenTelemetry/OTLP initialization. They
-// depend on core only for the `EventListener` trait, event types, and the
-// neutral gen-AI span conventions in `telemetry`.
+// use the `EventListener` trait, event types, and neutral gen-AI conventions
+// in `telemetry`; the default kernel carries no exporter dependencies.
 
 // Typed ID system (type-safe prefixed identifiers)
 // See knowledge/foundations/id-schema.md for specification
@@ -236,11 +236,11 @@ pub mod truncation_info;
 use everruns_contracts::user_facing_error;
 
 // Private doubles for collocated unit tests. Public application backends live
-// in everruns-host; reusable deterministic fixtures live in test-support.
+// in everruns_core::host; reusable deterministic fixtures live in test-support.
 #[cfg(test)]
 mod test_fixtures;
 
-// Stable completion semantics; execution state and planning live in everruns-engine.
+// Stable completion semantics; execution state and planning live in everruns_core::engine.
 pub mod turn;
 pub mod turn_completion;
 
@@ -347,7 +347,8 @@ pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllow
 // disabled/noop, `SystemEmailConfig`) moved to the `crates/server/src/records/` —
 // email delivery is a hosted product side effect, never consumed during a
 // turn. The OAuth 2.1 protocol client moved to `everruns-mcp` (its only
-// consumer), and the connector catalog lives in `everruns-contracts`.
+// consumer); it now lives in the optional `mcp` module. The connector catalog
+// lives in `everruns-contracts`.
 pub use decision_driver::{
     DecisionDriver, DecisionDriverCapabilities, NativePrimitives, SingleDriverService,
 };
@@ -380,6 +381,7 @@ pub use tools::{
 // product provisioning templates are platform/server composition, not
 // Framework execution configuration.
 // EVE-887: the composition root moved to `everruns-host` as `HostComposition`.
+// It now lives behind core’s opt-in `host` feature.
 // Selecting a deployment's capabilities, drivers and host services is
 // composition, not kernel execution configuration; core owns the registries
 // and service contracts, and the layer that runs a turn owns the bundle.

@@ -22,7 +22,7 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 //!
-//! [`everruns-sandbox-exec`]: https://docs.rs/everruns-host
+//! [`everruns-sandbox-exec`]: https://docs.rs/everruns-core
 
 use std::path::PathBuf;
 

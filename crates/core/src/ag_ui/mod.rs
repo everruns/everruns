@@ -33,13 +33,13 @@
 //!
 //! # Modules
 //!
-//! - The wire types, at the crate root.
+//! - The wire types, at this module’s root (feature `ag-ui`).
 //! - [`consumer`]: the consumer side of the protocol. It decodes a
 //!   producer's events, enforces the 1.0 sequencing rules and assembles a
 //!   [`consumer::RunResult`]; [`ResumeBuilder`] answers interrupts.
-//! - `client` (feature `client`): an HTTP client that runs an AG-UI agent
+//! - `client` (feature `ag-ui-client`): an HTTP client that runs an AG-UI agent
 //!   over SSE and feeds the consumer.
-//! - `projection` (feature `core`): Everruns runtime events as an AG-UI run.
+//! - `projection` (feature `ag-ui-projection`): Everruns runtime events as an AG-UI run.
 //!
 //! # Contract
 //!

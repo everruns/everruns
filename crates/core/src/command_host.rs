@@ -1,7 +1,7 @@
 //! Neutral command execution contracts.
 //!
 //! Store-backed context loading, credential-bearing provider resolution, and
-//! completion driver creation live in `everruns-host`.
+//! completion driver creation live in `everruns_core::host`.
 
 use std::collections::HashMap;
 

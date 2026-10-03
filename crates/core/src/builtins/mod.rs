@@ -2,8 +2,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Portable built-in capabilities for the [Everruns](https://everruns.com) ecosystem.
 //!
-//! `everruns-builtins` is the optional, backend-neutral implementation bundle
-//! for portable capabilities that compose through `everruns-core` execution
+//! The `builtins` feature selects this backend-neutral implementation bundle
+//! for portable capabilities that compose through core execution
 //! contracts. This includes the standard skills, context, and human-intent
 //! implementations as well as policy hooks. It owns no server, database,
 //! network transport, process runner, interpreter, or hosted service

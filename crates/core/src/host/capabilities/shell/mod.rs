@@ -12,12 +12,13 @@
 //! The boundary itself is [`crate::host::containment`]. This module is the
 //! agent-facing half: the capability, its configuration, and the tool.
 //!
-//! It lives in `everruns-host` rather than an integration crate because it is
+//! Selected by the `host-shell` feature, it lives in `everruns_core::host`
+//! rather than an integration crate because it is
 //! an *embedder* capability, not a hosted-product one. Running arbitrary host
 //! processes is something a CLI host, a CI runner, or an operator's own box
 //! opts into; it is not something a shared multi-tenant worker should offer.
-//! `everruns-host` is where an embedder composes its runtime, so that is where
-//! this belongs, next to [`HostCompute`](crate::host::HostCompute), which contains
+//! Core’s optional `host` module owns the injected runtime composition, so
+//! this belongs next to [`HostCompute`](crate::host::HostCompute), which contains
 //! commands under the same policy.
 //!
 //! # Choosing between this and `bashkit_shell`

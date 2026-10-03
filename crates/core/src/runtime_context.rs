@@ -1,7 +1,7 @@
 //! Pure turn-context transformations over host-resolved execution inputs.
 //!
 //! Store access, lifecycle validation, model lookup, provider configuration,
-//! and driver creation belong to `everruns-host`. The kernel receives the
+//! and driver creation belong to `everruns_core::host`. The kernel receives the
 //! neutral snapshot, already-filtered messages, a credential-free model spec,
 //! and an opaque ready driver.
 

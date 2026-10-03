@@ -3,14 +3,14 @@
 //! Transport-agnostic [MCP](https://modelcontextprotocol.io) (Model Context
 //! Protocol) client for Everruns agents.
 //!
-//! `everruns-mcp` is part of the [Everruns](https://everruns.com) ecosystem. It
-//! is the shared MCP client used across Everruns hosts (runtime, worker, and
-//! server), so every host wires MCP the same way without duplicating protocol
-//! logic.
+//! Core’s optional `mcp` module is part of the [Everruns](https://everruns.com)
+//! ecosystem. Runtime, worker, and server hosts share its client so each host
+//! wires MCP without duplicating protocol logic.
 //!
-//! The crate owns the JSON-RPC client (HTTP, and optional stdio behind the
-//! `stdio` feature), credential acquisition ([`McpAuthProvider`]), result
-//! mapping, and tool execution ([`McpExecutor`], which implements
+//! The module owns the JSON-RPC client (HTTP over injected egress, and optional
+//! stdio behind the separate `mcp-stdio` feature), credential acquisition
+//! ([`McpAuthProvider`]), result mapping, and tool execution ([`McpExecutor`],
+//! which implements
 //! `everruns_core::McpToolInvoker` so MCP tools register as regular `Tool`s).
 //! Wire types and tool-name helpers live in `everruns-core` and are reused
 //! as-is.

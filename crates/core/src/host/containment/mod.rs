@@ -19,7 +19,8 @@
 //!    mode.
 //!
 //! Behind the `native-containment` feature, so the Landlock, seccomp, and
-//! tree-sitter dependencies stay out of a default `everruns-host` build.
+//! tree-sitter dependencies stay out of default core and host builds without
+//! that feature.
 //!
 //! # Example
 //!

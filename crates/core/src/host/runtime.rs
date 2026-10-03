@@ -1151,7 +1151,7 @@ impl InProcessRuntime {
         let org_id = in_process_internal_org_id(&snapshot.organization_id);
 
         // Engine-planned turn loop (EVE-842). Every reason-vs-act-vs-complete
-        // decision comes from `everruns-engine`; this loop only executes the
+        // decision comes from `everruns_core::engine`; this loop only executes the
         // host operation each plan names and performs the lifecycle effects the
         // engine returns as data. There is no second copy of the planning brain
         // in the runtime.

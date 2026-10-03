@@ -1,5 +1,5 @@
 // Shared host orchestration for embedded and durable execution hosts.
-// Decision: everruns-host owns worker-facing turn phase execution so
+// Decision: everruns_core::host owns worker-facing turn phase execution so
 // durable/server-backed hosts reuse the same input/reason/act wiring without
 // depending on the application facade.
 
@@ -67,7 +67,7 @@ pub struct ResolvedTurnInputs {
 
 /// Public adapter contract for server-backed or durable runtime hosts.
 ///
-/// `everruns-host` owns shared orchestration for both embedded and durable
+/// `everruns_core::host` owns shared orchestration for both embedded and durable
 /// execution. That includes phase execution (`input -> reason -> act`),
 /// lifecycle emission, and the generic turn-strategy decisions used by durable
 /// or custom hosts.
