@@ -96,7 +96,7 @@ function PlaygroundLibrary() {
         actions={
           <LinkButton href="/playground/new" variant="accent">
             <Plus className="size-4" />
-            New Playground chat
+            New chat
           </LinkButton>
         }
       />

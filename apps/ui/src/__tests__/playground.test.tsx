@@ -110,10 +110,7 @@ test("the shared list has explicit chat entry and linked agent/user context with
     "href",
     "/virtual-users/identity_customer",
   );
-  expect(screen.getByRole("link", { name: "New Playground chat" })).toHaveAttribute(
-    "href",
-    "/playground/new",
-  );
+  expect(screen.getByRole("link", { name: "New chat" })).toHaveAttribute("href", "/playground/new");
 });
 
 test("archived tabs and pagination preserve server-side Playground filtering", async () => {
