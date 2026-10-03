@@ -5,16 +5,14 @@
 
 #![cfg(feature = "filesystem")]
 
+use everruns::batteries::runtime_capability_registry;
 use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::builtins::{DistillOutputHook, PersistOutputHook, ToolSearchCapability};
 use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
-use everruns_core::host::{
-    InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system,
-    runtime_capability_registry,
-};
+use everruns_core::host::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
 use everruns_core::path_identity::{
     PathIdentityExpectations, assert_model_visible_value, assert_no_forbidden_prefixes,
     assert_system_prompt, assert_tool_result_paths_conform, collect_absolute_paths,

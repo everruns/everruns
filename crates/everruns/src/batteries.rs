@@ -115,6 +115,41 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     }
 }
 
+/// Apply facade-selected services to an explicit embedded backend bundle.
+/// Caller-supplied hook dispatchers retain priority over the default battery.
+pub fn runtime_backends(
+    backends: everruns_core::host::HostBackends,
+) -> everruns_core::host::HostBackends {
+    #[cfg(feature = "bashkit")]
+    {
+        if backends.bash_hook_dispatcher_factory.is_none() {
+            return backends.with_bash_hook_dispatcher_factory(std::sync::Arc::new(|files| {
+                std::sync::Arc::new(
+                    everruns_integrations_bashkit::BashkitShellHookDispatcher::new(files),
+                )
+            }));
+        }
+    }
+    backends
+}
+
+/// Build the facade-selected runtime over explicit registries and host services.
+pub fn runtime_builder() -> everruns_core::host::InProcessRuntimeBuilder {
+    everruns_core::host::InProcessRuntimeBuilder::new()
+        .host_composition(
+            everruns_core::host::HostComposition::builder()
+                .capability_registry(runtime_capability_registry())
+                .egress_service(runtime_egress_service())
+                .session_file_system_factory(std::sync::Arc::new(
+                    everruns_core::host::InMemorySessionFileSystemFactory,
+                ))
+                .build(),
+        )
+        .backends(runtime_backends(
+            everruns_core::host::HostBackends::in_memory(),
+        ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,39 +215,4 @@ mod tests {
             expected
         );
     }
-}
-
-/// Apply facade-selected services to an explicit embedded backend bundle.
-/// Caller-supplied hook dispatchers retain priority over the default battery.
-pub fn runtime_backends(
-    backends: everruns_core::host::HostBackends,
-) -> everruns_core::host::HostBackends {
-    #[cfg(feature = "bashkit")]
-    {
-        if backends.bash_hook_dispatcher_factory.is_none() {
-            return backends.with_bash_hook_dispatcher_factory(std::sync::Arc::new(|files| {
-                std::sync::Arc::new(
-                    everruns_integrations_bashkit::BashkitShellHookDispatcher::new(files),
-                )
-            }));
-        }
-    }
-    backends
-}
-
-/// Build the facade-selected runtime over explicit registries and host services.
-pub fn runtime_builder() -> everruns_core::host::InProcessRuntimeBuilder {
-    everruns_core::host::InProcessRuntimeBuilder::new()
-        .host_composition(
-            everruns_core::host::HostComposition::builder()
-                .capability_registry(runtime_capability_registry())
-                .egress_service(runtime_egress_service())
-                .session_file_system_factory(std::sync::Arc::new(
-                    everruns_core::host::InMemorySessionFileSystemFactory,
-                ))
-                .build(),
-        )
-        .backends(runtime_backends(
-            everruns_core::host::HostBackends::in_memory(),
-        ))
 }

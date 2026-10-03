@@ -2741,6 +2741,7 @@ version = "0.39.0"
 dependencies = [
  "everruns",
  "everruns-core",
+ "tokio",
 ]
 
 [[package]]
