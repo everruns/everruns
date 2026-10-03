@@ -12814,6 +12814,7 @@
         "tags": [
           "sessions"
         ],
+        "summary": "Open the current user's permanent platform conversation, creating it only when absent.",
         "operationId": "ensure_platform_chat",
         "responses": {
           "200": {

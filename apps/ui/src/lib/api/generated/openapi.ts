@@ -3166,6 +3166,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Open the current user's permanent platform conversation, creating it only when absent. */
     post: operations["ensure_platform_chat"];
     delete?: never;
     options?: never;
