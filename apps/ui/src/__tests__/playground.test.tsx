@@ -85,6 +85,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSession.title = "Support test";
   mockSession.preview = "Hello";
+  mockSession.agent_id = "agent_support";
   mockChatEvents = [];
   jest
     .mocked(listSessions)
@@ -130,6 +131,16 @@ test("archived tabs and pagination preserve server-side Playground filtering", a
       expect.objectContaining({ source: "playground", archivedOnly: true, offset: 20 }),
     ),
   );
+});
+
+test("chats keep their agent link when the agent is absent from the active list", async () => {
+  mockSession.agent_id = "agent_archived";
+  renderLibrary();
+  expect(await screen.findByRole("link", { name: "agent_archived" })).toHaveAttribute(
+    "href",
+    "/agents/agent_archived",
+  );
+  expect(screen.queryByText("Harness chat")).not.toBeInTheDocument();
 });
 
 test("chat breadcrumbs return to Playground and session/workspace inspection uses existing surfaces", async () => {

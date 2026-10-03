@@ -190,12 +190,12 @@ function PlaygroundLibrary() {
                   <TableCell>
                     {(() => {
                       const agent = agents.find((a) => a.id === session.agent_id);
-                      return agent ? (
+                      return session.agent_id ? (
                         <Link
-                          href={`/agents/${agent.id}`}
+                          href={`/agents/${session.agent_id}`}
                           className="underline underline-offset-4 hover:text-primary"
                         >
-                          {getDisplayName(agent)}
+                          {agent ? getDisplayName(agent) : session.agent_id}
                         </Link>
                       ) : (
                         "Harness chat"
