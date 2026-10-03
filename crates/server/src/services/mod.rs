@@ -31,6 +31,7 @@ pub mod principal;
 pub mod provider_resolver;
 pub mod run_summary;
 pub mod standard_webhooks;
+pub mod turn_latency;
 pub mod usage_tracking;
 pub mod waiting_turn_resolution;
 
@@ -44,4 +45,5 @@ pub use model_sync::{ModelSyncService, SyncResult};
 pub use principal::{PrincipalService, row_to_principal};
 pub use provider_resolver::{ProviderResolverService, ResolvedModel};
 pub use run_summary::RunSummaryService;
+pub use turn_latency::TurnLatencyListener;
 pub use usage_tracking::UsageTrackingListener;

@@ -26,7 +26,6 @@ use everruns_host::HostComposition;
 use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
 use anyhow::{Context, Result};
-use async_trait::async_trait;
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::{
@@ -34,7 +33,7 @@ use everruns_core::{
 };
 use everruns_durable::{EventLog, PostgresWorkflowEventStore, TaskQueue, WorkflowEventStore};
 use everruns_host::observability::{BraintrustListener, OtelEventListener};
-use everruns_worker::{AgentRunner, DurableTaskNotifier, TaskWorker, TaskWorkerConfig};
+use everruns_worker::{AgentRunner, TaskWorker, TaskWorkerConfig};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::future::Future;
@@ -118,17 +117,6 @@ fn optional_connection_resolver(
     encryption
         .as_ref()
         .map(|enc| build_connection_resolver(db, enc, auth_config, egress))
-}
-
-pub(crate) struct ServerTaskNotifier {
-    pub(crate) broadcaster: Arc<crate::task_notifications::TaskBroadcaster>,
-}
-
-#[async_trait]
-impl DurableTaskNotifier for ServerTaskNotifier {
-    async fn notify_task_available(&self, activity_type: &str) {
-        self.broadcaster.notify_task_available(activity_type).await;
-    }
 }
 
 fn spawn_background_tasks(
@@ -646,6 +634,7 @@ impl ServerAppBuilder {
             Arc::new(services::ApprovalAuditListener::new(db.clone())),
             mcp_events.listener(),
             A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
+            Arc::new(services::TurnLatencyListener::new()),
         ];
         // Run summaries (EVE-867). Registered only when a utility LLM is
         // configured, so the OSS default adds no listener at all rather than one
