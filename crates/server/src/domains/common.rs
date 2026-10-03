@@ -14,6 +14,7 @@ use axum::http::StatusCode;
 use everruns_core::DefaultPermissionResolver;
 use everruns_durable::WorkflowEventStore;
 use everruns_platform::FeatureFlags;
+use everruns_provider::typed_id::SessionId;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::future::Future;
@@ -485,6 +486,14 @@ pub struct Ctx {
     pub message_service: Option<Arc<crate::domains::messages::MessageService>>,
     pub event_service: Option<Arc<crate::services::EventService>>,
     pub session_file_service: Option<Arc<crate::domains::session_files::WorkspaceFileService>>,
+    /// The session whose agent runtime this caller is, when it is one.
+    ///
+    /// Distinct from the session a command operates on. The worker sets it to
+    /// the session whose turn it is running, which is what entitles it to that
+    /// session's private user-memory mount. Internal callers that are not a
+    /// session runtime (Slack, FCP, the capability service, the durable seal)
+    /// leave it `None` and stay outside that entitlement.
+    pub acting_for_session: Option<SessionId>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
     pub session_schedule_service:
@@ -549,6 +558,7 @@ impl Ctx {
             message_service: None,
             event_service: None,
             session_file_service: None,
+            acting_for_session: None,
             session_sandbox_service: None,
             session_schedule_service: None,
             notification_service: None,
@@ -652,6 +662,13 @@ impl Ctx {
 
     pub fn with_event_service(mut self, service: Arc<crate::services::EventService>) -> Self {
         self.event_service = Some(service);
+        self
+    }
+
+    /// Declare the session whose agent runtime this caller is. See
+    /// [`Ctx::acting_for_session`].
+    pub fn acting_for_session(mut self, session_id: SessionId) -> Self {
+        self.acting_for_session = Some(session_id);
         self
     }
 

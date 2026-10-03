@@ -328,6 +328,7 @@ async fn test_execute_command_lists_seeded_harnesses() {
         .execute_command(Request::new(ExecuteCommandRequest {
             input_message_id: None,
             platform_session_id: None,
+            acting_for_session_id: None,
 
             name: "list_harnesses".to_string(),
             api_version: "v1".to_string(),
@@ -375,6 +376,7 @@ async fn test_execute_command_denies_org_disabled_feature() {
         .execute_command(Request::new(ExecuteCommandRequest {
             input_message_id: None,
             platform_session_id: None,
+            acting_for_session_id: None,
 
             name: "list_skills".to_string(),
             api_version: "v1".to_string(),
@@ -406,6 +408,7 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
         .execute_command(Request::new(ExecuteCommandRequest {
             input_message_id: None,
             platform_session_id: None,
+            acting_for_session_id: None,
 
             name: "definitely_not_a_command".to_string(),
             api_version: "v1".to_string(),
@@ -444,6 +447,7 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
             .execute_command(Request::new(ExecuteCommandRequest {
                 input_message_id: None,
                 platform_session_id: None,
+                acting_for_session_id: None,
 
                 name: COMMAND_NAME.to_string(),
                 api_version: "v1".to_string(),
@@ -1031,6 +1035,7 @@ async fn test_execute_command_uses_user_permissions() {
         .execute_command(Request::new(ExecuteCommandRequest {
             input_message_id: None,
             platform_session_id: None,
+            acting_for_session_id: None,
 
             name: "create_harness".to_string(),
             api_version: "v1".to_string(),

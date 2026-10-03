@@ -72,11 +72,30 @@ pub async fn verify_session(
         .await
         .map_err(classify_storage)?
         .ok_or_else(|| CommandError::not_found("Session"))?;
+    // THREAT[TM-TENANT-013]: `/memory/user` is private to the session's owner.
+    // Two callers reach it: that owner, and the agent runtime executing that
+    // owner's session on their behalf.
+    //
+    // The runtime arm used to read `ctx.caller.is_internal`, which was far
+    // wider than the relationship it stood for. `Caller::internal` carries
+    // Owner role and bypasses policy evaluation (TM-AUTHZ-002), so this
+    // predicate was the one check it did not already pass — making it the only
+    // thing between *any* internal path and a person's private files. Internal
+    // callers include ones driven by inbound traffic: `api/slack_events`,
+    // `api/fcp`, the capability service, the durable seal. TM-TENANT-013 has
+    // always described this mitigation as the owner check alone, so the code
+    // was looser than the model it was documented under.
+    //
+    // `acting_for_session` names the actual relationship instead. The worker
+    // declares which session's turn it is running, and only that session's
+    // memory opens. An internal caller that declares nothing gets nothing,
+    // which is what every one of those paths does — none of them read the file
+    // surface at all.
     let user_memory_allowed = row
         .resolved_owner_user_id
         .zip(ctx.caller.user_id)
         .is_some_and(|(owner, caller)| owner == caller)
-        || ctx.caller.is_internal;
+        || ctx.acting_for_session == Some(session_id);
     Ok(SessionFileAccess {
         workspace_key: row.workspace_id,
         user_memory_allowed,

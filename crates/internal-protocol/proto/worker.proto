@@ -1585,6 +1585,19 @@ message SessionSqlDbQueryResponse {
 message ExecuteCommandRequest {
     optional Uuid platform_session_id = 8;
     optional Uuid input_message_id = 9;
+    // The session whose runtime this caller is, when it is one.
+    //
+    // Distinct from `platform_session_id`, which names a session whose
+    // management-authorized user the caller should act AS. This one does not
+    // change the caller at all: it states which session's agent runtime is
+    // speaking, which is what entitles it to that session's private
+    // user-memory mount. Also distinct from any session_id inside
+    // params_json: that is what the command operates on, this is who the
+    // caller is.
+    //
+    // An internal caller that declares no session (Slack, FCP, the capability
+    // service, the durable seal) is outside that entitlement.
+    optional Uuid acting_for_session_id = 10;
     string name = 1;
     string api_version = 2;
     bytes params_json = 3;

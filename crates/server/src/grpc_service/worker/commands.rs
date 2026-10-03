@@ -79,7 +79,17 @@ impl WorkerServiceImpl {
                 None => everruns_core::Caller::internal(req.org_id),
             }
         };
-        let ctx = self.org_domain_ctx_for_caller(caller).await?;
+        let mut ctx = self.org_domain_ctx_for_caller(caller).await?;
+
+        // The caller may state which session's agent runtime it is. That does
+        // not change who it is — it scopes the one entitlement keyed on the
+        // relationship rather than on identity: the session's private
+        // user-memory mount. See `session_files::queries::verify_session`.
+        if let Some(session) = req.acting_for_session_id.as_ref() {
+            ctx = ctx.acting_for_session(everruns_provider::typed_id::SessionId::from_uuid(
+                parse_uuid(Some(session))?,
+            ));
+        }
         let response = match crate::domains::common::dispatch(&req.name, params, &ctx).await {
             Ok(ok_json) => ExecuteCommandResponse {
                 result: Some(proto::execute_command_response::Result::OkJson(
@@ -327,6 +337,7 @@ pub(crate) mod test_support {
             .execute_command(Request::new(ExecuteCommandRequest {
                 input_message_id: None,
                 platform_session_id: None,
+                acting_for_session_id: None,
 
                 name: name.to_string(),
                 api_version: "v1".to_string(),

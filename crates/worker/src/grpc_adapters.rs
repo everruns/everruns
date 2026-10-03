@@ -666,11 +666,18 @@ impl GrpcAdapter {
     /// is what the worker is: trusted, acting for the org rather than for a
     /// person. The command still runs through `Command::run`, so policy applies
     /// here exactly as it does for HTTP and MCP callers.
+    /// Run a registered domain command as the org's internal caller.
+    ///
+    /// `acting_for_session` states which session's agent runtime is speaking.
+    /// It does not change the caller — it is what entitles the runtime to that
+    /// session's private user-memory mount, and nothing else. Pass `None` from
+    /// surfaces that are not executing a specific session's turn.
     pub(crate) async fn execute_session_command(
         &self,
         surface: &str,
         name: &str,
         params: serde_json::Value,
+        acting_for_session: Option<SessionId>,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
         let org_id = self.require_org(surface)?;
         let mut client = self.client.inner.lock().await;
@@ -678,6 +685,7 @@ impl GrpcAdapter {
             .execute_command(proto::ExecuteCommandRequest {
                 input_message_id: None,
                 platform_session_id: None,
+                acting_for_session_id: acting_for_session.map(|id| uuid_to_proto(id.uuid())),
 
                 name: name.to_string(),
                 api_version: COMMAND_API_VERSION_V1.to_string(),
@@ -764,6 +772,10 @@ impl GrpcOrgAdapter {
                 org_id: self.org_id,
                 user_id: None,
                 platform_session_id: self.platform_session_id.map(|id| uuid_to_proto(id.uuid())),
+                // Platform commands act AS the invocation's management user,
+                // resolved from `platform_session_id`. They are not a session
+                // runtime claiming its own memory mount.
+                acting_for_session_id: None,
                 input_message_id: self.input_message_id.map(uuid_to_proto),
                 idempotency_key: None,
                 metadata: Default::default(),
