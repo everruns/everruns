@@ -12,11 +12,37 @@ DRIVERS = {
     "sqlx", "rusqlite", "diesel", "postgres", "tokio-postgres", "mysql",
     "mysql_async", "mongodb", "libsql", "duckdb", "sea-orm", "surrealdb",
 }
-CONSTRUCTOR = re.compile(
-    r"\b(?:PgPool(?:Options)?|PostgresPool|PgConnection|SqlitePool(?:Options)?|"
-    r"SqliteConnection|MySqlPool(?:Options)?|Connection|QueryConnection)\s*::\s*"
-    r"(?:connect(?:_lazy)?|open(?:_in_memory)?|new)\s*\("
-)
+CONNECTION_TYPES = {
+    "PgPool", "PgPoolOptions", "PostgresPool", "PgConnection",
+    "SqlitePool", "SqlitePoolOptions", "SqliteConnection",
+    "MySqlPool", "MySqlPoolOptions", "Connection", "QueryConnection",
+}
+
+
+def connection_constructor_pattern(text):
+    # Reexported query handles retain their driver type identity. Follow local
+    # import/type aliases so a callback type cannot hide an owning constructor.
+    names = set(CONNECTION_TYPES)
+    imports = re.findall(r"\b([A-Za-z_]\w*)\s+as\s+([A-Za-z_]\w*)", text)
+    aliases = re.findall(r"\btype\s+([A-Za-z_]\w*)(?:\s*<[^=;]*>)?\s*=\s*([^;]+);", text)
+    while True:
+        before = len(names)
+        for original, alias in imports:
+            if original in names:
+                names.add(alias)
+        for alias, target in aliases:
+            base = target.split("<", 1)[0].strip().split("::")[-1].strip()
+            if base in names:
+                names.add(alias)
+        if len(names) == before:
+            break
+    return re.compile(
+        r"\b(?:" + "|".join(re.escape(name) for name in sorted(names)) + r")"
+        r"(?:\s*::\s*<[^;()]*>)?\s*::\s*"
+        r"(?:connect(?:_[A-Za-z0-9_]+)?|open(?:_[A-Za-z0-9_]+)?|new)\s*\("
+    )
+
+
 RAW_SQLX_CONNECTION = re.compile(
     r"\b(?:PgPool(?:Options)?|PgConnection|PgConnectOptions|"
     r"SqlitePool(?:Options)?|SqliteConnection|SqliteConnectOptions|"
@@ -63,7 +89,7 @@ def constructor_violations(packages):
                 "" if line.lstrip().startswith("//") else line
                 for line in source.read_text().splitlines()
             )
-            for match in CONSTRUCTOR.finditer(text):
+            for match in connection_constructor_pattern(text).finditer(text):
                 line_number = text.count("\n", 0, match.start()) + 1
                 violations.append(f"{source}:{line_number}: raw database connection constructor")
             # The optional codec edge must not let contracts import a pool

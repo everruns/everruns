@@ -69,5 +69,28 @@ class DatabaseOwnership(unittest.TestCase):
             self.assertFalse(guard.constructor_violations([entry]))
 
 
+    def test_forwarded_query_types_allow_callbacks_but_not_aliased_construction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            source = root / "src/lib.rs"
+            entry = {"name": "everruns", "manifest_path": str(root / "Cargo.toml")}
+            for code in [
+                "use everruns_durable::sqlite::QueryConnection as Db; Db::open(path);",
+                "use everruns_durable::sqlite::{Connection as Db, Row}; Db::open_in_memory();",
+                "type Db = everruns_durable::sqlite::QueryConnection; Db::open(path);",
+                "type First = everruns_durable::sqlite::Connection; type Db = First; Db::open_with_flags(path, flags);",
+                "use everruns_durable::PostgresPool as Db; Db::connect_lazy(url);",
+            ]:
+                with self.subTest(code=code):
+                    source.write_text(code)
+                    self.assertTrue(guard.constructor_violations([entry]))
+            source.write_text(
+                "use everruns_durable::sqlite::QueryConnection as Db; "
+                "type QueryDb = Db; fn read(conn: &QueryDb) { conn.execute(sql, params); }"
+            )
+            self.assertFalse(guard.constructor_violations([entry]))
+
+
 if __name__ == "__main__":
     unittest.main()
