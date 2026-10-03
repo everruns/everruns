@@ -92,8 +92,12 @@ pub async fn validate_url_dns_pinned(
     validate_url_with_resolver(raw_url, default_dns_resolve).await
 }
 
-/// Inner implementation with an injectable resolver for unit testing.
-async fn validate_url_with_resolver<R, F>(
+/// Validate a URL with an injectable DNS resolver.
+///
+/// Same contract as [`validate_url_dns_pinned`], but `resolve` supplies the
+/// DNS answers. Used by unit tests and by `DirectEgressService` when a
+/// controlled resolver is installed (EVE-1154).
+pub async fn validate_url_with_resolver<R, F>(
     raw_url: &str,
     resolve: R,
 ) -> Result<(Url, Vec<SocketAddr>), UrlValidationError>
