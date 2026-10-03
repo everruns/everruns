@@ -408,6 +408,18 @@ describe("Sidebar", () => {
     expect(icon("MCP")).toHaveAttribute("viewBox", "0 0 186 186");
   });
 
+  it("snaps the active item instead of transitioning it after the page commits", () => {
+    mockPathname.mockReturnValue("/harnesses");
+    render(<Sidebar />);
+
+    const harnesses = screen.getByRole("link", { name: "Harnesses" });
+    const sessions = screen.getByRole("link", { name: "Sessions" });
+    expect(harnesses.className).not.toMatch(/transition/);
+    expect(sessions.className).not.toMatch(/transition/);
+    expect(harnesses.className).toContain("border-l-primary");
+    expect(sessions.className).not.toContain("border-l-primary");
+  });
+
   it("disables automatic viewport prefetch for every sidebar navigation link", () => {
     render(<Sidebar />);
 
