@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { FlaskConical, Plus, Users } from "lucide-react";
+import { ArrowRight, FlaskConical, Plus, Users } from "lucide-react";
 import { listSessions } from "@/lib/api/sessions";
 import { threadTitle } from "@/lib/chat-threads";
 import { activityLabel } from "@/lib/session-filters";
@@ -12,7 +12,7 @@ import { useAgents, usePageTitle } from "@/hooks";
 import { useVirtualUser } from "@/hooks/use-virtual-users";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { Button, LinkButton } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -32,10 +32,24 @@ import {
 } from "@/components/ui/table";
 import { VirtualUserSelect } from "@/components/virtual-user/virtual-user-select";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import {
+  EmptyState,
+  PageBreadcrumb,
+  PageContainer,
+  PageControlStrip,
+  PageFooter,
+  PageMasthead,
+  SectionTabs,
+} from "@/components/layout/page-layout";
 
 function SubjectName({ id }: { id?: string | null }) {
   const { data } = useVirtualUser(id ?? undefined);
-  return <>{data?.name ?? id ?? "—"}</>;
+  if (!id) return <>—</>;
+  return (
+    <Link href={`/virtual-users/${id}`} className="underline underline-offset-4 hover:text-primary">
+      {data?.name ?? id}
+    </Link>
+  );
 }
 
 function PlaygroundLibrary() {
@@ -72,49 +86,25 @@ function PlaygroundLibrary() {
   });
   usePageTitle("Playground");
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <FlaskConical className="size-6 text-primary" />
-            Playground
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Try agents as virtual users. Every conversation is shared with your organisation.
-          </p>
-        </div>
-        <LinkButton href="/playground/new">
-          <Plus className="size-4" />
-          New conversation
-        </LinkButton>
-      </header>
-      <div className="flex flex-wrap items-center gap-3 border-y py-3">
-        <div className="flex gap-1">
-          <Button
-            variant={!archived ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => {
-              setArchived(false);
-              setPage(0);
-            }}
-          >
-            Active
-          </Button>
-          <Button
-            variant={archived ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => {
-              setArchived(true);
-              setPage(0);
-            }}
-          >
-            Archived
-          </Button>
-        </div>
-        <Input
-          className="min-w-48 flex-1"
-          aria-label="Search conversations"
-          placeholder="Search conversations…"
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Playground" }]} />
+      <PageMasthead
+        icon={<FlaskConical />}
+        title="Playground"
+        badges={data && <Badge variant="outline">{data.total}</Badge>}
+        description="Test agents as virtual users. Playground chats are shared with your organisation."
+        actions={
+          <LinkButton href="/playground/new" variant="accent">
+            <Plus className="size-4" />
+            New Playground chat
+          </LinkButton>
+        }
+      />
+      <PageControlStrip className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          containerClassName="w-64"
+          aria-label="Search Playground chats"
+          placeholder="Search Playground chats…"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -151,21 +141,36 @@ function PlaygroundLibrary() {
           placeholder="Filter by virtual user"
           className="w-52"
         />
-      </div>
+        <div className="flex-1" />
+        <SectionTabs
+          value={archived ? "archived" : "active"}
+          onValueChange={(value) => {
+            setArchived(value === "archived");
+            setPage(0);
+          }}
+          items={[
+            { value: "active", label: "Active" },
+            { value: "archived", label: "Archived" },
+          ]}
+        />
+      </PageControlStrip>
       {error ? (
-        <ChatErrorAlert message="Could not load Playground conversations." />
+        <ChatErrorAlert message="Could not load Playground chats." />
       ) : isLoading ? (
         <Skeleton className="h-56 w-full" />
       ) : data?.data.length ? (
-        <div className="border">
+        <div className="border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Conversation</TableHead>
+                <TableHead>Playground chat</TableHead>
                 <TableHead>Agent</TableHead>
                 <TableHead>Talk as</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last activity</TableHead>
+                <TableHead>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -174,9 +179,9 @@ function PlaygroundLibrary() {
                   <TableCell className="max-w-sm">
                     <Link
                       href={`/playground/${session.id}`}
-                      className="block truncate font-medium hover:text-primary"
+                      className="block truncate font-medium underline underline-offset-4 hover:text-primary"
                     >
-                      {threadTitle(session, "New conversation")}
+                      {threadTitle(session, "New Playground chat")}
                     </Link>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
                       {session.preview ?? "No messages yet"}
@@ -185,7 +190,16 @@ function PlaygroundLibrary() {
                   <TableCell>
                     {(() => {
                       const agent = agents.find((a) => a.id === session.agent_id);
-                      return agent ? getDisplayName(agent) : "Harness conversation";
+                      return agent ? (
+                        <Link
+                          href={`/agents/${agent.id}`}
+                          className="underline underline-offset-4 hover:text-primary"
+                        >
+                          {getDisplayName(agent)}
+                        </Link>
+                      ) : (
+                        "Harness chat"
+                      );
                     })()}
                   </TableCell>
                   <TableCell>
@@ -197,56 +211,66 @@ function PlaygroundLibrary() {
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {new Date(session.updated_at).toLocaleString()}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <LinkButton
+                      href={`/playground/${session.id}`}
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Open chat ${threadTitle(session, "New Playground chat")}`}
+                    >
+                      Open chat <ArrowRight className="size-3.5" />
+                    </LinkButton>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
       ) : (
-        <div className="border border-dashed px-6 py-16 text-center">
-          <FlaskConical className="mx-auto mb-3 size-8 text-muted-foreground" />
-          <h2 className="font-medium">
-            {archived
-              ? "No archived conversations"
+        <EmptyState
+          icon={<FlaskConical />}
+          title={
+            archived
+              ? "No archived Playground chats"
               : search || agent !== "all" || subject
-                ? "No matching conversations"
-                : "Start your first experiment"}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Choose an agent and a virtual user to try a conversation together.
-          </p>
-        </div>
+                ? "No matching Playground chats"
+                : "No Playground chats yet"
+          }
+          description="Choose an agent and a virtual user to start a shared chat."
+        />
       )}
-      {!!data?.total && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            {page * 20 + 1}–{Math.min((page + 1) * 20, data.total)} of {data.total}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={(page + 1) * 20 >= data.total}
-              onClick={() => setPage(page + 1)}
-            >
-              Next
-            </Button>
+      <PageFooter>
+        <span className="flex items-center gap-2">
+          <Users className="size-3.5" />
+          Visible to everyone in {currentOrg?.name ?? "your organisation"}
+        </span>
+        {!!data?.total && (
+          <div className="flex items-center gap-4">
+            <span>
+              {page * 20 + 1}–{Math.min((page + 1) * 20, data.total)} of {data.total}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={(page + 1) * 20 >= data.total}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
-      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Users className="size-3.5" />
-        Visible to everyone in {currentOrg?.name ?? "your organisation"}
-      </p>
-    </div>
+        )}
+      </PageFooter>
+    </PageContainer>
   );
 }
 

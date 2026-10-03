@@ -7831,7 +7831,7 @@ export interface components {
       /** @description Fixed Playground end user. Defaults to the caller's linked virtual user. Only valid with source=playground. */
       playground_user_id?: string | null;
       /**
-       * @description How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`
+       * @description How this session was started. Clients may declare `chat`, `playground`, or `api`
        *     (the default); every other source is
        *     server-owned so the sessions facet rail stays trustworthy.
        * @example chat

@@ -27,7 +27,6 @@ const DEFAULT_FLAGS: FeatureFlags = {
   public_chat: false,
   webmcp: false,
   reports: false,
-  playground: false,
   machine_payments: false,
 };
 

@@ -3848,7 +3848,7 @@ export interface ResourceStats {
 }
 
 export interface CreateSessionRequest {
-  /** How the session was started. Clients may declare `chat`, feature-gated `playground`, or `api`
+  /** How the session was started. Clients may declare `chat`, `playground`, or `api`
    *  (the default); every other source is
    *  server-owned. */
   source?: SessionSource;

@@ -407,7 +407,6 @@ mod tests {
 
     fn all_flags() -> everruns_platform::FeatureFlags {
         everruns_platform::FeatureFlags {
-            playground: false,
             notifications: true,
             evals: true,
             skills: true,
@@ -432,7 +431,6 @@ mod tests {
         discover(
             arguments,
             &everruns_platform::FeatureFlags {
-                playground: false,
                 notifications: true,
                 evals: true,
                 skills: true,

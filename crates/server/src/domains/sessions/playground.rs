@@ -14,9 +14,6 @@ pub async fn validate_subject(
     ctx: &Ctx,
     requested: Option<VirtualUserId>,
 ) -> Result<VirtualUserId, CommandError> {
-    if !ctx.feature_flags.playground {
-        return Err(CommandError::feature_not_enabled("playground"));
-    }
     let user = ctx.caller.user_id.ok_or_else(|| {
         CommandError::forbidden("Playground requires a signed-in organisation member")
     })?;

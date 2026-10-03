@@ -21,7 +21,6 @@ export interface FeatureFlags {
   /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
   webmcp: boolean;
   reports: boolean;
-  playground?: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */
   machine_payments: boolean;
 }

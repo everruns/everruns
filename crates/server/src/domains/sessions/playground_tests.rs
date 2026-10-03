@@ -50,14 +50,11 @@ fn request() -> CreateSessionRequest {
 }
 
 #[tokio::test]
-async fn playground_is_flag_gated_and_defaults_to_the_operator() {
+async fn playground_is_available_without_opt_in_and_defaults_to_the_operator() {
     let mut ctx = fixture(OrgRole::Member).await;
     let mut req = request();
     req.harness_name = Some("base".into());
     ctx.feature_flags = FeatureFlags::default();
-    let error = CreateSession(req.clone()).run(&ctx).await.unwrap_err();
-    assert!(error.to_string().contains("playground"));
-    ctx.feature_flags.playground = true;
     let mut inherited = req.clone();
     inherited.budget_root_session_id = Some(everruns_provider::typed_id::SessionId::new());
     assert!(CreateSession(inherited).run(&ctx).await.is_err());
@@ -291,9 +288,6 @@ async fn playground_input_records_subject_and_operator_without_management_author
             .await
             .is_err()
     );
-    ctx.feature_flags.playground = false;
-    assert!(command().run(&ctx).await.is_err());
-    ctx.feature_flags.playground = true;
     ctx.caller.role = OrgRole::Member;
     assert!(command().run(&ctx).await.is_err());
 }
