@@ -836,6 +836,13 @@ impl TestServer {
             ),
             auth_state.clone(),
         );
+        let budgets_state = api::budgets::AppState::new(
+            db.clone(),
+            Arc::new(everruns_server::domains::budgets::BudgetService::new(
+                db.clone(),
+            )),
+            auth_state.clone(),
+        );
         let agents_state = api::agents::AppState::new(
             db.clone(),
             capability_service.clone(),
@@ -1081,6 +1088,7 @@ impl TestServer {
         // Build API routes
         let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
+            .merge(api::budgets::routes(budgets_state))
             .merge(api::agent_credentials::routes(agent_credentials_state))
             .merge(api::virtual_users::routes(virtual_users_state))
             .merge(api::virtual_user_connections::routes(

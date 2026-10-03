@@ -1622,7 +1622,7 @@ impl Command for SuspendAgentExposures {
         CommandMeta {
             name: "suspend_agent_exposures",
             category: "agents",
-            description: "Stop every endpoint on an agent from accepting traffic.",
+            description: "Stop every channel on an agent from accepting traffic.",
             method: "POST",
             path: "/v1/agents/{agent_id}/exposures/suspend",
         }

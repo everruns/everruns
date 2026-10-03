@@ -268,9 +268,9 @@ everruns_core::channel::OutboundChannelMessage	struct
 everruns_core::channel::Participant	struct
 everruns_core::channel::SessionBinding	enum
 everruns_core::channel::SessionBinding::Conversation	variant
-everruns_core::channel::SessionBinding::Shared	variant
 everruns_core::channel::SessionBinding::Ephemeral	variant
 everruns_core::channel::SessionBinding::Requester	variant
+everruns_core::channel::SessionBinding::Shared	variant
 everruns_core::channel::SessionBinding::Thread	variant
 everruns_core::channel::THREAD_CONTEXT_KV_KEY	constant
 everruns_core::channel::ThreadContext	struct

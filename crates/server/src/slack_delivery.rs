@@ -1800,6 +1800,7 @@ pub(crate) async fn post_slack_message(
 
 #[cfg(test)]
 mod tests {
+    use everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     #[path = "concurrency_tests.rs"]
     mod concurrency_tests;
 
@@ -2690,9 +2691,7 @@ mod tests {
                     recipient_user_id: None,
                     recipient_team_id: None,
                     tool_visibility: PublicToolVisibility::default(),
-                    generic_tool_text:
-                        everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
-                            .to_string(),
+                    generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
                     approvals_enabled: true,
                 })
                 .await;
@@ -2956,9 +2955,7 @@ mod tests {
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
                     tool_visibility: PublicToolVisibility::default(),
-                    generic_tool_text:
-                        everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
-                            .to_string(),
+                    generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
                     approvals_enabled: true,
                 })
                 .await;
@@ -3480,9 +3477,7 @@ mod tests {
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
                     tool_visibility,
-                    generic_tool_text:
-                        everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
-                            .to_string(),
+                    generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
                     approvals_enabled: true,
                 })
                 .await;
@@ -3525,10 +3520,7 @@ mod tests {
                 surfaced,
                 vec![
                     Surfaced::Status(SLACK_THINKING_STATUS.to_string()),
-                    Surfaced::Status(
-                        everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
-                            .to_string()
-                    ),
+                    Surfaced::Status(DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()),
                     Surfaced::Status(SLACK_THINKING_STATUS.to_string()),
                     // The terminal event clears the line; a status left set says
                     // the agent is working long after it stopped.
@@ -3594,8 +3586,7 @@ mod tests {
             )
             .await;
 
-            let generic =
-                everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string();
+            let generic = DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string();
             assert_eq!(
                 surfaced.last(),
                 Some(&Surfaced::Status(generic)),

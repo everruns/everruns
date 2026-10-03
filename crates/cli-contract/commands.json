@@ -772,7 +772,7 @@
       "exposures"
     ],
     "verb": "resume",
-    "description": "Let an agent's live endpoints accept traffic again.",
+    "description": "Let an agent's live channels accept traffic again.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/exposures/resume",
     "args": [
@@ -799,7 +799,7 @@
       "exposures"
     ],
     "verb": "suspend",
-    "description": "Stop every endpoint on an agent from accepting traffic.",
+    "description": "Stop every channel on an agent from accepting traffic.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/exposures/suspend",
     "args": [

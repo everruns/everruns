@@ -15141,7 +15141,7 @@
   {
     "category": "agents",
     "cli": "agents exposures resume",
-    "description": "Let an agent's live endpoints accept traffic again.",
+    "description": "Let an agent's live channels accept traffic again.",
     "input_schema": {
       "description": "Clear the agent-level exposure suspend, restoring the previously live set.",
       "properties": {
@@ -15770,7 +15770,7 @@
   {
     "category": "agents",
     "cli": "agents exposures suspend",
-    "description": "Stop every endpoint on an agent from accepting traffic.",
+    "description": "Stop every channel on an agent from accepting traffic.",
     "input_schema": {
       "description": "Take every endpoint on an agent off the internet in one action (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-endpoint publish: it leaves every endpoint's own `status` untouched,\nso resuming restores exactly the set that was live before — which is what\nmakes it safe to reach for under pressure.",
       "properties": {
