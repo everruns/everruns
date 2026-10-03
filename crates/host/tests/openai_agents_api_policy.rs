@@ -504,3 +504,854 @@ fn assert_completed_with(outcome: &AgentsApiTurnOutcome, tool_calls: u32) {
         other => panic!("expected a completed turn, got {other:?}"),
     }
 }
+
+// Observed provider work at the production runtime boundary.
+fn inventory(name: &str) -> Value {
+    let key = if name == "list_mcp_resources" {
+        "resources"
+    } else {
+        "resourceTemplates"
+    };
+    json!({"type":"mcp_call", "id":name, "turn_id":"turn_1", "server_label":"codex", "name":name, "arguments":{}, "status":"completed", "error":null,
+        "output":{"_meta":null, "content":[{"type":"text", "text":json!({key:[]}).to_string()}], "structuredContent":null}})
+}
+
+fn assert_refused(outcome: AgentsApiTurnOutcome) {
+    assert!(
+        matches!(outcome, AgentsApiTurnOutcome::Failed { code: Some(ref code), policy: true, .. } if code == "provider_tool_policy_violation"),
+        "{outcome:?}"
+    );
+}
+
+#[tokio::test]
+async fn unconfigured_provider_mcp_is_refused_before_client_execution() {
+    let h = Harness::new().await;
+    h.fake.with(|s| s.initial_provider_items.push(json!({"type":"mcp_call", "id":"unconfigured", "turn_id":"turn_1", "server_label":"unknown", "name":"steal", "arguments":{}, "status":"in_progress"})));
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(h.fake.with(|s| s.cancel_posts), 1);
+}
+
+#[tokio::test]
+async fn exact_empty_provider_inventories_complete_and_remain_outside_act() {
+    for name in ["list_mcp_resources", "list_mcp_resource_templates"] {
+        let h = Harness::new().await;
+        let mut pending = inventory(name);
+        pending["status"] = json!("in_progress");
+        pending["output"] = Value::Null;
+        h.fake.with(|s| {
+            s.initial_provider_items.push(pending);
+            s.final_provider_items = Some(vec![inventory(name)]);
+            s.duplicate = true;
+        });
+        assert_completed(
+            &h.driver()
+                .with_runtime_policy()
+                .run(&request(1, "hi"))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(h.executor.calls.load(Ordering::SeqCst), 1);
+        let hosted = h.ledger.of_type("tool.hosted_call");
+        assert_eq!(hosted.len(), 2, "{hosted:?}");
+        assert_eq!(hosted[0]["tool_name"], format!("mcp_codex__{name}"));
+        assert_eq!(h.ledger.of_type("tool.completed").len(), 1);
+        h.ledger.assert_each_record_once();
+    }
+}
+
+#[tokio::test]
+async fn provider_call_and_inventory_payload_matrix_fails_closed_without_leaking() {
+    let base = inventory("list_mcp_resources");
+    let mut cases = vec![
+        json!({"type":"web_search_call", "id":"hosted", "status":"in_progress", "action":{"query":"sk-forbidden-payload"}}),
+        json!({"type":"unknown_call", "arguments":{"key":"sk-forbidden-payload"}}),
+        json!({"type":"new_executable_provider_kind"}),
+        json!({"type":"mcp_call", "name":"sk-forbidden-payload"}),
+        json!({"type":"function_call", "id":"unknown", "name":"sk-forbidden-payload", "arguments":{}}),
+    ];
+    for (key, value) in [
+        ("server_label", json!("sk-forbidden-payload")),
+        ("name", json!("read_mcp_resource")),
+        ("arguments", json!({"server":"sk-forbidden-payload"})),
+        ("arguments", Value::Null),
+        ("arguments", json!("{}")),
+        ("arguments", json!([])),
+        ("id", Value::Null),
+        ("status", json!("failed")),
+        ("status", json!("cancelled")),
+        ("status", json!("incomplete")),
+        ("error", json!({"message":"sk-forbidden-payload"})),
+        ("output", json!("sk-forbidden-payload")),
+        (
+            "output",
+            json!({"resources":[{"uri":"sk-forbidden-payload"}]}),
+        ),
+        ("output", json!({"resourceTemplates":[]})),
+        (
+            "output",
+            json!({"resources":[], "nextCursor":"sk-forbidden-payload"}),
+        ),
+        (
+            "output",
+            json!({"content":[{"type":"text", "text":"{\"resources\":[]}"}], "isError":true}),
+        ),
+        (
+            "output",
+            json!({"content":[{"type":"text", "text":"{\"resources\":[]}"}], "structuredContent":{"resources":["sk-forbidden-payload"]}}),
+        ),
+        (
+            "output",
+            json!({"content":[{"type":"text", "text":"{\"resources\":[]}"}, {"type":"text", "text":"sk-forbidden-payload"}]}),
+        ),
+        (
+            "output",
+            json!({"content":[{"type":"text", "text":"{\"resources\":[]}"}], "_meta":{"key":"sk-forbidden-payload"}}),
+        ),
+    ] {
+        let mut case = base.clone();
+        case[key] = value;
+        cases.push(case);
+    }
+    let mut missing_args = base.clone();
+    missing_args.as_object_mut().unwrap().remove("arguments");
+    cases.push(missing_args);
+    for item in cases {
+        let h = Harness::new().await;
+        h.fake.with(|s| s.initial_provider_items.push(item.clone()));
+        let outcome = h
+            .driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap();
+        assert!(
+            !format!("{outcome:?}").contains("sk-forbidden-payload"),
+            "{item}"
+        );
+        assert_refused(outcome);
+        assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0, "{item}");
+        assert_eq!(h.fake.with(|s| s.tool_result_posts), 0, "{item}");
+        assert!(
+            !format!("{:?}", h.ledger.data()).contains("sk-forbidden-payload"),
+            "{item}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_missing_provider_item_stream_is_checked_before_client_functions() {
+    let h = Harness::new().await;
+    h.fake.with(|s| {
+        s.initial_provider_items
+            .push(json!({"type":"shell_call", "id":"shell", "status":"in_progress"}));
+        s.drop = vec![
+            "agent.session.turn.item.added",
+            "agent.session.turn.item.done",
+        ];
+    });
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn final_saved_inventory_is_validated_when_terminal_items_were_not_streamed() {
+    for item in [
+        json!({"type":"mcp_call", "id":"unknown", "name":"unknown", "status":"completed"}),
+        {
+            let mut item = inventory("list_mcp_resources");
+            item["output"] = json!({"resources":["unexpected"]});
+            item
+        },
+        {
+            let mut item = inventory("list_mcp_resources");
+            item["status"] = json!("in_progress");
+            item["output"] = Value::Null;
+            item
+        },
+    ] {
+        let h = Harness::new().await;
+        h.fake.with(|s| {
+            s.final_provider_items = Some(vec![item]);
+            s.drop = vec!["agent.session.turn.item.done"];
+        });
+        assert_refused(
+            h.driver()
+                .with_runtime_policy()
+                .run(&request(1, "hi"))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(h.fake.with(|s| s.cancel_posts), 1);
+        assert_eq!(h.executor.calls.load(Ordering::SeqCst), 1);
+        assert!(h.checkpoint().turn.unwrap().policy_stop.is_some());
+    }
+}
+
+#[tokio::test]
+async fn a_pending_inventory_missing_from_the_terminal_snapshot_cannot_complete() {
+    let h = Harness::new().await;
+    let mut pending = inventory("list_mcp_resources");
+    pending["status"] = json!("in_progress");
+    pending["output"] = Value::Null;
+    h.fake.with(|s| {
+        s.stream_only_provider_items.push(pending);
+        s.final_provider_items = Some(vec![]);
+    });
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.fake.with(|s| s.cancel_posts), 1);
+}
+
+#[tokio::test]
+async fn hidden_subagents_and_malformed_actions_are_refused_before_act() {
+    let good = json!({"type":"function_call", "turn_id":"turn_1", "call_id":"call_1", "name":"lookup_customer", "arguments":{}});
+    let mut cases = vec![json!({"type":"environment_connection"}), Value::Null];
+    for (field, value) in [
+        ("subagent_id", json!("child")),
+        ("subagent_turn_id", json!("child")),
+        ("turn_id", json!("unknown_child_turn")),
+        ("turn_id", Value::Null),
+        ("call_id", Value::Null),
+        ("name", json!("unknown")),
+        ("arguments", json!("{malformed")),
+    ] {
+        let mut case = good.clone();
+        case[field] = value;
+        cases.push(case);
+    }
+    for action in cases {
+        let h = Harness::new().await;
+        h.fake
+            .with(|s| s.initial_required_actions = Some(vec![action]));
+        assert_refused(
+            h.driver()
+                .with_runtime_policy()
+                .run(&request(1, "hi"))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    }
+    let h = Harness::new().await;
+    h.fake.with(|s| s.hidden_subagent = true);
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn strict_config_is_refused_before_acquiring_or_reusing_a_provider_session() {
+    let h = Harness::new().await;
+    h.fake.with(|s| s.final_provider_items = Some(vec![]));
+    let first = request(1, "hi");
+    assert!(matches!(
+        h.driver().with_runtime_policy().run(&first).await.unwrap(),
+        AgentsApiTurnOutcome::Completed { tool_calls: 1, .. }
+    ));
+    let checkpoint = h.checkpoint();
+    let requests = h.fake.with(|s| s.requests);
+    let mut next = request(2, "hi again");
+    next.config = next
+        .config
+        .with_direct_mcp("docs", "https://docs.example.com/mcp", &["search"])
+        .unwrap();
+    assert!(matches!(
+        h.driver().with_runtime_policy().run(&next).await,
+        Err(AgentsApiError::PolicyViolation(_))
+    ));
+    assert_eq!(h.fake.with(|s| s.requests), requests);
+    assert_eq!(
+        h.checkpoint().turn.unwrap().turn_id,
+        checkpoint.turn.unwrap().turn_id
+    );
+    let empty = Harness::new().await;
+    assert!(
+        empty
+            .driver()
+            .with_runtime_policy()
+            .run(&next)
+            .await
+            .is_err()
+    );
+    assert_eq!(empty.fake.with(|s| s.requests), 0);
+    assert!(empty.store.inner.snapshot(first.session_id).is_none());
+}
+
+#[tokio::test]
+async fn saved_provider_stop_survives_crash_and_replay_without_more_execution() {
+    let h = Harness::new().await;
+    h.fake.with(|s| {
+        s.initial_provider_items
+            .push(json!({"type":"web_search_call", "id":"search", "status":"in_progress"}))
+    });
+    // Fail while saving the terminal outcome, after the stop and cancel are durable.
+    h.store
+        .crash_when(|cp| cp.turn.as_ref().is_some_and(|t| t.outcome.is_some()));
+    let request = request(1, "hi");
+    assert!(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request)
+            .await
+            .is_err()
+    );
+    assert!(h.checkpoint().turn.unwrap().policy_stop.is_some());
+    h.store.inner.expire(request.session_id);
+    // The provider no longer reports the evidence; the persisted stop wins.
+    h.fake.with(|s| {
+        s.sessions[0].turns[0]
+            .items
+            .retain(|item| item["id"] != "search")
+    });
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request)
+            .await
+            .unwrap(),
+    );
+    let requests = h.fake.with(|s| s.requests);
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        h.fake.with(|s| s.requests),
+        requests,
+        "terminal replay contacts no provider"
+    );
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(h.fake.with(|s| s.tool_result_posts), 0);
+    assert_eq!(h.ledger.of_type("llm.generation").len(), 1);
+}
+
+#[tokio::test]
+async fn custom_driver_remains_explicitly_permissive() {
+    let h = Harness::new().await;
+    h.fake.with(|s| s.managed_extras = true);
+    assert!(matches!(
+        h.driver().run(&request(1, "hi")).await.unwrap(),
+        AgentsApiTurnOutcome::Completed { .. }
+    ));
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 1);
+    assert!(!h.ledger.of_type("tool.hosted_call").is_empty());
+}
+
+#[tokio::test]
+async fn parent_provenance_cannot_masquerade_as_a_root_client_action() {
+    for provenance in [
+        json!({"parent_turn_id":"turn_1"}),
+        json!({"root_turn_id":"other_root"}),
+        json!({"turn":{"id":"child", "subagent_id":null}}),
+    ] {
+        let h = Harness::new().await;
+        let mut action = json!({"type":"function_call", "turn_id":"turn_1", "call_id":"call_1", "name":"lookup_customer", "arguments":{}});
+        action
+            .as_object_mut()
+            .unwrap()
+            .extend(provenance.as_object().unwrap().clone());
+        h.fake
+            .with(|s| s.initial_required_actions = Some(vec![action]));
+        assert_refused(
+            h.driver()
+                .with_runtime_policy()
+                .run(&request(1, "hi"))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn a_missing_root_created_event_reconciles_before_a_legitimate_client_action() {
+    let h = Harness::new().await;
+    h.fake.with(|s| {
+        s.drop = vec!["agent.session.turn.created"];
+        s.final_provider_items = Some(vec![inventory("list_mcp_resources")]);
+    });
+    assert_completed(
+        &h.driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn old_mcp_checkpoint_entries_require_authoritative_allowed_items_before_resuming() {
+    use everruns_core::agents_api_store::{ItemCorrelation, ItemKind, ItemState};
+    for state in [ItemState::Open, ItemState::Completed] {
+        let h = Harness::new().await;
+        h.executor.then(Script::Park(ParkReason::ClientResult));
+        let initial = request(1, "hi");
+        assert!(matches!(
+            h.driver().run(&initial).await.unwrap(),
+            AgentsApiTurnOutcome::Paused
+        ));
+        let lease = AgentsApiLease {
+            org_id: initial.org_id,
+            session_id: initial.session_id,
+            owner: uuid::Uuid::new_v4(),
+        };
+        let mut checkpoint = h.store.acquire(lease).await.unwrap();
+        checkpoint.turn.as_mut().unwrap().items.insert(
+            "mcp:legacy_missing".into(),
+            ItemCorrelation {
+                kind: ItemKind::McpCall,
+                local_id: MessageId::new().to_string(),
+                state,
+            },
+        );
+        h.store.save(lease, &checkpoint).await.unwrap();
+        h.store.release(lease).await.unwrap();
+        assert_refused(
+            h.driver()
+                .with_runtime_policy()
+                .run(&resumed(&initial))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(h.fake.with(|s| s.tool_result_posts), 0);
+    }
+}
+
+#[tokio::test]
+async fn known_earlier_roots_do_not_trip_the_current_turn_policy() {
+    let h = Harness::new().await;
+    h.fake
+        .with(|s| s.final_provider_items = Some(vec![inventory("list_mcp_resources")]));
+    assert_completed(
+        &h.driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap(),
+    );
+    h.fake.with(|s| {
+        s.initial_provider_items =
+            vec![json!({"type":"web_search_call", "id":"old_search", "turn_id":"turn_1"})];
+        let mut next = inventory("list_mcp_resource_templates");
+        next["turn_id"] = json!("turn_2");
+        s.final_provider_items = Some(vec![next]);
+    });
+    assert!(matches!(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request(2, "next"))
+            .await
+            .unwrap(),
+        AgentsApiTurnOutcome::Completed { .. }
+    ));
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(h.fake.with(|s| s.cancel_posts), 0);
+}
+
+#[tokio::test]
+async fn refused_inventory_completion_closes_its_known_hosted_lifecycle_once() {
+    let h = Harness::new().await;
+    let mut pending = inventory("list_mcp_resources");
+    pending["status"] = json!("in_progress");
+    pending["output"] = Value::Null;
+    let mut nonempty = inventory("list_mcp_resources");
+    nonempty["output"] = json!({"resources":["sk-forbidden-payload"]});
+    h.fake.with(|s| {
+        s.initial_provider_items.push(pending);
+        s.final_provider_items = Some(vec![nonempty]);
+    });
+    let initial = request(1, "hi");
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+    );
+    let hosted = h.ledger.of_type("tool.hosted_call");
+    assert_eq!(hosted.len(), 2, "{hosted:?}");
+    assert_eq!(hosted[0]["status"], "in_progress");
+    assert_eq!(hosted[1]["status"], "failed");
+    assert_eq!(hosted[0]["call_id"], hosted[1]["call_id"]);
+    assert!(!format!("{:?}", h.ledger.data()).contains("sk-forbidden-payload"));
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.ledger.of_type("tool.hosted_call").len(), 2);
+    h.ledger.assert_each_record_once();
+}
+
+#[tokio::test]
+async fn a_crash_immediately_after_saving_the_policy_stop_preserves_rejected_call_cost() {
+    use everruns_core::agents_api_store::ItemState;
+    let h = Harness::new().await;
+    h.fake.with(|s| {
+        s.initial_provider_items.push(
+            json!({"type":"web_search_call", "id":"sk-forbidden-payload", "status":"in_progress"}),
+        )
+    });
+    h.store.crash_when(|cp| {
+        cp.turn.as_ref().is_some_and(|turn| {
+            turn.policy_stop.is_some()
+                && turn.items.iter().any(|(key, item)| {
+                    key.starts_with("hosted-done:rejected-") && item.state == ItemState::Completing
+                })
+        })
+    });
+    let initial = request(1, "hi");
+    assert!(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .is_err()
+    );
+    let persisted = h.checkpoint().turn.unwrap();
+    assert!(persisted.policy_stop.is_some());
+    assert!(persisted.items.iter().any(
+        |(key, item)| key.starts_with("hosted-done:rejected-") && item.state == ItemState::Open
+    ));
+    h.store.inner.expire(initial.session_id);
+    h.fake.with(|s| {
+        s.sessions[0].turns[0]
+            .items
+            .retain(|item| item["type"] != "web_search_call")
+    });
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+    );
+    let generations = h.ledger.of_type("llm.generation");
+    assert_eq!(generations.len(), 1);
+    assert!(
+        generations[0].to_string().contains("web_search_call"),
+        "{generations:?}"
+    );
+    assert_eq!(h.ledger.of_type("tool.hosted_call").len(), 1);
+    assert!(!format!("{:?}", h.ledger.data()).contains("sk-forbidden-payload"));
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn an_unknown_additional_root_is_refused_even_without_its_stream() {
+    let h = Harness::new().await;
+    h.executor.then(Script::Park(ParkReason::ClientResult));
+    let initial = request(1, "hi");
+    assert!(matches!(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+        AgentsApiTurnOutcome::Paused
+    ));
+    h.fake.with(|s| {
+        s.sessions[0].turns.push(FakeTurn {
+            id: "unknown_root".into(),
+            status: "in_progress".into(),
+            created_at: 2,
+            ..FakeTurn::default()
+        })
+    });
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&resumed(&initial))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(h.fake.with(|s| s.tool_result_posts), 0);
+}
+
+#[tokio::test]
+async fn policy_accounting_never_copies_poisoned_root_or_hidden_child_errors() {
+    let h = Harness::new().await;
+    h.executor.then(Script::Park(ParkReason::ClientResult));
+    let initial = request(1, "hi");
+    assert!(matches!(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+        AgentsApiTurnOutcome::Paused
+    ));
+    h.fake.with(|s| {
+        s.sessions[0].turns[0].error = json!({"message":"sk-forbidden-payload-root"});
+        s.sessions[0].turns.push(FakeTurn {
+            id: "child_turn".into(),
+            subagent_id: Some("sk-forbidden-payload-label".into()),
+            status: "failed".into(),
+            created_at: 2,
+            error: json!({"message":"sk-forbidden-payload-child"}),
+            ..FakeTurn::default()
+        });
+    });
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&resumed(&initial))
+            .await
+            .unwrap(),
+    );
+    let generations = h.ledger.of_type("llm.generation");
+    assert_eq!(generations.len(), 2, "orphan child and root both accounted");
+    assert!(!format!("{:?}", h.ledger.data()).contains("sk-forbidden-payload"));
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(h.ledger.of_type("tool.hosted_call").len(), 1);
+}
+
+#[tokio::test]
+async fn a_created_provider_environment_is_refused_before_client_actions() {
+    let h = Harness::new().await;
+    h.fake.with(|s| {
+        s.provider_environment = Some(json!({"type":"hosted", "secret":"sk-forbidden-payload"}))
+    });
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(h.fake.with(|s| s.tool_result_posts), 0);
+    assert!(!format!("{:?}", h.ledger.data()).contains("sk-forbidden-payload"));
+}
+
+#[tokio::test]
+async fn permissive_hosted_checkpoints_are_refused_before_client_execution() {
+    use everruns_core::agents_api_store::{ItemCorrelation, ItemKind, ItemState};
+    for (key, local_id) in [
+        ("hosted:web", "web"),
+        ("hosted-done:web", "web_search_call"),
+        ("hosted:missing_inventory", "missing_inventory"),
+    ] {
+        let h = Harness::new().await;
+        h.executor.then(Script::Park(ParkReason::ClientResult));
+        let initial = request(1, "hi");
+        assert!(matches!(
+            h.driver().run(&initial).await.unwrap(),
+            AgentsApiTurnOutcome::Paused
+        ));
+        let lease = AgentsApiLease {
+            org_id: initial.org_id,
+            session_id: initial.session_id,
+            owner: uuid::Uuid::new_v4(),
+        };
+        let mut checkpoint = h.store.acquire(lease).await.unwrap();
+        checkpoint.turn.as_mut().unwrap().items.insert(
+            key.into(),
+            ItemCorrelation {
+                kind: ItemKind::HostedCall,
+                local_id: local_id.into(),
+                state: ItemState::Completed,
+            },
+        );
+        h.store.save(lease, &checkpoint).await.unwrap();
+        h.store.release(lease).await.unwrap();
+        assert_refused(
+            h.driver()
+                .with_runtime_policy()
+                .run(&resumed(&initial))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(h.fake.with(|s| s.tool_result_posts), 0);
+    }
+}
+
+#[tokio::test]
+async fn contradictory_earlier_root_provenance_cannot_hide_current_work() {
+    let h = Harness::new().await;
+    h.fake
+        .with(|s| s.final_provider_items = Some(vec![inventory("list_mcp_resources")]));
+    assert_completed(
+        &h.driver()
+            .with_runtime_policy()
+            .run(&request(1, "hi"))
+            .await
+            .unwrap(),
+    );
+    h.fake.with(|s| {
+        s.initial_required_actions = Some(vec![json!({"type":"function_call", "turn_id":"turn_1", "parent_turn_id":"turn_1", "turn":{"root_turn_id":"turn_2"}, "call_id":"call_2", "name":"lookup_customer", "arguments":{}})]);
+    });
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&request(2, "next"))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        h.executor.calls.load(Ordering::SeqCst),
+        1,
+        "only first legitimate turn executed"
+    );
+}
+
+#[tokio::test]
+async fn a_subagent_before_root_adoption_is_refused_and_its_unknown_spend_accounted() {
+    let h = Harness::new().await;
+    h.fake.with(|s| {
+        s.hidden_subagent = true;
+        s.pre_root_events = vec![json!({"type":"agent.session.turn.created", "turn_id":"hidden_child", "subagent_id":"child", "turn":{"id":"hidden_child", "parent_turn_id":"turn_1", "subagent_id":"child"}})];
+    });
+    let initial = request(1, "hi");
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    let generations = h.ledger.of_type("llm.generation");
+    assert_eq!(
+        generations.len(),
+        2,
+        "root recovered for accounting plus child"
+    );
+    assert_eq!(generations[0]["metadata"]["usage"], Value::Null);
+    assert!(
+        !generations[0]["metadata"]["cost_components"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.ledger.of_type("llm.generation").len(), 2);
+}
+
+#[tokio::test]
+async fn a_durable_rejected_child_missing_on_recovery_keeps_its_spend_unknown() {
+    use everruns_core::agents_api_store::ItemState;
+    let h = Harness::new().await;
+    h.fake.with(|s| {
+        s.hidden_subagent = true;
+        s.usage_on_failure = true;
+    });
+    h.store.crash_when(|cp| {
+        cp.turn.as_ref().is_some_and(|turn| {
+            turn.policy_stop.is_some()
+                && turn
+                    .items
+                    .get("usage:hidden_child")
+                    .is_some_and(|item| item.state == ItemState::Completing)
+        })
+    });
+    let initial = request(1, "hi");
+    assert!(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .is_err()
+    );
+    assert!(
+        h.checkpoint()
+            .turn
+            .unwrap()
+            .items
+            .contains_key("subagent:hidden_child")
+    );
+    h.store.inner.expire(initial.session_id);
+    h.fake
+        .with(|s| s.sessions[0].turns.retain(|turn| turn.id != "hidden_child"));
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+    );
+    let generations = h.ledger.of_type("llm.generation");
+    assert_eq!(generations.len(), 2);
+    assert_eq!(generations[0]["metadata"]["response_id"], "hidden_child");
+    assert_eq!(generations[0]["metadata"]["usage"], Value::Null);
+    assert_eq!(
+        generations[0]["metadata"]["cost_components"][0]["cost_usd"],
+        Value::Null
+    );
+    assert!(!generations[1]["metadata"]["usage"].is_null());
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn rejected_hosted_work_with_no_recoverable_root_retains_unknown_tokens_and_known_calls() {
+    let h = Harness::new().await;
+    h.fake.with(|s| {
+        s.hide_turns = true;
+        s.pre_root_events = vec![json!({"type":"agent.session.turn.item.added", "item":{"type":"web_search_call", "id":"search", "status":"in_progress"}})];
+    });
+    let initial = request(1, "hi");
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+    );
+    let generations = h.ledger.of_type("llm.generation");
+    assert_eq!(generations.len(), 1);
+    assert_eq!(generations[0]["metadata"]["usage"], Value::Null);
+    let components = generations[0]["metadata"]["cost_components"]
+        .as_array()
+        .unwrap();
+    assert_eq!(components.len(), 2);
+    assert_eq!(components[0]["cost_usd"], Value::Null);
+    assert_eq!(components[1]["name"], "web_search_call");
+    assert_eq!(components[1]["quantity"], 1);
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 0);
+    assert_refused(
+        h.driver()
+            .with_runtime_policy()
+            .run(&initial)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(h.ledger.of_type("llm.generation").len(), 1);
+}
