@@ -55,6 +55,19 @@ async fn assert_hosted_tool_search_was_enabled(runner: &InMemoryAgenticLoop) {
     );
 }
 
+async fn generation_called_tool(runner: &InMemoryAgenticLoop, name: &str) -> bool {
+    runner
+        .events_by_type(LLM_GENERATION)
+        .await
+        .iter()
+        .any(|event| {
+            let EventData::LlmGeneration(data) = &event.data else {
+                return false;
+            };
+            data.output.tool_calls.iter().any(|call| call.name == name)
+        })
+}
+
 // ============================================================================
 // Scenario: hosted OpenAI tool_search (deferred loading)
 // ============================================================================
@@ -104,7 +117,8 @@ async fn test_openai_tool_search_with_many_capabilities(#[case] config: Provider
         let result = runner.run_turn("What time is it right now?").await.unwrap();
 
         assert!(result.success, "Turn should succeed: {:?}", result.error);
-        if result.tool_calls_count > 0 {
+        if result.tool_calls_count > 0 && generation_called_tool(&runner, "get_current_time").await
+        {
             called_get_current_time = true;
             break;
         }
@@ -154,7 +168,7 @@ async fn test_openai_tool_search_low_threshold(#[case] config: ProviderModelConf
 
         assert!(result.success, "Turn should succeed: {:?}", result.error);
         assert_hosted_tool_search_was_enabled(&runner).await;
-        if result.tool_calls_count > 0 {
+        if result.tool_calls_count > 0 && generation_called_tool(&runner, "add").await {
             called_add = true;
             break;
         }
