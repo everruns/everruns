@@ -136,8 +136,9 @@ only reach the agents in `agents`; it never supplies a URL.
 - `result_schema` on `spawn_agent` requires a structured result and validates
   the remote agent's first data part against it.
 - URLs are checked before each call: localhost, private ranges, and metadata
-  addresses are refused. Set `"allow_local_urls": true` on an agent entry only
-  while developing against a server on your machine.
+  addresses are refused, resolved addresses are pinned, and redirects are not
+  followed. Set `"allow_local_urls": true` on an agent entry only while
+  developing against a server on your machine under `DEPLOYMENT_GRADE=dev`.
 
 The remote agent can be anything that speaks A2A 1.0: a serve app, an Everruns
 A2A endpoint, or another vendor's agent.

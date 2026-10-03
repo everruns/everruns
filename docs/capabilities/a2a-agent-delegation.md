@@ -56,12 +56,14 @@ Cloud. In the [Framework](/framework/), turn on the `a2a` Cargo feature of
 | `headers` | No | Static headers sent to the A2A endpoint. They are stored in the config, so they must not hold secrets |
 | `preferred_binding` | No | `JSONRPC` or `HTTP+JSON` |
 | `poll_interval_ms` | No | How often to poll the remote task, 100 to 60000. Default 1000 |
-| `allow_local_urls` | No | Allows localhost and private addresses, for local development. Default `false` |
+| `allow_local_urls` | No | Allows localhost and private addresses for local development. Honored only when `DEPLOYMENT_GRADE=dev`; rejected otherwise. Default `false` |
 
-Without `allow_local_urls`, `base_url` and every interface URL in an inline
-Agent Card must pass the safe-URL check, which refuses localhost, private
-ranges, and metadata addresses. A session's network access policy is also
-applied to the endpoint before and after the Agent Card is resolved.
+Without `allow_local_urls` (or outside `DEPLOYMENT_GRADE=dev`), `base_url` and
+every interface URL in an inline Agent Card must pass the safe-URL check, which
+refuses localhost, private ranges, and metadata addresses. At request time the
+same URLs are DNS-pinned and redirects are disabled. A session's network access
+policy is also applied to the endpoint before and after the Agent Card is
+resolved.
 
 ## `spawn_agent`
 

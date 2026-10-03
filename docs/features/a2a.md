@@ -213,8 +213,9 @@ finishes; the generic `wait_task`, `message_task`, and `cancel_task` tools
 work on it. Pass `result_schema` to require a structured result.
 
 URLs are checked before every call: localhost, private ranges, and metadata
-addresses are refused. `allow_local_urls: true` lifts that for local
-development only.
+addresses are refused, resolved addresses are pinned, and redirects are not
+followed. `allow_local_urls: true` lifts the address check only when
+`DEPLOYMENT_GRADE=dev`.
 
 > **Status:** On the hosted platform, outbound delegation is experimental and
 > available in Dev environments.
