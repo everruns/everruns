@@ -9,8 +9,6 @@ use crate::records::{
 };
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
-use crate::storage::models::UpdateEndpointByIdRow;
-use everruns_durable::UpdateField;
 use std::sync::Arc;
 use uuid::Uuid;
 
