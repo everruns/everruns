@@ -28,6 +28,7 @@ import {
 import { StartersEditor } from "@/components/starters-editor";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor } from "@/components/network-access-editor";
+import { EnvironmentProfilesEditor } from "@/components/agents/environment-profiles-editor";
 import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
@@ -43,6 +44,7 @@ export type AgentSettingsSection =
   | "credentials"
   | "files"
   | "network"
+  | "environments"
   | "usage"
   | "health"
   | "versions";
@@ -79,6 +81,12 @@ const SECTIONS: Record<
     description:
       "Which hosts this agent's sessions can reach through network-capable tools. Narrows the harness policy; sessions can narrow it further.",
     kind: "draft",
+  },
+  environments: {
+    title: "Environments",
+    description: "Named execution profiles available when a new chat starts.",
+    kind: "draft",
+    wide: true,
   },
   usage: {
     title: "Token usage",
@@ -158,6 +166,13 @@ export function AgentSettingsSheet({
                   onChange={onDraftChange(draft.setNetworkAccess)}
                   disabled={readOnly}
                   description="One pattern per line: example.com, *.example.com, or https://example.com/api/."
+                />
+              )}
+              {section === "environments" && (
+                <EnvironmentProfilesEditor
+                  value={draft.environments}
+                  onChange={onDraftChange(draft.setEnvironments)}
+                  disabled={readOnly}
                 />
               )}
               {section === "usage" && <UsageSection agent={agent} />}

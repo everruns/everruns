@@ -84,6 +84,8 @@ allowed = [
     "*.perplexity.ai",
     "*.x.ai",
     "*.deepseek.com",
+    # Meta Model API (Muse image generation through the image capability).
+    "api.meta.ai",
 ]
 
 [groups.vector_stores]

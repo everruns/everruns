@@ -417,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -458,7 +458,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "async-trait",
  "schemars",
@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -519,7 +519,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -553,6 +553,7 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
+ "globset",
  "hex",
  "serde_json",
  "sha2",
@@ -561,7 +562,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -575,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -584,14 +585,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "everruns-provider"
-version = "0.34.2"
+version = "0.35.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -905,9 +906,9 @@ dependencies = [
 
 [[package]]
 name = "gloo-timers"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbb143cf96099802033e0d4f4963b19fd2e0b728bcf076cd9cf7f6634f092994"
+checksum = "482ce8a491a501da4cd806bd190275363d674f2845005c6ddbd5d3e1dd54495d"
 dependencies = [
  "futures-channel",
  "futures-core",

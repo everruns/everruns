@@ -85,9 +85,10 @@ export default defineConfig({
       alias: [
         {
           find: /^@astrojs\/starlight\/components$/,
-          replacement: path.resolve(
-            __dirname,
-            "node_modules/@astrojs/starlight/components.ts"
+          // Resolve through the package's exports so a moved entry file
+          // (0.42 relocated it under dist/) cannot silently break the alias.
+          replacement: fileURLToPath(
+            import.meta.resolve("@astrojs/starlight/components")
           ),
         },
         {

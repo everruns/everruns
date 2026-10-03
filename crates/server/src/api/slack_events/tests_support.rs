@@ -110,6 +110,7 @@ pub(crate) async fn setup_test_session(
     use crate::storage::models::CreateSessionRow;
 
     let row = CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: 1,

@@ -6,7 +6,6 @@ use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, PrincipalId, SessionId};
-
 /// Default pagination for tests (large enough to not truncate).
 fn default_pagination() -> Pagination {
     Pagination::new(0, 1000)
@@ -18,6 +17,7 @@ fn test_harness_id() -> HarnessId {
 
 fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
@@ -77,6 +77,7 @@ async fn test_create_and_get_agent() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -175,6 +176,7 @@ async fn test_create_and_list_sessions() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -562,6 +564,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -673,6 +676,7 @@ async fn test_session_updated_at() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -743,6 +747,7 @@ async fn test_events_sequence() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -812,6 +817,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1146,6 +1152,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1844,6 +1851,7 @@ async fn test_list_events_empty_session_with_limit() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1894,6 +1902,7 @@ async fn test_sessions_pagination() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2020,6 +2029,7 @@ async fn test_sessions_pagination_ordering() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2514,6 +2524,7 @@ async fn create_test_agent(
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            environments: None,
             is_built_in: false,
         },
     )
@@ -3029,6 +3040,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -3564,10 +3576,7 @@ async fn test_user_preferences_crud_and_isolation() {
     );
 }
 
-// Account linking: signing in with an OAuth provider whose verified email
-// matches an existing password account must attach the provider identity to
-// that account (same email = same account) WITHOUT dropping password auth.
-// Mirrors the linking branch in `oauth_callback` (crates/server/src/auth/routes.rs).
+// OAuth linking must preserve password authentication for an existing email.
 #[tokio::test]
 async fn link_oauth_identity_attaches_provider_and_preserves_password() {
     let db = InMemoryDatabase::new();
@@ -3724,11 +3733,7 @@ async fn link_oauth_identity_does_not_replace_existing_provider_subject() {
     );
 }
 
-// EVE-704: user email is a case-insensitive identity. Registering `John@x.com`
-// then `john@x.com` must resolve to a single account, and login / OAuth-linking
-// lookups must find that account regardless of the casing supplied. This test
-// fails against the pre-fix backend (verbatim store + exact-match lookup),
-// where the second casing would appear as a distinct, unfound account.
+// EVE-704: user email is case-insensitive across login and OAuth linking.
 #[tokio::test]
 async fn test_user_email_is_case_insensitive_identity() {
     let db = InMemoryDatabase::new();
@@ -3780,9 +3785,7 @@ fn test_normalize_email_trims_and_lowercases() {
     assert_eq!(normalize_email("\tBob@X.io\n"), "bob@x.io");
 }
 
-// ============================================
 // Agent trigger round-trips (EVE-757)
-// ============================================
 
 fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow {
     CreateAgentTriggerRow {
@@ -3817,7 +3820,6 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
     let db = InMemoryDatabase::new();
     let agent_id = AgentId::new();
 
-    // Create
     let created = db
         .create_agent_trigger(schedule_trigger_input(agent_id))
         .await
@@ -3834,7 +3836,6 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
     assert_eq!(schedule.cron_expression, "0 0 * * * *");
     assert_eq!(schedule.message, "hello");
 
-    // Get
     let fetched = db
         .get_agent_trigger(DEFAULT_ORG_ID, created.id)
         .await
@@ -3850,7 +3851,6 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
             .is_none()
     );
 
-    // List
     let listed = db
         .list_agent_triggers(DEFAULT_ORG_ID, None, false)
         .await

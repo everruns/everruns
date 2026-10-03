@@ -76,7 +76,7 @@ getrandom = { version = "0.4", features = ["wasm_js"] }
 getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 uuid = { workspace = true, features = ["js"] }
 chrono = { workspace = true, features = ["wasmbind"] }
-gloo-timers = { version = "0.3", features = ["futures"] }
+gloo-timers = { version = "0.4", features = ["futures"] }
 wasm-bindgen-futures = "0.4"
 
 [features]

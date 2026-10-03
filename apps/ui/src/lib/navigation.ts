@@ -77,6 +77,13 @@ export const defaultOperationalNavigation: NavigationItem[] = [
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [
+  {
+    name: "Playground",
+    href: "/playground",
+    icon: FlaskConical,
+    flag: "playground",
+    experimental: true,
+  },
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Harnesses", href: "/harnesses", icon: Shield },
   { name: "Virtual Users", href: "/virtual-users", icon: UserRound },

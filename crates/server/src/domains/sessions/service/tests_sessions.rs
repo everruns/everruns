@@ -120,6 +120,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
         harness_name: None,
         tags: vec![],
         capabilities: vec![],
+        environments: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),
@@ -332,6 +333,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
         harness_name: None,
         tags: vec![],
         capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
+        environments: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),
@@ -415,6 +417,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
     let missing_owner_id = PrincipalId::new();
     let missing_reference_session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
@@ -965,6 +968,7 @@ async fn starter_files_are_copied_into_new_sessions() {
         harness_name: None,
         tags: vec![],
         capabilities: vec![],
+        environments: None,
         initial_files: vec![
             InitialFile {
                 path: "/config.txt".to_string(),
@@ -1091,6 +1095,7 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
         harness_name: None,
         tags: vec![],
         capabilities: vec![],
+        environments: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),
@@ -1350,6 +1355,7 @@ async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
         harness_name: None,
         tags: vec![],
         capabilities: vec![],
+        environments: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),

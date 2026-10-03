@@ -418,13 +418,11 @@ impl CdpSession {
         Ok(())
     }
 
-    /// Find the center coordinates of an element by CSS selector.
+    /// Find the viewport center coordinates of an element by CSS selector,
+    /// scrolling it into view first.
     async fn get_element_center(&mut self, selector: &str) -> Result<(f64, f64), String> {
-        let selector_js = serde_json::to_string(selector).unwrap();
         let coord_str = self
-            .eval_string(&format!(
-                "(() => {{ const el = document.querySelector({selector_js}); if (!el) throw new Error('Element not found: ' + {selector_js}); const r = el.getBoundingClientRect(); return JSON.stringify({{ x: r.x + r.width/2, y: r.y + r.height/2 }}); }})()"
-            ))
+            .eval_string(&element_center_expression(selector))
             .await?;
 
         if coord_str.is_empty() {
@@ -851,6 +849,31 @@ fn target_is_placeholder_page(target: &Value) -> bool {
 // Tests
 // ============================================================================
 
+/// JS expression returning the element's center in viewport coordinates as JSON.
+///
+/// Decision: scroll the element into view before measuring. `Input.dispatchMouseEvent`
+/// and `Input.dispatchTouchEvent` take viewport coordinates, so an element below the
+/// fold yields a point outside the viewport and the click silently hits nothing
+/// (example.com's link sits at y≈690 in Browserless' default 800x600 viewport).
+/// Only scroll when the center is off-screen, mirroring Puppeteer's
+/// scroll-into-view-if-needed, so visible elements keep the page's scroll position.
+fn element_center_expression(selector: &str) -> String {
+    let selector_js = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        "(() => {{ \
+            const el = document.querySelector({selector_js}); \
+            if (!el) throw new Error('Element not found: ' + {selector_js}); \
+            const center = () => {{ const r = el.getBoundingClientRect(); return {{ x: r.x + r.width / 2, y: r.y + r.height / 2 }}; }}; \
+            let c = center(); \
+            if (c.x < 0 || c.y < 0 || c.x >= window.innerWidth || c.y >= window.innerHeight) {{ \
+                el.scrollIntoView({{ block: 'center', inline: 'center', behavior: 'instant' }}); \
+                c = center(); \
+            }} \
+            return JSON.stringify(c); \
+        }})()"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1230,5 +1253,22 @@ mod tests {
         ] {
             assert_eq!(crate::browser_session_url(base, token), expected);
         }
+    }
+
+    #[test]
+    fn test_element_center_expression_scrolls_offscreen_elements_into_view() {
+        let expr = element_center_expression("a[href=\"x\"]");
+        assert!(expr.contains(r#"document.querySelector("a[href=\"x\"]")"#));
+        let scroll = expr.find("scrollIntoView").expect("must scroll into view");
+        let viewport_check = expr.find("window.innerHeight").expect("viewport check");
+        assert!(
+            viewport_check < scroll,
+            "scroll only when the center is outside the viewport"
+        );
+        let last_measure = expr.rfind("c = center()").expect("re-measure");
+        assert!(
+            scroll < last_measure,
+            "coordinates must be measured after scrolling"
+        );
     }
 }

@@ -171,6 +171,7 @@ async fn create_session(
     user_id: Uuid,
 ) -> SessionId {
     db.create_session(CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: everruns_core::DEFAULT_ORG_ID,
@@ -342,6 +343,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

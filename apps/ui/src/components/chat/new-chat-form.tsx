@@ -14,7 +14,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,13 @@ const HARNESS_VALUE_PREFIX = "harness:";
 
 export function NewChatForm({
   onStartingChange,
+  surface = "chat",
+  endUserId,
+  children,
 }: {
+  surface?: "chat" | "playground";
+  endUserId?: string;
+  children?: ReactNode;
   /**
    * Fired when a thread starts being created, and again with `false` if it
    * fails. Creating a thread invalidates the session list, and a host that swaps
@@ -50,11 +56,29 @@ export function NewChatForm({
 } = {}) {
   const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
-  const { data: harnesses = [], isLoading: harnessesLoading } = useHarnesses();
+  const { data: allHarnesses = [], isLoading: harnessesLoading } = useHarnesses();
+  const harnesses =
+    surface === "playground"
+      ? allHarnesses.filter((h) => !h.is_built_in || !h.name.startsWith("platform-chat"))
+      : allHarnesses;
   const createSession = useCreateSession();
   const [selection, setSelection] = useState("");
+  const [environment, setEnvironment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const optionsLoading = agentsLoading || harnessesLoading;
+  const selectedAgent = selection.startsWith(AGENT_VALUE_PREFIX)
+    ? agents.find((agent) => agent.id === selection.slice(AGENT_VALUE_PREFIX.length))
+    : undefined;
+  const environmentProfiles = selectedAgent?.environments?.profiles ?? {};
+  const environmentNames = Object.keys(environmentProfiles);
+
+  const selectCounterpart = (value: string) => {
+    setSelection(value);
+    const agent = value.startsWith(AGENT_VALUE_PREFIX)
+      ? agents.find((candidate) => candidate.id === value.slice(AGENT_VALUE_PREFIX.length))
+      : undefined;
+    setEnvironment(agent?.environments?.default ?? "");
+  };
 
   const start = async () => {
     if (!selection) return;
@@ -68,11 +92,16 @@ export function NewChatForm({
       const session = await createSession.mutateAsync({
         request: {
           ...binding,
-          source: "chat",
-          tags: [CHAT_THREAD_TAG],
-        } as CreateSessionRequest,
+          ...(selectedAgent?.environments && environment
+            ? { environment: { use: environment } }
+            : {}),
+          source: surface,
+          ...(surface === "playground"
+            ? { playground_user_id: endUserId }
+            : { tags: [CHAT_THREAD_TAG] }),
+        },
       });
-      router.push(`/chats/${session.id}`);
+      router.push(`/${surface === "playground" ? "playground" : "chats"}/${session.id}`);
     } catch (e) {
       onStartingChange?.(false);
       setError(e instanceof Error ? e.message : "Could not start the chat.");
@@ -92,9 +121,18 @@ export function NewChatForm({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <Select value={selection} onValueChange={setSelection} disabled={optionsLoading}>
-          <SelectTrigger className="w-64" aria-label="Chat counterpart">
+      <div
+        className={
+          surface === "playground"
+            ? "flex flex-col gap-3"
+            : "flex flex-wrap items-center justify-center gap-2"
+        }
+      >
+        <Select value={selection} onValueChange={selectCounterpart} disabled={optionsLoading}>
+          <SelectTrigger
+            className={surface === "playground" ? "w-full" : "w-64"}
+            aria-label="Chat counterpart"
+          >
             <SelectValue
               placeholder={optionsLoading ? "Loading options..." : "Pick an agent or harness"}
             />
@@ -122,13 +160,44 @@ export function NewChatForm({
             )}
           </SelectContent>
         </Select>
-        <Button onClick={start} disabled={!selection || createSession.isPending}>
+        {selectedAgent?.environments && environmentNames.length > 0 ? (
+          <Select value={environment} onValueChange={setEnvironment}>
+            <SelectTrigger
+              className={surface === "playground" ? "w-full" : "w-56"}
+              aria-label="Environment"
+            >
+              <SelectValue placeholder="Pick an environment" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel>Runs in</SelectLabel>
+                {environmentNames.map((name) => {
+                  const profile = environmentProfiles[name];
+                  const target = profile.target.provider || profile.target.kind;
+                  return (
+                    <SelectItem key={name} value={name}>
+                      {name === selectedAgent.environments?.default ? `${name} (default)` : name} ·{" "}
+                      {target}
+                    </SelectItem>
+                  );
+                })}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        ) : null}
+        {children}
+        <Button
+          onClick={start}
+          disabled={
+            !selection || createSession.isPending || (surface === "playground" && !endUserId)
+          }
+        >
           {createSession.isPending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <MessageCircle className="size-4" />
           )}
-          Start chat
+          {surface === "playground" ? "Start conversation" : "Start chat"}
         </Button>
       </div>
       {error && <ChatErrorAlert message={error} />}

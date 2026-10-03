@@ -288,6 +288,11 @@ pub struct Agent {
         schema(value_type = Vec<crate::CapabilityRefSchema>)
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Named execution environments offered by this Agent version. A Session
+    /// pins one resolved profile when it is created; later edits affect only
+    /// new Sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environments: Option<crate::EnvironmentSet>,
     /// Starter files copied into each new session for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_files: Vec<InitialFile>,
@@ -478,6 +483,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            environments: None,
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),
             status: AgentStatus::Active,

@@ -190,6 +190,7 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -234,6 +235,7 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
     let session = adapters
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
@@ -412,6 +414,7 @@ async fn seed_platform_session(
 
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
@@ -685,6 +688,7 @@ async fn seed_agent(db: &StorageBackend) -> Uuid {
         max_iterations: None,
         network_access: None,
         parallel_tool_calls: None,
+        environments: None,
         is_built_in: false,
     };
     db.create_agent_with_id(everruns_core::DEFAULT_ORG_ID, id, create)
@@ -1276,6 +1280,7 @@ async fn get_session_carries_org_public_id() {
     let row = adapters
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,

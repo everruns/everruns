@@ -73,6 +73,9 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_capability::Capabi
         root_agent_id: row.root_agent_id,
         tags: row.tags,
         capabilities,
+        environments: row
+            .environments
+            .and_then(|value| serde_json::from_value(value).ok()),
         initial_files: serde_json::from_value::<Vec<InitialFile>>(row.initial_files)
             .unwrap_or_default(),
         mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
@@ -139,6 +142,7 @@ pub fn authored_config(agent: &Agent) -> serde_json::Value {
         "network_access": agent.network_access,
         "max_iterations": agent.max_iterations,
         "parallel_tool_calls": agent.parallel_tool_calls,
+        "environments": agent.environments,
     })
 }
 
@@ -187,6 +191,10 @@ pub fn version_to_agent(source: &Agent, version: &AgentVersion) -> Agent {
         .cloned()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
+    agent.environments = cfg
+        .get("environments")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok());
     agent.initial_files = cfg
         .get("initial_files")
         .cloned()

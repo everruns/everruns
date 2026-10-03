@@ -16,6 +16,7 @@ import { HarnessSelect } from "@/components/harness/harness-select";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor } from "@/components/network-access-editor";
+import { EnvironmentProfilesEditor } from "@/components/agents/environment-profiles-editor";
 import {
   BackLink,
   PageBreadcrumb,
@@ -34,7 +35,12 @@ import {
   parseTagList,
   type FieldErrors,
 } from "@/lib/form-validation";
-import type { AgentCapabilityConfig, InitialFile, NetworkAccessList } from "@/lib/api/types";
+import type {
+  AgentCapabilityConfig,
+  EnvironmentSet,
+  InitialFile,
+  NetworkAccessList,
+} from "@/lib/api/types";
 import type { ConversationStarter } from "@/lib/api/legacy-api-types";
 import { StartersEditor } from "@/components/starters-editor";
 
@@ -74,6 +80,7 @@ export default function NewAgentPage() {
   const [selectedCapabilities, setSelectedCapabilities] = useState<AgentCapabilityConfig[]>([]);
   const [initialFiles, setInitialFiles] = useState<InitialFile[]>([]);
   const [networkAccess, setNetworkAccess] = useState<NetworkAccessList>({});
+  const [environments, setEnvironments] = useState<EnvironmentSet | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const handleCapabilitiesChange = useCallback((capabilities: AgentCapabilityConfig[]) => {
@@ -129,6 +136,7 @@ export default function NewAgentPage() {
           networkAccess.allowed?.length || networkAccess.blocked?.length
             ? networkAccess
             : undefined,
+        environments: environments ?? undefined,
       });
 
       router.push(`/agents/${agent.id}`);
@@ -144,7 +152,7 @@ export default function NewAgentPage() {
       <PageMasthead
         icon={<Boxes />}
         title="New Agent"
-        description="Define the identity, behavior, files, and network policy for new sessions."
+        description="Define the identity, behavior, Environment, files, and network policy for new sessions."
         actions={
           <>
             <Button type="submit" form="agent-create-form" disabled={createAgent.isPending}>
@@ -164,6 +172,7 @@ export default function NewAgentPage() {
             { href: "#identity", label: "Identity" },
             { href: "#branding", label: "Branding" },
             { href: "#behavior", label: "Behavior" },
+            { href: "#environments", label: "Environments" },
             { href: "#files", label: "Files" },
             { href: "#network", label: "Network" },
           ]}
@@ -376,6 +385,22 @@ export default function NewAgentPage() {
                     Instructions for the AI model (supports Markdown)
                   </p>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card id="environments" className="scroll-mt-6">
+              <CardHeader>
+                <CardTitle>Environments</CardTitle>
+                <CardDescription>
+                  Named filesystem and compute profiles users can select when starting a chat.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EnvironmentProfilesEditor
+                  value={environments}
+                  onChange={setEnvironments}
+                  disabled={createAgent.isPending}
+                />
               </CardContent>
             </Card>
 

@@ -236,6 +236,7 @@ async fn create_agent_and_session(
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -249,6 +250,7 @@ async fn create_agent_and_session(
     .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             source: everruns_platform::SessionSource::Api,

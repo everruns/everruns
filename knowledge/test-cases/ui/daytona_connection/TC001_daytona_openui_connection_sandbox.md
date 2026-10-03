@@ -1,24 +1,27 @@
 ---
 type: Test Case
-title: "TC001: Daytona OpenUI Connection - Sandbox Lifecycle"
-description: "Verify that the Daytona Coder agent prompts for a Daytona API key via the inline OpenUI connection dialog when no connection exists, creates a sandbox after connecting, executes a command, and deletes the sandbox on r..."
+title: "TC001: Managed Environment - Daytona Connection"
+description: "Verify that a Coding Agent's managed Environment requests a Daytona connection, resumes, and executes through stable tools."
 tags:
   - everruns
   - test-case
   - ui
   - daytona-connection
 ---
-# TC001: Daytona OpenUI Connection - Sandbox Lifecycle
+# TC001: Managed Environment - Daytona Connection
 
 ## Description
 
-Verify that the Daytona Coder agent prompts for a Daytona API key via the inline OpenUI connection dialog when no connection exists, creates a sandbox after connecting, executes a command, and deletes the sandbox on request.
+Verify that a Coding Agent with a managed Daytona Environment prompts for a
+Daytona API key when no connection exists, resumes after connection setup, and
+executes through the provider-neutral tool surface.
 
 ## Preconditions
 
-- Server running (`just start-all` — full mode with PostgreSQL required for leased resources)
-- User logged in
-- LLM API keys configured (Anthropic or OpenAI)
+- Canonical stack running with PostgreSQL
+- LLM provider configured
+- Coding harness imported as `coding`
+- Agent version has a default managed Daytona Environment profile
 - **No** existing Daytona connection in Settings > Connections (disconnect first if present)
 - Valid Daytona API key available for test
 
@@ -26,16 +29,15 @@ Verify that the Daytona Coder agent prompts for a Daytona API key via the inline
 
 | Field | Value |
 |-------|-------|
-| Agent | Daytona Coder (seed agent, slug: `daytona-coder`, display name: "Daytona Coder") |
-| First Message | Create a sandbox and calculate the result of 123 * 456. Do NOT delete the sandbox after - I want to keep it running. |
+| Agent | Coding Agent with a managed Daytona Environment |
+| Message | Write `56088` to `/workspace/daytona-proof.txt`, read it back, and report `pwd`. |
 | Daytona API Key | *(use a valid Daytona API key)* |
-| Cleanup Message | Delete the sandbox |
 
 ## Steps
 
-1. Navigate to the Agents page and locate **Daytona Coder** (card shows display name "Daytona Coder" with slug `daytona-coder` underneath)
-2. Click **Run** to start a new session
-3. Send the message: `Create a sandbox and calculate the result of 123 * 456. Do NOT delete the sandbox after - I want to keep it running.`
+1. Run the Coding Agent to create a new session.
+2. Send the test message.
+3. Wait for the first managed Environment operation to request a connection.
 4. Wait for the inline **Setup Connection** card to appear in the chat (OpenUI connection prompt for Daytona)
 5. Click the **Connect** button on the inline card
 6. In the API Key dialog:
@@ -43,17 +45,19 @@ Verify that the Daytona Coder agent prompts for a Daytona API key via the inline
    - Enter the Daytona API key
    - Click **Submit**
 7. Wait for the connection to be validated and the dialog to close
-8. Wait for the agent to resume and create a sandbox (tool call: `daytona_create_sandbox`)
-9. Wait for the agent to execute the calculation (tool call: `daytona_exec`)
-10. Verify the agent responds with the correct result (123 * 456 = 56088)
-11. Send the message: `Delete the sandbox`
-12. Wait for the agent to delete the sandbox (tool call: `daytona_manage_sandbox` with action "delete")
-13. Verify the agent confirms the sandbox has been **deleted**
+8. Wait for the interrupted turn to resume automatically.
+9. Verify the transcript uses `write_file`, `read_file`, and/or `bash`, and
+   never exposes `daytona_*` or `sandbox_*` tools to the model.
+10. Verify the reply includes `56088` and `/workspace`.
+11. Open the Workspace Environment panel and verify the managed Daytona
+    Environment is running.
 
 ## Notes
 
-- The Daytona Coder agent's system prompt says "Always delete sandboxes when done." To test explicit deletion as a separate step, the first message must instruct the agent **not** to delete the sandbox.
-- **DEV_MODE limitation**: The connection resume flow (steps 7–8) may fail in DEV_MODE due to a race condition in the in-memory message store. Use `just start-all` (PostgreSQL) for reliable testing of the full connection flow.
+- Environment lifecycle is control-plane-owned. The model is not given a
+  provider-specific delete tool.
+- Use the canonical PostgreSQL stack; the in-memory development store does not
+  prove connection persistence or durable Environment recovery.
 
 ## Expected Result
 
@@ -62,12 +66,11 @@ Verify that the Daytona Coder agent prompts for a Daytona API key via the inline
 | Connection prompt | Inline "Setup Connection" card appears for Daytona provider |
 | API Key dialog | Shows Daytona icon, provider name, and instructions |
 | Connection saved | After submit, dialog closes and connection is stored |
-| Sandbox created | Agent creates sandbox successfully (sandbox_id returned) |
-| Command executed | Agent runs calculation, result includes 56088 |
-| Sandbox deleted | Agent confirms sandbox is deleted |
-| Resources cleaned | Session resources page (`/sessions/{id}/resources`) shows the sandbox as "Released" |
+| Environment created | Workspace panel shows the managed Daytona target |
+| Stable tools | Transcript contains only provider-neutral execution/file tools |
+| Command executed | Reply includes `56088` and `/workspace` |
 
 ## Cleanup
 
-- After the test, navigate to **Settings > Connections** and verify or disconnect the Daytona connection if it should not persist
-- If the sandbox deletion step failed, manually delete any remaining sandboxes via the Daytona dashboard to avoid resource leaks
+- End the session and allow normal Environment cleanup to release the physical sandbox.
+- Disconnect the Daytona connection if it should not persist after the test.

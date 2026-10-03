@@ -34,6 +34,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     let session = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -114,6 +115,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     let session_without_platform = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -173,6 +175,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     let session_via_dependency = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,

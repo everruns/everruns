@@ -363,6 +363,7 @@ async fn find_or_create_invocation_session(
                 EndpointInvocationSource::A2a => everruns_platform::SessionSource::A2a,
             },
             CreateSessionRequest {
+                playground_user_id: None,
                 source: None,
                 workspace_id: None,
                 harness_id: Some(ingress.harness_id),
@@ -376,6 +377,7 @@ async fn find_or_create_invocation_session(
                 tags,
                 model_id: None,
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

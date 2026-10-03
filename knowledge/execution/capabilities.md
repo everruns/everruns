@@ -303,7 +303,7 @@ the registry and its tools never register. Session creation therefore rejects
 requests whose effective capability set (harness chain + agent + session) names
 a **built-in** capability that is not available in this deployment, rather than
 silently dropping its tools and degrading into a different execution environment
-(e.g. a `coding-container` session quietly running in the bash workspace). The
+(e.g. a custom container harness quietly running in the Bashkit workspace). The
 check runs in `SessionService::create` and only applies to plain built-in
 references; namespaced refs (`declarative:`, `plugin:`, `skill:`, `mcp:`) resolve
 from org data and are validated separately.
@@ -598,7 +598,7 @@ Some capabilities call provider APIs directly instead of routing through the LLM
 - `provider_credential_store` for resolving default provider credentials without reading provider environment variables in tool code
 - `image_store` for durable image artifact persistence and later reuse by ID
 
-`gpt_image_gen` is the first built-in example of this pattern: it resolves OpenAI credentials through session secrets or the provider credential store, persists generated outputs in org-scoped image storage, and can optionally mirror them into the session filesystem.
+`gpt_image_gen` is the first built-in example of this pattern: it resolves OpenAI credentials through session secrets or the provider credential store, persists generated outputs in org-scoped image storage, and can optionally mirror them into the session filesystem. Because the org-configured base URL receives the decrypted provider key, its HTTP traffic goes through `ToolContext.egress_service` with `require_dns_pinning()` and the session ACL, and redirects are errors; without an egress service the tools fail closed (EVE-1174, TM-LLM-047).
 
 ### Capability Features
 

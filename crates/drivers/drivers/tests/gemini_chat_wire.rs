@@ -12,6 +12,11 @@
 // stream by closing the connection (no `[DONE]` marker), which the driver's
 // finish handling collapses into a single terminal `Done` event.
 
+// Every mock answers with `Connection: close`. The drivers share one process-wide
+// HTTP client, and wiremock recycles a dropped server's port to the next test, so a
+// pooled keep-alive connection driven by another test's runtime could otherwise
+// serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
+
 use everruns_drivers::gemini::GeminiChatDriver;
 use everruns_provider::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
@@ -134,7 +139,11 @@ async fn mount_sse(server: &MockServer, body: String) {
     Mock::given(method("POST"))
         .and(path_regex(r"^/models/.+:streamGenerateContent$"))
         .and(query_param("alt", "sse"))
-        .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_raw(body, "text/event-stream"),
+        )
         .mount(server)
         .await;
 }

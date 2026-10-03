@@ -359,6 +359,7 @@ fn test_agent() -> Agent {
         root_agent_id: None,
         tags: vec![],
         capabilities: vec![],
+        environments: None,
         initial_files: vec![],
         network_access: None,
         max_iterations: None,
@@ -379,6 +380,7 @@ fn test_agent() -> Agent {
 fn test_session(harness_id: HarnessId, agent_id: everruns_provider::typed_id::AgentId) -> Session {
     let session_id = SessionId::new();
     Session {
+        playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
         run_summary: None,

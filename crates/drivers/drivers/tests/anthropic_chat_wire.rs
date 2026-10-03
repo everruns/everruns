@@ -11,6 +11,11 @@
 // line, and reports disjoint token buckets (input tokens are already
 // cache-exclusive), so `prompt_tokens` passes through unchanged.
 
+// Every mock answers with `Connection: close`. The drivers share one process-wide
+// HTTP client, and wiremock recycles a dropped server's port to the next test, so a
+// pooled keep-alive connection driven by another test's runtime could otherwise
+// serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
+
 use everruns_drivers::anthropic::AnthropicChatDriver;
 use everruns_provider::driver_registry::{
     CacheDiagnosticsConfig, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream,
@@ -123,7 +128,11 @@ fn sse_event(event: &str, data: &str) -> String {
 async fn mount_sse(server: &MockServer, body: String) {
     Mock::given(method("POST"))
         .and(path("/v1/messages"))
-        .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_raw(body, "text/event-stream"),
+        )
         .mount(server)
         .await;
 }

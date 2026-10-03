@@ -78,6 +78,9 @@ impl InMemoryDatabase {
                 display_name: input.display_name,
                 icon: input.icon,
                 description: input.description,
+                intro_markdown: input.intro_markdown,
+                short_description: input.short_description,
+                starters: input.starters,
                 system_prompt: input.system_prompt,
                 parent_harness_id: input.parent_harness_id,
                 tags: input.tags,
@@ -275,6 +278,98 @@ impl InMemoryDatabase {
             return Ok(Some(harness.clone()));
         }
         Ok(None)
+    }
+
+    /// Mirror PostgreSQL preview consolidation while preserving stored history.
+    pub async fn consolidate_platform_chat(&self, org_id: i64) -> Result<bool> {
+        let removed_flag = self
+            .org_feature_flags
+            .write()
+            .get_mut(&org_id)
+            .and_then(|flags| flags.remove("platform_chat_v2"))
+            .is_some();
+        let (old, canonical) = {
+            let harnesses = self.harnesses.read();
+            let find = |name: &str| {
+                harnesses
+                    .values()
+                    .find(|row| {
+                        row.org_id == org_id
+                            && row.name == name
+                            && row.is_built_in
+                            && row.status == "active"
+                    })
+                    .map(|row| row.id)
+            };
+            match (find("platform-chat-v2"), find("platform-chat")) {
+                (Some(old), Some(canonical)) => (old, canonical),
+                _ => return Ok(removed_flag),
+            }
+        };
+        for row in self
+            .sessions
+            .write()
+            .values_mut()
+            .filter(|row| row.org_id == org_id)
+        {
+            if row.harness_id == Some(old) {
+                row.harness_id = Some(canonical);
+            }
+        }
+        for row in self
+            .agents
+            .write()
+            .values_mut()
+            .filter(|row| row.org_id == org_id)
+        {
+            if row.harness_id == old {
+                row.harness_id = canonical;
+            }
+        }
+        for row in self
+            .apps
+            .write()
+            .values_mut()
+            .filter(|row| row.org_id == org_id)
+        {
+            if row.harness_id == old.uuid() {
+                row.harness_id = canonical.uuid();
+            }
+        }
+        for row in self
+            .harnesses
+            .write()
+            .values_mut()
+            .filter(|row| row.org_id == org_id)
+        {
+            if row.parent_harness_id == Some(old) {
+                row.parent_harness_id = Some(canonical);
+            }
+            if row.id == old {
+                row.status = "deleted".to_string();
+                row.deleted_at = Some(Self::now());
+                row.updated_at = Self::now();
+            }
+        }
+        if let Some(row) = self.org_settings.write().get_mut(&org_id) {
+            if row.default_harness_id == Some(old) {
+                row.default_harness_id = Some(canonical);
+            }
+            if row.base_harness_id == Some(old) {
+                row.base_harness_id = Some(canonical);
+            }
+        }
+        for row in self
+            .agent_triggers
+            .write()
+            .values_mut()
+            .filter(|row| row.org_id == org_id)
+        {
+            if row.execution_harness_id == Some(old) {
+                row.execution_harness_id = Some(canonical);
+            }
+        }
+        Ok(true)
     }
 
     /// Release built-in flag for a named harness (in-memory backend variant).

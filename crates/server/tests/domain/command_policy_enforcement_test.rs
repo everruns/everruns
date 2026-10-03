@@ -508,6 +508,7 @@ impl PermissionResolver for SessionsOnlyResolver {
 
 fn create_session_request() -> CreateSessionRequest {
     CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: None,
@@ -520,6 +521,7 @@ fn create_session_request() -> CreateSessionRequest {
         locale: None,
         tags: vec![],
         model_id: None,
+        environment: None,
         capabilities: vec![],
         tools: vec![],
         mcp_servers: Default::default(),
@@ -584,6 +586,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

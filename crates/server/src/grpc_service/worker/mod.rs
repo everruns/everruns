@@ -20,6 +20,7 @@ mod platform_sessions;
 mod policy;
 mod resilience;
 mod resources;
+mod sandboxes;
 mod schedules;
 mod sessions;
 mod sqldb;

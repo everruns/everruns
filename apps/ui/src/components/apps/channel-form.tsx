@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { SlackConversationSettings } from "@/components/apps/slack-conversation-settings";
 import { CronInput, CronLabel, isSupportedCronExpression } from "@/components/apps/cron-label";
 import {
   DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
@@ -50,8 +51,6 @@ import {
   getAgUiToolVisibilityDisplayName,
   getEndpointTransportDisplayName,
   getInvocationSessionModeDisplayName,
-  getSessionStrategyDisplayName,
-  getSlackReplyModeDisplayName,
 } from "@/lib/endpoint-display";
 import { generateChannelToken } from "@/lib/channel-tokens";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
@@ -63,6 +62,7 @@ import {
 } from "@/components/slack/slack-workspaces";
 import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
 import { ApiError } from "@/lib/api/client";
+import { SlackInstallError } from "@/components/slack/slack-install-error";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
@@ -579,7 +579,7 @@ function FieldGrid({ children }: { children: React.ReactNode }) {
 function useSlackInstall(endpointId?: string, teamId?: string, onUnavailable?: () => void) {
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   const begin = useCallback(async () => {
     if (!endpointId) return;
@@ -595,7 +595,9 @@ function useSlackInstall(endpointId?: string, teamId?: string, onUnavailable?: (
         setUnavailable(true);
         onUnavailable?.();
       } else {
-        setError(caught instanceof Error ? caught.message : "Could not start the Slack install.");
+        setError(
+          caught instanceof Error ? caught : new Error("Could not start the Slack install."),
+        );
       }
       setPending(false);
     }
@@ -731,19 +733,8 @@ export function ChannelForm({
 }) {
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
-  // An endpoint already carrying credentials opens the manual block, so an
-  // operator who configured it by hand is not hunting for their own values.
-  const slackCredentialsEntered = Boolean(
-    state.slackCredentialsConfigured ||
-    state.slackSigningSecret ||
-    state.slackBotToken ||
-    state.slackTeamId ||
-    state.slackChannelId,
-  );
   const slackInstallAvailable = slackInstallCapability?.connected === true;
-  const [manualSlackOpen, setManualSlackOpen] = useState(
-    slackCredentialsEntered || slackInstallCapability?.supported === false,
-  );
+  const [manualSlackOpen, setManualSlackOpen] = useState(false);
   const openManualSlack = useCallback(() => setManualSlackOpen(true), []);
   const slackInstall = useSlackInstall(endpointId, state.slackInstallTeamId, openManualSlack);
   // The OAuth exchange is what records the workspace id, so an app id plus a workspace id means
@@ -1256,83 +1247,120 @@ export function ChannelForm({
         </div>
       )}
 
-      {state.kind === "slack" && (section === "all" || section === "invocation") && (
-        <div className="space-y-4">
-          {slackLive && (
-            <div className="space-y-3 border p-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Live in Slack</p>
-                <p className="text-xs text-muted-foreground">
-                  This agent has its own Slack app in workspace {state.slackTeamId}. Mention it in a
-                  channel, or open it from Slack&apos;s Agents menu.
-                </p>
-              </div>
-              <a
-                className={buttonVariants({ variant: "outline", size: "sm" })}
-                href={slackAppUrl(state.slackAppId, state.slackTeamId)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <Slack className="size-4" />
-                Open in Slack
-              </a>
-            </div>
-          )}
-          {!slackLive && slackInstallCapability?.supported && (
-            <SlackWorkspaceChoice
-              capability={slackInstallCapability}
-              selected={state.slackInstallTeamId}
-              onSelect={selectSlackInstallTeam}
-              onChanged={onSlackCapabilityChanged}
-            />
-          )}
-          {!slackLive &&
-            mode === "edit" &&
-            endpointId &&
-            slackInstallAvailable &&
-            !slackInstall.unavailable && (
+      {state.kind === "slack" &&
+        (section === "all" || section === "invocation") &&
+        (slackLive || slackInstallCapability?.supported || slackInstallAvailable) && (
+          <div className="space-y-4">
+            {slackLive && (
               <div className="space-y-3 border p-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">Add to Slack</p>
+                  <p className="text-sm font-medium">Live in Slack</p>
                   <p className="text-xs text-muted-foreground">
-                    Creates this agent&apos;s own Slack app in the workspace above and opens Slack
-                    to approve it. The signing secret, bot token and workspace ID are filled in for
-                    you.
+                    This agent has its own Slack app in workspace {state.slackTeamId}. Mention it in
+                    a channel, or open it from Slack&apos;s Agents menu.
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  onClick={slackInstall.begin}
-                  disabled={slackInstall.pending || !state.slackInstallTeamId}
+                <a
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  href={slackAppUrl(state.slackAppId, state.slackTeamId)}
+                  target="_blank"
+                  rel="noreferrer"
                 >
                   <Slack className="size-4" />
-                  {slackInstall.pending ? "Opening Slack…" : "Add to Slack"}
-                </Button>
-                {slackInstall.error && (
-                  <p className="text-xs text-destructive">{slackInstall.error}</p>
-                )}
+                  Open in Slack
+                </a>
               </div>
             )}
-          {!slackLive && mode === "new" && slackInstallAvailable && (
-            <p className="text-xs text-muted-foreground">
-              Save the endpoint to add it to Slack in one click, or fill the fields below in now if
-              you already have a Slack app.
-            </p>
-          )}
-          <Collapsible open={manualSlackOpen} onOpenChange={setManualSlackOpen}>
+            {!slackLive && slackInstallCapability?.supported && (
+              <SlackWorkspaceChoice
+                capability={slackInstallCapability}
+                selected={state.slackInstallTeamId}
+                onSelect={selectSlackInstallTeam}
+                onChanged={onSlackCapabilityChanged}
+              />
+            )}
+            {!slackLive &&
+              mode === "edit" &&
+              endpointId &&
+              slackInstallAvailable &&
+              !slackInstall.unavailable && (
+                <div className="space-y-3 border p-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Add to Slack</p>
+                    <p className="text-xs text-muted-foreground">
+                      Creates this agent&apos;s own Slack app in the workspace above and opens Slack
+                      to approve it. The signing secret, bot token and workspace ID are filled in
+                      for you.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={slackInstall.begin}
+                    disabled={slackInstall.pending || !state.slackInstallTeamId}
+                  >
+                    <Slack className="size-4" />
+                    {slackInstall.pending ? "Opening Slack…" : "Add to Slack"}
+                  </Button>
+                  {slackInstall.error && (
+                    <SlackInstallError error={slackInstall.error} onRetry={slackInstall.begin} />
+                  )}
+                </div>
+              )}
+            {!slackLive && mode === "new" && slackInstallAvailable && (
+              <p className="text-xs text-muted-foreground">
+                Save the endpoint to add it to Slack in one click. If you already have a Slack app,
+                open Configure manually below.
+              </p>
+            )}
+          </div>
+        )}
+
+      {state.kind === "slack" && (section === "all" || section === "session") && (
+        <SlackConversationSettings
+          sessionStrategy={state.slackSessionStrategy}
+          replyMode={state.slackReplyMode}
+          onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
+          onReplyModeChange={(value) => update("slackReplyMode", value)}
+        />
+      )}
+
+      {state.kind === "slack" && (section === "all" || section === "invocation") && (
+        <div>
+          <Collapsible
+            open={manualSlackOpen}
+            onOpenChange={setManualSlackOpen}
+            className="border-t pt-4"
+          >
             <CollapsibleTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center justify-between text-left text-sm font-medium"
+                className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-describedby="slack_manual_description"
               >
+                <ChevronDown
+                  className={cn(
+                    "size-4 shrink-0 text-muted-foreground transition-transform",
+                    !manualSlackOpen && "-rotate-90",
+                  )}
+                />
                 <span>Configure manually</span>
-                <ChevronDown className="size-4 text-muted-foreground" />
               </button>
             </CollapsibleTrigger>
+            <p
+              id="slack_manual_description"
+              className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground"
+            >
+              {slackLive || state.slackCredentialsConfigured
+                ? "View or update the credentials for this agent’s Slack app."
+                : slackInstallAvailable
+                  ? "Use credentials from an existing Slack app. Add to Slack fills these in for you."
+                  : "Use credentials from your Slack app to connect this endpoint. You can save now and finish setup later."}
+            </p>
             <CollapsibleContent className="space-y-4 pt-4">
               <p className="text-xs text-muted-foreground">
-                Every field here is optional. An endpoint with no signing secret simply rejects
-                Slack requests until one is set, so you can save now and finish later.
+                These fields are optional when saving. Slack requests are rejected until a signing
+                secret is set; a bot token is needed to send replies.
+                {mode === "edit" && " Leave secret fields blank to keep the saved credentials."}
               </p>
               <FieldGrid>
                 <div className="space-y-2">
@@ -1376,61 +1404,23 @@ export function ChannelForm({
                   <Label htmlFor="slack_channel_id">Channel ID</Label>
                   <Input
                     id="slack_channel_id"
+                    aria-describedby="slack_channel_id_description"
                     value={state.slackChannelId}
                     onChange={(event) => update("slackChannelId", event.target.value)}
                     placeholder="C0123456789"
                   />
+                  <p
+                    id="slack_channel_id_description"
+                    className="text-xs leading-relaxed text-muted-foreground"
+                  >
+                    Limit this endpoint to one channel. Leave blank to accept any channel in the
+                    workspace.
+                  </p>
                 </div>
               </FieldGrid>
             </CollapsibleContent>
           </Collapsible>
         </div>
-      )}
-
-      {state.kind === "slack" && (section === "all" || section === "session") && (
-        <FieldGrid>
-          <div className="space-y-2">
-            <Label htmlFor="slack_session_strategy">Session strategy</Label>
-            <Select
-              value={state.slackSessionStrategy}
-              onValueChange={(value) => update("slackSessionStrategy", value as SessionStrategy)}
-            >
-              <SelectTrigger id="slack_session_strategy">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="per_thread">
-                  {getSessionStrategyDisplayName("per_thread")}
-                </SelectItem>
-                <SelectItem value="per_channel">
-                  {getSessionStrategyDisplayName("per_channel")}
-                </SelectItem>
-                <SelectItem value="per_user">
-                  {getSessionStrategyDisplayName("per_user")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="slack_reply_mode">Reply mode</Label>
-            <Select
-              value={state.slackReplyMode}
-              onValueChange={(value) => update("slackReplyMode", value as SlackReplyMode)}
-            >
-              <SelectTrigger id="slack_reply_mode">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all_messages">
-                  {getSlackReplyModeDisplayName("all_messages")}
-                </SelectItem>
-                <SelectItem value="report_progress_only">
-                  {getSlackReplyModeDisplayName("report_progress_only")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </FieldGrid>
       )}
     </div>
   );

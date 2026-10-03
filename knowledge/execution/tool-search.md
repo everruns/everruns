@@ -224,9 +224,11 @@ Set `tool_search: true` for models that support it. Default `false` for all othe
 
 A model's `tool_search: true` flag must be backed by a verified end-to-end round-trip
 (deferred-load → schema fetch → tool call) against the live provider, not just the
-request-shaping unit tests. The `gpt-5.4*` and `gpt-5.5*` families are covered by
-live OpenAI integration tests in `crates/llm-tests/tests/tool_search_test.rs`; the
-Claude families are covered by the live Anthropic tests
+request-shaping unit tests. Live OpenAI coverage in
+`crates/llm-tests/tests/tool_search_test.rs` covers GPT-5.4, GPT-5.5, and GPT-5.6
+Terra hosted search round-trips. Namespace descriptions summarize deferred tool
+purposes so the model can select tools inside generic capability categories;
+full argument schemas remain deferred. The Claude families are covered by
 `test_anthropic_claude_tool_search_low_threshold` and
 `test_anthropic_auto_tool_search_resolves_to_hosted` in the same file (run against
 Claude Haiku 4.5 and Opus 5.5). CI's credentialed Live Provider Matrix job runs

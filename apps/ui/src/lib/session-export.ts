@@ -115,13 +115,8 @@ export async function downloadSessionExport(
         return;
       }
       // Old server (no segmentation) or no notify: plain error toast.
-      // ApiError falls back to "API Error: <status> <statusText>" when the
-      // response body had no parseable message; prefer the localized fallback.
-      const genericMessage = `API Error: ${error.status} ${error.statusText}`;
-      const body =
-        error.message && error.message !== genericMessage
-          ? error.message
-          : formatMessage(locale, "atif_export_too_large");
+      // Prefer the localized fallback when the server supplied no safe detail.
+      const body = error.hasDetail ? error.message : formatMessage(locale, "atif_export_too_large");
       notify?.({ title: formatMessage(locale, "atif_export_failed_title"), body });
       return;
     }

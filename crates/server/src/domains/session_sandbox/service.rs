@@ -106,6 +106,9 @@ impl SessionSandboxService {
         let Some(config) = self.config_for_session(session_id).await.ok().flatten() else {
             return;
         };
+        if !config.idle_pause_enabled {
+            return;
+        }
 
         let timeout = config.idle_pause_after_seconds;
         let service = self.clone();
@@ -166,6 +169,15 @@ impl SessionSandboxService {
         context.leased_resource_store = Some(self.leased_resource_store.clone());
         context.session_resource_registry = Some(self.session_resource_registry.clone());
         context.connection_resolver = self.connection_resolver.clone();
+        if let Some(pool) = self.db.pool() {
+            let store = Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()));
+            context.extensions.insert(Arc::new(
+                everruns_platform::sandbox_state::SandboxStateStoreExt(store.clone()),
+            ));
+            context.extensions.insert(Arc::new(
+                everruns_platform::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
+            ));
+        }
         context
     }
 }
@@ -316,7 +328,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
-            content: &str,
+            content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxWriteFileResponse {
                 path: path.to_string(),
@@ -450,7 +462,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
-            content: &str,
+            content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxWriteFileResponse {
                 path: path.to_string(),
@@ -547,6 +559,7 @@ mod tests {
 
         let session = db
             .create_session(CreateSessionRow {
+                playground_user_id: None,
                 source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
@@ -612,6 +625,7 @@ mod tests {
         .unwrap();
         let session = db
             .create_session(CreateSessionRow {
+                playground_user_id: None,
                 source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
@@ -679,6 +693,7 @@ mod tests {
 
         let session = db
             .create_session(CreateSessionRow {
+                playground_user_id: None,
                 source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,

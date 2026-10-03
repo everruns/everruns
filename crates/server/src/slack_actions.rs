@@ -647,6 +647,7 @@ mod tests {
                         max_iterations: None,
                         network_access: None,
                         parallel_tool_calls: None,
+                        environments: None,
                         is_built_in: false,
                     },
                 )
@@ -764,6 +765,7 @@ mod tests {
             let session = self
                 .db
                 .create_session(CreateSessionRow {
+                    playground_user_id: None,
                     source: everruns_platform::SessionSource::Api,
                     workspace_id: None,
                     org_id,

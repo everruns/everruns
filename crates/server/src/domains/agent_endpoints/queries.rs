@@ -5,8 +5,6 @@
 
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
-use crate::storage::models::UpdateEndpointByIdRow;
-use everruns_durable::UpdateField;
 use everruns_platform::{
     AgentEndpoint, AgentEndpointId, AgentVersionPolicy, EndpointAuthConfig, EndpointStatus,
     EndpointTransport,
@@ -266,15 +264,14 @@ pub async fn update_channel_config_unscoped(
     channel_internal_id: Uuid,
     config: &serde_json::Value,
 ) -> anyhow::Result<()> {
-    let prepared = prepare_channel_storage(encryption, config)?;
-    let input = UpdateEndpointByIdRow {
-        channel_config: Some(prepared.channel_config),
-        channel_config_encrypted: UpdateField::from_option(prepared.channel_config_encrypted),
-        auth: UpdateField::from_option(prepared.auth),
-        auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
-        ..Default::default()
-    };
-    db.update_endpoint_by_id(channel_internal_id, input).await?;
+    // Ingress writes transport config only; first-class endpoint auth remains
+    // untouched. Native endpoints have no archival App row to decode.
+    let (plaintext, encrypted) = prepare_channel_config(encryption, config)?;
+    anyhow::ensure!(
+        db.update_endpoint_config_by_id(channel_internal_id, plaintext, encrypted)
+            .await?,
+        "Endpoint disappeared while storing channel configuration"
+    );
     Ok(())
 }
 

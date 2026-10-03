@@ -1,59 +1,56 @@
 ---
 type: Test Case
-title: "TC001: Managed Session Sandbox - Lifecycle"
-description: "Verify that the built-in **Coding (Session Sandbox)** harness uses the provider-neutral managed sandbox flow end to end: create or resume a single session-owned sandbox, execute work through `sandbox_*` tools, pause a..."
+title: "TC001: Managed Environment - Recovery"
+description: "Verify one provider-neutral Coding harness, stable tools, durable workspace recovery, and process-loss signaling on Daytona."
 tags:
   - everruns
   - test-case
   - ui
-  - session-sandbox
+  - environment
 ---
-# TC001: Managed Session Sandbox - Lifecycle
+# TC001: Managed Environment - Recovery
 
 ## Description
 
-Verify that the built-in **Coding (Session Sandbox)** harness uses the provider-neutral managed sandbox flow end to end: create or resume a single session-owned sandbox, execute work through `sandbox_*` tools, pause after idle, and auto-resume on the next sandbox tool call.
+Verify that a Coding Agent with a managed Daytona Environment uses the stable
+tool vocabulary, checkpoints `/workspace`, and continues after its physical
+sandbox is deleted.
 
 ## Preconditions
 
-- Server running in full mode (`just start-all`)
-- `FEATURE_SESSION_SANDBOX=true`
-- Secrets encryption configured (`SECRETS_ENCRYPTION_KEY`)
-- User logged in
-- LLM API keys configured (Anthropic or OpenAI)
-- Valid Daytona connection available in **Settings > Connections**
-
-## Test Data
-
-| Field | Value |
-|-------|-------|
-| Harness | Coding (Session Sandbox) (built-in, name: `coding-session-sandbox`) |
-| First Message | Calculate `123 * 456`, keep the sandbox alive, and tell me the working directory. |
-| Resume Message | Run `pwd` again in the sandbox. |
+- Canonical local stack running with `AUTH_MODE=none`
+- Valid Daytona connection in **Settings > Connections**
+- LLM provider configured
+- Coding harness imported as `coding`
+- Active Agent using the Coding harness
 
 ## Steps
 
-1. Create a new session using the **Coding (Session Sandbox)** harness
-2. Send the message: `Calculate 123 * 456, keep the sandbox alive, and tell me the working directory.`
-3. Verify the run uses `sandbox_exec` / `sandbox_status` and does **not** use raw provider tools such as `daytona_exec` or local shell tools such as `bash`
-4. Verify the reply contains `56088`
-5. Open the session resources page and verify one sandbox resource is present
-6. Wait at least 3 minutes for the session to idle
-7. Verify the sandbox is shown as paused or stopped in the session resources view (or via `sandbox_status` in the transcript)
-8. Send the message: `Run pwd again in the sandbox.`
-9. Verify the next sandbox tool call succeeds without manual sandbox creation and returns the sandbox working directory
-10. Verify the same session continues using provider-neutral `sandbox_*` tools
+1. Open the Agent, select **More > Environments**, add a Daytona profile named
+   `build`, make it the default, and save the Agent.
+2. Open **Chats > New chat**, select the Agent, verify `build · daytona` is
+   selected under **Environment**, and start the chat.
+3. Ask it to create `/workspace/recovery-proof.txt` with a unique sentence and
+   read the file back.
+4. Verify the transcript uses `write_file`, `read_file`, and/or `bash`, with no
+   `daytona_*` or `sandbox_*` model tool calls.
+5. Open the Workspace Environment panel and record the logical Environment id,
+   physical instance id, and generation.
+6. Delete only the physical Daytona sandbox outside Everruns. Do not delete the
+   logical Environment.
+7. Ask the same session to read `/workspace/recovery-proof.txt` and run `pwd`.
+8. Verify the tool call succeeds without manual create/resume, the file content
+   is unchanged, the physical instance id changed, and the generation advanced.
+9. Verify the event stream contains `environment.instance_lost` followed by
+   `environment.recovered`, with `process_state_lost: true`.
 
 ## Expected Result
 
-| Check | Expected |
-|-------|----------|
-| Managed tools only | Transcript shows `sandbox_*` tools rather than `daytona_*` or `bash` |
-| Command execution | Agent returns `56088` for the first request |
-| One sandbox per session | Session resources shows a single sandbox resource for the session |
-| Idle pause | Sandbox pauses after session idle timeout |
-| Auto-resume | Next sandbox tool call resumes the sandbox automatically |
+The session continues on a replacement physical sandbox. `/workspace` is
+restored from the authoritative checkpoint, while process state is explicitly
+reported as lost. The harness and tool names do not change.
 
 ## Cleanup
 
-- Delete the sandbox via `sandbox_manage` with action `delete`, or end the session and allow normal cleanup
+End the session and allow the normal Environment lifecycle to clean up the
+replacement instance.

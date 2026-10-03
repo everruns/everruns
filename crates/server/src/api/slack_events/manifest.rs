@@ -276,6 +276,24 @@ pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
     }
 }
 
+/// OAuth consent must request the same bot scopes the manifest declares.
+pub(crate) fn slack_bot_scopes(agent_surface_enabled: bool) -> Vec<&'static str> {
+    let mut scopes = vec![
+        "chat:write",
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "mpim:history",
+        "app_mentions:read",
+        "users:read",
+        "files:read",
+    ];
+    if agent_surface_enabled {
+        scopes.push("assistant:write");
+    }
+    scopes
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_manifest_yaml(
     app_name: &str,
@@ -303,11 +321,10 @@ pub(crate) fn build_manifest_yaml(
     } else {
         String::new()
     };
-    let agent_scope = if agent_surface_enabled {
-        "\x20     - assistant:write\n"
-    } else {
-        ""
-    };
+    let bot_scopes: String = slack_bot_scopes(agent_surface_enabled)
+        .into_iter()
+        .map(|scope| format!("      - {scope}\n"))
+        .collect();
     let agent_events = if agent_surface_enabled {
         "\x20     - app_home_opened\n\
          \x20     - app_context_changed\n\
@@ -333,15 +350,7 @@ pub(crate) fn build_manifest_yaml(
          \x20   - \"{redirect_url}\"\n\
          \x20 scopes:\n\
          \x20   bot:\n\
-         \x20     - chat:write\n\
-         \x20     - channels:history\n\
-         \x20     - groups:history\n\
-         \x20     - im:history\n\
-         \x20     - mpim:history\n\
-         \x20     - app_mentions:read\n\
-         \x20     - users:read\n\
-         \x20     - files:read\n\
-         {agent_scope}\
+         {bot_scopes}\
          settings:\n\
          \x20 interactivity:\n\
          \x20   is_enabled: true\n\

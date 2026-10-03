@@ -72,6 +72,8 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   // Search tools
   search: { category: "search", segmentMode: "grouped" },
   search_web: { category: "search", segmentMode: "grouped" },
+  glob: { category: "search", segmentMode: "grouped" },
+  grep: { category: "search", segmentMode: "grouped" },
   grep_files: { category: "search", segmentMode: "grouped" },
   web_fetch: { category: "search", segmentMode: "grouped" },
   tool_search: { category: "search", segmentMode: "grouped" },

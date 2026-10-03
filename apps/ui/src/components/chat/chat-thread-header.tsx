@@ -111,7 +111,9 @@ export function ChatThreadHeader({
   counterpartHref,
   platformIntro,
   platformDescription,
+  contextLabel,
 }: {
+  contextLabel?: ReactNode;
   session: Session;
   /** Display title, already resolved through the thread-title fallbacks. */
   title: string;
@@ -160,6 +162,7 @@ export function ChatThreadHeader({
         {!showDescription ? (
           <span className="truncate text-xs text-muted-foreground">
             {counterpartHref ?? counterpart ?? "No agent bound"}
+            {contextLabel && <> · {contextLabel}</>}
           </span>
         ) : null}
       </div>
