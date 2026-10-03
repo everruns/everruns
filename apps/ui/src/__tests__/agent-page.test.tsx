@@ -137,6 +137,7 @@ const mockUseSessions = jest.fn();
 const mockUseHarnesses = jest.fn();
 const mockUpdate = jest.fn();
 const mockArchive = jest.fn();
+const mockCreateSession = jest.fn();
 const mutation = (mutateAsync = jest.fn()) => ({
   mutateAsync,
   isPending: false,
@@ -147,7 +148,7 @@ const mutation = (mutateAsync = jest.fn()) => ({
 jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
   useSessions: (...args: unknown[]) => mockUseSessions(...args),
-  useCreateSession: () => mutation(),
+  useCreateSession: () => mutation(mockCreateSession),
   useCapabilities: () => ({ data: [] }),
   useModels: () => ({ data: [] }),
   useExportAgent: () => mutation(),
@@ -203,6 +204,7 @@ beforeEach(() => {
     isLoading: false,
   });
   mockUpdate.mockResolvedValue({});
+  mockCreateSession.mockResolvedValue({ id: "session-chat-1" });
 });
 
 describe("AgentPage layout", () => {
@@ -230,10 +232,27 @@ describe("AgentPage layout", () => {
     expect(more.getByRole("button", { name: /Credentials\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
-    // Status badge in view mode, New session is the primary action.
+    // Status badge in view mode, Test chat is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /New session/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Test chat/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
+  });
+
+  it("starts a chat thread from Test chat instead of a read-only session recording", async () => {
+    await renderPage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Test chat/ }));
+    });
+
+    expect(mockCreateSession).toHaveBeenCalledWith({
+      request: {
+        agent_id: "agent-1",
+        source: "chat",
+        tags: ["chat"],
+      },
+    });
+    expect(push).toHaveBeenCalledWith("/chats/session-chat-1");
   });
 
   it("toggles the prompt between rendered markdown and source", async () => {
@@ -284,7 +303,7 @@ describe("AgentPage layout", () => {
 });
 
 describe("AgentPage edit mode", () => {
-  it("edits in place: same layout, Save and Discard replace New session", async () => {
+  it("edits in place: same layout, Save and Discard replace Test chat", async () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
@@ -297,7 +316,7 @@ describe("AgentPage edit mode", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "System prompt" })).toHaveValue("You are helpful");
     expect(screen.getByRole("button", { name: /Discard/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /New session/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Test chat/ })).not.toBeInTheDocument();
     expect(screen.getByTestId("capability-selector")).toBeInTheDocument();
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
   });

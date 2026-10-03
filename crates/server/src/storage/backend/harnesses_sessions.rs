@@ -105,6 +105,10 @@ impl StorageBackend {
         dispatch!(self, list_child_harnesses, org_id, parent_id)
     }
 
+    pub async fn consolidate_platform_chat(&self, org_id: i64) -> Result<bool> {
+        dispatch!(self, consolidate_platform_chat, org_id)
+    }
+
     pub async fn release_built_in_harness(&self, org_id: i64, name: &str) -> Result<bool> {
         dispatch!(self, release_built_in_harness, org_id, name)
     }

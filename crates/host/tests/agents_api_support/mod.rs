@@ -50,6 +50,7 @@ pub struct FakeTurn {
 pub struct FakeSession {
     pub id: String,
     pub metadata: Value,
+    pub environment: Option<Value>,
     pub required_actions: Vec<Value>,
     pub turns: Vec<FakeTurn>,
     pub pending: Vec<Value>,
@@ -79,6 +80,15 @@ pub struct FakeState {
     /// The managed harness also delegates to a subagent, runs a hosted web
     /// search, reasons, and compacts its context before the final answer.
     pub managed_extras: bool,
+    /// Raw provider boundary inputs for hostile runtime-policy tests.
+    pub initial_provider_items: Vec<Value>,
+    pub stream_only_provider_items: Vec<Value>,
+    pub final_provider_items: Option<Vec<Value>>,
+    pub initial_required_actions: Option<Vec<Value>>,
+    pub hidden_subagent: bool,
+    pub provider_environment: Option<Value>,
+    pub pre_root_events: Vec<Value>,
+    pub hide_turns: bool,
     /// Usage stays null on every turn (the provider never reports it).
     pub null_usage: bool,
     /// A cancelled or failed root turn still reports what it spent.
@@ -152,6 +162,7 @@ impl FakeState {
             "object": "agent.session",
             "status": status,
             "metadata": session.metadata,
+            "environment": session.environment,
             "required_actions": session.required_actions,
         })
     }
@@ -190,6 +201,10 @@ impl FakeState {
         let n = self.turn_counter;
         let fail = self.fail_turns;
         let environment_failure = self.environment_failure;
+        let initial_items = self.initial_provider_items.clone();
+        let stream_only = self.stream_only_provider_items.clone();
+        let required_actions = self.initial_required_actions.clone();
+        let hidden_subagent = self.hidden_subagent;
         let session = &mut self.sessions[session_index];
         let sid = session.id.clone();
         let tid = format!("turn_{n}");
@@ -274,20 +289,34 @@ impl FakeState {
         ));
         let action = json!({"type": "function_call", "turn_id": tid, "call_id": call_id,
             "name": "lookup_customer", "arguments": {"customer_id": "123"}});
-        session.required_actions = vec![action.clone()];
+        for item in initial_items.iter().chain(&stream_only) {
+            events.push(ev("agent.session.turn.item.added", json!({"item": item})));
+        }
+        turn.items.extend(initial_items);
+        session.required_actions = required_actions.unwrap_or_else(|| vec![action.clone()]);
         events.push(
             json!({"type": "agent.session.requires_action", "event_id": format!("evt_ra_{n}"),
-            "session": {"id": sid, "status": "requires_action", "required_actions": [action]}}),
+            "session": {"id": sid, "status": "requires_action", "required_actions": session.required_actions}}),
         );
         turn.items.push(commentary("completed", commentary_text));
         turn.items.push(call("in_progress"));
         session.turns.push(turn);
+        if hidden_subagent {
+            session.turns.push(FakeTurn {
+                id: "hidden_child".into(),
+                subagent_id: Some("child".into()),
+                created_at: self.clock,
+                status: "in_progress".into(),
+                ..FakeTurn::default()
+            });
+        }
         session.pending.extend(events);
     }
 
     /// The model's second step: an MCP call, then the final answer.
     pub fn finish_turn(&mut self, session_index: usize, output: &str) {
         let extras = self.managed_extras;
+        let final_items = self.final_provider_items.clone();
         let session = &mut self.sessions[session_index];
         let sid = session.id.clone();
         session.required_actions.clear();
@@ -335,6 +364,14 @@ impl FakeState {
                 json!({"item": mcp("completed")}),
             ),
         ];
+        if let Some(items) = &final_items {
+            events.truncate(2);
+            events.extend(
+                items
+                    .iter()
+                    .map(|item| ev("agent.session.turn.item.done", json!({"item":item}))),
+            );
+        }
         let mut extra_items = Vec::new();
         let mut subagent_turn = None;
         if extras {
@@ -438,7 +475,17 @@ impl FakeState {
             .unwrap();
         turn.items[call_index] = call_done;
         turn.items.push(output_item);
-        turn.items.push(mcp("completed"));
+        for item in final_items.unwrap_or_else(|| vec![mcp("completed")]) {
+            if let Some(existing) = turn
+                .items
+                .iter_mut()
+                .find(|existing| existing["id"] == item["id"])
+            {
+                *existing = item;
+            } else {
+                turn.items.push(item);
+            }
+        }
         turn.items.extend(extra_items);
         turn.items.push(final_msg("completed", final_text));
         // With extras the root turn ends only when its terminal event goes
@@ -533,9 +580,11 @@ impl Respond for FakeAgentsApi {
                 state.creates += 1;
                 state.create_bodies.push(body.clone());
                 let id = format!("sess_{}", state.creates);
+                let provider_environment = state.provider_environment.clone();
                 state.sessions.push(FakeSession {
                     id: id.clone(),
                     metadata: body["metadata"].clone(),
+                    environment: provider_environment,
                     ..FakeSession::default()
                 });
                 let index = state.sessions.len() - 1;
@@ -543,6 +592,7 @@ impl Respond for FakeAgentsApi {
                 let mut events = vec![
                     json!({"type": "agent.session.created", "event_id": "evt_created", "session": session}),
                 ];
+                events.extend(state.pre_root_events.clone());
                 // A seeded create sends user messages; the last is the turn's.
                 let input = match &body["input"] {
                     Value::Array(messages) => messages
@@ -586,11 +636,15 @@ impl Respond for FakeAgentsApi {
                 let sid = session.id.clone();
                 let session =
                     &state.sessions[state.sessions.iter().position(|s| s.id == sid).unwrap()];
-                let data: Vec<Value> = session
-                    .turns
-                    .iter()
-                    .map(|t| state.turn_json(&sid, t))
-                    .collect();
+                let data: Vec<Value> = if state.hide_turns {
+                    Vec::new()
+                } else {
+                    session
+                        .turns
+                        .iter()
+                        .map(|t| state.turn_json(&sid, t))
+                        .collect()
+                };
                 ResponseTemplate::new(200)
                     .set_body_json(json!({"object": "list", "data": data, "has_more": false}))
             }
@@ -762,6 +816,17 @@ impl TestLedger {
             calls.len(),
             unique.len(),
             "duplicate tool results: {results:#?}"
+        );
+        let hosted = self.of_type("tool.hosted_call");
+        let lifecycles: Vec<_> = hosted
+            .iter()
+            .map(|call| (call["call_id"].to_string(), call["status"].to_string()))
+            .collect();
+        let unique: HashSet<_> = lifecycles.iter().collect();
+        assert_eq!(
+            lifecycles.len(),
+            unique.len(),
+            "duplicate hosted lifecycle: {hosted:#?}"
         );
     }
 
@@ -1122,8 +1187,8 @@ pub fn assert_completed(outcome: &AgentsApiTurnOutcome) {
     }
 }
 
-/// The record one turn must leave: commentary, function call, MCP call, and
-/// final answer messages, plus one result per tool, each exactly once.
+/// One turn leaves commentary, a client function call, and a final answer;
+/// the function has an Act result, while MCP has a hosted lifecycle.
 pub fn assert_turn_record(ledger: &TestLedger, turns: usize) {
     ledger.assert_each_record_once();
     let texts = ledger.texts();
@@ -1141,6 +1206,12 @@ pub fn assert_turn_record(ledger: &TestLedger, turns: usize) {
             .count(),
         turns
     );
-    assert_eq!(ledger.of_type("output.message.completed").len(), 4 * turns);
-    assert_eq!(ledger.of_type("tool.completed").len(), 2 * turns);
+    assert_eq!(ledger.of_type("output.message.completed").len(), 3 * turns);
+    assert_eq!(ledger.of_type("tool.completed").len(), turns);
+    let mcp: Vec<_> = ledger
+        .of_type("tool.hosted_call")
+        .into_iter()
+        .filter(|call| call["tool_name"] == "mcp_docs__search_openai_docs")
+        .collect();
+    assert_eq!(mcp.len(), 2 * turns);
 }

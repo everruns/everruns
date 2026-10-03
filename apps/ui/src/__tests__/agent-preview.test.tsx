@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import type { AgentPreviewResponse } from "@/lib/api/types";
 
@@ -45,11 +45,70 @@ const sampleResponse: AgentPreviewResponse = {
       parameters: { type: "object", properties: {} },
     },
   ],
+  features: ["file_system", "secrets", "key_value"],
 };
 
 describe("AgentPreview", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it("previews the selected harness and refreshes when that selection changes", () => {
+    const mutation = makeMutationStub({ data: sampleResponse });
+    mockUsePreviewAgent.mockReturnValue(mutation);
+    const props = { systemPrompt: "hi", capabilities: [], initialFiles: [] };
+    const { rerender } = render(<AgentPreview {...props} harnessId="harness_first" />);
+    expect(mutation.mutate.mock.calls[0][0]).toMatchObject({ harness_id: "harness_first" });
+
+    rerender(<AgentPreview {...props} harnessId="harness_second" />);
+    expect(mutation.mutate.mock.calls.at(-1)?.[0]).toMatchObject({ harness_id: "harness_second" });
+  });
+
+  it("shows included session features returned by the effective preview", () => {
+    mockUsePreviewAgent.mockReturnValue(makeMutationStub({ data: sampleResponse }));
+    render(<AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={[]} />);
+    expect(screen.getByText("Included Features")).toBeInTheDocument();
+    expect(screen.getByText("Session filesystem")).toBeInTheDocument();
+    expect(screen.getByText("Secrets")).toBeInTheDocument();
+    expect(screen.getByText("Key-value storage")).toBeInTheDocument();
+  });
+
+  it("uses inherited initial files from the response and sends draft files and MCP servers", () => {
+    const file = {
+      path: "/inherited.txt",
+      content: "Inherited content",
+      encoding: "text" as const,
+      is_readonly: true,
+    };
+    const mutation = makeMutationStub({ data: { ...sampleResponse, initial_files: [file] } });
+    mockUsePreviewAgent.mockReturnValue(mutation);
+    const mcpServers = { docs: { url: "https://example.com/mcp" } };
+    render(
+      <AgentPreview
+        systemPrompt="hi"
+        capabilities={[]}
+        initialFiles={[]}
+        mcpServers={mcpServers}
+      />,
+    );
+    expect(mutation.mutate.mock.calls[0][0]).toMatchObject({ initial_files: [], mcpServers });
+    expect(screen.getByText("Inherited content")).toBeInTheDocument();
+  });
+
+  it("ignores an older preview response after the harness changes", () => {
+    const mutation = makeMutationStub({});
+    mockUsePreviewAgent.mockReturnValue(mutation);
+    const props = { systemPrompt: "hi", capabilities: [], initialFiles: [] };
+    const { rerender } = render(<AgentPreview {...props} harnessId="first" />);
+    const first = mutation.mutate.mock.calls[0][1];
+    rerender(<AgentPreview {...props} harnessId="second" />);
+    const second = mutation.mutate.mock.calls[1][1];
+    act(() => {
+      second?.onSuccess?.({ ...sampleResponse, system_prompt: "Current harness" });
+      first?.onSuccess?.({ ...sampleResponse, system_prompt: "Stale harness" });
+    });
+    expect(screen.getByText("Current harness")).toBeInTheDocument();
+    expect(screen.queryByText("Stale harness")).not.toBeInTheDocument();
   });
 
   it("shows skeletons while the preview request is pending", () => {

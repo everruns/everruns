@@ -628,6 +628,7 @@ pub async fn preview_harness(
     .await?;
 
     Ok(Json(HarnessPreviewResponse {
+        features: result.features,
         system_prompt: result.system_prompt,
         tools: result.tools,
     }))

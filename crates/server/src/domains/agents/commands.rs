@@ -3,6 +3,7 @@
 // Each struct is the request type, catalog entry, and execution logic.
 // inventory::submit! auto-registers for MCP catalog.
 
+use super::preview::PreviewAgent;
 use super::queries as q;
 use super::types::{
     AgentRow, AgentVersionDiffResponse, CreateAgentRequest, CreateAgentRow,
@@ -1266,6 +1267,8 @@ async fn build_resolved_config(
     agent: &Agent,
 ) -> Result<serde_json::Value, CommandError> {
     let preview = PreviewAgent {
+        harness_id: None,
+        initial_files: agent.initial_files.clone(),
         system_prompt: Some(agent.system_prompt.clone()),
         capabilities: agent.capabilities.clone(),
         tools: agent.tools.clone(),
@@ -2053,121 +2056,16 @@ impl Command for ForkAgentVersion {
 inventory::submit! { CommandDescriptor::of::<ForkAgentVersion>() }
 
 // ============================================================================
-// PreviewAgent
-// ============================================================================
-
-/// Preview the final agent shape with capabilities applied.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct PreviewAgent {
-    pub system_prompt: Option<String>,
-    #[serde(default)]
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
-    pub capabilities: Vec<AgentCapabilityConfig>,
-    #[serde(default)]
-    pub tools: Vec<ToolDefinition>,
-    #[serde(default)]
-    pub mcp_servers: ScopedMcpServers,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct AgentPreview {
-    pub system_prompt: String,
-    pub tools: Vec<ToolDefinition>,
-    /// Advisory tier-1 findings about the previewed config (knowledge/evaluation/agent-checks.md).
-    pub findings: Vec<super::checks::Finding>,
-}
-
-impl Command for PreviewAgent {
-    type Output = AgentPreview;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "preview_agent",
-            category: "agents",
-            description: "Preview the final agent shape with capabilities applied.",
-            method: "POST",
-            path: "/v1/agents/preview",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["agents"], "preview").with_examples(&[CliExample::new(
-                "See the prompt a draft configuration would produce, without creating it",
-                "everruns agents preview --system-prompt 'Triage incoming issues'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::agents::AGENT_VIEW)
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
-        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
-            &ctx.db,
-            ctx.org_id(),
-            &self.mcp_servers,
-        )
-        .await
-        .map_err(classify_anyhow)?;
-        let authored_prompt = self.system_prompt.unwrap_or_default();
-        let (prompt, mut tools) = ctx
-            .capability_service
-            .preview(ctx.org_id(), &authored_prompt, &self.capabilities)
-            .await
-            .map_err(classify_anyhow)?;
-        tools.extend(
-            crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
-                &ctx.db,
-                ctx.org_id(),
-                &self.mcp_servers,
-                None,
-                None,
-                ctx.capability_service.egress_service().as_ref(),
-            )
-            .await
-            .map_err(classify_anyhow)?,
-        );
-        tools.extend(self.tools);
-        // Apply org rule config (phase 4): override built-in severities/enabled
-        // and run custom declarative rules. Defaults to no-op when unconfigured.
-        let rule_config = super::check_rules::load_effective_config(&ctx.db, ctx.org_id()).await;
-        let builtin = super::checks::run_builtin_checks(
-            &authored_prompt,
-            &prompt,
-            &self.capabilities,
-            &tools,
-        );
-        let mut findings = super::checks::apply_rule_overrides(builtin, &rule_config.overrides);
-        findings.extend(super::checks::run_declarative_rules(
-            &rule_config.declarative,
-            &prompt,
-        ));
-        Ok(AgentPreview {
-            system_prompt: prompt,
-            tools,
-            findings,
-        })
-    }
-}
-
-inventory::submit! { CommandDescriptor::of::<PreviewAgent>() }
-
-// ============================================================================
 // AnalyzeAgent
 // ============================================================================
 
 /// Run advisory checks (built-in rules + LLM analysis) against an agent shape.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AnalyzeAgent {
+    #[serde(default)]
+    pub harness_id: Option<HarnessId>,
+    #[serde(default)]
+    pub initial_files: Vec<InitialFile>,
     pub system_prompt: Option<String>,
     #[serde(default)]
     #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
@@ -2245,6 +2143,8 @@ impl Command for AnalyzeAgent {
             })?;
         let authored_prompt = self.system_prompt.clone().unwrap_or_default();
         let preview = PreviewAgent {
+            harness_id: self.harness_id,
+            initial_files: self.initial_files,
             system_prompt: self.system_prompt,
             capabilities: self.capabilities,
             tools: self.tools,

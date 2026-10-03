@@ -67,6 +67,7 @@ impl Run<'_> {
             .policy_stop
             .clone()
             .ok_or_else(|| AgentsApiError::Store("no policy stop".into()))?;
+        self.close_runtime_policy_calls().await?;
         let outcome = match &stop.replaced {
             Some(replaced) => {
                 let events = self.replacement_events(&stop, replaced);
@@ -97,6 +98,7 @@ impl Run<'_> {
             "Agents API: Everruns policy stopped the remote turn"
         );
         self.send_cancel().await;
+        self.recover_policy_root().await?;
         // The stopped provider turn still spent tokens; bill them (or record
         // the amount as unknown) once.
         let final_text =
@@ -153,10 +155,18 @@ impl Run<'_> {
             .turn()
             .items
             .keys()
-            .filter(|key| {
-                key.starts_with("call:") || key.starts_with("mcp:") || key.starts_with("hosted:")
+            .filter_map(|key| {
+                if key.starts_with("call:") {
+                    Some(key.as_str())
+                } else {
+                    // A pre-upgrade MCP start and its hosted lifecycle refer
+                    // to the same provider item, so count that item once.
+                    key.strip_prefix("mcp:")
+                        .or_else(|| key.strip_prefix("hosted:"))
+                }
             })
-            .count();
+            .collect::<std::collections::HashSet<_>>()
+            .len();
         u32::try_from(count).unwrap_or(u32::MAX)
     }
 

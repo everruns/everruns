@@ -16,6 +16,154 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 #[tokio::test]
+async fn test_agent_preview_inherits_harness_tools_prompt_and_features() {
+    let server = TestServer::in_memory().await;
+    let harness: Value = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "preview-child",
+                "parent_harness_id": server.seed_generic_harness_id,
+                "system_prompt": "Child harness instructions.",
+                "capabilities": [
+                    {"ref": "current_time", "config": {}},
+                    {"ref": "soft_approval", "config": {"mode": "protective"}}
+                ]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let preview: Value = server
+        .post(
+            "/v1/agents/preview",
+            json!({
+                "harness_id": harness["id"],
+                "system_prompt": "Agent instructions.",
+                "capabilities": [{"ref": "soft_approval", "config": {"mode": "off"}}],
+                "tools": [{
+                    "type": "client_side", "name": "lookup_crm", "description": "Lookup CRM",
+                    "parameters": {"type": "object"}
+                }]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let names: Vec<_> = preview["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert!(
+        names.contains(&"read_file"),
+        "inherited filesystem tools: {names:?}"
+    );
+    assert!(names.contains(&"lookup_crm"));
+    let prompt = preview["system_prompt"].as_str().unwrap();
+    assert!(prompt.contains("Child harness instructions."));
+    assert!(prompt.contains("Agent instructions."));
+    assert!(
+        !prompt.contains("<soft_approval>"),
+        "agent config must override the harness"
+    );
+    assert!(prompt.find("Child harness instructions.") < prompt.find("Agent instructions."));
+    assert!(
+        preview["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("file_system"))
+    );
+}
+
+#[tokio::test]
+async fn test_agent_preview_preserves_empty_base_and_rejects_missing_harness() {
+    let server = TestServer::in_memory().await;
+    for harness_id in [json!(server.seed_base_harness_id), Value::Null] {
+        let preview: Value = server.post("/v1/agents/preview", json!({
+            "harness_id": harness_id, "system_prompt": "Agent instructions.", "capabilities": []
+        })).await.assert_status(StatusCode::OK).json();
+        assert_eq!(preview["tools"], json!([]));
+        assert_eq!(preview["features"], json!([]));
+    }
+    server
+        .post(
+            "/v1/agents/preview",
+            json!({
+                "harness_id": HarnessId::new(), "system_prompt": "Agent instructions."
+            }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_agent_preview_merges_files_and_dependency_features_without_duplicate_tools() {
+    let server = TestServer::in_memory().await;
+    let harness: Value = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "preview-files", "system_prompt": "Harness instructions.",
+                "capabilities": [{"ref": "session_file_system"}],
+                "initial_files": [
+                    {"path": "/notes.txt", "content": "Harness notes", "encoding": "text"},
+                    {"path": "/inherited.txt", "content": "Inherited notes", "encoding": "text"}
+                ]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let preview: Value = server.post("/v1/agents/preview", json!({
+        "harness_id": harness["id"], "system_prompt": "Agent instructions.",
+        "capabilities": [{"ref": "session_file_system"}, {"ref": "session_sql_database"}],
+        "initial_files": [{"path": "notes.txt", "content": "Agent notes", "encoding": "text"}]
+    })).await.assert_status(StatusCode::OK).json();
+    assert_eq!(
+        preview["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|tool| tool["name"] == "read_file")
+            .count(),
+        1
+    );
+    let files = preview["initial_files"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    assert!(files.iter().any(|file| file["content"] == "Agent notes"));
+    assert!(!files.iter().any(|file| file["content"] == "Harness notes"));
+    let features = preview["features"].as_array().unwrap();
+    assert!(features.contains(&json!("file_system")));
+    assert!(features.contains(&json!("sql_database")));
+    assert_eq!(
+        features
+            .iter()
+            .filter(|feature| **feature == json!("file_system"))
+            .count(),
+        1
+    );
+
+    let dependency_preview: Value = server
+        .post(
+            "/v1/agents/preview",
+            json!({
+                "system_prompt": "Agent instructions.", "capabilities": [{"ref": "bashkit_shell"}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(
+        dependency_preview["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("file_system"))
+    );
+}
+
+#[tokio::test]
 async fn test_create_agent() {
     let server = TestServer::new().await;
 

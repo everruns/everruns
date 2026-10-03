@@ -238,16 +238,6 @@ export interface AgentExample {
   dev_only: boolean;
 }
 
-/** Request to preview the final agent shape with capabilities applied */
-export interface PreviewAgentRequest {
-  /** The base system prompt (before capability additions) */
-  system_prompt: string;
-  /** Capabilities to apply with per-agent configuration */
-  capabilities?: AgentCapabilityConfig[];
-  /** Client-side tools to include in preview output */
-  tools?: ToolDefinition[];
-}
-
 export type FindingSeverity = "warning" | "info" | "suggestion";
 
 export type FindingCategory = "structure" | "completeness" | "effectiveness" | "safety" | "cost";
@@ -334,16 +324,6 @@ export interface LatestHealthCheckRun {
   run?: HealthCheckRun;
   /** True when the run was executed against a different config than current */
   config_changed: boolean;
-}
-
-/** Response showing the final agent shape after applying capabilities */
-export interface AgentPreviewResponse {
-  /** The full system prompt with capability additions prepended */
-  system_prompt: string;
-  /** All tool definitions from capabilities */
-  tools: ToolDefinition[];
-  /** Advisory findings from built-in checks (absent on harness preview) */
-  findings?: AgentFinding[];
 }
 
 // ============================================

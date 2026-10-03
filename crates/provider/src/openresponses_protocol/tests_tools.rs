@@ -722,6 +722,264 @@ fn tool_search_has_complete_stable_wire_order_and_threshold_boundary() {
     );
 }
 
+/// EVE-1164: OpenAI hosted tool search fails with `server_error` when a
+/// deferred namespace is named `File Operations` (whitespace). The wire name
+/// must be a provider-safe identifier; the description keeps the human label.
+#[test]
+fn tool_search_normalizes_file_operations_namespace_for_openai() {
+    use crate::tool_types::DeferrablePolicy::Automatic;
+
+    let tools = vec![make_tool(
+        "list_directory",
+        Some("File Operations"),
+        Automatic,
+    )];
+    let wire = serde_json::to_value(OpenResponsesProtocolChatDriver::convert_tools_with_search(
+        &tools, 1,
+    ))
+    .unwrap();
+
+    assert_eq!(
+        wire,
+        json!([
+            {
+                "type": "namespace",
+                "name": "File_Operations",
+                "description": "Tools for File Operations",
+                "tools": [{
+                    "type": "function",
+                    "name": "list_directory",
+                    "description": "list_directory description",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                        "additionalProperties": false
+                    },
+                    "strict": true,
+                    "defer_loading": true
+                }]
+            },
+            {"type": "tool_search"}
+        ])
+    );
+}
+
+#[test]
+fn tool_search_namespace_normalization_covers_safe_names_punctuation_unicode_and_collisions() {
+    use crate::tool_types::DeferrablePolicy::Automatic;
+
+    assert_eq!(
+        normalize_tool_search_namespace_name("Alpha"),
+        "Alpha",
+        "already-safe names stay unchanged"
+    );
+    assert_eq!(
+        normalize_tool_search_namespace_name("File Operations"),
+        "File_Operations"
+    );
+    assert_eq!(
+        normalize_tool_search_namespace_name("MCP Servers / GitHub"),
+        "MCP_Servers_GitHub"
+    );
+    assert_eq!(
+        normalize_tool_search_namespace_name("  spaced--name!!  "),
+        "spaced_name"
+    );
+    assert_eq!(
+        normalize_tool_search_namespace_name("123start"),
+        "n_123start",
+        "leading digits need an alphabetic prefix"
+    );
+    assert_eq!(
+        normalize_tool_search_namespace_name("文件操作"),
+        "namespace",
+        "Unicode-only labels fall back instead of emitting an empty name"
+    );
+    assert_eq!(normalize_tool_search_namespace_name(""), "namespace");
+    assert_eq!(normalize_tool_search_namespace_name("!!!"), "namespace");
+
+    // Distinct categories that normalize to the same identifier must not merge.
+    let tools = vec![
+        make_tool("a", Some("File Operations"), Automatic),
+        make_tool("b", Some("File_Operations"), Automatic),
+        make_tool("c", Some("File-Operations"), Automatic),
+    ];
+    let generated: Vec<_> = (0..16)
+        .map(|_| {
+            serde_json::to_value(OpenResponsesProtocolChatDriver::convert_tools_with_search(
+                &tools, 1,
+            ))
+            .unwrap()
+        })
+        .collect();
+    let first = &generated[0];
+    for actual in &generated[1..] {
+        assert_eq!(
+            actual, first,
+            "normalized namespace assignment must be stable across builds"
+        );
+    }
+
+    let namespaces: Vec<&str> = first
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| item["type"] == "namespace")
+        .map(|item| item["name"].as_str().unwrap())
+        .collect();
+    // BTreeMap category order: "File Operations" < "File-Operations" < "File_Operations".
+    assert_eq!(
+        namespaces,
+        vec!["File_Operations", "File_Operations_2", "File_Operations_3"],
+        "colliding categories keep separate provider namespaces in category order"
+    );
+
+    let descriptions: Vec<&str> = first
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| item["type"] == "namespace")
+        .map(|item| item["description"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        descriptions,
+        vec![
+            "Tools for File Operations",
+            "Tools for File-Operations",
+            "Tools for File_Operations",
+        ],
+        "descriptions keep the original category labels"
+    );
+
+    // Each namespace still carries only its own functions.
+    let functions: Vec<Vec<&str>> = first
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| item["type"] == "namespace")
+        .map(|item| {
+            item["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|tool| tool["name"].as_str().unwrap())
+                .collect()
+        })
+        .collect();
+    assert_eq!(functions, vec![vec!["a"], vec!["c"], vec!["b"]]);
+}
+
+#[tokio::test]
+async fn file_operations_namespace_request_and_namespaced_call_dispatch() {
+    use crate::tool_types::DeferrablePolicy::Automatic;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::builder().start().await;
+    let sse = concat!(
+        "data: {\"type\":\"response.output_item.done\",\"item\":{",
+        "\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",",
+        "\"name\":\"list_directory\",\"namespace\":\"File_Operations\",",
+        "\"arguments\":\"{\\\"path\\\":\\\".\\\"}\",\"status\":\"completed\"}}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{",
+        "\"id\":\"resp_ns\",\"status\":\"completed\",\"output\":[",
+        "{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",",
+        "\"name\":\"list_directory\",\"namespace\":\"File_Operations\",",
+        "\"arguments\":\"{\\\"path\\\":\\\".\\\"}\",\"status\":\"completed\"}",
+        "]}}\n\n"
+    );
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = crate::runtime_provider::RuntimeProvider::new(
+        "ns-normalize",
+        OpenResponsesProtocolChatDriver::new(),
+    )
+    .base_url(server.uri());
+    let driver = OpenResponsesProtocolChatDriver::new()
+        .with_native_features(false, true)
+        .with_retry_config(LlmRetryConfig::no_retry());
+    let mut config = auth_test_config();
+    config.tools = vec![make_tool(
+        "list_directory",
+        Some("File Operations"),
+        Automatic,
+    )];
+    config.tool_search = Some(crate::driver_registry::ToolSearchConfig {
+        enabled: true,
+        threshold: 1,
+    });
+
+    let mut stream = driver
+        .chat_completion_stream(
+            provider.endpoint(),
+            vec![Message::text(
+                MessageRole::User,
+                "List the current directory.",
+            )],
+            &config,
+        )
+        .await
+        .unwrap();
+
+    let mut saw_list_directory = false;
+    while let Some(event) = stream.next().await {
+        match event.unwrap() {
+            LlmStreamEvent::ToolCalls(calls) => {
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].name, "list_directory");
+                assert_eq!(calls[0].arguments, json!({"path": "."}));
+                saw_list_directory = true;
+            }
+            LlmStreamEvent::Done(metadata) => {
+                assert_eq!(metadata.finish_reason.as_deref(), Some("tool_calls"));
+            }
+            LlmStreamEvent::TextDelta(delta) if delta.is_empty() => {}
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+    assert!(
+        saw_list_directory,
+        "namespaced function_call must dispatch by function name"
+    );
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(
+        body["tools"],
+        json!([
+            {
+                "type": "namespace",
+                "name": "File_Operations",
+                "description": "Tools for File Operations",
+                "tools": [{
+                    "type": "function",
+                    "name": "list_directory",
+                    "description": "list_directory description",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                        "additionalProperties": false
+                    },
+                    "strict": true,
+                    "defer_loading": true
+                }]
+            },
+            {"type": "tool_search"}
+        ])
+    );
+}
+
 #[tokio::test]
 async fn equivalent_search_requests_keep_cache_key_and_complete_tool_payload() {
     use wiremock::matchers::method;

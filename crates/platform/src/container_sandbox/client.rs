@@ -95,6 +95,26 @@ pub struct ContainerInspect {
     pub state: ContainerState,
     #[serde(rename = "Name")]
     pub name: String,
+    #[serde(rename = "Config")]
+    pub config: ContainerInspectConfig,
+}
+
+/// Nested config block from container inspect (labels live here).
+#[derive(Debug, Deserialize)]
+pub struct ContainerInspectConfig {
+    #[serde(rename = "Labels", default)]
+    pub labels: std::collections::HashMap<String, String>,
+}
+
+/// Network inspect response (subset of fields we need).
+#[derive(Debug, Deserialize)]
+pub struct NetworkInspect {
+    #[serde(rename = "Id")]
+    pub id: String,
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "Labels", default)]
+    pub labels: std::collections::HashMap<String, String>,
 }
 
 /// Container state from inspect.
@@ -381,6 +401,41 @@ impl DockerClient {
     // Container lifecycle
     // ========================================================================
 
+    /// Pull an image (or wait for an existing local copy).
+    ///
+    /// Used by live tests and create paths that need a concrete local image
+    /// before `POST /containers/create`. Drains the progress stream so the
+    /// daemon finishes the pull before we return.
+    pub async fn pull_image(&self, image: &str) -> Result<(), String> {
+        debug!(image = %image, "Pulling Docker image");
+        let (name, tag) = match image.rsplit_once(':') {
+            Some((name, tag)) => (name, tag),
+            None => (image, "latest"),
+        };
+        let path = format!(
+            "/images/create?fromImage={}&tag={}",
+            urlencoding::encode(name),
+            urlencoding::encode(tag)
+        );
+        let url = self.url(&path)?;
+        let resp = self
+            .http
+            .post(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Docker image pull failed: {e}"))?;
+        let status = resp.status();
+        // Drain the NDJSON progress stream; dropping early can cancel the pull.
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read image pull stream: {e}"))?;
+        if !status.is_success() {
+            return Err(map_docker_error(status.as_u16(), &body));
+        }
+        Ok(())
+    }
+
     /// Create a container with the given configuration.
     pub async fn create_container(
         &self,
@@ -440,6 +495,12 @@ impl DockerClient {
             None,
         )
         .await
+    }
+
+    /// Inspect a network (get labels and name).
+    pub async fn inspect_network(&self, id: &str) -> Result<NetworkInspect, String> {
+        self.request_typed(reqwest::Method::GET, &format!("/networks/{id}"), None)
+            .await
     }
 
     /// List containers matching label filters.

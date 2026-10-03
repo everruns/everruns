@@ -92,9 +92,14 @@ export function usePlatformChatThread(
 
   const platformChat = harnesses.find((harness) => harness.name === PLATFORM_CHAT_HARNESS_NAME);
   // A thread bound straight to the harness, with no agent in between.
-  const thread = platformChat
-    ? threads.find((candidate) => !candidate.agent_id && candidate.harness_id === platformChat.id)
-    : undefined;
+  const candidates = platformChat
+    ? threads.filter((candidate) => !candidate.agent_id && candidate.harness_id === platformChat.id)
+    : [];
+  // Consolidation can put several conversations on this harness. Prefer the
+  // durable starter identity, then adopt an unmarked legacy thread.
+  const thread =
+    candidates.find((candidate) => candidate.tags.includes(PLATFORM_CHAT_STARTER_TAG)) ??
+    candidates[0];
   const isLoading = threadsLoading || harnessesLoading;
 
   useEffect(() => {

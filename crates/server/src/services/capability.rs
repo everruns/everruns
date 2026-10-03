@@ -44,6 +44,12 @@ pub struct CapabilityService {
     skill_list_cache: Cache<i64, Arc<Vec<Skill>>>,
 }
 
+pub struct CapabilityPreview {
+    pub system_prompt: String,
+    pub tools: Vec<everruns_provider::tool_types::ToolDefinition>,
+    pub features: Vec<String>,
+}
+
 impl CapabilityService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
         Self::with_registry(db, encryption, crate::platform::oss_capability_registry())
@@ -607,6 +613,19 @@ impl CapabilityService {
         base_system_prompt: &str,
         capability_configs: &[everruns_capability::CapabilityRef],
     ) -> Result<(String, Vec<everruns_provider::tool_types::ToolDefinition>)> {
+        let preview = self
+            .preview_with_features(org_id, base_system_prompt, capability_configs)
+            .await?;
+        Ok((preview.system_prompt, preview.tools))
+    }
+
+    /// Preview tools, prompt, and the same session feature projection used at runtime.
+    pub async fn preview_with_features(
+        &self,
+        org_id: i64,
+        base_system_prompt: &str,
+        capability_configs: &[everruns_capability::CapabilityRef],
+    ) -> Result<CapabilityPreview> {
         use everruns_core::capabilities::{
             SystemPromptContext, collect_capabilities_with_configs, resolve_capability_configs,
         };
@@ -644,6 +663,11 @@ impl CapabilityService {
         // Resolve dependencies for built-in capabilities
         let resolved = resolve_capability_configs(&builtin_cap_configs, &self.registry)
             .map_err(|e| anyhow::anyhow!("Failed to resolve capability dependencies: {}", e))?;
+        let ids = resolved
+            .iter()
+            .map(|cap| cap.capability_id().to_string())
+            .collect::<Vec<_>>();
+        let features = everruns_core::capabilities::compute_features(&ids, &self.registry);
 
         // Collect from resolved capabilities (includes dependencies in correct order)
         // Preview has no session context, so dynamic capabilities (agent_instructions) return None
@@ -698,7 +722,11 @@ impl CapabilityService {
             additions.as_deref(),
         );
 
-        Ok((final_system_prompt, tool_definitions))
+        Ok(CapabilityPreview {
+            system_prompt: final_system_prompt,
+            tools: tool_definitions,
+            features,
+        })
     }
 }
 

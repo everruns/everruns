@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AskUserToolCall, type AskUserArguments } from "@/components/chat/ask-user-tool-call";
 import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
 import type { Event, ToolCompletedData } from "@/lib/api/types";
@@ -74,6 +74,198 @@ afterEach(() => {
 });
 
 describe("AskUserToolCall", () => {
+  it.each([
+    ["MacIntel", "⌘"],
+    ["Win32", "Ctrl"],
+  ])("shows numbered keycaps with the %s shortcut", (platform, modifier) => {
+    jest.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    const { container } = renderCard();
+    expect(container.querySelectorAll("kbd")).toHaveLength(0);
+    fireEvent.keyDown(document, {
+      key: platform === "MacIntel" ? "Meta" : "Control",
+      [platform === "MacIntel" ? "metaKey" : "ctrlKey"]: true,
+    });
+    expect(Array.from(container.querySelectorAll("kbd"), (key) => key.textContent)).toEqual([
+      `${modifier}+1`,
+      `${modifier}+2`,
+      `${modifier}+3`,
+    ]);
+    expect(
+      screen.getByText(`Hold ${modifier} to show option shortcuts (1–9).`),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Other" })).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Meta+3 Control+3",
+    );
+  });
+
+  it("numbers long MCP choices without advertising shortcuts beyond nine", () => {
+    const { container } = renderCard({
+      mcp_elicitation: { server: "deploys", message: "Pick a target." },
+      questions: [
+        {
+          ...request.questions[0],
+          options: Array.from({ length: 10 }, (_, index) => ({
+            label: `Target ${index + 1}`,
+            description: "Deployment target",
+          })),
+        },
+      ],
+    });
+    fireEvent.keyDown(document, { key: "Control", ctrlKey: true });
+    expect(container.querySelectorAll("kbd")).toHaveLength(9);
+    expect(screen.getByRole("radio", { name: /^Target 9 / })).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Meta+9 Control+9",
+    );
+    expect(screen.getByRole("radio", { name: /^Target 10 / })).not.toHaveAttribute(
+      "aria-keyshortcuts",
+    );
+    expect(screen.getByRole("radio", { name: "Other" })).not.toHaveAttribute("aria-keyshortcuts");
+    fireEvent.keyDown(document, { code: "Digit9", ctrlKey: true });
+    expect(screen.getByRole("radio", { name: /^Target 9 / })).toBeChecked();
+  });
+
+  it("hides shortcut badges on modifier release, window blur, and visibility changes", () => {
+    const { container } = renderCard();
+    for (const release of [
+      () => fireEvent.keyUp(document, { key: "Meta", metaKey: false }),
+      () => fireEvent.blur(window),
+      () => fireEvent(document, new window.Event("visibilitychange")),
+    ]) {
+      fireEvent.keyDown(document, { key: "Meta", metaKey: true });
+      expect(container.querySelectorAll("kbd")).toHaveLength(3);
+      release();
+      expect(container.querySelectorAll("kbd")).toHaveLength(0);
+    }
+  });
+
+  it.each(["metaKey", "ctrlKey"])("selects by %s+number without submitting", (modifier) => {
+    renderCard();
+    fireEvent.keyDown(document, { code: "Digit2", key: "2", [modifier]: true });
+    expect(screen.getByRole("radio", { name: /Production/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Staging/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /Production/ })).toHaveFocus();
+    expect(submitQuestionAnswers).not.toHaveBeenCalled();
+  });
+
+  it("leaves typing, other modifiers, repeats, composition, and unrelated keys alone", () => {
+    renderCard();
+    for (const keys of [
+      { code: "Digit2", key: "2" },
+      { code: "Digit2", metaKey: true, shiftKey: true },
+      { code: "Digit2", ctrlKey: true, shiftKey: true },
+      { code: "Digit2", metaKey: true, altKey: true },
+      { code: "Digit2", metaKey: true, repeat: true },
+      { code: "Digit2", metaKey: true, isComposing: true },
+      { code: "Digit9", metaKey: true },
+    ]) {
+      expect(fireEvent.keyDown(document, keys)).toBe(true);
+    }
+    expect(screen.getByRole("radio", { name: /Staging/ })).toBeChecked();
+    expect(submitQuestionAnswers).not.toHaveBeenCalled();
+  });
+
+  it("toggles multi-select choices in the focused question without changing another question", () => {
+    renderCard({
+      questions: [
+        request.questions[0],
+        {
+          id: "checks",
+          header: "Checks",
+          question: "Which checks?",
+          multi_select: true,
+          options: [
+            { label: "Unit", description: "Unit tests" },
+            { label: "UI", description: "UI tests" },
+          ],
+        },
+      ],
+    });
+    const unit = screen.getByRole("checkbox", { name: /Unit/ });
+    fireEvent.keyDown(unit, { code: "Digit2", ctrlKey: true });
+    const ui = screen.getByRole("checkbox", { name: /UI/ });
+    expect(ui).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Staging/ })).toBeChecked();
+    fireEvent.keyDown(ui, { code: "Digit2", ctrlKey: true });
+    expect(ui).not.toBeChecked();
+  });
+
+  it("numbers Other and opens its text field by keyboard", () => {
+    renderCard();
+    fireEvent.keyDown(document, { code: "Digit3", metaKey: true });
+    expect(screen.getByRole("radio", { name: "Other" })).toBeChecked();
+    expect(screen.getByRole("textbox", { name: "Target other answer" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    expect(submitQuestionAnswers).not.toHaveBeenCalled();
+  });
+
+  it("does not steal shortcuts from a dialog or password field", () => {
+    renderCard();
+    render(
+      <>
+        <div role="dialog">
+          <input aria-label="Dialog field" />
+        </div>
+        <input type="password" aria-label="Credential" />
+      </>,
+    );
+    for (const name of ["Dialog field", "Credential"]) {
+      expect(
+        fireEvent.keyDown(screen.getByLabelText(name), {
+          code: "Digit2",
+          metaKey: true,
+        }),
+      ).toBe(true);
+    }
+    expect(screen.getByRole("radio", { name: /Staging/ })).toBeChecked();
+  });
+
+  it("only changes the focused pending card when multiple cards are mounted", () => {
+    const first = renderCard();
+    const second = renderCard();
+    const secondChoice = within(second.container).getByRole("radio", { name: /Staging/ });
+    fireEvent.keyDown(secondChoice, { code: "Digit2", metaKey: true });
+    expect(within(second.container).getByRole("radio", { name: /Production/ })).toBeChecked();
+    expect(within(first.container).getByRole("radio", { name: /Staging/ })).toBeChecked();
+  });
+
+  it("does not intercept shortcuts while submitting or after completion", async () => {
+    submitQuestionAnswers.mockReturnValue(new Promise(() => {}));
+    const { rerender } = renderCard();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(fireEvent.keyDown(document, { code: "Digit2", metaKey: true })).toBe(true);
+    expect(screen.getByRole("radio", { name: /Staging/ })).toBeChecked();
+    rerender(
+      <AskUserToolCall
+        sessionId="session_1"
+        toolCallId="ask_1"
+        request={request}
+        requestedAt={request.asked_at!}
+        toolResultsMap={new Map([["ask_1", completedResult({ status: "declined" })]])}
+      />,
+    );
+    expect(screen.getByText("Questions declined")).toBeInTheDocument();
+    expect(fireEvent.keyDown(document, { code: "Digit2", metaKey: true })).toBe(true);
+  });
+
+  it("does not restore held badges after a failed submission", async () => {
+    let rejectSubmission!: (error: Error) => void;
+    submitQuestionAnswers.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectSubmission = reject;
+      }),
+    );
+    const { container } = renderCard();
+    fireEvent.keyDown(document, { key: "Meta", metaKey: true });
+    expect(container.querySelectorAll("kbd")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.keyUp(document, { key: "Meta" });
+    await act(async () => rejectSubmission(new Error("Network error")));
+    expect(screen.getByText("Could not record your answer. Try again.")).toBeInTheDocument();
+    expect(container.querySelectorAll("kbd")).toHaveLength(0);
+  });
+
   it("shows option descriptions, selection mode, recommendation, and the named countdown", () => {
     renderCard();
 

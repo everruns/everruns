@@ -21,6 +21,7 @@ use super::config::ContainerSandboxConfig;
 use super::state::{
     SandboxState, container_name, delete_sandbox_state, get_sandbox_state, network_name,
     release_sandbox_lease, sandbox_labels, save_sandbox_state, touch_sandbox_lease,
+    verify_sandbox_container_ownership, verify_sandbox_network_ownership,
 };
 
 /// Helper: extract a required string parameter.
@@ -36,6 +37,21 @@ fn required_str(args: &Value, name: &str) -> Result<String, ToolExecutionResult>
 /// Helper: create a DockerClient from config.
 fn docker_client(config: &ContainerSandboxConfig) -> DockerClient {
     DockerClient::new(config.docker_host.as_deref())
+}
+
+/// Load persisted sandbox state and prove the referenced Docker container is
+/// an Everruns sandbox owned by this session before any mutating/read API call.
+///
+/// THREAT[TM-SANDBOX-004]: do not trust `container_id` from session secrets alone.
+async fn load_owned_sandbox(
+    context: &ToolContext,
+) -> Result<(SandboxState, DockerClient), ToolExecutionResult> {
+    let state = get_sandbox_state(context).await?;
+    let config = ContainerSandboxConfig::default();
+    let client = docker_client(&config);
+    let session_id = context.session_id.to_string();
+    verify_sandbox_container_ownership(&client, &session_id, &state.container_id).await?;
+    Ok((state, client))
 }
 
 // ============================================================================
@@ -97,6 +113,10 @@ impl Tool for SandboxCreateTool {
         let n_name = network_name(&session_id);
         let labels = sandbox_labels(&session_id);
         let client = docker_client(&config);
+
+        if let Err(e) = client.pull_image(&image).await {
+            return ToolExecutionResult::tool_error(format!("Failed to pull image {image}: {e}"));
+        }
 
         // Create network (track whether we created it vs reused an existing one)
         let (network_id, network_created) = match client
@@ -253,8 +273,8 @@ impl Tool for SandboxExecTool {
             .and_then(|v| v.as_str())
             .unwrap_or("auto");
 
-        let state = match get_sandbox_state(context).await {
-            Ok(s) => s,
+        let (state, client) = match load_owned_sandbox(context).await {
+            Ok(v) => v,
             Err(e) => return e,
         };
 
@@ -262,9 +282,6 @@ impl Tool for SandboxExecTool {
             .get("working_dir")
             .and_then(|v| v.as_str())
             .unwrap_or(&state.working_dir);
-
-        let config = ContainerSandboxConfig::default();
-        let client = docker_client(&config);
 
         let result = match client
             .exec(
@@ -376,13 +393,10 @@ impl Tool for SandboxReadFileTool {
             Err(err) => return ToolExecutionResult::tool_error(err),
         };
 
-        let state = match get_sandbox_state(context).await {
-            Ok(s) => s,
+        let (state, client) = match load_owned_sandbox(context).await {
+            Ok(v) => v,
             Err(e) => return e,
         };
-
-        let config = ContainerSandboxConfig::default();
-        let client = docker_client(&config);
 
         match client.get_archive(&state.container_id, &path).await {
             Ok(bytes) => ToolExecutionResult::success(build_bytes_read_file_result(
@@ -456,13 +470,10 @@ impl Tool for SandboxWriteFileTool {
             Err(e) => return e,
         };
 
-        let state = match get_sandbox_state(context).await {
-            Ok(s) => s,
+        let (state, client) = match load_owned_sandbox(context).await {
+            Ok(v) => v,
             Err(e) => return e,
         };
-
-        let config = ContainerSandboxConfig::default();
-        let client = docker_client(&config);
 
         // Split path into directory and filename
         let (dir, filename) = match path.rsplit_once('/') {
@@ -608,13 +619,10 @@ impl Tool for SandboxManageTool {
             Err(e) => return e,
         };
 
-        let state = match get_sandbox_state(context).await {
-            Ok(s) => s,
+        let (state, client) = match load_owned_sandbox(context).await {
+            Ok(v) => v,
             Err(e) => return e,
         };
-
-        let config = ContainerSandboxConfig::default();
-        let client = docker_client(&config);
 
         match action.as_str() {
             "stop" => {
@@ -631,6 +639,14 @@ impl Tool for SandboxManageTool {
                 ToolExecutionResult::success("Sandbox started.")
             }
             "remove" => {
+                // Re-check network ownership before DELETE — same forge hazard
+                // as container IDs (mutable session secret).
+                let session_id = context.session_id.to_string();
+                if let Err(e) =
+                    verify_sandbox_network_ownership(&client, &session_id, &state.network_id).await
+                {
+                    return e;
+                }
                 // Stop, remove container, remove network, clean up state
                 let _ = client.stop_container(&state.container_id, 5).await;
                 if let Err(e) = client.remove_container(&state.container_id).await {
@@ -705,8 +721,8 @@ impl Tool for SandboxUploadTool {
             Err(e) => return e,
         };
 
-        let state = match get_sandbox_state(context).await {
-            Ok(s) => s,
+        let (state, client) = match load_owned_sandbox(context).await {
+            Ok(v) => v,
             Err(e) => return e,
         };
 
@@ -747,9 +763,6 @@ impl Tool for SandboxUploadTool {
         } else {
             content_str.as_bytes().to_vec()
         };
-
-        let config = ContainerSandboxConfig::default();
-        let client = docker_client(&config);
 
         let (dir, filename) = match container_path.rsplit_once('/') {
             Some((d, f)) if !d.is_empty() => (d.to_string(), f.to_string()),
@@ -837,8 +850,8 @@ impl Tool for SandboxDownloadTool {
             Err(e) => return e,
         };
 
-        let state = match get_sandbox_state(context).await {
-            Ok(s) => s,
+        let (state, client) = match load_owned_sandbox(context).await {
+            Ok(v) => v,
             Err(e) => return e,
         };
 
@@ -846,9 +859,6 @@ impl Tool for SandboxDownloadTool {
             Some(fs) => fs,
             None => return ToolExecutionResult::tool_error("File store not available"),
         };
-
-        let config = ContainerSandboxConfig::default();
-        let client = docker_client(&config);
 
         let bytes = match client
             .get_archive(&state.container_id, &container_path)

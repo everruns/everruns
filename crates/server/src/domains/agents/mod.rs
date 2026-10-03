@@ -10,12 +10,14 @@ pub mod checks;
 pub mod commands;
 pub mod credentials;
 pub mod health_check;
+pub mod preview;
 pub mod queries;
 pub mod types;
 pub(crate) mod version_policy;
 
 pub use commands::*;
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};
+pub use preview::*;
 
 /// Reduce utility-provider failures to the shared actionable error taxonomy.
 /// Raw provider text is for server logs only: it can contain request context or

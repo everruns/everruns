@@ -170,7 +170,8 @@ pub(crate) async fn try_execute_reason<A: crate::RuntimeHostAdapter>(
                 store,
                 ledger,
                 executor,
-            );
+            )
+            .with_runtime_policy();
             if let Some(policy) = HostOutputPolicy::new(
                 &registry,
                 assembled,

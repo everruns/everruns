@@ -503,29 +503,6 @@ pub fn import_session_config(
     })
 }
 
-/// The text of a provider tool output: MCP `{content: [{text}]}`, a function
-/// output `[{text}]`, or anything else serialized.
-pub(crate) fn provider_output_text(item: &Value) -> String {
-    let output = item.get("output").unwrap_or(&Value::Null);
-    let parts = output
-        .get("content")
-        .or(Some(output))
-        .and_then(Value::as_array)
-        .map(|parts| {
-            parts
-                .iter()
-                .filter_map(|part| part.get("text").and_then(Value::as_str))
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .filter(|text| !text.is_empty());
-    parts.unwrap_or_else(|| match output {
-        Value::String(text) => text.clone(),
-        Value::Null => String::new(),
-        other => other.to_string(),
-    })
-}
-
 /// The assistant text of a saved `message` item.
 pub(crate) fn message_item_text(item: &Value) -> String {
     item.get("content")

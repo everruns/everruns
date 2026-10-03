@@ -35,6 +35,7 @@ function makeMutationStub(opts: {
 }
 
 const sampleResponse: AgentPreviewResponse = {
+  features: ["file_system"],
   system_prompt: "## Harness prompt\n\nDo good things.",
   tools: [
     {
@@ -81,6 +82,8 @@ describe("HarnessPreview", () => {
     expect(screen.getByText(/Do good things\./)).toBeInTheDocument();
     expect(screen.getByText("Available Tools")).toBeInTheDocument();
     expect(screen.getByText("shell")).toBeInTheDocument();
+    expect(screen.getByText("Included Features")).toBeInTheDocument();
+    expect(screen.getByText("Session filesystem")).toBeInTheDocument();
     expect(screen.getByText("Initial Files")).toBeInTheDocument();
     expect(screen.getByText("welcome to the harness")).toBeInTheDocument();
     expect(screen.getByText("read-only")).toBeInTheDocument();

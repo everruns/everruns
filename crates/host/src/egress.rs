@@ -5,13 +5,19 @@ use everruns_core::{
     EgressError, EgressRequest, EgressResponse, EgressResult, EgressService, EgressSigning,
     EgressStreamResponse, SystemAllowlist,
 };
-use everruns_provider::url_validation::validate_url_dns_pinned;
+use everruns_provider::url_validation::{validate_url_dns_pinned, validate_url_with_resolver};
 use futures::StreamExt;
+use std::future::Future;
+use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+
+type DnsResolveFuture = Pin<Box<dyn Future<Output = std::io::Result<Vec<SocketAddr>>> + Send>>;
+type DnsResolver = Arc<dyn Fn(String, u16) -> DnsResolveFuture + Send + Sync>;
 
 #[derive(Clone)]
 pub struct DirectEgressService {
@@ -20,6 +26,10 @@ pub struct DirectEgressService {
     /// independently of the per-request `network_access`. `None` means no
     /// global enforcement. See `everruns_core::system_allowlist`.
     system_allowlist: Option<Arc<SystemAllowlist>>,
+    /// Optional DNS override for `dns_pinning_required` requests. Production
+    /// leaves this unset and uses the system resolver; tests install a
+    /// controlled resolver to prove private answers are denied before connect.
+    dns_resolver: Option<DnsResolver>,
 }
 
 impl std::fmt::Debug for DirectEgressService {
@@ -45,6 +55,7 @@ impl DirectEgressService {
                 .build()
                 .expect("build direct egress HTTP client"),
             system_allowlist: None,
+            dns_resolver: None,
         }
     }
 
@@ -52,7 +63,22 @@ impl DirectEgressService {
         Self {
             client,
             system_allowlist: None,
+            dns_resolver: None,
         }
+    }
+
+    /// Install a controlled DNS resolver for `dns_pinning_required` requests.
+    ///
+    /// Intended for tests that must prove a private, link-local, or loopback
+    /// answer is denied before any TCP connect (EVE-1154). Production call
+    /// sites leave the default system resolver in place.
+    pub fn with_dns_resolver<F, Fut>(mut self, resolve: F) -> Self
+    where
+        F: Fn(String, u16) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = std::io::Result<Vec<SocketAddr>>> + Send + 'static,
+    {
+        self.dns_resolver = Some(Arc::new(move |host, port| Box::pin(resolve(host, port))));
+        self
     }
 
     /// Construct the default direct transport for tenant/agent runtime egress.
@@ -120,9 +146,19 @@ impl DirectEgressService {
             return Err(EgressError::SigningUnavailable);
         }
         if request.dns_pinning_required {
-            let (validated_url, resolved_addrs) = validate_url_dns_pinned(&request.url)
-                .await
-                .map_err(|error| EgressError::NetworkAccessDenied {
+            let validated = match &self.dns_resolver {
+                Some(resolve) => {
+                    let resolve = Arc::clone(resolve);
+                    validate_url_with_resolver(&request.url, move |host, port| {
+                        let resolve = Arc::clone(&resolve);
+                        async move { resolve(host, port).await }
+                    })
+                    .await
+                }
+                None => validate_url_dns_pinned(&request.url).await,
+            };
+            let (validated_url, resolved_addrs) =
+                validated.map_err(|error| EgressError::NetworkAccessDenied {
                     url: format!("{} ({error})", request.url),
                 })?;
             let pin_host = validated_url.host_str().unwrap_or("").to_string();
@@ -423,6 +459,58 @@ mod tests {
 
         assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
         assert!(error.to_string().contains("private/internal address"));
+    }
+
+    /// EVE-1154: bashkit can hand the egress boundary an unpinned hostname
+    /// after its DNS precheck fails open. With `require_dns_pinning`, a
+    /// subsequent private/link-local/loopback answer must be refused before
+    /// any TCP connect — proved here with a controlled resolver aimed at a
+    /// live mock server that must see zero requests.
+    #[tokio::test]
+    async fn require_dns_pinning_denies_private_answers_before_connect() {
+        use std::net::{IpAddr, SocketAddr};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/secret"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("leaked"))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let listen = reqwest::Url::parse(&server.uri()).unwrap();
+        let port = listen.port().unwrap();
+        for blocked in ["127.0.0.1", "169.254.169.254", "10.0.0.1"] {
+            let blocked_ip: IpAddr = blocked.parse().unwrap();
+            let service =
+                DirectEgressService::new().with_dns_resolver(move |_host, resolved_port| {
+                    let addr = SocketAddr::new(blocked_ip, resolved_port);
+                    async move { Ok(vec![addr]) }
+                });
+            let error = service
+                .send(
+                    EgressRequest::new(
+                        "GET",
+                        format!("http://rebind.example:{port}/secret"),
+                        EgressRequestKind::Capability,
+                    )
+                    .network_access(Some(NetworkAccessList::allow_only(["rebind.example"])))
+                    // Same flag BashkitEgressTransport sets when pins are empty.
+                    .require_dns_pinning(),
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(error, EgressError::NetworkAccessDenied { .. }),
+                "blocked answer {blocked} must deny: {error}"
+            );
+            assert!(
+                error.to_string().contains(blocked)
+                    || error.to_string().contains("blocked address")
+                    || error.to_string().contains("private"),
+                "denial must mention the blocked answer {blocked}: {error}"
+            );
+        }
     }
 
     #[tokio::test]

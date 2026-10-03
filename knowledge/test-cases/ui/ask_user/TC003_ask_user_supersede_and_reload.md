@@ -54,6 +54,14 @@ session rather than held only in the browser.
    answer rather than selecting an unattended default. Answer and confirm the
    turn resumes with the selected choice. Repeat with an image or file attached
    to the message and with an explicit model override.
+7. **Keyboard options.** Confirm shortcut badges are hidden at rest. Hold Command
+   on macOS or Ctrl on Windows/Linux: choices 1–9 and **Other** show small bordered
+   badges such as **⌘+1** or **Ctrl+1**. Press the digit to select that option.
+   Choices beyond nine have no shortcut badge. Release the modifier or switch
+   windows and confirm the badges disappear. Focus a different question or
+   pending card and repeat; only that question changes. For multi-select, repeat
+   a shortcut to toggle the choice off. Confirm ordinary typing does not change
+   selections, and no shortcut submits the answer without **Continue**.
 
 ## Expected Result
 

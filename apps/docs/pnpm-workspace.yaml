@@ -2,7 +2,7 @@ packages: []
 overrides:
   '@astrojs/mdx': 6.0.2
   esbuild: 0.28.1
-  fast-uri: 3.1.6
+  fast-uri: 3.1.8
   form-data: 4.0.6
   lodash: 4.17.23
   nanoid: 3.3.18
@@ -19,11 +19,12 @@ minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 # Security patches remain pinned to exact versions via the overrides above:
 # form-data 4.0.6 (GHSA-hmw2-7cc7-3qxx), esbuild 0.28.1 (GHSA-g7r4-m6w7-qqqr),
-# fast-uri 3.1.6 (supersedes the 3.1.5 pin for GHSA-v2hh-gcrm-f6hx; four further
-# advisories cover every 3.x through 3.1.5, reached via @astrojs/check >
-# @astrojs/language-server > volar-service-json: GHSA-5jgf-p345-68v8 and
-# GHSA-jqff-g426-hqxp host confusion, GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf
-# SSRF — 3.1.6 is the only patched 3.x release),
+# fast-uri 3.1.8 (supersedes the 3.1.6 pin for GHSA-v2hh-gcrm-f6hx; GHSA-5jgf-p345-68v8,
+# GHSA-jqff-g426-hqxp, GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf cover every 3.x
+# through 3.1.5, and GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3 and GHSA-hrr3-gc8f-f4qj
+# cover 3.1.6 — host confusion, authority injection, and case normalization —
+# reached via @astrojs/check > @astrojs/language-server > volar-service-json.
+# 3.1.8 is the only patched 3.x release),
 # nanoid 3.3.18 (custom generators loop indefinitely at size 0; reached via
 # postcss). GHSA-2v37-7h3g-55p8
 # was widened to `<3.3.18` on 2026-08-13 after 3.3.17 proved an incomplete fix, so

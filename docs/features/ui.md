@@ -76,7 +76,7 @@ Header actions:
   input; **Save changes** sends everything at once and **Discard** drops the draft. Changes apply
   to new sessions only.
 - **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
-- **New session**: start a conversation with this agent
+- **Test chat**: start an interactive chat thread with this agent
 
 ## Sessions
 

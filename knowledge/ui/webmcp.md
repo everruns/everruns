@@ -23,7 +23,7 @@ organization, authentication, and UI state.
 The first surface contains:
 
 - application context, bounded agent/session search, and controlled navigation;
-- starting a session from the active agent page;
+- starting a test chat from the active agent page;
 - sending a text message from a ready session page;
 - cancelling the active turn from a session page.
 

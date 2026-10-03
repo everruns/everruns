@@ -1254,7 +1254,7 @@ async fn shared_harness_memory_is_visible_across_sessions() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
     let harness_id = create_named_harness(
         &ctx,
-        crate::harnesses::platform_chat_v2::PLATFORM_CHAT_V2_HARNESS_NAME,
+        crate::harnesses::platform_chat::PLATFORM_CHAT_HARNESS_NAME,
     )
     .await;
 
@@ -1346,7 +1346,7 @@ async fn shared_memory_is_limited_to_harnesses_that_declare_it() {
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "no-shared-memory@example.com").await;
     let ctx = test_ctx(caller.clone(), db.clone()).await;
-    let harness_id = create_named_harness(&ctx, "platform-chat").await;
+    let harness_id = create_named_harness(&ctx, "generic").await;
 
     let session = session_service
         .create(
