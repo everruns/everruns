@@ -1,4 +1,3 @@
-
 //! EVE-1029: the worker path must send the credential the attachment's
 //! `actsAs` names, and nothing else.
 //!
