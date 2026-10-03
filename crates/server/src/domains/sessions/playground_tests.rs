@@ -257,6 +257,14 @@ async fn playground_input_records_subject_and_operator_without_management_author
             .unwrap(),
         None
     );
+    assert!(
+        ctx.db
+            .list_session_participants(ctx.org_id(), session.id)
+            .await
+            .unwrap()
+            .iter()
+            .any(|p| p.display_name.as_deref() == Some("Customer"))
+    );
     // An ingress adapter with the same subject still cannot bypass the command policy.
     let principal = subject_principal(&ctx, other.id).await.unwrap();
     let input = serde_json::from_value::<crate::api::messages::CreateMessageRequest>(
