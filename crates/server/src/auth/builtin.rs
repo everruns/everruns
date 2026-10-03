@@ -5,11 +5,11 @@
 // membership/role changes. We keep inserts + invalidation hooks so follow-up
 // work can safely reintroduce cache reads with fresh-state guarantees.
 
+use crate::records::OrgMembership;
 use async_trait::async_trait;
 use axum::Router;
 use everruns_core::OrgRole;
 use everruns_host::HostComposition;
-use everruns_platform::OrgMembership;
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -65,11 +65,11 @@ pub struct BuiltinAuthBackend {
     /// anti-enumeration notices). Server composition threads the operator's
     /// sender in via [`BuiltinAuthBackend::with_email_sender`] (EVE-879);
     /// defaults to the environment-configured sender.
-    pub email_sender: Arc<dyn everruns_platform::email::EmailSender>,
+    pub email_sender: Arc<dyn crate::records::email::EmailSender>,
     /// Operator-composed built-in harness set. Used by the signup safety-net
     /// in `register` / `oauth_callback` so a pre-seed signup still lands in
     /// an org with the correct (operator-chosen) harnesses.
-    pub built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
+    pub built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
     /// In-process cache: token_hash -> AuthUser. Avoids 4 sequential DB queries per token request.
     personal_access_token_cache: Cache<String, AuthUser>,
 }
@@ -126,7 +126,7 @@ impl BuiltinAuthBackend {
     /// `ServerAppBuilder` calls this with its resolved (operator-chosen) set.
     pub fn with_built_in_harnesses(
         mut self,
-        built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
+        built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
     ) -> Self {
         self.built_in_harnesses = built_in_harnesses;
         self
@@ -136,7 +136,7 @@ impl BuiltinAuthBackend {
     /// `ServerAppBuilder` calls this with its composed sender.
     pub fn with_email_sender(
         mut self,
-        email_sender: Arc<dyn everruns_platform::email::EmailSender>,
+        email_sender: Arc<dyn crate::records::email::EmailSender>,
     ) -> Self {
         self.email_sender = email_sender;
         self

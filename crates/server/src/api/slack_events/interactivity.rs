@@ -17,11 +17,11 @@
 //! identity the API recorded — without approvals needing an identity path of
 //! their own. See [`crate::slack_approvals`].
 
+use crate::records::SlackChannelConfig;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::{Extension, Json};
-use everruns_platform::SlackChannelConfig;
 use serde::Deserialize;
 
 use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signature};

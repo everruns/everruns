@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
+use crate::records::HarnessStatus;
 use everruns_contracts::typed_id::{HarnessId, ModelId};
-use everruns_platform::HarnessStatus;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -43,7 +43,7 @@ pub struct CreateHarnessRequest {
     /// inserts its text into the composer. The agent starters win when
     /// non-empty. `icon` reuses the harness icon name set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub starters: Vec<everruns_platform::ConversationStarter>,
+    pub starters: Vec<crate::records::ConversationStarter>,
     /// Base system prompt defining the harness's behavior. Optional: omit (or
     /// send an empty string) to contribute no base prompt, in which case the
     /// effective prompt comes from the parent harness, agent, session, and
@@ -66,7 +66,7 @@ pub struct CreateHarnessRequest {
     /// Capabilities to enable with per-harness configuration.
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this harness.
     #[serde(default)]
@@ -110,7 +110,7 @@ pub struct UpdateHarnessRequest {
     /// Conversation starters; omit to leave unchanged, send empty to clear.
     /// `icon` reuses the harness icon name set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub starters: Option<Vec<everruns_platform::ConversationStarter>>,
+    pub starters: Option<Vec<crate::records::ConversationStarter>>,
     /// New system prompt the harness contributes to sessions; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are a research assistant. Cite sources verbatim.")]
@@ -130,7 +130,7 @@ pub struct UpdateHarnessRequest {
     /// Replace the capability list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
-    #[schema(value_type = Option<Vec<everruns_platform::CapabilityRefSchema>>)]
+    #[schema(value_type = Option<Vec<crate::records::CapabilityRefSchema>>)]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     /// Replace the initial-files list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -172,7 +172,7 @@ pub struct PreviewHarnessRequest {
     /// Capability configurations to layer onto the preview. Empty list means none.
     #[serde(default)]
     #[schema(example = json!([{"ref": "web.search", "config": {}}, {"ref": "filesystem.read", "config": {"root": "/workspace"}}]))]
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// MCP servers scoped to this preview, keyed by scope (`shared` / per-agent / etc.).
     /// Use the camelCase key `mcpServers` (preferred) or the snake_case alias `mcp_servers`. Empty by default.

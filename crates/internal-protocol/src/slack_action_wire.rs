@@ -9,7 +9,7 @@
 //! Slack" as a tool error the model can act on and a transient fault as an
 //! internal error, and telling those apart must not depend on parsing prose.
 
-use everruns_platform::slack_action::{SlackAction, SlackActionError, SlackActionOutcome};
+use crate::slack_action::{SlackAction, SlackActionError, SlackActionOutcome};
 
 use crate::proto;
 

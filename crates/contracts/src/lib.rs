@@ -125,8 +125,8 @@ pub use message::ProviderOpaqueContent;
 #[allow(deprecated)]
 pub use message::{LlmMessage, LlmMessageContent, LlmMessageRole};
 pub use model::{
-    CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
-    ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+    CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
+    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 #[cfg(feature = "http")]
 pub use model_discovery::list_openai_compatible_models;
@@ -149,7 +149,7 @@ pub use openresponses_protocol::{
     OPENAI_BACKGROUND_OPTION, OPENAI_WEBSOCKET_OPTION, OpenResponsesProtocolChatDriver,
     OpenResponsesRequestExtension,
 };
-pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
+pub use provider::ProviderTraceConfig;
 pub use reasoning::{ReasoningContentPart, ReasoningText};
 pub use runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
@@ -202,3 +202,6 @@ pub mod vector_store;
 pub mod sandbox_checkpoint;
 pub mod session_sandbox;
 pub mod tools;
+
+/// Session-bound Slack effects; credentials stay with the control plane.
+pub mod slack_action;

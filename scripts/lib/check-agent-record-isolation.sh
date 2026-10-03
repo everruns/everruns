@@ -57,6 +57,9 @@ cd "$PROJECT_ROOT"
 # "the guard found a violation". See guard-cargo.sh.
 source "$SCRIPT_DIR/guard-cargo.sh"
 
+# The server owns the full persistence/API aggregate vocabulary.
+python3 scripts/check_control_plane_records.py
+
 FAILED=0
 
 # 1. Kernel sources: no platform-crate references (src, tests, and examples —
@@ -66,7 +69,7 @@ KERNEL_TREES=(
   crates/engine
   crates/contracts
 )
-if matches=$(grep -rnE 'everruns_platform(::|;)' "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE 'everruns_(platform|capabilities|server)(::|;)' "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
   echo "Kernel crates must not reference everruns_platform (EVE-877, EVE-881, EVE-882, EVE-878):"
   echo "$matches"
   FAILED=1
@@ -122,9 +125,9 @@ KERNEL_CRATES=(
 )
 for crate in "${KERNEL_CRATES[@]}"; do
   tree=$(guard_cargo_tree -p "$crate" --edges normal,build,dev --prefix none)
-  if echo "$tree" | grep -qE '^everruns-platform '; then
+  if echo "$tree" | grep -qE '^everruns-(platform|capabilities|server) '; then
     echo "$crate must not depend on everruns-platform (any edge):"
-    echo "$tree" | grep -E '^everruns-platform '
+    echo "$tree" | grep -E '^everruns-(platform|capabilities|server) '
     FAILED=1
   fi
 done
@@ -132,9 +135,9 @@ done
 # The reusable execution host is below the hosted product layer. Platform may
 # implement host extension ports; host must never import or ship platform.
 host_tree=$(guard_cargo_tree -p everruns-host --edges normal --prefix none)
-if echo "$host_tree" | grep -qE '^everruns-platform '; then
+if echo "$host_tree" | grep -qE '^everruns-(platform|capabilities|server) '; then
   echo "everruns-host must not depend on everruns-platform in its shipped graph:"
-  echo "$host_tree" | grep -E '^everruns-platform '
+  echo "$host_tree" | grep -E '^everruns-(platform|capabilities|server) '
   FAILED=1
 fi
 if matches=$(grep -rnE 'everruns_platform::|use[[:space:]]+everruns_platform' crates/host/src --include='*.rs' 2>/dev/null); then
@@ -157,9 +160,9 @@ PROVIDER_CRATES=(
 )
 for crate in "${PROVIDER_CRATES[@]}"; do
   tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
-  if echo "$tree" | grep -qE '^everruns-platform '; then
+  if echo "$tree" | grep -qE '^everruns-(platform|capabilities|server) '; then
     echo "$crate must not ship everruns-platform in its normal dependency tree:"
-    echo "$tree" | grep -E '^everruns-platform '
+    echo "$tree" | grep -E '^everruns-(platform|capabilities|server) '
     FAILED=1
   fi
 done
@@ -194,8 +197,8 @@ for host_owner in command_host execution_snapshot runtime_context; do
 done
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Agent-record isolation guard failed. Stored records stay in platform and store-backed execution orchestration stays in host (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880, EVE-905)."
+  echo "Agent-record isolation guard failed. Stored records stay in server and store-backed execution orchestration stays in host (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880, EVE-905)."
   exit 1
 fi
 
-echo "Agent-record isolation guard passed: kernel execution is value-first; platform records and store-backed context/provider orchestration stay outside core."
+echo "Agent-record isolation guard passed: kernel execution is value-first; server records and store-backed context/provider orchestration stay outside core."

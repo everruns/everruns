@@ -15,6 +15,7 @@ use crate::kernel_imports::{
     Caller, ContentPart, Event, InputContentPart, LeasedResource, UpsertLeasedResource,
     contracts::driver_registry::ServiceKind, contracts::tool_types::ToolCall,
 };
+use crate::records::FeatureFlags;
 use crate::services::{
     EventService, ProviderResolverService,
     provider_resolver::{ResolvedProviderCredentials, ResolvedServiceProvider},
@@ -34,7 +35,6 @@ use everruns_core::events::{
     VoiceSessionEndedData, VoiceSessionFailedData, VoiceSessionStartedData, VoiceTranscriptData,
 };
 use everruns_core::session_services::LeasedResourceStore;
-use everruns_platform::FeatureFlags;
 use futures_util::{SinkExt, StreamExt};
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
@@ -93,7 +93,7 @@ impl AppState {
         feature_flags: FeatureFlags,
         dependencies: AppDependencies,
         host_composition: &everruns_host::HostComposition,
-        built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
+        built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
     ) -> Self {
         let registry = Arc::new(DbSessionResourceRegistry::new(db.clone()));
         let leased_resource_store =
@@ -112,9 +112,9 @@ impl AppState {
             leased_resource_store,
             feature_flags,
             runner: dependencies.runner,
-            fallback_default_harness_name: everruns_platform::harness_for_role(
+            fallback_default_harness_name: crate::records::harness_for_role(
                 built_in_harnesses,
-                everruns_platform::BuiltInHarnessRole::Default,
+                crate::records::BuiltInHarnessRole::Default,
             )
             .map(|h| h.name.clone()),
         }
@@ -303,7 +303,7 @@ pub struct VoiceEndResponse {
 pub struct VoiceSessionResponse<T> {
     /// The session this voice connection is attached to. Returned alongside
     /// the voice payload so a caller has a single round-trip view of both.
-    pub session: everruns_platform::Session,
+    pub session: crate::records::Session,
     /// Voice connection details — concrete shape depends on the endpoint
     /// (e.g. `VoiceCallResponse` for `/voice/call`, `VoiceAttachResponse`
     /// for `/voice/attach`).

@@ -89,7 +89,7 @@ pub(crate) async fn ensure_identity_for_agent(
     // is harmless: the orphan is an unreferenced, archivable row on a rare race.
     let _ = db.delete_virtual_user(org_id, new_id).await;
     let _ = principals
-        .sync_virtual_user_status(org_id, new_id, everruns_platform::PrincipalStatus::Archived)
+        .sync_virtual_user_status(org_id, new_id, crate::records::PrincipalStatus::Archived)
         .await;
     let winner_principal = principals
         .default_owner_principal(&caller, Some(winner))

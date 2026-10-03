@@ -4,11 +4,11 @@
 //! process environment. The synchronous test installs that environment before
 //! constructing Tokio, so no test or runtime thread can observe partial config.
 
+use crate::records::SessionSource;
 use chrono::Utc;
 use everruns_contracts::typed_id::{MessageId, PrincipalId, SessionId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_durable::{EventLog, PostgresWorkflowEventStore, WorkflowStatus};
-use everruns_platform::SessionSource;
 use everruns_server::app_builder::{ServerAppBuilder, ServerContext};
 use everruns_server::server::ServerConfig;
 use everruns_server::storage::StorageBackend;

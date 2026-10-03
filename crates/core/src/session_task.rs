@@ -770,7 +770,7 @@ pub trait TaskExecutor: Send + Sync {
 }
 
 /// Inventory plugin so capabilities register executors without core knowing
-/// about them (same pattern as `everruns-platform`'s
+/// about them (same pattern as `everruns-capabilities`'s
 /// `SessionSandboxProviderPlugin`).
 pub struct TaskExecutorPlugin {
     pub executor: fn() -> Arc<dyn TaskExecutor>,

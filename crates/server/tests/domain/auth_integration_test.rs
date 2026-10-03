@@ -730,9 +730,9 @@ async fn test_auth_config_returns_full_mode() {
 //    single harness must NOT have OSS defaults re-added on signup. This
 //    preserves the fix from PR #1462 (TM-AUTH-016).
 
+use crate::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_core::{CapabilityRegistry, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
-use everruns_platform::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 use everruns_server::storage::models::CreateOrganizationRow;
 
 fn single_custom_harness(name: &str) -> BuiltInHarnessDefinition {

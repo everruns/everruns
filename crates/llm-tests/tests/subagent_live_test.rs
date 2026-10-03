@@ -22,6 +22,8 @@ use llm_test_matrix::*;
 
 use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_capabilities::capabilities::SubagentCapability;
+use everruns_capabilities::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::session::ExecutionSession;
@@ -31,8 +33,6 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
     RuntimeSessionStore, SessionBuilder,
 };
-use everruns_platform::capabilities::SubagentCapability;
-use everruns_platform::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 

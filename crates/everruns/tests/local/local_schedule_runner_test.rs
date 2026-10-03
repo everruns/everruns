@@ -8,12 +8,12 @@ use everruns::local::{
     LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleStore, LocalSessionRunner,
     SqliteDb,
 };
+use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, ScheduleId, SessionId};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_schedule::{ScheduleType, SessionSchedule};
 use everruns_core::session_services::SessionScheduleStore;
-use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage};
 use parking_lot::Mutex;
 use tokio::sync::Notify;
 

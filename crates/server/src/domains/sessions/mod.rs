@@ -18,7 +18,7 @@ pub use service::*;
 pub(crate) async fn platform_chat_owner_matches_session(
     db: &crate::storage::StorageBackend,
     caller: &everruns_core::Caller,
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
 ) -> anyhow::Result<bool> {
     let harness = db
         .get_harness(caller.org_id, session.harness_id)
@@ -33,7 +33,7 @@ pub(crate) async fn platform_chat_owner_matches_session(
 
 pub(crate) fn platform_chat_owner_matches(
     caller: &everruns_core::Caller,
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
     is_platform_chat: bool,
 ) -> bool {
     // THREAT[TM-AGENT-017]: Platform Chat can act with its persisted owner's authority,

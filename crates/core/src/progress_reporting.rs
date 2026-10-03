@@ -101,7 +101,7 @@ pub fn sync_channel_reply_mode_tags(tags: &mut Vec<String>, reply_mode: ChannelR
 /// and also sets the `slack:reply_mode:*` tag for backward compat with existing sessions).
 ///
 /// Takes the neutral [`ChannelReplyMode`]; callers holding the Slack-specific
-/// `SlackReplyMode` (now owned by `everruns-platform`) convert with `.into()`.
+/// `SlackReplyMode` (now owned by `everruns-capabilities`) convert with `.into()`.
 pub fn sync_slack_reply_mode_tags(tags: &mut Vec<String>, reply_mode: ChannelReplyMode) {
     tags.retain(|tag| !tag.starts_with(SLACK_REPLY_MODE_TAG_PREFIX));
     if reply_mode == ChannelReplyMode::ReportProgressOnly {

@@ -9,6 +9,7 @@ everruns-anthropic
 everruns-ard
 everruns-bedrock
 everruns-builtins
+everruns-capabilities
 everruns-cli
 everruns-cli-contract
 everruns-contracts

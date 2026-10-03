@@ -4,7 +4,7 @@
 // frozen App archival reads) passes it through `redact_channel_for_response`,
 // so write-only secrets never leave the server.
 
-use everruns_platform::{AgentEndpoint, EndpointTransport};
+use crate::records::{AgentEndpoint, EndpointTransport};
 use serde_json::{Value, json};
 
 fn redact_channel_config(channel_type: &EndpointTransport, config: &mut Value) {

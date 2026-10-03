@@ -15,17 +15,17 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use everruns_contracts::typed_id::SessionId;
-use everruns_platform::sandbox_checkpoint::{
+use everruns_capabilities::sandbox_checkpoint::{
     MAX_CHECKPOINT_COLLECT_LIMIT, NewSandboxCheckpoint, SandboxCheckpoint, SandboxCheckpointError,
     SandboxCheckpointKind, SandboxCheckpointStore, SandboxRef,
 };
-use everruns_platform::sandbox_state::{
+use everruns_capabilities::sandbox_state::{
     SandboxStateError, SandboxStateStore, validate_sandbox_state,
 };
-use everruns_platform::session_sandbox::{
+use everruns_capabilities::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
+use everruns_contracts::typed_id::SessionId;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -43,7 +43,7 @@ pub struct EnvironmentRecord {
     pub session_id: SessionId,
     pub provider: String,
     pub profile_name: String,
-    pub profile: everruns_platform::ResolvedEnvironmentProfile,
+    pub profile: crate::records::ResolvedEnvironmentProfile,
     pub desired_state: String,
     pub observed_state: String,
     pub generation: i64,
@@ -62,7 +62,7 @@ impl PgSandboxCheckpointStore {
         &self,
         session_id: SessionId,
         profile_name: &str,
-        profile: &everruns_platform::ResolvedEnvironmentProfile,
+        profile: &crate::records::ResolvedEnvironmentProfile,
     ) -> Result<EnvironmentRecord, SandboxStateError> {
         let provider = profile
             .target

@@ -9,7 +9,7 @@
 //!   examples whose required capabilities are missing are hidden, matching
 //!   agent examples behaviour.
 
-use everruns_platform::BuiltInHarnessDefinition;
+use crate::records::BuiltInHarnessDefinition;
 
 use super::{coding, data_analyst};
 

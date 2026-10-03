@@ -4,10 +4,10 @@
 
 use crate::domains::common::CommandError;
 use crate::max_iterations;
+use crate::records::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
 use crate::storage::StorageBackend;
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId};
 use everruns_core::{InitialFile, TokenUsage, is_declarative_capability};
-use everruns_platform::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
 use uuid::Uuid;
 
 use super::types::AgentRow;
@@ -60,10 +60,8 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         description: row.description,
         intro_markdown: row.intro_markdown,
         short_description: row.short_description,
-        starters: serde_json::from_value::<Vec<everruns_platform::ConversationStarter>>(
-            row.starters,
-        )
-        .unwrap_or_default(),
+        starters: serde_json::from_value::<Vec<crate::records::ConversationStarter>>(row.starters)
+            .unwrap_or_default(),
         system_prompt: row.system_prompt,
         default_model_id: row.default_model_id,
         harness_id: row.harness_id,
@@ -326,7 +324,7 @@ pub async fn with_derived_exposure(
     let candidates: Vec<uuid::Uuid> = agents
         .iter()
         .filter(|agent| {
-            agent.status == everruns_platform::AgentStatus::Active && !agent.exposures_suspended
+            agent.status == crate::records::AgentStatus::Active && !agent.exposures_suspended
         })
         .map(|agent| agent.internal_id)
         .collect();

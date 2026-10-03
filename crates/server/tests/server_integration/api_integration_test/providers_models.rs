@@ -1,12 +1,12 @@
 //! API integration tests: providers models.
 
 use super::support::*;
+use crate::records::Agent;
+use crate::records::Model;
+use crate::records::Session;
 use crate::test_harness;
 use axum::http::StatusCode;
-use everruns_contracts::model::Model;
 use everruns_contracts::provider::Provider;
-use everruns_platform::Agent;
-use everruns_platform::Session;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

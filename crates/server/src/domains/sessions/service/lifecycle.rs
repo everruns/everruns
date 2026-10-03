@@ -280,7 +280,7 @@ impl SessionService {
             }
             if config.capability_id() == "user_hooks" {
                 disabled.extend(
-                    everruns_platform::capabilities::user_hooks::disabled_contributions(
+                    everruns_capabilities::capabilities::user_hooks::disabled_contributions(
                         config.config_value(),
                     ),
                 );

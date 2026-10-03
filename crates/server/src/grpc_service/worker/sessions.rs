@@ -67,7 +67,7 @@ impl WorkerServiceImpl {
                 Status::internal("Failed to get session")
             })?;
 
-        use everruns_internal_protocol::schema_session_to_proto;
+        use crate::records::wire::schema_session_to_proto;
 
         let proto_session = session.map(|s| schema_session_to_proto(&s));
 
@@ -80,7 +80,7 @@ impl WorkerServiceImpl {
         &self,
         request: Request<SetSessionStatusRequest>,
     ) -> Result<Response<SetSessionStatusResponse>, Status> {
-        use everruns_internal_protocol::schema_session_to_proto;
+        use crate::records::wire::schema_session_to_proto;
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
@@ -116,7 +116,7 @@ impl WorkerServiceImpl {
         &self,
         request: Request<SetSessionTitleRequest>,
     ) -> Result<Response<SetSessionTitleResponse>, Status> {
-        use everruns_internal_protocol::schema_session_to_proto;
+        use crate::records::wire::schema_session_to_proto;
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;

@@ -31,8 +31,18 @@ pub(crate) use ::everruns_contracts::typed_id::{
 pub(crate) use everruns_core::*;
 
 pub(crate) mod contracts {
+    // Persistence values are projected only at this private server boundary.
+    pub(crate) mod model {
+        pub(crate) use crate::records::{Model, ModelSource, ModelWithProvider};
+        pub(crate) use everruns_contracts::model::*;
+    }
+    pub(crate) mod provider {
+        pub(crate) use crate::records::provider::{Provider, ProviderStatus};
+        pub(crate) use everruns_contracts::provider::*;
+    }
+
     pub(crate) use ::everruns_contracts::{
-        driver_registry, error, model, model_profiles, model_spec, openresponses_types, provider,
-        tool_types, typed_id, url_validation, user_facing_error,
+        driver_registry, error, model_profiles, model_spec, openresponses_types, tool_types,
+        typed_id, url_validation, user_facing_error,
     };
 }

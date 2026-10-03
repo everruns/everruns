@@ -10,7 +10,7 @@ use crate::storage::{
 use everruns_core::capabilities::Capability;
 
 pub(crate) async fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
-    let ids = [caller.user_id, Some(everruns_platform::ANONYMOUS_USER_ID)];
+    let ids = [caller.user_id, Some(crate::records::ANONYMOUS_USER_ID)];
     for id in ids.into_iter().flatten() {
         if db.get_user(id).await.unwrap().is_none() {
             db.create_user_with_id(

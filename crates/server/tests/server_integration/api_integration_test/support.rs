@@ -1,5 +1,7 @@
 //! Fixtures shared by the api integration test modules.
 
+use crate::records::Agent;
+use crate::records::Session;
 use crate::test_harness;
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
@@ -7,8 +9,6 @@ use everruns_contracts::typed_id::{
     AgentId, AppId, HarnessId, PrincipalId, ScheduleId, VirtualUserId,
 };
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::Agent;
-use everruns_platform::Session;
 use everruns_server::storage::models::{
     CreateAppRow, CreatePrincipalRow, CreateSessionScheduleRow,
 };

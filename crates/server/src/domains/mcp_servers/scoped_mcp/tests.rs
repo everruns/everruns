@@ -1,9 +1,9 @@
 use super::*;
 use crate::kernel_imports::{HarnessId, ScopedMcpServer, SessionId};
+use crate::records::{Agent, AgentStatus, generate_agent_public_id};
 use crate::storage::models::{CreateMcpServerRow, UpdateMcpServer};
 use chrono::Utc;
 use everruns_core::{CapabilityMcpServer, CapabilityMcpServers};
-use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct MutableConnectionResolver {
@@ -329,7 +329,7 @@ fn test_harness() -> Harness {
         mcp_servers: Default::default(),
         embedder_metadata: Default::default(),
         is_built_in: false,
-        status: everruns_platform::HarnessStatus::Active,
+        status: crate::records::HarnessStatus::Active,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         archived_at: None,
@@ -412,7 +412,7 @@ fn test_session(harness_id: HarnessId, agent_id: everruns_contracts::typed_id::A
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
-        status: everruns_platform::SessionStatus::Started,
+        status: crate::records::SessionStatus::Started,
         created_at: Utc::now(),
         updated_at: Utc::now(),
         started_at: None,

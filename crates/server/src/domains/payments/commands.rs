@@ -1,12 +1,12 @@
 use super::types::*;
 use super::{PAYMENT_MANAGE, PAYMENT_VIEW, queries as q};
 use crate::domains::common::*;
+use crate::records::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use crate::storage::models::{
     CreatePaymentAccountRow, CreatePaymentPolicyRow, UpdatePaymentAccountRow,
     UpdatePaymentPolicyRow,
 };
 use everruns_core::Policy;
-use everruns_platform::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use serde::Deserialize;
 use utoipa::ToSchema;
 

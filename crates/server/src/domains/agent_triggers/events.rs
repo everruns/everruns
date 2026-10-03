@@ -28,10 +28,11 @@ use crate::domains::agent_endpoints::invocation::{render_message_template, templ
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
+use crate::records::{TriggerDeliveryStatus, TriggerEventFilter};
 use crate::storage::StorageBackend;
 use crate::storage::agent_trigger_deliveries::CreateAgentTriggerDeliveryRow;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
-use everruns_platform::{SessionBinding, TriggerDeliveryStatus, TriggerEventFilter};
+use everruns_capabilities::SessionBinding;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -64,7 +65,7 @@ pub struct TriggerEventRoute<'a> {
     pub message_template: &'a str,
     pub session_mode: SessionBinding,
     pub filter: Option<&'a TriggerEventFilter>,
-    pub session_source: everruns_platform::SessionSource,
+    pub session_source: crate::records::SessionSource,
     pub webhook_compat: Option<&'a WebhookCompatibilityContext>,
 }
 
@@ -314,8 +315,8 @@ pub(super) fn optional_template(value: Option<String>) -> Option<String> {
 /// Normalize an optional filter: no conditions means unset. Every condition
 /// needs a path and at least one accepted value.
 pub(super) fn optional_filter(
-    filter: Option<everruns_platform::TriggerEventFilter>,
-) -> Result<Option<everruns_platform::TriggerEventFilter>, crate::domains::common::CommandError> {
+    filter: Option<crate::records::TriggerEventFilter>,
+) -> Result<Option<crate::records::TriggerEventFilter>, crate::domains::common::CommandError> {
     let Some(filter) = filter.filter(|filter| !filter.conditions.is_empty()) else {
         return Ok(None);
     };
@@ -341,17 +342,17 @@ pub(super) fn optional_filter(
 ///
 /// Before EVE-1005 this was enforced by the type system alone — triggers used
 /// `InvocationSessionMode`, which simply had no `per_thread` to express. Now
-/// that one `everruns_platform::SessionBinding` spans both worlds, the constraint has to be
+/// that one `everruns_capabilities::SessionBinding` spans both worlds, the constraint has to be
 /// checked rather than merely unrepresentable.
 pub(super) fn validate_trigger_binding(
-    binding: everruns_platform::SessionBinding,
+    binding: everruns_capabilities::SessionBinding,
     has_subject: bool,
 ) -> Result<(), crate::domains::common::CommandError> {
-    if binding == everruns_platform::SessionBinding::Thread && has_subject {
+    if binding == everruns_capabilities::SessionBinding::Thread && has_subject {
         return Ok(());
     }
     if binding.is_message_keyed() {
-        let hint = if binding == everruns_platform::SessionBinding::Thread {
+        let hint = if binding == everruns_capabilities::SessionBinding::Thread {
             " per_thread needs a subject_template to key sessions on."
         } else {
             ""
@@ -371,10 +372,10 @@ pub(super) fn validate_trigger_binding(
 /// Which session an event lands in.
 pub(super) struct TriggerSessionRoute<'a> {
     pub(super) trigger_id: everruns_contracts::typed_id::TriggerId,
-    pub(super) session_mode: everruns_platform::SessionBinding,
+    pub(super) session_mode: everruns_capabilities::SessionBinding,
     /// Event subject; with `per_thread` it keys one session per subject.
     pub(super) subject: Option<&'a str>,
-    pub(super) source: everruns_platform::SessionSource,
+    pub(super) source: crate::records::SessionSource,
     pub(super) webhook: Option<&'a WebhookCompatibilityContext>,
 }
 
@@ -389,7 +390,7 @@ pub(super) fn subject_session_tag(subject: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_platform::TriggerFilterCondition;
+    use crate::records::TriggerFilterCondition;
     use serde_json::json;
 
     fn filter(conditions: Vec<(&str, Vec<Value>)>) -> TriggerEventFilter {

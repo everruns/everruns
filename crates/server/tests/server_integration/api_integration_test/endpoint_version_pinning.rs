@@ -6,9 +6,9 @@
 //! webhook route for a webhook trigger, and the API-key session route for an
 //! endpoint whose pin was carried over from the App era.
 
+use crate::records::Agent;
 use crate::test_harness;
 use axum::http::{Method, StatusCode};
-use everruns_platform::Agent;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use test_harness::TestServer;

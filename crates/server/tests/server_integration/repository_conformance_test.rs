@@ -48,7 +48,7 @@ pub(crate) async fn create_test_principal(repo: &dyn Repository, label: &str) ->
 pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: everruns_platform::SessionSource::Api,
+        source: everruns_server::records::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
         endpoint_id: None,
@@ -449,7 +449,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
         .expect("create invitation user");
     let active_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_platform::generate_org_public_id(),
+            public_id: everruns_server::records::generate_org_public_id(),
             name: format!("Active Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -457,7 +457,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
         .expect("create active invitation org");
     let resolved_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_platform::generate_org_public_id(),
+            public_id: everruns_server::records::generate_org_public_id(),
             name: format!("Resolved Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -573,7 +573,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
         .expect("create existing member");
     let existing_member_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_platform::generate_org_public_id(),
+            public_id: everruns_server::records::generate_org_public_id(),
             name: format!("Existing Member Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -629,7 +629,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
 
     let capacity_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_platform::generate_org_public_id(),
+            public_id: everruns_server::records::generate_org_public_id(),
             name: format!("Capacity Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -727,7 +727,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
 
     let mixed_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_platform::generate_org_public_id(),
+            public_id: everruns_server::records::generate_org_public_id(),
             name: format!("Mixed Capacity Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -792,7 +792,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
 
     let full_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_platform::generate_org_public_id(),
+            public_id: everruns_server::records::generate_org_public_id(),
             name: format!("Full Capacity Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -1008,7 +1008,7 @@ async fn postgres_waiting_turn_claim_recovery() {
 /// than in the caller — hence a Postgres test rather than a unit test.
 #[tokio::test]
 async fn postgres_sandbox_checkpoint_rollback() {
-    use everruns_platform::sandbox_checkpoint::{
+    use everruns_capabilities::sandbox_checkpoint::{
         NewSandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointKind, SandboxCheckpointStore,
     };
     use everruns_server::storage::PgSandboxCheckpointStore;

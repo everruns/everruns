@@ -1,7 +1,7 @@
+use crate::records::Agent;
+use crate::records::Session;
 use crate::support::*;
 use everruns_core::SessionFile;
-use everruns_platform::Agent;
-use everruns_platform::Session;
 use serde_json::{Value, json};
 
 /// Test capability mounts are applied when session is created

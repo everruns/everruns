@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-// EVE-837: the `Organization` aggregate entity moved to the `everruns-platform`
+// EVE-837: the `Organization` aggregate entity moved to the `everruns-capabilities`
 // crate. EVE-845 moved the remaining auth-facing identity values that no core
 // code names — `OrgMembership`, the `ANONYMOUS_USER_*` constants, and the
 // public-id generation/validation helpers (`generate_org_public_id`,
-// `validate_org_public_id`) — to `everruns-platform` as well. What stays here
+// `validate_org_public_id`) — to `everruns-capabilities` as well. What stays here
 // does so because core's permissions layer and runtime name it: `OrgRole`
 // (portable turn authorization), the `DEFAULT_ORG_*` constants, and the
 // internal<->public id conversion helpers.

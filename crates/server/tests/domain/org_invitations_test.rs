@@ -14,9 +14,9 @@
 
 use crate::test_harness;
 
+use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID};
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
-use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID};
 use everruns_server::storage::{
     CreateOrgInvitation, CreateOrganizationRow, OrgInvitationRow, UpdateUser,
 };
@@ -30,7 +30,7 @@ async fn create_org(server: &TestServer, name: &str) -> everruns_server::storage
     server
         .db
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_platform::generate_org_public_id(),
+            public_id: crate::records::generate_org_public_id(),
             name: name.to_string(),
             created_by: Some(ANONYMOUS_USER_ID),
         })

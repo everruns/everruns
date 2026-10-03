@@ -17,7 +17,7 @@ use serde::Serialize;
     clippy::expect_used,
     reason = "fail closed rather than downgrade a capability config on the wire"
 )]
-pub(crate) fn encode_configs<T: Serialize>(configs: &[T]) -> Vec<String> {
+pub fn encode_configs<T: Serialize>(configs: &[T]) -> Vec<String> {
     configs
         .iter()
         .map(|config| serde_json::to_string(config).expect("capability config serializes"))

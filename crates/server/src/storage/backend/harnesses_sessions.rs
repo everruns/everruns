@@ -555,7 +555,7 @@ impl StorageBackend {
         &self,
         org_id: i64,
         tags: &[String],
-        activities: &[everruns_platform::SessionActivity],
+        activities: &[crate::records::SessionActivity],
         updated_after: Option<DateTime<Utc>>,
         after: Option<(DateTime<Utc>, Uuid)>,
         limit: u32,

@@ -12,6 +12,7 @@ use crate::domains::payments::{
     GetPaymentAccount, GetPaymentPolicy, ListPaymentAccounts, ListPaymentAttempts,
     ListPaymentPolicies, UpdatePaymentAccountCmd, UpdatePaymentPolicyCmd,
 };
+use crate::records::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -20,7 +21,6 @@ use axum::{
     routing::{any, get, post},
 };
 use everruns_core::Caller;
-use everruns_platform::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use std::sync::Arc;
 
 use super::common::{ErrorResponse, impl_auth_state};
