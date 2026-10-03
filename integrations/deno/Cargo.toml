@@ -41,6 +41,7 @@ http = "1"
 urlencoding = "2.1"
 
 [dev-dependencies]
+everruns-host.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [lints]
