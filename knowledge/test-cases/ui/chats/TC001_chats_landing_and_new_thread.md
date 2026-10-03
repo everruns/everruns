@@ -1,48 +1,36 @@
 ---
 type: Test Case
-title: "TC001: Chats - Landing Route and New Thread"
-description: "Verify that Chats is the app's landing route, that the empty state starts a thread rather than spinning, and that a new thread opens on the thread surface bound to the agent that was picked."
+title: "TC001: Chat - Permanent Landing and Fresh Side Draft"
+description: "Verify that landing opens permanent Chat and New chat creates a fresh side conversation only on first send."
 tags:
   - everruns
   - test-case
   - ui
   - chats
 ---
-# TC001: Chats - Landing Route and New Thread
+# TC001: Chat - Permanent Landing and Fresh Side Draft
 
 ## Description
 
-Verify that Chats is the app's landing route, that the empty state starts a thread rather than
-spinning, and that a new thread opens on the thread surface bound to the agent that was picked.
+Verify that landing opens permanent Chat and New chat creates a fresh side conversation only on first send.
 
 ## Preconditions
 
-- Server running (`just start-dev`)
-- User logged in
-- At least one agent exists, or the built-in Platform Chat harness is available
-
-## Test Data
-
-None.
+- Canonical DB-backed agent stack running
+- User logged in to an organization with built-ins provisioned
 
 ## Steps
 
-1. Navigate to `/`
-2. Observe the route landed on and the page content
-3. If no threads exist yet, pick an agent in the empty state and press **Start chat**;
-   otherwise open `/chats/new`, pick an agent, and press **Start chat**
-4. Observe the thread surface, then send one message
-5. Return to `/chats` and observe the list, then check the sidebar under **Chats**
+1. Navigate to `/`; confirm it opens `/chats` and the permanent Chat.
+2. Confirm the fixed Platform Chat Agent and its intro/starters render without an Agent or harness picker.
+3. Open **New chat**; inspect network requests and confirm no side session is created yet.
+4. Send a message; confirm a distinct conversation opens at `/chats/{id}` on the same Agent and Generic.
+5. Confirm it contains only the new message and reply, with no copied history or workspace files.
+6. Open **All chats** and the sidebar; confirm the side conversation appears and the permanent Chat remains a direct navigation entry.
 
 ## Expected Result
 
-| Check | Expected |
-|-------|----------|
-| Landing | `/` redirects to `/chats` |
-| Empty state | Shows "No chats yet" with an agent picker and **Start chat** — never a bare spinner |
-| Thread created | `POST /v1/sessions` returns 200/201 with the picked agent, and the browser lands on `/chats/{sessionId}` |
-| Thread header | Shows the agent avatar, the thread title, **Pin chat**, **Share**, and **Open session** |
-| Composer | Placeholder names the bound agent; the model control shows the model in use |
-| Agent binding | Shown as text, with no control to change the agent on an existing thread |
-| Thread list | The new thread appears in `/chats` and under **Chats** in the sidebar |
-| Open session | **Open session** navigates to `/sessions/{sessionId}` |
+- Landing opens the permanent conversation, never a picker or history list.
+- First send creates one side session; retries reuse it if the message fails after creation.
+- The standard composer, model controls, intro, and starters remain usable.
+- **Open session** opens the read-only recording; Agent and harness selection remains in Playground.

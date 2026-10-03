@@ -1,55 +1,37 @@
 ---
 type: Test Case
-title: "TC016: Chats - Platform Chat Precreated and Pinned"
-description: "Verify that a user entering the application for the first time already has a Platform Chat thread in Chats, that it is pinned, that onboarding ends in it, and that it is neither duplicated on later entries nor recreat..."
+title: "TC016: Chat - Permanent Conversation"
+description: "Verify that permanent Chat is unique per user and organization and cannot be removed or reassigned."
 tags:
   - everruns
   - test-case
   - ui
   - chats
 ---
-# TC016: Chats - Platform Chat Precreated and Pinned
+# TC016: Chat - Permanent Conversation
 
 ## Description
 
-Verify that a user entering the application for the first time already has a Platform Chat
-thread in Chats, that it is pinned, that onboarding ends in it, and that it is neither
-duplicated on later entries nor recreated after the user archives it.
+Verify that permanent Chat is unique per user and organization and cannot be removed or reassigned.
 
 ## Preconditions
 
-- Server running (`just start-dev`)
-- A user account that has never entered the application, or a fresh organisation for an
-  existing user
-- Built-in harnesses provisioned for the organisation (org setup completed)
-
-## Test Data
-
-None.
+- Canonical DB-backed agent stack running
+- User logged in to an organization with built-ins provisioned
 
 ## Steps
 
-1. Sign in as the new user and complete onboarding through the **Done** step
-2. Press **Open Platform Chat** on the Done step and observe the route and the thread header
-3. Navigate to `/chats` and observe the list and the sidebar under **Chats**
-4. Reload the application twice and re-check `/chats`
-5. Send one message in the thread and confirm it answers
-6. Archive the thread from `/chats`, then reload the application and re-check `/chats`
-7. With a second organisation the user belongs to, switch to it from the sidebar
-   switcher, let `/chats` settle, switch back, and reload the application a few
-   times, re-checking `/chats` in **both** organisations
+1. Finish onboarding and open **Chat**.
+2. Reload twice and open the same organization in a second browser tab.
+3. Confirm all entries resolve the same conversation and that it uses the managed Agent on Generic.
+4. Confirm rename, pin/unpin, archive, delete, and counterpart selection are absent.
+5. Attempt rename, unpin, archive, delete, or ownership reassignment through the session API.
+6. Switch organizations and return; repeat reloads in both organizations.
+7. Send a message and confirm the conversation remains usable.
 
 ## Expected Result
 
-| Check | Expected |
-|-------|----------|
-| Precreated | A thread titled **Platform Chat** exists in `/chats` without the user creating one |
-| Counterpart | The thread header shows the built-in **Platform Chat** harness, no agent |
-| Pinned | The thread shows as pinned in `/chats` and carries the pin marker in the sidebar |
-| Ordering | The pinned thread sorts above unpinned threads |
-| Onboarding landing | **Open Platform Chat** on the Done step lands on `/chats/{sessionId}` for that thread |
-| No duplicates | After reloads, exactly one Platform Chat thread exists |
-| Usable | The thread answers a message like any other chat thread |
-| Archive respected | After archiving and reloading, no new Platform Chat thread is created |
-| Org switch | Each organisation keeps exactly one Platform Chat thread across switches and reloads; switching never adds a second one in either org |
-| Org named per request | In DevTools → Network, every `/api/v1/*` request carries an `X-Org-Id` header matching the organisation shown in the switcher |
+- Exactly one permanent conversation exists per user and organization, including concurrent entry.
+- The direct sidebar entry and header read **Chat**; no redundant Platform Chat child row exists.
+- Protected API mutations return 4xx; the conversation and its history remain available.
+- Each organization keeps its own conversation; requests retain the selected organization header.

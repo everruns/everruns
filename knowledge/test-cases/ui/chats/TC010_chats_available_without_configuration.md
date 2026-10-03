@@ -1,45 +1,33 @@
 ---
 type: Test Case
-title: "TC010: Chats - Available Without Configuration"
-description: "Verify that every Chats route and the sidebar are available to a fresh organization without feature configuration, including the app's landing redirect."
+title: "TC010: Chat - Available Without Configuration"
+description: "Verify that Chat works in a fresh organization without feature configuration or user-created Agents."
 tags:
   - everruns
   - test-case
   - ui
   - chats
 ---
-# TC010: Chats - Available Without Configuration
+# TC010: Chat - Available Without Configuration
 
 ## Description
 
-Verify that every Chats route and the sidebar are available to a fresh organization without
-feature configuration, including the app's landing redirect.
+Verify that Chat works in a fresh organization without feature configuration or user-created Agents.
 
 ## Preconditions
 
-- Server running (`just start-dev`)
-- User logged in to a fresh organization
-- At least one agent exists
-
-## Test Data
-
-One agent and one existing chat thread.
+- Canonical DB-backed agent stack running
+- User logged in to an organization with built-ins provisioned
 
 ## Steps
 
-1. Open Settings → Features and confirm Chats is not offered as an opt-in feature
-2. Check the sidebar for the "Chats" entry and its recent thread list
-3. Navigate to `/` and observe the resulting route and page content
-4. Navigate directly to `/chats/new`
-5. Start a new thread and open it at `/chats/{thread-id}`
+1. Sign in to a fresh organization and open `/chats`.
+2. Confirm **Chat**, **New chat**, and **All chats** are available in the sidebar.
+3. Open `/chats/new`, send a message with an available model, and open the resulting side conversation.
+4. Open `/chats/history` and confirm that conversation appears.
 
 ## Expected Result
 
-| Check | Expected |
-|-------|----------|
-| Settings → Features | No Chats opt-in appears |
-| Sidebar | "Chats" is always present without an experimental badge; recent threads render |
-| `/` | Redirects to `/chats`, which renders the list or usable new-chat empty state |
-| `/chats/new` | Agent picker renders and can create a thread |
-| `/chats/{id}` | The thread loads with its transcript and composer |
-| No errors | No disabled notice, console errors, or unhandled exceptions |
+- Managed Agent provisioning supplies the fixed counterpart without user setup.
+- Chat has no feature opt-in or experimental badge.
+- No Agent or harness selector appears; routes show useful loading/error states and no unhandled errors.
