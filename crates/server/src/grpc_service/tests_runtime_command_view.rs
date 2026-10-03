@@ -38,7 +38,7 @@ fn runtime_view_json(result: proto::execute_command_response::Result) -> serde_j
 async fn runtime_command_views_project_records_and_fold_harness_inheritance() {
     let service = test_worker_service().await;
     let parent = execute_test_command(&service, "create_harness", serde_json::json!({
-        "name": "runtime-parent", "system_prompt": "Parent rules", "capabilities": [{"id": "session"}]
+        "name": "runtime-parent", "system_prompt": "Parent rules", "capabilities": [{"ref": "session"}]
     })).await;
     let child = execute_test_command(&service, "create_harness", serde_json::json!({
         "name": "runtime-child", "system_prompt": "Child rules", "parent_harness_id": parent["id"]
@@ -313,6 +313,54 @@ async fn runtime_harness_view_rejects_cycles_and_missing_ancestors() {
         error.kind, 3,
         "missing ancestors keep lookup not-found behavior"
     );
+}
+
+#[tokio::test]
+async fn runtime_harness_view_cannot_resolve_an_ancestor_in_another_org() {
+    let service = test_worker_service().await;
+    let foreign = service
+        .execute_command(Request::new(ExecuteCommandRequest {
+            name: "create_harness".to_string(),
+            api_version: "v1".to_string(),
+            params_json: br#"{"name":"foreign-parent","system_prompt":"Private rules"}"#.to_vec(),
+            org_id: everruns_core::DEFAULT_ORG_ID + 1,
+            ..Default::default()
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    let foreign = runtime_view_json(foreign.result.unwrap());
+    let child = execute_test_command(
+        &service,
+        "create_harness",
+        serde_json::json!({"name": "local-child"}),
+    )
+    .await;
+    // Legacy corruption must not turn inheritance resolution into a tenant bypass.
+    service
+        .db
+        .update_harness(
+            everruns_core::DEFAULT_ORG_ID,
+            serde_json::from_value(child["id"].clone()).unwrap(),
+            crate::storage::models::UpdateHarness {
+                parent_harness_id: Some(Some(
+                    serde_json::from_value(foreign["id"].clone()).unwrap(),
+                )),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let result = execute_runtime_view(
+        &service,
+        "get_harness",
+        serde_json::json!({"id": child["id"]}),
+    )
+    .await;
+    let proto::execute_command_response::Result::Error(error) = result else {
+        panic!("foreign ancestor resolved");
+    };
+    assert_eq!(error.kind, 3, "foreign ancestors remain unavailable");
 }
 
 #[tokio::test]
