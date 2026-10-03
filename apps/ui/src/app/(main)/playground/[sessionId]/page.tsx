@@ -117,7 +117,13 @@ function Conversation({ id }: { id: string }) {
           ) : subjectLoading ? (
             <Skeleton className="m-6 h-64" />
           ) : canSend && subject?.status === "active" && !session.archived_at ? (
-            <ChatPanel replyToLabel={counterpart} showRunCards showParticipants={false} />
+            <ChatPanel
+              replyToLabel={counterpart}
+              showRunCards
+              showParticipants={false}
+              platformIntro={agent?.intro_markdown}
+              platformStarters={agent?.starters ?? []}
+            />
           ) : (
             <>
               <SessionTranscript showRunCards />

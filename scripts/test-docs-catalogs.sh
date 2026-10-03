@@ -90,8 +90,8 @@ sed -i 's/configures 25 capabilities/configures 24 capabilities/' "$WORK/repo/do
 expect_drift "harness page states a wrong count" 'says it configures 24 capabilities'
 
 scratch
-sed -i '/^| Soft Approval |/d' "$WORK/repo/docs/built-ins/harnesses/platform-chat.md"
-expect_drift "harness page omits a capability" 'missing `soft_approval`'
+sed -i '/^| Platform |/d' "$WORK/repo/docs/built-ins/harnesses/platform-chat.md"
+expect_drift "Agent page omits a capability" 'missing `platform`'
 
 scratch
 sed -i '/^| `budget.resumed` |/d' "$WORK/repo/docs/event-reference.md"

@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GitFork, Loader2 } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import Link from "next/link";
 import { useForkSession } from "@/hooks/use-sessions";
-import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
+import { CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -14,11 +15,15 @@ export function SessionForkButton({
   sessionTitle,
   sessionTags,
   className,
+  agentId,
+  platformChat = false,
 }: {
   sessionId: string;
   sessionTitle: string | null;
   sessionTags: string[];
   className?: string;
+  agentId?: string;
+  platformChat?: boolean;
 }) {
   const router = useRouter();
   const { t } = useLocale();
@@ -34,7 +39,12 @@ export function SessionForkButton({
           title: sessionTitle ? `${sessionTitle} (chat)` : undefined,
           // Chat routes accept only marked sessions, so every recording fork
           // must carry the thread tag even when the recording already has tags.
-          tags: Array.from(new Set([...sessionTags, CHAT_THREAD_TAG])),
+          tags: Array.from(
+            new Set([
+              ...sessionTags.filter((t) => t !== PLATFORM_CHAT_STARTER_TAG),
+              CHAT_THREAD_TAG,
+            ]),
+          ),
         },
       },
       {
@@ -44,6 +54,17 @@ export function SessionForkButton({
       },
     );
   };
+
+  if (!platformChat) {
+    return (
+      <Link
+        className={buttonVariants({ variant: "outline", size: "sm", className })}
+        href={`/playground/new${agentId ? `?agent=${encodeURIComponent(agentId)}` : ""}`}
+      >
+        Test in Playground
+      </Link>
+    );
+  }
 
   return (
     <>

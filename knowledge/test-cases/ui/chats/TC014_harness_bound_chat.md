@@ -1,50 +1,41 @@
 ---
 type: Test Case
-title: "TC014: Chats - Harness-Bound Thread"
-description: "Verify that a user can start a chat directly from an active Harness without creating or selecting an Agent, and that the resulting thread remains bound to that Harness."
+title: "TC014: Chat - Platform Only and Playground Isolation"
+description: "Verify that Chat uses the managed Agent exclusively and excludes Playground and other runs from history."
 tags:
   - everruns
   - test-case
   - ui
   - chats
 ---
-# TC014: Chats - Harness-Bound Thread
+# TC014: Chat - Platform Only and Playground Isolation
 
 ## Description
 
-Verify that a user can start a chat directly from an active Harness without creating or selecting
-an Agent, and that the resulting thread remains bound to that Harness.
+Verify that Chat uses the managed Agent exclusively and excludes Playground and other runs from history.
 
 ## Preconditions
 
-- DB-backed stack running
-- User can access Chats
-- The active built-in Generic Harness is available
+- Canonical DB-backed agent stack running
+- User logged in to an organization with built-ins provisioned
 
 ## Test Data
 
-| Field | Value |
-|-------|-------|
-| Harness | Generic |
-| Message | `Reply with exactly: harness chat works` |
+One Playground conversation using Generic and a custom Agent, one ordinary API run,
+and one platform side conversation.
 
 ## Steps
 
-1. Navigate to `/chats/new`.
-2. Open the counterpart picker and verify it separates Harnesses from Agents.
-3. Select **Generic** under Harnesses and press **Start chat**.
-4. Inspect the `POST /v1/sessions` request and response.
-5. Verify the browser lands on `/chats/{sessionId}` and the thread header names **Generic**.
-6. Send the test message and wait for the response.
-7. Return to `/chats` and verify the new thread is listed with its Harness-derived avatar.
+1. Create a Playground conversation and an ordinary run with a custom Agent.
+2. Open `/chats/new`; confirm there is no counterpart selector or Start chat step.
+3. Send a platform message and verify the managed Agent and Generic are fixed.
+4. Open `/chats/history` and inspect recent sidebar conversations.
+5. Open the custom run through `/chats/{id}` and confirm the recording redirect guidance.
+6. Use **Test in Playground** on its recording; confirm the Agent is preselected in Playground.
 
 ## Expected Result
 
-| Check | Expected |
-|-------|----------|
-| Picker | Active Harnesses and Agents appear in separate labelled groups |
-| Request | Session creation sends `harness_name: "generic"` and no Agent binding |
-| Response | The server returns 201 with the Generic Harness ID and `agent_id: null` |
-| Thread | `/chats/{sessionId}` loads with **Generic** as the fixed counterpart |
-| Conversation | The message sends successfully and the Harness produces `harness chat works` |
-| Thread list | The new thread appears with its Harness-derived avatar |
+- History and the sidebar list only the user's platform side conversations.
+- Permanent Chat, Playground conversations, and arbitrary Agent runs are absent from history.
+- Exclusion happens before pagination: a full page and total describe side conversations only.
+- Testing retains Agent/harness selection in Playground.

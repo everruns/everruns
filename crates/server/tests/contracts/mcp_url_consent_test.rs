@@ -67,6 +67,9 @@ async fn test_server() -> TestServer {
 }
 
 async fn waiting_session(server: &TestServer) -> SessionId {
+    waiting_session_for_agent(server, false).await
+}
+async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> SessionId {
     let agent: Agent = server
         .post(
             "/v1/agents",
@@ -81,7 +84,14 @@ async fn waiting_session(server: &TestServer) -> SessionId {
         .assert_status(StatusCode::CREATED)
         .json();
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/sessions",
+            if platform {
+                json!({"agent_name":"platform-chat"})
+            } else {
+                json!({ "agent_id": agent.public_id })
+            },
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -513,7 +523,7 @@ async fn assert_untouched(server: &TestServer, session_id: SessionId) {
 #[tokio::test]
 async fn platform_chat_owner_can_answer_a_url_elicitation() {
     let server = test_server().await;
-    let session_id = waiting_session(&server).await;
+    let session_id = waiting_session_for_agent(&server, true).await;
     make_platform_chat(&server, session_id, everruns_platform::ANONYMOUS_USER_ID).await;
     emit_elicitation_card(&server, session_id, "url_elicitation_owner").await;
 
@@ -535,7 +545,7 @@ async fn platform_chat_owner_can_answer_a_url_elicitation() {
 async fn platform_chat_non_owner_cannot_accept_or_decline() {
     for action in ["accept", "decline"] {
         let server = test_server().await;
-        let session_id = waiting_session(&server).await;
+        let session_id = waiting_session_for_agent(&server, true).await;
         make_platform_chat(&server, session_id, Uuid::now_v7()).await;
         emit_elicitation_card(&server, session_id, "url_elicitation_victim").await;
 

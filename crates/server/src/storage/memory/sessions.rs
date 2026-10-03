@@ -160,7 +160,22 @@ impl InMemoryDatabase {
             blueprint_config: input.blueprint_config,
             archived_at: None,
         };
-        self.sessions.write().insert(id, row.clone());
+        {
+            let mut sessions = self.sessions.write();
+            if row.tags.iter().any(|t| t == "platform-chat-starter")
+                && sessions.values().any(|s| {
+                    s.org_id == row.org_id
+                        && s.owner_principal_id == row.owner_principal_id
+                        && s.tags.iter().any(|t| t == "platform-chat-starter")
+                })
+            {
+                return Err(crate::errors::ConflictError::new(
+                    crate::errors::ALREADY_EXISTS_DETAIL,
+                )
+                .into());
+            }
+            sessions.insert(id, row.clone());
+        }
         self.insert_initial_session_participants(&row).await?;
         self.enqueue_reporting_outbox(
             row.org_id,
@@ -279,6 +294,9 @@ impl InMemoryDatabase {
                 })
             })
             .filter(|s| {
+                if filters.side_chats_only && s.tags.iter().any(|t| t == "platform-chat-starter") {
+                    return false;
+                }
                 if filters.archived_only {
                     s.archived_at.is_some()
                 } else {

@@ -142,11 +142,7 @@ pub(crate) fn slack_oauth_redirect_url(api_base_url: &str, channel_public_id: &s
 
 /// Conversation starters for this App's Slack agent surface.
 ///
-/// Agent starters win over the harness ones, resolved by
-/// `everruns_platform::exposure::resolve_starters` so Slack and Platform Chat
-/// cannot drift apart. The harness is resolved through `resolve_effective` to
-/// pick up inherited starters, and a grandfathered agent-less App falls back to
-/// the harness alone.
+/// Suggested prompts are Agent presentation. Agent-less Apps have no starters.
 ///
 /// A lookup failure yields no prompts rather than a 500: the manifest is how an
 /// operator gets their Slack app created at all, and suggested prompts are
@@ -155,7 +151,7 @@ pub(crate) async fn resolve_manifest_starters(
     state: &SlackState,
     app: &crate::api::endpoint_ingress::IngressContext,
 ) -> Vec<ConversationStarter> {
-    let agent_starters = match app.agent_id.as_ref() {
+    match app.agent_id.as_ref() {
         Some(agent_id) => {
             match crate::domains::agents::queries::get_by_public_id(
                 &state.db,
@@ -173,24 +169,7 @@ pub(crate) async fn resolve_manifest_starters(
             }
         }
         None => Vec::new(),
-    };
-
-    let harness_starters = match crate::domains::harnesses::queries::resolve_effective(
-        &state.db,
-        app.org_id,
-        app.harness_id,
-    )
-    .await
-    {
-        Ok(Some(harness)) => harness.starters,
-        Ok(None) => Vec::new(),
-        Err(error) => {
-            tracing::warn!(harness_id = %app.harness_id, %error, "Failed to resolve harness for Slack manifest starters");
-            Vec::new()
-        }
-    };
-
-    everruns_platform::exposure::resolve_starters(&agent_starters, &harness_starters).to_vec()
+    }
 }
 
 /// Build the YAML manifest for a Slack app.

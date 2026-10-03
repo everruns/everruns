@@ -34,12 +34,14 @@ jest.mock("@/hooks/use-sessions", () => ({
 }));
 
 jest.mock("@/hooks", () => ({
-  useAgents: () => ({ data: [{ id: "agent_1", name: "scout", display_name: "Scout" }] }),
+  useAgents: () => ({
+    data: [{ id: "agent_1", name: "platform-chat", display_name: "Platform Chat" }],
+  }),
   useHarnesses: () => ({ data: [{ id: "harness_1", name: "generic", display_name: "Generic" }] }),
   usePageTitle: jest.fn(),
 }));
 
-// The page now decides whether its empty state is "No chats yet" or the
+// The page now decides whether its empty state is "No side chats yet" or the
 // no-intelligence message, so it reads intelligence status (org context this
 // suite does not stub). Default to available; the no-intelligence branch has
 // its own coverage.
@@ -103,8 +105,8 @@ describe("Chats surface", () => {
   it("offers a way to start a chat when there are no threads yet", () => {
     render(<ChatsPageClient />);
 
-    expect(screen.getByText("No chats yet")).toBeInTheDocument();
-    expect(screen.getByText("new-chat-form")).toBeInTheDocument();
+    expect(screen.getByText("No side chats yet")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "New chat" })[0]).toBeInTheDocument();
   });
 
   it("swaps the whole empty state for the no-intelligence message", () => {
@@ -113,9 +115,9 @@ describe("Chats surface", () => {
     render(<ChatsPageClient />);
 
     expect(screen.getByText("No intelligence available")).toBeInTheDocument();
-    // One centred message: "No chats yet / pick an agent and start talking"
+    // One centred message: "No side chats yet / pick an agent and start talking"
     // would be advice that cannot work.
-    expect(screen.queryByText("No chats yet")).not.toBeInTheDocument();
+    expect(screen.queryByText("No side chats yet")).not.toBeInTheDocument();
     expect(screen.queryByText("new-chat-form")).not.toBeInTheDocument();
   });
 
@@ -176,30 +178,16 @@ describe("Chats surface", () => {
 
     // The list starts narrowed; the toggle is what widens it, and the hook is
     // what carries that to the server.
-    expect(mockUseChatThreads).toHaveBeenLastCalledWith({ includeArchived: false });
+    expect(mockUseChatThreads).toHaveBeenLastCalledWith(
+      expect.objectContaining({ includeArchived: false }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /Filter/ }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show archived" }));
 
-    expect(mockUseChatThreads).toHaveBeenLastCalledWith({ includeArchived: true });
-  });
-
-  it("keeps the starting form mounted when the new thread lands in the list", () => {
-    const { rerender } = render(<ChatsPageClient />);
-    fireEvent.click(screen.getByText("new-chat-form"));
-
-    // The created thread arrives from the invalidated session list. Swapping the
-    // form out here would unmount it mid-navigation and strand the user on /chats.
-    mockUseChatThreads.mockReturnValue({
-      threads: [thread({ id: "sess_1" })],
-      isLoading: false,
-      isRead: true,
-      error: null,
-    });
-    rerender(<ChatsPageClient />);
-
-    expect(screen.getByText("new-chat-form")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Standup/ })).not.toBeInTheDocument();
+    expect(mockUseChatThreads).toHaveBeenLastCalledWith(
+      expect.objectContaining({ includeArchived: true }),
+    );
   });
 });
 
@@ -214,7 +202,7 @@ describe("Thread surface", () => {
     });
     mockSessionContext.mockReturnValue({
       session: thread({ id: "sess_1" }),
-      agent: { id: "agent_1", name: "scout", display_name: "Scout" },
+      agent: { id: "agent_1", name: "platform-chat", display_name: "Platform Chat" },
       agentId: "agent_1",
       sessionLoading: false,
     });
@@ -236,20 +224,20 @@ describe("Thread surface", () => {
     await renderThread();
 
     expect(mockSessionContext).toHaveBeenCalled();
-    expect(screen.getByText("chat-panel:Scout")).toBeInTheDocument();
+    expect(screen.getByText("chat-panel:Platform Chat")).toBeInTheDocument();
   });
 
   it("does not mount mutable chat controls for a recording", async () => {
     mockSessionContext.mockReturnValue({
       session: thread({ id: "sess_1", tags: ["recording"] }),
-      agent: { id: "agent_1", name: "scout", display_name: "Scout" },
+      agent: { id: "agent_1", name: "platform-chat", display_name: "Platform Chat" },
       agentId: "agent_1",
       sessionLoading: false,
     });
 
     await renderThread();
 
-    expect(screen.queryByText("chat-panel:Scout")).not.toBeInTheDocument();
+    expect(screen.queryByText("chat-panel:Platform Chat")).not.toBeInTheDocument();
     expect(screen.getByText("Thread not found")).toBeInTheDocument();
   });
 
@@ -257,8 +245,11 @@ describe("Thread surface", () => {
     await renderThread();
 
     expect(screen.getByRole("button", { name: "Rename thread" })).toHaveTextContent("Standup");
-    expect(screen.getByRole("link", { name: "Scout" })).toHaveAttribute("href", "/agents/agent_1");
-    expect(screen.getByText("chat-panel:Scout")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Platform Chat" })).toHaveAttribute(
+      "href",
+      "/agents/agent_1",
+    );
+    expect(screen.getByText("chat-panel:Platform Chat")).toBeInTheDocument();
     const openSession = screen.getByRole("link", { name: /Open session/ });
     expect(openSession).toHaveAttribute("href", "/sessions/sess_1/transcript");
     // Toolbar siblings must share the sm control height (h-7), not a taller
@@ -281,7 +272,7 @@ describe("Thread surface", () => {
 
     await renderThread();
 
-    expect(screen.getByText("Generic")).toBeInTheDocument();
+    expect(screen.getByText("Thread not found")).toBeInTheDocument();
     expect(screen.queryByText("No agent bound")).not.toBeInTheDocument();
   });
 
@@ -295,7 +286,7 @@ describe("Thread surface", () => {
     });
     mockSessionContext.mockReturnValue({
       session: thread({ id: "sess_1", title: null }),
-      agent: { id: "agent_1", name: "scout", display_name: "Scout" },
+      agent: { id: "agent_1", name: "platform-chat", display_name: "Platform Chat" },
       agentId: "agent_1",
       sessionLoading: false,
     });

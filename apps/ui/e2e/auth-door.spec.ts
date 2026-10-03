@@ -27,6 +27,55 @@ async function mockAuthConfig(page: Page, config: Record<string, unknown> = AUTH
 }
 
 test("no-auth login reaches the application instead of a blank redirect loop", async ({ page }) => {
+  const orgId = "org_00000000000000000000000000000001";
+  const agent = {
+    id: "agent_platform",
+    name: "platform-chat",
+    display_name: "Platform Chat",
+    harness_id: "harness_generic",
+    status: "active",
+    capabilities: [],
+    tools: [],
+    mcp_servers: [],
+    tags: [],
+    starters: [{ text: "List agents", icon: "bot" }],
+    intro_markdown: "I help you manage Everruns.",
+    short_description: "Platform assistant",
+  };
+  const session = {
+    id: "session_platform",
+    organization_id: orgId,
+    agent_id: agent.id,
+    harness_id: agent.harness_id,
+    title: "Chat",
+    source: "chat",
+    status: "idle",
+    tags: ["chat", "platform-chat-starter"],
+    model_id: null,
+    is_pinned: true,
+    created_at: "2026-10-03T00:00:00Z",
+    updated_at: "2026-10-03T00:00:00Z",
+  };
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    let json: unknown = { data: [], has_more: false, total: 0 };
+    if (path === "/api/v1/sessions/platform-chat" || path === `/api/v1/sessions/${session.id}`) {
+      json = session;
+    } else if (path === `/api/v1/agents/${agent.id}` || path === "/api/v1/agents/platform-chat") {
+      json = agent;
+    } else if (path === "/api/v1/agents") {
+      json = { data: [agent], has_more: false, total: 1 };
+    } else if (path.endsWith("/participants") || path.endsWith("/tasks")) {
+      json = [];
+    } else if (path.endsWith("/feature-flags")) {
+      json = {};
+    } else if (path.endsWith("/config")) {
+      json = { policies: {} };
+    } else if (path.endsWith("/resolved-model")) {
+      json = { model: null };
+    }
+    await route.fulfill({ json });
+  });
   await mockAuthConfig(page, NO_AUTH_CONFIG);
   await page.route("**/v1/auth/me", (route) =>
     route.fulfill({
@@ -35,6 +84,7 @@ test("no-auth login reaches the application instead of a blank redirect loop", a
         email: "anonymous@localhost",
         display_name: "Anonymous",
         email_verified: true,
+        organizations: [{ public_id: orgId, name: "Default", role: "owner" }],
       },
     }),
   );
@@ -42,7 +92,11 @@ test("no-auth login reaches the application instead of a blank redirect loop", a
   await page.goto("/login");
 
   await expect(page).toHaveURL(/\/chats$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Chats" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Platform Chat", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Type a message — pick a model to send" }),
+  ).toBeVisible();
 });
 
 test.describe("Unified auth door", () => {

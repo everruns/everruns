@@ -994,7 +994,7 @@ Following the agentskills.io specification:
 
 - **ID**: `soft_approval`
 - **Purpose**: Asks the agent to pause for spoken consent before critical actions, batching safe work without interruption
-- **Status**: Registered and enabled by default on the `generic` and `platform-chat` harnesses at level `normal`
+- **Status**: Registered and enabled by default on the Generic harness and Platform Chat Agent at level `normal`
 - **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/builtins/src/soft_approval.rs`
@@ -1298,15 +1298,11 @@ carries mounts in product registries.
   its loop/error/compaction safeguards, so documentation browsing cannot
   displace the requested management workflow.
 
-The built-in `platform-chat` harness inherits from the empty Base harness and
-uses `platform` plus loop/error/compaction safeguards. It intentionally excludes
-Generic's Bash, web, session-secret, and session-schedule surfaces: those tools
-distracted catalog execution and allowed credentials or schedules to land in
-the management session instead of the worker Agent. Its prompt tells the model
-to discover unknown operations, inspect with `query`, mutate only when requested
-with `execute`, and validate afterward. Recurring autonomous work is represented
-by an Agent plus an Agent Trigger; Platform Chat must not schedule its own
-session.
+The [managed Platform Chat Agent](../../crates/server/src/platform_chat_agent.rs) runs on
+Generic. Its platform capability exposes the authoritative command catalog through the
+session shell; product docs and durable operator memory share that namespace. The Agent
+owns its domain instructions, identity, introduction, and starters. Generic supplies the
+runtime safeguards and tools. Recurring autonomous work belongs to an Agent Trigger.
 
 The surface deliberately provides commands, not a persisted provisioning plan.
 Models compose the authoritative operations directly. Multi-command `execute`

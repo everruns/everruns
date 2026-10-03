@@ -114,26 +114,25 @@ pub struct Harness {
         )
     )]
     pub description: Option<String>,
-    /// Optional Markdown intro rendered as an intro box at the top of a fresh
-    /// Platform Chat thread. Images are allowed. The agent intro wins over
-    /// the harness intro. Hidden once the user inputs.
+    /// Legacy storage value migrated to Agent presentation; omitted from public responses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(
         feature = "openapi",
         schema(example = "I can triage incidents, dig through logs, and draft the update.")
     )]
+    #[serde(skip)]
     pub intro_markdown: Option<String>,
-    /// Optional one-line description in simplified Markdown, shown below the
-    /// chat title once the intro is hidden. The agent value wins.
+    /// Legacy description migrated to the Agent; omitted from public responses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(
         feature = "openapi",
         schema(example = "Knows your agents, harnesses, models, and runs.")
     )]
+    #[serde(skip)]
     pub short_description: Option<String>,
-    /// Conversation starters for a fresh Platform Chat thread. The agent's
-    /// starters win when non-empty, otherwise the harness's apply.
+    /// Legacy starters migrated to the Agent; omitted from public responses.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip)]
     pub starters: Vec<ConversationStarter>,
     /// System prompt that defines the harness's base behavior.
     ///

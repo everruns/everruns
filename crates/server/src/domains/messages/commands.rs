@@ -714,6 +714,9 @@ mod tests {
             })
             .await
             .expect("create Platform Chat session");
+        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+            .await
+            .expect("initialize managed Agent");
         let caller = Caller {
             org_id: DEFAULT_ORG_ID,
             org_public_id: everruns_core::organization::org_public_id_from_internal(DEFAULT_ORG_ID),

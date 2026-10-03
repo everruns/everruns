@@ -1,238 +1,69 @@
-/**
- * The Platform Chat thread is precreated and pinned so a new user lands in a
- * conversation rather than an empty Chats list — and is adopted, never
- * duplicated, when one already exists.
- */
-import { render, waitFor } from "@testing-library/react";
-import { useChatThreads } from "@/hooks/use-chat-threads";
+import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
-import { CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
-import type { Session } from "@/lib/api/types";
-
-const mockCreate = jest.fn();
-const mockPin = jest.fn();
-const mockInvalidate = jest.fn();
-
-jest.mock("@tanstack/react-query", () => ({
-  ...jest.requireActual("@tanstack/react-query"),
-  useQueryClient: () => ({ invalidateQueries: mockInvalidate }),
-}));
-
-jest.mock("@/hooks/use-chat-threads", () => ({
-  useChatThreads: jest.fn(),
-}));
-
-jest.mock("@/hooks", () => ({
-  useHarnesses: () => ({
-    data: [
-      { id: "harness_generic", name: "generic" },
-      { id: "harness_platform", name: "platform-chat" },
-    ],
-    isLoading: false,
-  }),
-}));
-
-jest.mock("@/hooks/use-sessions", () => ({
-  useCreateSession: () => ({ mutateAsync: mockCreate }),
-  usePinSession: () => ({ mutateAsync: mockPin }),
-}));
-
-// The ensure guard is keyed by org and lives for the page load, so each test
-// runs against its own org — the same isolation a fresh page load gives.
-let currentOrgId = "org_1";
+import { api } from "@/lib/api/client";
+jest.mock("@/lib/api/client", () => ({ api: { post: jest.fn() } }));
+let mockOrg = "org_a";
 jest.mock("@/providers/org-provider", () => ({
-  useOrg: () => ({ currentOrg: { public_id: currentOrgId, name: "Acme", role: "owner" } }),
+  useOrg: () => ({ currentOrg: { public_id: mockOrg }, isLoading: false }),
 }));
-
-let orgCounter = 0;
-
-const mockUseChatThreads = useChatThreads as jest.MockedFunction<typeof useChatThreads>;
-
-function thread(overrides: Partial<Session>): Session {
-  return {
-    id: "ses_existing",
-    organization_id: currentOrgId,
-    harness_id: "harness_platform",
-    agent_id: null,
-    owner_principal_id: "user_1",
-    title: "Platform Chat",
-    tags: [CHAT_THREAD_TAG],
-    model_id: null,
-    status: "idle",
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-    started_at: null,
-    finished_at: null,
-    ...overrides,
-  } as Session;
-}
-
 function Probe({ ensure }: { ensure?: boolean }) {
-  const { thread: found } = usePlatformChatThread({ ensure });
-  return <span data-testid="thread">{found?.id ?? "none"}</span>;
+  const { thread, error } = usePlatformChatThread({ ensure });
+  return <span>{error?.message ?? thread?.id ?? "waiting"}</span>;
 }
-
+const mockPost = jest.mocked(api.post);
+function client() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
 beforeEach(() => {
-  orgCounter += 1;
-  currentOrgId = `org_${orgCounter}`;
   jest.clearAllMocks();
-  mockCreate.mockResolvedValue({ id: "ses_new" });
-  mockPin.mockResolvedValue(undefined);
-  mockInvalidate.mockResolvedValue(undefined);
+  mockOrg = "org_a";
+  mockPost.mockResolvedValue({ data: { id: "ses_main" } });
 });
-
-test("creates and pins a Platform Chat thread when the user has none", async () => {
-  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, isRead: true, error: null });
-
-  render(<Probe ensure />);
-
-  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-  expect(mockCreate).toHaveBeenCalledWith({
-    request: {
-      source: "chat",
-      harness_name: "platform-chat",
-      title: "Platform Chat",
-      tags: [CHAT_THREAD_TAG, "platform-chat-starter"],
-    },
-  });
-  await waitFor(() => expect(mockPin).toHaveBeenCalledWith({ sessionId: "ses_new" }));
+it("resolves the permanent chat directly and deduplicates simultaneous consumers", async () => {
+  render(
+    <QueryClientProvider client={client()}>
+      <Probe />
+      <Probe />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getAllByText("ses_main")).toHaveLength(2));
+  expect(mockPost).toHaveBeenCalledTimes(1);
+  expect(mockPost).toHaveBeenCalledWith("/v1/sessions/platform-chat", {});
 });
-
-test("adopts an existing Platform Chat thread instead of creating a second", async () => {
-  mockUseChatThreads.mockReturnValue({
-    threads: [thread({})],
-    isLoading: false,
-    isRead: true,
-    error: null,
-  });
-
-  const { getByTestId } = render(<Probe ensure />);
-
-  expect(getByTestId("thread")).toHaveTextContent("ses_existing");
-  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
+it("does not create with ensure disabled", () => {
+  render(
+    <QueryClientProvider client={client()}>
+      <Probe ensure={false} />
+    </QueryClientProvider>,
+  );
+  expect(mockPost).not.toHaveBeenCalled();
 });
-
-test("preserves the starter when preview conversations gain the canonical harness binding", async () => {
-  mockUseChatThreads.mockReturnValue({
-    threads: [
-      thread({ id: "ses_promoted_preview" }),
-      thread({ id: "ses_starter", tags: [CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG] }),
-    ],
-    isLoading: false,
-    isRead: true,
-    error: null,
-  });
-
-  const { getByTestId } = render(<Probe ensure />);
-
-  expect(getByTestId("thread")).toHaveTextContent("ses_starter");
-  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
+it("isolates permanent conversations by organization", async () => {
+  const queryClient = client();
+  const { rerender } = render(
+    <QueryClientProvider client={queryClient}>
+      <Probe />
+    </QueryClientProvider>,
+  );
+  await screen.findByText("ses_main");
+  mockOrg = "org_b";
+  mockPost.mockResolvedValue({ data: { id: "ses_other" } });
+  rerender(
+    <QueryClientProvider client={queryClient}>
+      <Probe />
+    </QueryClientProvider>,
+  );
+  await screen.findByText("ses_other");
+  expect(mockPost).toHaveBeenCalledTimes(2);
 });
-
-test("does not recreate a thread the user archived", async () => {
-  mockUseChatThreads.mockReturnValue({
-    threads: [thread({ archived_at: "2026-02-01T00:00:00Z" })],
-    isLoading: false,
-    isRead: true,
-    error: null,
-  });
-
-  render(<Probe ensure />);
-
-  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
-});
-
-test("ignores threads bound to another harness or to an agent", async () => {
-  mockUseChatThreads.mockReturnValue({
-    threads: [
-      thread({ id: "ses_generic", harness_id: "harness_generic" }),
-      thread({ id: "ses_agent", agent_id: "agent_1" }),
-    ],
-    isLoading: false,
-    isRead: true,
-    error: null,
-  });
-
-  const { getByTestId } = render(<Probe ensure />);
-
-  expect(getByTestId("thread")).toHaveTextContent("none");
-  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-});
-
-test("reads without creating when ensure is off", async () => {
-  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, isRead: true, error: null });
-
-  render(<Probe />);
-
-  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
-});
-
-test("does not create when the thread list could not be read", async () => {
-  // A failed read says nothing about whether the thread exists. Treating it as
-  // "none yet" mints a second pinned thread on every page load that hits one.
-  mockUseChatThreads.mockReturnValue({
-    threads: [],
-    isLoading: false,
-    isRead: false,
-    error: new Error("Network error"),
-  });
-
-  render(<Probe ensure />);
-
-  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
-});
-
-test("waits for the thread list before deciding to create", async () => {
-  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: true, isRead: false, error: null });
-
-  render(<Probe ensure />);
-
-  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
-});
-
-test("does not create while a failed read is still retrying", async () => {
-  // React Query holds a query that is between retry attempts as neither
-  // loading nor errored, with an empty list in hand. That state says nothing
-  // about whether the thread exists: acting on it mints one duplicate pinned
-  // thread per page load that hits a transient blip. Only `isRead` means the
-  // list was actually read.
-  mockUseChatThreads.mockReturnValue({
-    threads: [],
-    isLoading: false,
-    isRead: false,
-    error: null,
-  });
-
-  render(<Probe ensure />);
-
-  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
-});
-
-test("does not create a second thread when only the pin failed", async () => {
-  // The thread exists once create resolves; retrying the *create* to recover a
-  // cosmetic pin is how a page load ends up with two threads.
-  mockPin.mockRejectedValue(new Error("Pin failed"));
-  mockUseChatThreads.mockReturnValue({
-    threads: [],
-    isLoading: false,
-    isRead: true,
-    error: null,
-  });
-
-  const { rerender } = render(<Probe ensure />);
-
-  await waitFor(() => expect(mockPin).toHaveBeenCalledTimes(1));
-  rerender(<Probe ensure />);
-  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-});
-
-test("refreshes threads after a competing client wins creation", async () => {
-  mockCreate.mockRejectedValue(new Error("Starter already exists"));
-  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, isRead: true, error: null });
-
-  const { rerender } = render(<Probe ensure />);
-
-  await waitFor(() => expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["sessions"] }));
-  rerender(<Probe ensure />);
-  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+it("exposes failures instead of creating a replacement conversation", async () => {
+  mockPost.mockRejectedValue(new Error("unavailable"));
+  render(
+    <QueryClientProvider client={client()}>
+      <Probe />
+    </QueryClientProvider>,
+  );
+  await screen.findByText("unavailable");
+  expect(mockPost).toHaveBeenCalledTimes(1);
 });

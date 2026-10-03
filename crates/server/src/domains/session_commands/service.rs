@@ -79,7 +79,7 @@ impl SessionCommandService {
         let (harness, agent, session) = self
             .load_session_components(caller.org_id, session_id)
             .await?;
-        authorize_platform_chat_owner(caller, &harness, &session)?;
+        authorize_platform_chat_owner(&self.db, caller, &session).await?;
         let harness_definition = harness.definition();
         // EVE-882: capability resolution consumes the portable execution view.
         let execution_session = session.execution_session();
@@ -141,7 +141,7 @@ impl SessionCommandService {
         let (harness, agent, session) = self
             .load_session_components(caller.org_id, session_id)
             .await?;
-        authorize_platform_chat_owner(caller, &harness, &session)?;
+        authorize_platform_chat_owner(&self.db, caller, &session).await?;
         let harness_definition = harness.definition();
         // EVE-882: capability resolution consumes the portable execution view.
         let execution_session = session.execution_session();
@@ -252,15 +252,12 @@ impl SessionCommandService {
     }
 }
 
-fn authorize_platform_chat_owner(
+async fn authorize_platform_chat_owner(
+    db: &StorageBackend,
     caller: &Caller,
-    harness: &Harness,
     session: &everruns_platform::Session,
 ) -> Result<()> {
-    // The adapters return the pre-merged record whose identity/built-in flag
-    // are leaf-owned, matching the historical single-element chain check.
-    let is_platform_chat = harness.is_built_in && harness.name == "platform-chat";
-    if !crate::domains::sessions::platform_chat_owner_matches(caller, session, is_platform_chat) {
+    if !crate::domains::sessions::platform_chat_owner_matches_session(db, caller, session).await? {
         return Err(
             everruns_core::PolicyError::denied("platform_chat_owner", "session owner").into(),
         );

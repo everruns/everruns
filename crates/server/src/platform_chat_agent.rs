@@ -1,90 +1,70 @@
-//! Platform Chat — one shell over the platform CLI, docs, and durable memory.
+//! The managed operator Agent. Generic supplies its execution environment.
+use crate::storage::{StorageBackend, models::CreateAgentRow};
+use anyhow::Result;
+use everruns_contracts::typed_id::{AgentId, HarnessId};
 
-use everruns_platform::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, ConversationStarter,
-};
+pub const NAME: &str = "platform-chat";
 
-pub const PLATFORM_CHAT_HARNESS_NAME: &str = "platform-chat";
-
-pub fn definition() -> BuiltInHarnessDefinition {
-    BuiltInHarnessDefinition::new(
-        PLATFORM_CHAT_HARNESS_NAME,
-        "Platform Chat",
-        "Conversational harness for the Everruns Platform chat, with structured user questions, \
-         soft approval for destructive actions, and a session filesystem: \
-         product documentation and shared operator memory are folders the shell can read, \
-         search, and write.",
-        SYSTEM_PROMPT,
-    )
-    .with_icon("everruns")
-    .with_parent_name("base")
-    .with_tags(["chat", "built-in"])
-    .with_roles([BuiltInHarnessRole::Chat])
-    .with_intro(
-        "Hey, I'm **Platform Chat**. I know your agents, harnesses, models, and runs, and I\nkeep notes between conversations. Ask me anything, or start with one of these:",
-    )
-    .with_short_description("Knows your agents, harnesses, models, and runs. Remembers between chats.")
-    .with_starters([
-        ConversationStarter {
-            icon: Some("zap".to_string()),
-            text: "What can you do?".to_string(),
-        },
-        ConversationStarter {
-            icon: Some("bot".to_string()),
-            text: "Show me my agents".to_string(),
-        },
-        ConversationStarter {
-            icon: Some("activity".to_string()),
-            text: "What ran recently?".to_string(),
-        },
-    ])
-    .with_capabilities([
-        // Platform operations share the session shell's namespace; exposing
-        // the old tools here would create a second management surface.
-        BuiltInCapabilityDefinition::with_config(
-            "platform",
-            serde_json::json!({ "surface": "shell" }),
-        ),
-        // Explicit filesystem and shell capabilities keep the operator's
-        // namespace part of the harness contract rather than a side effect.
-        BuiltInCapabilityDefinition::new("session_file_system"),
-        BuiltInCapabilityDefinition::new("bashkit_shell"),
-        BuiltInCapabilityDefinition::new("btw"),
-        // This is a chat surface the UI renders, so model-authored tool
-        // narration and message timestamps are user-visible quality, not
-        // bookkeeping. `current_time` grounds relative-time questions.
-        BuiltInCapabilityDefinition::new("human_intent"),
-        BuiltInCapabilityDefinition::new("current_time"),
-        BuiltInCapabilityDefinition::new("message_metadata"),
-        BuiltInCapabilityDefinition::with_config(
-            "parallel_tool_calls",
-            serde_json::json!({"mode": "prefer"}),
-        ),
-        BuiltInCapabilityDefinition::new("stateless_todo_list"),
-        BuiltInCapabilityDefinition::new("prompt_caching"),
-        BuiltInCapabilityDefinition::new("tool_call_repair"),
-        BuiltInCapabilityDefinition::new("loop_detection"),
-        BuiltInCapabilityDefinition::with_config(
-            "error_disclosure",
-            serde_json::json!({"mode": "detailed"}),
-        ),
-        BuiltInCapabilityDefinition::with_config(
-            "compaction",
-            serde_json::json!({
-                "strategy": "auto",
-                "proactive": true,
-                "budget_percent": 0.85
-            }),
-        ),
-        // Keep full inventories on disk while presenting a digest to the model.
-        BuiltInCapabilityDefinition::new("tool_output_persistence"),
-        BuiltInCapabilityDefinition::new("tool_output_distillation"),
-        BuiltInCapabilityDefinition::new("ask_user"),
-        BuiltInCapabilityDefinition::new("soft_approval"),
-    ])
+pub fn definition(harness_id: HarnessId, id: AgentId) -> CreateAgentRow {
+    CreateAgentRow {
+        public_id: id.to_string(), name: NAME.into(), display_name: Some("Platform Chat".into()),
+        description: Some("Manage your Everruns organization".into()),
+        intro_markdown: Some("I can help you manage your agents, harnesses, models, and runs. Ask me anything, or start with one of these:".into()),
+        short_description: Some("Manage your Everruns organization".into()),
+        starters: serde_json::json!([
+            {"icon":"zap","text":"What can you do?"},
+            {"icon":"bot","text":"Show me my agents"},
+            {"icon":"activity","text":"What ran recently?"}
+        ]),
+        system_prompt: SYSTEM_PROMPT.into(),
+        default_model_id: None, harness_id, tags: vec!["built-in".into(), "platform-chat".into()],
+        initial_files: serde_json::json!([]), tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}), network_access: None, max_iterations: None,
+        parallel_tool_calls: None, environments: None, is_built_in: true,
+    }
 }
 
-const SYSTEM_PROMPT: &str = "\
+pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
+    db.consolidate_platform_chat(org_id).await?;
+    let generic = crate::org_init::generic_harness_id(db, org_id).await?;
+    let id = db.ensure_platform_chat_agent_id(org_id, generic).await?;
+    db.create_agent_with_id(org_id, id, definition(generic, id))
+        .await?;
+    let capabilities = vec![
+        ("platform".into(), 0, serde_json::json!({"surface":"shell"})),
+        ("current_time".into(), 1, serde_json::json!({})),
+        ("stateless_todo_list".into(), 2, serde_json::json!({})),
+        ("prompt_caching".into(), 3, serde_json::json!({})),
+        ("tool_call_repair".into(), 4, serde_json::json!({})),
+    ];
+    let existing = db.get_agent_capabilities(id.uuid()).await?;
+    if existing.len() != capabilities.len()
+        || existing
+            .iter()
+            .zip(&capabilities)
+            .any(|(a, b)| a.capability_id != b.0 || a.position != b.1 || a.config != b.2)
+    {
+        db.set_agent_capabilities(id.uuid(), capabilities).await?;
+    }
+    db.migrate_platform_chat_agent(org_id, id, generic).await?;
+    Ok(())
+}
+
+pub async fn is_platform_chat(
+    db: &StorageBackend,
+    org_id: i64,
+    id: Option<AgentId>,
+) -> Result<bool> {
+    let Some(id) = id else {
+        return Ok(false);
+    };
+    Ok(db
+        .get_agent(org_id, id)
+        .await?
+        .is_some_and(|a| a.is_built_in && a.name == NAME))
+}
+
+pub(crate) const SYSTEM_PROMPT: &str = "\
 You are a helpful assistant on the Everruns platform.
 
 ## Your namespace
@@ -194,30 +174,6 @@ pub(crate) fn system_prompt() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn platform_chat_carries_a_filesystem_and_a_shell() {
-        let definition = definition();
-        let capabilities = definition
-            .capabilities
-            .iter()
-            .map(|capability| capability.capability_id())
-            .collect::<Vec<_>>();
-        assert_eq!(definition.parent_name.as_deref(), Some("base"));
-        // Docs and scratch files share the shell namespace.
-        assert!(capabilities.contains(&"session_file_system"));
-        assert!(capabilities.contains(&"bashkit_shell"));
-        assert!(capabilities.contains(&"platform"));
-        // Output distillation must retain the complete output in the VFS.
-        assert!(capabilities.contains(&"tool_output_persistence"));
-        assert!(capabilities.contains(&"tool_output_distillation"));
-    }
-
-    /// The canonical operator surface is the only built-in chat harness.
-    #[test]
-    fn platform_chat_owns_the_chat_role() {
-        assert_eq!(definition().roles, vec![BuiltInHarnessRole::Chat]);
-    }
 
     #[test]
     fn platform_chat_frames_docs_and_memory_as_data() {

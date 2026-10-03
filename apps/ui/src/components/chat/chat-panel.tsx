@@ -103,6 +103,12 @@ function parseSystemCommandInvocation(
 }
 
 export interface ChatPanelProps {
+  onDraftSubmit?: (
+    text: string,
+    images: Array<{ imageId: string; filename?: string }>,
+    files: Array<{ fileId: string; filename?: string }>,
+    controls?: Controls,
+  ) => Promise<void>;
   /** Hosts with their own context rail may hide the shared participant rail. */
   showParticipants?: boolean;
   /**
@@ -125,6 +131,7 @@ export interface ChatPanelProps {
 
 export function ChatPanel({
   replyToLabel,
+  onDraftSubmit,
   showRunCards = false,
   showParticipants = true,
   platformIcon,
@@ -164,6 +171,7 @@ export function ChatPanel({
     transcriptEmpty && Boolean(platformIntro || platformStarters.length > 0);
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
+  const [draftSending, setDraftSending] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -213,7 +221,7 @@ export function ChatPanel({
     clearImages,
     hasImages,
     isUploading,
-  } = useImageAttachments({ sessionId });
+  } = useImageAttachments({ sessionId: sessionId || undefined });
 
   const {
     pendingFiles,
@@ -224,7 +232,7 @@ export function ChatPanel({
     clearFiles,
     handlePaste: handleFilePaste,
     hasFiles,
-  } = useFileAttachments({ sessionId });
+  } = useFileAttachments({ sessionId: sessionId || undefined });
 
   const supportsPdf =
     (
@@ -275,6 +283,7 @@ export function ChatPanel({
   const [commandOverlay, setCommandOverlay] = useState<CommandOverlayState | null>(null);
   const activeSessionIdRef = useRef(sessionId);
   const voiceAvailable =
+    !!sessionId &&
     voiceFeatureEnabled &&
     session?.source !== "playground" &&
     typeof window !== "undefined" &&
@@ -333,6 +342,7 @@ export function ChatPanel({
     (inputValue.trim().length > 0 || hasImages || hasFiles) &&
     allUploaded &&
     allFilesUploaded &&
+    !draftSending &&
     !sendMessage.isPending &&
     !sendMessageWithImages.isPending &&
     !executeCommand.isPending;
@@ -581,7 +591,12 @@ export function ChatPanel({
     }
 
     try {
-      if (hasImages || hasFiles) {
+      if (onDraftSubmit) {
+        setDraftSending(true);
+        await onDraftSubmit(inputValue.trim(), uploadedImageIds, uploadedFileIds, controls);
+        clearImages();
+        clearFiles();
+      } else if (hasImages || hasFiles) {
         await sendMessageWithImages.mutateAsync({
           text: inputValue.trim(),
           images: uploadedImageIds,
@@ -600,7 +615,7 @@ export function ChatPanel({
         });
       }
 
-      void refetchParticipants();
+      if (sessionId) void refetchParticipants();
       persistSelection();
       setInputValue("");
       setAddressedParticipantId(null);
@@ -608,6 +623,8 @@ export function ChatPanel({
     } catch (error) {
       console.error("Failed to send message:", error);
       setSubmitError(error instanceof Error ? error.message : "Failed to send message.");
+    } finally {
+      setDraftSending(false);
     }
   };
 
@@ -739,7 +756,10 @@ export function ChatPanel({
             hideModelNotice={showPlatformIntro}
             isUploading={isUploading}
             sendPending={
-              sendMessage.isPending || sendMessageWithImages.isPending || executeCommand.isPending
+              draftSending ||
+              sendMessage.isPending ||
+              sendMessageWithImages.isPending ||
+              executeCommand.isPending
             }
             textareaRef={textareaRef}
             voiceEnabled={voiceAvailable}

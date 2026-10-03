@@ -94,6 +94,8 @@ const STARTUP_API_ALLOWLIST = new Set([
   // API mock answers every list with `{ data: [] }`.
   "/api/v1/providers/config",
   "/api/v1/sessions",
+  "/api/v1/sessions/platform-chat",
+  "/api/v1/agents/platform-chat",
   "/api/v1/sessions/stats",
   "/api/v1/feature-flags",
   "/api/v1/users/me/switch-org",

@@ -1,5 +1,5 @@
 /**
- * Live thread list under the sidebar's Chats entry.
+ * Live thread list under the sidebar's Chat entry.
  *
  * Two constraints shape it. The list is capped (`SIDEBAR_THREAD_LIMIT`) because
  * live threads in the nav mean the nav is never the same twice, so it has to be
@@ -7,7 +7,7 @@
  * the list, so an arriving turn cannot re-sort a row out from under a click;
  * the pending order is adopted as soon as the user leaves.
  *
- * This is also where the user's pinned Platform Chat thread is ensured: the
+ * This is also where the user's permanent Platform Chat conversation is ensured: the
  * list is rendered on every app route in both the OSS app and its wrappers, so
  * a user who never passes through onboarding (an invited member, say) still
  * finds the thread waiting. The onboarding surfaces, which render without the
@@ -91,7 +91,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
       {/* Always offered, even with nothing above it: the all-chats page is the
           only place archived threads can be brought back into view. */}
       <Link
-        href="/chats"
+        href="/chats/history"
         prefetch={false}
         className={cn(rowClass, "border-l-transparent text-muted-foreground hover:text-foreground")}
       >

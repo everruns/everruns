@@ -394,8 +394,8 @@ rest proceeds.
    the design keeps, so it was the surface that decided whether "exposure" became user
    vocabulary.
 4. ~~EVE-978 (suggested prompts) picks a source per surface.~~ Settled: **agent config**,
-   falling back to the harness, resolved by `everruns_platform::exposure::resolve_starters`
-   over the `starters` field Platform Chat already uses. Endpoint config was not available
+   shared across Chat, Playground, and Slack. Harness presentation is deprecated;
+   agent-less endpoints have no conversation starters. Endpoint config was not available
    to choose — it does not exist until EVE-1003 — and an endpoint-level override remains
    strictly additive on top of that order, so nothing here is foreclosed.
 

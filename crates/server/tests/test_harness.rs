@@ -91,8 +91,10 @@ pub struct TestServer {
     pub seed_base_harness_id: String,
     /// Public ID of the built-in `generic` harness for the default org.
     pub seed_generic_harness_id: String,
-    /// Public ID of the built-in `platform-chat` harness for the default org.
+    /// Generic execution environment for platform conversations.
     pub seed_chat_harness_id: String,
+    /// Public ID of the managed Platform Chat Agent.
+    pub seed_chat_agent_id: String,
     /// Outbound MCP Events, wired to `webhooks` instead of the network.
     pub mcp_events: Arc<services::mcp_events::McpEventsService>,
     pub webhooks: Arc<WebhookReceiver>,
@@ -1209,7 +1211,13 @@ impl TestServer {
 
         let seed_base_harness_id = lookup_built_in_harness(&db, "base").await;
         let seed_generic_harness_id = lookup_built_in_harness(&db, "generic").await;
-        let seed_chat_harness_id = lookup_built_in_harness(&db, "platform-chat").await;
+        let seed_chat_harness_id = lookup_built_in_harness(&db, "generic").await;
+        let seed_chat_agent_id = db
+            .get_agent_by_name(1, "platform-chat")
+            .await
+            .unwrap()
+            .unwrap()
+            .public_id;
 
         Self {
             router,
@@ -1221,6 +1229,7 @@ impl TestServer {
             seed_base_harness_id,
             seed_generic_harness_id,
             seed_chat_harness_id,
+            seed_chat_agent_id,
             mcp_events,
             webhooks,
             mcp_event_triggers,

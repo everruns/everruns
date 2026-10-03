@@ -36,6 +36,7 @@ export async function createSession(request: CreateSessionRequest): Promise<Sess
  * lets the facet counts annotate the very rows the list returns.
  */
 export interface SessionListFilters {
+  sideChatsOnly?: boolean;
   playgroundUserId?: string;
   archivedOnly?: boolean;
   /** Filter by agent public id. */
@@ -60,6 +61,7 @@ export interface SessionListFilters {
 
 function sessionFilterParams(filters?: SessionListFilters): URLSearchParams {
   const searchParams = new URLSearchParams();
+  if (filters?.sideChatsOnly) searchParams.set("side_chats_only", "true");
   if (filters?.playgroundUserId) searchParams.set("playground_user_id", filters.playgroundUserId);
   if (filters?.archivedOnly) searchParams.set("archived_only", "true");
   if (filters?.agentId) searchParams.set("agent_id", filters.agentId);

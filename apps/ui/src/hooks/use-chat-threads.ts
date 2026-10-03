@@ -1,13 +1,14 @@
 "use client";
 
-// Chat threads = ordinary sessions. See `src/lib/chat-threads.ts` for why the
-// filtering is client-side today and what EVE-852 replaces it with.
+// Only the managed Agent's personal side conversations belong in Chat.
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listSessions } from "@/lib/api/sessions";
 import { queryKeys } from "@/lib/query-keys";
 import { selectChatThreads, THREAD_SCAN_LIMIT } from "@/lib/chat-threads";
+import { useAgent } from "@/hooks/use-agents";
+import { PLATFORM_CHAT_AGENT_NAME, PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import { useOrg } from "@/providers/org-provider";
 import type { Session } from "@/lib/api/types";
 
@@ -18,6 +19,7 @@ const THREAD_POLL_MS = 15_000;
 
 export interface UseChatThreadsResult {
   threads: Session[];
+  total?: number;
   isLoading: boolean;
   /**
    * True once the list has actually been read. `!isLoading && !error` is not
@@ -32,6 +34,9 @@ export interface UseChatThreadsResult {
 
 export interface UseChatThreadsOptions {
   enabled?: boolean;
+  offset?: number;
+  limit?: number;
+  search?: string;
   /** Widen the list to archived threads too. Off by default: archiving a thread
    *  is the user asking for it to stop showing up. */
   includeArchived?: boolean;
@@ -48,7 +53,10 @@ export interface UseChatThreadsOptions {
 export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThreadsResult {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
-  const enabled = !!org && (options.enabled ?? true);
+  const { data: platformAgent, isLoading: agentLoading } = useAgent(PLATFORM_CHAT_AGENT_NAME);
+  const offset = options.offset ?? 0;
+  const limit = options.limit ?? THREAD_SCAN_LIMIT;
+  const enabled = !!org && !!platformAgent && (options.enabled ?? true);
   const includeArchived = options.includeArchived ?? false;
   const poll = options.poll ?? true;
   const mine = options.mine ?? true;
@@ -59,23 +67,38 @@ export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThre
     // separate cache entry because it is a different server-side predicate.
     queryKey: queryKeys.sessions.filtered(
       org,
-      `${mine ? "my-threads" : "threads"}${includeArchived ? "+archived" : ""}`,
-      0,
-      THREAD_SCAN_LIMIT,
+      `${mine ? "my-threads" : "threads"}${includeArchived ? "+archived" : ""}:${platformAgent?.id}:${options.search ?? ""}`,
+      offset,
+      limit,
     ),
-    queryFn: () => listSessions({ offset: 0, limit: THREAD_SCAN_LIMIT, includeArchived, mine }),
+    queryFn: () =>
+      listSessions({
+        offset,
+        limit,
+        includeArchived,
+        mine,
+        source: "chat",
+        sideChatsOnly: true,
+        agentId: platformAgent?.id,
+        order: "last_activity",
+        search: options.search,
+      }),
     enabled,
     refetchInterval: poll ? THREAD_POLL_MS : false,
   });
 
   const threads = useMemo(
-    () => selectChatThreads(query.data?.data ?? [], { includeArchived }),
+    () =>
+      selectChatThreads(query.data?.data ?? [], { includeArchived }).filter(
+        (s) => !s.tags.includes(PLATFORM_CHAT_STARTER_TAG),
+      ),
     [query.data, includeArchived],
   );
 
   return {
     threads,
-    isLoading: orgLoading || query.isLoading,
+    total: query.data?.total ?? 0,
+    isLoading: orgLoading || agentLoading || (!!platformAgent && query.isLoading),
     isRead: query.isSuccess,
     error: (query.error as Error | null) ?? null,
   };

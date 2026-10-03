@@ -146,6 +146,7 @@ memories get	--memory-id!
 memories list	--include-archived --search
 memories sync	--memory-id!
 memories update	--description --memory-id! --name --source
+models default get	
 models delete	--id!
 models get	--id!
 models list	--favorites-only --include-stale --source
@@ -228,7 +229,7 @@ sessions environment get	--session-id!
 sessions events list	--after-sequence --around --before-sequence --exclude... --exec-id --from-ts --limit --order-desc --q --session-id! --since-id --tags... --to-ts --tool-name --trace-id --turn-id --types... --window
 sessions events summary events	--session-id!
 sessions export	--format --output/-o <session>!
-sessions facets	--agent-id --archived-only --created-after --created-before --include-archived --mine --order --playground-user-id --search --source --status
+sessions facets	--agent-id --archived-only --created-after --created-before --include-archived --mine --order --playground-user-id --search --side-chats-only --source --status
 sessions fork	--overrides --session <session_id>
 sessions fs - copy	--dst-path! --session-id! --src-path!
 sessions fs - grep	--path-pattern --pattern! --session-id!
@@ -248,6 +249,7 @@ sessions participants add	--agent-id --kind! --role --session!
 sessions participants leave	--participant-id! --session!
 sessions participants list	--session!
 sessions pin	--session <session_id>
+sessions platform-chat ensure	
 sessions resources list	--session-id!
 sessions resume	--session-id!
 sessions sandbox get	--session-id!
