@@ -1,4 +1,5 @@
 //! **Moved.** Hosted capabilities now live in [`everruns-capabilities`](https://docs.rs/everruns-capabilities).
+//! Part of the [Everruns](https://everruns.com) ecosystem.
 //! Control-plane records belong to the server. This deprecated shim ships once.
 //!
 //! ```

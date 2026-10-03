@@ -1,6 +1,6 @@
 # everruns-capabilities
 
-Hosted capabilities and sandbox orchestration. Control-plane records live in the server.
+> Hosted capabilities and sandbox orchestration.
 
 Part of [Everruns](https://everruns.com).
 
@@ -19,4 +19,4 @@ Hosted execution services and optional container sandbox, A2A, AG-UI and environ
 
 ## License
 
-MIT
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
