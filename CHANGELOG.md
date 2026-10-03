@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-03
+
+### Highlights
+
+- **Approval history in context** - Chats show approval requests and recorded consent; organization admins and owners can filter existing spoken-consent audit history ([#4110](https://github.com/everruns/everruns/pull/4110)).
+- **Agent channels at a glance** - Compact agent cards show transport and live, draft or disabled status, with links to Integrations ([#4109](https://github.com/everruns/everruns/pull/4109)).
+- **Navigation keeps your place** - Sidebar selection updates as navigation starts, and agent tabs survive refresh through their URL ([#4108](https://github.com/everruns/everruns/pull/4108), [#4111](https://github.com/everruns/everruns/pull/4111)).
+- **Slack installation returns to setup** - Valid OAuth callbacks return to the owning agent's endpoint editor; invalid callbacks use the agents page ([#4107](https://github.com/everruns/everruns/pull/4107)).
+
+### What's Changed
+
+- style(ui): refine shared entity overview hierarchy ([#4112](https://github.com/everruns/everruns/pull/4112)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): surface approval history in chat and audit views ([#4110](https://github.com/everruns/everruns/pull/4110)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): return OAuth callbacks to the agent endpoint editor ([#4107](https://github.com/everruns/everruns/pull/4107)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): update the sidebar as soon as navigation starts ([#4108](https://github.com/everruns/everruns/pull/4108)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): show channels on compact agent cards ([#4109](https://github.com/everruns/everruns/pull/4109)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): keep the selected agent tab in the URL ([#4111](https://github.com/everruns/everruns/pull/4111)) by [@chaliy](https://github.com/chaliy)
+- refactor(contracts): centralize shared runtime contracts ([#4077](https://github.com/everruns/everruns/pull/4077)) by [@chaliy](https://github.com/chaliy)
+
+[Approval history view](https://github.com/user-attachments/assets/6db44b0c-00c7-4317-a5c1-e9f8431a5b62)
+
+![Agent cards show channels](https://github.com/user-attachments/assets/f04d406b-87c7-48a8-8bf6-e0a404e2d60b)
+
+[Navigation loading state](https://github.com/user-attachments/assets/de32617c-995d-40ca-a1d5-2b18652fe1cd) · [Agent tab after refresh](https://github.com/user-attachments/assets/fb561c42-dbc1-46dc-b7e8-3b98304b2b0b) · [Slack callback opens setup](https://github.com/user-attachments/assets/5bf41078-f4f6-4977-8c4b-23c8484ebed8)
+
+### Crate Releases
+
+All 45 published crates ship at the platform version 0.37.0.
+
+Provider, capability and model-profile APIs now share `everruns-contracts`, giving custom hosts one contract crate. The following packages ship their first deprecated forwarding release:
+
+- `everruns-provider` → `everruns-contracts`
+- `everruns-capability` → `everruns-contracts::capability`
+- `everruns-model-profiles` → `everruns-contracts::model_profile_data`
+
+Migrate dependencies and imports to the canonical crate. The three shims leave the workspace in 0.38.0; their published 0.37.0 versions remain available. No provider, tool, capability or model profile is removed.
+
 ## [0.36.0] - 2026-10-03
 
 ### Highlights
