@@ -26,7 +26,6 @@ FAILED=0
 #    even kernel tests must not need the stored records).
 KERNEL_TREES=(
   crates/core
-  crates/engine
   crates/contracts
 )
 if matches=$(grep -rnE 'everruns_(platform|capabilities|server)(::|;)' "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
@@ -56,7 +55,7 @@ RECORD_TYPES="${RECORD_TYPES}|SessionSandboxConfig|SessionSandboxInitConfig|Sess
 # kernel: integration crates register providers against platform, and a turn
 # reaches a sandbox only through the capability.
 if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum|trait) (${RECORD_TYPES})[[:space:]{<(]" \
-  crates/core crates/engine --include='*.rs' 2>/dev/null \
+  crates/core --include='*.rs' 2>/dev/null \
   | grep -v -E '^crates/core/src/host/workspace.rs:[0-9]+:pub struct Workspace \{' \
   | grep -v -E '^crates/core/src/mcp/oauth/protocol.rs:[0-9]+:pub (struct|enum) (OAuthClient|OAuthError|TokenSet|PkcePair|ProtectedResourceMetadata|AuthorizationServerMetadata|RegisteredClient|ClientRegistration)[[:space:]<{]'); then
   echo "Kernel crates must not declare stored platform record types or moved connector/OAuth/email infrastructure (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880):"
@@ -84,7 +83,6 @@ fi
 # 2. Kernel crates: no everruns-platform edge of any kind.
 KERNEL_CRATES=(
   everruns-core
-  everruns-engine
   everruns-contracts
 )
 for crate in "${KERNEL_CRATES[@]}"; do
@@ -98,14 +96,14 @@ done
 
 # The reusable execution host is below the hosted product layer. Platform may
 # implement host extension ports; host must never import or ship platform.
-host_tree=$(guard_cargo_tree -p everruns-host --edges normal --prefix none)
+host_tree=$(guard_cargo_tree -p everruns-core --features host --edges normal --prefix none)
 if echo "$host_tree" | grep -qE '^everruns-(platform|capabilities|server) '; then
-  echo "everruns-host must not depend on everruns-platform in its shipped graph:"
+  echo "everruns-core host must not depend on everruns-platform in its shipped graph:"
   echo "$host_tree" | grep -E '^everruns-(platform|capabilities|server) '
   FAILED=1
 fi
 if matches=$(grep -rnE 'everruns_(platform|capabilities)::|use[[:space:]]+everruns_(platform|capabilities)' crates/core/src/host --include='*.rs' 2>/dev/null); then
-  echo "everruns-host source must use neutral extension ports rather than platform types:"
+  echo "everruns-core host source must use neutral extension ports rather than platform types:"
   echo "$matches"
   FAILED=1
 fi
@@ -141,14 +139,14 @@ fi
 
 COMMAND_EFFECT_PATTERN='\b(ChatDriver|ProviderConfig|ProviderEndpoint|LlmCallConfig|ImageResolver|ResolvedImage)\b'
 if matches=$(grep -nE "$COMMAND_EFFECT_PATTERN" crates/core/src/command_host.rs 2>/dev/null); then
-  echo "Concrete provider/image command completion must live in everruns-host (EVE-905):"
+  echo "Concrete provider/image command completion must live in everruns-core host (EVE-905):"
   echo "$matches"
   FAILED=1
 fi
 
 for host_owner in command_host execution_snapshot runtime_context; do
   if [ ! -f "crates/core/src/host/${host_owner}.rs" ]; then
-    echo "everruns-host must own ${host_owner}.rs orchestration (EVE-905)."
+    echo "everruns-core host must own ${host_owner}.rs orchestration (EVE-905)."
     FAILED=1
   fi
 done

@@ -500,7 +500,6 @@ jobs:
       - name: Check published crates against MSRV
         run: |
           cargo check --locked --all-features \
-            -p everruns-builtins \
             -p everruns-core \
             -p everruns-durable \
             -p everruns-drivers \
@@ -515,7 +514,6 @@ jobs:
             -p everruns-serve-macros \
             -p everruns-serve-agentcore \
             -p everruns-serve-celld \
-            -p everruns-ag-ui \
             -p everruns
 
   knowledge:
@@ -1031,12 +1029,9 @@ jobs:
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
           cargo test -p everruns-contracts --all-features
-          # Canonical module tests (one integration binary) plus deprecated shim doctests.
+          # Canonical module tests share one integration binary.
           # Preserve the migrated host fixtures' serial execution contract.
-          cargo test -p everruns-core -p everruns-engine -p everruns-host -p everruns-builtins -p everruns-mcp -p everruns-ag-ui --all-features -- --test-threads=1
-          # Feature union can hide a shim losing its implicit transport or catalog.
-          cargo test -p everruns-host --no-default-features --features mcp --test feature_composition
-          cargo test -p everruns-host --no-default-features --features host-shell --test feature_composition
+          cargo test -p everruns-core --all-features -- --test-threads=1
           cargo test -p everruns-integrations-docker --all-features
           # The integration catalog is the one list naming every plugin-publishing
           # crate; check-integration-catalog.sh guards completeness, these tests

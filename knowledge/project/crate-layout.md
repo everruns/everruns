@@ -154,7 +154,8 @@ published name can land in any release.
    make the kernel guard feature-aware.
 6. **Introduce `everruns-durable-engine`.** It carries the worker's turn-on-workflow
    wiring, and the worker depends on it instead of core and durable directly. Add the
-   database guard.
+   database guard. Delete the five core shims only after their final platform
+   release is fully published; canonical feature modules retain every capability.
 7. **Migrate yolop in one batch** onto `everruns-contracts`, `everruns-core`, and
    `everruns-capabilities`. Yolop is pinned to 0.33.0 and moves once, not per step.
 

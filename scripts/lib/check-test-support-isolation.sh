@@ -93,7 +93,7 @@ fi
 
 for symbol in InMemoryAgentStore InMemoryHarnessStore InMemorySessionStore InMemoryProviderStore; do
   if ! grep -q "pub struct $symbol" crates/core/src/host/in_memory.rs; then
-    echo "$symbol must be owned by everruns-host."
+    echo "$symbol must be owned by core host."
     FAILED=1
   fi
 done

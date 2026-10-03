@@ -21,6 +21,13 @@ is needed. Hosts opening independent handles should use
 `everruns_durable::sqlite::open` or `open_in_memory`. To add application tables to
 the Framework database, retain `SqliteDb` and use its `with_conn` callbacks.
 
+### Retired forwarding crates
+
+The five forwarding packages `everruns-engine`, `everruns-host`,
+`everruns-builtins`, `everruns-mcp`, and `everruns-ag-ui` are removed from source
+after their single deprecated 0.40 release. Keep the canonical core imports and
+feature selections described below; published deprecated versions remain usable.
+
 ## 0.40 (planned)
 
 ### Consolidated execution modules
