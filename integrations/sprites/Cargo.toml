@@ -40,6 +40,7 @@ tracing.workspace = true
 sprites-live-tests = []
 
 [dev-dependencies]
+everruns-host.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
 
