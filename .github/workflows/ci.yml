@@ -2511,7 +2511,7 @@ jobs:
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       DEPLOYMENT_GRADE: dev
       AUTH_MODE: none
-      FEATURE_APP_BUDGETS: "true"
+      FEATURE_APP_BUDGETS: "prod"
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
       WORKER_GRPC_AUTH_TOKEN: endpoint-budget-e2e-token
       PLAYWRIGHT_REAL_API_URL: http://localhost:9000

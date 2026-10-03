@@ -1,4 +1,9 @@
 export interface FeatureFlags {
+  docker_capability?: boolean;
+  container_sandbox?: boolean;
+  lua?: boolean;
+  openai_agents_api?: boolean;
+  mcp_events?: boolean;
   notifications: boolean;
   evals: boolean;
   /** Skills registry management UI. Experimental. */

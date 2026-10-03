@@ -18,7 +18,7 @@ Verify that the Runs tab on the eval detail page lists previous runs with status
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `evals` enabled (`FEATURE_EVALS=true`)
+- Feature flag `evals` enabled (`FEATURE_EVALS=prod`)
 - An eval with at least one completed run exists
 
 ## Test Data

@@ -17,7 +17,7 @@ Verify that a deployment with machine payments disabled does not advertise or re
 ## Preconditions
 
 - Canonical local stack running with `AUTH_MODE=none`
-- `FEATURE_MACHINE_PAYMENTS=false` (or unset)
+- `FEATURE_MACHINE_PAYMENTS=off` (or unset)
 - Browser session open as the local organization owner
 
 ## Test Data

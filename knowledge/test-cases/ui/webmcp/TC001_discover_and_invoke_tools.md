@@ -48,7 +48,7 @@ The hermetic CI path runs `apps/ui/e2e/webmcp.spec.ts`. It installs a ModelConte
 Chrome's asynchronous `getTools()` and `executeTool(tool, jsonString)` contract, mocks only the HTTP
 API, and exercises the rendered application.
 
-For a native local smoke, run the development stack with `FEATURE_WEBMCP=true`, opt the test
+For a native local smoke, run the development stack with `FEATURE_WEBMCP=prod`, opt the test
 organization into `webmcp`, and launch Chrome 149+ through `agent-browser` with
 `--enable-blink-features=WebMCPTesting`. Use `agent-browser eval` to await
 `document.modelContext.getTools()`, select a tool descriptor by name, and pass it to

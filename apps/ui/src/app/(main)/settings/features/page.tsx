@@ -17,10 +17,10 @@ export default function FeaturesSettingsPage() {
   const { data, isLoading, error } = useOrgFeatureFlagSettings();
   const updateFlags = useUpdateOrgFeatureFlags();
 
-  const availableFlags = data?.flags.filter((f) => f.system_enabled) ?? [];
+  const availableFlags = data?.flags.filter((f) => f.can_manage) ?? [];
 
   const handleToggle = (flag: OrgFeatureFlagSetting, enabled: boolean) => {
-    if (!canManage) return;
+    if (!canManage || !flag.can_manage) return;
     updateFlags.mutate({ [flag.name]: enabled });
   };
 
@@ -29,11 +29,12 @@ export default function FeaturesSettingsPage() {
       <div>
         <h2 className="text-lg font-semibold">Features</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Choose which experimental and optional capabilities are enabled for{" "}
+          Choose which features are enabled for{" "}
           <span className="font-medium text-foreground">
             {currentOrg?.name ?? "this organization"}
           </span>
-          . Flags must be available on this deployment before your organization can opt in.
+          . Adoption features start disabled. Production features start enabled and can be turned
+          off.
         </p>
       </div>
 
@@ -60,7 +61,7 @@ export default function FeaturesSettingsPage() {
 
       {!isLoading && availableFlags.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
-          No experimental features are currently available for your organization.
+          No configurable features are currently available for your organization.
         </Card>
       )}
 
@@ -72,10 +73,10 @@ export default function FeaturesSettingsPage() {
                 <Label htmlFor={`flag-${flag.name}`} className="text-base font-medium">
                   {flag.label}
                 </Label>
-                {flag.experimental && (
+                {flag.grade !== "prod" && (
                   <span className="inline-flex items-center gap-1 text-xs text-warning">
                     <FlaskConical className="h-3.5 w-3.5" />
-                    Experimental
+                    {flag.grade === "dev" ? "Local development" : "Adoption"}
                   </span>
                 )}
               </div>
@@ -89,8 +90,8 @@ export default function FeaturesSettingsPage() {
                 )}
               <Switch
                 id={`flag-${flag.name}`}
-                checked={flag.org_enabled}
-                disabled={!canManage || updateFlags.isPending}
+                checked={flag.effective}
+                disabled={!canManage || !flag.can_manage || updateFlags.isPending}
                 onCheckedChange={(checked) => handleToggle(flag, checked)}
                 aria-label={`Enable ${flag.label}`}
               />

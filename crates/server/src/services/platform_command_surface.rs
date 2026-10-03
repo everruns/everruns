@@ -407,6 +407,9 @@ mod tests {
 
     fn all_flags() -> everruns_platform::FeatureFlags {
         everruns_platform::FeatureFlags {
+            docker_capability: true,
+            container_sandbox: true,
+            lua: true,
             notifications: true,
             evals: true,
             skills: true,
@@ -431,6 +434,9 @@ mod tests {
         discover(
             arguments,
             &everruns_platform::FeatureFlags {
+                docker_capability: true,
+                container_sandbox: true,
+                lua: true,
                 notifications: true,
                 evals: true,
                 skills: true,

@@ -483,6 +483,7 @@
       "feature_flag": "docker_capability",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "docker_container",

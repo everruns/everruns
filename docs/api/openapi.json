@@ -25981,6 +25981,17 @@
           }
         }
       },
+      "FeatureFlagGrade": {
+        "type": "string",
+        "description": "Rollout policy for one feature, independent of the running deployment grade.",
+        "enum": [
+          "dev",
+          "preview",
+          "adoption",
+          "prod",
+          "off"
+        ]
+      },
       "FeatureFlagMap": {
         "type": "object",
         "description": "Untyped API representation of feature flags: a generic `{ \"<flag>\": bool }` map.\n\nDecision: the public API is intentionally untyped. The set of flags churns\nfrequently; encoding each flag as a named schema property would force a\n`docs/api/openapi.json` change on every add/remove. A generic string→bool map\nkeeps the API spec stable. The frontend layers its own typed view on top.",
@@ -34807,22 +34818,27 @@
           "name",
           "label",
           "description",
-          "experimental",
-          "platform_managed",
+          "grade",
           "system_enabled",
-          "org_enabled",
-          "effective"
+          "default_enabled",
+          "effective",
+          "can_manage"
         ],
         "properties": {
+          "can_manage": {
+            "type": "boolean"
+          },
+          "default_enabled": {
+            "type": "boolean"
+          },
           "description": {
             "type": "string"
           },
           "effective": {
-            "type": "boolean",
-            "description": "Effective value (`system_enabled && org_enabled`)."
-          },
-          "experimental": {
             "type": "boolean"
+          },
+          "grade": {
+            "$ref": "#/components/schemas/FeatureFlagGrade"
           },
           "label": {
             "type": "string"
@@ -34830,17 +34846,15 @@
           "name": {
             "type": "string"
           },
-          "org_enabled": {
-            "type": "boolean",
-            "description": "Whether the organization has opted in."
-          },
-          "platform_managed": {
-            "type": "boolean",
-            "description": "Whether only a platform user may enable this flag for the org."
+          "org_override": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "None inherits the grade default; false is a durable prod opt-out."
           },
           "system_enabled": {
-            "type": "boolean",
-            "description": "Whether the deployment allows this flag (env / grade)."
+            "type": "boolean"
           }
         }
       },

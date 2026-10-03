@@ -16,16 +16,17 @@ Container Sandbox gives an agent a Linux container to run code in. The platform
 talks to a Docker Engine you operate over its REST API, so no sandbox vendor is
 involved. Each session gets at most one container, on its own Docker network.
 
-**Off by default.** Set `FEATURE_CONTAINER_SANDBOX=true` on the server and on
-every worker to register the capability. `FEATURE_DOCKER_CAPABILITY=true` also
-turns it on while `FEATURE_CONTAINER_SANDBOX` is unset.
+**Off by default.** Set `FEATURE_CONTAINER_SANDBOX=prod` on the server and on
+every worker to register the capability and enable it by default for organisations.
+Use `dev` for local development or `preview`/`adoption` for explicit enrolment.
+Each capability has its own grade; the Docker flag does not enable the sandbox.
 
 ## Setup
 
 1. Run a Docker Engine the server and workers can reach.
 2. Set `CONTAINER_SANDBOX_DOCKER_HOST` to its `http://` or `https://` URL, on
    the server and every worker.
-3. Set `FEATURE_CONTAINER_SANDBOX=true` in the same places.
+3. Set `FEATURE_CONTAINER_SANDBOX=prod` in the same places.
 4. Add `container_sandbox` to a custom agent or harness. For coding work,
    inherit [Generic](/built-ins/harnesses/generic/) and optionally add
    [GitHub Scout](/capabilities/github-scout/).

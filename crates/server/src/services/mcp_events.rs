@@ -28,7 +28,6 @@ use everruns_core::{
     Caller, EgressRequest, EgressRequestKind, EgressService, Event, EventListener, OrgRole,
     PermissionResolver,
 };
-use everruns_platform::FeatureFlags;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -142,7 +141,7 @@ pub struct McpEventsService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
     egress: Arc<dyn EgressService>,
-    system_flags: FeatureFlags,
+    system_flags: everruns_platform::FeatureFlagPolicy,
     ui_base: Option<String>,
     retry_delays: Vec<Duration>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -153,7 +152,7 @@ impl McpEventsService {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         egress: Arc<dyn EgressService>,
-        system_flags: FeatureFlags,
+        system_flags: everruns_platform::FeatureFlagPolicy,
     ) -> Self {
         Self {
             db,
@@ -179,7 +178,7 @@ impl McpEventsService {
         host: &everruns_host::HostComposition,
         auth: &crate::auth::AuthState,
     ) -> Arc<Self> {
-        let flags = auth.system_feature_flags.clone();
+        let flags = auth.feature_flag_policy.clone();
         Arc::new(
             Self::new(db.clone(), encryption.clone(), host.egress_service(), flags)
                 .with_ui_base(&auth.config.frontend_url)

@@ -511,6 +511,42 @@ impl TestServer {
         runner_override: Option<Arc<dyn AgentRunner>>,
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
     ) -> Self {
+        Self::build_with_feature_policy(
+            mode,
+            api_base_url,
+            atif_export_max_bytes,
+            encryption_enabled,
+            runner_override,
+            permission_resolver,
+            None,
+        )
+        .await
+    }
+
+    pub async fn in_memory_with_feature_policy(
+        policy: everruns_platform::FeatureFlagPolicy,
+    ) -> Self {
+        Self::build_with_feature_policy(
+            TestMode::InMemory,
+            "http://127.0.0.1:0/api".to_string(),
+            None,
+            true,
+            None,
+            None,
+            Some(policy),
+        )
+        .await
+    }
+
+    async fn build_with_feature_policy(
+        mode: TestMode,
+        api_base_url: String,
+        atif_export_max_bytes: Option<usize>,
+        encryption_enabled: bool,
+        runner_override: Option<Arc<dyn AgentRunner>>,
+        permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
+        policy_override: Option<everruns_platform::FeatureFlagPolicy>,
+    ) -> Self {
         // Create storage backend based on mode
         let (db, pool, durable_store) = match mode {
             TestMode::Postgres => {
@@ -601,28 +637,6 @@ impl TestServer {
         // publish to the same broadcast backend that SSE subscribers listen on.
         let event_delivery = everruns_server::EventDelivery::in_memory();
 
-        let webhooks = Arc::new(WebhookReceiver::default());
-        let mcp_events = Arc::new(
-            services::mcp_events::McpEventsService::new(
-                db.clone(),
-                encryption.clone(),
-                webhooks.clone(),
-                everruns_platform::FeatureFlags {
-                    mcp_events: true,
-                    ..Default::default()
-                },
-            )
-            .with_ui_base(auth_config.frontend_url.clone())
-            .with_retry_delays(vec![std::time::Duration::ZERO; 2])
-            .with_permission_resolver(auth_state.permission_resolver.clone()),
-        );
-
-        // Create event listeners (minimal for tests)
-        let event_service = Arc::new(services::EventService::with_listeners(
-            db.clone(),
-            event_delivery.clone(),
-            vec![],
-        ));
         let mut feature_flags = everruns_platform::FeatureFlags::from_env(&grade);
         feature_flags.evals = true;
         feature_flags.observers = true;
@@ -662,11 +676,44 @@ impl TestServer {
             .await
             .expect("seed org feature flags for test org");
 
-        // The auth middleware resolves each request's org-effective flags as
-        // `system && org-opt-in`, taking the system side from
-        // `AuthState::system_feature_flags` (defaults to `FeatureFlags::current()`).
-        // Point it at the harness's system flags so the gates above see them on.
-        let auth_state = auth_state.with_system_feature_flags(feature_flags.clone());
+        let mut feature_flag_policy = everruns_platform::FeatureFlagPolicy::from_env(grade);
+        for (name, enabled) in &feature_flags.to_map().0 {
+            feature_flag_policy = feature_flag_policy.with_grade(
+                name,
+                if *enabled {
+                    everruns_platform::FeatureFlagGrade::Adoption
+                } else {
+                    everruns_platform::FeatureFlagGrade::Off
+                },
+            );
+        }
+        feature_flag_policy = feature_flag_policy.with_grade(
+            "openai_agents_api",
+            everruns_platform::FeatureFlagGrade::Preview,
+        );
+        let feature_flag_policy = policy_override.unwrap_or(feature_flag_policy);
+        let feature_flags = feature_flag_policy.deployment_flags();
+        let auth_state = auth_state.with_feature_flag_policy(feature_flag_policy.clone());
+
+        let webhooks = Arc::new(WebhookReceiver::default());
+        let mcp_events = Arc::new(
+            services::mcp_events::McpEventsService::new(
+                db.clone(),
+                encryption.clone(),
+                webhooks.clone(),
+                feature_flag_policy.clone(),
+            )
+            .with_ui_base(auth_config.frontend_url.clone())
+            .with_retry_delays(vec![std::time::Duration::ZERO; 2])
+            .with_permission_resolver(auth_state.permission_resolver.clone()),
+        );
+
+        // Create event listeners (minimal for tests)
+        let event_service = Arc::new(services::EventService::with_listeners(
+            db.clone(),
+            event_delivery.clone(),
+            vec![],
+        ));
         let mcp_servers = Arc::new(McpServerSlot::default());
         let mcp_event_triggers = Arc::new(
             everruns_server::domains::agent_triggers::McpEventTriggers::new(
@@ -674,7 +721,7 @@ impl TestServer {
                 encryption.clone(),
                 mcp_servers.clone(),
                 auth_config.base_url.clone(),
-                feature_flags.clone(),
+                feature_flag_policy.clone(),
             ),
         );
 
@@ -882,7 +929,7 @@ impl TestServer {
         let org_feature_flags_state = api::org_feature_flags::AppState::new(
             db.clone(),
             auth_state.clone(),
-            feature_flags.clone(),
+            feature_flag_policy.clone(),
         );
         // Environments are gated on the deployment flag, which this harness
         // turns on above, so integration tests can exercise the routes.
@@ -1083,6 +1130,10 @@ impl TestServer {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::org_feature_flags::routes(org_feature_flags_state))
+            .merge(api::payments::routes(
+                api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone()),
+                feature_flags.machine_payments,
+            ))
             .merge(api::environments::routes(environments_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::reporting::routes(reporting_state))

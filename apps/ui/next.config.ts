@@ -5,15 +5,15 @@ export function webMcpPermissionsPolicy(env: {
   deploymentGrade: string | undefined;
   devMode: string | undefined;
 }): string {
-  const explicitlyEnabled = env.feature === "true" || env.feature === "1";
-  const explicitlyDisabled = env.feature !== undefined && !explicitlyEnabled;
-  const grade = env.deploymentGrade?.toLowerCase();
-  const developmentDefault =
-    !explicitlyDisabled &&
-    (grade === "dev" ||
-      grade === "development" ||
-      (!grade && (env.devMode === "true" || env.devMode === "1")));
-  return explicitlyEnabled || developmentDefault ? "tools=(self)" : "tools=()";
+  const deployment = env.deploymentGrade?.toLowerCase();
+  const local =
+    deployment === "dev" ||
+    deployment === "development" ||
+    (env.deploymentGrade === undefined && (env.devMode === "true" || env.devMode === "1"));
+  const grade = env.feature ?? "dev";
+  const available =
+    grade === "preview" || grade === "adoption" || grade === "prod" || (grade === "dev" && local);
+  return available ? "tools=(self)" : "tools=()";
 }
 
 const nextConfig: NextConfig = {

@@ -98,6 +98,7 @@ pub mod utility_llm;
 // the resolved registration-time decisions consumed by the capability
 // registry builders.
 pub mod execution_features;
+pub mod feature_flag_grade;
 pub mod localization;
 
 // Telemetry conventions (neutral gen-ai span metadata contracts)
@@ -585,5 +586,6 @@ pub use deployment::DeploymentGrade;
 // catalog live in `everruns-platform`; core re-exports only the resolved
 // execution-facing values.
 pub use execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
+pub use feature_flag_grade::FeatureFlagGrade;
 
 mod sandbox_context;

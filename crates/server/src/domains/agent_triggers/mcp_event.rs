@@ -46,7 +46,7 @@ use crate::storage::encryption::EncryptionService;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
 use chrono::{DateTime, Utc};
 use everruns_core::{EgressService, McpServerActsAs, McpServerAuthMode, ScopedMcpServer};
-use everruns_platform::{AgentTriggerType, FeatureFlags, McpEventTriggerConfig};
+use everruns_platform::{AgentTriggerType, McpEventTriggerConfig};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -361,7 +361,7 @@ pub struct McpEventTriggers {
     encryption: Option<Arc<EncryptionService>>,
     egress: Arc<dyn EgressService>,
     api_base_url: String,
-    system_flags: FeatureFlags,
+    system_flags: everruns_platform::FeatureFlagPolicy,
 }
 
 impl McpEventTriggers {
@@ -370,7 +370,7 @@ impl McpEventTriggers {
         encryption: Option<Arc<EncryptionService>>,
         egress: Arc<dyn EgressService>,
         api_base_url: impl Into<String>,
-        system_flags: FeatureFlags,
+        system_flags: everruns_platform::FeatureFlagPolicy,
     ) -> Self {
         Self {
             db,
@@ -393,7 +393,7 @@ impl McpEventTriggers {
             encryption.clone(),
             host.egress_service(),
             auth.config.base_url.clone(),
-            auth.system_feature_flags.clone(),
+            auth.feature_flag_policy.clone(),
         ))
     }
 

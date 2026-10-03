@@ -32,6 +32,7 @@ pub struct ServerPaymentAuthority {
     encryption: Option<Arc<EncryptionService>>,
     org_id: i64,
     agent_id: Option<AgentId>,
+    feature_flag_policy: everruns_platform::FeatureFlagPolicy,
 }
 
 impl ServerPaymentAuthority {
@@ -46,6 +47,7 @@ impl ServerPaymentAuthority {
             encryption,
             org_id,
             agent_id,
+            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
         }
     }
 }
@@ -63,6 +65,22 @@ impl PaymentAuthority for ServerPaymentAuthority {
         session_id: SessionId,
         request: MachinePaymentRequest,
     ) -> Result<MachinePaymentResponse> {
+        // Re-check durable policy at spend time: an already-loaded tool must not
+        // bypass an organisation opt-out or a deployment kill switch.
+        let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &self.db,
+            self.org_id,
+            &self.feature_flag_policy,
+        )
+        .await
+        .map_err(|error| {
+            AgentLoopError::store(format!("Failed to resolve payment feature: {error}"))
+        })?;
+        if !flags.machine_payments {
+            return Err(AgentLoopError::config(
+                "feature_not_enabled: machine_payments",
+            ));
+        }
         validate_request_shape(&request)?;
         let request_hash = request_hash(&request);
         let selected = match self.select_policy(session_id, &request).await {
@@ -784,6 +802,43 @@ fn request_hash(request: &MachinePaymentRequest) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn payment_execution_observes_org_revocation_before_request_or_spend() {
+        use everruns_core::{DeploymentGrade, FeatureFlagGrade};
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut authority = ServerPaymentAuthority::new(db.clone(), None, 42, None);
+        authority.feature_flag_policy =
+            everruns_platform::FeatureFlagPolicy::from_env(DeploymentGrade::Prod)
+                .with_grade("machine_payments", FeatureFlagGrade::Prod);
+        // An invalid request cannot reach a transport, even when the flag is on.
+        let request = MachinePaymentRequest {
+            capability: "parallel".into(),
+            operation: "search".into(),
+            method: PaymentMethod::Post,
+            url: String::new(),
+            body: None,
+            max_amount_usd: 0.01,
+            rail_preference: vec![],
+            metadata: json!({}),
+        };
+        let before = authority
+            .execute_machine_payment(SessionId::new(), request.clone())
+            .await
+            .unwrap_err();
+        assert!(!before.to_string().contains("feature_not_enabled"));
+        db.replace_org_feature_flags(
+            42,
+            &std::collections::HashMap::from([("machine_payments".into(), false)]),
+        )
+        .await
+        .unwrap();
+        let after = authority
+            .execute_machine_payment(SessionId::new(), request)
+            .await
+            .unwrap_err();
+        assert!(after.to_string().contains("feature_not_enabled"));
+    }
 
     /// Anvil development key #0. Public test vector, never a real key.
     const TEST_PRIVATE_KEY: &str =

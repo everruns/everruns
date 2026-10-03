@@ -16,7 +16,7 @@ Verify that the evals sidebar link is hidden when the `evals` feature flag is di
 
 ## Preconditions
 
-- Server running with `FEATURE_EVALS=false` (or production mode without explicit flag)
+- Server running with `FEATURE_EVALS=off` (or production mode without explicit flag)
 - User logged in
 
 ## Test Data
