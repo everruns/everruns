@@ -417,14 +417,12 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "base64",
- "everruns-builtins",
  "everruns-contracts",
  "everruns-core",
- "everruns-host",
  "everruns-integrations-filesystem",
  "everruns-llmsim",
  "everruns-macros",
@@ -438,32 +436,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-builtins"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "chrono-tz",
- "everruns-contracts",
- "everruns-core",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "everruns-capabilities"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
  "everruns-contracts",
  "everruns-core",
- "everruns-host",
  "inventory",
  "jsonschema",
  "serde",
@@ -476,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -510,18 +490,22 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
  "chrono",
+ "chrono-tz",
  "cron",
  "everruns-contracts",
+ "fs2",
  "futures",
  "globset",
+ "ignore",
  "inventory",
  "jsonschema",
+ "libc",
  "rand 0.10.3",
  "regex",
  "serde",
@@ -539,52 +523,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-engine"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "futures",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
- "web-time",
-]
-
-[[package]]
-name = "everruns-host"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-builtins",
- "everruns-contracts",
- "everruns-core",
- "everruns-engine",
- "everruns-integrations-filesystem",
- "fs2",
- "futures",
- "ignore",
- "libc",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "everruns-integrations-filesystem"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -600,12 +540,12 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "everruns-contracts",
- "everruns-host",
+ "everruns-core",
  "futures",
  "llmsim",
  "serde_json",
@@ -614,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -625,7 +565,6 @@ dependencies = [
 name = "external-builtin-pack"
 version = "0.0.0"
 dependencies = [
- "everruns-builtins",
  "everruns-contracts",
  "everruns-core",
 ]
@@ -656,7 +595,6 @@ dependencies = [
  "async-trait",
  "everruns-contracts",
  "everruns-core",
- "everruns-host",
  "everruns-llmsim",
  "tokio",
 ]
@@ -668,8 +606,6 @@ dependencies = [
  "async-trait",
  "everruns-contracts",
  "everruns-core",
- "everruns-engine",
- "everruns-host",
 ]
 
 [[package]]
@@ -701,7 +637,7 @@ name = "external-workspace-backend"
 version = "0.0.0"
 dependencies = [
  "async-trait",
- "everruns-host",
+ "everruns-core",
 ]
 
 [[package]]

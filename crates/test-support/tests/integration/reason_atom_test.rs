@@ -9,7 +9,8 @@ use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::engine::{ReasonInput, ReasonResult};
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::host::{
-    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
+    InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
+    InMemoryProviderStore, InMemorySessionStore,
 };
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::{
@@ -261,7 +262,7 @@ struct ProactiveTestRig {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     event_emitter: InMemoryEventEmitter,
-    checkpoint_store: Arc<everruns_core::host::InMemoryCompactionCheckpointStore>,
+    checkpoint_store: Arc<InMemoryCompactionCheckpointStore>,
     harness_id: HarnessId,
     agent_id: Uuid,
     session_id: Uuid,
@@ -349,9 +350,7 @@ impl ProactiveTestRig {
             capability_registry,
             driver_registry,
             event_emitter: InMemoryEventEmitter::new(),
-            checkpoint_store: Arc::new(
-                everruns_core::host::InMemoryCompactionCheckpointStore::default(),
-            ),
+            checkpoint_store: Arc::new(InMemoryCompactionCheckpointStore::default()),
             harness_id,
             agent_id,
             session_id,
@@ -433,7 +432,7 @@ impl ProactiveTestRig {
 }
 
 struct FailingProactiveAttemptStore {
-    checkpoints: Arc<everruns_core::host::InMemoryCompactionCheckpointStore>,
+    checkpoints: Arc<InMemoryCompactionCheckpointStore>,
 }
 
 #[async_trait]
@@ -914,8 +913,7 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     let mut capability_registry = CapabilityRegistry::new();
     capability_registry.register(CompactionCapability);
     let event_emitter = InMemoryEventEmitter::new();
-    let checkpoint_store =
-        Arc::new(everruns_core::host::InMemoryCompactionCheckpointStore::default());
+    let checkpoint_store = Arc::new(InMemoryCompactionCheckpointStore::default());
     let atom = reason_atom_with_stores(
         harness_store.clone(),
         agent_store.clone(),

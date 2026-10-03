@@ -47,6 +47,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "async-stream"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -394,25 +416,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-builtins"
-version = "0.39.0"
+name = "everruns"
+version = "0.38.0"
 dependencies = [
  "async-trait",
- "chrono",
- "chrono-tz",
+ "base64",
  "everruns-contracts",
  "everruns-core",
- "serde",
+ "everruns-drivers",
+ "everruns-llmsim",
  "serde_json",
- "sha2",
  "tokio",
+ "tokio-util",
  "tracing",
  "uuid",
 ]
 
 [[package]]
 name = "everruns-contracts"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -445,18 +467,22 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
  "chrono",
+ "chrono-tz",
  "cron",
  "everruns-contracts",
+ "fs2",
  "futures",
  "globset",
+ "ignore",
  "inventory",
  "jsonschema",
+ "libc",
  "rand 0.10.3",
  "regex",
  "serde",
@@ -475,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-drivers"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -483,25 +509,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "everruns-engine"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "futures",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
- "web-time",
 ]
 
 [[package]]
@@ -509,10 +516,9 @@ name = "everruns-guardrail-calibration"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "everruns-builtins",
+ "everruns",
  "everruns-contracts",
  "everruns-core",
- "everruns-host",
  "everruns-integrations-typesafe",
  "mira-eval",
  "serde_json",
@@ -520,32 +526,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-host"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "everruns-drivers",
- "everruns-engine",
- "fs2",
- "futures",
- "ignore",
- "libc",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "everruns-integrations-typesafe"
-version = "0.39.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "everruns-contracts",
@@ -556,6 +538,19 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "everruns-llmsim"
+version = "0.38.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns-contracts",
+ "futures",
+ "llmsim",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -1232,6 +1227,24 @@ name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
+
+[[package]]
+name = "llmsim"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a05ca538f4ed6223baae5513aa5c2c248a0c6b7e1ba448b7192068527d19eafd"
+dependencies = [
+ "async-stream",
+ "futures-core",
+ "futures-util",
+ "rand 0.10.3",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "toml",
+ "tracing",
+]
 
 [[package]]
 name = "lock_api"
