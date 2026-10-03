@@ -51,23 +51,19 @@ if echo "$CORE_TREE" | grep -qE "$EXPORTER_CRATES_TREE"; then
 fi
 
 # 3. Framework facade and provider-only crates: shipped dependency tree free
-#    of the exporter subtree (default and no-default builds alike — the
-#    default check subsumes no-default since features only add edges).
+#    of the exporter subtree. Framework/host defaults subsume no-default;
+#    drivers enable every vendor feature, matching the retired shim coverage.
 CLEAN_CRATES=(
   everruns
   everruns-host
-  everruns-openai
-  everruns-anthropic
-  everruns-openrouter
-  everruns-gemini
-  everruns-bedrock
-  everruns-mai
-  everruns-fireworks
-  everruns-meta
   everruns-drivers
 )
 for crate in "${CLEAN_CRATES[@]}"; do
-  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
+  if [ "$crate" = everruns-drivers ]; then
+    tree=$(guard_cargo_tree -p "$crate" --all-features --edges normal --prefix none)
+  else
+    tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
+  fi
   if echo "$tree" | grep -qE "$EXPORTER_CRATES_TREE"; then
     echo "$crate must not ship OpenTelemetry/OTLP exporter crates in its normal dependency tree:"
     echo "$tree" | grep -E "$EXPORTER_CRATES_TREE" | sort -u

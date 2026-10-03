@@ -9,7 +9,7 @@
 # 2. Provider crate manifests must not declare a direct everruns-core /
 #    everruns-host / everruns-platform / everruns-server dependency on any
 #    edge kind (normal, build, or dev).
-# 3. `cargo tree` for each provider crate must be free of those crates on
+# 3. `cargo tree` with every vendor feature enabled must be free of those crates on
 #    every edge kind, so provider-only builds never compile the kernel.
 # 4. Provider-only shipped trees must not pull core's heavy feature subtrees:
 #    no sqlx, utoipa, inventory, axum, or tonic in normal edges. (The
@@ -37,39 +37,23 @@ source "$SCRIPT_DIR/guard-cargo.sh"
 FAILED=0
 
 DRIVER_LAYOUT_NAMES=(
-  anthropic
-  bedrock
-  fireworks
-  gemini
   llmsim
-  mai
-  meta
-  openai
-  openrouter
   drivers
 )
 PROVIDER_DIRS=(
-  crates/drivers/openai
-  crates/drivers/anthropic
-  crates/drivers/openrouter
-  crates/drivers/gemini
-  crates/drivers/bedrock
-  crates/drivers/mai
-  crates/drivers/fireworks
-  crates/drivers/meta
   crates/drivers/drivers
 )
 PROVIDER_CRATES=(
-  everruns-openai
-  everruns-anthropic
-  everruns-openrouter
-  everruns-gemini
-  everruns-bedrock
-  everruns-mai
-  everruns-fireworks
-  everruns-meta
   everruns-drivers
 )
+# Retired shim crates must not return as parallel implementations.
+RETIRED_DRIVER_NAMES=(anthropic bedrock fireworks gemini mai meta openai openrouter)
+for driver in "${RETIRED_DRIVER_NAMES[@]}"; do
+  if [ -e "crates/drivers/$driver" ] || [ -e "crates/$driver" ]; then
+    echo "Retired vendor package must remain a module of everruns-drivers: $driver"
+    FAILED=1
+  fi
+done
 FORBIDDEN_TREE='^(everruns-core|everruns-host|everruns-platform|everruns-server) '
 HEAVY_TREE='^(sqlx|utoipa|inventory|axum|tonic) '
 
@@ -110,7 +94,7 @@ done
 # 3. Dependency trees: forbidden crates absent on every edge kind, so
 #    `cargo test -p <provider>` never builds the kernel.
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(guard_cargo_tree -p "$crate" --edges normal,build,dev --prefix none)
+  tree=$(guard_cargo_tree -p "$crate" --all-features --edges normal,build,dev --prefix none)
   if echo "$tree" | grep -qE "$FORBIDDEN_TREE"; then
     echo "$crate must not depend on core/host/platform/server (any edge kind):"
     echo "$tree" | grep -E "$FORBIDDEN_TREE" | sort -u
@@ -118,10 +102,10 @@ for crate in "${PROVIDER_CRATES[@]}"; do
   fi
 done
 
-# 4. Shipped (normal-edge) trees: no heavy core feature subtree leaks into
-#    provider-only builds.
+# 4. Shipped (normal-edge) trees with every vendor feature enabled: no heavy
+#    core feature subtree leaks into provider-only builds.
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
+  tree=$(guard_cargo_tree -p "$crate" --all-features --edges normal --prefix none)
   if echo "$tree" | grep -qE "$HEAVY_TREE"; then
     echo "$crate must not ship heavy core feature subtrees (sqlx/utoipa/inventory/axum/tonic):"
     echo "$tree" | grep -E "$HEAVY_TREE" | sort -u

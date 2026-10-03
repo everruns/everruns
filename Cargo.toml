@@ -18,17 +18,8 @@ members = [
     "crates/mcp",
     "crates/llm-tests",
     # LLM drivers. Every vendor driver is a module of crates/drivers/drivers
-    # (everruns-drivers). The per-vendor packages below are deprecated shims
-    # that re-export those modules for one release, then leave.
-    "crates/drivers/anthropic",
-    "crates/drivers/bedrock",
-    "crates/drivers/fireworks",
-    "crates/drivers/gemini",
+    # (everruns-drivers); the eight vendor shim packages retired after 0.35.
     "crates/drivers/llmsim",
-    "crates/drivers/mai",
-    "crates/drivers/meta",
-    "crates/drivers/openai",
-    "crates/drivers/openrouter",
     "crates/drivers/drivers",
     "crates/turbopuffer",
     "crates/internal-protocol",

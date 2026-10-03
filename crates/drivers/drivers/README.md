@@ -68,8 +68,9 @@ register_drivers(&mut registry);
 
 `everruns-anthropic`, `everruns-bedrock`, `everruns-fireworks`,
 `everruns-gemini`, `everruns-mai`, `everruns-meta`, `everruns-openai`, and
-`everruns-openrouter` are now modules of this crate. Their last release is a
-deprecated shim that re-exports the module, and they get no further updates.
+`everruns-openrouter` are now modules of this crate. Their final release, 0.35, is a
+deprecated shim that re-exports the module. The shim packages are retired from
+the workspace and publish set; all vendors remain available here.
 To migrate, replace the dependency with this crate and the vendor's feature:
 
 ```toml
