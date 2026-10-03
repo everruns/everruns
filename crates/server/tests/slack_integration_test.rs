@@ -9,6 +9,8 @@
 //! Two tiers:
 //! - **Webhook tests**: Always run (use test harness, no real Slack needed)
 //! - **Real Slack tests**: Only run when SLACK_BOT_TOKEN + SLACK_SIGNING_SECRET are set
+//! - **Live contract tests**: Call real Slack with placeholder tokens, so they need
+//!   network access but no credentials
 //!
 //! Run webhook tests:
 //!   cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
@@ -1238,4 +1240,39 @@ async fn test_slack_replay_attack_old_timestamp() {
         .await;
 
     resp.assert_status(StatusCode::UNAUTHORIZED);
+}
+
+/// Live contract check for `tooling.tokens.rotate`, which needs no credentials.
+///
+/// A placeholder refresh token is enough: Slack answers `invalid_refresh_token`
+/// only after it has parsed the argument, and `invalid_arguments` when it could
+/// not find one. A JSON body produced the second for every real token, and the
+/// mocked unit tests could not see it because they matched what we sent.
+#[tokio::test]
+async fn test_real_slack_reads_the_configuration_refresh_token() {
+    use everruns_platform::slack_provisioning::SlackProvisioningError;
+    use everruns_server::slack_provisioning::SlackApiProvisioner;
+    use everruns_server::storage::{EncryptionService, StorageBackend};
+    use std::sync::Arc;
+
+    let encryption = Arc::new(
+        EncryptionService::new("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
+            .expect("test encryption"),
+    );
+    let provisioner = SlackApiProvisioner::new(Arc::new(StorageBackend::in_memory()), encryption)
+        .expect("provisioner");
+
+    match provisioner
+        .connect(1, "xoxe-1-everruns-contract-check")
+        .await
+    {
+        Err(SlackProvisioningError::Rejected(code)) => assert_eq!(
+            code, "invalid_refresh_token",
+            "Slack did not read the refresh token argument"
+        ),
+        Err(SlackProvisioningError::Unreachable(error)) => {
+            eprintln!("Skipping: Slack unreachable ({error})");
+        }
+        other => panic!("unexpected result for a placeholder token: {other:?}"),
+    }
 }
