@@ -1,39 +1,61 @@
 ---
 title: Concepts
-description: How harnesses, agents, endpoints, sessions, turns, events, capabilities, tools, and files fit together in the execution model.
+description: A glossary of the Everruns execution model, harnesses, agents, sessions, turns, events, capabilities, tools, endpoints, and settings, with links to the design pages.
 ---
 
-This page is the **concept cheat-sheet**: short definitions of every entity, organised into three layers (high-level execution model, session internals, and settings). For the design rationale behind each entity, read [Core concepts](/explanation/concepts/) under Explanation.
+This page defines each entity you meet in Everruns and links to the page that explains it in depth. The entities fall into three layers:
 
-## High Level
+| Layer | Entities | Lifetime |
+|---|---|---|
+| **Configuration** | Harness, Agent, Capability | Long-lived. You author these. |
+| **Runtime** | Session, Turn, RuntimeAgent | Created per conversation. The server owns these. |
+| **Data** | Event, Message | Append-only log produced during runtime. |
 
-Harness and Agent are **configuration containers**: they hold capabilities and define behavior. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
+Your application creates configuration, starts runtime, and consumes data.
 
 ![Configuration Hierarchy](../images/concepts/configuration-hierarchy.svg)
 
-- **Solid arrows**: configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
-- **Dashed arrows**: runtime assembly: config merges into RuntimeAgent, which executes in a Session
+Solid arrows show configuration ownership: a Harness has Agents and Capabilities, and an Agent has Capabilities. Dashed arrows show runtime assembly: configuration merges into a RuntimeAgent, which executes in a Session.
+
+## Configuration
 
 ### Harness
 
-A Harness is what an agent runs on. It defines the execution environment, defaults, and constraints for sessions: which capabilities are available by default, the default model, network access, and starter files.
+What an agent runs on: the execution environment, defaults, and constraints for sessions. A harness sets which capabilities are available by default, the default model, network access, and starter files.
 
-- There can be many harnesses in the system
-- Each agent holds exactly one harness reference
-- Each session runs on exactly one harness, the agent's unless the session names another
-- A harness can have capabilities attached to it
+- Each agent holds exactly one harness reference, and many agents can share one harness.
+- Each session runs on exactly one harness, the agent's unless the session names another.
+- A harness can have capabilities attached to it.
 
-A Harness is not the agent loop. "Agent harness" commonly means that loop elsewhere, and Everruns uses the word that way when describing itself as a durable agentic harness engine. The loop is the runtime; a Harness is configuration the runtime reads. See [Harnesses](/features/harnesses/).
+A Harness is not the agent loop. Elsewhere "agent harness" often means that loop, and Everruns uses the word that way when it calls itself a durable agentic harness engine. The loop is the runtime; a Harness is configuration the runtime reads. See [Harnesses](/features/harnesses/).
 
 ### Agent
 
-An Agent is a domain-specific or task-specific configuration for the agentic loop. It defines the system prompt, the default LLM model, and which capabilities are enabled.
+A domain-specific or task-specific configuration for the agentic loop: the system prompt, the default model, and the enabled capabilities.
 
-- There can be many agents in the system
-- A session may or may not have an agent assigned
-- Agents can be assigned or changed during the lifetime of a session
-- Each agent has capabilities with position ordering
-- Each agent references a default LLM model
+- A session may or may not have an agent, and the agent can change during the session.
+- Each agent has capabilities with position ordering and references a default model.
+
+### Capability
+
+A reusable unit that extends a harness, agent, or session. A capability can contribute system prompt additions, tools, and mount points (files and directories in the session filesystem).
+
+- Session capabilities are additive to agent capabilities.
+- Built-in capabilities use `snake_case` IDs, such as `current_time` and `web_fetch`.
+- MCP servers appear as virtual capabilities with `mcp:{uuid}` IDs, and registry skills as `skill:{uuid}`.
+- Capabilities can depend on other capabilities. Dependencies resolve in topological order, so enabling `bashkit_shell` pulls in `session_file_system`.
+- Order matters: earlier capabilities' prompt fragments appear first in the merged system prompt.
+
+A capability exists because the tool definition, the prompt text that teaches the model when to use it, and the session state it needs travel together. See [Capabilities](/features/capabilities/).
+
+### Endpoint
+
+An Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A, FCP, and Public Chat each use an endpoint with transport-specific configuration.
+
+- Each endpoint belongs to exactly one Agent and has its own publish state, credentials, identity, session routing, and version policy.
+- An Agent can own several endpoints, each published or revoked independently.
+
+Create and manage endpoints from the Agent's **Integrations** tab. See [Endpoints](/features/endpoints/). For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead.
 
 ### Everruns user and virtual user
 
@@ -43,157 +65,88 @@ Each organization membership has a default end-user virtual user. Chats and **Se
 
 A service virtual user is an agent's account for unattended execution. User connections resolve from the speaker of the current turn. Service connections resolve from the responding agent's service account. Neither inherits credentials from a session owner's management identity.
 
+## Runtime
+
+### RuntimeAgent
+
+The merged configuration a session executes. When a session starts, harness, agent, and session settings fold into one `RuntimeAgent`: earlier layers form the base and later layers override or add. System prompts concatenate, capabilities are deduplicated by ID, and network policies can only narrow (allow lists intersect, blocklists union).
+
+Each layer answers a different question. The harness answers "what environment am I running in?", the agent answers "what role am I playing?", and the session answers "what is true for this one conversation?". Operators control harnesses, application authors control agents, and end users or the runtime control sessions.
+
 ### Session
 
-A Session is a working instance of an agentic loop. It is configured by its harness and, optionally, by an agent. Sessions are the primary execution context where conversations happen.
+A working instance of the agentic loop and the context where a conversation happens. A session owns an isolated filesystem, a key-value store, and the full event log.
 
-- There can be many sessions in the system
-- Each session has an assigned harness
-- The agent is optional and can change over the session's lifetime
-- Sessions can have their own capabilities, which are additive to the agent's capabilities
-- Sessions can override the LLM model
-- Status flow: `started` → `active` → `idle`, with `waiting_for_tool_results` while client-side tools run and `paused` when a budget pauses work (sessions work indefinitely)
-
-### Capability
-
-A Capability is a modular, reusable configuration unit that extends the behavior of a harness, agent, or session. Each capability can contribute:
-
-1. **System prompt additions**: text prepended to the agent's prompt
-2. **Tools**: functions the agent can invoke
-3. **Mount points**: files and directories populated in the session filesystem
-
-- Can be attached to a harness, an agent, or a session
-- Session capabilities are additive to agent capabilities
-- Built-in capabilities use `snake_case` IDs (e.g., `current_time`, `web_fetch`)
-- MCP servers appear as virtual capabilities with `mcp:{uuid}` IDs
-- Capabilities can depend on other capabilities, resolved in topological order
-
-See [Capabilities](/features/capabilities/) for a full list and configuration details.
-
-### Tool
-
-A Tool is a function the agent can invoke during execution. Tools are provided by capabilities.
-
-- Built-in tools have no name prefix
-- MCP tools are prefixed: `mcp_{server_name}__{tool_name}`
-- Executed during the act phase of a turn
-
-### Endpoint
-
-An Endpoint is an Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A, FCP, and Public Chat each use an endpoint with transport-specific configuration.
-
-- Each endpoint belongs to exactly one Agent.
-- Each endpoint has its own publish state, credentials, identity, and version policy.
-- Lifecycle: `draft` → `live` → `draft`.
-- Incoming messages route to sessions by the endpoint's session strategy.
-- An Agent can own multiple independently published endpoints.
-
-Open an Agent's **Integrations** tab to create and manage endpoints. See [Slack Integration](/integrations/slack/) for a complete example.
-
----
-
-## Session Internals
-
-Each session contains turns, messages, events, an isolated filesystem, and key-value storage.
+- Each session has a harness; the agent is optional.
+- Sessions can add their own capabilities and override the model.
+- Status flow: `started` → `active` → `idle`, with `waiting_for_tool_results` while client-side tools run and `paused` when a budget pauses work. Sessions do not terminate; they wait in `idle` for the next input.
 
 ![Session Internals](../images/concepts/session-internals.svg)
 
 ### Turn
 
-A Turn is the agent's response to one input message: one or more iterations of the agent loop, each a reason step (call the LLM) followed by an act step (execute tools).
+The agent's response to one input message: one or more iterations of the loop, each a reason step (call the model) followed by an act step (run the tools the model asked for, in parallel). The turn ends when the model produces a final answer.
 
-- Each turn belongs to a session
-- A turn produces messages and emits events
-- Lifecycle: `turn.started` → reason → act → `turn.completed` (or `turn.failed`)
+- Lifecycle: `turn.started` → reason → act → `turn.completed` (or `turn.failed`).
+- A turn runs at most **500 iterations** by default; set `max_iterations` on the agent or session to change it.
 
-#### The Agentic Loop
+On the Platform each step is a separate durable task, so a turn survives a worker crash. See [The agentic loop](/explanation/agentic-loop/) and [Durable execution](/explanation/durable-execution/).
 
-Understanding the reason-act loop is key to building effective agents. Here's what happens inside each turn:
+### Tool
 
-![Agentic Loop](../images/concepts/agentic-loop.svg)
+A function the agent can invoke during the act step. Capabilities provide tools.
 
-Each iteration:
+- Built-in tools have no name prefix.
+- MCP tools are prefixed: `mcp_{server_name}__{tool_name}`.
 
-1. **Reason**: The LLM receives the full conversation history (system prompt + messages + tool results) and produces either a text response or tool calls
-2. **Act**: All tool calls from the LLM are executed in parallel. Results are added to the conversation history
-3. **Loop**: If there were tool calls, go back to Reason. If the LLM produced a final text response, the turn is complete
+### File system
 
-The loop runs for at most **500 iterations** per turn by default to prevent runaway execution; set `max_iterations` on the agent or session to change it.
+Each session has an isolated virtual filesystem stored in PostgreSQL. Paths are relative to `/workspace`, capabilities can mount initial files, the File System and Bashkit Shell capabilities share it, and files can be marked read-only.
 
-#### Durable Execution
+### Key-value store
 
-In production mode (PostgreSQL-backed), each step is a separate durable task:
+Each session has scoped storage in two tiers: plain key/value entries for state and intermediate results, and secrets encrypted at rest with AES-256-GCM. Storage cannot be read across sessions.
 
-![Durable Execution Pipeline](../images/concepts/durable-execution-pipeline.svg)
-
-If a worker crashes mid-turn, the control plane detects the missed heartbeat and re-queues the task for another worker. Your application sees a brief delay, not a failure.
-
-### Message
-
-A Message is a conversation entry reconstructed from the event log. Messages are not stored in a separate table.
-
-- Roles: `user`, `agent`, `tool_result`
-- Content is an array of parts: text, image, tool_call, tool_result
-- Agent messages may include extended thinking content from reasoning models (Anthropic Claude, OpenAI GPT-5.x and o-series)
-- Supports per-message controls such as model override and reasoning effort
+## Data
 
 ### Event
 
-An Event is an immutable, append-only record. Events are the primary data store for conversations and SSE notifications.
+An immutable, append-only record and the primary store for conversations and SSE notifications.
 
-- Atomic per-session sequence numbering
-- Types: input, output, turn, atom, tool, LLM, session lifecycle
-- Cannot be updated or deleted
-- Carries correlation context: turn ID, input message ID, execution ID
+- Atomic per-session sequence numbering.
+- Types cover input, output, turn, atom, tool, LLM, and session lifecycle.
+- Events carry correlation context: turn ID, input message ID, execution ID.
 
-See [Events](/features/events/) for the full event reference.
+See [Events as the primary store](/explanation/events/) for why the log comes first, and the [Event Reference](/event-reference/) for every type.
 
-### File System
+### Message
 
-Each session has an isolated virtual filesystem stored in PostgreSQL.
+A conversation entry reconstructed from the event log. There is no separate messages table.
 
-- Paths are relative to `/workspace`
-- Capabilities can mount initial files and directories
-- Shared between the FileSystem and BashkitShell capabilities
-- Files support an optional read-only flag
-
-### Key-Value Store
-
-Each session has scoped storage with two tiers:
-
-- **Key/Value**: plain text storage for general data such as state, preferences, or intermediate results
-- **Secrets**: AES-256-GCM encrypted at rest for API keys, tokens, and credentials
-- Storage is session-isolated and cannot be accessed across sessions
-
----
+- Roles: `user`, `agent`, `tool_result`.
+- Content is an array of parts: text, image, tool_call, tool_result.
+- Agent messages may include extended thinking from reasoning models.
+- Per-message controls include a model override and reasoning effort.
 
 ## Settings
 
-System-wide configuration for LLM providers, models, and MCP servers.
-
 ![Settings](../images/concepts/settings.svg)
 
-### LLM Provider
+### LLM provider
 
-An LLM Provider is a configured API provider such as OpenAI or Anthropic. Providers store encrypted API keys and contain models.
+A configured API provider such as OpenAI or Anthropic. Providers store encrypted API keys and contain models. See [Providers](/providers/). On Everruns Cloud a built-in Everruns provider works without your own keys.
 
-- Each provider contains many models
-- See [Providers](/providers/) for the supported provider types
-- On Everruns Cloud a built-in Everruns provider is available without your own keys
+### LLM model
 
-### LLM Model
+A specific model within a provider, such as `gpt-5.2` or `claude-sonnet-5`. Models are predefined, discovered from the provider API, or added manually. Resolution order: message controls → session override → agent default → system default.
 
-An LLM Model is a specific model within a provider (e.g., `gpt-5.2`, `claude-sonnet-5`).
+### MCP server
 
-- Each model belongs to one provider
-- Sources: predefined, discovered from the provider API, or manually added
-- Model resolution priority: message controls → session override → agent default → system default
+A remote server that exposes tools over the Model Context Protocol. Each server becomes a capability with ID `mcp:{server_uuid}`. Tools are discovered at runtime and cached for 24 hours, prefixed to avoid conflicts, and executed over HTTP JSON-RPC. See [MCP Servers](/features/mcp/).
 
-### MCP Server
+## Further reading
 
-An MCP Server is a remote server that exposes tools via the Model Context Protocol. MCP servers are integrated as virtual capabilities.
-
-- Each server becomes a capability with ID `mcp:{server_uuid}`
-- Tools are discovered at runtime and cached with a 24-hour TTL
-- Tool names are prefixed to avoid conflicts: `mcp_{server}__{tool}`
-- Execution happens via HTTP JSON-RPC
+- [Architecture](/explanation/architecture/): control plane, workers, and the API-first design.
+- [The agentic loop](/explanation/agentic-loop/): the reason-act cycle and why turns are bounded.
+- [Durable execution](/explanation/durable-execution/): why agents survive crashes.
+- [Events as the primary store](/explanation/events/): why the event log is the source of truth.

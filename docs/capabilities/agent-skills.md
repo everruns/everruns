@@ -54,12 +54,12 @@ Skills use progressive disclosure to keep context efficient:
 - Skills are per-session (uploaded to session filesystem)
 - Path traversal protection on skill names
 - Invalid SKILL.md files are reported but don't block discovery of other skills
-- For organization-wide skills, see the [Skills Registry](/features/skills-registry/)
+- For organization-wide skills, see the [Skills Registry](/features/skills/#skills-registry)
 
 ## See Also
 
 - [Agent Skills feature guide](/features/skills/), detailed skills documentation
-- [Skills Registry](/features/skills-registry/), API-managed skills
+- [Skills Registry](/features/skills/#skills-registry), API-managed skills
 - [AGENTS.md](/capabilities/agent-instructions/), simpler alternative for project context
 - [File System](/capabilities/file-system/), upload skill files
 - [Capabilities Overview](/capabilities/)

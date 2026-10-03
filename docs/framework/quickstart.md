@@ -14,7 +14,7 @@ export OPENAI_API_KEY=sk-...
 ```
 
 `--features openai` bundles the OpenAI driver. `everruns` does not re-export tokio, so add it for `#[tokio::main]`. Any other provider is its own
-crate — see [Supported providers](/framework/supported-providers/).
+crate — see [Supported providers](/framework/models-and-providers/#supported-providers).
 
 ## Run one turn
 
@@ -72,12 +72,12 @@ let agent = Agent::builder()
 
 The macro derives the JSON schema from the signature, so the model sees typed
 arguments and the code stays ordinary Rust. See
-[Tools and macros](/framework/tools-and-macros/).
+[Tools and macros](/framework/agents/#tools).
 
 ## Where to go next
 
 - [Agents](/framework/agents/) — instructions, files, workspaces, and MCP.
-- [Tools and macros](/framework/tools-and-macros/) — typed function tools.
+- [Tools and macros](/framework/agents/#tools) — typed function tools.
 - [Sessions](/framework/sessions/) — multi-turn state and history.
 - [Framework architecture](/framework/architecture/) — how the pieces fit.
 

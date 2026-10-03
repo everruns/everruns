@@ -41,9 +41,42 @@ export default defineConfig({
     "/features/runtime/": "/framework/custom-backends/",
     "/framework/runtime-compatibility/": "/framework/custom-backends/",
     "/advanced/embedding-everruns/": "/framework/custom-backends/",
-    "/framework/direct-classification/": "/framework/direct-decisions/",
+    "/framework/direct-classification/": "/framework/direct-model-calls/",
     // The Bashkit ecosystem overview was folded into the capability page.
     "/ecosystem/bashkit/": "/capabilities/bashkit-shell/",
+    // Duplicate pages consolidated: each removed slug points at the page that
+    // now holds its content. Keep these durable for inbound links.
+    "/explanation/concepts/": "/getting-started/concepts/",
+    "/getting-started/architecture/": "/explanation/architecture/",
+    "/features/skills-registry/": "/features/skills/",
+    "/features/agent-instructions/": "/capabilities/agent-instructions/",
+    "/features/apps/": "/features/endpoints/",
+    "/capabilities/auto-tool-search/": "/capabilities/tool-search/",
+    "/capabilities/openai-tool-search/": "/capabilities/tool-search/",
+    "/capabilities/claude-tool-search/": "/capabilities/tool-search/",
+    "/integrations/daytona/": "/capabilities/daytona/",
+    "/integrations/e2b/": "/capabilities/e2b/",
+    "/integrations/browserless/": "/capabilities/browserless/",
+    "/integrations/slack/": "/capabilities/slack/",
+    "/framework/supported-providers/": "/framework/models-and-providers/",
+    "/framework/custom-providers/": "/framework/models-and-providers/",
+    "/framework/model-catalogs/": "/framework/models-and-providers/",
+    "/framework/credentials/": "/framework/models-and-providers/",
+    "/framework/direct-decisions/": "/framework/direct-model-calls/",
+    "/framework/tools-and-macros/": "/framework/agents/",
+    "/framework/session-history/": "/framework/sessions/",
+    "/framework/persistence/": "/framework/sessions/",
+    "/framework/canonical-events/": "/framework/events-and-cancellation/",
+    "/framework/workspace-security/": "/framework/workspaces-and-environments/",
+    "/how-to/consume-events-via-sse/": "/how-to/stream-events/",
+    "/how-to/publish-a-skill-to-the-registry/": "/how-to/package-a-skill/",
+    "/how-to/migrate-to-0-18/": "/framework/upgrade-notes/",
+    "/advanced/agent-blueprints/": "/framework/agent-blueprints/",
+    "/advanced/read-tools/": "/built-ins/read-tools/",
+    "/advanced/request-signing/": "/sre/request-signing/",
+    // The memory model design note moved to knowledge/; the shipped
+    // behavior it describes is on the memory scopes page.
+    "/advanced/memory-model/": "/features/memory-scopes/",
   },
   vite: {
     resolve: {
@@ -182,31 +215,21 @@ export default defineConfig({
                     { label: "Overview", slug: "framework" },
                     { label: "Quickstart", slug: "framework/quickstart" },
                     { label: "Architecture", slug: "framework/architecture" },
+                    { label: "Upgrade Notes", slug: "framework/upgrade-notes" },
                   ],
                 },
                 {
                   label: "Core APIs",
                   items: [
-                    { label: "Agents", slug: "framework/agents" },
-                    { label: "Workspaces and Environments", slug: "framework/workspaces-and-environments" },
-                    { label: "Workspace Security", slug: "framework/workspace-security" },
+                    { label: "Agents and Tools", slug: "framework/agents" },
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
-                    { label: "Supported Providers", slug: "framework/supported-providers" },
-                    { label: "Direct Model Calls", slug: "framework/direct-model-calls" },
-                    { label: "Direct Decisions", slug: "framework/direct-decisions" },
-                    { label: "Model Catalogs", slug: "framework/model-catalogs" },
-                    { label: "Credentials", slug: "framework/credentials" },
-                    { label: "Tools and Macros", slug: "framework/tools-and-macros" },
+                    { label: "Direct Calls and Decisions", slug: "framework/direct-model-calls" },
                     { label: "Sessions", slug: "framework/sessions" },
-                    { label: "Session Work and Wakes", slug: "framework/background-work" },
-                    { label: "Session History", slug: "framework/session-history" },
                     { label: "Events and Cancellation", slug: "framework/events-and-cancellation" },
-                    { label: "Canonical Events", slug: "framework/canonical-events" },
+                    { label: "Workspaces and Environments", slug: "framework/workspaces-and-environments" },
                     { label: "Lifecycle Hooks", slug: "framework/lifecycle-hooks" },
                     { label: "Answer Agent Questions", slug: "framework/ask-user" },
-                    { label: "Serve AG-UI", slug: "framework/ag-ui" },
-                    { label: "A2A", slug: "framework/a2a" },
-                    { label: "Persistence", slug: "framework/persistence" },
+                    { label: "Session Work and Wakes", slug: "framework/background-work" },
                   ],
                 },
                 {
@@ -215,17 +238,22 @@ export default defineConfig({
                     { label: "Advanced Capabilities", slug: "framework/advanced-capabilities" },
                     { label: "Capability Integrations", slug: "framework/capability-integrations" },
                     { label: "Portable vs Hosted", slug: "framework/capability-boundaries" },
-                    { label: "Custom Providers", slug: "framework/custom-providers" },
+                    { label: "Agent Blueprints", slug: "framework/agent-blueprints" },
                     { label: "Custom Backends", slug: "framework/custom-backends" },
                     { label: "Testing and Simulation", slug: "framework/testing-and-simulation" },
                   ],
                 },
                 {
-                  label: "Experimental",
+                  // Ways to put a Framework agent behind a protocol or a host.
+                  // serve, AgentCore, and celld are experimental; their pages
+                  // say so.
+                  label: "Expose and deploy",
                   items: [
-                    { label: "Serve", slug: "framework/serve" },
-                    { label: "Serve on AgentCore", slug: "framework/serve-agentcore" },
-                    { label: "Serve on celld", slug: "framework/serve-celld" },
+                    { label: "Serve (experimental)", slug: "framework/serve" },
+                    { label: "Serve AG-UI", slug: "framework/ag-ui" },
+                    { label: "A2A", slug: "framework/a2a" },
+                    { label: "Serve on AgentCore (experimental)", slug: "framework/serve-agentcore" },
+                    { label: "Serve on celld (experimental)", slug: "framework/serve-celld" },
                   ],
                 },
                 {
@@ -248,17 +276,27 @@ export default defineConfig({
               // Everything a self-hosted Platform and Everruns Cloud share,
               // plus what only a self-hosted operator needs (Operations).
               label: "Platform",
-              link: "/getting-started/architecture/",
+              link: "/explanation/architecture/",
               icon: "laptop",
+              // The former "Advanced" group is dissolved: its remaining pages
+              // keep their /advanced/ URLs (code links to /advanced/id-schema/)
+              // but sit in the group that matches what they are.
               items: [
                 {
                   label: "Overview",
-                  items: [{ label: "Architecture", slug: "getting-started/architecture" }],
+                  items: [
+                    { label: "Architecture", slug: "explanation/architecture" },
+                    { label: "Physical Architecture", slug: "advanced/physical-architecture" },
+                  ],
                 },
                 {
                   label: "Features",
                   collapsed: true,
-                  items: [{ autogenerate: { directory: "features" } }],
+                  items: [
+                    { autogenerate: { directory: "features" } },
+                    { slug: "advanced/budgets" },
+                    { slug: "advanced/network-access" },
+                  ],
                 },
                 {
                   label: "How-to guides",
@@ -266,14 +304,16 @@ export default defineConfig({
                   items: [{ autogenerate: { directory: "how-to" } }],
                 },
                 {
-                  label: "Advanced",
-                  collapsed: true,
-                  items: [{ autogenerate: { directory: "advanced" } }],
-                },
-                {
                   label: "Explanation",
                   collapsed: true,
-                  items: [{ autogenerate: { directory: "explanation" } }],
+                  items: [
+                    { slug: "explanation" },
+                    { slug: "explanation/agentic-loop" },
+                    { slug: "explanation/durable-execution" },
+                    { slug: "explanation/events" },
+                    { slug: "advanced/compaction" },
+                    { slug: "advanced/tool-output-pipeline" },
+                  ],
                 },
                 {
                   label: "Operations (self-hosted)",
@@ -281,6 +321,7 @@ export default defineConfig({
                   items: [
                     { label: "Environment Variables", slug: "sre/environment-variables" },
                     { label: "Admin Container", slug: "sre/admin-container" },
+                    { label: "Request Signing", slug: "sre/request-signing" },
                     {
                       label: "Runbooks",
                       items: [{ autogenerate: { directory: "sre/runbooks" } }],
@@ -296,6 +337,7 @@ export default defineConfig({
               id: "reference",
               items: [
                 { label: "Event Reference", slug: "event-reference" },
+                { label: "ID Schema", slug: "advanced/id-schema" },
                 {
                   label: "Harnesses",
                   collapsed: true,
@@ -318,6 +360,7 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "File System", slug: "capabilities/file-system" },
+                        { label: "Read Tools", slug: "built-ins/read-tools" },
                         { label: "Bashkit Shell", slug: "capabilities/bashkit-shell" },
                         { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
@@ -393,9 +436,6 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "Infinity Context", slug: "capabilities/infinity-context" },
-                        { label: "Auto Tool Search", slug: "capabilities/auto-tool-search" },
-                        { label: "OpenAI Tool Search", slug: "capabilities/openai-tool-search" },
-                        { label: "Claude Tool Search", slug: "capabilities/claude-tool-search" },
                         { label: "Tool Search", slug: "capabilities/tool-search" },
                         { label: "Budgeting", slug: "capabilities/budgeting" },
                         { label: "Self-Budget", slug: "capabilities/self-budget" },
@@ -426,26 +466,19 @@ export default defineConfig({
                   collapsed: true,
                   // Grouped to mirror the category taxonomy in
                   // docs/integrations/index.md. Keep the two in sync when adding
-                  // or recategorizing an integration. Sidebar glyphs for each
-                  // entry live in src/styles/custom.css, keyed by href.
+                  // or recategorizing an integration. Vendors with a capability
+                  // page (Daytona, E2B, Browserless, Slack) are listed under
+                  // Capabilities only; the overview links to them. Sidebar
+                  // glyphs for each entry live in src/styles/custom.css, keyed
+                  // by href.
                   items: [
                     { label: "Overview", slug: "integrations" },
                     {
                       label: "Sandboxes & execution",
                       items: [
-                        { label: "Daytona", slug: "integrations/daytona" },
-                        { label: "E2B", slug: "integrations/e2b" },
                         { label: "Container Sandbox", slug: "integrations/container-sandbox" },
                         { label: "Cursor", slug: "integrations/cursor" },
                       ],
-                    },
-                    {
-                      label: "Browser & web",
-                      items: [{ label: "Browserless", slug: "integrations/browserless" }],
-                    },
-                    {
-                      label: "Messaging",
-                      items: [{ label: "Slack", slug: "integrations/slack" }],
                     },
                     {
                       label: "Credentials",
@@ -547,8 +580,8 @@ export default defineConfig({
             {
               label: "Platform",
               description:
-                "architecture and the feature surface of a running Everruns Platform, self-hosted or Everruns Cloud",
-              paths: ["getting-started/architecture", "features/**", "advanced/**"],
+                "the feature surface of a running Everruns Platform, self-hosted or Everruns Cloud; architecture is under Explanation",
+              paths: ["features/**", "advanced/**"],
             },
             {
               label: "Built-ins",

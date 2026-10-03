@@ -45,7 +45,7 @@ assert_eq!(model.model, "assistant-v2");
 ## Documentation
 
 - [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Custom providers](https://docs.everruns.com/framework/custom-providers/)
+- [Custom providers](https://docs.everruns.com/framework/models-and-providers/)
 - [API reference](https://docs.rs/everruns-provider)
 
 ## License

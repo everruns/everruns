@@ -100,7 +100,7 @@ Your deserializer should ignore unknown fields, ignore unknown event types, and 
 ## Consume the stream
 
 - [Stream events with the SDK](/how-to/stream-events/), the convenient path (Python, Rust, TypeScript).
-- [Consume events via raw SSE](/how-to/consume-events-via-sse/), protocol-level, when the SDK isn't available.
+- [Consume events via raw SSE](/how-to/stream-events/#with-raw-sse), protocol-level, when the SDK isn't available.
 
 ## See also
 

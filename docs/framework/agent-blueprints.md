@@ -22,7 +22,7 @@ and are available wherever that capability is enabled.
 A capability contributes blueprints by implementing `agent_blueprints()`. The
 returned `AgentBlueprint` carries everything the child runtime needs:
 
-```rust
+```rust ignore
 fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
     vec![AgentBlueprint {
         id: "repo_scout",
@@ -55,7 +55,7 @@ Derive the config schema from a Rust struct rather than writing JSON by hand. Th
 struct is the single source of truth: field set, bounds, defaults, and descriptions
 all reach the spawning agent from one place.
 
-```rust
+```rust ignore
 use everruns_capability::json_schema_for;
 use everruns_capability::schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

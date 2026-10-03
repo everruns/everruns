@@ -224,7 +224,7 @@ Parked requests live in memory. If the process exits, the waiting turn is left
 unfinished in the session's log; after a restart,
 `Session::resume_interrupted_turn` runs its waiting calls again, so they park
 on the gate anew and a client's resume run can answer them (see
-[session history](/framework/session-history/)).
+[session history](/framework/sessions/#history-and-resume)).
 
 ## Policy
 

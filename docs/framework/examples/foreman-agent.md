@@ -16,7 +16,7 @@ asked whether semantic supervision can run *while* the work happens.
 ## What you learn
 
 How to run a worker session and observe it at the same time: a
-[`Decisions`](/framework/direct-decisions/) turning bounded evidence into nine
+[`Decisions`](/framework/direct-model-calls/#decisions) turning bounded evidence into nine
 probabilities in one request, and a deterministic policy that owns every
 threshold, every limit, and the closed vocabulary of things the supervisor may
 do.

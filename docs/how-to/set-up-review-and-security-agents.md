@@ -25,7 +25,7 @@ reads code and posts as its own bot, with no token to create or paste.
   need one.
 - Permission to create a GitHub App on your account or organization, and to
   install it on the repository.
-- For the Security Scanner, a [Daytona](/integrations/daytona/) API key.
+- For the Security Scanner, a [Daytona](/capabilities/daytona/) API key.
 
 ## Adopt a template
 

@@ -94,5 +94,5 @@ A safe migration sequence:
 
 ## See also
 
-- [Concepts: LLM Provider and Model](/explanation/concepts/), entity model.
+- [Concepts: LLM Provider and Model](/getting-started/concepts/), entity model.
 - [Observability with Braintrust](/observability/braintrust/), evaluate cross-provider quality.

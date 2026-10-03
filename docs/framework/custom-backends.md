@@ -49,7 +49,7 @@ Conversation persistence is the one backend with a single write path. Replace it
 by implementing the canonical `EventLog`/`EventReader` SPI and passing it to
 `HostBackends::with_event_log`; the required snapshot, continuation, and polling
 behavior is specified in
-[Implementing a custom event log](/framework/canonical-events/#implementing-a-custom-event-log).
+[Implementing a custom event log](/framework/events-and-cancellation/#implementing-a-custom-event-log).
 
 ## Security boundary
 

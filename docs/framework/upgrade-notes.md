@@ -1,12 +1,19 @@
 ---
-title: Migrate to 0.18
-description: Move Rust code off `everruns-core` paths that changed in 0.18, with a symbol-by-symbol table of where each type now lives.
+title: Upgrade Notes
+description: Breaking changes for Framework users, release by release, with the code changes each upgrade needs.
 appliesTo: [framework]
 ---
 
+This page collects the changes a Framework application must make when it
+upgrades across a release that moved or renamed public Rust APIs. Releases
+that need no code changes are not listed. For every release, see the
+[changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
+
+## 0.18
+
 0.18 narrows `everruns-core` to the neutral execution kernel. Types that were persisted control-plane records, hosted service contracts, product composition or concrete integrations moved to the crate that owns them. The behaviour, the wire formats and the stored schema are unchanged, only the import paths.
 
-## Retain an Engine for sessions
+### Retain an Engine for sessions
 
 The Framework exposes a concrete application execution owner. The 0.18 API
 removes `agent.session()` and `agent.resume(id)`; applications retain the
@@ -35,7 +42,7 @@ never serialized.
 
 This affects you if your Rust code imports from `everruns_core` directly. If you use the `everruns` facade, most of this is invisible: the facade re-exports what applications need, and where a moved type is part of that surface it is re-exported from its new home under the same name.
 
-## The quickest path
+### The quickest path
 
 Most migrations are a find-and-replace of a crate prefix. Compile, read the unresolved-import errors, and look each symbol up in the tables below.
 
@@ -57,7 +64,7 @@ everruns-llmsim   = "0.18"   # deterministic production-safe simulator
 The earlier `everruns-session-services` preview package was consolidated into
 `everruns-host`; use `everruns_host::session_services` for its namespaced API.
 
-## Composition
+### Composition
 
 The single biggest change for embedders. `PlatformDefinition` no longer exists.
 
@@ -87,7 +94,7 @@ The single biggest change for embedders. `PlatformDefinition` no longer exists.
 
 The type is otherwise identical, same fields, same builder methods. It moved to the layer that executes a turn, because selecting a deployment's capabilities and drivers is composition rather than kernel configuration.
 
-### Input/Reason/Act execution kernel
+#### Input/Reason/Act execution kernel
 
 Concrete phase execution moved out of `everruns-core`. Import phase algorithms
 and their I/O values from `everruns-engine`; keep neutral effect contracts in
@@ -107,7 +114,7 @@ core compatibility module in 0.18. Serialized phase payloads retain the same
 fields, so durable records remain readable even though the Rust ownership path
 changed.
 
-### Turn context and command completion
+#### Turn context and command completion
 
 Store-backed turn preparation now belongs to `everruns-host`. Core keeps the
 secret-free execution snapshot, pure context transformations, and narrow
@@ -140,7 +147,7 @@ driver; provider keys and endpoints are never serializable kernel values.
 prompt, locale, model, streaming, and error-decision behavior without
 receiving a session record.
 
-## Persisted records
+### Persisted records
 
 These are database and API records. Execution consumes a portable projection of each; the stored row is control-plane state.
 
@@ -157,7 +164,7 @@ These are database and API records. Execution consumes a portable projection of 
 
 If you were reading a stored record to run a turn, you probably want the portable projection instead, `AgentDefinition`, `HarnessDefinition` and `ExecutionSession` all stay in `everruns_core`, produced at the platform loading boundary by `Agent::execution_definition`, `Harness::execution_definition` and `Session::execution_session`.
 
-## Hosted service contracts
+### Hosted service contracts
 
 | 0.17 (`everruns_core::`) | 0.18 |
 |---|---|
@@ -185,12 +192,12 @@ Two of these also changed how a capability *reaches* the service. `sqldb_store` 
 
 If you implement a custom host, install them the way `everruns-host` does:
 
-```rust
+```rust ignore
 extensions.insert(Arc::new(SessionSqlDbStoreExt(store)));
 extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 ```
 
-## Capabilities and implementations
+### Capabilities and implementations
 
 | what | 0.18 home |
 |---|---|
@@ -228,7 +235,7 @@ and low-level hosts should depend on `everruns-llmsim` directly. The
 application-facing `everruns::Model::simulated` and
 `Model::simulated_with_config` APIs are unchanged.
 
-## Features
+### Features
 
 | 0.17 | 0.18 |
 |---|---|
@@ -259,7 +266,7 @@ depend on `everruns-provider` with `features = ["tls-aws-lc-rs"]` and call
 `everruns_provider::install_default_crypto_provider()` once during startup; the
 call is idempotent and safe under concurrent initialization.
 
-## Provider and typed-ID imports
+### Provider and typed-ID imports
 
 Provider-owned modules are no longer compatibility-exported by
 `everruns-core`. Low-level consumers must add `everruns-provider` directly.
@@ -321,7 +328,7 @@ driver rejects the first model/list/compact operation locally, before network
 I/O. This keeps recovery commands reachable without turning an empty token
 into an outbound authorization header.
 
-## Simulator and compaction naming
+### Simulator and compaction naming
 
 `LlmSimRuntimeExt::llm_sim` now only registers/replaces the simulator provider.
 It never changes the selected model. Existing compact test setups that relied
@@ -348,7 +355,7 @@ The public core test/backend conveniences are gone as well:
 | `EchoTool`, `FailingTool` | define the small test `Tool` locally, or use test-support executors |
 | `InMemoryCompactionCheckpointStore` | `everruns_host::InMemoryCompactionCheckpointStore` |
 
-## What deliberately did not move
+### What deliberately did not move
 
 Worth knowing so you do not go looking:
 
@@ -362,7 +369,7 @@ Worth knowing so you do not go looking:
 
 The rule these follow: whether something belongs in the kernel is decided by whether a portable execution path consumes it during a turn, not by whether it is persisted. All four above are persisted, and all four are essential for execution.
 
-## Getting unstuck
+### Getting unstuck
 
 If a symbol is not in these tables, import it from the crate that defines it;
 `everruns-core` no longer acts as a compatibility facade for provider-owned

@@ -201,7 +201,7 @@ The durable requirements are:
 
 The exact config and key types belong to the toolkit. Fetchkit's current
 implementation and [`fetchkit.md`](fetchkit.md) are the reference, while
-[`docs/advanced/request-signing.md`](../../docs/advanced/request-signing.md)
+[`docs/sre/request-signing.md`](../../docs/sre/request-signing.md)
 documents operator-facing setup.
 
 ## Everruns integration rules

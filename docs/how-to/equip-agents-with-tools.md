@@ -80,5 +80,5 @@ Capability order matters: capabilities earlier in the list contribute their syst
 ## See also
 
 - [Capabilities reference](/capabilities/), all available capabilities.
-- [Why capabilities are first-class](/explanation/concepts/#why-capabilities-are-first-class), the design rationale.
+- [Why capabilities are first-class](/getting-started/concepts/#capability), the design rationale.
 - [Give an agent web access](/how-to/give-an-agent-web-access/), narrower task with network policies.

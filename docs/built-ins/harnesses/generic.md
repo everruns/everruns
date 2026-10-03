@@ -33,7 +33,7 @@ The **Generic** harness is the recommended default for most use cases. It config
 | [AGENTS.md](/capabilities/agent-instructions/) | Reads AGENTS.md from workspace and injects project-level instructions |
 | [Agent Skills](/capabilities/agent-skills/) | Discover and activate skills from `/.agents/skills/` |
 | [Infinity Context](/capabilities/infinity-context/) | Trims older messages from the live prompt while exposing earlier history via `query_history` |
-| [Auto Tool Search](/capabilities/auto-tool-search/) | Defers tool schema loading to reduce prompt size, using the provider's native tool search where available |
+| [Auto Tool Search](/capabilities/tool-search/#auto-tool-search) | Defers tool schema loading to reduce prompt size, using the provider's native tool search where available |
 | [Context Compaction](/advanced/compaction/) | Auto-compacts context at 85% budget via cascading strategies |
 | [Budgeting](/capabilities/budgeting/) | Budget awareness in the system prompt and a `check_budget` tool, which currently returns a placeholder; use the REST budget-check endpoint for detailed status |
 | [Self-Budget](/capabilities/self-budget/) | Prompt-only guidance for reasoning about a user-requested indicative budget using session usage data |

@@ -23,7 +23,7 @@
 //! ```
 //!
 //! With the `openai` feature that provider is `OpenAI::from_env()?`; see
-//! [Supported providers](https://docs.everruns.com/framework/supported-providers/).
+//! [Supported providers](https://docs.everruns.com/framework/models-and-providers/).
 //!
 //! Each entry carries the metadata a picker renders and converts back into a
 //! [`Model`] the rest of the API takes, so a selection needs no string

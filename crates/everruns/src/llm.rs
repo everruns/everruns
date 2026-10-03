@@ -31,7 +31,7 @@
 //! ```
 //!
 //! Applications that own a wire protocol call [`Provider`] directly; see
-//! [Custom providers](https://docs.everruns.com/framework/custom-providers/).
+//! [Custom providers](https://docs.everruns.com/framework/models-and-providers/).
 //! Conversation state, tool *execution*, workspaces, and durability stay with
 //! [`Agent`](crate::Agent) — a completion here keeps no history of its own.
 

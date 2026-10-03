@@ -1160,7 +1160,7 @@ the same mutually-exclusive groups `CredentialFormSchema::validate` enforces, so
 a half-populated OAuth block configures nothing rather than half-configuring a
 provider.
 
-The per-driver table is published in `docs/framework/credentials.md` and pinned
+The per-driver table is published in `docs/framework/models-and-providers.md` (Credentials section) and pinned
 against the drivers' own declarations by
 `crates/worker/tests/driver_env_declarations.rs`, so it cannot drift.
 
@@ -1231,7 +1231,7 @@ credential fields (`FormField::env`, `env_fallback` for alternates the vendor
 also honors) and, if that vendor defines an endpoint variable,
 `DriverDescriptor::base_url_env`. Then expose `descriptor()` and a `from_env(id)`
 delegating to `provider_from_env`, and add the driver to the table in
-`docs/framework/credentials.md` and to
+`docs/framework/models-and-providers.md` (Credentials section) and to
 `crates/worker/tests/driver_env_declarations.rs`.
 
 Declaring nothing is a valid choice and the safe default: the driver is then

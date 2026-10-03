@@ -5,7 +5,7 @@ sidebar:
   order: 25
 ---
 
-The [getting-started architecture](/getting-started/architecture/) page describes the *logical* shape of Everruns: a control plane, a worker tier, and a shared database. This page goes one level deeper and describes the *physical* components an operator actually deploys, what each one is for, when it is optional, and how data flows between them.
+The [getting-started architecture](/explanation/architecture/) page describes the *logical* shape of Everruns: a control plane, a worker tier, and a shared database. This page goes one level deeper and describes the *physical* components an operator actually deploys, what each one is for, when it is optional, and how data flows between them.
 
 ![Physical Architecture](./physical-architecture.svg)
 
@@ -120,7 +120,7 @@ Workers do not require coordination, add as many as you need, in as many regions
 
 ## Further reading
 
-- [Architecture (Getting Started)](/getting-started/architecture/), the logical model
+- [Architecture (Getting Started)](/explanation/architecture/), the logical model
 - [Environment Variables](/sre/environment-variables/), every knob and its default
 - [Docker Compose](/getting-started/docker-compose/), a production-shaped local setup
 - [Custom backends](/framework/custom-backends/), low-level execution-host composition

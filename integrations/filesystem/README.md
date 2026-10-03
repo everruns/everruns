@@ -29,7 +29,7 @@ assert_eq!(FileSystemCapability.id(), "session_file_system");
 
 ## Documentation
 
-- [Framework workspace security](https://docs.everruns.com/framework/workspace-security/)
+- [Framework workspace security](https://docs.everruns.com/framework/workspaces-and-environments/)
 - [API reference](https://docs.rs/everruns-integrations-filesystem)
 
 ## License

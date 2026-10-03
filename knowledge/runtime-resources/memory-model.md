@@ -1,7 +1,17 @@
 ---
-title: Memory model
-description: How Workspace and Memory relate, the two-tier model for what an agent can read and write.
+type: Design
+title: "Memory Model"
+description: "How the per-session Workspace and durable org Memory tiers relate, with the surfaces each tier has today and the ones still planned."
+tags:
+  - everruns
+  - runtime-resources
+  - memory
 ---
+# Memory Model
+
+This design note moved out of the public docs because it describes planned
+surfaces (the `TBD` cells below) alongside shipped ones. The shipped behavior
+is documented publicly on the Agent and user memory page.
 
 Everruns separates **where the agent works** from **what the agent remembers across runs**. That split is the whole memory model:
 
@@ -10,7 +20,7 @@ Everruns separates **where the agent works** from **what the agent remembers acr
 
 These two tiers are intentional. Workspace is where an agent does its current task; Memory is where the org persists state it wants reused across tasks.
 
-For the shipped organization, agent, and user ownership tiers, including the private `/memory/user` and automatic `/memory/agent` mounts, see [Agent and user memory](/features/memory-scopes/).
+For the shipped organization, agent, and user ownership tiers, including the private `/memory/user` and automatic `/memory/agent` mounts, see [Memory Specification](memory.md#scoped-memory-mounts) and the public [Agent and user memory](https://docs.everruns.com/features/memory-scopes/) page.
 
 ## The two-axis grid
 
@@ -30,7 +40,7 @@ Secrets   │ per-run creds          │ org credentials (TBD)  │
           └────────────────────────┴────────────────────────┘
 ```
 
-Today only the **Files** surface exists on both sides; Tables exist on the Workspace side (session SQL DB). Tabular, KV, secrets, and structured surfaces on Memory are durable design intent, see `knowledge/runtime-resources/memory.md`.
+Today only the **Files** surface exists on both sides; Tables exist on the Workspace side (session SQL DB). Tabular, KV, secrets, and structured surfaces on Memory are design intent tracked under [Memory Specification open questions](memory.md#open-questions). The `TBD` cells above mark those unbuilt surfaces.
 
 ## Org → Session: Mount
 
@@ -100,8 +110,8 @@ External validation: Anthropic's Claude Managed Agents settled on essentially th
 These exist in Everruns but live outside this model:
 
 - **Transcripts and events**: the conversation history is the session's append-only log, not a memory surface.
-- **Sandboxes**: managed compute environments (`knowledge/runtime-resources/session-sandbox.md`) are a separate primitive from storage.
-- **Knowledge Bases** (`knowledge/runtime-resources/knowledge-bases.md`), curated entries with stable citation IDs, agent reads via `search_knowledge`. Likely folds into a future "structured" surface of Memory; today it stays separate.
+- **Sandboxes**: managed compute environments ([Session Sandbox](session-sandbox.md)) are a separate primitive from storage.
+- **Knowledge Bases** ([Knowledge Bases Specification](knowledge-bases.md)), curated entries with stable citation IDs, agent reads via `search_knowledge`. Likely folds into a future "structured" surface of Memory; today it stays separate.
 
 ## Mapping to other systems
 
@@ -115,7 +125,7 @@ These exist in Everruns but live outside this model:
 
 ## Further reading
 
-- [Agent and user memory](/features/memory-scopes/), scoped memory mounts, access, and privacy defaults
-- [`knowledge/runtime-resources/memory.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/memory.md), durable design intent for the Memory tier
-- [`knowledge/runtime-resources/workspace.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/workspace.md), Workspace specification (file surface, mount point, git VCS)
-- [`knowledge/runtime-resources/knowledge-bases.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/knowledge-bases.md), curated org knowledge, the curation-first sibling of Memory
+- [Agent and user memory](https://docs.everruns.com/features/memory-scopes/), the public page for scoped memory mounts, access, and privacy defaults
+- [Memory Specification](memory.md), durable design intent for the Memory tier
+- [Workspace Specification](workspace.md), file surface, mount point, git VCS
+- [Knowledge Bases Specification](knowledge-bases.md), curated org knowledge, the curation-first sibling of Memory

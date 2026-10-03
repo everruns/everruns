@@ -4,7 +4,7 @@ description: Add a Slack endpoint to an Agent, publish it, connect a Slack works
 appliesTo: [platform, cloud]
 ---
 
-This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For Slack scopes, manual setup, and troubleshooting, see [Slack Integration](/integrations/slack/).
+This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For Slack scopes, manual setup, and troubleshooting, see [Slack Integration](/capabilities/slack/).
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For 
 
 ## Publish and Connect
 
-Your organization must have a Slack workspace connected in **Settings** > **Slack workspaces** first; an administrator does this once. See [Connect a Slack Workspace](/integrations/slack/#connect-a-slack-workspace).
+Your organization must have a Slack workspace connected in **Settings** > **Slack workspaces** first; an administrator does this once. See [Connect a Slack Workspace](/capabilities/slack/#connect-a-slack-workspace).
 
 1. Select **Publish** in the endpoint editor.
 2. If more than one workspace is connected, choose which one.
@@ -52,5 +52,5 @@ To stop new Slack messages without deleting the configuration, select **Unpublis
 
 ## See also
 
-- [Slack Integration](/integrations/slack/), including scopes, manual setup, and troubleshooting.
+- [Slack Integration](/capabilities/slack/), including scopes, manual setup, and troubleshooting.
 - [Agent Versions](/features/agent-versions/), including endpoint version selection.

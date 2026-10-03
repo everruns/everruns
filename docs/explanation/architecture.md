@@ -16,7 +16,7 @@ A running Everruns deployment is two kinds of process plus PostgreSQL:
 
 ![Platform Overview](../images/architecture/platform-overview.svg)
 
-The control plane can run as several instances behind a load balancer (set `EXPECTED_INSTANCES` so per-instance SSE connection limits are divided across them). Workers scale horizontally: add more for throughput, remove some to save cost. PostgreSQL is the only required piece of stateful infrastructure; Valkey and NATS are optional.
+The control plane can run as several instances behind a load balancer (set `EXPECTED_INSTANCES` so per-instance SSE connection limits are divided across them). Workers scale horizontally: add more for throughput, remove some to save cost. PostgreSQL is the only required piece of stateful infrastructure; Valkey and NATS are optional. [Physical Architecture](/advanced/physical-architecture/) describes each deployable component, which ones are required, and how they connect.
 
 ## Why a separate worker tier?
 
@@ -38,7 +38,7 @@ The consequences:
 - You can ship Everruns as backend infrastructure for a product whose UI looks nothing like ours.
 - Multitenancy, auth, and quotas are enforced at the API layer, so you cannot accidentally bypass them by using a different client.
 
-The management UI exists for operators, configuring providers, browsing sessions, debugging events, not as the primary interaction surface.
+The [management UI](/features/ui/) exists for operators, configuring providers, browsing sessions, debugging events, not as the primary interaction surface. It is not required in production.
 
 ## Why REST + SSE, not WebSockets
 
@@ -66,3 +66,12 @@ Things the control plane owns: auth, durable task queue, event log, virtual file
 Things workers own: nothing persistent. They borrow the database, run their tasks, and report back.
 
 Things your application owns: the agent definitions, the prompt design, and the channel-specific glue (Slack apps, webhooks, schedules). The platform is intentionally neutral about *what* you build with it.
+
+The platform is also neutral about the model vendor: agents can use OpenAI, Anthropic, Gemini, and the other [providers](/providers/), and switching one does not change the agent definition.
+
+## Further reading
+
+- [Physical Architecture](/advanced/physical-architecture/): PostgreSQL, NATS, Valkey, workers, and how they connect.
+- [Concepts](/getting-started/concepts/): the entities the API exposes.
+- [Durable execution](/explanation/durable-execution/): how workers recover a crashed turn.
+- [API Reference](/api/): every endpoint.
