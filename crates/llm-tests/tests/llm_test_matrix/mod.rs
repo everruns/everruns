@@ -325,15 +325,6 @@ pub const OPENAI_GPT6_ASTRA: ProviderModelConfig = ProviderModelConfig::new(
     everruns_drivers::openai::descriptor,
 );
 
-// GPT-6 Luna is the platform default model; Sol is the balanced GPT-6 tier.
-// Both run the basic, tool, schema, and reasoning-plus-tool-call scenarios,
-// which accept readable reasoning or opaque replay state alike.
-pub const OPENAI_GPT6_SOL: ProviderModelConfig = ProviderModelConfig::new(
-    DriverId::OpenAI,
-    "gpt-6-sol",
-    everruns_drivers::openai::descriptor,
-);
-
 // GPT-6.1 Sol: near-Astra quality at Sol's price (DevDay 2026-09-29).
 pub const OPENAI_GPT61_SOL: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenAI,
