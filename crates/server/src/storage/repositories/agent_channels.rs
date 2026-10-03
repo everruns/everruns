@@ -78,14 +78,14 @@ impl Database {
         &self,
         channel_id: Uuid,
     ) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
-        let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            "SELECT pg_advisory_xact_lock(hashtextextended('slack_install:' || $1::text, 0))",
+        // Holders re-read and persist through the shared pool and call Slack
+        // under this lock, so waiters must not pin connections (TM-DOS-042).
+        self.advisory_xact_lock_polling(
+            "slack_install",
+            &channel_id.to_string(),
+            super::advisory_locks::ADVISORY_LOCK_WAIT,
         )
-        .bind(channel_id)
-        .execute(&mut *tx)
-        .await?;
-        Ok(tx)
+        .await
     }
 
     pub async fn create_legacy_alias_channel(

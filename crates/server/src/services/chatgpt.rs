@@ -71,18 +71,33 @@ async fn memory_lock(org: i64, id: ProviderId) -> OwnedMutexGuard<()> {
         .clone();
     lock.lock_owned().await
 }
+/// Field order is drop order: end the transaction (releasing the database
+/// lock) before handing the in-process lock to the next local waiter.
+struct PostgresLease {
+    _transaction: sqlx::Transaction<'static, sqlx::Postgres>,
+    _local: OwnedMutexGuard<()>,
+}
 #[async_trait]
 impl TokenStore for DbTokenStore {
     async fn lock(&self) -> Result<Box<dyn Send>> {
         match self.db.as_ref() {
             StorageBackend::Postgres(db) => {
-                let mut transaction = db.pool().begin().await?;
-                let key = i64::from_be_bytes(self.provider.uuid().as_bytes()[..8].try_into()?);
-                sqlx::query("SELECT pg_advisory_xact_lock($1)")
-                    .bind(key)
-                    .execute(&mut *transaction)
+                // The lease spans a load and save through the shared pool and,
+                // on expiry, an OAuth refresh. Queue same-replica callers on
+                // the in-process mutex, then poll the cross-replica lock so no
+                // waiter parks a pool connection the holder needs.
+                let local = memory_lock(self.org, self.provider).await;
+                let transaction = db
+                    .advisory_xact_lock_polling(
+                        "chatgpt_token",
+                        &self.provider.uuid().to_string(),
+                        crate::storage::repositories::ADVISORY_LOCK_WAIT,
+                    )
                     .await?;
-                Ok(Box::new(transaction))
+                Ok(Box::new(PostgresLease {
+                    _transaction: transaction,
+                    _local: local,
+                }))
             }
             StorageBackend::InMemory(_) => Ok(Box::new(memory_lock(self.org, self.provider).await)),
         }
