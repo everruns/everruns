@@ -12,10 +12,10 @@ use crate::domains::common::{CommandError, classify_anyhow};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
+use crate::records::app::SessionBinding;
+use crate::records::{AgentAction, AuditEvent, EndpointTransport};
 use chrono::{DateTime, Duration, Utc};
 use everruns_contracts::typed_id::SessionId;
-use everruns_platform::app::SessionBinding;
-use everruns_platform::{AgentAction, AuditEvent, EndpointTransport};
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -356,11 +356,11 @@ async fn find_or_create_invocation_session(
             // The invocation channel *is* the session's origin. `api_endpoint`
             // collapses into `webhook`: both are an inbound HTTP call into the app.
             match source {
-                EndpointInvocationSource::Schedule => everruns_platform::SessionSource::Schedule,
+                EndpointInvocationSource::Schedule => crate::records::SessionSource::Schedule,
                 EndpointInvocationSource::Webhook | EndpointInvocationSource::ApiEndpoint => {
-                    everruns_platform::SessionSource::Webhook
+                    crate::records::SessionSource::Webhook
                 }
-                EndpointInvocationSource::A2a => everruns_platform::SessionSource::A2a,
+                EndpointInvocationSource::A2a => crate::records::SessionSource::A2a,
             },
             CreateSessionRequest {
                 playground_user_id: None,

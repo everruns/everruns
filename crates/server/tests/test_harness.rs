@@ -172,8 +172,8 @@ impl TestServer {
     ) -> Value {
         use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_platform::AgentEndpointId;
         use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
+        use everruns_server::records::AgentEndpointId;
         use everruns_server::storage::models::{
             CreateAppRow, CreateLegacyAliasEndpointRow, CreatePrincipalRow,
         };
@@ -313,8 +313,8 @@ impl TestServer {
         channel_config: Value,
     ) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_platform::AgentEndpointId;
         use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
+        use everruns_server::records::AgentEndpointId;
         use everruns_server::storage::models::CreateLegacyAliasEndpointRow;
 
         let app = self
@@ -607,7 +607,7 @@ impl TestServer {
                 db.clone(),
                 encryption.clone(),
                 webhooks.clone(),
-                everruns_platform::FeatureFlags {
+                everruns_server::records::FeatureFlags {
                     mcp_events: true,
                     ..Default::default()
                 },
@@ -623,7 +623,7 @@ impl TestServer {
             event_delivery.clone(),
             vec![],
         ));
-        let mut feature_flags = everruns_platform::FeatureFlags::from_env(&grade);
+        let mut feature_flags = everruns_server::records::FeatureFlags::from_env(&grade);
         feature_flags.evals = true;
         feature_flags.observers = true;
         // System side of the experimental gates exercised by integration tests.

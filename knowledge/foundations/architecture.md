@@ -104,7 +104,9 @@ Production event routing therefore prefers:
    - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, and portable projections. Depends privately on the contract-only provider surface and does not re-export it.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `engine/` → `everruns-engine` - Pure turn state machine plus shared Input/Reason/Act execution
-   - `platform/` → `everruns-platform` - Hosted product records, services, and capability implementations
+   - `capabilities/` → `everruns-capabilities` - Hosted capability implementations and orchestration
+   - `server/src/records/` - Control-plane persistence/API records
+   - `platform/` → `everruns-platform` - Deprecated capability shim for one release
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `host/` → `everruns-host` - Low-level in-process execution host, reusable host-phase execution, and session mutation/storage services shared by the facade, worker, and advanced hosts
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
@@ -131,15 +133,16 @@ everruns/
 │   ├── server/           # Control plane: HTTP API + gRPC server + storage
 │   ├── worker/           # Durable worker with gRPC client
 │   ├── core/             # Neutral execution contracts and portable projections
-│   ├── provider/         # LLM/provider abstraction (ChatDriver, protocol drivers, model profiles)
+│   ├── contracts/        # Provider/capability SPIs, model profiles, neutral host services
 │   ├── engine/           # Shared turn planning and execution coordination
-│   ├── platform/         # Hosted product records and services
+│   ├── capabilities/     # Hosted capabilities and orchestration
+│   ├── platform/         # Deprecated one-release capabilities shim
 │   ├── everruns/         # Application-facing Framework crate
 │   ├── host/             # Low-level in-process host and reusable host phases
 │   ├── macros/           # everruns-macros implementation crate
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── durable/          # Durable execution engine
-│   └── drivers/          # Independently versioned official LLM drivers
+│   └── drivers/          # Consolidated official LLM drivers and standalone simulator
 ├── integrations/
 │   ├── docker/           # Docker container (inventory plugin)
 │   ├── daytona/          # Daytona cloud sandbox (inventory plugin)
@@ -246,7 +249,7 @@ contributions as plain consts — `CAPABILITY_PLUGINS` (`IntegrationPlugin`) and
 `CatalogEntry` per crate. Server and worker both compose from
 `oss_capability_registry_for_grade` / `register_connectors`.
 
-The catalog sits above `everruns-platform` because integration crates depend on
+The catalog sits above `everruns-capabilities` because integration crates depend on
 platform for the connector and sandbox contracts, so platform cannot name them.
 `hosted_capability_registry_for_grade` therefore excludes integrations; only the
 catalog's composition has the full set. Registration order is builtins →

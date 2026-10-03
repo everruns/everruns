@@ -6,12 +6,12 @@
 // - Execution provenance remains separate from ownership; principals only model
 //   who can own durable entities and who an unattended flow can act as.
 //
-// EVE-837: the `Principal` aggregate entity moved to the `everruns-platform`
+// EVE-837: the `Principal` aggregate entity moved to the `crates/server/src/records`
 // crate. The value types below stay in core because they are embedded by core
 // domain models: `PrincipalSummary` is a field of `Session`/`SessionSchedule`/
 // `VirtualUser`, and `PrincipalKind` backs that summary. EVE-845: the
 // `PrincipalStatus` lifecycle enum, which no core type embeds, moved to
-// `everruns-platform` alongside the `Principal` aggregate it describes.
+// `crates/server/src/records` alongside the `Principal` aggregate it describes.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

@@ -41,7 +41,7 @@ pub struct CreateSessionRow {
     /// How this session was started. Set by the creating ingress path, never
     /// taken from untrusted client input except for client-declarable
     /// variants (see `SessionSource::is_client_declarable`).
-    pub source: everruns_platform::SessionSource,
+    pub source: crate::records::SessionSource,
     pub app_id: Option<Uuid>,
     /// The two ingress pointers (EVE-1004, EVE-1138): the endpoint, set by the
     /// app-channel paths that all know theirs, and the trigger, set by the
@@ -97,7 +97,7 @@ impl Default for CreateSessionRow {
     fn default() -> Self {
         Self {
             org_id: 0,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             app_id: None,
             endpoint_id: None,
             trigger_id: None,
@@ -150,9 +150,9 @@ pub struct SessionListFilters {
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
     /// Empty means "any source".
-    pub sources: Vec<everruns_platform::SessionSource>,
+    pub sources: Vec<crate::records::SessionSource>,
     /// Empty means "any activity".
-    pub activities: Vec<everruns_platform::SessionActivity>,
+    pub activities: Vec<crate::records::SessionActivity>,
     /// Restrict to sessions whose resolved human owner is this user (`mine`).
     pub owner_user_id: Option<Uuid>,
     pub created_after: Option<DateTime<Utc>>,

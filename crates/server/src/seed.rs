@@ -243,7 +243,7 @@ const ADMIN_USER_ID: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_0000000000
 async fn seed_admin_user(
     db: &StorageBackend,
     admin_config: &AdminConfig,
-    harness_definitions: &[everruns_platform::BuiltInHarnessDefinition],
+    harness_definitions: &[crate::records::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -1441,8 +1441,8 @@ where
 
 /// Seed default-org feature flag opt-ins when none exist (dev-friendly bootstrap).
 async fn seed_default_org_feature_flags(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    use crate::records::{API_FEATURE_FLAG_DEFINITIONS, FeatureFlags};
     use everruns_core::{DEFAULT_ORG_ID, DeploymentGrade};
-    use everruns_platform::{API_FEATURE_FLAG_DEFINITIONS, FeatureFlags};
     use std::collections::HashMap;
 
     let mut result = SeedResult::default();
@@ -1623,7 +1623,7 @@ pub fn spawn_seed_task_with_host_composition(
     db: Arc<StorageBackend>,
     auth_ctx: SeedAuthContext,
     host_composition: HostComposition,
-    built_in_harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
+    built_in_harnesses: Vec<crate::records::BuiltInHarnessDefinition>,
     encryption: Option<Arc<EncryptionService>>,
 ) -> JoinHandle<()> {
     let grade = DeploymentGrade::from_env();
@@ -1713,7 +1713,7 @@ pub fn spawn_seed_task_with_host_composition(
 /// is logged but does not prevent other orgs from updating.
 async fn reconcile_org_harnesses(
     db: &StorageBackend,
-    harnesses: &[everruns_platform::BuiltInHarnessDefinition],
+    harnesses: &[crate::records::BuiltInHarnessDefinition],
 ) {
     let orgs = match db.list_organizations().await {
         Ok(orgs) => orgs,
@@ -1775,7 +1775,7 @@ async fn run_seed_with_retry(
     grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
     host_composition: &HostComposition,
-    built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
+    built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
 ) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
@@ -1858,7 +1858,7 @@ pub async fn seed_all_with_host_composition(
     _grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
     host_composition: &HostComposition,
-    built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
+    built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -1961,7 +1961,7 @@ mod tests {
         StorageBackend::in_memory()
     }
 
-    fn built_in_harnesses() -> Vec<everruns_platform::BuiltInHarnessDefinition> {
+    fn built_in_harnesses() -> Vec<crate::records::BuiltInHarnessDefinition> {
         org_init::default_harness_definitions()
     }
 

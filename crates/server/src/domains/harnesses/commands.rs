@@ -16,7 +16,7 @@ use crate::kernel_imports::{
     contracts::typed_id::HarnessId,
     merge_scoped_mcp_servers,
 };
-use everruns_platform::{Harness, HarnessStatus};
+use crate::records::{Harness, HarnessStatus};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -840,7 +840,7 @@ pub struct PreviewHarness {
     #[serde(default)]
     pub parent_harness_id: Option<HarnessId>,
     #[serde(default)]
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub mcp_servers: ScopedMcpServers,
@@ -1063,7 +1063,7 @@ mod tests {
 
         let mut req = basic_request("intro-limits");
         req.starters = (0..9)
-            .map(|i| everruns_platform::ConversationStarter {
+            .map(|i| crate::records::ConversationStarter {
                 icon: None,
                 text: format!("starter {i}"),
             })
@@ -1071,7 +1071,7 @@ mod tests {
         assert!(validate_create_limits(&req).is_err());
 
         let mut req = basic_request("intro-limits");
-        req.starters = vec![everruns_platform::ConversationStarter {
+        req.starters = vec![crate::records::ConversationStarter {
             icon: None,
             text: "   ".to_string(),
         }];
@@ -1086,7 +1086,7 @@ mod tests {
             description: None,
             intro_markdown: Some(None),
             short_description: Some(None),
-            starters: Some(vec![everruns_platform::ConversationStarter {
+            starters: Some(vec![crate::records::ConversationStarter {
                 icon: Some("zap".to_string()),
                 text: "Triage the newest P1".to_string(),
             }]),

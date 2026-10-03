@@ -1,9 +1,9 @@
-use anyhow::{Context, Result};
-use async_trait::async_trait;
-use everruns_platform::reporting::{
+use crate::records::reporting::{
     ReportColumn, ReportColumnKind, ReportFilterOp, ReportOrderDirection, ReportQuery,
     ReportResult, ReportScope, ReportingQueryBackend,
 };
+use anyhow::{Context, Result};
+use async_trait::async_trait;
 use serde_json::{Map, Value};
 use sqlx::{PgPool, QueryBuilder, Row};
 

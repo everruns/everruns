@@ -2,9 +2,9 @@ use super::playground::*;
 use super::{CreateSession, ListSessions, SessionFilterArgs, SessionService};
 use crate::api::sessions::CreateSessionRequest;
 use crate::domains::common::{Command, Ctx};
+use crate::records::{FeatureFlags, SessionSource};
 use crate::storage::{StorageBackend, models::CreateUserRow};
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
-use everruns_platform::{FeatureFlags, SessionSource};
 use std::sync::Arc;
 use uuid::Uuid;
 

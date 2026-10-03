@@ -10,7 +10,7 @@ license.workspace = true
 # Experimental sandboxed Lua execution capability (knowledge/execution/lua-execution.md).
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
 # by FEATURE_LUA.
-lua = ["everruns-platform/lua", "everruns-host/lua"]
+lua = ["everruns-capabilities/lua", "everruns-host/lua"]
 
 [dependencies]
 mimalloc.workspace = true
@@ -32,7 +32,7 @@ everruns-llmsim.workspace = true
 clap = { workspace = true, features = ["string"] }
 everruns-cli-contract.workspace = true
 everruns-integrations-bashkit.workspace = true
-everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
+everruns-capabilities = { path = "../capabilities", features = ["embedded-platform-docs", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
 everruns-integrations-catalog.workspace = true
 everruns-integrations-daytona = { path = "../../integrations/daytona" }
 everruns-integrations-deno = { path = "../../integrations/deno" }

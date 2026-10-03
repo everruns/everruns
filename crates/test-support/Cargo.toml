@@ -38,7 +38,7 @@ sim = ["dep:everruns-llmsim"]
 # the platform crate (EVE-879) — only this fixture surface links it, so the
 # `sim`-only consumers (the `everruns` facade, the worker) stay platform-free
 # through this crate.
-fixtures = ["dep:everruns-platform"]
+fixtures = ["dep:everruns-capabilities"]
 # Host-backed in-memory loop, store helpers, and the transitional
 # `.llm_sim(...)` / `.llm_sim_as_default(...)` extension re-export.
 host = ["dep:everruns-host", "sim", "everruns-llmsim/host"]
@@ -49,7 +49,7 @@ everruns-engine.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
 everruns-llmsim = { workspace = true, optional = true }
 everruns-host = { workspace = true, optional = true }
-everruns-platform = { workspace = true, optional = true }
+everruns-capabilities = { workspace = true, optional = true }
 
 anyhow.workspace = true
 async-trait.workspace = true

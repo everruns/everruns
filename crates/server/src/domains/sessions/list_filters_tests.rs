@@ -9,11 +9,11 @@ use super::{
     UnarchiveSession,
 };
 use crate::domains::common::{Command, Ctx};
+use crate::records::SessionSource;
 use crate::storage::{CreateAgentRow, CreateEventRow, CreateSessionRow, StorageBackend};
 use everruns_contracts::typed_id::AgentId;
 use everruns_contracts::typed_id::{HarnessId, PrincipalId, SessionId};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole};
-use everruns_platform::SessionSource;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;

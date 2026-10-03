@@ -81,7 +81,7 @@ Working instance of an agentic loop. Configured by its harness and situationally
 - Sessions may carry a `goal`, an objective shown in lists and injected into the
   runtime prompt as session metadata rather than as a user message.
 - Since EVE-882 the persisted Session aggregate (status/source/activity facets,
-  participants, ownership, previews, timestamps) lives in `everruns-platform`;
+  participants, ownership, previews, timestamps) lives in `crates/server/src/records`;
   the execution kernel consumes only the portable
   `everruns_core::ExecutionSession` projection plus the neutral
   `SessionExecutionState`, produced at the platform loading boundary.
@@ -120,7 +120,7 @@ See `crates/core/src/config_layer.rs` for implementation.
 
 **Overlay chain:**
 
-Harnesses support single-parent inheritance. An Agent either stores a pinned leaf harness or resolves the organization's current default leaf for each new session. Since EVE-881 the inheritance chain is resolved behind the platform loading boundary: `HarnessStore::get_harness()` returns one effective `HarnessDefinition` (the stored chain is folded root-to-leaf with the same overlay merge semantics inside `everruns-platform`), which becomes the base overlay folded alongside the optional agent and session overlays.
+Harnesses support single-parent inheritance. An Agent either stores a pinned leaf harness or resolves the organization's current default leaf for each new session. Since EVE-881 the inheritance chain is resolved behind the platform loading boundary: `HarnessStore::get_harness()` returns one effective `HarnessDefinition` (the stored chain is folded root-to-leaf with the same overlay merge semantics inside the server), which becomes the base overlay folded alongside the optional agent and session overlays.
 
 ```
  harness_root ─► harness_child ─► harness_leaf      agent       session

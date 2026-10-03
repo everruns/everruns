@@ -64,11 +64,11 @@ pub async fn validate_hydrated_capability_size_for_org(
 }
 
 pub fn validate_feature_gated_capability_refs(
-    feature_flags: &everruns_platform::FeatureFlags,
+    feature_flags: &crate::records::FeatureFlags,
     capabilities: &[AgentCapabilityConfig],
 ) -> Result<(), CommandError> {
     if let Some(flag) = capabilities.iter().find_map(|capability| {
-        everruns_platform::FeatureFlags::required_for_capability(capability.capability_id())
+        crate::records::FeatureFlags::required_for_capability(capability.capability_id())
             .filter(|flag| !feature_flags.is_enabled(flag))
     }) {
         return Err(CommandError::feature_not_enabled(flag));
@@ -255,15 +255,15 @@ mod tests {
     fn feature_gated_capability_requires_effective_flag() {
         let capabilities = vec![AgentCapabilityConfig::new("agent_handoff")];
         let error = validate_feature_gated_capability_refs(
-            &everruns_platform::FeatureFlags::default(),
+            &crate::records::FeatureFlags::default(),
             &capabilities,
         )
         .unwrap_err();
         assert_eq!(error.message(), "Feature 'agent_delegation' is not enabled");
 
-        let enabled = everruns_platform::FeatureFlags {
+        let enabled = crate::records::FeatureFlags {
             agent_delegation: true,
-            ..everruns_platform::FeatureFlags::default()
+            ..crate::records::FeatureFlags::default()
         };
         validate_feature_gated_capability_refs(&enabled, &capabilities).unwrap();
     }

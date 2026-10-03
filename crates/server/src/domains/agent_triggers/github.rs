@@ -25,13 +25,13 @@ use super::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
+use crate::records::{
+    AgentTrigger, AgentTriggerType, GitHubTriggerConfig, TriggerEventFilter, TriggerFilterCondition,
+};
 use crate::storage::StorageBackend;
 use crate::storage::github_app_rows::GitHubAppRow;
 use crate::storage::models::AgentRow;
 use everruns_contracts::typed_id::{AgentId, TriggerId};
-use everruns_platform::{
-    AgentTrigger, AgentTriggerType, GitHubTriggerConfig, TriggerEventFilter, TriggerFilterCondition,
-};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -372,7 +372,7 @@ pub async fn dispatch_github_delivery(
                 // one session per event in the pipeline.
                 session_mode: config.session_mode,
                 filter: filter.as_ref(),
-                session_source: everruns_platform::SessionSource::Webhook,
+                session_source: crate::records::SessionSource::Webhook,
                 webhook_compat: None,
             },
             TriggerEvent {
@@ -399,7 +399,7 @@ pub async fn dispatch_github_delivery(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_platform::SessionBinding;
+    use everruns_core::channel::SessionBinding;
 
     #[test]
     fn events_default_normalize_and_reject_garbage() {

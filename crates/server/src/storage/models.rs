@@ -13,9 +13,9 @@ use crate::kernel_imports::{
     contracts::typed_id::SkillId, contracts::typed_id::TriggerId,
     contracts::typed_id::VirtualUserId,
 };
+use crate::records::{SessionParticipant, SessionParticipantKind, SessionParticipantRole};
 use chrono::{DateTime, Utc};
 use everruns_durable::UpdateField;
-use everruns_platform::{SessionParticipant, SessionParticipantKind, SessionParticipantRole};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -508,7 +508,7 @@ pub struct AgentRow {
     /// NULL until the agent first acts unattended (e.g. an agent trigger fire),
     /// at which point an `virtual_users` row is created and linked so the
     /// agent owns its unattended sessions as itself. Storage-only: intentionally
-    /// not surfaced on the public `everruns_platform::Agent` API.
+    /// not surfaced on the public `crate::records::Agent` API.
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
     #[sqlx(default)]
@@ -916,7 +916,7 @@ pub struct SessionRow {
     pub parallel_tool_calls: Option<bool>,
     pub status: String,
     /// How the session was started (EVE-852). Stored as the closed-set string
-    /// backing `everruns_platform::SessionSource`.
+    /// backing `crate::records::SessionSource`.
     #[sqlx(default)]
     pub source: String,
     /// Denormalized outcome of the most recent terminal turn: `completed`,

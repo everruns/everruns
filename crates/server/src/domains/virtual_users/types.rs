@@ -4,7 +4,7 @@
 // has a single import path.
 
 use crate::api::common::deserialize_nullable_update_field;
-use everruns_core::VirtualUserStatus;
+use crate::records::VirtualUserStatus;
 use everruns_durable::UpdateField;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
@@ -17,7 +17,7 @@ pub struct CreateVirtualUserRequest {
     #[serde(default)]
     /// Runtime purpose; service accounts may be attached to agents.
     #[schema(example = "end_user")]
-    pub usage: everruns_core::VirtualUserUsage,
+    pub usage: crate::records::VirtualUserUsage,
     #[schema(example = "Ops Bot")]
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -64,7 +64,7 @@ pub struct UpdateVirtualUserRequest {
 
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListVirtualUsersQuery {
-    pub usage: Option<everruns_core::VirtualUserUsage>,
+    pub usage: Option<crate::records::VirtualUserUsage>,
     pub search: Option<String>,
     pub include_archived: Option<bool>,
     /// Zero-based page offset.

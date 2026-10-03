@@ -1568,7 +1568,7 @@ async fn send_password_reset_email(state: &BuiltinAuthBackend, to: &str, raw_tok
         "{}/reset-password?token={raw_token}",
         state.config.frontend_url.trim_end_matches('/')
     );
-    use everruns_platform::email::branded_button;
+    use crate::records::email::branded_button;
     let button = branded_button(&url, "Reset your password");
     let subject = "Reset your Everruns password";
     let text = format!(
@@ -1592,7 +1592,7 @@ async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token
         state.config.frontend_url.trim_end_matches('/'),
         urlencoding::encode(to),
     );
-    use everruns_platform::email::branded_button;
+    use crate::records::email::branded_button;
     let button = branded_button(&url, "Verify your email");
     let subject = "Verify your Everruns email";
     let text = format!(
@@ -1615,7 +1615,7 @@ async fn send_account_exists_email(state: &BuiltinAuthBackend, to: &str) {
         "{}/login",
         state.config.login_origin().trim_end_matches('/')
     );
-    use everruns_platform::email::branded_button;
+    use crate::records::email::branded_button;
     let button = branded_button(&url, "Log in to Everruns");
     let subject = "You already have an Everruns account";
     let text = format!(
@@ -1639,7 +1639,7 @@ async fn deliver_account_email(
     text: String,
     html: String,
 ) {
-    use everruns_platform::email::{EmailError, EmailMessage};
+    use crate::records::email::{EmailError, EmailMessage};
     let sender = state.email_sender.clone();
     let message = EmailMessage::basic(to, subject, text, html);
     match sender.send_email(message).await {

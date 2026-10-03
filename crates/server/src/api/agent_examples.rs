@@ -30,7 +30,7 @@ pub struct AgentExample {
     /// Tags for categorization
     pub tags: Vec<String>,
     /// Capability IDs this example uses
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<everruns_contracts::CapabilityRef>,
     /// Whether this example requires dev/experimental mode
     pub dev_only: bool,

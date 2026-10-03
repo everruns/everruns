@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::api::messages::InputContentPart;
+use crate::records::ConversationStarter;
 use crate::storage::StorageBackend;
-use everruns_platform::ConversationStarter;
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 

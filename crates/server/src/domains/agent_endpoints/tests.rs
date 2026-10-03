@@ -2,11 +2,11 @@ use super::*;
 use crate::domains::agent_endpoints::types::{
     CreateAgentEndpointRequest, UpdateAgentEndpointRequest,
 };
+use crate::records::{EndpointStatus, EndpointTransport};
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID};
-use everruns_platform::{EndpointStatus, EndpointTransport};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -233,7 +233,7 @@ async fn seed_version(
 }
 
 fn webhook_create(
-    policy: Option<everruns_platform::AgentVersionPolicy>,
+    policy: Option<crate::records::AgentVersionPolicy>,
     version: Option<everruns_contracts::typed_id::AgentVersionId>,
 ) -> CreateAgentEndpointRequest {
     CreateAgentEndpointRequest {
@@ -247,7 +247,7 @@ fn webhook_create(
 
 #[tokio::test]
 async fn endpoint_version_pin_round_trips_and_unpins() {
-    use everruns_platform::AgentVersionPolicy;
+    use crate::records::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let version = seed_version(&db, &agent_id, true).await;
@@ -306,7 +306,7 @@ async fn endpoint_version_pin_round_trips_and_unpins() {
 
 #[tokio::test]
 async fn endpoint_version_pin_rejects_invalid_selections() {
-    use everruns_platform::AgentVersionPolicy;
+    use crate::records::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let other_agent_id = seed_agent(&db).await;
@@ -361,7 +361,7 @@ async fn endpoint_version_pin_rejects_invalid_selections() {
 
 #[tokio::test]
 async fn endpoint_version_pin_requires_agent_versions_feature() {
-    use everruns_platform::AgentVersionPolicy;
+    use crate::records::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let version = seed_version(&db, &agent_id, true).await;
@@ -550,7 +550,7 @@ async fn live_endpoint_exposure_changes_require_dangerous_permission() {
     assert_eq!(stored.status, EndpointStatus::Live);
     assert_eq!(
         stored.auth.as_ref().map(|auth| auth.mode.clone()),
-        Some(everruns_platform::EndpointAuthMode::SharedSecret)
+        Some(crate::records::EndpointAuthMode::SharedSecret)
     );
 
     // Re-saving a live endpoint without changing it (secrets omitted or shown

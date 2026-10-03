@@ -11,6 +11,9 @@
 // session is created or any turn runs. Visitors authenticated via the channel's
 // `auth` config (e.g. Google sign-in) bypass the challenge.
 
+use crate::records::{
+    EndpointAuthMode, EndpointAuthProviderConfig, EndpointTransport, PublicChatChannelConfig,
+};
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, Path, Request, State},
@@ -20,9 +23,6 @@ use axum::{
     },
     response::{IntoResponse, Response},
     routing::{get, post},
-};
-use everruns_platform::{
-    EndpointAuthMode, EndpointAuthProviderConfig, EndpointTransport, PublicChatChannelConfig,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};

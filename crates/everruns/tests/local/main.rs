@@ -4,7 +4,7 @@
 //! Each `tests/*.rs` file is its own binary, and every binary links the whole
 //! `everruns` crate from scratch (see `knowledge/project/ci-build-time.md`).
 //! These suites all require `required-features = ["local"]` — without it they
-//! fail to resolve `everruns_platform` — so they are merged into one target
+//! fail to resolve `everruns_capabilities` — so they are merged into one target
 //! declared once in Cargo.toml instead of one `[[test]]` entry per file.
 //!
 //! Run with: `cargo test -p everruns --features local --test local`

@@ -8,7 +8,7 @@
 
 use crate::test_harness;
 use axum::http::{Method, StatusCode};
-use everruns_platform::Agent;
+use everruns_server::records::Agent;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use test_harness::TestServer;

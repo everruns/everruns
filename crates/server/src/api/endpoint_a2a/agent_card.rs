@@ -90,7 +90,7 @@ async fn agent_card(
     if !app.matches_legacy_app_id(&app_id) {
         return Err(not_found());
     }
-    if channel.channel_type != everruns_platform::EndpointTransport::A2a {
+    if channel.channel_type != crate::records::EndpointTransport::A2a {
         return Err(not_found());
     }
     // The Agent Card is only served for a live endpoint: it advertises the
@@ -135,7 +135,7 @@ async fn agent_card(
     // Streaming is only supported on session_per_invocation channels.
     // Shared-session channels reject it because events cannot be safely
     // correlated across concurrent callers.
-    let streaming = config.session_mode == everruns_platform::app::SessionBinding::Ephemeral;
+    let streaming = config.session_mode == crate::records::app::SessionBinding::Ephemeral;
     let interfaces: Vec<Value> = super::wire::SUPPORTED_VERSIONS
         .iter()
         .map(|version| {
@@ -229,8 +229,8 @@ const HMAC_DESCRIPTION: &str =
 /// The channel's security schemes and its requirements in the 0.3 / OpenAPI
 /// shape; [`v1_security_requirements`] derives the 1.0 shape from them.
 fn a2a_security_for_config(
-    config: &everruns_platform::A2aChannelConfig,
-    auth: Option<&everruns_platform::EndpointAuthConfig>,
+    config: &crate::records::A2aChannelConfig,
+    auth: Option<&crate::records::EndpointAuthConfig>,
 ) -> (Value, Value) {
     let (mut schemes, mut requirements) = base_a2a_security(auth);
     // THREAT[TM-A2A-010]: When the channel opts into HMAC signing, advertise
@@ -272,7 +272,7 @@ fn a2a_security_for_config(
     (schemes, requirements)
 }
 
-fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (Value, Value) {
+fn base_a2a_security(auth: Option<&crate::records::EndpointAuthConfig>) -> (Value, Value) {
     let Some(auth) = auth else {
         return (
             json!({ "apiKey": http_scheme("bearer") }),
@@ -280,13 +280,13 @@ fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (V
         );
     };
     match (&auth.mode, auth.provider.as_ref()) {
-        (everruns_platform::EndpointAuthMode::HttpBasic, _) => (
+        (crate::records::EndpointAuthMode::HttpBasic, _) => (
             json!({ "httpBasic": http_scheme("basic") }),
             json!([{ "httpBasic": [] }]),
         ),
         (
-            everruns_platform::EndpointAuthMode::GoogleOidc,
-            Some(everruns_platform::EndpointAuthProviderConfig::GoogleOidc { .. }),
+            crate::records::EndpointAuthMode::GoogleOidc,
+            Some(crate::records::EndpointAuthProviderConfig::GoogleOidc { .. }),
         ) => (
             json!({
                 "googleOidc": oidc_scheme("https://accounts.google.com/.well-known/openid-configuration")
@@ -294,8 +294,8 @@ fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (V
             json!([{ "googleOidc": auth.requirements.scopes.clone() }]),
         ),
         (
-            everruns_platform::EndpointAuthMode::Oidc,
-            Some(everruns_platform::EndpointAuthProviderConfig::Oidc { issuer, .. }),
+            crate::records::EndpointAuthMode::Oidc,
+            Some(crate::records::EndpointAuthProviderConfig::Oidc { issuer, .. }),
         ) => {
             let discovery = format!(
                 "{}/.well-known/openid-configuration",
@@ -309,17 +309,17 @@ fn base_a2a_security(auth: Option<&everruns_platform::EndpointAuthConfig>) -> (V
         // The linked A2A schema models OAuth2 as concrete OpenAPI flows. An
         // introspection-only channel has no token URL to publish, so advertise
         // generic bearer auth rather than fabricating an unusable OAuth flow.
-        (everruns_platform::EndpointAuthMode::OAuth2Introspection, _) => (
+        (crate::records::EndpointAuthMode::OAuth2Introspection, _) => (
             json!({ "oauth2Bearer": http_scheme("bearer") }),
             json!([{ "oauth2Bearer": auth.requirements.scopes.clone() }]),
         ),
-        (everruns_platform::EndpointAuthMode::Mtls, _) => (
+        (crate::records::EndpointAuthMode::Mtls, _) => (
             json!({
                 "mtls": union_scheme("mtlsSecurityScheme", json!({}), json!({ "type": "mutualTLS" }))
             }),
             json!([{ "mtls": [] }]),
         ),
-        (everruns_platform::EndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
+        (crate::records::EndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
         _ => (
             json!({ "apiKey": http_scheme("bearer") }),
             json!([{ "apiKey": [] }]),
@@ -333,25 +333,25 @@ mod tests {
 
     #[test]
     fn oauth2_introspection_security_advertises_bearer_auth() {
-        let config = everruns_platform::A2aChannelConfig {
+        let config = crate::records::A2aChannelConfig {
             api_key_hash: "hash".to_string(),
             api_key_prefix: "evra2a_abcd...".to_string(),
-            session_mode: everruns_platform::app::SessionBinding::Endpoint,
+            session_mode: crate::records::app::SessionBinding::Endpoint,
             message: "{{a2a.text}}".to_string(),
             agent_card_name: None,
             agent_card_description: None,
             rate_limit_per_minute: None,
-            auth: Some(everruns_platform::EndpointAuthConfig {
-                mode: everruns_platform::EndpointAuthMode::OAuth2Introspection,
+            auth: Some(crate::records::EndpointAuthConfig {
+                mode: crate::records::EndpointAuthMode::OAuth2Introspection,
                 provider: Some(
-                    everruns_platform::EndpointAuthProviderConfig::OAuth2Introspection {
+                    crate::records::EndpointAuthProviderConfig::OAuth2Introspection {
                         introspection_url: "https://auth.example.test/introspect".to_string(),
                         client_id: None,
                         client_secret: None,
                         client_secret_configured: false,
                     },
                 ),
-                requirements: everruns_platform::EndpointAuthRequirements {
+                requirements: crate::records::EndpointAuthRequirements {
                     audiences: vec![],
                     scopes: vec!["app:invoke".to_string()],
                     claims: serde_json::Map::new(),

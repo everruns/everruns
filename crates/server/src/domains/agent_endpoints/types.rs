@@ -1,5 +1,5 @@
+use crate::records::{AgentVersionPolicy, EndpointTransport};
 use everruns_contracts::typed_id::AgentVersionId;
-use everruns_platform::{AgentVersionPolicy, EndpointTransport};
 use serde::Deserialize;
 use serde_json::Value;
 use utoipa::ToSchema;

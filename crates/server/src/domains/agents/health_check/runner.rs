@@ -174,7 +174,7 @@ async fn run_case(
             Some(agent_internal_id),
             Some(agent_public_id),
             // A health check is an internal API-shaped run, not a user session.
-            everruns_platform::SessionSource::Api,
+            crate::records::SessionSource::Api,
             CreateSessionRequest {
                 playground_user_id: None,
                 source: None,
@@ -280,7 +280,7 @@ async fn run_case(
 async fn run_turn(
     ctx: &HealthCheckRunContext,
     org_id: i64,
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
     harness_id: Uuid,
     agent_internal_id: Uuid,
     content: &str,

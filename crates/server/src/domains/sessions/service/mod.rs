@@ -36,6 +36,9 @@ use crate::kernel_imports::{
 };
 use crate::max_iterations;
 use crate::org_init;
+use crate::records::FeatureFlags;
+use crate::records::{AgentVersionPolicy, EnvironmentSet, MemoryConfig, MemoryMountAccess};
+use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::server::ResourceLimitsConfig;
 use crate::services::{PrincipalService, row_to_principal};
 use crate::storage::{
@@ -47,16 +50,11 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_builtins::AttachSkillCapability;
+use everruns_capabilities::capabilities::MEMORY_CAPABILITY_ID;
+use everruns_capabilities::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_contracts::typed_id::MemoryId;
 use everruns_durable::UpdateField;
 use everruns_mcp::is_mcp_capability;
-use everruns_platform::FeatureFlags;
-use everruns_platform::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
-use everruns_platform::{
-    AgentVersionPolicy, EnvironmentSet, MemoryConfig, MemoryMountAccess,
-    capabilities::MEMORY_CAPABILITY_ID,
-};
-use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;

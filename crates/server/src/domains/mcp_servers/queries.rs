@@ -3,8 +3,9 @@
 // No policy checks, no input validation. Pure data access + mapping.
 
 use super::service::{McpServerService, McpServerSettings};
+use crate::records::{McpServer, McpServerStatus};
 use crate::storage::StorageBackend;
-use everruns_core::{McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType};
+use everruns_core::{McpServerAuthMode, McpServerTransportType};
 // `settings.protocol_mode` is read below.
 use std::collections::HashMap;
 use uuid::Uuid;

@@ -10,7 +10,7 @@
 use crate::test_harness;
 
 use axum::http::{Method, StatusCode};
-use everruns_platform::{Agent, Session};
+use everruns_server::records::{Agent, Session};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

@@ -8,6 +8,7 @@ use crate::domains::budgets::{
     ResumeSessionBudgets, TopUpBudget, UpdateBudgetCmd,
 };
 use crate::domains::common::{Command, Ctx};
+use crate::records::{Budget, LedgerEntry};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -17,7 +18,6 @@ use axum::{
 };
 use everruns_core::budget::{BudgetCheckResult, BudgetPeriod};
 use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
-use everruns_platform::{Budget, LedgerEntry};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};

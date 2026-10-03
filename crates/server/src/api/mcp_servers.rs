@@ -6,6 +6,7 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
+use crate::records::McpServer;
 use crate::services::CapabilityService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -15,7 +16,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_contracts::typed_id::McpServerId;
-use everruns_core::{Caller, McpServer, ResourceConfigResponse, evaluate_policies_with};
+use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
 
 use super::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,

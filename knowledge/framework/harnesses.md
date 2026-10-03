@@ -57,7 +57,7 @@ Three layers, each answering one question.
 
 A Session binds one of each. This mirrors the hosted precedence rather than
 inventing a second one: an Agent carries a harness reference
-(`crates/platform/src/agent.rs`), and a session may override it.
+(`crates/server/src/records/agent.rs`), and a session may override it.
 
 Environment is not a new name. It is the resource name already decided for both
 surfaces by [Execution environments](../harnesses/execution-environments.md),
@@ -224,8 +224,8 @@ provider-named aliases remain available during migration.
 - Environment, containment validation: `crates/host/src/workspace.rs`
 - Compute targets and capabilities: `crates/host/src/compute.rs`
 - Portable harness definition: `crates/host/src/builders.rs`
-- Hosted harness record and agent binding: `crates/platform/src/harness.rs`,
-  `crates/platform/src/agent.rs`
+- Hosted harness record and agent binding: `crates/server/src/records/harness.rs`,
+  `crates/server/src/records/agent.rs`
 - Built-in harness definitions: `crates/server/src/harnesses/`
 
 ## See also

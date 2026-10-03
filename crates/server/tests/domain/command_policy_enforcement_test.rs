@@ -25,7 +25,6 @@ use everruns_core::{
     Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole, Permission,
     PermissionResolver, SessionSeedMode,
 };
-use everruns_platform::FeatureFlags;
 use everruns_server::api::evals::CreateEvalRunRequest;
 use everruns_server::api::sessions::CreateSessionRequest;
 use everruns_server::domains::agents::health_check::commands::TriggerAgentHealthCheck;
@@ -42,6 +41,7 @@ use everruns_server::domains::session_tasks::{
     CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage,
 };
 use everruns_server::domains::sessions::CreateSession;
+use everruns_server::records::FeatureFlags;
 use everruns_server::services::CapabilityService;
 use everruns_server::storage::StorageBackend;
 use everruns_server::storage::models::{CreateAgentRow, CreateHarnessRow};

@@ -17,6 +17,7 @@
 // than from the request body: the browser posting this decision does not get to
 // say what was consented to.
 
+use crate::records::SessionStatus;
 use axum::{
     Json,
     extract::{Path, State},
@@ -27,7 +28,6 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
 use everruns_mcp::{StoredConsent, consent_storage_key};
-use everruns_platform::SessionStatus;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

@@ -13,6 +13,7 @@ use crate::kernel_imports::{
     contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
     contracts::provider::ProviderStatus, evaluate_policies_with,
 };
+use crate::records::provider::Provider;
 use crate::services::{ModelSyncService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -24,7 +25,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use everruns_contracts::provider::{Provider, ProviderRequestOptions, ProviderTraceConfig};
+use everruns_contracts::provider::{ProviderRequestOptions, ProviderTraceConfig};
 use everruns_contracts::typed_id::ProviderId;
 use everruns_contracts::url_validation::validate_safe_url;
 use hmac::{Hmac, KeyInit, Mac};

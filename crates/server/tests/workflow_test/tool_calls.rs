@@ -1,9 +1,9 @@
 use crate::support::*;
-use everruns_contracts::model::Model;
-use everruns_contracts::provider::Provider;
 use everruns_core::SessionFile;
-use everruns_platform::Agent;
-use everruns_platform::Session;
+use everruns_server::records::Agent;
+use everruns_server::records::Model;
+use everruns_server::records::Session;
+use everruns_server::records::provider::Provider;
 use serde_json::{Value, json};
 
 /// Test the stable edit_file integration boundary with LlmSim.

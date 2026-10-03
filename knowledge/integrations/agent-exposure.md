@@ -68,7 +68,7 @@ out of the agent's config snapshot.
 
 One row per way in. Transport-typed config, exactly as `app_channels` is today — the
 config stays a per-transport typed union (`SlackChannelConfig` and friends in
-`crates/platform/src/app.rs`, moving to `crates/platform/src/endpoint.rs`), because
+`crates/server/src/records/app.rs`, moving to `crates/capabilities/src/endpoint.rs`), because
 `agent_surface_enabled` has no meaning for A2A and pretending otherwise produces a
 lowest-common-denominator config that fits nothing.
 
@@ -87,7 +87,7 @@ that want different values) or duplicated inside several `channel_config` varian
 place — the shared exposure policy is not transport detail). The exposure policy that
 Slack and AG-UI already share, `public_tool_activity_text`, is the proof: it lives in
 `platform::app` today and is called from both `slack_delivery.rs` and `api/ag_ui.rs`. It
-belongs in a transport-neutral `everruns_platform::exposure` module, and this design
+belongs in a transport-neutral `everruns_server::records::exposure` module, and this design
 forces that move rather than inventing it (EVE-1001, independent of every phase).
 
 ### Trigger
@@ -394,7 +394,7 @@ rest proceeds.
    the design keeps, so it was the surface that decided whether "exposure" became user
    vocabulary.
 4. ~~EVE-978 (suggested prompts) picks a source per surface.~~ Settled: **agent config**,
-   falling back to the harness, resolved by `everruns_platform::exposure::resolve_starters`
+   falling back to the harness, resolved by `everruns_server::records::exposure::resolve_starters`
    over the `starters` field Platform Chat already uses. Endpoint config was not available
    to choose — it does not exist until EVE-1003 — and an endpoint-level override remains
    strictly additive on top of that order, so nothing here is foreclosed.

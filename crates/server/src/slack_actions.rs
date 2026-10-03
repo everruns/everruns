@@ -3,7 +3,7 @@
 //! The native `slack` capability names an action; this module resolves which
 //! Slack endpoint the session belongs to, fetches that endpoint's `bot_token`,
 //! and makes the call. The token stays in this process — see
-//! [`everruns_platform::slack_action`] for why the action travels instead.
+//! [`everruns_contracts::slack_action`] for why the action travels instead.
 //!
 //! # Resolution
 //!
@@ -24,12 +24,12 @@
 
 use std::sync::Arc;
 
+use crate::records::{AgentEndpoint, App, EndpointTransport};
 use async_trait::async_trait;
-use everruns_contracts::typed_id::SessionId;
-use everruns_platform::slack_action::{
+use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
 };
-use everruns_platform::{AgentEndpoint, App, EndpointTransport};
+use everruns_contracts::typed_id::SessionId;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
@@ -602,8 +602,8 @@ mod tests {
         CreateAppRow, CreateHarnessRow, CreateLegacyAliasEndpointRow, CreateSessionRow,
         UpdateEndpointByIdRow,
     };
+    use everruns_contracts::slack_action::SlackActionInvoker;
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
-    use everruns_platform::slack_action::SlackActionInvoker;
     use uuid::Uuid;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -766,7 +766,7 @@ mod tests {
                 .db
                 .create_session(CreateSessionRow {
                     playground_user_id: None,
-                    source: everruns_platform::SessionSource::Api,
+                    source: crate::records::SessionSource::Api,
                     workspace_id: None,
                     org_id,
                     app_id,

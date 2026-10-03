@@ -1,7 +1,7 @@
 use crate::support::*;
 use everruns_core::SessionFile;
-use everruns_platform::Agent;
-use everruns_platform::Session;
+use everruns_server::records::Agent;
+use everruns_server::records::Session;
 use serde_json::{Value, json};
 
 /// Test capability mounts are applied when session is created
@@ -244,7 +244,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
 /// 5. MCP server deletion
 #[tokio::test]
 async fn test_mcp_server_crud() {
-    use everruns_core::McpServer;
+    use everruns_server::records::McpServer;
 
     let client = reqwest::Client::new();
 

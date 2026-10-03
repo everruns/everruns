@@ -35,7 +35,7 @@
 //!
 //! Hosted product capabilities — including Knowledge Bases and Indexes,
 //! Memories, delegation, schedules/tasks, user hooks, and platform management
-//! — live in `everruns-platform`. Backend-neutral first-party implementations
+//! — live in `everruns-capabilities`. Backend-neutral first-party implementations
 //! live in `everruns-builtins`. Core exposes only neutral collection hooks,
 //! registry algorithms, and type-keyed extension seams.
 //!
@@ -94,7 +94,7 @@ pub mod utility_llm;
 
 // Execution feature decisions (EVE-878): the org/product feature-flag records
 // and management logic (`FeatureFlags`, `FeatureFlagMap`, the API catalog, org
-// opt-in resolution) moved to the `everruns-platform` crate. Core keeps only
+// opt-in resolution) moved to the `crates/server/src/records/`. Core keeps only
 // the resolved registration-time decisions consumed by the capability
 // registry builders.
 pub mod execution_features;
@@ -133,10 +133,9 @@ pub mod budget;
 pub mod agent_definition;
 pub mod ard_attachment;
 pub mod capability_dto;
-pub mod virtual_user;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
-// enums) moved to the `everruns-platform` crate — they are product
+// enums) moved to the `crates/server/src/records/` — they are product
 // management/reporting records that never participate in a turn.
 pub mod events;
 pub mod finalized_tool_calls;
@@ -145,7 +144,6 @@ pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
 use everruns_contracts::model_profiles;
-pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
 // EVE-879: the OAuth 2.1 protocol client moved to the MCP adapter crate — MCP
@@ -153,7 +151,7 @@ pub mod network_access;
 // plumbing.
 // EVE-878: the observer records (`Observer`, `TraceScore`, judge
 // configuration, match rules and their lifecycle enums) moved to the
-// `everruns-platform` crate — online scoring watches completed turns from the
+// `crates/server/src/records/` — online scoring watches completed turns from the
 // hosted control plane and never participates in a turn.
 pub mod organization;
 pub mod payment;
@@ -321,7 +319,7 @@ pub use channel::{
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted
-// `PlatformStore` and its management capabilities live in `everruns-platform`.
+// `PlatformStore` and its management capabilities live in `everruns-capabilities`.
 pub use resource_ownership::{
     LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
     LEASED_RESOURCE_TYPE_KEY, list_owned_external_resource_ids,
@@ -354,10 +352,10 @@ pub use egress::{
 pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
 
 // EVE-879: the system email contract and its concrete senders (Resend,
-// disabled/noop, `SystemEmailConfig`) moved to the `everruns-platform` crate —
+// disabled/noop, `SystemEmailConfig`) moved to the `crates/server/src/records/` —
 // email delivery is a hosted product side effect, never consumed during a
 // turn. The OAuth 2.1 protocol client moved to `everruns-mcp` (its only
-// consumer), and the connector catalog moved to `everruns-platform`.
+// consumer), and the connector catalog lives in `everruns-contracts`.
 pub use decision_driver::{
     DecisionDriver, DecisionDriverCapabilities, NativePrimitives, SingleDriverService,
 };
@@ -386,17 +384,16 @@ pub use tools::{
 };
 
 // EVE-881: `BuiltInHarnessDefinition`, `BuiltInHarnessRole`, and
-// `BuiltInCapabilityDefinition` moved to the `everruns-platform` crate —
+// `BuiltInCapabilityDefinition` moved to the `crates/server/src/records/` —
 // product provisioning templates are platform/server composition, not
 // Framework execution configuration.
 // EVE-887: the composition root moved to `everruns-host` as `HostComposition`.
 // Selecting a deployment's capabilities, drivers and host services is
 // composition, not kernel execution configuration; core owns the registries
 // and service contracts, and the layer that runs a turn owns the bundle.
-// EVE-880: the managed session sandbox record, its provider SPI and lifecycle
-// helpers moved to the `everruns-platform` crate. One provider-backed sandbox
-// per session is control-plane state — a turn reaches it through the sandbox
-// capability, never through the kernel.
+// Managed sandbox state and provider SPIs live in contracts; hosted lifecycle
+// orchestration lives in capabilities. The kernel reaches the sandbox through
+// neutral context services.
 
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{
@@ -433,15 +430,14 @@ pub(crate) use tool_types::{BuiltinTool, ToolCall};
 pub(crate) use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
 // Domain entity re-exports
-// Provider entities live in `everruns-contracts`; import them from that crate.
+// Provider persistence rows live in `crates/server/src/records`; runtime provider contracts live in contracts.
 // EVE-877: the stored `Agent`/`AgentVersion` persistence records, their
 // lifecycle/versioning enums, and the public-name/persistence helpers moved to
-// the `everruns-platform` crate. Core keeps only the portable authored
+// the `crates/server/src/records/`. Core keeps only the portable authored
 // execution configuration consumed during a turn.
 pub use agent_definition::AgentDefinition;
-pub use virtual_user::{VirtualUser, VirtualUserStatus, VirtualUserUsage};
 // EVE-841: the app and agent-trigger control-plane records moved to the
-// `everruns-platform` crate. They are hosted orchestration records not consumed
+// `crates/server/src/records/`. They are hosted orchestration records not consumed
 // during a turn, so core no longer defines or re-exports them.
 pub use ard_attachment::{
     ARD_ATTACHMENT_KV_PREFIX, ARD_ATTACHMENT_RESOURCE_KIND, ARD_DISCOVERY_KV_PREFIX, ArdAttachment,
@@ -492,7 +488,7 @@ pub use guardrail_gallery::{
 };
 // EVE-881: the stored `Harness` persistence record, its lifecycle enum, the
 // chain-merge helpers, and the built-in provisioning templates moved to the
-// `everruns-platform` crate. Core keeps only the portable harness execution
+// `crates/server/src/records/`. Core keeps only the portable harness execution
 // configuration consumed during a turn.
 pub use capability_mcp_server::{
     CapabilityMcpServer, CapabilityMcpServers, capability_mcp_servers_to_scoped,
@@ -505,18 +501,17 @@ pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mc
 pub use mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
     McpContent, McpElicitationPolicy, McpError, McpProtocolMode, McpSecretBindingMetadata,
-    McpServer, McpServerActsAs, McpServerAuthMode, McpServerPresetRef, McpServerStatus,
-    McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
-    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
-    McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers,
-    apply_mcp_secret_binding_schemas, is_mcp_tool, mcp_oauth_provider_id_for_uuid,
-    mcp_oauth_session_secret_name, mcp_tool_name, merge_scoped_mcp_servers,
-    normalize_mcp_error_code, parse_mcp_tool_name, sanitize_mcp_server_name,
-    scoped_mcp_servers_is_empty,
+    McpServerActsAs, McpServerAuthMode, McpServerPresetRef, McpServerTransportType,
+    McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
+    McpToolCallResult, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
+    McpToolsListResult, ScopedMcpServer, ScopedMcpServers, apply_mcp_secret_binding_schemas,
+    is_mcp_tool, mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
+    merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
+    sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
 };
 // EVE-837/EVE-845: `Organization`, `OrgMembership`, the `ANONYMOUS_USER_*`
 // constants, and the public-id generation/validation helpers moved to the
-// `everruns-platform` crate. `OrgRole` (portable turn authorization via
+// `crates/server/src/records/`. `OrgRole` (portable turn authorization via
 // `permissions`), the `DEFAULT_ORG_*` constants, and the internal<->public id
 // conversion helper stay here because core's permissions/auth layer and runtime
 // name them.
@@ -525,18 +520,18 @@ pub use organization::{
 };
 // EVE-838: the payment accounting records (`PaymentAccount`, `PaymentPolicy`,
 // `PaymentAttempt`, `PaymentOwnerType`, `PaymentStatus`) moved to the
-// `everruns-platform` crate. The capability-internal execution contract below
+// `crates/server/src/records/`. The capability-internal execution contract below
 // stays here — it is bound to the `PaymentAuthority` trait and `ToolContext`.
 pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail};
 // EVE-837/EVE-845: `Principal` and the `PrincipalStatus` lifecycle enum moved to
-// the `everruns-platform` crate. `PrincipalSummary` and the `PrincipalKind` that
+// the `crates/server/src/records/`. `PrincipalSummary` and the `PrincipalKind` that
 // backs it stay here — they are embedded by `Session`/`SessionSchedule`/
 // `VirtualUser`.
 pub use principal::{PrincipalKind, PrincipalSummary};
 pub(crate) use runtime_provider::ProviderKey;
 // EVE-882: the persisted `Session` aggregate and its product lifecycle enums
 // (`SessionStatus`, `SessionSource`, `SessionActivity`, participants) moved to
-// the `everruns-platform` crate. Core keeps only the portable execution view
+// the `crates/server/src/records/`. Core keeps only the portable execution view
 // and the neutral execution state consumed during a turn.
 pub use session::{ExecutionSession, SessionExecutionState, SessionSeedMode, SubagentStatus};
 pub use session_file::{
@@ -548,7 +543,7 @@ pub use session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
 };
 // EVE-897: the session SQL database store and its value types moved to
-// `everruns-platform`. Records and trait travel together — the value types are
+// `everruns-contracts`. Values and trait travel together — the value types are
 // the trait's signature vocabulary — and nothing in the kernel names either:
 // the capability resolves the store as a typed context extension.
 pub use session_task::{
@@ -560,8 +555,8 @@ pub use session_task::{
     TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
 };
 pub use skill::{
-    ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillUsage,
-    SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
+    ParsedSkillMd, SkillContent, SkillFileEntry, SkillValidationResult, parse_skill_md,
+    validate_skill_md, validate_skill_name,
 };
 pub use task_observer::{ObservingTaskRegistry, TaskTransition, TaskTransitionObserver};
 pub(crate) use typed_id::{AgentId, HarnessId};
@@ -582,7 +577,7 @@ pub use dependency_blocker::DependencyBlocker;
 pub use deployment::DeploymentGrade;
 
 // Execution feature decisions (EVE-878): `FeatureFlags` and the management
-// catalog live in `everruns-platform`; core re-exports only the resolved
+// catalog live in `crates/server/src/records`; core re-exports only the resolved
 // execution-facing values.
 pub use execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
 

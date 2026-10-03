@@ -58,7 +58,7 @@ Flags have two visibility levels, modeled as separate structs:
 
 ## Current Flags
 
-See `crates/platform/src/feature_flags.rs` for the complete list of flags and their resolution logic.
+See `crates/server/src/records/feature_flags.rs` for the complete list of flags and their resolution logic.
 
 Planned flag:
 
@@ -87,7 +87,7 @@ providers are registered; they do not hide the provider-neutral resource.
 
 ### Backend
 
-- **Platform**: `crates/platform/src/feature_flags.rs`, `FeatureFlags` records, catalog, org opt-in resolution, `from_env()` (EVE-878)
+- **Platform**: `crates/server/src/records/feature_flags.rs`, `FeatureFlags` records, catalog, org opt-in resolution, `from_env()` (EVE-878)
 - **Core**: `crates/core/src/execution_features.rs`, `InternalFeatureFlags` and the resolved `ExecutionFeatureDecisions` consumed at capability registration; execution never loads feature-management records
 - **API**: `GET /v1/feature-flags`, public endpoint, returns deployment-level `FeatureFlags` as JSON
 - **Org API**: `GET/PATCH /v1/orgs/{org}/feature-flags`, `GET /v1/orgs/{org}/feature-flags/settings`, org opt-in (admin for PATCH)
@@ -120,7 +120,7 @@ context assembly. Disabled feature-owned capabilities are removed before runtime
 
 ### API-visible flag (gates UI or user-visible behavior)
 
-1. Add field to `FeatureFlags` struct in `crates/platform/src/feature_flags.rs`
+1. Add field to `FeatureFlags` struct in `crates/server/src/records/feature_flags.rs`
 2. Add resolution in `from_env()` using `experimental_flag()` or `standard_flag()`
 3. Add to `is_enabled()` match arm
 4. Update `all_enabled()`
@@ -128,7 +128,7 @@ context assembly. Disabled feature-owned capabilities are removed before runtime
 6. Add to `DEFAULT_FLAGS` in `apps/ui/src/providers/feature-flags-provider.tsx`
 7. Use `useFeatureFlag("flag_name")` in UI components
 8. If the feature owns API commands or capabilities, add its command-category/capability mapping to
-   `crates/server/src/domains/common.rs` and `crates/platform/src/feature_flags.rs`
+   `crates/server/src/domains/common.rs` and `crates/server/src/records/feature_flags.rs`
 
 ### Backend-only flag (gates internal behavior, not exposed to API/UI)
 

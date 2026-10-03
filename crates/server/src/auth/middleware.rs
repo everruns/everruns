@@ -2,6 +2,10 @@
 // Decision: Support both cookie-based (UI) and header-based (API) auth
 // Decision: In "none" mode, create an anonymous user context
 
+use crate::records::{
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, FeatureFlags, OrgMembership,
+    validate_org_public_id,
+};
 use axum::{
     extract::{FromRef, FromRequestParts},
     http::{StatusCode, header, request::Parts},
@@ -11,10 +15,6 @@ use axum_extra::extract::CookieJar;
 use everruns_core::{
     Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole,
     PermissionResolver,
-};
-use everruns_platform::{
-    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, FeatureFlags, OrgMembership,
-    validate_org_public_id,
 };
 use serde::Serialize;
 use std::sync::Arc;

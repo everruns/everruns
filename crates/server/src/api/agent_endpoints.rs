@@ -8,13 +8,13 @@ use crate::domains::agent_endpoints::{
     UpdateAgentEndpointCmd,
 };
 use crate::domains::common::Command;
+use crate::records::AgentEndpoint;
 use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_platform::AgentEndpoint;
 use serde_json::Value;
 
 use super::common::{ApiResult, ErrorResponse};

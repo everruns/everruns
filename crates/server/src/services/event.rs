@@ -20,6 +20,7 @@
 // called synchronously but should be non-blocking.
 
 use crate::event_delivery::EventDelivery;
+use crate::records::{FeatureFlags, SessionParticipantKind};
 use crate::storage::{
     EventRow, StorageBackend,
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
@@ -31,7 +32,6 @@ use everruns_core::{
     Event, EventListener, EventRequest, McpServerActsAs, ScopedMcpServers,
     merge_scoped_mcp_servers, parse_mcp_tool_name, sanitize_mcp_server_name,
 };
-use everruns_platform::{FeatureFlags, SessionParticipantKind};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -684,6 +684,7 @@ impl everruns_core::event_emitter::EventEmitter for EventService {
 mod tests {
     use super::*;
     use crate::event_delivery::EventDelivery;
+    use crate::records::SessionParticipantRole;
     use crate::storage::StorageBackend;
     use crate::storage::models::{
         CreatePrincipalRow, CreateSessionParticipantRow, CreateSessionRow,
@@ -693,7 +694,6 @@ mod tests {
         EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     };
     use everruns_core::{DEFAULT_ORG_ID, RuntimeMessage};
-    use everruns_platform::SessionParticipantRole;
     use std::sync::Arc;
 
     fn sample_metadata() -> AgentVersionEventMetadata {
@@ -739,7 +739,7 @@ mod tests {
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

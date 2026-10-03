@@ -29,7 +29,7 @@ fn org_with_role(role: OrgRole) -> ResolvedOrg {
         user_id: None,
         role,
         is_platform_user: false,
-        feature_flags: everruns_platform::FeatureFlags::default(),
+        feature_flags: crate::records::FeatureFlags::default(),
     }
 }
 

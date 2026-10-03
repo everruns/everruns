@@ -1,11 +1,11 @@
 //! Building the Slack app manifest served to the install flow.
 
+use crate::records::{ConversationStarter, SlackChannelConfig};
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
-use everruns_platform::{ConversationStarter, SlackChannelConfig};
 
 use super::super::common::ErrorResponse;
 
@@ -143,7 +143,7 @@ pub(crate) fn slack_oauth_redirect_url(api_base_url: &str, channel_public_id: &s
 /// Conversation starters for this App's Slack agent surface.
 ///
 /// Agent starters win over the harness ones, resolved by
-/// `everruns_platform::exposure::resolve_starters` so Slack and Platform Chat
+/// `crate::records::exposure::resolve_starters` so Slack and Platform Chat
 /// cannot drift apart. The harness is resolved through `resolve_effective` to
 /// pick up inherited starters, and a grandfathered agent-less App falls back to
 /// the harness alone.
@@ -190,7 +190,7 @@ pub(crate) async fn resolve_manifest_starters(
         }
     };
 
-    everruns_platform::exposure::resolve_starters(&agent_starters, &harness_starters).to_vec()
+    crate::records::exposure::resolve_starters(&agent_starters, &harness_starters).to_vec()
 }
 
 /// Build the YAML manifest for a Slack app.

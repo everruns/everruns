@@ -19,7 +19,7 @@ use serde_json::json;
 
 const SENSITIVE_TOOL_DESCRIPTION: &str = "VALIDATION_SECRET_tenant_tool_instruction_7f4c";
 
-struct Harness {
+struct OtelHarness {
     listener: OtelEventListener,
     exporter: InMemorySpanExporter,
     _provider: SdkTracerProvider,
@@ -29,7 +29,7 @@ struct Harness {
     t0: DateTime<Utc>,
 }
 
-impl Harness {
+impl OtelHarness {
     fn new(record_content: bool, conventions: TraceConventions) -> Self {
         let exporter = InMemorySpanExporter::default();
         let provider = SdkTracerProvider::builder()
@@ -189,7 +189,7 @@ fn tool_started() -> ToolStartedData {
 }
 
 /// The full agentic loop with extended thinking, as the engine emits it.
-async fn run_full_turn(h: &Harness) {
+async fn run_full_turn(h: &OtelHarness) {
     let reason_exec = ExecId::new();
     let act_exec = ExecId::new();
     h.emit(0, h.context(None, None, None), h.turn_started())
@@ -308,7 +308,7 @@ async fn run_full_turn(h: &Harness) {
 /// record of which weights answered was lost.
 #[tokio::test]
 async fn response_model_reports_what_the_provider_served() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     let mut data = generation(true);
     data.metadata.response_model = Some("claude-sonnet-4-6-20260217".to_string());
     h.emit(0, h.context(None, None, None), h.turn_started())
@@ -335,7 +335,7 @@ async fn response_model_reports_what_the_provider_served() {
 /// requested model stands in — the best answer available.
 #[tokio::test]
 async fn response_model_falls_back_to_the_request_when_unreported() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     let data = generation(true);
     assert!(data.metadata.response_model.is_none());
     h.emit(0, h.context(None, None, None), h.turn_started())
@@ -353,7 +353,7 @@ async fn response_model_falls_back_to_the_request_when_unreported() {
 
 #[tokio::test]
 async fn full_turn_nests_spans_per_the_conventions() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     run_full_turn(&h).await;
     let spans = h.spans();
     assert_eq!(h.listener.active_span_count(), 0);
@@ -564,7 +564,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
 
 #[tokio::test]
 async fn content_stays_out_of_spans_by_default() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     run_full_turn(&h).await;
     for span in h.spans() {
         for key in [
@@ -594,7 +594,7 @@ async fn content_stays_out_of_spans_by_default() {
 
 #[tokio::test]
 async fn content_capture_records_spec_shaped_messages() {
-    let h = Harness::new(true, TraceConventions::ALL);
+    let h = OtelHarness::new(true, TraceConventions::ALL);
     run_full_turn(&h).await;
     let spans = h.spans();
     let turn = by_name(&spans, "invoke_agent Weather Helper");
@@ -697,7 +697,7 @@ async fn content_capture_records_spec_shaped_messages() {
 
 #[tokio::test]
 async fn chat_without_thinking_is_backdated_by_its_duration() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     let exec = ExecId::new();
     h.emit(0, h.context(None, None, None), h.turn_started())
         .await;
@@ -726,7 +726,7 @@ async fn chat_without_thinking_is_backdated_by_its_duration() {
 
 #[tokio::test]
 async fn failures_carry_error_type_status_and_exception_event() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     let exec = ExecId::new();
     h.emit(0, h.context(None, None, None), h.turn_started())
         .await;
@@ -821,7 +821,7 @@ async fn failures_carry_error_type_status_and_exception_event() {
 
 #[tokio::test]
 async fn cancelled_turn_closes_everything_under_it() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     let exec = ExecId::new();
     h.emit(0, h.context(None, None, None), h.turn_started())
         .await;
@@ -880,7 +880,7 @@ async fn cancelled_turn_closes_everything_under_it() {
 
 #[tokio::test]
 async fn pending_chat_is_closed_when_no_generation_record_arrives() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     let exec = ExecId::new();
     h.emit(0, h.context(None, None, None), h.turn_started())
         .await;
@@ -932,7 +932,7 @@ async fn pending_chat_is_closed_when_no_generation_record_arrives() {
 
 #[tokio::test]
 async fn orphan_completions_are_reconstructed_from_their_duration() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     h.emit(0, h.context(None, None, None), h.turn_started())
         .await;
     h.emit(
@@ -976,7 +976,7 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
     assert_eq!(tool.parent_span_id, id(turn));
 
     // A turn completing with no start still leaves a record.
-    let other = Harness::new(false, TraceConventions::ALL);
+    let other = OtelHarness::new(false, TraceConventions::ALL);
     other
         .emit(
             50,
@@ -1007,7 +1007,7 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
 
 #[tokio::test]
 async fn conventions_can_be_narrowed() {
-    let h = Harness::new(false, TraceConventions::GEN_AI);
+    let h = OtelHarness::new(false, TraceConventions::GEN_AI);
     run_full_turn(&h).await;
     for span in h.spans() {
         assert!(
@@ -1018,7 +1018,7 @@ async fn conventions_can_be_narrowed() {
         assert!(attr(&span, "session.id").is_none());
         assert!(attr(&span, "llm.model_name").is_none());
     }
-    let h = Harness::new(false, TraceConventions::OPENINFERENCE);
+    let h = OtelHarness::new(false, TraceConventions::OPENINFERENCE);
     run_full_turn(&h).await;
     let spans = h.spans();
     for span in &spans {
@@ -1059,7 +1059,7 @@ fn conventions_parse_from_env_syntax() {
 
 #[tokio::test]
 async fn listener_subscribes_to_the_thirteen_lifecycle_events() {
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     let types = h.listener.event_types().unwrap();
     assert_eq!(types.len(), 13);
     assert!(types.contains(&TURN_STARTED));
@@ -1073,7 +1073,7 @@ async fn listener_subscribes_to_the_thirteen_lifecycle_events() {
 #[tokio::test]
 async fn provider_correlation_and_unknown_costs_reach_the_chat_span() {
     use everruns_core::events::LlmCostComponent;
-    let h = Harness::new(false, TraceConventions::ALL);
+    let h = OtelHarness::new(false, TraceConventions::ALL);
     h.emit(0, h.context(None, None, None), h.turn_started())
         .await;
     let data = generation(true).with_cost_components(vec![

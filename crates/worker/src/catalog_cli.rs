@@ -19,10 +19,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_capabilities::PlatformStore;
 use everruns_integrations_bashkit::cli::{
     CliCommandSource, CliCommandSourceHandle, CliCommandSpec,
 };
-use everruns_platform::PlatformStore;
 
 /// Serves the `everruns` tree from the checked-in contract, dispatching over
 /// the platform store.

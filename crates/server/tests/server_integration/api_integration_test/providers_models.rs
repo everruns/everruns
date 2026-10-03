@@ -3,10 +3,10 @@
 use super::support::*;
 use crate::test_harness;
 use axum::http::StatusCode;
-use everruns_contracts::model::Model;
-use everruns_contracts::provider::Provider;
-use everruns_platform::Agent;
-use everruns_platform::Session;
+use everruns_server::records::Agent;
+use everruns_server::records::Model;
+use everruns_server::records::Session;
+use everruns_server::records::provider::Provider;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

@@ -105,21 +105,21 @@ impl RuntimeAccount {
                 .ok_or_else(|| anyhow::anyhow!("Agent unavailable"))?;
         // Same selection session creation applies, so consumer setup sees the
         // configuration the endpoint actually runs.
-        let version = match everruns_platform::AgentVersionPolicy::from(
+        let version = match crate::records::AgentVersionPolicy::from(
             endpoint.agent_version_policy.as_str(),
         ) {
-            everruns_platform::AgentVersionPolicy::Pinned => match endpoint.agent_version_id {
+            crate::records::AgentVersionPolicy::Pinned => match endpoint.agent_version_id {
                 Some(id) => db.get_agent_version(self.org_id, id.into()).await?,
                 None => None,
             },
-            everruns_platform::AgentVersionPolicy::Latest => {
+            crate::records::AgentVersionPolicy::Latest => {
                 db.get_latest_agent_version(
                     self.org_id,
                     everruns_contracts::typed_id::AgentId::from_uuid(endpoint.agent_id),
                 )
                 .await?
             }
-            everruns_platform::AgentVersionPolicy::Default => match agent.default_version_id {
+            crate::records::AgentVersionPolicy::Default => match agent.default_version_id {
                 Some(id) => db.get_agent_version(self.org_id, id).await?,
                 None => None,
             },

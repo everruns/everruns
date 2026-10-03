@@ -10,13 +10,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::records::validate_org_public_id;
+use crate::records::{FeatureFlagMap, FeatureFlags};
 use axum::{
     Json, Router,
     extract::{Path, State},
     routing::get,
 };
-use everruns_platform::validate_org_public_id;
-use everruns_platform::{FeatureFlagMap, FeatureFlags};
 
 use crate::auth::middleware::{AuthState, OrgAdmin, PlatformUser};
 use crate::services::org_feature_flags::{

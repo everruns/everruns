@@ -92,7 +92,7 @@ struct Transaction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Budget {
+struct FinanceBudget {
     category: String,
     monthly_limit: f64,
     current_spent: f64,
@@ -508,13 +508,13 @@ impl Tool for FinanceListBudgetsTool {
         _context: &ToolContext,
     ) -> ToolExecutionResult {
         let budgets = vec![
-            Budget {
+            FinanceBudget {
                 category: "payroll".to_string(),
                 monthly_limit: 50000.0,
                 current_spent: 38500.0,
                 period_start: "2025-01-01".to_string(),
             },
-            Budget {
+            FinanceBudget {
                 category: "marketing".to_string(),
                 monthly_limit: 15000.0,
                 current_spent: 8200.0,
@@ -539,7 +539,7 @@ impl Tool for FinanceCreateBudgetTool {
     }
 
     fn display_name(&self) -> Option<&str> {
-        Some("Create Budget")
+        Some("Create FinanceBudget")
     }
 
     fn description(&self) -> &str {

@@ -7,7 +7,7 @@
 //!
 //! EVE-838: the durable accounting **records** (`PaymentAccount`,
 //! `PaymentPolicy`, `PaymentAttempt`) and their value enums (`PaymentOwnerType`,
-//! `PaymentStatus`) moved to the `everruns-platform` crate. The
+//! `PaymentStatus`) moved to the `crates/server/src/records/`. The
 //! capability-internal execution contract below stays in core because it is
 //! bound to the [`PaymentAuthority`](crate::tool_execution::PaymentAuthority) trait and
 //! `ToolContext`; `PaymentRail` and `PaymentMethod` are the value types those

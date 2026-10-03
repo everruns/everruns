@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use everruns_platform::FeatureFlags;
+use crate::records::FeatureFlags;
 
 use crate::storage::StorageBackend;
 
@@ -45,7 +45,7 @@ fn build_settings(
     org_enabled: &HashMap<String, bool>,
     include_platform_managed: bool,
 ) -> Vec<OrgFeatureFlagSetting> {
-    everruns_platform::API_FEATURE_FLAG_DEFINITIONS
+    crate::records::API_FEATURE_FLAG_DEFINITIONS
         .iter()
         .filter(|def| include_platform_managed || !def.platform_managed)
         .map(|def| {
@@ -93,8 +93,8 @@ pub fn validate_platform_feature_flag_updates(
     updates: &HashMap<String, bool>,
 ) -> Result<(), String> {
     for (name, enabled) in updates {
-        if !everruns_platform::is_platform_managed(name) {
-            let known = everruns_platform::API_FEATURE_FLAG_DEFINITIONS
+        if !crate::records::is_platform_managed(name) {
+            let known = crate::records::API_FEATURE_FLAG_DEFINITIONS
                 .iter()
                 .any(|d| d.name == name.as_str());
             return Err(if known {
@@ -123,13 +123,13 @@ pub fn validate_org_feature_flag_updates(
     updates: &HashMap<String, bool>,
 ) -> Result<(), String> {
     for (name, enabled) in updates {
-        let known = everruns_platform::API_FEATURE_FLAG_DEFINITIONS
+        let known = crate::records::API_FEATURE_FLAG_DEFINITIONS
             .iter()
             .any(|d| d.name == name.as_str());
         if !known {
             return Err(format!("Unknown feature flag: {name}"));
         }
-        if everruns_platform::is_platform_managed(name) {
+        if crate::records::is_platform_managed(name) {
             // Both directions: an org that cannot enrol itself should not be
             // able to unenrol either, or the next platform action looks flaky.
             return Err(format!(
