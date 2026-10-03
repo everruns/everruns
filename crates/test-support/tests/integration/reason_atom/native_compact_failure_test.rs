@@ -49,8 +49,8 @@ impl everruns_contracts::driver_registry::ChatDriver for NativeCompactFailureDri
 
 #[tokio::test]
 async fn native_compact_failure_does_not_install_checkpoint() {
-    use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::execution_loading::SessionStore;
 
     let (
@@ -91,7 +91,8 @@ async fn native_compact_failure_does_not_install_checkpoint() {
     drivers.register(DriverId::OpenAI, move |_| Box::new(driver.clone()));
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(CompactionCapability);
-    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
+    let checkpoint_store =
+        Arc::new(everruns_core::host::InMemoryCompactionCheckpointStore::default());
     let atom = reason_atom_with_stores(
         harness_store,
         agent_store,

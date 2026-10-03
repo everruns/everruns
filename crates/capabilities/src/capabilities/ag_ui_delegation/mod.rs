@@ -34,9 +34,9 @@ use super::{
     SpawnMode, SystemPromptContext,
 };
 use async_trait::async_trait;
-use everruns_ag_ui::Message;
 use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::url_validation::validate_safe_url;
+use everruns_core::ag_ui::Message;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTaskState, TASK_KIND_EXTERNAL_AG_UI, TaskLinks, TaskWakePolicy,
 };

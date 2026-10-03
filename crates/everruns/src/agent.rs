@@ -19,7 +19,7 @@ use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::runtime_provider::Provider;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::InitialFile;
-use everruns_host::{
+use everruns_core::host::{
     AgentBuilder as RuntimeAgentBuilder, Environment, EnvironmentBindingError,
     EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceBackend,
@@ -481,7 +481,7 @@ impl Agent {
             .open_workspace_from_binding(&binding)
             .await
             .map_err(map_workspace_resume_error)?;
-        let workspace = everruns_host::Workspace::from_descriptor(backend, descriptor);
+        let workspace = everruns_core::host::Workspace::from_descriptor(backend, descriptor);
         let head = workspace
             .reopen(&binding)
             .await
@@ -578,6 +578,7 @@ impl Agent {
         event_sink: Option<Arc<dyn EventSink>>,
         hook_state: Option<Arc<crate::hooks::HookRunState>>,
     ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
+        backends = crate::batteries::runtime_backends(backends);
         let hook_capability = hook_state.and_then(|state| state.capability());
         let mut capabilities = self.capabilities.clone();
         if hook_capability.is_some() {
@@ -634,6 +635,15 @@ impl Agent {
         let session = session.build();
 
         let mut builder = InProcessRuntimeBuilder::new()
+            .host_composition(
+                everruns_core::host::HostComposition::builder()
+                    .capability_registry(framework_capability_registry(false))
+                    .egress_service(crate::batteries::runtime_egress_service())
+                    .session_file_system_factory(Arc::new(
+                        everruns_core::host::InMemorySessionFileSystemFactory,
+                    ))
+                    .build(),
+            )
             .harness(harness)
             .agent(agent)
             .session(session)
@@ -668,12 +678,12 @@ impl Agent {
                     framework_capability_registry(false)
                 }
             };
-            let platform = everruns_host::HostComposition::builder()
+            let platform = everruns_core::host::HostComposition::builder()
                 .capability_registry(registry)
                 .driver_registry(everruns_contracts::driver_registry::DriverRegistry::new())
-                .egress_service(everruns_host::runtime_egress_service())
+                .egress_service(crate::batteries::runtime_egress_service())
                 .session_file_system_factory(Arc::new(
-                    everruns_host::FixedSessionFileSystemFactory::new(
+                    everruns_core::host::FixedSessionFileSystemFactory::new(
                         environment.workspace_head().file_system(),
                     ),
                 ))
@@ -698,12 +708,12 @@ impl Agent {
                     framework_capability_registry(false)
                 }
             };
-            let platform = everruns_host::HostComposition::builder()
+            let platform = everruns_core::host::HostComposition::builder()
                 .capability_registry(registry)
                 .driver_registry(everruns_contracts::DriverRegistry::new())
-                .egress_service(everruns_host::runtime_egress_service())
+                .egress_service(crate::batteries::runtime_egress_service())
                 .session_file_system_factory(Arc::new(
-                    everruns_host::RealDiskSessionFileSystemFactory::new(root),
+                    everruns_core::host::RealDiskSessionFileSystemFactory::new(root),
                 ))
                 .build();
             builder = builder.host_composition(platform);
@@ -754,9 +764,9 @@ pub struct AgentBuilder {
     mcp_servers: Vec<crate::McpServer>,
     plugin_warnings: Vec<String>,
     #[cfg(feature = "builtins")]
-    ask_user: Option<everruns_builtins::AskUserCapability>,
+    ask_user: Option<everruns_core::builtins::AskUserCapability>,
     #[cfg(feature = "builtins")]
-    approver: Option<Arc<dyn everruns_builtins::ToolApprover>>,
+    approver: Option<Arc<dyn everruns_core::builtins::ToolApprover>>,
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
@@ -1301,7 +1311,7 @@ impl AgentBuilder {
                         tool: first_gated.clone(),
                     });
                 };
-                let id = everruns_builtins::TOOL_APPROVAL_CAPABILITY_ID.to_string();
+                let id = everruns_core::builtins::TOOL_APPROVAL_CAPABILITY_ID.to_string();
                 if capability_registry.get(&id).is_some()
                     || activated_capabilities.activate(id.clone()).is_err()
                 {
@@ -1386,17 +1396,19 @@ impl fmt::Debug for AgentBuilder {
 }
 
 #[allow(deprecated)]
-fn map_workspace_resume_error(error: everruns_host::WorkspaceError) -> crate::ResumeError {
+fn map_workspace_resume_error(error: everruns_core::host::WorkspaceError) -> crate::ResumeError {
     match error {
-        everruns_host::WorkspaceError::BindingMismatch => crate::ResumeError::WorkspaceMismatch,
-        everruns_host::WorkspaceError::NotFound
-        | everruns_host::WorkspaceError::Archived
-        | everruns_host::WorkspaceError::BackendUnavailable(_)
-        | everruns_host::WorkspaceError::ProviderUnavailable(_)
-        | everruns_host::WorkspaceError::Backend(_)
-        | everruns_host::WorkspaceError::Provider(_)
-        | everruns_host::WorkspaceError::Conflict
-        | everruns_host::WorkspaceError::InvalidRequest(_) => {
+        everruns_core::host::WorkspaceError::BindingMismatch => {
+            crate::ResumeError::WorkspaceMismatch
+        }
+        everruns_core::host::WorkspaceError::NotFound
+        | everruns_core::host::WorkspaceError::Archived
+        | everruns_core::host::WorkspaceError::BackendUnavailable(_)
+        | everruns_core::host::WorkspaceError::ProviderUnavailable(_)
+        | everruns_core::host::WorkspaceError::Backend(_)
+        | everruns_core::host::WorkspaceError::Provider(_)
+        | everruns_core::host::WorkspaceError::Conflict
+        | everruns_core::host::WorkspaceError::InvalidRequest(_) => {
             crate::ResumeError::WorkspaceUnavailable
         }
         _ => crate::ResumeError::WorkspaceUnavailable,

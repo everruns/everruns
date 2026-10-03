@@ -1,76 +1,143 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! Transport-agnostic [MCP](https://modelcontextprotocol.io) (Model Context
-//! Protocol) client for Everruns agents.
+//! Deprecated compatibility shim for the canonical core module.
 //!
-//! `everruns-mcp` is part of the [Everruns](https://everruns.com) ecosystem. It
-//! is the shared MCP client used across Everruns hosts (runtime, worker, and
-//! server), so every host wires MCP the same way without duplicating protocol
-//! logic.
-//!
-//! The crate owns the JSON-RPC client (HTTP, and optional stdio behind the
-//! `stdio` feature), credential acquisition ([`McpAuthProvider`]), result
-//! mapping, and tool execution ([`McpExecutor`], which implements
-//! `everruns_core::McpToolInvoker` so MCP tools register as regular `Tool`s).
-//! Wire types and tool-name helpers live in `everruns-core` and are reused
-//! as-is.
-//!
-//! # Example
+//! This is the final forwarding release. Enable the matching `everruns-core`
+//! feature and migrate imports to its module before the next platform release.
 //!
 //! ```
-//! use everruns_core::DisabledEgressService;
-//! use everruns_mcp::{McpClient, McpConnection, NoAuthProvider};
+//! use everruns_core::{DisabledEgressService, mcp::{McpClient, NoAuthProvider}};
 //! use std::sync::Arc;
-//!
-//! # async fn run() -> anyhow::Result<()> {
 //! let client = McpClient::new(Arc::new(DisabledEgressService), Arc::new(NoAuthProvider));
-//! let connection = McpConnection::http("docs", "https://example.com/mcp");
-//! # let _ = (client, connection);
-//! # Ok(())
-//! # }
+//! let _ = client;
 //! ```
 
-pub mod auth;
-pub mod capability;
-pub mod client;
-pub mod elicitation;
-pub mod executor;
-pub mod form_elicitation;
-pub mod http;
-pub mod oauth;
-pub mod protocol;
-pub mod result;
-pub mod transport;
+#![allow(deprecated)]
 
+#[deprecated(note = "use everruns_core::mcp::CONSENT_TTL")]
+pub use everruns_core::mcp::CONSENT_TTL;
+#[deprecated(note = "use everruns_core::mcp::CacheHints")]
+pub use everruns_core::mcp::CacheHints;
+#[deprecated(note = "use everruns_core::mcp::CacheScope")]
+pub use everruns_core::mcp::CacheScope;
+#[deprecated(note = "use everruns_core::mcp::ClientCapabilities")]
+pub use everruns_core::mcp::ClientCapabilities;
+#[deprecated(note = "use everruns_core::mcp::ConsentingUrlElicitations")]
+pub use everruns_core::mcp::ConsentingUrlElicitations;
+#[deprecated(note = "use everruns_core::mcp::DeclineUrlElicitations")]
+pub use everruns_core::mcp::DeclineUrlElicitations;
+#[deprecated(note = "use everruns_core::mcp::ElicitationAction")]
+pub use everruns_core::mcp::ElicitationAction;
+#[deprecated(note = "use everruns_core::mcp::ElicitationConsentStore")]
+pub use everruns_core::mcp::ElicitationConsentStore;
+#[deprecated(note = "use everruns_core::mcp::FORM_ANSWER_TTL")]
+pub use everruns_core::mcp::FORM_ANSWER_TTL;
+#[deprecated(note = "use everruns_core::mcp::FormAnswer")]
+pub use everruns_core::mcp::FormAnswer;
+#[deprecated(note = "use everruns_core::mcp::FormAnswerAction")]
+pub use everruns_core::mcp::FormAnswerAction;
+#[deprecated(note = "use everruns_core::mcp::FormAnswerStore")]
+pub use everruns_core::mcp::FormAnswerStore;
+#[deprecated(note = "use everruns_core::mcp::FormElicitation")]
+pub use everruns_core::mcp::FormElicitation;
+#[deprecated(note = "use everruns_core::mcp::FormElicitationHandler")]
+pub use everruns_core::mcp::FormElicitationHandler;
+#[deprecated(note = "use everruns_core::mcp::FormElicitationPending")]
+pub use everruns_core::mcp::FormElicitationPending;
+#[deprecated(note = "use everruns_core::mcp::FormOutcome")]
+pub use everruns_core::mcp::FormOutcome;
+#[deprecated(note = "use everruns_core::mcp::FormRefusal")]
+pub use everruns_core::mcp::FormRefusal;
+#[deprecated(note = "use everruns_core::mcp::FormSchema")]
+pub use everruns_core::mcp::FormSchema;
+#[deprecated(note = "use everruns_core::mcp::GrantedConsent")]
+pub use everruns_core::mcp::GrantedConsent;
+#[deprecated(note = "use everruns_core::mcp::HttpToolsList")]
+pub use everruns_core::mcp::HttpToolsList;
+#[deprecated(note = "use everruns_core::mcp::HttpTransport")]
+pub use everruns_core::mcp::HttpTransport;
+#[deprecated(note = "use everruns_core::mcp::MCP_CAPABILITY_PREFIX")]
+pub use everruns_core::mcp::MCP_CAPABILITY_PREFIX;
+#[deprecated(note = "use everruns_core::mcp::McpAuthProvider")]
+pub use everruns_core::mcp::McpAuthProvider;
+#[deprecated(note = "use everruns_core::mcp::McpAuthRequest")]
+pub use everruns_core::mcp::McpAuthRequest;
+#[deprecated(note = "use everruns_core::mcp::McpCapability")]
+pub use everruns_core::mcp::McpCapability;
+#[deprecated(note = "use everruns_core::mcp::McpCapabilityIdExt")]
+pub use everruns_core::mcp::McpCapabilityIdExt;
+#[deprecated(note = "use everruns_core::mcp::McpClient")]
+pub use everruns_core::mcp::McpClient;
+#[deprecated(note = "use everruns_core::mcp::McpConnection")]
+pub use everruns_core::mcp::McpConnection;
+#[deprecated(note = "use everruns_core::mcp::McpConnectionResolver")]
+pub use everruns_core::mcp::McpConnectionResolver;
+#[deprecated(note = "use everruns_core::mcp::McpCredential")]
+pub use everruns_core::mcp::McpCredential;
+#[deprecated(note = "use everruns_core::mcp::McpEndpoint")]
+pub use everruns_core::mcp::McpEndpoint;
+#[deprecated(note = "use everruns_core::mcp::McpExecutor")]
+pub use everruns_core::mcp::McpExecutor;
+#[deprecated(note = "use everruns_core::mcp::McpHttpStatusError")]
+pub use everruns_core::mcp::McpHttpStatusError;
+#[deprecated(note = "use everruns_core::mcp::McpRpcError")]
+pub use everruns_core::mcp::McpRpcError;
+#[deprecated(note = "use everruns_core::mcp::McpSecretBinding")]
+pub use everruns_core::mcp::McpSecretBinding;
+#[deprecated(note = "use everruns_core::mcp::McpTransport")]
+pub use everruns_core::mcp::McpTransport;
+#[deprecated(note = "use everruns_core::mcp::Negotiated")]
+pub use everruns_core::mcp::Negotiated;
+#[deprecated(note = "use everruns_core::mcp::NoAuthProvider")]
+pub use everruns_core::mcp::NoAuthProvider;
+#[deprecated(note = "use everruns_core::mcp::RelayUrlElicitations")]
+pub use everruns_core::mcp::RelayUrlElicitations;
+#[deprecated(note = "use everruns_core::mcp::StaticAuthProvider")]
+pub use everruns_core::mcp::StaticAuthProvider;
+#[deprecated(note = "use everruns_core::mcp::StaticConnectionResolver")]
+pub use everruns_core::mcp::StaticConnectionResolver;
 #[cfg(feature = "stdio")]
-pub mod stdio;
-
-pub use auth::{
-    McpAuthProvider, McpAuthRequest, McpCredential, NoAuthProvider, StaticAuthProvider,
-};
-pub use capability::{
-    MCP_CAPABILITY_PREFIX, McpCapability, McpCapabilityIdExt, is_mcp_capability, mcp_capability_id,
-    parse_mcp_capability_id,
-};
-pub use client::McpClient;
-pub use elicitation::{
-    CONSENT_TTL, ConsentingUrlElicitations, DeclineUrlElicitations, ElicitationAction,
-    ElicitationConsentStore, GrantedConsent, RelayUrlElicitations, StoredConsent, UrlElicitation,
-    UrlElicitationHandler, UrlElicitationPending, consent_storage_key, validate_elicitation_url,
-};
-pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
-pub use form_elicitation::{
-    FORM_ANSWER_TTL, FormAnswer, FormAnswerAction, FormAnswerStore, FormElicitation,
-    FormElicitationHandler, FormElicitationPending, FormOutcome, FormRefusal, FormSchema,
-    StoredFormAnswer, StoredFormAnswers, form_answer_storage_key, parse_requested_schema,
-};
-pub use http::{
-    HttpToolsList, HttpTransport, McpHttpStatusError, McpRpcError, http_call_tool, http_list_tools,
-    http_list_tools_with_cache_hints, http_request, http_send_rpc,
-};
-pub use oauth::validate_oauth_resource;
-pub use protocol::{CacheHints, CacheScope, ClientCapabilities, Negotiated};
-pub use result::{extract_json_from_response, map_tool_call_result};
-pub use transport::{McpConnection, McpEndpoint, McpSecretBinding, McpTransport};
-
-#[cfg(feature = "stdio")]
-pub use stdio::StdioTransport;
+#[deprecated(note = "use everruns_core::mcp::StdioTransport")]
+pub use everruns_core::mcp::StdioTransport;
+#[deprecated(note = "use everruns_core::mcp::StoredConsent")]
+pub use everruns_core::mcp::StoredConsent;
+#[deprecated(note = "use everruns_core::mcp::StoredFormAnswer")]
+pub use everruns_core::mcp::StoredFormAnswer;
+#[deprecated(note = "use everruns_core::mcp::StoredFormAnswers")]
+pub use everruns_core::mcp::StoredFormAnswers;
+#[deprecated(note = "use everruns_core::mcp::UrlElicitation")]
+pub use everruns_core::mcp::UrlElicitation;
+#[deprecated(note = "use everruns_core::mcp::UrlElicitationHandler")]
+pub use everruns_core::mcp::UrlElicitationHandler;
+#[deprecated(note = "use everruns_core::mcp::UrlElicitationPending")]
+pub use everruns_core::mcp::UrlElicitationPending;
+#[deprecated(note = "use everruns_core::mcp::consent_storage_key")]
+pub use everruns_core::mcp::consent_storage_key;
+#[deprecated(note = "use everruns_core::mcp::extract_json_from_response")]
+pub use everruns_core::mcp::extract_json_from_response;
+#[deprecated(note = "use everruns_core::mcp::form_answer_storage_key")]
+pub use everruns_core::mcp::form_answer_storage_key;
+#[deprecated(note = "use everruns_core::mcp::http_call_tool")]
+pub use everruns_core::mcp::http_call_tool;
+#[deprecated(note = "use everruns_core::mcp::http_list_tools")]
+pub use everruns_core::mcp::http_list_tools;
+#[deprecated(note = "use everruns_core::mcp::http_list_tools_with_cache_hints")]
+pub use everruns_core::mcp::http_list_tools_with_cache_hints;
+#[deprecated(note = "use everruns_core::mcp::http_request")]
+pub use everruns_core::mcp::http_request;
+#[deprecated(note = "use everruns_core::mcp::http_send_rpc")]
+pub use everruns_core::mcp::http_send_rpc;
+#[deprecated(note = "use everruns_core::mcp::is_mcp_capability")]
+pub use everruns_core::mcp::is_mcp_capability;
+#[deprecated(note = "use everruns_core::mcp::map_tool_call_result")]
+pub use everruns_core::mcp::map_tool_call_result;
+#[deprecated(note = "use everruns_core::mcp::mcp_capability_id")]
+pub use everruns_core::mcp::mcp_capability_id;
+#[deprecated(note = "use everruns_core::mcp::parse_mcp_capability_id")]
+pub use everruns_core::mcp::parse_mcp_capability_id;
+#[deprecated(note = "use everruns_core::mcp::parse_requested_schema")]
+pub use everruns_core::mcp::parse_requested_schema;
+#[deprecated(note = "use everruns_core::mcp::validate_elicitation_url")]
+pub use everruns_core::mcp::validate_elicitation_url;
+#[deprecated(note = "use everruns_core::mcp::validate_oauth_resource")]
+pub use everruns_core::mcp::validate_oauth_resource;
+#[deprecated(note = "use everruns_core::mcp")]
+pub use everruns_core::mcp::*;

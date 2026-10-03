@@ -16,8 +16,8 @@ use crate::storage::{
     },
     password::hash_password,
 };
+use everruns_core::host::HostComposition;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
-use everruns_host::HostComposition;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;

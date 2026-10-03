@@ -1,50 +1,31 @@
 # everruns-engine
 
-> Shared Input/Reason/Act execution and sans-I/O turn planning for Everruns hosts.
+> Deprecated compatibility shim for `everruns-core::engine`.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-engine.svg)](https://crates.io/crates/everruns-engine)
 [![Documentation](https://docs.rs/everruns-engine/badge.svg)](https://docs.rs/everruns-engine)
-[![License](https://img.shields.io/crates/l/everruns-engine.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-engine` owns the abstract `Execution` contract, its serializable
-`TurnExecution` state machine, the portable Input/Reason/Act algorithms, and the
-deterministic turn planner. It transforms phase outcomes and host-resolved facts
-into the next plan and ordered lifecycle effects.
+This final shim release forwards the existing API to `everruns-core`. The next
+platform release removes this package. No capability is removed; enable the
+`engine` feature and import `everruns_core::engine` instead.
 
-Planning is pure. Execution effects cross injected contracts from
-`everruns-core` and `everruns-contracts`; the engine does not select a store,
-transport, process runner, server, worker, platform, or durable backend.
-
-It is a focused implementation crate in the [Everruns](https://everruns.com)
-ecosystem. Framework applications use `everruns`; runtime, worker, durable, and
-custom hosts share this kernel to keep phase behavior, event ordering, and turn
-semantics aligned.
+Part of the [Everruns](https://everruns.com) ecosystem.
 
 ## Quick Example
 
 ```rust
-use everruns_engine::{TurnPlan, TurnState};
-
-fn accepts_plan(_state: &TurnState, _plan: &TurnPlan) {}
-# let _ = accepts_plan;
+use everruns_core::engine::{TurnPlan, TurnState};
+fn accepts_plan(_: &TurnState, _: &TurnPlan) {}
+let _ = accepts_plan;
 ```
-
-## What It Provides
-
-- Serializable turn state and activity outcomes
-- A stateful, serializable execution machine shared by all drivers
-- An open execution contract for immediate and checkpointed implementations
-- Pure next-turn planning functions
-- Portable Input, Reason, and Act executors over injected contracts
-- Engine-owned phase input/result types and concrete execution hooks
-- Explicit host facts and lifecycle effects
-- Shared semantics and event ordering for in-process and durable hosts
 
 ## Documentation
 
-- [Framework custom backends](https://docs.everruns.com/framework/custom-backends/)
-- [API reference](https://docs.rs/everruns-engine)
+See the [public documentation](https://everruns.com/docs), the
+[core API reference](https://docs.rs/everruns-core), and the
+[compatibility API reference](https://docs.rs/everruns-engine).
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+[MIT](https://github.com/everruns/everruns/blob/main/LICENSE).

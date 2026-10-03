@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_host::{
+use everruns_core::host::{
     InMemorySessionFileStore, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor,
     WorkspaceDiff, WorkspaceError, WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest,
     WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceId, WorkspaceBackend,
@@ -110,7 +110,7 @@ fn backend_id_is_open_string_data() {
 #[test]
 #[allow(deprecated)]
 fn deprecated_provider_names_remain_compatible() {
-    use everruns_host::{WorkspaceProvider, WorkspaceProviderId};
+    use everruns_core::host::{WorkspaceProvider, WorkspaceProviderId};
 
     let id: WorkspaceProviderId = WorkspaceProvider::id(&ExternalWorkspaceBackend);
     assert_eq!(id.as_str(), "example.external-workspace");

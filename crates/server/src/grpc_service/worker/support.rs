@@ -35,7 +35,7 @@ pub(crate) fn internal_status(context: &'static str, error: impl std::fmt::Displ
 }
 
 pub(crate) fn flatten_secret_bindings(
-    bindings: std::collections::HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
+    bindings: std::collections::HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>,
 ) -> Vec<proto::McpSecretBinding> {
     bindings
         .into_iter()
@@ -55,7 +55,7 @@ pub(crate) fn flatten_secret_bindings(
 
 pub(crate) fn resolved_mcp_server_to_proto(
     resolved: crate::domains::mcp_servers::McpServerResolved,
-    secret_bindings: std::collections::HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
+    secret_bindings: std::collections::HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>,
 ) -> McpServerInfo {
     McpServerInfo {
         id: Some(proto::Uuid {

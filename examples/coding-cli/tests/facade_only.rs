@@ -53,7 +53,7 @@ fn sources_do_not_reference_core_or_host() {
 
     // Scan the example's own sources. This test file is excluded on purpose —
     // it necessarily contains the forbidden identifiers as the search needles.
-    let forbidden_in_rust = ["everruns_core", "everruns_host"];
+    let forbidden_in_rust = ["everruns_core", "everruns_core::host"];
     for file in ["src/lib.rs", "src/main.rs"] {
         let text = std::fs::read_to_string(root.join(file)).unwrap_or_default();
         for needle in forbidden_in_rust {

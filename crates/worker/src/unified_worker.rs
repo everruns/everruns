@@ -12,8 +12,8 @@ use anyhow::Result;
 use everruns_contracts::typed_id::{ExecId, TurnId};
 use everruns_core::ExecutionContext;
 use everruns_durable::{ClaimedTask, TaskFailureOutcome, WorkerInfo, WorkflowStatus};
-use everruns_engine::{ActInput, ActPlan, TurnPlan};
-use everruns_host::{
+use everruns_core::engine::{ActInput, ActPlan, TurnPlan};
+use everruns_core::host::{
     RuntimeSessionLifecycle, advance_host_execution,
     execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
@@ -39,7 +39,7 @@ use crate::{
 };
 
 // Re-export atom types
-pub use everruns_engine::{InputAtomInput, ReasonInput, ReasonResult};
+pub use everruns_core::engine::{InputAtomInput, ReasonInput, ReasonResult};
 
 // =============================================================================
 // Configuration
@@ -1323,7 +1323,7 @@ mod tests {
     #[test]
     fn act_wire_input_uses_the_engine_checkpoint_as_its_only_resume_state() {
         use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId};
-        use everruns_engine::{ActSchedulingFacts, TurnState, plan_after_reason};
+        use everruns_core::engine::{ActSchedulingFacts, TurnState, plan_after_reason};
 
         let state = TurnState {
             org_id: 7,

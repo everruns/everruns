@@ -1161,7 +1161,7 @@ pub(crate) async fn handle_agent_session_title_changed(
     };
 
     let Some(event_request) =
-        everruns_host::session_services::capabilities::session::session_title_updated_event(
+        everruns_core::host::session_services::capabilities::session::session_title_updated_event(
             row.id,
             everruns_core::events::EventContext::empty(),
             row.title.clone(),

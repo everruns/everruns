@@ -247,7 +247,7 @@ futures-util = "0.3"
 # Everruns SDK
 everruns-sdk = "0.2.0"
 everruns-builtins = { path = "crates/builtins", version = "0.39.0" }
-everruns-core = { path = "crates/core", version = "0.39.0" }
+everruns-core = { path = "crates/core", version = "0.39.0", default-features = false }
 everruns-engine = { path = "crates/engine", version = "0.39.0" }
 everruns-host = { path = "crates/host", version = "0.39.0" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.39.0", default-features = false }
@@ -258,7 +258,7 @@ everruns-contracts = { path = "crates/contracts", version = "0.39.0", default-fe
 everruns-mcp = { path = "crates/mcp", version = "0.39.0" }
 everruns-ard = { path = "crates/ard", version = "0.39.0" }
 everruns-drivers = { path = "crates/drivers/drivers", version = "0.39.0", default-features = false }
-everruns = { path = "crates/everruns", version = "0.39.0" }
+everruns = { path = "crates/everruns", version = "0.39.0", default-features = false }
 everruns-macros = { path = "crates/macros", version = "0.39.0" }
 everruns-serve = { path = "crates/serve", version = "0.39.0" }
 everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.39.0" }

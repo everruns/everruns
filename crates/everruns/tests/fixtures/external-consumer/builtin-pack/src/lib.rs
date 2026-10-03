@@ -1,6 +1,6 @@
 //! Downstream composition proof for the portable built-in policy bundle.
 
-use everruns_builtins::register_portable_capabilities;
+use everruns_core::builtins::register_portable_capabilities;
 use everruns_core::CapabilityRegistry;
 
 /// Compose the portable policy bundle exactly as a custom host would.

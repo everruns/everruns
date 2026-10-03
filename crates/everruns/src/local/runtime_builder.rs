@@ -9,12 +9,12 @@
 // `LocalBackends::with_platform_runner` and rebuild, or use the standalone
 // `LocalPlatformStore`.
 
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use std::sync::Arc;
 
 use everruns_contracts::error::Result;
 use everruns_contracts::model_spec::ModelSpec;
-use everruns_host::{
+use everruns_core::host::{
     InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory,
     SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
@@ -41,7 +41,7 @@ pub fn local_capability_registry() -> everruns_core::CapabilityRegistry {
     // opt-in is the Cargo feature (`a2a`, ...) plus the developer adding the
     // capability ref to an agent in code; an unattached capability is inert.
     everruns_capabilities::capabilities::register_agent_delegation_capabilities(&mut registry);
-    everruns_host::compose_runtime_capability_registry(registry)
+    crate::batteries::compose_runtime_capability_registry(registry)
 }
 
 /// Convenience wrapper around [`InProcessRuntimeBuilder`] that wires a local
@@ -99,7 +99,7 @@ impl LocalRuntimeBuilder {
     }
 
     /// Seed a harness definition (under its embedder-chosen id).
-    pub fn harness(mut self, harness: everruns_host::SeededHarness) -> Self {
+    pub fn harness(mut self, harness: everruns_core::host::SeededHarness) -> Self {
         self.inner = self.inner.harness(harness);
         self
     }
@@ -142,7 +142,7 @@ impl LocalRuntimeBuilder {
 
         let local = LocalBackends::new(
             self.profile.clone(),
-            everruns_host::HostBackends::in_memory(),
+            everruns_core::host::HostBackends::in_memory(),
         )?;
 
         // Respect a caller-supplied platform definition; otherwise build the
@@ -160,7 +160,7 @@ impl LocalRuntimeBuilder {
                 HostComposition::builder()
                     .capability_registry(local_capability_registry())
                     .driver_registry(everruns_contracts::DriverRegistry::new())
-                    .egress_service(everruns_host::runtime_egress_service())
+                    .egress_service(crate::batteries::runtime_egress_service())
                     .session_file_system_factory(factory)
                     .build()
             }

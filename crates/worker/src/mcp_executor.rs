@@ -27,7 +27,7 @@ pub struct McpServerInfo {
     pub elicitation_policy: McpElicitationPolicy,
     pub oauth_provider_id: Option<String>,
     pub acts_as: McpServerActsAs,
-    pub secret_bindings: HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
+    pub secret_bindings: HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>,
 }
 
 impl McpServerInfo {
@@ -60,7 +60,7 @@ impl McpServerInfo {
                     bindings
                         .entry(binding.tool_name)
                         .or_insert_with(Vec::new)
-                        .push(everruns_mcp::McpSecretBinding {
+                        .push(everruns_core::mcp::McpSecretBinding {
                             parameter_name: binding.parameter_name,
                             value: binding.value,
                             setup_url: binding.setup_url,

@@ -8,8 +8,6 @@ publish = false
 
 [dependencies]
 clap = { workspace = true, features = ["string", "color"] }
-everruns-host = { path = "../../crates/host", features = ["bashkit", "filesystem"] }
-everruns-core = { path = "../../crates/core" }
 everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["http"] }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
@@ -19,6 +17,8 @@ async-trait.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
+everruns-core = { path = "../../crates/core", default-features = false, features = ["host"] }
+everruns = { path = "../../crates/everruns", default-features = false, features = ["bashkit", "filesystem"] }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 

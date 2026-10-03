@@ -23,7 +23,7 @@ path = "src/bin/writer.rs"
 everruns-serve = { workspace = true, features = ["a2a"] }
 # `a2a`: the `a2a_agent_delegation` capability (`spawn_agent` to a remote
 # A2A agent). `local`: the session storage it records delegated runs in.
-everruns = { workspace = true, features = ["a2a", "local", "openai"] }
+everruns = { workspace = true, default-features = true, features = ["a2a", "local", "openai"] }
 everruns-example-demo = { path = "../../demo-support" }
 serde = { workspace = true }
 serde_json = { workspace = true }

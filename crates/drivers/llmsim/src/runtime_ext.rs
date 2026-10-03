@@ -5,7 +5,7 @@
 // into an `llmsim` provider on top of them.
 
 use crate::{LlmSimConfig, LlmSimDriver};
-use everruns_host::InProcessRuntimeBuilder;
+use everruns_core::host::InProcessRuntimeBuilder;
 
 /// Canonical provider name and model id used by simulated runtimes.
 pub const LLMSIM_PROVIDER: &str = "llmsim";

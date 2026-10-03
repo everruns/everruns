@@ -60,33 +60,36 @@ macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # adapters here. It shares serde/schemars with `macros` but remains
 # independently gateable so the bare facade still compiles with
 # `--no-default-features`.
+utility-llm = ["everruns-contracts/http", "dep:everruns-drivers", "everruns-drivers/openrouter"]
+utility-openai = ["utility-llm"]
+openai-agents-api = ["everruns-core/openai-agents-api"]
 capabilities = ["everruns-contracts/definition", "dep:schemars", "dep:serde"]
 # Curated typed values plus the backend-neutral implementation bundle. Kept
 # optional so `default-features = false` Framework consumers compile no built-in
 # implementation package.
-builtins = ["dep:everruns-builtins", "everruns-host/builtins"]
+builtins = ["everruns-core/builtins"]
 # 0.17 feature-name compatibility. Writable message JSONL was retired in favor
 # of canonical event logs; retaining the no-op name keeps dependent feature
 # lists compiling without exposing a writable message store.
 jsonl = []
-filesystem = ["everruns-host/filesystem", "dep:everruns-integrations-filesystem"]
+filesystem = ["dep:everruns-integrations-filesystem"]
 # Environment-backed execution integrations. Filesystem is default and stays
 # inside the host-provided session filesystem; the others are explicit opt-ins.
-bashkit = ["everruns-host/bashkit", "dep:everruns-integrations-bashkit"]
+bashkit = ["filesystem", "everruns-core/direct-egress", "dep:everruns-integrations-bashkit"]
 # The `bash` tool over real host processes, bounded by a kernel policy. Implies
 # `host-compute`: both are ways of running commands on this machine, and this
 # one is the model-facing half.
-host-shell = ["host-compute", "everruns-host/host-shell"]
-web-fetch = ["everruns-host/web-fetch", "dep:everruns-integrations-web-fetch"]
-duckduckgo = ["everruns-host/duckduckgo", "dep:everruns-integrations-duckduckgo"]
-lua = ["everruns-host/lua"]
+host-shell = ["host-compute", "everruns-core/host-shell"]
+web-fetch = ["everruns-core/direct-egress", "dep:everruns-integrations-web-fetch"]
+duckduckgo = ["everruns-core/direct-egress", "dep:everruns-integrations-duckduckgo"]
+lua = ["everruns-core/direct-egress", "dep:everruns-integrations-lua"]
 # Run commands on the machine this process is already running on, with nothing
 # between the command and the filesystem. Opt-in because it is the one target
 # that contains nothing; the contract types compile without it.
-host-compute = ["everruns-host/process"]
-mcp = ["everruns-host/mcp"]
+host-compute = ["everruns-core/process"]
+mcp = ["everruns-core/mcp", "everruns-core/direct-egress"]
 # Enable local-process (stdio) MCP servers, mirroring `everruns-host/mcp-stdio`.
-mcp-stdio = ["mcp", "everruns-host/mcp-stdio"]
+mcp-stdio = ["mcp", "everruns-core/mcp-stdio"]
 # Enable a crash-durable canonical event log, SQLite-backed session catalog and
 # task/schedule state, and real workspaces through `LocalConfig`. Conversation
 # history is derived from canonical events rather than selecting a writable
@@ -135,13 +138,13 @@ typesafe = ["dep:everruns-integrations-typesafe"]
 # types, the shared runtime-event projection, and an interrupt gate for
 # `ask_user` and tool approvals. Off by default; it adds only the
 # transport-free `everruns-ag-ui` crate, never an HTTP server.
-ag-ui = ["builtins", "dep:everruns-ag-ui", "dep:futures", "dep:serde"]
+ag-ui = ["builtins", "everruns-core/ag-ui", "everruns-core/ag-ui-projection", "dep:futures", "dep:serde"]
 # A ready-made axum handler for `ag-ui` (`everruns::ag_ui::AgUiHandler`):
 # authorizer, thread resolution, SSE framing and keepalive. A separate opt-in
 # so `ag-ui` alone stays free of an HTTP server dependency.
 ag-ui-axum = ["ag-ui", "dep:axum"]
-otel = ["everruns-host/otel"]
-braintrust = ["everruns-host/braintrust"]
+otel = ["everruns-core/otel"]
+braintrust = ["everruns-core/braintrust"]
 
 [dependencies]
 # Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,
@@ -149,9 +152,6 @@ braintrust = ["everruns-host/braintrust"]
 # code-defined authoring surface. The facade re-exports this contract as its
 # application capability API.
 everruns-contracts = { workspace = true, default-features = false }
-everruns-builtins = { workspace = true, optional = true }
-everruns-core.workspace = true
-everruns-host.workspace = true
 # Production-safe deterministic in-process simulator backing
 # `Model::simulated`; no dependency on testing/demo helpers.
 everruns-llmsim.workspace = true
@@ -160,6 +160,7 @@ everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
 everruns-integrations-duckduckgo = { workspace = true, optional = true }
+everruns-integrations-lua = { workspace = true, optional = true }
 # Optional real-provider edge: one crate, with the vendor features above turning
 # on the matching `everruns-drivers` features. Re-exported as `everruns::drivers`.
 everruns-drivers = { workspace = true, optional = true }
@@ -169,7 +170,6 @@ everruns-drivers = { workspace = true, optional = true }
 everruns-integrations-typesafe = { workspace = true, optional = true }
 # AG-UI wire types plus the transport-free projection the server and `serve`
 # share. Activated by `ag-ui`.
-everruns-ag-ui = { workspace = true, optional = true, features = ["core"] }
 # The `AgUiHandler` route and SSE response. Activated by `ag-ui-axum`.
 axum = { workspace = true, optional = true }
 async-trait.workspace = true
@@ -199,7 +199,9 @@ parking_lot = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tracing.workspace = true
 
+everruns-core = { workspace = true, default-features = false, features = ["host"] }
 [dev-dependencies]
+chrono.workspace = true
 # Version-less path dev-dependencies: stripped on publish, so these test-only
 # edges do not force the facade to package before same-cycle sibling releases
 # (e.g. everruns-test-support) reach crates.io.
@@ -285,3 +287,18 @@ required-features = ["typesafe"]
 [[example]]
 name = "framework_observability"
 required-features = ["otel", "braintrust"]
+
+# Host orchestration tests run under the facade's explicit batteries.
+[[test]]
+name = "host"
+path = "tests/host/main.rs"
+
+# This helper forwards to core's audited containment implementation.
+
+[[example]]
+name = "real_disk_file_system_tools"
+required-features = ["filesystem"]
+
+[[example]]
+name = "lua_code_mode_agent"
+required-features = ["lua"]

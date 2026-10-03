@@ -325,9 +325,9 @@ mod tests {
     // constant (crate layering). Pin them so a rename cannot reopen forgery.
     #[test]
     fn the_daytona_sandbox_secret_prefix_is_reserved_from_session_storage() {
-        assert!(everruns_host::is_internal_session_secret_name(&format!(
-            "{DAYTONA_SANDBOX_SECRET_PREFIX}sbx-example"
-        )));
+        assert!(everruns_core::host::is_internal_session_secret_name(
+            &format!("{DAYTONA_SANDBOX_SECRET_PREFIX}sbx-example")
+        ));
     }
 
     #[test]

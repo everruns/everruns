@@ -17,14 +17,10 @@ default = ["llm-tests"]
 llm-tests = []
 
 [dependencies]
-everruns-core = { path = "../core" }
-everruns-engine.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
-everruns-builtins = { path = "../builtins" }
 everruns-test-support = { path = "../test-support" }
 everruns-capabilities = { path = "../capabilities" }
 # Host + local wiring for the live subagent end-to-end test.
-everruns-host = { path = "../host" }
 everruns = { path = "../everruns", features = ["local"] }
 everruns-drivers = { path = "../drivers/drivers", features = [
     "anthropic",
@@ -50,5 +46,6 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 
+everruns-core = { path = "../core", default-features = false, features = ["builtins", "engine", "host"] }
 [lints]
 workspace = true

@@ -28,7 +28,7 @@ use everruns_core::{
     Caller, DeploymentGrade, InitialFile, OrgRole, PermissionResolver, ResourceConfigResponse,
     ScopedMcpServers, evaluate_policies_with,
 };
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 
 use super::common::{
     ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, ResourceStatsResponse, UrlBuilder,

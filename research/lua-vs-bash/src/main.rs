@@ -13,8 +13,8 @@ use std::time::Instant;
 
 use everruns_core::session_file::InitialFile;
 use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
-use everruns_host::HostComposition;
-use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_core::host::HostComposition;
+use everruns_core::host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_lua::LuaCapability;
 use everruns_contracts::driver_registry::DriverRegistry;

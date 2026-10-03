@@ -8,11 +8,11 @@ use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::typed_id::SessionId;
 use everruns_contracts::user_facing_error::UserFacingErrorContext;
+use everruns_core::host::StoreCommandHost;
 use everruns_core::{CapabilityRegistry, DisabledCommandHost};
 use everruns_core::{
     CommandHost, ExecutionSession, SessionCompletionError, SessionCompletionRequest,
 };
-use everruns_host::StoreCommandHost;
 use everruns_test_support::TestMathCapability;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,11 +23,11 @@ use everruns_contracts::driver_registry::LlmStreamEvent;
 use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::{AgentId, HarnessId};
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::message_retriever::InputMessage;
-use everruns_core::session::SessionExecutionState;
-use everruns_host::{
+use everruns_core::host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
+use everruns_core::message_retriever::InputMessage;
+use everruns_core::session::SessionExecutionState;
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 use everruns_test_support::InMemoryMessageRetriever;
 use futures::StreamExt;

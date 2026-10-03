@@ -31,9 +31,9 @@ use super::{
 use crate::domains::common::Command;
 use crate::records::SessionStatus;
 use crate::slack_approvals::{ApprovalDecision, ApprovalRequest, extract_approval_request};
-use everruns_builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
+use everruns_core::builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 

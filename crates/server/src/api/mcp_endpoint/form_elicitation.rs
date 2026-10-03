@@ -29,7 +29,7 @@
 //    future caller forgets the first check. The one thing this module must
 //    never grow is a property that could carry a value.
 
-use everruns_builtins::ask_user::{AskUserAnswer, AskUserQuestion, AskUserQuestionKind};
+use everruns_core::builtins::ask_user::{AskUserAnswer, AskUserQuestion, AskUserQuestionKind};
 use serde_json::{Map, Value, json};
 
 /// Key form-mode elicitations are delivered under in `inputRequests`. Stable,
@@ -455,7 +455,7 @@ async fn apply_form_answers(
     state: &AppState,
 ) -> Option<JsonRpcResponse> {
     use crate::api::question_answers::{QuestionResolver, ResolveError, resolve_question_answers};
-    use everruns_builtins::ask_user::AskUserStatus;
+    use everruns_core::builtins::ask_user::AskUserStatus;
 
     let outcome = match outcome_from_response(&pending.questions, response) {
         Ok(outcome) => outcome,
@@ -520,7 +520,7 @@ async fn apply_form_answers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_builtins::ask_user::AskUserOption;
+    use everruns_core::builtins::ask_user::AskUserOption;
 
     fn option(label: &str, is_default: bool) -> AskUserOption {
         AskUserOption {

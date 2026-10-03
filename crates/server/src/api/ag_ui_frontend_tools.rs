@@ -21,8 +21,8 @@
 use std::collections::HashSet;
 
 use crate::records::SessionStatus;
-use everruns_ag_ui::{Message as AgUiMessage, Tool as AgUiTool, ToolCall as AgUiToolCall};
 use everruns_contracts::tool_types::{ClientSideTool, ToolDefinition};
+use everruns_core::ag_ui::{Message as AgUiMessage, Tool as AgUiTool, ToolCall as AgUiToolCall};
 use everruns_core::events::ToolCallRequestedData;
 use serde_json::Value;
 

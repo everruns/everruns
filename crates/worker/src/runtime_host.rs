@@ -14,6 +14,10 @@ use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::error::Result;
 use everruns_contracts::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
 use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
+use everruns_core::host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
+use everruns_core::mcp::{
+    McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
+};
 use everruns_core::tool_context::ToolContextExtensions;
 use everruns_core::{
     CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
@@ -26,10 +30,6 @@ use everruns_core::{
     image_services::ImageArtifactStore, image_services::ImageResolver,
     provider_resolution::ProviderStore, session_files::SessionFileSystem,
     tool_execution::PaymentAuthority,
-};
-use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
-use everruns_mcp::{
-    McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -257,7 +257,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 /// host phases without depending on in-process-only stores.
 ///
 /// ```ignore
-/// use everruns_host::execute_reason_activity;
+/// use everruns_core::host::execute_reason_activity;
 /// use everruns_worker::{GrpcWorkerAdapters, WorkerRuntimeHost};
 ///
 /// let adapters = GrpcWorkerAdapters::connect("127.0.0.1:9001").await?;
@@ -460,6 +460,15 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         )
     }
 
+    fn bash_hook_dispatcher(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn everruns_core::hook_executor::BashHookDispatcher> {
+        Arc::new(
+            everruns_integrations_bashkit::BashkitShellHookDispatcher::new(self.file_store(org_id)),
+        )
+    }
+
     fn file_store(&self, org_id: i64) -> Arc<dyn SessionFileSystem> {
         // Org-scoped like `provider_store` and `sqldb_store`: the file surface
         // reaches the server through the org's command transport, so it needs
@@ -577,7 +586,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         )))
     }
 
-    fn tool_augmentor(&self) -> Option<Arc<dyn everruns_host::HostToolAugmentor>> {
+    fn tool_augmentor(&self) -> Option<Arc<dyn everruns_core::host::HostToolAugmentor>> {
         Some(Arc::new(PlatformToolAugmentor))
     }
 
@@ -687,10 +696,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         let client = Arc::new(McpClient::with_url_and_form_elicitation(
             egress,
             Arc::new(NoAuthProvider),
-            Arc::new(everruns_mcp::ConsentingUrlElicitations::new(
+            Arc::new(everruns_core::mcp::ConsentingUrlElicitations::new(
                 answers.clone(),
             )),
-            Arc::new(everruns_mcp::StoredFormAnswers::new(answers)),
+            Arc::new(everruns_core::mcp::StoredFormAnswers::new(answers)),
         ));
         let resolver = Arc::new(WorkerMcpResolver {
             input_message_id: None,

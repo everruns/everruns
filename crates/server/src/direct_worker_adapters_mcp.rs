@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 pub(crate) fn resolved_mcp_server_to_worker_info(
     resolved: McpServerResolved,
-    secret_bindings: HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
+    secret_bindings: HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>,
 ) -> McpServerInfo {
     McpServerInfo {
         id: resolved.id,

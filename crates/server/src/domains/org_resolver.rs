@@ -22,7 +22,7 @@ use crate::kernel_imports::{
 };
 use anyhow::Result;
 use everruns_core::capabilities::SkillCapabilityIdExt;
-use everruns_mcp::McpCapabilityIdExt;
+use everruns_core::mcp::McpCapabilityIdExt;
 use uuid::Uuid;
 
 use crate::storage::StorageBackend;
@@ -292,7 +292,7 @@ mod tests {
     async fn resolve_virtual_capability_returns_underlying_resource_org_id() {
         use crate::kernel_imports::{capabilities::skill_capability_id, typed_id::SkillId};
         use crate::storage::models::{CreateMcpServerRow, CreateSkillRow};
-        use everruns_mcp::mcp_capability_id;
+        use everruns_core::mcp::mcp_capability_id;
 
         let db = StorageBackend::in_memory();
 

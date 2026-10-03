@@ -54,8 +54,8 @@ impl everruns_contracts::driver_registry::ChatDriver for RejectingProviderManage
 
 #[tokio::test]
 async fn pre_stream_capability_rejection_reassembles_legacy_history_once() {
-    use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_core::execution_loading::SessionStore;
 
     let (
@@ -220,12 +220,12 @@ impl everruns_contracts::ChatDriver for OutputBudgetFallbackDriver {
 
 #[tokio::test]
 async fn configured_max_tokens_reassembles_legacy_history_before_the_call() {
-    use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
+    use everruns_core::engine::ReasonAtom;
     use everruns_core::execution_loading::SessionStore;
+    use everruns_core::host::StoreTurnContextResolver;
     use everruns_core::runtime_context::{TurnContextRequest, TurnContextResolver};
-    use everruns_engine::ReasonAtom;
-    use everruns_host::StoreTurnContextResolver;
 
     let (
         harness_store,

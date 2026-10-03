@@ -1,6 +1,6 @@
 use std::fmt;
 
-use everruns_host::InProcessRuntimeBuilder;
+use everruns_core::host::InProcessRuntimeBuilder;
 
 use super::FunctionTool;
 
@@ -8,9 +8,9 @@ use super::FunctionTool;
 pub(super) enum CapabilityImplementation {
     Function(FunctionTool),
     #[cfg(feature = "builtins")]
-    AskUser(everruns_builtins::AskUserCapability),
+    AskUser(everruns_core::builtins::AskUserCapability),
     #[cfg(feature = "builtins")]
-    Approval(everruns_builtins::ToolApprovalCapability),
+    Approval(everruns_core::builtins::ToolApprovalCapability),
     #[cfg(feature = "capabilities")]
     Definition(crate::capability::Definition),
 }

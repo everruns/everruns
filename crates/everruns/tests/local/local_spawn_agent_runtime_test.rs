@@ -26,7 +26,7 @@
 // parent sessions inside the same runtime so a background completion wake or
 // previous trigger in one transcript cannot steer the other target's turn.
 
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -40,15 +40,15 @@ use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::provider::DriverId;
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::host::{
+    AgentBuilder, EventReadLimit, EventReadRequest, HarnessBuilder, HostBackends, InProcessRuntime,
+    InProcessRuntimeBuilder, RuntimeSessionStore, SessionBuilder,
+};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
     SessionTaskRegistry, SessionTaskState, TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT,
 };
 use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
-use everruns_host::{
-    AgentBuilder, EventReadLimit, EventReadRequest, HarnessBuilder, HostBackends, InProcessRuntime,
-    InProcessRuntimeBuilder, RuntimeSessionStore, SessionBuilder,
-};
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
 

@@ -1,0 +1,298 @@
+// Public backend contract for the embedded host.
+// Seeding stores remain writable host configuration. Conversation history is
+// different: canonical events are the only write path and EventHistory is the
+// rebuildable read projection.
+
+use crate::agent_definition::AgentDefinition;
+use crate::harness_definition::HarnessDefinition;
+use crate::host::SessionMutator;
+use crate::host::events::{EventLog, EventSink, InMemoryEventLog, NoopEventSink};
+use crate::host::in_memory::{
+    InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
+    InMemoryProviderStore, InMemorySessionStorageStore, InMemorySessionStore,
+};
+use crate::session::ExecutionSession;
+use crate::session_task::SessionTaskRegistry;
+use crate::{
+    connection_services::UserConnectionResolver, execution_loading::AgentStore,
+    execution_loading::HarnessStore, execution_loading::SessionStore,
+    provider_resolution::ProviderStore, session_services::SessionScheduleStore,
+    session_services::SessionStorageStore,
+};
+use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::typed_id::HarnessId;
+use std::sync::Arc;
+
+/// Factory producing a per-org [`SessionScheduleStore`]. Embedders that have a
+/// single global store can ignore the `org_id` argument and return the same
+/// `Arc` every time.
+pub type ScheduleStoreFactory = Arc<dyn Fn(i64) -> Arc<dyn SessionScheduleStore> + Send + Sync>;
+
+/// Agent store contract for runtime seeding and lookup.
+///
+/// Seeds portable [`AgentDefinition`] values (EVE-877): the embedded host
+/// carries no stored Agent persistence records.
+#[async_trait]
+pub trait RuntimeAgentStore: AgentStore + Send + Sync {
+    /// Insert or replace an agent definition.
+    async fn add_agent(&self, agent: AgentDefinition) -> Result<()>;
+}
+
+/// Harness store contract for runtime seeding and lookup.
+///
+/// Seeds portable [`HarnessDefinition`] values under an embedder-chosen id
+/// (EVE-881): the embedded host carries no stored Harness persistence records.
+#[async_trait]
+pub trait RuntimeHarnessStore: HarnessStore + Send + Sync {
+    /// Insert or replace a harness definition under the given id.
+    async fn add_harness(&self, harness_id: HarnessId, harness: HarnessDefinition) -> Result<()>;
+}
+
+/// Session store contract for runtime seeding, lookup, and mutation.
+///
+/// Seeds portable [`ExecutionSession`] values (EVE-882): the embedded host
+/// carries no stored Session persistence records.
+#[async_trait]
+pub trait RuntimeSessionStore: SessionStore + SessionMutator + Send + Sync {
+    /// Insert or replace a session's portable execution view.
+    async fn add_session(&self, session: ExecutionSession) -> Result<()>;
+}
+
+/// Provider store contract for runtime lookup and default-model configuration.
+#[async_trait]
+pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
+    /// Set the runtime default credential-free model selection.
+    async fn set_default_model_spec(&self, model: ModelSpec) -> Result<()>;
+}
+
+/// Non-filesystem backend bundle supplied to an execution host.
+///
+/// Use this when you want the public runtime orchestration but your own store
+/// implementations instead of the built-in in-memory ones. Session filesystem
+/// selection is always resolved from `HostComposition`.
+#[derive(Clone)]
+pub struct HostBackends {
+    /// Optional host-selected shell hook dispatcher; no integration is attached by core.
+    pub bash_hook_dispatcher_factory: Option<crate::host::BashHookDispatcherFactory>,
+    /// Optional shared fenced journal for native asynchronous tool execution.
+    pub native_async_store: Option<Arc<dyn crate::native_async_store::NativeAsyncStore>>,
+    /// Harness definitions available to the runtime.
+    pub harness_store: Arc<dyn RuntimeHarnessStore>,
+    /// Agent definitions available to the runtime.
+    pub agent_store: Arc<dyn RuntimeAgentStore>,
+    /// Session records and mutable session metadata.
+    pub session_store: Arc<dyn RuntimeSessionStore>,
+    /// Coherent canonical event log. This is the sole conversation write path.
+    pub event_log: Arc<dyn EventLog>,
+    /// Durable replacement context used to reconstruct compacted model input.
+    pub compaction_checkpoint_store: Arc<dyn crate::CompactionCheckpointStore>,
+    /// Model/provider resolution and default-model configuration.
+    pub provider_store: Arc<dyn RuntimeProviderStore>,
+    /// Optional, non-blocking live observation sink notified after commit.
+    pub event_sink: Arc<dyn EventSink>,
+    /// Session key/value + secret storage backend.
+    pub storage_store: Arc<dyn SessionStorageStore>,
+    /// Optional resolver for user connection tokens (e.g. GitHub, Daytona).
+    ///
+    /// When set, the runtime exposes it through `ToolContext.connection_resolver`
+    /// so connection-aware capabilities can resolve tokens lazily at tool time.
+    /// `None` (the default) leaves the resolver unset, matching prior behavior.
+    /// There is no in-memory default because a connection resolver implies a
+    /// real credential source the embedder must supply.
+    pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
+    /// Optional session-task registry injected into the act path so background
+    /// tools, subagents, and monitors persist their lifecycle. `None` (the
+    /// default) leaves `RuntimeHostAdapter::session_task_registry` returning
+    /// `None`, matching prior in-memory behavior.
+    pub session_task_registry: Option<Arc<dyn SessionTaskRegistry>>,
+    /// Optional per-org schedule store factory. `None` (the default) leaves
+    /// `RuntimeHostAdapter::schedule_store` returning `None`.
+    pub schedule_store_factory: Option<ScheduleStoreFactory>,
+    /// Optional higher-level typed services supplied to tool contexts.
+    pub tool_context_extensions_factory: Option<crate::host::ToolContextExtensionsFactory>,
+    /// Optional neutral subagent delegate supplied by a higher-level host.
+    pub subagent_delegate_factory: Option<crate::host::SubagentDelegateFactory>,
+    /// Optional higher-level tool augmentation policy.
+    pub tool_augmentor: Option<Arc<dyn crate::host::HostToolAugmentor>>,
+}
+
+impl std::fmt::Debug for HostBackends {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Backends are trait objects; report the shape only.
+        f.debug_struct("HostBackends").finish_non_exhaustive()
+    }
+}
+
+impl HostBackends {
+    /// Backend bundle with in-memory implementations for every store.
+    ///
+    /// Suitable for tests, examples, and the default runtime configuration.
+    /// Use the chainable `with_*` setters to override individual stores.
+    pub fn in_memory() -> Self {
+        Self {
+            bash_hook_dispatcher_factory: None,
+            harness_store: Arc::new(InMemoryHarnessStore::new()),
+            agent_store: Arc::new(InMemoryAgentStore::new()),
+            session_store: Arc::new(InMemorySessionStore::new()),
+            event_log: Arc::new(InMemoryEventLog::new()),
+            native_async_store: None,
+            compaction_checkpoint_store: Arc::new(InMemoryCompactionCheckpointStore::default()),
+            provider_store: Arc::new(InMemoryProviderStore::new()),
+            event_sink: Arc::new(NoopEventSink),
+            storage_store: Arc::new(InMemorySessionStorageStore::new()),
+            connection_resolver: None,
+            session_task_registry: None,
+            schedule_store_factory: None,
+            tool_context_extensions_factory: None,
+            subagent_delegate_factory: None,
+            tool_augmentor: None,
+        }
+    }
+
+    /// Inject the shell-hook implementation selected by an embedding host.
+    pub fn with_bash_hook_dispatcher_factory(
+        mut self,
+        factory: crate::host::BashHookDispatcherFactory,
+    ) -> Self {
+        self.bash_hook_dispatcher_factory = Some(factory);
+        self
+    }
+
+    pub fn with_harness_store(mut self, store: Arc<dyn RuntimeHarnessStore>) -> Self {
+        self.harness_store = store;
+        self
+    }
+
+    pub fn with_agent_store(mut self, store: Arc<dyn RuntimeAgentStore>) -> Self {
+        self.agent_store = store;
+        self
+    }
+
+    pub fn with_session_store(mut self, store: Arc<dyn RuntimeSessionStore>) -> Self {
+        self.session_store = store;
+        self
+    }
+
+    /// Replace the coherent canonical event log.
+    pub fn with_event_log(mut self, log: Arc<dyn EventLog>) -> Self {
+        self.event_log = log;
+        self
+    }
+
+    pub fn with_native_async_store(
+        mut self,
+        store: Arc<dyn crate::native_async_store::NativeAsyncStore>,
+    ) -> Self {
+        self.native_async_store = Some(store);
+        self
+    }
+
+    pub fn with_compaction_checkpoint_store(
+        mut self,
+        store: Arc<dyn crate::CompactionCheckpointStore>,
+    ) -> Self {
+        self.compaction_checkpoint_store = store;
+        self
+    }
+
+    pub fn with_provider_store(mut self, store: Arc<dyn RuntimeProviderStore>) -> Self {
+        self.provider_store = store;
+        self
+    }
+
+    /// Install a non-blocking post-commit observation sink.
+    pub fn with_event_sink(mut self, sink: Arc<dyn EventSink>) -> Self {
+        self.event_sink = sink;
+        self
+    }
+
+    pub fn with_storage_store(mut self, store: Arc<dyn SessionStorageStore>) -> Self {
+        self.storage_store = store;
+        self
+    }
+
+    /// Supply a resolver for user connection tokens (e.g. GitHub, Daytona).
+    ///
+    /// The runtime forwards it into `ToolContext` so connection-aware
+    /// capabilities resolve tokens lazily at tool execution time.
+    pub fn with_connection_resolver(mut self, resolver: Arc<dyn UserConnectionResolver>) -> Self {
+        self.connection_resolver = Some(resolver);
+        self
+    }
+
+    /// Inject a session-task registry so background tools / subagents / monitors
+    /// persist their lifecycle through the act path. Additive: leaving this unset
+    /// keeps the prior behavior (the adapter returns `None`).
+    pub fn with_session_task_registry(mut self, registry: Arc<dyn SessionTaskRegistry>) -> Self {
+        self.session_task_registry = Some(registry);
+        self
+    }
+
+    /// Inject a per-org schedule store factory. The closure is invoked with the
+    /// internal org id each time the act path needs a schedule store.
+    pub fn with_schedule_store_factory(mut self, factory: ScheduleStoreFactory) -> Self {
+        self.schedule_store_factory = Some(factory);
+        self
+    }
+
+    /// Inject type-erased tool services supplied by a higher-level host.
+    pub fn with_tool_context_extensions_factory(
+        mut self,
+        factory: crate::host::ToolContextExtensionsFactory,
+    ) -> Self {
+        self.tool_context_extensions_factory = Some(factory);
+        self
+    }
+
+    /// Inject a neutral subagent delegate supplied by a higher-level host.
+    pub fn with_subagent_delegate_factory(
+        mut self,
+        factory: crate::host::SubagentDelegateFactory,
+    ) -> Self {
+        self.subagent_delegate_factory = Some(factory);
+        self
+    }
+
+    /// Inject higher-level turn-dependent tools.
+    pub fn with_tool_augmentor(
+        mut self,
+        augmentor: Arc<dyn crate::host::HostToolAugmentor>,
+    ) -> Self {
+        self.tool_augmentor = Some(augmentor);
+        self
+    }
+}
+
+#[async_trait]
+impl RuntimeAgentStore for InMemoryAgentStore {
+    async fn add_agent(&self, agent: AgentDefinition) -> Result<()> {
+        InMemoryAgentStore::add_agent(self, agent).await;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl RuntimeHarnessStore for InMemoryHarnessStore {
+    async fn add_harness(&self, harness_id: HarnessId, harness: HarnessDefinition) -> Result<()> {
+        InMemoryHarnessStore::add_harness(self, harness_id, harness).await;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl RuntimeSessionStore for InMemorySessionStore {
+    async fn add_session(&self, session: ExecutionSession) -> Result<()> {
+        InMemorySessionStore::add_session(self, session).await;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl RuntimeProviderStore for InMemoryProviderStore {
+    async fn set_default_model_spec(&self, model: ModelSpec) -> Result<()> {
+        InMemoryProviderStore::set_default_model_spec(self, model).await;
+        Ok(())
+    }
+}

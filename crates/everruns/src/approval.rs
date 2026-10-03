@@ -18,4 +18,4 @@
 //! [`ApprovalDecision::RejectAlways`] are remembered per session and tool.
 
 pub use async_trait::async_trait;
-pub use everruns_builtins::{ApprovalDecision, ToolApprover};
+pub use everruns_core::builtins::{ApprovalDecision, ToolApprover};

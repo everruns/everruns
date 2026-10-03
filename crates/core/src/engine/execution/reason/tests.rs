@@ -1,0 +1,1294 @@
+use super::compaction::materially_reduced;
+use super::*;
+use crate::engine::driver_registry::{
+    LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheStrategy,
+};
+use crate::engine::events::CapabilityUsageKind;
+use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
+use serde_json::json;
+use std::collections::HashMap;
+
+#[test]
+fn compaction_cost_preserves_estimated_generation_cost() {
+    let mut usage = TokenUsage::new(1_000_000, 500_000).with_cost(None, Some(7.5));
+
+    add_compaction_cost(&mut usage, 0.0125);
+
+    assert_eq!(usage.actual_cost_usd, None);
+    assert_eq!(usage.estimated_cost_usd, Some(7.5));
+    assert_eq!(usage.effective_cost_usd(), Some(7.5125));
+}
+
+#[test]
+fn compaction_cost_combines_with_actual_generation_cost() {
+    let mut usage = TokenUsage::new(10, 5).with_cost(Some(0.25), Some(0.2));
+
+    add_compaction_cost(&mut usage, 0.0125);
+
+    assert_eq!(usage.actual_cost_usd, Some(0.2625));
+    assert_eq!(usage.effective_cost_usd(), Some(0.2625));
+}
+
+fn replay_metadata() -> LlmCompletionMetadata {
+    let mut metadata = LlmCompletionMetadata::default();
+    metadata.provider_opaque_content = Some(everruns_contracts::ProviderOpaqueContent::new(
+        "anthropic",
+        json!([{"type":"text","text":"provider text"}]),
+    ));
+    metadata.provider_checkpoint_candidate = Some(
+        crate::engine::driver_registry::ProviderCheckpointCandidate {
+            format_version: crate::engine::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
+            context:
+                crate::engine::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                    messages_json: "[]".to_string(),
+                },
+        },
+    );
+    metadata
+}
+
+#[test]
+fn blocked_or_rejected_output_discards_provider_replay_artifacts() {
+    let metadata = replay_metadata();
+
+    for (guardrail_allowed, rejected_tool_calls) in [(false, false), (true, true)] {
+        let (opaque, checkpoint) = provider_managed_compaction::replay_artifacts(
+            Some(&metadata),
+            guardrail_allowed,
+            rejected_tool_calls,
+        );
+        assert!(opaque.is_none());
+        assert!(checkpoint.is_none());
+    }
+}
+
+#[test]
+fn material_reduction_requires_five_percent_at_normal_sizes() {
+    assert!(!materially_reduced(1_000, 951));
+    assert!(materially_reduced(1_000, 950));
+}
+
+#[test]
+fn material_reduction_uses_absolute_floor_for_small_sizes() {
+    assert!(!materially_reduced(0, 0));
+    assert!(!materially_reduced(100, 69));
+    assert!(materially_reduced(100, 68));
+}
+
+struct BlockWhenDeltaContains {
+    needle: &'static str,
+}
+
+impl crate::engine::output_guardrail::OutputGuardrailRun for BlockWhenDeltaContains {
+    fn check(
+        &mut self,
+        _accumulated: &str,
+        delta: &str,
+    ) -> crate::engine::output_guardrail::GuardrailDecision {
+        if delta.contains(self.needle) {
+            crate::engine::output_guardrail::GuardrailDecision::block("test_leak", "[blocked]")
+        } else {
+            crate::engine::output_guardrail::GuardrailDecision::Pass
+        }
+    }
+}
+
+fn test_armed_guardrail() -> ArmedGuardrail {
+    ArmedGuardrail {
+        capability_id: "test_capability".to_string(),
+        guardrail_id: "test_guardrail".to_string(),
+        run: Box::new(BlockWhenDeltaContains { needle: "secret" }),
+    }
+}
+
+#[test]
+fn test_append_guarded_thinking_delta_blocks_before_pending_emit() {
+    let mut guardrails = vec![test_armed_guardrail()];
+    let mut thinking = "safe ".to_string();
+    let mut pending = "safe ".to_string();
+
+    let tripped = append_guarded_thinking_delta(
+        &mut guardrails,
+        &mut thinking,
+        &mut pending,
+        "secret instructions",
+    )
+    .expect("thinking delta should trip guardrail");
+
+    assert_eq!(tripped.capability_id, "test_capability");
+    assert_eq!(tripped.guardrail_id, "test_guardrail");
+    assert_eq!(tripped.block.reason_code, "test_leak");
+    assert_eq!(tripped.block.replacement, "[blocked]");
+    assert_eq!(thinking, "safe secret instructions");
+    assert!(pending.is_empty());
+}
+
+#[test]
+fn test_append_guarded_thinking_delta_allows_safe_pending_emit() {
+    let mut guardrails = vec![test_armed_guardrail()];
+    let mut thinking = String::new();
+    let mut pending = String::new();
+
+    let tripped = append_guarded_thinking_delta(
+        &mut guardrails,
+        &mut thinking,
+        &mut pending,
+        "ordinary reasoning",
+    );
+
+    assert!(tripped.is_none());
+    assert_eq!(thinking, "ordinary reasoning");
+    assert_eq!(pending, "ordinary reasoning");
+}
+
+#[test]
+fn test_completed_reasoning_item_is_guarded() {
+    let mut guardrails = vec![test_armed_guardrail()];
+    let mut inspected = String::new();
+    let item = ReasoningContentPart::opaque("google")
+        .with_signature("signed")
+        .with_text(ReasoningText::Plain {
+            text: "secret instructions".to_string(),
+        });
+
+    let tripped = inspect_guarded_reasoning_item(&mut guardrails, &mut inspected, &item)
+        .expect("completed reasoning should trip guardrail");
+
+    assert_eq!(tripped.block.reason_code, "test_leak");
+    assert_eq!(inspected, "secret instructions");
+}
+
+#[test]
+fn test_completed_reasoning_item_is_not_double_counted_after_deltas() {
+    let mut guardrails = vec![test_armed_guardrail()];
+    let mut inspected = "already streamed".to_string();
+    let item = ReasoningContentPart::opaque("anthropic").with_text(ReasoningText::Plain {
+        text: "already streamed".to_string(),
+    });
+
+    assert!(inspect_guarded_reasoning_item(&mut guardrails, &mut inspected, &item).is_none());
+    assert_eq!(inspected, "already streamed");
+}
+
+#[test]
+fn test_post_generation_guardrail_text_includes_reasoning_and_prose() {
+    let reasoning =
+        vec![
+            ReasoningContentPart::opaque("google").with_text(ReasoningText::Summary {
+                parts: vec!["reasoning canary".to_string()],
+            }),
+        ];
+
+    let guarded = client_visible_guardrail_text("answer", "", &reasoning, &[]);
+
+    assert!(guarded.contains("reasoning canary"));
+    assert!(guarded.contains("answer"));
+}
+
+#[test]
+fn test_reason_result_default() {
+    let result = ReasonResult::default();
+    assert!(!result.success);
+    assert!(result.text.is_empty());
+    assert!(result.tool_calls.is_empty());
+    assert!(!result.has_tool_calls);
+    // Default derive gives 0, but serde deserialization gives 100 via default_max_iterations()
+    assert_eq!(result.max_iterations, 0);
+}
+
+#[test]
+fn test_reason_result_serde_default() {
+    // Test that serde uses the default_max_iterations function
+    let json = r#"{"success":true,"text":"","has_tool_calls":false}"#;
+    let result: ReasonResult = serde_json::from_str(json).unwrap();
+    assert_eq!(result.max_iterations, 500);
+}
+
+#[test]
+fn test_capability_usage_snapshot_keeps_resolved_and_exposed_separate() {
+    let registry = CapabilityRegistry::new();
+    let tool = ToolDefinition::Builtin(crate::engine::tool_types::BuiltinTool {
+        name: "demo_tool".to_string(),
+        display_name: None,
+        description: "demo".to_string(),
+        parameters: json!({"type": "object"}),
+        policy: crate::engine::tool_types::ToolPolicy::Auto,
+        category: None,
+        deferrable: crate::engine::tool_types::DeferrablePolicy::default(),
+        hints: crate::engine::tool_types::ToolHints::default(),
+        full_parameters: None,
+    })
+    .with_capability_attribution("cap:demo", Some("Demo Capability"));
+
+    let records = capability_usage_snapshot_records(
+        &registry,
+        &[crate::engine::CapabilityRef::new("current_time")],
+        &[tool],
+    );
+
+    assert!(records.iter().any(|record| {
+        matches!(record.usage_kind, CapabilityUsageKind::Resolved)
+            && record.capability_id == "current_time"
+            && record.tool_name.is_none()
+    }));
+    assert!(records.iter().any(|record| {
+        matches!(record.usage_kind, CapabilityUsageKind::Exposed)
+            && record.capability_id == "cap:demo"
+            && record.tool_name.as_deref() == Some("demo_tool")
+    }));
+}
+
+#[test]
+fn stream_stall_deadline_ignores_empty_keepalive_events() {
+    assert!(!advances_stall_deadline(&LlmStreamEvent::TextDelta(
+        String::new()
+    )));
+    assert!(!advances_stall_deadline(&LlmStreamEvent::ReasoningDelta {
+        delta: String::new(),
+        summary: false,
+    }));
+    // An artifact with neither replay state nor readable text is not progress.
+    assert!(!advances_stall_deadline(&LlmStreamEvent::ReasoningItem(
+        ReasoningContentPart::opaque("openai")
+    )));
+}
+
+#[test]
+fn stream_stall_deadline_advances_on_output_progress() {
+    assert!(advances_stall_deadline(&LlmStreamEvent::TextDelta(
+        "hello".to_string()
+    )));
+    assert!(advances_stall_deadline(&LlmStreamEvent::ReasoningDelta {
+        delta: "thinking".to_string(),
+        summary: false,
+    }));
+    // Replay state alone is progress: the provider produced something the next
+    // request must carry, even with nothing readable to show.
+    assert!(advances_stall_deadline(&LlmStreamEvent::ReasoningItem(
+        ReasoningContentPart::opaque("openai")
+            .with_item_id("item_1")
+            .with_encrypted("encrypted")
+    )));
+    assert!(advances_stall_deadline(&LlmStreamEvent::ReasoningItem(
+        ReasoningContentPart::opaque("openai").with_text(ReasoningText::Summary {
+            parts: vec!["summary".to_string()],
+        })
+    )));
+    assert!(advances_stall_deadline(&LlmStreamEvent::ToolCalls(vec![
+        ToolCall {
+            id: "call_1".to_string(),
+            name: "demo".to_string(),
+            arguments: json!({}),
+        }
+    ])));
+}
+
+#[tokio::test]
+async fn test_repair_dangling_tool_calls_no_tool_calls() {
+    use crate::engine::events::EventContext;
+    use crate::engine::typed_id::SessionId;
+    let messages = vec![
+        RuntimeMessage::user("Hello"),
+        RuntimeMessage::assistant("Hi there!"),
+    ];
+    let emitter = crate::engine::test_fixtures::NoopEventEmitter;
+    let session_id = SessionId::new();
+    let ctx = EventContext::empty();
+    let patched =
+        repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01").await;
+    assert_eq!(patched.len(), 2);
+}
+
+#[tokio::test]
+async fn test_repair_dangling_tool_calls_with_result() {
+    use crate::engine::events::EventContext;
+    use crate::engine::typed_id::SessionId;
+    let tool_call = ToolCall {
+        id: "call_123".to_string(),
+        name: "get_weather".to_string(),
+        arguments: serde_json::json!({"city": "NYC"}),
+    };
+
+    let messages = vec![
+        RuntimeMessage::user("What's the weather?"),
+        RuntimeMessage::assistant_with_tools("Let me check", vec![tool_call]),
+        RuntimeMessage::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
+    ];
+
+    let emitter = crate::engine::test_fixtures::NoopEventEmitter;
+    let session_id = SessionId::new();
+    let ctx = EventContext::empty();
+    let patched =
+        repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01").await;
+    assert_eq!(patched.len(), 3);
+}
+
+#[tokio::test]
+async fn test_repair_dangling_tool_calls_missing_result_no_store() {
+    use crate::engine::events::EventContext;
+    use crate::engine::typed_id::SessionId;
+    let tool_call = ToolCall {
+        id: "call_456".to_string(),
+        name: "search_web".to_string(),
+        arguments: serde_json::json!({"query": "rust"}),
+    };
+
+    let messages = vec![
+        RuntimeMessage::user("Search for rust"),
+        RuntimeMessage::assistant_with_tools("Searching...", vec![tool_call]),
+        RuntimeMessage::user("Actually, never mind"),
+    ];
+
+    let emitter = crate::engine::test_fixtures::NoopEventEmitter;
+    let session_id = SessionId::new();
+    let ctx = EventContext::empty();
+    let patched =
+        repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01").await;
+    // Should have added a cancelled result
+    assert_eq!(patched.len(), 4);
+    assert_eq!(patched[2].role, RuntimeMessageRole::ToolResult);
+    assert_eq!(patched[2].tool_call_id(), Some("call_456"));
+}
+
+#[tokio::test]
+async fn test_repair_dangling_tool_calls_settled_result_replayed() {
+    use crate::engine::events::EventContext;
+    use crate::engine::typed_id::SessionId;
+    use crate::engine::{
+        durability::DurableToolCallStatus, durability::DurableToolResultStore,
+        durability::ToolCallClaimResult,
+    };
+
+    struct MockSettledStore;
+    #[async_trait::async_trait]
+    impl DurableToolResultStore for MockSettledStore {
+        async fn try_claim_tool_call(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> crate::engine::error::Result<ToolCallClaimResult> {
+            Ok(ToolCallClaimResult::Claimed {
+                claim_token: uuid::Uuid::new_v4(),
+            })
+        }
+        async fn settle_tool_call(
+            &self,
+            _: &str,
+            _: &str,
+            _: serde_json::Value,
+            _: &str,
+            _: uuid::Uuid,
+        ) -> crate::engine::error::Result<bool> {
+            Ok(true)
+        }
+        async fn get_tool_call_status(
+            &self,
+            _turn_id: &str,
+            _tool_call_id: &str,
+        ) -> crate::engine::error::Result<Option<DurableToolCallStatus>> {
+            Ok(Some(DurableToolCallStatus::Settled {
+                result_json: serde_json::json!({
+                    "tool_call_id": "call_789",
+                    "result": {"answer": 42},
+                    "error": null,
+                    "images": null,
+                    "connection_required": null,
+                    "raw_output": null
+                }),
+            }))
+        }
+    }
+
+    let tool_call = ToolCall {
+        id: "call_789".to_string(),
+        name: "compute".to_string(),
+        arguments: serde_json::json!({"x": 21}),
+    };
+    let messages = vec![
+        RuntimeMessage::user("Compute"),
+        RuntimeMessage::assistant_with_tools("Computing...", vec![tool_call]),
+    ];
+
+    let store = MockSettledStore;
+    let emitter = crate::engine::test_fixtures::NoopEventEmitter;
+    let session_id = SessionId::new();
+    let ctx = EventContext::empty();
+    let patched = repair_dangling_tool_calls(
+        &messages,
+        Some(&store as &dyn DurableToolResultStore),
+        &emitter,
+        session_id,
+        &ctx,
+        "turn_01",
+    )
+    .await;
+
+    // Settled result should be replayed (not cancelled message)
+    assert_eq!(patched.len(), 3);
+    assert_eq!(patched[2].role, RuntimeMessageRole::ToolResult);
+    assert_eq!(patched[2].tool_call_id(), Some("call_789"));
+}
+
+#[tokio::test]
+async fn test_repair_dangling_tool_calls_interrupted_result_replayed() {
+    use crate::engine::events::EventContext;
+    use crate::engine::typed_id::SessionId;
+    use crate::engine::{
+        durability::DurableToolCallStatus, durability::DurableToolResultStore,
+        durability::ToolCallClaimResult,
+    };
+
+    struct MockInterruptedStore;
+    #[async_trait::async_trait]
+    impl DurableToolResultStore for MockInterruptedStore {
+        async fn try_claim_tool_call(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> crate::engine::error::Result<ToolCallClaimResult> {
+            Ok(ToolCallClaimResult::Claimed {
+                claim_token: uuid::Uuid::new_v4(),
+            })
+        }
+        async fn settle_tool_call(
+            &self,
+            _: &str,
+            _: &str,
+            _: serde_json::Value,
+            _: &str,
+            _: uuid::Uuid,
+        ) -> crate::engine::error::Result<bool> {
+            Ok(true)
+        }
+        async fn get_tool_call_status(
+            &self,
+            _turn_id: &str,
+            _tool_call_id: &str,
+        ) -> crate::engine::error::Result<Option<DurableToolCallStatus>> {
+            Ok(Some(DurableToolCallStatus::Interrupted {
+                result_json: None,
+            }))
+        }
+    }
+
+    let tool_call = ToolCall {
+        id: "call_int".to_string(),
+        name: "slow_op".to_string(),
+        arguments: serde_json::json!({}),
+    };
+    let messages = vec![
+        RuntimeMessage::user("Do it"),
+        RuntimeMessage::assistant_with_tools("Doing...", vec![tool_call]),
+    ];
+
+    let store = MockInterruptedStore;
+    let emitter = crate::engine::test_fixtures::NoopEventEmitter;
+    let session_id = SessionId::new();
+    let ctx = EventContext::empty();
+    let patched = repair_dangling_tool_calls(
+        &messages,
+        Some(&store as &dyn DurableToolResultStore),
+        &emitter,
+        session_id,
+        &ctx,
+        "turn_01",
+    )
+    .await;
+
+    assert_eq!(patched.len(), 3);
+    let repair = &patched[2];
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
+    assert_eq!(repair.tool_call_id(), Some("call_int"));
+    // Interrupted replay uses the stored error or fallback text; must contain "interrupted"
+    let content = format!("{:?}", repair);
+    assert!(
+        content.contains("interrupted") || content.contains("not complete"),
+        "expected interrupted message, got: {content}"
+    );
+}
+
+#[tokio::test]
+async fn test_repair_dangling_tool_calls_running_synthesized() {
+    use crate::engine::events::EventContext;
+    use crate::engine::typed_id::SessionId;
+    use crate::engine::{
+        durability::DurableToolCallStatus, durability::DurableToolResultStore,
+        durability::ToolCallClaimResult,
+    };
+
+    struct MockRunningStore;
+    #[async_trait::async_trait]
+    impl DurableToolResultStore for MockRunningStore {
+        async fn try_claim_tool_call(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> crate::engine::error::Result<ToolCallClaimResult> {
+            Ok(ToolCallClaimResult::Claimed {
+                claim_token: uuid::Uuid::new_v4(),
+            })
+        }
+        async fn settle_tool_call(
+            &self,
+            _: &str,
+            _: &str,
+            _: serde_json::Value,
+            _: &str,
+            _: uuid::Uuid,
+        ) -> crate::engine::error::Result<bool> {
+            Ok(true)
+        }
+        async fn get_tool_call_status(
+            &self,
+            _turn_id: &str,
+            _tool_call_id: &str,
+        ) -> crate::engine::error::Result<Option<DurableToolCallStatus>> {
+            Ok(Some(DurableToolCallStatus::Running))
+        }
+    }
+
+    let tool_call = ToolCall {
+        id: "call_run".to_string(),
+        name: "long_job".to_string(),
+        arguments: serde_json::json!({}),
+    };
+    let messages = vec![
+        RuntimeMessage::user("Start job"),
+        RuntimeMessage::assistant_with_tools("Starting...", vec![tool_call]),
+    ];
+
+    let store = MockRunningStore;
+    let emitter = crate::engine::test_fixtures::NoopEventEmitter;
+    let session_id = SessionId::new();
+    let ctx = EventContext::empty();
+    let patched = repair_dangling_tool_calls(
+        &messages,
+        Some(&store as &dyn DurableToolResultStore),
+        &emitter,
+        session_id,
+        &ctx,
+        "turn_01",
+    )
+    .await;
+
+    assert_eq!(patched.len(), 3);
+    let repair = &patched[2];
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
+    assert_eq!(repair.tool_call_id(), Some("call_run"));
+    // Running stale claim must warn "uncertain; do not retry automatically"
+    let content = format!("{:?}", repair);
+    assert!(
+        content.contains("uncertain") || content.contains("do not retry"),
+        "expected uncertain/do-not-retry message, got: {content}"
+    );
+}
+
+#[tokio::test]
+async fn test_repair_dangling_tool_calls_store_error_unknown() {
+    use crate::engine::error::AgentLoopError;
+    use crate::engine::events::EventContext;
+    use crate::engine::typed_id::SessionId;
+    use crate::engine::{durability::DurableToolResultStore, durability::ToolCallClaimResult};
+
+    struct MockErrorStore;
+    #[async_trait::async_trait]
+    impl DurableToolResultStore for MockErrorStore {
+        async fn try_claim_tool_call(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> crate::engine::error::Result<ToolCallClaimResult> {
+            Ok(ToolCallClaimResult::Claimed {
+                claim_token: uuid::Uuid::new_v4(),
+            })
+        }
+        async fn settle_tool_call(
+            &self,
+            _: &str,
+            _: &str,
+            _: serde_json::Value,
+            _: &str,
+            _: uuid::Uuid,
+        ) -> crate::engine::error::Result<bool> {
+            Ok(true)
+        }
+        async fn get_tool_call_status(
+            &self,
+            _turn_id: &str,
+            _tool_call_id: &str,
+        ) -> crate::engine::error::Result<Option<crate::engine::durability::DurableToolCallStatus>>
+        {
+            Err(AgentLoopError::tool("simulated store failure"))
+        }
+    }
+
+    let tool_call = ToolCall {
+        id: "call_err".to_string(),
+        name: "risky_op".to_string(),
+        arguments: serde_json::json!({}),
+    };
+    let messages = vec![
+        RuntimeMessage::user("Do risky op"),
+        RuntimeMessage::assistant_with_tools("On it...", vec![tool_call]),
+    ];
+
+    let store = MockErrorStore;
+    let emitter = crate::engine::test_fixtures::NoopEventEmitter;
+    let session_id = SessionId::new();
+    let ctx = EventContext::empty();
+    let patched = repair_dangling_tool_calls(
+        &messages,
+        Some(&store as &dyn DurableToolResultStore),
+        &emitter,
+        session_id,
+        &ctx,
+        "turn_01",
+    )
+    .await;
+
+    assert_eq!(patched.len(), 3);
+    let repair = &patched[2];
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
+    assert_eq!(repair.tool_call_id(), Some("call_err"));
+    // Store error must NOT say "safe to retry"
+    let content = format!("{:?}", repair);
+    assert!(
+        !content.contains("safe to retry"),
+        "store error must not say 'safe to retry', got: {content}"
+    );
+    assert!(
+        content.contains("do not retry") || content.contains("status unknown"),
+        "expected do-not-retry/status-unknown message, got: {content}"
+    );
+}
+
+#[test]
+fn test_build_request_options_for_openai_prompt_cache() {
+    let mut config = LlmCallConfig::new("gpt-5.4");
+    config.previous_response_id = Some("resp_123".to_string());
+    config.prompt_cache = Some(PromptCacheConfig {
+        enabled: true,
+        strategy: PromptCacheStrategy::Auto,
+        gemini_cached_content: None,
+    });
+
+    let request_options = build_request_options(&config, "openai").unwrap();
+    assert_eq!(
+        request_options
+            .prompt_cache
+            .and_then(|info| info.provider_mode),
+        Some("prompt_cache_key".to_string())
+    );
+    assert_eq!(
+        request_options.provider_options.get("openai"),
+        Some(&json!({ "previous_response_id": true }))
+    );
+    config.model = "gpt-6-astra".into();
+    for (strategy, mode, chained) in [
+        (PromptCacheStrategy::Auto, "implicit", true),
+        (PromptCacheStrategy::Explicit, "explicit", false),
+    ] {
+        config.prompt_cache.as_mut().unwrap().strategy = strategy;
+        let options = build_request_options(&config, "openai").unwrap();
+        assert_eq!(
+            options.prompt_cache.unwrap().provider_mode.as_deref(),
+            Some(mode)
+        );
+        assert_eq!(options.provider_options.contains_key("openai"), chained);
+    }
+}
+
+#[test]
+fn test_build_request_options_for_gemini_explicit_cache() {
+    let mut config = LlmCallConfig::new("gemini-2.5-pro");
+    config.prompt_cache = Some(PromptCacheConfig {
+        enabled: true,
+        strategy: PromptCacheStrategy::Auto,
+        gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
+    });
+
+    let request_options = build_request_options(&config, "gemini").unwrap();
+    assert_eq!(
+        request_options
+            .prompt_cache
+            .and_then(|info| info.provider_mode),
+        Some("cached_content".to_string())
+    );
+    assert_eq!(
+        request_options.provider_options.get("gemini"),
+        Some(&json!({ "cached_content": true }))
+    );
+}
+
+#[test]
+fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
+    let mut config = LlmCallConfig::new("gemini-2.5-pro");
+    config.prompt_cache = Some(PromptCacheConfig {
+        enabled: false,
+        strategy: PromptCacheStrategy::Auto,
+        gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
+    });
+
+    // Streaming intent is always recorded, so the options exist; the cache
+    // flag and its provider option must not.
+    let request_options = build_request_options(&config, "gemini").expect("options");
+    assert!(request_options.prompt_cache.is_none());
+    assert!(!request_options.provider_options.contains_key("gemini"));
+    assert_eq!(request_options.stream, Some(true));
+}
+
+#[test]
+fn system_keys_override_embedder_keys_in_metadata() {
+    // Pins the injection order: embedder keys inserted first, then system
+    // keys overwrite any collision. A harness author cannot shadow session_id,
+    // turn_id, etc. by including them in embedder_metadata.
+    let embedder_metadata: HashMap<String, String> = [
+        ("session_id".to_string(), "attacker_value".to_string()),
+        ("custom_key".to_string(), "custom_value".to_string()),
+    ]
+    .into();
+
+    let mut metadata: HashMap<String, String> = HashMap::new();
+
+    // Inject embedder metadata first (mirrors execute_single_turn logic)
+    for (k, v) in &embedder_metadata {
+        metadata.insert(k.clone(), v.clone());
+    }
+
+    // System key injected second — must overwrite
+    metadata.insert("session_id".to_string(), "real_session_id".to_string());
+
+    assert_eq!(
+        metadata.get("session_id").map(String::as_str),
+        Some("real_session_id"),
+        "system key must overwrite embedder key with same name"
+    );
+    assert_eq!(
+        metadata.get("custom_key").map(String::as_str),
+        Some("custom_value"),
+        "non-colliding embedder key must be preserved"
+    );
+}
+
+// =========================================================================
+// ContinuePartial recovery tests (EVE-532)
+// =========================================================================
+
+use crate::engine::test_fixtures::NoopPartialStreamStore;
+use crate::engine::{durability::PartialStreamState, durability::PartialStreamStore};
+
+struct MockPartialStore(Option<PartialStreamState>);
+
+#[async_trait::async_trait]
+impl PartialStreamStore for MockPartialStore {
+    async fn get_partial_stream(
+        &self,
+        _session_id: crate::engine::typed_id::SessionId,
+        _turn_id: &str,
+    ) -> crate::engine::error::Result<Option<PartialStreamState>> {
+        Ok(self.0.clone())
+    }
+}
+
+#[tokio::test]
+async fn test_noop_partial_stream_store_returns_none() {
+    let store = NoopPartialStreamStore;
+    let result = store
+        .get_partial_stream(crate::engine::typed_id::SessionId::new(), "turn_01")
+        .await
+        .unwrap();
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_partial_stream_store_returns_accumulated_when_partial_exists() {
+    let message_id = MessageId::new();
+    let store = MockPartialStore(Some(PartialStreamState {
+        reasoning_state: None,
+        message_id,
+        accumulated: "partial text so far".to_string(),
+    }));
+    let result = store
+        .get_partial_stream(crate::engine::typed_id::SessionId::new(), "turn_01")
+        .await
+        .unwrap();
+    let partial = result.unwrap();
+    assert_eq!(partial.message_id, message_id);
+    assert_eq!(partial.accumulated, "partial text so far");
+}
+
+#[tokio::test]
+async fn test_partial_stream_store_returns_empty_when_started_no_delta() {
+    let store = MockPartialStore(Some(PartialStreamState {
+        reasoning_state: None,
+        message_id: MessageId::new(),
+        accumulated: String::new(),
+    }));
+    let result = store
+        .get_partial_stream(crate::engine::typed_id::SessionId::new(), "turn_01")
+        .await
+        .unwrap();
+    assert!(result.unwrap().accumulated.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// EVE-961: structured compaction lifecycle events.
+// ---------------------------------------------------------------------------
+
+use super::compaction::{ProactiveCompactionContext, apply_proactive_compaction};
+use crate::engine::ChatDriver;
+use crate::engine::compaction_policy::{
+    CompactionPolicy, CompactionSettings, CompactionStrategy, ObservationMaskingResult,
+};
+use crate::engine::driver_registry::{LlmResponseStream, Message};
+use crate::engine::events::{
+    CompactionFailStage, CompactionSkipReason, CompactionTrigger, EventData, TokenUsage,
+};
+use crate::engine::test_fixtures::TestEventEmitter;
+use everruns_contracts::error::{AgentLoopError, Result as ProviderResult};
+use everruns_contracts::runtime_provider::ProviderEndpoint;
+
+/// Policy stub with pressure forced on and native strategy configured.
+#[derive(Debug)]
+struct LifecycleStubPolicy {
+    window_pressure: bool,
+    strategy: CompactionStrategy,
+    masked_count: usize,
+}
+
+impl CompactionPolicy for LifecycleStubPolicy {
+    fn settings(&self) -> CompactionSettings {
+        CompactionSettings {
+            strategy: self.strategy,
+            budget_percent: 0.85,
+            summarization_model: None,
+        }
+    }
+
+    fn estimate_total_tokens(&self, _messages: &[Message]) -> usize {
+        90_000
+    }
+
+    fn total_tool_result_bytes(&self, _messages: &[crate::message::RuntimeMessage]) -> usize {
+        0
+    }
+
+    fn should_compact_proactively(&self, _messages: &[Message], _context_window: usize) -> bool {
+        self.window_pressure
+    }
+
+    fn should_compact_for_cost(
+        &self,
+        _estimated_input_tokens: usize,
+        _raw_tool_result_bytes: usize,
+        _usage: Option<&TokenUsage>,
+    ) -> bool {
+        false
+    }
+
+    fn apply_observation_masking(&self, messages: &[Message]) -> ObservationMaskingResult {
+        ObservationMaskingResult {
+            messages: messages.to_vec(),
+            masked_count: self.masked_count,
+        }
+    }
+
+    fn aggressive_trim(
+        &self,
+        messages: &[Message],
+        _target_tokens: usize,
+        _preserve_system: bool,
+    ) -> Vec<Message> {
+        messages.to_vec()
+    }
+
+    fn summarization_prompt(&self) -> String {
+        "summarize".to_string()
+    }
+
+    fn format_messages_for_summarization(&self, _messages: &[Message]) -> String {
+        String::new()
+    }
+
+    fn compose_summary_with_recent(
+        &self,
+        _system_message: Option<Message>,
+        _summary_text: &str,
+        recent_messages: &[Message],
+    ) -> Vec<Message> {
+        recent_messages.to_vec()
+    }
+}
+
+/// Driver stub without native compaction support (default `supports_compact`).
+#[derive(Debug)]
+struct NoNativeCompactDriver;
+
+#[async_trait::async_trait]
+impl ChatDriver for NoNativeCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _messages: Vec<Message>,
+        _config: &crate::engine::driver_registry::LlmCallConfig,
+    ) -> ProviderResult<LlmResponseStream> {
+        unimplemented!("proactive skip path never streams")
+    }
+}
+
+/// Driver stub whose native compaction endpoint always fails.
+#[derive(Debug)]
+struct FailingCompactDriver;
+
+#[async_trait::async_trait]
+impl ChatDriver for FailingCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _messages: Vec<Message>,
+        _config: &crate::engine::driver_registry::LlmCallConfig,
+    ) -> ProviderResult<LlmResponseStream> {
+        unimplemented!("proactive path never streams")
+    }
+
+    fn supports_compact(&self) -> bool {
+        true
+    }
+
+    async fn compact(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _request: everruns_contracts::compact::CompactRequest,
+    ) -> ProviderResult<Option<everruns_contracts::compact::CompactResponse>> {
+        Err(AgentLoopError::config("stub native compaction failure"))
+    }
+}
+
+/// Driver stub whose native compaction succeeds, for install-failure tests.
+#[derive(Debug)]
+struct InstallingCompactDriver;
+
+#[async_trait::async_trait]
+impl ChatDriver for InstallingCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _messages: Vec<Message>,
+        _config: &crate::engine::driver_registry::LlmCallConfig,
+    ) -> ProviderResult<LlmResponseStream> {
+        unimplemented!("proactive path never streams")
+    }
+
+    fn supports_compact(&self) -> bool {
+        true
+    }
+
+    async fn compact(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _request: everruns_contracts::compact::CompactRequest,
+    ) -> ProviderResult<Option<everruns_contracts::compact::CompactResponse>> {
+        use everruns_contracts::compact::{CompactOutputItem, CompactResponse, CompactUsage};
+        Ok(Some(CompactResponse {
+            output: vec![CompactOutputItem::Compaction {
+                encrypted_content: "stub-opaque-payload".to_string(),
+            }],
+            usage: Some(CompactUsage {
+                input_tokens: Some(90_000),
+                output_tokens: Some(1_000),
+                total_tokens: Some(91_000),
+                cost: Some(0.0),
+            }),
+        }))
+    }
+}
+
+/// Checkpoint store stub whose install always fails.
+#[derive(Debug)]
+struct FailingInstallStore;
+
+#[async_trait::async_trait]
+impl crate::engine::CompactionCheckpointStore for FailingInstallStore {
+    async fn get_latest(
+        &self,
+        _session_id: crate::engine::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_contracts::error::Result<Option<crate::engine::CompactionCheckpoint>> {
+        Ok(None)
+    }
+
+    async fn install(
+        &self,
+        _checkpoint: crate::engine::CompactionCheckpoint,
+    ) -> everruns_contracts::error::Result<bool> {
+        Err(AgentLoopError::store("stub checkpoint install failure"))
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        _session_id: crate::engine::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_contracts::error::Result<Option<crate::engine::ProactiveCompactionAttempt>> {
+        Ok(None)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        _session_id: crate::engine::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+        _attempt: crate::engine::ProactiveCompactionAttempt,
+    ) -> everruns_contracts::error::Result<()> {
+        Ok(())
+    }
+}
+
+/// Checkpoint store stub: no prior state, records nothing durably.
+#[derive(Debug)]
+struct LifecycleStubStore;
+
+#[async_trait::async_trait]
+impl crate::engine::CompactionCheckpointStore for LifecycleStubStore {
+    async fn get_latest(
+        &self,
+        _session_id: crate::engine::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_contracts::error::Result<Option<crate::engine::CompactionCheckpoint>> {
+        Ok(None)
+    }
+
+    async fn install(
+        &self,
+        _checkpoint: crate::engine::CompactionCheckpoint,
+    ) -> everruns_contracts::error::Result<bool> {
+        Ok(true)
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        _session_id: crate::engine::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_contracts::error::Result<Option<crate::engine::ProactiveCompactionAttempt>> {
+        Ok(None)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        _session_id: crate::engine::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+        _attempt: crate::engine::ProactiveCompactionAttempt,
+    ) -> everruns_contracts::error::Result<()> {
+        Ok(())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lifecycle_test_context<'a>(
+    policy: &'a LifecycleStubPolicy,
+    driver: &'a dyn ChatDriver,
+    emitter: &'a TestEventEmitter,
+    event_context: &'a crate::engine::events::EventContext,
+    store: Option<&'a std::sync::Arc<dyn crate::engine::CompactionCheckpointStore>>,
+) -> ProactiveCompactionContext<'a> {
+    ProactiveCompactionContext {
+        policy,
+        chat_driver: driver,
+        checkpoint_store: store,
+        event_emitter: emitter,
+        event_context,
+        session_id: crate::engine::typed_id::SessionId::new(),
+        message_source_sequence: Some(7),
+        provider_type: "stub-provider",
+        model: "stub-model",
+        system_prompt: None,
+        stateful_response_continuation: false,
+        checkpoint_restored: false,
+        checkpoint_suffix_message_count: 0,
+        raw_tool_result_bytes: 0,
+        prior_usage: None,
+    }
+}
+
+fn lifecycle_test_config() -> crate::engine::driver_registry::LlmCallConfig {
+    LlmCallConfig::new("stub-model")
+}
+
+#[tokio::test]
+async fn proactive_pressure_without_native_support_emits_skip() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::Native,
+        masked_count: 0,
+    };
+    let driver = NoNativeCompactDriver;
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::engine::events::EventContext::default();
+    let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, None);
+    let mut messages: Vec<Message> = vec![];
+    let mut config = lifecycle_test_config();
+
+    let outcome = apply_proactive_compaction(ctx, &mut messages, &mut config)
+        .await
+        .expect("skip path returns Ok");
+    assert!(outcome.is_none(), "no compaction installs without support");
+
+    let events = emitter.events().await;
+    assert_eq!(events.len(), 1, "one terminal skip event, got {events:?}");
+    match &events[0].data {
+        EventData::ContextCompactionSkipped(skipped) => {
+            assert_eq!(skipped.skip_reason, CompactionSkipReason::DriverUnsupported);
+            assert_eq!(skipped.trigger, CompactionTrigger::ContextBudget);
+            assert_eq!(skipped.tokens_observed, 90_000);
+            assert_eq!(skipped.source_sequence, Some(7));
+            assert_eq!(skipped.model, "stub-model");
+        }
+        other => panic!("expected a skipped event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn proactive_checkpoint_install_failure_emits_failed() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::Native,
+        masked_count: 0,
+    };
+    let driver = InstallingCompactDriver;
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::engine::events::EventContext::default();
+    let store: std::sync::Arc<dyn crate::engine::CompactionCheckpointStore> =
+        std::sync::Arc::new(FailingInstallStore);
+    let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, Some(&store));
+    let mut messages: Vec<Message> = vec![];
+    let mut config = lifecycle_test_config();
+
+    let result = apply_proactive_compaction(ctx, &mut messages, &mut config).await;
+    assert!(result.is_err(), "install failure propagates");
+
+    let events = emitter.events().await;
+    assert_eq!(
+        events.len(),
+        2,
+        "attempt plus terminal failed, got {events:?}"
+    );
+    assert!(matches!(&events[0].data, EventData::ContextCompacting(_)));
+    match &events[1].data {
+        EventData::ContextCompactionFailed(failed) => {
+            assert_eq!(failed.stage, CompactionFailStage::CheckpointInstall);
+            assert_eq!(failed.trigger, CompactionTrigger::ContextBudget);
+            assert_eq!(failed.tokens_before, 90_000);
+            assert!(failed.error.contains("stub checkpoint install failure"));
+        }
+        other => panic!("expected a failed event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn proactive_endpoint_error_without_fallback_install_emits_skipped() {
+    // Native endpoint errors are tolerated by design (warn + fall through to
+    // the masking/trim fallback). When the fallback installs nothing, the
+    // attempt lifecycle still closes: as skipped, not dangling.
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::Native,
+        masked_count: 0,
+    };
+    let driver = FailingCompactDriver;
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::engine::events::EventContext::default();
+    let store: std::sync::Arc<dyn crate::engine::CompactionCheckpointStore> =
+        std::sync::Arc::new(LifecycleStubStore);
+    let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, Some(&store));
+    let mut messages: Vec<Message> = vec![];
+    let mut config = lifecycle_test_config();
+
+    let outcome = apply_proactive_compaction(ctx, &mut messages, &mut config)
+        .await
+        .expect("endpoint errors are tolerated");
+    assert!(outcome.is_none(), "nothing installs");
+
+    let events = emitter.events().await;
+    assert_eq!(
+        events.len(),
+        2,
+        "attempt plus terminal skipped, got {events:?}"
+    );
+    assert!(matches!(&events[0].data, EventData::ContextCompacting(_)));
+    match &events[1].data {
+        EventData::ContextCompactionSkipped(skipped) => {
+            assert_eq!(
+                skipped.skip_reason,
+                CompactionSkipReason::NativeReturnedNone
+            );
+            assert_eq!(skipped.trigger, CompactionTrigger::ContextBudget);
+        }
+        other => panic!("expected a skipped event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn proactive_observation_masking_emits_only_install() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::ObservationMasking,
+        masked_count: 1,
+    };
+    assert_fallback_emits_only_install(&policy, None).await;
+}
+
+#[tokio::test]
+async fn proactive_auto_without_native_support_emits_only_install() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::Auto,
+        masked_count: 1,
+    };
+    assert_fallback_emits_only_install(&policy, None).await;
+}
+
+async fn assert_fallback_emits_only_install(
+    policy: &LifecycleStubPolicy,
+    store: Option<&std::sync::Arc<dyn crate::engine::CompactionCheckpointStore>>,
+) {
+    let driver = NoNativeCompactDriver;
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::engine::events::EventContext::default();
+    let ctx = lifecycle_test_context(policy, &driver, &emitter, &event_context, store);
+    let mut messages: Vec<Message> = vec![];
+    let mut config = lifecycle_test_config();
+
+    let outcome = apply_proactive_compaction(ctx, &mut messages, &mut config)
+        .await
+        .expect("fallback succeeds");
+    assert!(outcome.is_none(), "fallback has no native checkpoint");
+
+    let events = emitter.events().await;
+    assert_eq!(
+        events.len(),
+        1,
+        "one terminal install event, got {events:?}"
+    );
+    match &events[0].data {
+        EventData::ContextCompacted(compacted) => {
+            assert_eq!(compacted.strategy_used, "masking");
+            assert_eq!(compacted.trigger, CompactionTrigger::ContextBudget);
+            assert!(compacted.checkpoint_id.is_none());
+        }
+        other => panic!("expected a compacted event, got {other:?}"),
+    }
+}

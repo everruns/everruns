@@ -2,7 +2,7 @@
 //!
 //! Selecting which capabilities, drivers and host services a deployment runs
 //! with is composition, not kernel execution configuration. The bundle that
-//! makes that selection is `everruns_host::HostComposition`; `everruns-core`
+//! makes that selection is `everruns_core::host::HostComposition`; `everruns-core`
 //! owns the registries and service contracts it carries, and nothing more.
 //!
 //! Core previously owned `PlatformDefinition`, and every layer above it —
@@ -37,7 +37,7 @@ fn core_declares_no_composition_root() {
     assert!(
         offenders.is_empty(),
         "everruns-core must not declare a composition root — that bundle belongs to \
-         the layer that executes a turn (everruns_host::HostComposition, EVE-887):\n{}",
+         the layer that executes a turn (everruns_core::host::HostComposition, EVE-887):\n{}",
         offenders.join("\n")
     );
 }

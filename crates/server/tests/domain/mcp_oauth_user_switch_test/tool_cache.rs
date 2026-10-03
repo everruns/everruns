@@ -545,7 +545,7 @@ async fn oauth_callback_discovery_and_capability_reads_never_write_or_leak_share
         .await
         .unwrap();
     let id = row.id.uuid();
-    let capability_id = everruns_mcp::mcp_capability_id(id);
+    let capability_id = everruns_core::mcp::mcp_capability_id(id);
     let egress = Arc::new(CountingMcpServer::new("private", 60_000));
     let mcp_service = McpServerService::with_egress_service(
         server.db.clone(),

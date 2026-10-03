@@ -8,11 +8,12 @@
 
 use crate::records::BuiltInHarnessDefinition;
 use crate::records::email::{EmailSender, SystemEmailConfig};
+use everruns::utility_llm::SystemUtilityLlmConfig;
 use everruns_contracts::connector::ConnectorRegistry;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
-use everruns_host::DirectEgressService;
-use everruns_host::{HostComposition, SystemUtilityLlmConfig};
+use everruns_core::host::DirectEgressService;
+use everruns_core::host::HostComposition;
 use std::sync::Arc;
 use uuid::Uuid;
 

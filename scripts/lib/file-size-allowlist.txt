@@ -10,11 +10,11 @@
 # Do not add an entry by hand to admit a new oversized file — split the
 # file instead.
 apps/ui/src/lib/api/legacy-api-types.ts
-crates/builtins/src/compaction.rs
-crates/builtins/src/guardrails.rs
-crates/builtins/src/infinity_context.rs
-crates/builtins/src/progress_guard.rs
-crates/builtins/src/skills.rs
+crates/core/src/builtins/compaction.rs
+crates/core/src/builtins/guardrails.rs
+crates/core/src/builtins/infinity_context.rs
+crates/core/src/builtins/progress_guard.rs
+crates/core/src/builtins/skills.rs
 crates/cli/src/commands/agents.rs
 crates/core/src/guardrail_checks.rs
 crates/core/src/mcp_server.rs
@@ -24,13 +24,13 @@ crates/drivers/drivers/src/anthropic/driver.rs
 crates/drivers/llmsim/src/lib.rs
 crates/durable/src/persistence/memory.rs
 crates/durable/tests/postgres_integration_test.rs
-crates/engine/src/execution/act.rs
-crates/engine/src/execution/reason.rs
-crates/host/src/events.rs
-crates/host/src/host.rs
-crates/host/src/observability/braintrust.rs
-crates/host/src/runtime.rs
-crates/host/tests/integration/runtime_host_test.rs
+crates/core/src/engine/execution/act.rs
+crates/core/src/engine/execution/reason.rs
+crates/core/src/host/events.rs
+crates/core/src/host/observability/braintrust.rs
+crates/core/src/host/runtime.rs
+crates/everruns/tests/host/integration/runtime_host_test.rs
+
 crates/capabilities/src/background_run.rs
 crates/capabilities/src/capabilities/a2a_delegation/mod.rs
 crates/capabilities/src/capabilities/agent_handoff.rs

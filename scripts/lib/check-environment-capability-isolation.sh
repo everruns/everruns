@@ -8,6 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
+source "$SCRIPT_DIR/core-feature-modules.sh"
 
 FAILED=0
 fail() {
@@ -37,14 +38,14 @@ for path in "${FORBIDDEN_CORE_MODULES[@]}"; do
   fi
 done
 
-MANIFEST_PATTERN='^[[:space:]]*(bashkit|fetchkit|mlua|reqwest|eventsource-stream)[[:space:]]*='
+MANIFEST_PATTERN='^[[:space:]]*(bashkit|fetchkit|mlua)[[:space:]]*='
 if matches=$(grep -nE "$MANIFEST_PATTERN" crates/core/Cargo.toml); then
   fail "concrete HTTP/shell/Lua dependencies remain in crates/core/Cargo.toml:"
   printf '%s\n' "$matches"
 fi
 
 SOURCE_PATTERN='(tokio::process|std::process::Stdio|everruns_mcp::|reqwest::|(^|[^[:alnum:]_])bashkit::|mlua::)'
-if matches=$(grep -rnE "$SOURCE_PATTERN" crates/core/src --include='*.rs'); then
+if matches=$(core_kernel_source_files | xargs grep -nE "$SOURCE_PATTERN"); then
   fail "concrete process/HTTP/MCP/interpreter implementation references remain in core:"
   printf '%s\n' "$matches"
 fi

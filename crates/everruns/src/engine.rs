@@ -10,7 +10,7 @@ use std::time::Duration;
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use everruns_host::{
+use everruns_core::host::{
     Environment, EnvironmentBindingStore, HostBackends, InMemoryEnvironmentBindingStore,
 };
 use tokio::sync::OnceCell;
@@ -547,7 +547,7 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
             ))
         })?;
         let event_log = Arc::new(
-            everruns_host::JsonlEventLog::open(config.data_dir().join("events.jsonl"))
+            everruns_core::host::JsonlEventLog::open(config.data_dir().join("events.jsonl"))
                 .await
                 .map_err(BackendInitError::Event)?,
         );

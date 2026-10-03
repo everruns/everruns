@@ -380,7 +380,7 @@ impl A2aPushListener {
     pub fn shared(
         db: &Arc<StorageBackend>,
         encryption: &Option<Arc<EncryptionService>>,
-        host: &everruns_host::HostComposition,
+        host: &everruns_core::host::HostComposition,
         auth: &crate::auth::AuthState,
     ) -> Arc<dyn EventListener> {
         Arc::new(Self {

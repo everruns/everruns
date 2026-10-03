@@ -11,13 +11,13 @@ use everruns_core::AgentDefinition;
 use everruns_core::ExecutionContext;
 use everruns_core::MessageRetriever;
 use everruns_core::capabilities::CapabilityRegistry;
+use everruns_core::engine::{ReasonInput, ReasonResult};
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::session::{ExecutionSession, SessionExecutionState};
-use everruns_core::{CompactionCheckpointStore, Controls, RuntimeMessage};
-use everruns_engine::{ReasonInput, ReasonResult};
-use everruns_host::{
+use everruns_core::host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
+use everruns_core::session::{ExecutionSession, SessionExecutionState};
+use everruns_core::{CompactionCheckpointStore, Controls, RuntimeMessage};
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, reason_atom_with_stores,
@@ -264,7 +264,7 @@ struct ProactiveTestRig {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     event_emitter: InMemoryEventEmitter,
-    checkpoint_store: Arc<everruns_host::InMemoryCompactionCheckpointStore>,
+    checkpoint_store: Arc<everruns_core::host::InMemoryCompactionCheckpointStore>,
     harness_id: HarnessId,
     agent_id: Uuid,
     session_id: Uuid,
@@ -284,8 +284,8 @@ impl ProactiveTestRig {
         stateful: bool,
         fail_compact: bool,
     ) -> Self {
-        use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
         use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+        use everruns_core::builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
         use everruns_core::execution_loading::SessionStore;
 
         let (
@@ -352,7 +352,9 @@ impl ProactiveTestRig {
             capability_registry,
             driver_registry,
             event_emitter: InMemoryEventEmitter::new(),
-            checkpoint_store: Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default()),
+            checkpoint_store: Arc::new(
+                everruns_core::host::InMemoryCompactionCheckpointStore::default(),
+            ),
             harness_id,
             agent_id,
             session_id,
@@ -374,8 +376,8 @@ impl ProactiveTestRig {
     }
 
     async fn configure_cost_pressure(&self, messages: Vec<RuntimeMessage>) {
-        use everruns_builtins::COMPACTION_CAPABILITY_ID;
         use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+        use everruns_core::builtins::COMPACTION_CAPABILITY_ID;
         use everruns_core::execution_loading::SessionStore;
 
         self.message_retriever
@@ -434,7 +436,7 @@ impl ProactiveTestRig {
 }
 
 struct FailingProactiveAttemptStore {
-    checkpoints: Arc<everruns_host::InMemoryCompactionCheckpointStore>,
+    checkpoints: Arc<everruns_core::host::InMemoryCompactionCheckpointStore>,
 }
 
 #[async_trait]
@@ -856,8 +858,8 @@ async fn test_reason_atom_with_fixed_response() {
 
 #[tokio::test]
 async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_response_id() {
-    use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
 
     let (
         harness_store,
@@ -915,7 +917,8 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     let mut capability_registry = CapabilityRegistry::new();
     capability_registry.register(CompactionCapability);
     let event_emitter = InMemoryEventEmitter::new();
-    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
+    let checkpoint_store =
+        Arc::new(everruns_core::host::InMemoryCompactionCheckpointStore::default());
     let atom = reason_atom_with_stores(
         harness_store.clone(),
         agent_store.clone(),
@@ -1199,7 +1202,8 @@ async fn cumulative_cost_compacts_below_window_budget_and_preserves_raw_history(
     assert_eq!(result.text, "ok");
     assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
     let calls = rig.calls.lock().await;
-    let model_view_bytes = everruns_builtins::estimate_total_tokens(&calls.last().unwrap().0) * 4;
+    let model_view_bytes =
+        everruns_core::builtins::estimate_total_tokens(&calls.last().unwrap().0) * 4;
     let reduction_percent = 100usize.saturating_sub(model_view_bytes * 100 / baseline_bytes);
     println!(
         "context_cost_ab baseline_prompt_bytes={baseline_bytes} candidate_prompt_bytes={model_view_bytes} reduction_percent={reduction_percent} task_success={}",
@@ -3778,11 +3782,11 @@ async fn test_empty_session_system_prompt_is_ignored() {
 /// persists the replacement (not the leak) in `output.message.completed`.
 #[tokio::test]
 async fn test_prompt_canary_guardrail_replaces_leaked_output() {
-    use everruns_builtins::{
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
         REASON_CODE_SYSTEM_PROMPT_LEAK,
     };
-    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
     // Reuse the standard test environment, then patch the agent to (a) carry
     // a system prompt long enough to produce a canary needle and (b) enable
@@ -3934,10 +3938,10 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
 /// delta contains the guarded prompt canary.
 #[tokio::test]
 async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
-    use everruns_builtins::{
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     };
-    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
     let (
         harness_store,
