@@ -434,6 +434,26 @@ impl Database {
         Ok(public_id)
     }
 
+    /// Persist ingress configuration without decoding the archival App-linked
+    /// row: native endpoints deliberately have a NULL app_id.
+    /// THREAT[TM-TENANT-012]: caller must first resolve the endpoint and its tenant.
+    pub async fn update_endpoint_config_by_id(
+        &self,
+        id: Uuid,
+        config: serde_json::Value,
+        encrypted: Option<Vec<u8>>,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE agent_endpoints SET channel_config = $2, channel_config_encrypted = $3, updated_at = NOW() WHERE id = $1",
+        )
+        .bind(id)
+        .bind(config)
+        .bind(encrypted)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     // THREAT[TM-TENANT-012]: bare-`id` mutator — see the note on
     // `get_endpoint_row_by_public_id`. Callers MUST have already resolved the
     // endpoint through a tenant-resolving path.

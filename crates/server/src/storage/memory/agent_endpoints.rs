@@ -355,6 +355,29 @@ impl InMemoryDatabase {
         Ok(belongs_to_org.then_some(channel.public_id))
     }
 
+    pub async fn update_endpoint_config_by_id(
+        &self,
+        id: Uuid,
+        config: serde_json::Value,
+        encrypted: Option<Vec<u8>>,
+    ) -> Result<bool> {
+        let mut channels = self.endpoint_rows.write();
+        if let Some(channel) = channels.get_mut(&id) {
+            channel.channel_config = config.clone();
+            channel.channel_config_encrypted = encrypted.clone();
+            channel.updated_at = Self::now();
+        }
+        drop(channels);
+        let mut endpoints = self.ingress_endpoints.write();
+        let Some(endpoint) = endpoints.get_mut(&id) else {
+            return Ok(false);
+        };
+        endpoint.channel_config = config;
+        endpoint.channel_config_encrypted = encrypted;
+        endpoint.updated_at = Self::now();
+        Ok(true)
+    }
+
     pub async fn update_endpoint_by_id(
         &self,
         id: Uuid,

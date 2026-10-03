@@ -9,7 +9,24 @@ const API_BASE = "/api";
 
 import { withOrgHeader } from "./active-org";
 
+function safeErrorMessage(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const message = value.trim();
+  // Gateways can replace API errors with entire HTML pages, including private
+  // diagnostics. Keep those bodies out of both the visible message and details.
+  if (!message || message.length > 512 || /<\/?[a-z!][^>]*>/i.test(message)) return undefined;
+  return message;
+}
+
+function fallbackErrorMessage(status: number): string {
+  return status >= 500
+    ? "The service is temporarily unavailable. Please try again."
+    : "The request could not be completed. Please try again.";
+}
+
 export class ApiError extends Error {
+  public readonly hasDetail: boolean;
+
   constructor(
     public status: number,
     public statusText: string,
@@ -18,8 +35,12 @@ export class ApiError extends Error {
     // branch on a stable machine string (e.g. `atif_export_too_large`) rather
     // than parsing the human-facing message.
     public code?: string,
+    public requestId?: string,
+    public rayId?: string,
   ) {
-    super(message || `API Error: ${status} ${statusText}`);
+    const detail = safeErrorMessage(message);
+    super(detail || fallbackErrorMessage(status));
+    this.hasDetail = detail !== undefined;
     this.name = "ApiError";
   }
 }
@@ -43,6 +64,7 @@ async function tryRefreshToken(): Promise<boolean> {
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<{ data: T }> {
   const headers: Record<string, string> = withOrgHeader({
+    Accept: "application/json",
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   });
@@ -133,24 +155,25 @@ export async function throwApiError(response: Response): Promise<never> {
         const errorBody = JSON.parse(text);
         // Errors follow RFC 9457 Problem Details (`detail`/`title`/`code`).
         // `error`/`message` fall back for legacy or third-party error bodies.
-        errorMessage =
-          errorBody.detail ||
-          errorBody.title ||
-          errorBody.error ||
-          errorBody.message ||
-          JSON.stringify(errorBody);
-        if (typeof errorBody.code === "string") {
-          errorCode = errorBody.code;
-        }
+        errorMessage = [errorBody?.detail, errorBody?.title, errorBody?.error, errorBody?.message]
+          .map(safeErrorMessage)
+          .find(Boolean);
+        errorCode = safeErrorMessage(errorBody?.code);
       } catch {
-        // Not JSON — use the raw text as the error message
-        errorMessage = text;
+        errorMessage = safeErrorMessage(text);
       }
     }
   } catch {
     // No body at all
   }
-  throw new ApiError(response.status, response.statusText, errorMessage, errorCode);
+  throw new ApiError(
+    response.status,
+    response.statusText,
+    errorMessage,
+    errorCode,
+    safeErrorMessage(response.headers?.get("x-request-id")),
+    safeErrorMessage(response.headers?.get("cf-ray")),
+  );
 }
 
 export function getApiBaseUrl(): string {
