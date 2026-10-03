@@ -69,8 +69,7 @@ serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 
-# Async traits for the reporting/audit contracts, plus their error and runtime
-# support (reporting/audit returns, audit fire-and-forget emit).
+# Async runtime service interfaces and capability orchestration support.
 async-trait.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
@@ -90,9 +89,8 @@ futures-util = { workspace = true, optional = true }
 # `ConnectorPlugin` entries the server discovers at startup.
 inventory.workspace = true
 
-# System email senders (EVE-879): typed EmailError plus the direct Resend HTTP
-# client. System email intentionally uses its own provider client outside the
-# runtime egress boundary — it is operator-owned deployment traffic.
+# Optional HTTP transport for delegation and container-sandbox capabilities.
+# Each capability retains its runtime egress and deployment-grade checks.
 thiserror.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"], optional = true }
 sha2 = { workspace = true, optional = true }

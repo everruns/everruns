@@ -11,7 +11,6 @@ use crate::domains::agent_triggers::webhook_invocation::{
 };
 use crate::domains::common::Ctx;
 use crate::event_delivery::EventDelivery;
-use crate::records::SessionBinding;
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;

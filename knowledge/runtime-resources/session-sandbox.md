@@ -114,7 +114,7 @@ file and Bashkit shell capabilities, so every tool sees the same `/workspace`.
 
 Provider implementations live in integration crates and register with:
 
-`everruns_platform::SessionSandboxProviderPlugin`
+`everruns_contracts::SessionSandboxProviderPlugin`
 
 Daytona is the first implementation and lives in:
 

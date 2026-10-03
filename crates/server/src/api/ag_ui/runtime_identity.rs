@@ -71,7 +71,7 @@ pub(super) async fn authorize_ag_ui_request(
     let real_auth = channel
         .auth
         .as_deref()
-        .filter(|auth| auth.mode != everruns_platform::EndpointAuthMode::Anonymous);
+        .filter(|auth| auth.mode != crate::records::EndpointAuthMode::Anonymous);
     let runtime_user = if let Some((account, _)) =
         runtime_endpoint_account(state, &channel.public_id.to_string(), headers).await?
     {

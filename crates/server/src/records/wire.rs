@@ -177,7 +177,7 @@ pub fn proto_harness_to_schema(
 }
 
 /// Convert proto Session to the stored platform Session record using JSON
-/// (EVE-882: the persisted aggregate lives in `everruns-capabilities`).
+/// (EVE-882: the persisted aggregate is owned by `crate::records`).
 pub fn proto_session_to_schema(
     value: proto::Session,
 ) -> Result<crate::records::Session, ConversionError> {

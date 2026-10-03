@@ -106,7 +106,7 @@ The container runtime (`runc`, `sysbox-runc`, `kata`, `gvisor`) is a deployment-
 ## Module Structure
 
 ```
-crates/platform/
+crates/capabilities/
 ├── src/container_sandbox/
 │   ├── mod.rs           # ContainerSandboxCapability + tool registration
 │   ├── client.rs        # Docker Engine REST API client

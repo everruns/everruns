@@ -1472,7 +1472,7 @@ async fn test_playground_input_uses_org_effective_feature_gate() {
         .create_session(everruns_server::storage::CreateSessionRow {
             harness_id: Some(server.seed_base_harness_id.parse().unwrap()),
             owner_principal_id: owner.id,
-            source: everruns_platform::SessionSource::Playground,
+            source: everruns_server::records::SessionSource::Playground,
             playground_user_id: Some(subject.id),
             ..crate::session_row_fixture::base_session_row(org)
         })

@@ -109,7 +109,7 @@ impl SessionCommandService {
     pub async fn authorize_playground_input(
         &self,
         caller: &Caller,
-        flags: &everruns_platform::FeatureFlags,
+        flags: &crate::records::FeatureFlags,
         resolver: Arc<dyn everruns_core::PermissionResolver>,
         session_id: SessionId,
     ) -> Result<(), crate::domains::common::CommandError> {

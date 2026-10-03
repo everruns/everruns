@@ -1,11 +1,11 @@
 //! Environment profile validation, resolution, and runtime capability mapping.
 
-use everruns_contracts::capability::CapabilityRef;
-use everruns_platform::{
+use crate::records::{
     EnvironmentContainmentLevel, EnvironmentContainmentProfile, EnvironmentDurability,
     EnvironmentEscalation, EnvironmentIdleAction, EnvironmentNetworkPolicy, EnvironmentProfile,
     EnvironmentSelection, EnvironmentSet, EnvironmentTargetKind, ResolvedEnvironmentProfile,
 };
+use everruns_contracts::capability::CapabilityRef;
 use serde_json::{Map, Value, json};
 
 const MAX_ENVIRONMENT_PROFILES: usize = 16;
@@ -46,7 +46,7 @@ pub fn validate_environment_set(set: &EnvironmentSet) -> Result<(), String> {
     }
 
     for (name, profile) in &set.profiles {
-        everruns_platform::validate_addressable_name(name)
+        crate::records::validate_addressable_name(name)
             .map_err(|error| format!("environment profile '{name}': {error}"))?;
         resolve_profile(profile)
             .map_err(|error| format!("environment profile '{name}': {error}"))?;
@@ -455,7 +455,7 @@ fn validate_target_available(profile: &ResolvedEnvironmentProfile) -> Result<(),
     match profile.target.kind {
         EnvironmentTargetKind::Vfs => Ok(()),
         EnvironmentTargetKind::Managed
-            if everruns_platform::create_session_sandbox_provider(
+            if everruns_capabilities::create_session_sandbox_provider(
                 profile.target.provider.as_deref().unwrap_or_default(),
             )
             .is_some() =>
@@ -550,10 +550,10 @@ fn validate_bootstrap(profile: &EnvironmentProfile) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_platform::{EnvironmentBootstrap, EnvironmentLifecycle, EnvironmentTargetProfile};
+    use crate::records::{EnvironmentBootstrap, EnvironmentLifecycle, EnvironmentTargetProfile};
     use std::collections::BTreeMap;
 
-    fn profile(target: everruns_platform::EnvironmentTargetProfile) -> EnvironmentProfile {
+    fn profile(target: crate::records::EnvironmentTargetProfile) -> EnvironmentProfile {
         EnvironmentProfile {
             target,
             containment: None,

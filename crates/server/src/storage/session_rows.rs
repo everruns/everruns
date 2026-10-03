@@ -150,9 +150,9 @@ pub struct SessionListFilters {
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
     /// Empty means "any source".
-    pub sources: Vec<everruns_platform::SessionSource>,
+    pub sources: Vec<crate::records::SessionSource>,
     /// Empty means "any activity".
-    pub activities: Vec<everruns_platform::SessionActivity>,
+    pub activities: Vec<crate::records::SessionActivity>,
     /// Restrict to sessions whose resolved human owner is this user (`mine`).
     pub owner_user_id: Option<Uuid>,
     pub created_after: Option<DateTime<Utc>>,

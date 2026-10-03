@@ -13512,7 +13512,7 @@ export interface components {
      * @description LLM Model Profile describing model capabilities
      *     Based on models.dev structure (<https://models.dev/api.json>)
      *
-     *     The registry of profiles lives in `crate::profiles`; retired models are
+     *     The registry of profiles lives in `crate::model_profile_data::profiles`; retired models are
      *     dropped from it as vendors sunset them.
      */
     ModelProfile: {
@@ -17140,7 +17140,7 @@ export interface components {
     SessionSandboxAction: "pause" | "resume" | "delete";
     /**
      * @description Wire-facing status of a session sandbox. Mirrors
-     *     `everruns_platform::session_sandbox::SessionSandboxStatus` for the public API.
+     *     `everruns_capabilities::session_sandbox::SessionSandboxStatus` for the public API.
      * @enum {string}
      */
     SessionSandboxStatusValue: "running" | "paused" | "lost";

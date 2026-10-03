@@ -12,8 +12,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Named execution environments offered by an Agent version.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentSet {
     /// Profile inherited when session creation does not choose one explicitly.
     pub default: String,
@@ -27,8 +26,7 @@ pub struct EnvironmentSet {
 /// Containment and durability may be omitted when the target has exactly one
 /// honest answer. Resolution fills those fields before the profile is pinned
 /// to a Session.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentProfile {
     pub target: EnvironmentTargetProfile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -43,8 +41,7 @@ pub struct EnvironmentProfile {
 
 /// Session-pinned profile. Every security- and recovery-relevant default has
 /// been made explicit.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ResolvedEnvironmentProfile {
     pub target: EnvironmentTargetProfile,
     pub containment: EnvironmentContainmentProfile,
@@ -54,8 +51,7 @@ pub struct ResolvedEnvironmentProfile {
 }
 
 /// Where commands execute.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentTargetProfile {
     pub kind: EnvironmentTargetKind,
     /// Concrete adapter for target kinds with more than one implementation.
@@ -101,8 +97,7 @@ impl EnvironmentTargetProfile {
 }
 
 /// Provider-neutral target class.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EnvironmentTargetKind {
     Host,
@@ -125,8 +120,7 @@ impl EnvironmentTargetKind {
 }
 
 /// What commands may touch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentContainmentProfile {
     pub level: EnvironmentContainmentLevel,
     #[serde(default)]
@@ -158,15 +152,13 @@ impl EnvironmentContainmentProfile {
 }
 
 /// Filesystem paths the target permits command execution to mutate.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentFilesystemPolicy {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub writable_roots: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EnvironmentContainmentLevel {
     None,
@@ -175,8 +167,7 @@ pub enum EnvironmentContainmentLevel {
 }
 
 /// Outbound network policy the target must actually enforce.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum EnvironmentNetworkPolicy {
     #[default]
@@ -188,8 +179,7 @@ pub enum EnvironmentNetworkPolicy {
 }
 
 /// Who may widen containment after a session starts.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EnvironmentEscalation {
     #[default]
@@ -199,8 +189,7 @@ pub enum EnvironmentEscalation {
 }
 
 /// What survives physical compute loss.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EnvironmentDurability {
     Checkpointed,
@@ -209,8 +198,7 @@ pub enum EnvironmentDurability {
 }
 
 /// Control-plane lifecycle intent. Providers do not own these timers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentLifecycle {
     #[serde(default = "default_idle_after_seconds")]
     pub idle_after_seconds: u64,
@@ -227,8 +215,7 @@ impl Default for EnvironmentLifecycle {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EnvironmentIdleAction {
     #[default]
@@ -238,16 +225,14 @@ pub enum EnvironmentIdleAction {
 }
 
 /// Reproducible initialization pinned with the profile snapshot.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentBootstrap {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<String>,
 }
 
 /// Session-level selection: use an Agent profile, or provide an inline one.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]
 pub enum EnvironmentSelection {
     Named { r#use: String },

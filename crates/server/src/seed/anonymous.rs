@@ -7,16 +7,16 @@
 use super::{SeedAuthContext, SeedResult};
 use crate::auth::config::AuthMode;
 use crate::org_init;
+use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 use crate::storage::{StorageBackend, models::CreateUserRow};
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 
 /// Seed anonymous user for auth=none mode.
 /// Uses ANONYMOUS_USER_ID so all code paths (org membership, API keys, etc.)
 /// work without special-casing a nil/missing user.
 pub(super) async fn seed_anonymous_user(
     db: &StorageBackend,
-    harness_definitions: &[everruns_platform::BuiltInHarnessDefinition],
+    harness_definitions: &[crate::records::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -86,7 +86,7 @@ pub(super) async fn revoke_anonymous_personal_access_tokens(
 pub(super) async fn seed_anonymous_user_for_auth_mode(
     db: &StorageBackend,
     auth_ctx: &SeedAuthContext,
-    harness_definitions: &[everruns_platform::BuiltInHarnessDefinition],
+    harness_definitions: &[crate::records::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = seed_anonymous_user(db, harness_definitions).await?;
     if auth_ctx.mode != AuthMode::None {
