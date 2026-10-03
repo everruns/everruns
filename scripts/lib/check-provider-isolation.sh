@@ -107,7 +107,13 @@ done
 # 4. Shipped (normal-edge) trees with every vendor feature enabled: no heavy
 #    core feature subtree leaks into provider-only builds.
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(guard_cargo_tree -p "$crate" --all-features --edges normal --prefix none)
+  wire_features=(--all-features)
+  if [ "$crate" = "everruns-contracts" ]; then
+    # Contracts also own optional host codecs and sandbox registration. Exercise
+    # every wire transport here; those host opt-ins are not driver dependencies.
+    wire_features=(--no-default-features --features http,definition,responses-websocket)
+  fi
+  tree=$(guard_cargo_tree -p "$crate" "${wire_features[@]}" --edges normal --prefix none)
   if echo "$tree" | grep -qE "$HEAVY_TREE"; then
     echo "$crate must not ship heavy core feature subtrees (sqlx/utoipa/inventory/axum/tonic):"
     echo "$tree" | grep -E "$HEAVY_TREE" | sort -u
