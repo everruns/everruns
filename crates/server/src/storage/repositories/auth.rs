@@ -94,6 +94,15 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn delete_personal_access_tokens_for_user(&self, user_id: Uuid) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM personal_access_tokens WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
     // ============================================
     // Refresh Tokens
     // ============================================
