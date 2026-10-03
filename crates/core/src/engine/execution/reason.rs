@@ -517,10 +517,11 @@ impl ReasonAtom {
                     .await
             }
         };
-
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
-                let outcome = provider_managed_compaction::execute_with_fallback(
+                // Heap-allocate the large fallback future so nested foreground
+                // child turns fit Tokio's default worker stack.
+                let outcome = Box::pin(provider_managed_compaction::execute_with_fallback(
                     provider_managed_compaction::Call {
                         atom: self,
                         session_id: context.session_id,
@@ -535,7 +536,7 @@ impl ReasonAtom {
                         mcp_tool_definitions: &mcp_tool_definitions,
                         assembled,
                     },
-                )
+                ))
                 .await;
                 (
                     outcome.disclosure,
