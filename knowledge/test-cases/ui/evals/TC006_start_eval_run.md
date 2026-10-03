@@ -18,7 +18,7 @@ Verify that an eval run can be triggered and the run detail page displays correc
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `evals` enabled (`FEATURE_EVALS=true`)
+- Feature flag `evals` enabled (`FEATURE_EVALS=prod`)
 - An eval with at least one test case exists
 - An LLM provider is configured
 

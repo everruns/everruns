@@ -122,6 +122,7 @@ pub fn register_platform_capabilities(
 #[cfg(feature = "environment-capabilities")]
 pub fn register_environment_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
+    grade: everruns_core::DeploymentGrade,
 ) {
     registry.register(everruns_integrations_filesystem::FileSystemCapability);
     registry.register(everruns_integrations_bashkit::BashkitShellCapability);
@@ -131,8 +132,10 @@ pub fn register_environment_capabilities(
     registry.register(everruns_integrations_openrouter::ModelScoutCapability);
     registry.register(everruns_integrations_openrouter::OpenRouterWorkspaceCapability);
 
+    #[cfg(not(feature = "lua"))]
+    let _ = grade;
     #[cfg(feature = "lua")]
-    if everruns_core::InternalFeatureFlags::from_env().lua {
+    if everruns_core::InternalFeatureFlags::for_deployment(grade).lua {
         registry.register(everruns_integrations_lua::LuaCapability);
         registry.register(everruns_integrations_lua::LuaCodeModeCapability);
     }
@@ -141,6 +144,7 @@ pub fn register_environment_capabilities(
 #[cfg(not(feature = "environment-capabilities"))]
 fn register_environment_capabilities(
     _registry: &mut everruns_core::capabilities::CapabilityRegistry,
+    _grade: everruns_core::DeploymentGrade,
 ) {
 }
 
@@ -210,7 +214,7 @@ pub fn register_hosted_capabilities(
     registry.register(CitationVerificationCapability);
     // Inert unless the org flag lets it through to the worker snapshot.
     registry.register(openai_agents_api_runtime::OpenAiAgentsApiRuntimeCapability);
-    register_environment_capabilities(registry);
+    register_environment_capabilities(registry, grade);
     register_platform_capabilities(registry);
     #[cfg(feature = "container-sandbox")]
     {
@@ -218,10 +222,10 @@ pub fn register_hosted_capabilities(
         registry.register_plugins(
             crate::container_sandbox::CAPABILITY_PLUGINS.iter(),
             |plugin| {
-                (!plugin.experimental_only || grade.experimental_features_enabled())
-                    && plugin
-                        .feature_flag
-                        .is_none_or(|flag| decisions.is_enabled(flag))
+                plugin.feature_flag.map_or_else(
+                    || !plugin.experimental_only || grade.experimental_features_enabled(),
+                    |flag| decisions.is_enabled(flag),
+                )
             },
         );
     }
@@ -263,6 +267,37 @@ pub fn hosted_capability_registry() -> everruns_core::capabilities::CapabilityRe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(feature = "environment-capabilities", feature = "lua"))]
+    #[test]
+    fn lua_registration_uses_the_requested_deployment_grade() {
+        const CHILD: &str = "EVERRUNS_LUA_REGISTRATION_GRADE_TEST";
+        if std::env::var_os(CHILD).is_some() {
+            for (deployment, expected) in [
+                (everruns_core::DeploymentGrade::Dev, true),
+                (everruns_core::DeploymentGrade::Prod, false),
+            ] {
+                let registry = hosted_capability_registry_for_grade(deployment);
+                assert_eq!(registry.has("lua"), expected);
+                assert_eq!(registry.has("lua_code_mode"), expected);
+            }
+            return;
+        }
+        assert!(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "capabilities::tests::lua_registration_uses_the_requested_deployment_grade",
+                    "--nocapture"
+                ])
+                .env(CHILD, "1")
+                .env("FEATURE_LUA", "dev")
+                .env("DEPLOYMENT_GRADE", "prod")
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
 
     #[test]
     fn hosted_registry_always_contains_platform_capabilities() {

@@ -1439,41 +1439,6 @@ where
 
 // The model catalogue lives in `seed/models.rs`.
 
-/// Seed default-org feature flag opt-ins when none exist (dev-friendly bootstrap).
-async fn seed_default_org_feature_flags(db: &StorageBackend) -> anyhow::Result<SeedResult> {
-    use everruns_core::{DEFAULT_ORG_ID, DeploymentGrade};
-    use everruns_platform::{API_FEATURE_FLAG_DEFINITIONS, FeatureFlags};
-    use std::collections::HashMap;
-
-    let mut result = SeedResult::default();
-    let existing = db.list_org_feature_flags(DEFAULT_ORG_ID).await?;
-    if !existing.is_empty() {
-        result.unchanged += 1;
-        return Ok(result);
-    }
-
-    let system = FeatureFlags::from_env(&DeploymentGrade::from_env());
-    let mut to_enable = HashMap::new();
-    for def in API_FEATURE_FLAG_DEFINITIONS {
-        if system.is_enabled(def.name) {
-            to_enable.insert(def.name.to_string(), true);
-        }
-    }
-    if to_enable.is_empty() {
-        result.unchanged += 1;
-        return Ok(result);
-    }
-
-    db.replace_org_feature_flags(DEFAULT_ORG_ID, &to_enable)
-        .await?;
-    tracing::info!(
-        count = to_enable.len(),
-        "Seeded default organization feature flag opt-ins"
-    );
-    result.created += 1;
-    Ok(result)
-}
-
 /// Seed LLM models into the database (upserts, only when changed)
 async fn seed_models_with_host_composition(
     db: &StorageBackend,
@@ -1916,15 +1881,6 @@ pub async fn seed_all_with_host_composition(
         "Models seeded"
     );
     result.merge(model_result);
-
-    let org_flags_result = seed_default_org_feature_flags(db).await?;
-    tracing::debug!(
-        created = org_flags_result.created,
-        updated = org_flags_result.updated,
-        unchanged = org_flags_result.unchanged,
-        "Organization feature flags seeded"
-    );
-    result.merge(org_flags_result);
 
     // Seed MCP servers (before agents that may use them)
     let mcp_result = seed_mcp_servers(db).await?;

@@ -8937,6 +8937,11 @@ export interface components {
       updated_at: string;
     };
     /**
+     * @description Rollout policy for one feature, independent of the running deployment grade.
+     * @enum {string}
+     */
+    FeatureFlagGrade: "dev" | "preview" | "adoption" | "prod" | "off";
+    /**
      * @description Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
      *
      *     Decision: the public API is intentionally untyped. The set of flags churns
@@ -13828,17 +13833,15 @@ export interface components {
       warnings: string[];
     };
     OrgFeatureFlagSetting: {
+      can_manage: boolean;
+      default_enabled: boolean;
       description: string;
-      /** @description Effective value (`system_enabled && org_enabled`). */
       effective: boolean;
-      experimental: boolean;
+      grade: components["schemas"]["FeatureFlagGrade"];
       label: string;
       name: string;
-      /** @description Whether the organization has opted in. */
-      org_enabled: boolean;
-      /** @description Whether only a platform user may enable this flag for the org. */
-      platform_managed: boolean;
-      /** @description Whether the deployment allows this flag (env / grade). */
+      /** @description None inherits the grade default; false is a durable prod opt-out. */
+      org_override?: boolean | null;
       system_enabled: boolean;
     };
     OrgFeatureFlagsSettingsResponse: {

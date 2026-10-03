@@ -222,8 +222,8 @@ pub use eval::{
 };
 pub use exposure::PublicToolVisibility;
 pub use feature_flags::{
-    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
-    is_platform_managed,
+    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagGrade, FeatureFlagMap,
+    FeatureFlagPolicy, FeatureFlags,
 };
 pub use observer::{
     LlmJudgeConfig, Observer, ObserverMatch, ObserverScope, ObserverScorerConfig, ObserverStatus,

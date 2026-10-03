@@ -62,7 +62,9 @@ The pilot is intentionally Agent-specific (`agent_versions`) instead of a generi
 
 ### Feature Flag
 
-The pilot is gated by API-visible flag `agent_versions`, resolved from `FEATURE_AGENT_VERSIONS` and auto-enabled in dev grade.
+Agent versions follow the rollout-grade policy for `agent_versions`;
+`FEATURE_AGENT_VERSIONS` overrides the catalog default. See
+[Feature Flags](../security/feature-flags.md).
 
 When disabled:
 - Version UI is hidden.

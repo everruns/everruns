@@ -30,7 +30,10 @@ Agents should reuse one stable `session_id` across Parallel tool calls in the sa
 ## Paid machine payments
 
 Operators can separately enable Parallel's paid search, extraction, and task tools with
-`FEATURE_MACHINE_PAYMENTS=true`. This deployment flag is off by default in every environment.
+`FEATURE_MACHINE_PAYMENTS=prod`, which enables it by default for organisations.
+The feature defaults to `off`; use `preview` for platform-managed enrolment or
+`adoption` for an organisation opt-in. See
+[feature rollout grades](/sre/environment-variables/#feature-rollout-grades).
 When it is off, Everruns does not expose Settings > Payments or the payment account, policy, and
 attempt APIs, so the deployment does not ask organization owners to entrust wallet keys for a
 capability that cannot spend.

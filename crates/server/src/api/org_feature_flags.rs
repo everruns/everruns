@@ -1,7 +1,7 @@
 // Organization feature flag opt-in API
 //
-// Decision: Effective flags = deployment/system gate AND org opt-in (default off).
-// Decision: GET settings exposes catalog for admin UI; PATCH requires OrgAdmin.
+// Grades own availability, defaults, and who can change an org override.
+// Tenant PATCH requires OrgAdmin; platform PATCH owns preview enrolments.
 // Decision: platform-managed flags are org-scoped but not the org's to set. A
 // separate PlatformUser-gated route owns them, so the operator console can
 // enrol one tenant without the tenant being able to enrol itself, and neither
@@ -15,8 +15,8 @@ use axum::{
     extract::{Path, State},
     routing::get,
 };
+use everruns_platform::FeatureFlagMap;
 use everruns_platform::validate_org_public_id;
-use everruns_platform::{FeatureFlagMap, FeatureFlags};
 
 use crate::auth::middleware::{AuthState, OrgAdmin, PlatformUser};
 use crate::services::org_feature_flags::{
@@ -33,19 +33,19 @@ use super::organizations::is_member_of_public_db;
 pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
-    pub system_feature_flags: FeatureFlags,
+    pub feature_flag_policy: everruns_platform::FeatureFlagPolicy,
 }
 
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
         auth: AuthState,
-        system_feature_flags: FeatureFlags,
+        feature_flag_policy: everruns_platform::FeatureFlagPolicy,
     ) -> Self {
         Self {
             db,
             auth,
-            system_feature_flags,
+            feature_flag_policy,
         }
     }
 }
@@ -116,7 +116,7 @@ pub async fn get_org_feature_flags(
     let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
         org_id,
-        &state.system_feature_flags,
+        &state.feature_flag_policy,
     )
     .await
     .log_internal_error_json("resolve org feature flags")?;
@@ -147,7 +147,7 @@ pub async fn get_org_feature_flag_settings(
         .await
         .log_internal_error_json("list org feature flags")?;
     Ok(Json(OrgFeatureFlagsSettingsResponse {
-        flags: build_org_feature_flag_settings(&state.system_feature_flags, &org_enabled),
+        flags: build_org_feature_flag_settings(&state.feature_flag_policy, &org_enabled),
     }))
 }
 
@@ -175,7 +175,7 @@ pub async fn update_org_feature_flags(
     if org.public_id != org_public_id {
         return Err(ErrorResponse::not_found("Organization"));
     }
-    if let Err(msg) = validate_org_feature_flag_updates(&state.system_feature_flags, &req.flags) {
+    if let Err(msg) = validate_org_feature_flag_updates(&state.feature_flag_policy, &req.flags) {
         return Err(ErrorResponse::new(msg).into_response(axum::http::StatusCode::BAD_REQUEST));
     }
 
@@ -188,7 +188,7 @@ pub async fn update_org_feature_flags(
     let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
         org.org_id,
-        &state.system_feature_flags,
+        &state.feature_flag_policy,
     )
     .await
     .log_internal_error_json("resolve org feature flags")?;
@@ -224,7 +224,7 @@ pub async fn get_platform_feature_flag_settings(
         .await
         .log_internal_error_json("list org feature flags")?;
     Ok(Json(OrgFeatureFlagsSettingsResponse {
-        flags: build_all_feature_flag_settings(&state.system_feature_flags, &org_enabled),
+        flags: build_all_feature_flag_settings(&state.feature_flag_policy, &org_enabled),
     }))
 }
 
@@ -256,24 +256,16 @@ pub async fn update_platform_feature_flags(
     Json(req): Json<UpdateOrgFeatureFlagsRequest>,
 ) -> ApiResult<FeatureFlagMap> {
     let org_id = resolve_org_for_platform(&state, &org_public_id).await?;
-    if let Err(msg) =
-        validate_platform_feature_flag_updates(&state.system_feature_flags, &req.flags)
+    if let Err(msg) = validate_platform_feature_flag_updates(&state.feature_flag_policy, &req.flags)
     {
         return Err(ErrorResponse::new(msg).into_response(axum::http::StatusCode::BAD_REQUEST));
     }
 
-    let mut merged = state
-        .db
-        .list_org_feature_flags(org_id)
-        .await
-        .log_internal_error_json("list org feature flags")?;
-    // `replace_org_feature_flags` writes the whole set, so merge first: an
-    // operator enrolling an org must not silently clear the org's own opt-ins.
-    merged.extend(req.flags.iter().map(|(name, on)| (name.clone(), *on)));
-
+    // Write only the requested keys so concurrent tenant preferences cannot be
+    // overwritten by a stale platform snapshot of unrelated overrides.
     state
         .db
-        .replace_org_feature_flags(org_id, &merged)
+        .replace_org_feature_flags(org_id, &req.flags)
         .await
         .log_internal_error_json("update platform feature flags")?;
 
@@ -290,7 +282,7 @@ pub async fn update_platform_feature_flags(
     let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
         org_id,
-        &state.system_feature_flags,
+        &state.feature_flag_policy,
     )
     .await
     .log_internal_error_json("resolve org feature flags")?;

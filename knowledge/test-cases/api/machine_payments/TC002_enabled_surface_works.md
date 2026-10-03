@@ -17,7 +17,7 @@ Verify that payment account, policy, and attempt APIs retain their working behav
 ## Preconditions
 
 - Canonical local stack running with `AUTH_MODE=none`
-- `FEATURE_MACHINE_PAYMENTS=true`
+- `FEATURE_MACHINE_PAYMENTS=prod`
 - Stable local-development encryption key configured by the startup contract
 
 ## Test Data

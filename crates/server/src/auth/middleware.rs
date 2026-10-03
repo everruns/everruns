@@ -225,9 +225,9 @@ pub struct AuthState {
     /// Used in AuthMethod::None (anonymous user only carries default org)
     /// and AuthMethod::Jwt (JWT may be stale after server-side org creation).
     pub db: Option<Arc<StorageBackend>>,
-    /// Deployment-level feature flags (env + grade). Combined with per-org opt-in
-    /// when building [`ResolvedOrg::feature_flags`].
-    pub system_feature_flags: FeatureFlags,
+    /// Startup rollout policy resolved with durable org overrides when building
+    /// [`ResolvedOrg::feature_flags`].
+    pub feature_flag_policy: everruns_platform::FeatureFlagPolicy,
 }
 
 impl AuthState {
@@ -237,7 +237,7 @@ impl AuthState {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None,
-            system_feature_flags: FeatureFlags::current(),
+            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
         }
     }
 
@@ -252,7 +252,7 @@ impl AuthState {
             backend,
             permission_resolver: resolver,
             db: None,
-            system_feature_flags: FeatureFlags::current(),
+            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
         }
     }
 
@@ -269,7 +269,7 @@ impl AuthState {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: Some(db),
-            system_feature_flags: FeatureFlags::current(),
+            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
         }
     }
 
@@ -279,8 +279,8 @@ impl AuthState {
         self
     }
 
-    pub fn with_system_feature_flags(mut self, flags: FeatureFlags) -> Self {
-        self.system_feature_flags = flags;
+    pub fn with_feature_flag_policy(mut self, flags: everruns_platform::FeatureFlagPolicy) -> Self {
+        self.feature_flag_policy = flags;
         self
     }
 }
@@ -678,20 +678,12 @@ impl ResolvedOrg {
             crate::services::org_feature_flags::resolve_org_feature_flags(
                 db,
                 self.org_id,
-                &auth_state.system_feature_flags,
+                &auth_state.feature_flag_policy,
             )
             .await
-            .unwrap_or_else(|_| {
-                FeatureFlags::for_org(
-                    &auth_state.system_feature_flags,
-                    &std::collections::HashMap::new(),
-                )
-            })
+            .unwrap_or_default()
         } else {
-            FeatureFlags::for_org(
-                &auth_state.system_feature_flags,
-                &std::collections::HashMap::new(),
-            )
+            FeatureFlags::default()
         };
         Self {
             feature_flags,
@@ -1311,7 +1303,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: Some(db.clone()),
-            system_feature_flags: FeatureFlags::current(),
+            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
         };
         (state, db)
     }
@@ -1643,7 +1635,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None, // No DB — forces JWT fallback
-            system_feature_flags: FeatureFlags::current(),
+            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
         };
 
         let (mut parts, _body) = Request::builder()
@@ -1717,7 +1709,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None,
-            system_feature_flags: FeatureFlags::current(),
+            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
         }
     }
 

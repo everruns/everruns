@@ -17,7 +17,7 @@ use test_harness::TestServer;
 /// enable it before the in-process server builds its state.
 fn enable_agent_versions() {
     unsafe {
-        std::env::set_var("FEATURE_AGENT_VERSIONS", "true");
+        std::env::set_var("FEATURE_AGENT_VERSIONS", "prod");
     }
 }
 

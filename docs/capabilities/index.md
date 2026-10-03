@@ -66,8 +66,8 @@ Cloud and container sandbox environments for isolated code execution.
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
 | Deno Sandboxes | `deno` | 6 |
-| [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=true`) |
-| [Docker Container](/capabilities/docker/) | `docker_container` | 5 (dev-only, needs `FEATURE_DOCKER_CAPABILITY=true`) |
+| [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=prod`) |
+| [Docker Container](/capabilities/docker/) | `docker_container` | 5 (off by default, needs `FEATURE_DOCKER_CAPABILITY` rollout grade) |
 
 ### Browser
 

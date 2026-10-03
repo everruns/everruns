@@ -125,15 +125,7 @@ async fn test_org_feature_flags_opt_in() {
     let flags = settings["flags"].as_array().expect("flags array");
     assert!(flags.iter().all(|flag| flag["name"] != "mcp_endpoint"));
     assert!(flags.iter().all(|flag| flag["label"] != "Platform Chat"));
-    let notifications = flags
-        .iter()
-        .find(|f| f["name"] == "notifications")
-        .expect("notifications flag");
-    assert_eq!(
-        notifications["system_enabled"],
-        serde_json::Value::Bool(false)
-    );
-    assert_eq!(notifications["org_enabled"], serde_json::Value::Bool(false));
+    assert!(flags.iter().all(|flag| flag["name"] != "notifications"));
 
     let patched: serde_json::Value = server
         .patch(

@@ -586,11 +586,11 @@ impl ServerAppBuilder {
                 }
             }
         };
-        let deployment_grade = everruns_core::DeploymentGrade::from_env();
-        let feature_flags = everruns_platform::FeatureFlags::from_env(&deployment_grade);
+        let feature_flag_policy = everruns_platform::FeatureFlagPolicy::current();
+        let feature_flags = feature_flag_policy.deployment_flags();
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone())
             .with_db(db.clone())
-            .with_system_feature_flags(feature_flags.clone());
+            .with_feature_flag_policy(feature_flag_policy.clone());
         let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
 
@@ -1543,7 +1543,7 @@ impl ServerAppBuilder {
                 api::org_feature_flags::AppState::new(
                     db.clone(),
                     auth_state.clone(),
-                    feature_flags.clone(),
+                    feature_flag_policy.clone(),
                 ),
             ))
             .merge(api::memory::routes(memory_state))

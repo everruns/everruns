@@ -17,10 +17,10 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        (!plugin.experimental_only || grade.experimental_features_enabled())
-            && plugin
-                .feature_flag
-                .is_none_or(|flag| decisions.is_enabled(flag))
+        plugin.feature_flag.map_or_else(
+            || !plugin.experimental_only || grade.experimental_features_enabled(),
+            |flag| decisions.is_enabled(flag),
+        )
     });
     registry
 }
@@ -75,7 +75,7 @@ fn test_docker_plugin_has_feature_flag() {
 #[test]
 fn test_docker_not_registered_in_dev_without_flag() {
     let _lock = lock_env();
-    // Docker requires FEATURE_DOCKER_CAPABILITY=true even in dev
+    // Docker requires FEATURE_DOCKER_CAPABILITY=dev even in dev
     unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
     let registry = registry_for_grade(DeploymentGrade::Dev);
     assert!(
@@ -87,11 +87,11 @@ fn test_docker_not_registered_in_dev_without_flag() {
 #[test]
 fn test_docker_registered_in_dev_with_flag() {
     let _lock = lock_env();
-    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
+    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "prod") };
     let registry = registry_for_grade(DeploymentGrade::Dev);
     assert!(
         registry.has("docker_container"),
-        "Docker Container should be in dev registry when FEATURE_DOCKER_CAPABILITY=true"
+        "Docker Container should be in dev registry when FEATURE_DOCKER_CAPABILITY=dev"
     );
     unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 }
@@ -108,14 +108,14 @@ fn test_docker_not_registered_in_prod_registry() {
 }
 
 #[test]
-fn test_docker_not_registered_in_prod_even_with_flag() {
+fn test_docker_grade_override_allows_production_registration() {
     let _lock = lock_env();
-    // experimental_only still blocks prod (grade must also allow experimental)
-    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
+    // The feature rollout grade owns availability even for experimental plugins.
+    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "prod") };
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
-        !registry.has("docker_container"),
-        "Docker Container should NOT be in prod registry (experimental_only blocks it)"
+        registry.has("docker_container"),
+        "A prod rollout grade allows Docker registration in production"
     );
     unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 }
@@ -123,7 +123,7 @@ fn test_docker_not_registered_in_prod_even_with_flag() {
 #[test]
 fn test_docker_capability_metadata() {
     let _lock = lock_env();
-    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
+    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "prod") };
     let registry = registry_for_grade(DeploymentGrade::Dev);
     let cap = registry
         .get("docker_container")

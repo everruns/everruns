@@ -325,7 +325,7 @@ async fn test_agent_versions_snapshot_diff_default_and_session_capture() {
     // Feature flags are process-level env in this pilot; enable explicitly for
     // the in-process server before it computes route state.
     unsafe {
-        std::env::set_var("FEATURE_AGENT_VERSIONS", "true");
+        std::env::set_var("FEATURE_AGENT_VERSIONS", "prod");
     }
     let server = TestServer::in_memory().await;
 

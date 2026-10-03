@@ -20,9 +20,9 @@ container sandbox, executes a command, and removes the sandbox on request.
 - Server running (`just start-all` -- full mode with PostgreSQL required for leased resources)
 - User logged in
 - LLM API keys configured (Anthropic or OpenAI)
-- `FEATURE_CONTAINER_SANDBOX=true` enabled anywhere the capability is registered or executed
+- `FEATURE_CONTAINER_SANDBOX=prod` enabled anywhere the capability is registered or executed
   Typically this means both the server and any workers
-  Legacy compatibility: `FEATURE_DOCKER_CAPABILITY=true` also enables the same feature in the same places
+  Legacy compatibility: `FEATURE_DOCKER_CAPABILITY=prod` also enables the same feature in the same places
 - Docker Engine accessible from the server (local socket or remote TCP)
 - `CONTAINER_SANDBOX_DOCKER_HOST` set if Docker is not on the default socket
 

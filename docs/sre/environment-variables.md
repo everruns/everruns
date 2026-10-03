@@ -97,6 +97,28 @@ DEPLOYMENT_GRADE=prod ./target/debug/everruns-server
 - Use `dev` for local development and testing experimental features
 - Use `prod` for production deployments
 
+## Feature rollout grades
+
+Each `FEATURE_<NAME>` variable overrides that feature's rollout grade. Feature grades
+are separate from `DEPLOYMENT_GRADE`, which describes the running deployment.
+
+| Value | Behaviour |
+|-------|-----------|
+| `dev` | Available only on a local dev deployment; enabled there by default |
+| `preview` | Disabled until a platform operator enables it for a specific organisation |
+| `adoption` | Disabled by default; an organisation owner/admin may enable it |
+| `prod` | Enabled by default; an organisation owner/admin may disable it |
+| `off` | Unavailable; neither organisation nor platform settings can enable it |
+
+For example, `FEATURE_EVALS=adoption` exposes an org opt-in, while
+`FEATURE_EVALS=off` disables Evals for every organisation. Overrides take effect
+after restarting the affected processes. Boolean values such as `true` and `false`
+are no longer supported; invalid values disable the feature. Configure the same
+grades on the API, workers, and UI where they perform registration or ingress gating.
+
+The default grade for each feature is defined in the
+[feature catalog](https://github.com/everruns/everruns/blob/main/crates/platform/src/feature_flags.rs).
+
 ## API_PREFIX
 
 Path prefix for REST API routes.

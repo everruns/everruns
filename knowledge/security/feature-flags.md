@@ -1,154 +1,92 @@
 ---
 type: Specification
 title: "Feature Flags"
-description: "Feature flags system."
+description: "Rollout grades govern feature availability, organisation defaults, and configuration authority."
 tags:
   - everruns
   - security
 ---
 # Feature Flags
 
-System-level feature flags that control feature availability across the platform.
+A feature's rollout grade determines where it is available, whether it starts enabled,
+and who may change its organisation override. The deployment grade remains a separate
+concept: it describes the running deployment, not a feature's maturity.
 
-## Design
+## Policy
 
-### Principles
+Local-development features cannot be activated on hosted deployments by either a tenant
+or a platform operator. Preview enrolment is an explicit platform decision for individual
+organisations. Adoption features let organisation owners and admins opt in. Production
+features start enabled for every organisation, while owners and admins may opt out.
+An off feature is unavailable regardless of existing organisation records or actor.
 
-- **Env-first**: Flags are controlled via `FEATURE_<NAME>` environment variables
-- **Experimental auto-enable**: Flags marked "experimental" are auto-enabled in dev (`DeploymentGrade::Dev`)
-- **Explicit override wins**: `FEATURE_<NAME>=true/false` always takes priority over defaults
-- **Type-safe**: `FeatureFlags` struct with named boolean fields
-- **Fetch once**: UI fetches flags once on mount (React Query with 5min stale time)
-- **Org opt-in**: Organizations enable API-visible flags when the deployment allows them (stored in `org_feature_flags`)
+Feature defaults live in the [catalog](../../crates/platform/src/feature_flags.rs).
+An environment override replaces a feature's rollout grade at process startup. Invalid
+values disable the feature rather than silently promoting it. The shared
+[grade policy](../../crates/core/src/feature_flag_grade.rs) owns parsing, availability,
+defaults, and tenant configuration authority.
 
-### Flag Resolution Order
+Dev features start enabled on a local development deployment and may be disabled there.
+No organisation override makes a dev feature available on another deployment grade.
+Promotion changes the default and configuration owner immediately; an existing explicit
+organisation override remains in effect whenever the new grade permits availability.
 
-**Deployment (system) flags:**
+## Organisation overrides
 
-1. Explicit env var `FEATURE_<NAME>=true|1` or `=false|0`
-2. For experimental flags: `DeploymentGrade::Dev` -> `true`
-3. Default: `false`
+The existing [organisation flag table](../../crates/server/migrations/046_org_feature_flags.sql)
+stores explicit overrides in both directions. A missing record inherits the grade default;
+a stored false is a durable production opt-out, not an instruction to remove the record.
+Patch operations change only named flags. The default-organisation seeder must not enrol
+features: defaults belong to the grade policy, so bootstrap cannot bypass preview/off.
 
-**Effective flags for an organization:**
+[Resolution](../../crates/server/src/services/org_feature_flags.rs) reads durable overrides
+on every enforcement path. A replica-local cache must not delay revocation. Storage
+failures deny feature access instead of treating unknown overrides as production defaults.
 
-1. System flag must be enabled on the deployment
-2. Organization must have opted in (`org_feature_flags.enabled = true`; default is off)
-3. `effective = system_enabled && org_enabled`
+## Configuration authority
 
-### Flag Types
+Tenant settings expose only locally available development, adoption, and production
+features. Tenant updates require an organisation owner/admin and reject preview and off
+features in both directions. Platform settings expose every grade, but the platform update
+route may only change preview enrolments. It cannot alter tenant-owned settings or promote
+an off/local-only feature. These routes provide the backend contract for the future
+super-admin application; that application is not part of this feature change.
 
-- **Experimental**: Auto-enabled in dev, disabled in prod. Use for features under active development.
-- **Standard**: Off by default everywhere. Enabled explicitly via env var.
-- **Deployment-only**: API-visible but absent from the org opt-in catalog, so it is on or off for
-  the whole deployment and no org can differ (`machine_payments`).
-- **Platform-managed**: in the catalog and therefore org-scoped, so the platform can enable it for
-  one tenant and not another, but only a platform user may set it (`openai_agents_api`). Marked
-  `platform_managed: true` on the `FeatureFlagDefinition`. The tenant settings route omits these
-  rows, the tenant `PATCH` refuses them in both directions, and
-  `PATCH /v1/orgs/{org}/feature-flags/platform` is the only path that writes them. Use it when the
-  cost or risk of a feature is the platform's rather than the tenant's, the same reason LLM service
-  enrolment lives in the operator console.
+The [HTTP API](../../crates/server/src/api/org_feature_flags.rs) owns wire shapes and route
+permissions. The public deployment flag map describes whether routes/capabilities can
+exist, while the organisation flag map returns the effective booleans. Settings include
+the resolved grade, inherited default, optional stored override, effective state, and the
+viewer's configuration authority. The [UI flag hooks](../../apps/ui/src/hooks/use-org-feature-flags.ts)
+displays effective switch state so production defaults appear on even without a record.
 
-### Flag Visibility
+## Execution boundary
 
-Flags have two visibility levels, modeled as separate structs:
+Hosted capability registration uses deployment availability. Preview/adoption registration
+does not authorise use: the server filters capabilities using organisation-effective flags
+before loading a worker snapshot, command dispatch, or assigning configurations. An explicit
+feature grade owns registration availability even when a plugin carries experimental metadata.
+Infrastructure capabilities follow this same policy when promoted beyond their default off grade.
 
-- **`FeatureFlags`** (API-visible): Included in `GET /v1/feature-flags` JSON response. Available to frontend via `useFeatureFlag()`. Use for flags that gate UI features or user-visible behavior.
-- **`InternalFeatureFlags`** (backend-only): Not serialized, not exposed via API. Used purely for internal backend gating (capability registration, infrastructure behavior). Not added to frontend types.
+Payment management honours the organisation flag rather than overriding it based on router
+availability. Payment execution re-reads durable overrides immediately before spending,
+so a loaded tool cannot bypass a revocation. Existing domain command gates remain the authority for their feature-owned
+operations. A flag's scope is the surface it owns; reporting aggregation and existing session
+recordings remain infrastructure rather than being deleted when a UI feature is unavailable.
 
-## Current Flags
+The runtime receives resolved booleans, not rollout-management records. The
+[core registration decisions](../../crates/core/src/execution_features.rs) and the
+[platform catalog](../../crates/platform/src/feature_flags.rs) share the grade policy;
+only the hosted platform resolves durable organisation overrides.
 
-See `crates/platform/src/feature_flags.rs` for the complete list of flags and their resolution logic.
+## Success bars
 
-Planned flag:
+- Every grade obeys its availability/default/authority rules for every deployment grade.
+- Off and non-local dev features ignore stale true overrides.
+- Production defaults can be disabled durably without affecting another organisation.
+- Tenant and platform mutations cannot cross grade ownership boundaries.
+- Registration and runtime capability filtering agree, including infrastructure flags.
+- UI switches reflect effective values and member controls remain read only.
 
-| Flag | Type | Visibility | Env var | Purpose |
-|------|------|------------|---------|---------|
-| `voice` | Experimental | API-visible | `FEATURE_VOICE` | Enables Realtime voice endpoints and microphone controls in session chat, agent chat, and Platform Chat. |
-
-Current API-visible experimental flags include:
-
-- `skills`, `memory`, `knowledge`, and `plugins`: gate their management pages, sidebar entries,
-  global-search results, management APIs, Platform/MCP command discovery, and corresponding runtime
-  capabilities. Direct calls return `feature_not_enabled` while the org-effective flag is off.
-- `agent_versions`: gates immutable Agent snapshots, forks, rollback, and version diffs. See `knowledge/runtime-resources/agent-versions.md`.
-- `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `ag_ui_delegation`, `agent_handoff`). Deployment disablement prevents registration; org-effective disablement removes them from API and Platform listings, assignment, and runtime tool construction. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
-- `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `knowledge/evaluation/online-evals.md`.
-- `public_chat`: gates the canonical endpoint routes and permanent App-shaped aliases, plus the isolated public web route. This is a deployment-level ingress gate; App-channel creation and the retired builder UI are not part of the flag contract. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
-- `webmcp`: gates browser-native tools exposed by the authenticated UI. The deployment gate also controls the `tools` Permissions Policy; org opt-in controls registration. Env var: `FEATURE_WEBMCP`. See `knowledge/ui/webmcp.md`.
-- `reports`: gates the Reports page, its sidebar entry, and saved-report global-search results. Off for every org until an admin opts in, so the page is hidden by default while it matures. UI-only: the reporting API, Platform/MCP reporting commands, and background aggregation stay available. Env var: `FEATURE_REPORTS`.
-
-`environments` is intentionally no longer a feature flag. Every session has an
-Environment resource, even when it has no compute, so its API and Workspace
-panel are core surfaces. Deployment flags still decide which optional compute
-providers are registered; they do not hide the provider-neutral resource.
-
-## Architecture
-
-### Backend
-
-- **Platform**: `crates/platform/src/feature_flags.rs`, `FeatureFlags` records, catalog, org opt-in resolution, `from_env()` (EVE-878)
-- **Core**: `crates/core/src/execution_features.rs`, `InternalFeatureFlags` and the resolved `ExecutionFeatureDecisions` consumed at capability registration; execution never loads feature-management records
-- **API**: `GET /v1/feature-flags`, public endpoint, returns deployment-level `FeatureFlags` as JSON
-- **Org API**: `GET/PATCH /v1/orgs/{org}/feature-flags`, `GET /v1/orgs/{org}/feature-flags/settings`, org opt-in (admin for PATCH)
-- **Platform API**: `GET/PATCH /v1/orgs/{org}/feature-flags/platform`, platform users only, the one
-  path that sets platform-managed flags for an org. `PATCH` merges rather than replaces, so
-  enrolling an org cannot clear that org's own opt-ins
-- **Server**: `crates/server/src/api/feature_flags.rs`, `crates/server/src/api/org_feature_flags.rs`
-- **Storage**: `org_feature_flags` table (migration `046_org_feature_flags.sql`)
-
-Deployment flags are computed once at server startup. Org-effective flags are resolved per request from system flags + `org_feature_flags` rows (`ResolvedOrg::feature_flags`, `Ctx::feature_flags`).
-Domain command metadata maps feature-owned command categories to those effective flags, keeping HTTP,
-Platform, and MCP execution/discovery aligned. Capability listing, assignment, and turn-context
-assembly apply the same effective flags so persisted configurations cannot re-expose a disabled
-capability.
-
-### Frontend
-
-- **API client**: `apps/ui/src/lib/api/feature-flags.ts`
-- **Provider**: `apps/ui/src/providers/feature-flags-provider.tsx`, fetches org-effective flags when an org is selected
-- **Settings**: `apps/ui/src/app/(main)/settings/features/page.tsx`, admin opt-in toggles
-- **Hooks**: `useFeatureFlags()` (effective flags), `useFeatureFlag("flag_name")` (single flag)
-- **Types**: `FeatureFlags` in `apps/ui/src/lib/api/legacy-api-types.ts`
-
-### Workers
-
-Server/worker boundaries resolve the org-effective flags before Platform command dispatch and turn
-context assembly. Disabled feature-owned capabilities are removed before runtime tool construction.
-
-## Adding a New Flag
-
-### API-visible flag (gates UI or user-visible behavior)
-
-1. Add field to `FeatureFlags` struct in `crates/platform/src/feature_flags.rs`
-2. Add resolution in `from_env()` using `experimental_flag()` or `standard_flag()`
-3. Add to `is_enabled()` match arm
-4. Update `all_enabled()`
-5. Add to `FeatureFlags` interface in `apps/ui/src/lib/api/legacy-api-types.ts`
-6. Add to `DEFAULT_FLAGS` in `apps/ui/src/providers/feature-flags-provider.tsx`
-7. Use `useFeatureFlag("flag_name")` in UI components
-8. If the feature owns API commands or capabilities, add its command-category/capability mapping to
-   `crates/server/src/domains/common.rs` and `crates/platform/src/feature_flags.rs`
-
-### Backend-only flag (gates internal behavior, not exposed to API/UI)
-
-1. Add field to `InternalFeatureFlags` struct in `crates/core/src/execution_features.rs`
-2. Add resolution in `InternalFeatureFlags::from_env()` using `standard_flag()`
-3. Add to `InternalFeatureFlags::is_enabled()` match arm
-4. Do NOT add to frontend types or defaults
-
-## UI Indication
-
-Features gated behind experimental flags display a visual marker to signal their status:
-
-- **Sidebar**: Flask icon (`FlaskConical`) next to the nav item name, with tooltip on hover
-
-The marker is driven by `experimental: true` on the `NavItem` type in the sidebar. See
-`apps/ui/src/components/ui/experimental-badge.tsx`.
-
-## Future Extensions
-
-- **Per-user flags**: Add `user_id` column for user-level overrides within an org
-- **External providers**: Implement a `FeatureFlagProvider` trait; plug in LaunchDarkly, Unleash, etc.
-- **Runtime toggle**: Admin API to update flag overrides without restart
-- **Worker propagation**: Include flags in gRPC `GetTurnContext` response
+The grade matrix is covered in core/platform unit tests, ownership and persistence in the
+[server policy tests](../../crates/server/src/services/org_feature_flags.rs), and settings
+behaviour in the [UI tests](../../apps/ui/src/__tests__/features-settings-page.test.tsx).

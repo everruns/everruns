@@ -48,18 +48,13 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        // This state is only reached through the enabled payment router. Machine
-        // payments are deployment-controlled rather than an org opt-in, so keep
-        // the command boundary aligned with the router's system-level gate.
-        let mut feature_flags = org.feature_flags.clone();
-        feature_flags.machine_payments = true;
         Ctx::minimal(
             Caller::from(org),
             self.db.clone(),
             self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
-        .with_feature_flags(feature_flags)
+        .with_feature_flags(org.feature_flags.clone())
     }
 }
 

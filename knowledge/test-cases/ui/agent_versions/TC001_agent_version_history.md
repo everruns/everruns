@@ -16,7 +16,7 @@ Verifies that a user can save agent versions, compare changes, set a default ver
 
 ## Preconditions
 
-- `FEATURE_AGENT_VERSIONS=true` or development grade enabled.
+- `FEATURE_AGENT_VERSIONS=prod` or development grade enabled.
 - User is signed in to an organization with permission to manage agents and apps.
 - At least one harness exists.
 
