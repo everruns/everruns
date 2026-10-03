@@ -25,6 +25,7 @@ on:
       # unpublished until someone dispatches the controller by hand, and nothing
       # on main reports that the crates never shipped.
       - '.github/workflows/publish-crates.yml'
+      - 'scripts/lib/wait-for-crate-index.py'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -309,9 +310,10 @@ jobs:
               gh run watch "$RUN_ID" --exit-status --interval 15
             fi
 
-            # Let the crates.io sparse index publish the new version before a
-            # dependant crate that pins it is published next.
-            sleep 25
+            # A dependant may start only once Cargo can resolve the exact
+            # artifact the trusted publisher verified, without a fixed delay.
+            python3 scripts/lib/wait-for-crate-index.py \
+              --package "$PKG" --version "$VER" --sha "$SHA"
             echo "::endgroup::"
           done
           echo "All crate releases dispatched and confirmed."

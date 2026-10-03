@@ -282,6 +282,13 @@ idempotent, because an already-published version passes only when its digest
 matches this commit's artifact. Publish Crate also raises cargo's network retry
 count and uses HTTP/1.1.
 
+**Index visibility is evidence, not a fixed delay.** Before releasing the next
+dependent crate, the controller uses
+[`wait-for-crate-index.py`](../../scripts/lib/wait-for-crate-index.py) to confirm
+that Cargo's sparse index resolves the exact non-yanked artifact from the clean
+release commit. Missing versions and transient transport errors are retried
+within a bounded deadline; mismatched artifacts halt the cascade.
+
 **Publish Crate** validates the selected manifest version, derives internal pins
 from Cargo metadata, and publishes only that package. Publishing cannot be
 completed from a sandbox whose egress policy blocks tag pushes — the CI workflow
