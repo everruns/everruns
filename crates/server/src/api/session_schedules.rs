@@ -3,6 +3,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_schedules::SessionScheduleService;
+use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -13,8 +14,10 @@ use everruns_core::session_schedule::SessionSchedule;
 use everruns_provider::typed_id::{ScheduleId, SessionId};
 
 use super::common::{
-    ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, UrlBuilder, WithUrls, impl_auth_state,
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ApiResultExt, ErrorResponse, UrlBuilder, WithUrls,
+    impl_auth_state,
 };
+use everruns_core::Caller;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -88,6 +91,11 @@ pub async fn list_schedules(
     State(state): State<AppState>,
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<Vec<WithUrls<SessionSchedule>>> {
+    let caller = Caller::from(&org);
+    SESSION_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal("authorize list session schedules")?;
     let schedules = state
         .schedule_service
         .list(org.org_id, session_id)
@@ -113,6 +121,11 @@ pub async fn get_schedule(
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
+    let caller = Caller::from(&org);
+    SESSION_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal("authorize get session schedule")?;
     let schedule =
         get_schedule_in_session(&state, org.org_id, session_id, schedule_id, "get schedule")
             .await?;
@@ -138,6 +151,11 @@ pub async fn update_schedule(
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
     Json(req): Json<UpdateScheduleRequest>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
+    let caller = Caller::from(&org);
+    SESSION_MANAGE
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal("authorize update session schedule")?;
     let enabled = req.enabled.unwrap_or(true);
     get_schedule_in_session(
         &state,
@@ -174,6 +192,11 @@ pub async fn delete_schedule(
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(&org);
+    SESSION_MANAGE
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal("authorize delete session schedule")?;
     get_schedule_in_session(
         &state,
         org.org_id,
@@ -212,6 +235,11 @@ pub async fn trigger_schedule(
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
+    let caller = Caller::from(&org);
+    SESSION_MANAGE
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal("authorize trigger session schedule")?;
     get_schedule_in_session(
         &state,
         org.org_id,
