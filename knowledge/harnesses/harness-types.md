@@ -99,7 +99,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 | System Prompt | "You are a helpful assistant." |
 | Tags | `generic`, `default`, `built-in` |
 
-**Capabilities:** See `crates/server/src/seed.rs` for the full Generic harness capability list and configuration.
+**Capabilities:** See `crates/contracts/src/capability/presets.rs` for the shared Generic capability floor.
 
 **Use cases:**
 - Default harness for most agents
@@ -107,53 +107,13 @@ The recommended default harness. Bundles the core capabilities needed for genera
 - Agents that store API keys or credentials in session secrets
 - General-purpose assistant workflows
 
-### Platform Chat
+### Platform Chat Agent
 
-Conversational harness for the Everruns Platform chat. Parents on Base and declares an explicit,
-focused capability set, so its effective surface is exactly what it lists. It is tagged separately to
-support the per-user singleton session pattern.
-
-| Property | Value |
-|----------|-------|
-| Name | `platform-chat` |
-| Display Name | Platform Chat |
-| Parent | `base` |
-| System Prompt | See `crates/server/src/harnesses/platform_chat.rs` for full prompt |
-| Tags | `chat`, `built-in` |
-
-**Effective capabilities:** Base contributes none, so the effective set is the local list in
-`crates/server/src/harnesses/platform_chat.rs` — pinned by
-`platform_chat_has_a_focused_tool_surface`. It grants platform catalog access, the UI-facing
-affordances the chat surface renders (tool narration, timestamps, todo lists), conversational
-robustness (loop detection, tool-call repair, detailed error disclosure, proactive compaction), and
-prompt caching for long operator threads.
-
-**Deliberately excluded:** no file system, shell, or web fetch — the chat stays grounded in platform
-state rather than becoming a coding agent. That exclusion transitively rules out
-`tool_output_distillation`, `tool_output_persistence`, and `memory`, which all depend on
-`session_file_system`; `memory` additionally needs `mounts[]` naming per-org `mem_` IDs that a
-built-in definition cannot know. `session_schedule` is excluded because recurring work belongs on an
-Agent Trigger, never on the chat session itself. Guarded by
-`platform_chat_omits_vfs_dependent_capabilities`.
-
-**Authorization rule:** Do not remove `platform` from Platform Chat to paper over authorization bugs. Platform tools must reload the session owner and enforce that caller's permissions via the normal command/policy path.
-
-**System prompt guidance includes:**
-- "Run agent" workflow: create session → send message → wait for idle → get results
-- Catalog workflow: `discover` unknown commands → `query` state → `execute`
-  requested changes → `query` final state
-- Recurring autonomous workflow: create an Agent Trigger; never schedule the
-  Platform Chat session itself
-- Prefer built-in Generic harness over creating new ones
-- Confirm before creating harnesses or agents; use common sense for sessions
-
-**Use cases:**
-- Operator chat threads on the Chats surface (`/chats`), started by binding a new thread to this
-  harness. The singleton `/chat` page it was built for was retired with EVE-855; threads that
-  predate the Chats surface still carry the `global-chat` tag so they stay listed.
-- Legacy per-user singleton sessions, identified by the `global-chat` tag. The endpoint that
-  resolved that singleton (`POST /v1/sessions/chat`) is retired with EVE-855; nothing creates a
-  new one, and existing threads are read through the ordinary session routes.
+Platform Chat is the managed operator Agent running on Generic. Its instructions,
+platform access, identity, intro, and starters belong to the Agent. The dedicated
+harness is retired; existing custom runtime bindings retain its stored definition.
+See [Platform Chat](platform-chat.md) for migration, ownership, memory, and the
+permanent conversation contract.
 
 ## Design Decisions
 
