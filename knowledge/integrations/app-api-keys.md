@@ -16,12 +16,12 @@ Existing `api_endpoint` rows can continue to authenticate native session ingress
 
 The canonical routes are endpoint-scoped:
 
-- `POST /v1/e/{endpoint_id}/sessions`
-- `POST /v1/e/{endpoint_id}/sessions/{session_id}/messages`
-- `GET /v1/e/{endpoint_id}/sessions/{session_id}`
-- `POST /v1/e/{endpoint_id}/sessions/{session_id}/cancel`
+- `POST /v1/channels/{channel_id}/sessions`
+- `POST /v1/channels/{channel_id}/sessions/{session_id}/messages`
+- `GET /v1/channels/{channel_id}/sessions/{session_id}`
+- `POST /v1/channels/{channel_id}/sessions/{session_id}/cancel`
 
-The existing `/v1/apps/{legacy_app_id}/api/{endpoint_id}/...` forms remain permanent aliases. Alias resolution uses `agent_endpoints.legacy_alias_id`; neither route form reads `apps` or `app_channels` while serving traffic.
+The existing `/v1/apps/{legacy_app_id}/api/{channel_id}/...` forms remain permanent aliases. Alias resolution uses `agent_channels.legacy_alias_id`; neither route form reads `apps` or `app_channels` while serving traffic.
 
 ## Credential and confinement contract
 

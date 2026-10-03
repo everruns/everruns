@@ -131,7 +131,7 @@ implemented today, and its code is currently flat rather than nested under a
 crates/server/src/
   slack_delivery.rs       — ChannelDeliveryAdapter impl + Slack API client
   api/
-    slack_events.rs       — webhook handler (POST /v1/e/{endpoint_id}/slack/events),
+    slack_events.rs       — webhook handler (POST /v1/channels/{channel_id}/slack/events),
                             signing verification, route registration
 ```
 
@@ -139,7 +139,7 @@ A per-platform `messaging/{platform}/` split (shared orchestration in
 `messaging/mod.rs`, one module per platform) is the intended layout once a
 second platform lands; until then Slack stays in these two files.
 
-Core abstraction types remain in `crates/core/src/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/platform/src/app.rs`. Each `AgentEndpoint` holds transport type and configuration, enabling multiple independent endpoints per agent.
+Core abstraction types remain in `crates/core/src/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/platform/src/app.rs`. Each `AgentChannel` holds transport type and configuration, enabling multiple independent endpoints per agent.
 
 ## Concrete Implementations
 
@@ -147,7 +147,7 @@ Core abstraction types remain in `crates/core/src/channel.rs`. Platform-specific
 
 Reference implementation. See [`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md) for full details.
 
-- Webhook: `POST /v1/e/{endpoint_id}/slack/events` (with a permanent App-shaped alias)
+- Webhook: `POST /v1/channels/{channel_id}/slack/events` (with a permanent App-shaped alias)
 - Signing: HMAC-SHA256 via `signing_secret`
 - Session strategies: `per_thread`, `per_channel`, `per_user`
 - Reply modes: `all_messages`, `report_progress_only`

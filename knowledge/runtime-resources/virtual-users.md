@@ -234,7 +234,7 @@ Connection uniqueness must be a database invariant; resolve existing duplicate
 rows before imposing it. Multi-account selection is outside the initial scope.
 
 OAuth state must bind the authorizing actor/capability, org, target virtual user,
-provider, usage, optional session/agent/endpoint, expiry, and return destination.
+provider, usage, optional session/agent/channel, expiry, and return destination.
 Recheck authorization and active bindings at callback; consume the state once.
 An org/account switch while the popup is open cannot retarget the grant. For
 external consumers, issue a narrowly scoped setup capability from verified

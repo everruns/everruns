@@ -69,7 +69,7 @@ than model-supplied).
 
 ## Model
 
-A new `EndpointTransport::A2a` (`"a2a"`) variant. Configuration:
+A new `ChannelType::A2a` (`"a2a"`) variant. Configuration:
 
 ```rust
 pub struct A2aChannelConfig {
@@ -94,7 +94,7 @@ pub struct A2aChannelConfig {
 ```
 
 Authentication is stored separately from transport config in
-`agent_endpoints.auth` or `auth_encrypted`.
+`agent_channels.auth` or `auth_encrypted`.
 
 API key generation:
 
@@ -110,10 +110,10 @@ API key generation:
 
 ### Inbound JSON-RPC
 
-Canonical: `POST /v1/e/{endpoint_id}/a2a`.
+Canonical: `POST /v1/channels/{channel_id}/a2a`.
 
 Permanent compatibility alias:
-`POST /v1/apps/{legacy_app_id}/a2a/{endpoint_id}`. It resolves the endpoint
+`POST /v1/apps/{legacy_app_id}/a2a/{channel_id}`. It resolves the endpoint
 without reading `apps` or `app_channels`.
 
 - Content-Type: `application/json`
@@ -141,7 +141,7 @@ shapes; 1.0 drops the `kind` discriminators and `final`, uses ProtoJSON enum
 names (`TASK_STATE_COMPLETED`, `ROLE_AGENT`), flattens parts to
 `{ "text" }` / `{ "data" }`, and wraps results (`{ "task": ... }` for
 send, `StreamResponse` objects for streaming frames). Source:
-[`crates/server/src/api/endpoint_a2a/wire.rs`](../../crates/server/src/api/endpoint_a2a/wire.rs).
+[`crates/server/src/api/channel_a2a/wire.rs`](../../crates/server/src/api/channel_a2a/wire.rs).
 
 #### Blocking send
 
@@ -150,7 +150,7 @@ terminal or parked on an `ask_user` question, with the task's outputs, unless
 `configuration.returnImmediately` is `true`. A 0.3 send blocks only when
 `configuration.blocking` is `true`. A turn that outlasts the server's bound
 (`BLOCKING_SEND_TIMEOUT` in
-[`task_view.rs`](../../crates/server/src/api/endpoint_a2a/task_view.rs)) returns
+[`task_view.rs`](../../crates/server/src/api/channel_a2a/task_view.rs)) returns
 in its current state and the caller polls.
 
 #### Multi-turn
@@ -421,14 +421,14 @@ is no answer shape at all, and an `everruns/ask_user_answer` against a task
 parked on a secret question is refused at the channel boundary rather than
 downstream.
 
-Source: [`crates/server/src/api/endpoint_a2a.rs`](../../crates/server/src/api/endpoint_a2a.rs).
+Source: [`crates/server/src/api/channel_a2a.rs`](../../crates/server/src/api/channel_a2a.rs).
 
 ### Agent Card
 
 `GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json`
 
 Unauthenticated. Returns the published Agent Card so other agents can
-discover the endpoint. Only returned for **live**, enabled A2A endpoints;
+discover the endpoint. Only returned for **live**, enabled A2A channels;
 otherwise `404`. Card shape:
 
 ```json
@@ -458,7 +458,7 @@ otherwise `404`. Card shape:
       "tags": ["everruns", "a2a"]
     }
   ],
-  "securitySchemes": { "...": "derived from AgentEndpoint.auth" },
+  "securitySchemes": { "...": "derived from AgentChannel.auth" },
   "securityRequirements": [{ "...": [] }]
 }
 ```
@@ -524,7 +524,7 @@ common app-channel invocation helper, not by the A2A HTTP adapter.
 
 ## Surfaces
 
-A2A invocation uses the canonical `/v1/e/{endpoint_id}/a2a` routes and their
+A2A invocation uses the canonical `/v1/channels/{channel_id}/a2a` routes and their
 permanent App-shaped aliases. Endpoint configuration uses the Agent endpoint
 HTTP APIs and matching command catalog. There is no App management API or Apps
 UI. The current endpoint picker does not offer A2A because no replacement
@@ -600,7 +600,7 @@ timestamp + signature header pair; otherwise the channel keeps the
 existing authentication-only behavior. This closes TM-A2A-010
 (captured-request replay until rotation) without breaking deployments
 that have not opted in. Signing is **orthogonal** to first-class endpoint
-auth (`AgentEndpoint.auth`), it layers replay protection on top of
+auth (`AgentChannel.auth`), it layers replay protection on top of
 whichever auth mode the channel uses (default API key, HTTP Basic, OIDC,
 OAuth2, or mTLS).
 
@@ -616,7 +616,7 @@ Headers (sent by the client):
   `signing_secret` across multiple A2A channels.
 
 Verification is performed in `crates/server/src/api/a2a_signing.rs` and
-called from `endpoint_a2a::authenticate_request` **after** primary
+called from `channel_a2a::authenticate_request` **after** primary
 authentication so unauthenticated callers cannot probe channel existence
 from signing-related signals or grow the in-memory replay store. The
 check covers:

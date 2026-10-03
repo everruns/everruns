@@ -14,9 +14,9 @@ Webhook and schedule compatibility behavior can retain historical App attributio
 
 ## Webhook ingress
 
-The canonical route is `POST /v1/e/{endpoint_id}/webhook`. The permanent alias `POST /v1/apps/{legacy_app_id}/webhooks/{endpoint_id}` remains available.
+The canonical route is `POST /v1/channels/{channel_id}/webhook`. The permanent alias `POST /v1/apps/{legacy_app_id}/webhooks/{channel_id}` remains available.
 
-Resolution and liveness use only `agent_endpoints JOIN agents`. The alias App ID is matched against `agent_endpoints.legacy_alias_id`; traffic serving never reads `apps` or `app_channels`.
+Resolution and liveness use only `agent_channels JOIN agents`. The alias App ID is matched against `agent_channels.legacy_alias_id`; traffic serving never reads `apps` or `app_channels`.
 
 Webhook endpoint configuration retains `token`, `session_mode`, `message`, and optional rate-limit data. Authentication accepts `Authorization: Bearer <token>` or `X-Everruns-Webhook-Token: <token>`.
 
@@ -30,7 +30,7 @@ Invocation endpoints retain both invocation-keyed `SessionBinding` values:
 Compatibility sessions retain `sessions.app_id` and these reserved routing tags:
 
 - `app:{legacy_app_id}`
-- `app_channel:{endpoint_id}`
+- `app_channel:{channel_id}`
 - `app_channel_type:{channel_type}`
 - `app_invocation:{uuid}` for per-invocation sessions
 

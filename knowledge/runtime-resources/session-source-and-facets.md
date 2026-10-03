@@ -45,7 +45,7 @@ Three rules govern it:
   conventions the server itself writes. Rows it cannot place stay `unknown`
   rather than being folded into a real facet and quietly inflating it.
 
-`source` names the *transport*; `sessions.endpoint_id` names the *door*
+`source` names the *transport*; `sessions.channel_id` names the *door*
 (EVE-1004). Two endpoints of the same transport produce the same source and
 different endpoints, so the pair answers "which Slack workspace was this" where
 `source` alone cannot. Each ingress path passes its endpoint explicitly rather

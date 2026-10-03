@@ -26,8 +26,8 @@ graph LR
 
     RuntimeAgent -.->|executes in| Session
 
-    AgentEndpoint -->|exposes| Agent
-    AgentEndpoint -.->|creates| Session
+    AgentChannel -->|exposes| Agent
+    AgentChannel -.->|creates| Session
 
     classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
     classDef assembly fill:#ffd6a5,stroke:#e07b39,color:#5a3000
@@ -37,12 +37,12 @@ graph LR
     class Harness,Agent,Capability config
     class RuntimeAgent assembly
     class Session runtime
-    class AgentEndpoint deploy
+    class AgentChannel deploy
 ```
 
 - **Solid arrows**: configuration references: Agent uses a Harness, Harness has Capabilities, Agent has Capabilities
 - **Dashed arrows**: runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a RuntimeAgent (see [AgentConfigOverlay](#agentconfigoverlay))
-- **Purple**: deployment: an Agent Endpoint exposes an Agent on an external channel and creates sessions from incoming messages. It replaced the App, which bound a Harness and an Agent to a channel and is now frozen compatibility data — see [Archived Apps](../integrations/apps.md)
+- **Purple**: deployment: an Agent Channel exposes an Agent on an external channel and creates sessions from incoming messages. It replaced the App, which bound a Harness and an Agent to a channel and is now frozen compatibility data — see [Archived Apps](../integrations/apps.md)
 
 ### Harness
 
@@ -232,8 +232,8 @@ erDiagram
     McpServer ||--o{ Tool : "exposes"
     McpServer ||--|| Capability : "virtual capability"
 
-    AgentEndpoint }o--|| Agent : "exposes"
-    AgentEndpoint ||--o{ Session : "creates via channel"
+    AgentChannel }o--|| Agent : "exposes"
+    AgentChannel ||--o{ Session : "creates via channel"
 ```
 
 ### LLM Provider
@@ -267,7 +267,7 @@ A frozen archival compatibility record. Apps and their historical channel relati
 storage, but App management, publishing, command discovery, and UI are retired.
 
 - Only deprecated archival reads remain.
-- `agent_endpoints` owns live ingress identity and liveness.
+- `agent_channels` owns live ingress identity and liveness.
 - Permanent App-shaped route aliases resolve from endpoint-owned legacy identity without reading
   `apps` or `app_channels`.
 - Existing session attribution, budget subject values, owner semantics, and reserved routing tags
