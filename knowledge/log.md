@@ -18,6 +18,12 @@
 
 ## 2026-10-02
 
+* **Platform Chat replaces its preview and legacy implementation.** The shell,
+  docs, and durable-memory composition is the canonical chat surface for every
+  org, without an opt-in flag. Reconciliation preserves canonical IDs, moves
+  preview bindings, and retires the preview; resumed chats restore docs and
+  shared memory. See [Platform Chat](harnesses/platform-chat.md).
+
 * **Seeded Agents API sessions.** A turn that creates an OpenAI Agents API
   provider session after one was replaced, released, or lost sends a bounded
   transcript of the earlier turns (user and assistant text, completed tool
@@ -346,7 +352,7 @@
   (`agents-find-by-purpose`, `plugin-agent-connection-preflight`) find the right
   commands on both arms and then exceed their tool-call budget, which is the
   model's problem and not the surface's. See
-  [Platform Chat v2](harnesses/platform-chat-v2.md).
+  [Platform Chat v2](harnesses/platform-chat.md).
 
 * **v2's prompt was instructing the model to use tools v2 had already given up.**
   Moving `platform` to the shell surface stopped it contributing `discover`,
@@ -622,7 +628,7 @@
   the flag later without the harness until something re-provisioned. Hiding is
   not a control on its own — a harness id is stable and guessable — so selecting
   a gated harness is rejected as well. See
-  [Platform Chat v2](harnesses/platform-chat-v2.md).
+  [Platform Chat v2](harnesses/platform-chat.md).
 
 * **Per-crate versioning was bumping more crates per release, not fewer, and the
   cause was additive change being classified as breaking.** At `0.x` the minor is
@@ -682,7 +688,7 @@
   they already are. The builtin is installed from the session's tool registry, so
   it re-spells a surface the session already has rather than granting one: a
   harness that withholds the capability withholds the command, with no capability
-  list to keep in sync. See [Platform Chat v2](harnesses/platform-chat-v2.md).
+  list to keep in sync. See [Platform Chat v2](harnesses/platform-chat.md).
 
 * **Memory mounts are live, not snapshots.** `memory.md` always specified
   write-through, but the implementation copied a Memory's files into
@@ -704,7 +710,7 @@
   `CliCommandSourceHandle` that installs the CLI builtin, and Memory mounts are
   snapshots copied into `session_files` at session creation rather than the
   write-through the spec promises, so concurrent chat threads cannot share memory at
-  all. Proposed, not implemented. See [Platform Chat v2](harnesses/platform-chat-v2.md).
+  all. Proposed, not implemented. See [Platform Chat v2](harnesses/platform-chat.md).
 
 * **Platform Chat memory is both shared and private, as sibling mounts.**
   The two are not alternatives: the runtime already mounts `/memory/agent` beside
@@ -715,7 +721,7 @@
   overlapping mounts; precedence is resolved in the disclosed index instead.
   Writes default to private, and promotion to shared is an explicit user act,
   because a shared note has been read by other people's threads and cannot be
-  taken back. See [Platform Chat v2](harnesses/platform-chat-v2.md).
+  taken back. See [Platform Chat v2](harnesses/platform-chat.md).
 
 ## 2026-09-14
 
