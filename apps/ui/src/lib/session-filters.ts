@@ -41,6 +41,7 @@ export const ACTIVITY_LABELS: Record<SessionActivity, string> = {
 
 export const SOURCE_LABELS: Record<SessionSource, string> = {
   chat: "Chat",
+  playground: "Playground",
   api: "API",
   slack: "Slack",
   ag_ui: "AG-UI",

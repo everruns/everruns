@@ -379,6 +379,7 @@ fn test_agent() -> Agent {
 fn test_session(harness_id: HarnessId, agent_id: everruns_provider::typed_id::AgentId) -> Session {
     let session_id = SessionId::new();
     Session {
+        playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
         run_summary: None,

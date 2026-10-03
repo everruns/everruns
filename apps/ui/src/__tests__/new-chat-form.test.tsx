@@ -161,3 +161,37 @@ describe("NewChatForm", () => {
     expect(mockPush).toHaveBeenCalledWith("/agents/new");
   });
 });
+
+describe("Playground creation through the shared chat form", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mutateAsync.mockResolvedValue({ id: "session_shared" });
+    setup();
+  });
+
+  it("binds the chosen end user, keeps it out of Chats, and opens Playground", async () => {
+    render(<NewChatForm surface="playground" endUserId="identity_customer" />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
+      target: { value: "agent:agent_1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Start conversation/ }));
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        request: {
+          agent_id: "agent_1",
+          source: "playground",
+          playground_user_id: "identity_customer",
+        },
+      }),
+    );
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/playground/session_shared"));
+  });
+
+  it("waits for the default virtual user before creation", () => {
+    render(<NewChatForm surface="playground" />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
+      target: { value: "agent:agent_1" },
+    });
+    expect(screen.getByRole("button", { name: /Start conversation/ })).toBeDisabled();
+  });
+});

@@ -52,6 +52,8 @@ pub enum Permission {
     OrgVirtualUsersView,
     /// CRUD on virtual users
     OrgVirtualUsersManage,
+    /// Test as another end user in Playground (owner/admin).
+    OrgPlaygroundImpersonate,
     /// View marketplaces and installed plugins (read-only)
     OrgPluginsView,
     /// Register marketplaces and install/uninstall plugins (admin-gated per knowledge/integrations/plugins.md)
@@ -104,6 +106,7 @@ impl Permission {
             Permission::OrgCapabilitiesManage => "org:capabilities:manage",
             Permission::OrgVirtualUsersView => "org:virtual-users:view",
             Permission::OrgVirtualUsersManage => "org:virtual-users:manage",
+            Permission::OrgPlaygroundImpersonate => "org:playground:impersonate",
             Permission::OrgPluginsView => "org:plugins:view",
             Permission::OrgPluginsManage => "org:plugins:manage",
             Permission::OrgSessionsManage => "org:sessions:manage",
@@ -141,6 +144,7 @@ impl Permission {
         Permission::OrgCapabilitiesManage,
         Permission::OrgVirtualUsersView,
         Permission::OrgVirtualUsersManage,
+        Permission::OrgPlaygroundImpersonate,
         Permission::OrgPluginsView,
         Permission::OrgPluginsManage,
         Permission::OrgSessionsManage,
@@ -188,6 +192,7 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgCapabilitiesManage,
     Permission::OrgVirtualUsersView,
     Permission::OrgVirtualUsersManage,
+    Permission::OrgPlaygroundImpersonate,
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
@@ -221,6 +226,7 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgCapabilitiesManage,
     Permission::OrgVirtualUsersView,
     Permission::OrgVirtualUsersManage,
+    Permission::OrgPlaygroundImpersonate,
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
@@ -1120,6 +1126,12 @@ mod tests {
                 "org:virtual-users:manage",
                 true,
                 true,
+            ),
+            (
+                Permission::OrgPlaygroundImpersonate,
+                "org:playground:impersonate",
+                true,
+                false,
             ),
             (Permission::OrgPluginsView, "org:plugins:view", true, true),
             (

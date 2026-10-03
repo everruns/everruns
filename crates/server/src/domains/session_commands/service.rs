@@ -106,6 +106,32 @@ impl SessionCommandService {
         Ok(commands)
     }
 
+    pub async fn authorize_playground_input(
+        &self,
+        caller: &Caller,
+        flags: &everruns_platform::FeatureFlags,
+        resolver: Arc<dyn everruns_core::PermissionResolver>,
+        session_id: SessionId,
+    ) -> Result<(), crate::domains::common::CommandError> {
+        let session = self
+            .db
+            .get_session(caller.org_id, session_id)
+            .await
+            .map_err(crate::domains::common::classify_anyhow)?
+            .ok_or_else(|| crate::domains::common::CommandError::not_found("Session"))?;
+        if let Some(subject) = session.playground_user_id {
+            let ctx = crate::domains::common::Ctx::minimal(
+                caller.clone(),
+                self.db.clone(),
+                None,
+                resolver,
+            )
+            .with_feature_flags(flags.clone());
+            crate::domains::sessions::playground::validate_subject(&ctx, Some(subject)).await?;
+        }
+        Ok(())
+    }
+
     pub async fn execute(
         &self,
         caller: &Caller,

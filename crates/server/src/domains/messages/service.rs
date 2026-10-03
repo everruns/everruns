@@ -157,6 +157,20 @@ impl MessageService {
         } else {
             None
         };
+        // Other ingress adapters cannot retarget a shared Playground session or
+        // bypass the source-specific command policy and feature gate.
+        if let Some(session) = self.db.get_session(ctx.org_id, session_id).await?
+            && let Some(subject) = session.playground_user_id
+            && (runtime_subject != Some(subject)
+                || ctx
+                    .event_metadata
+                    .as_ref()
+                    .and_then(|m| m.get("type"))
+                    .and_then(|v| v.as_str())
+                    != Some("playground"))
+        {
+            anyhow::bail!("Playground messages must use the authorised Playground command path");
+        }
         let responder = if let Some(id) = ctx.agent_id {
             let public = everruns_provider::typed_id::AgentId::from_uuid(id).to_string();
             let row = match self.db.get_agent_by_public_id(ctx.org_id, &public).await? {
@@ -198,6 +212,14 @@ impl MessageService {
             created_at: now,
         };
         let event_metadata = if let Some(principal_id) = ctx.runtime_subject_principal_id {
+            let display_name = match runtime_subject {
+                Some(id) => self
+                    .db
+                    .get_virtual_user(ctx.org_id, id)
+                    .await?
+                    .map(|v| v.name),
+                None => None,
+            };
             self.db
                 .ensure_active_user_session_participant(CreateSessionParticipantRow {
                     org_id: ctx.org_id,
@@ -206,7 +228,7 @@ impl MessageService {
                     agent_id: None,
                     agent_version_id: None,
                     principal_id,
-                    display_name: None,
+                    display_name,
                     role: SessionParticipantRole::Member,
                     joined_at: None,
                 })
@@ -743,6 +765,7 @@ mod tests {
         org_id: i64,
     ) -> crate::storage::models::SessionRow {
         db.create_session(crate::storage::models::CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id,

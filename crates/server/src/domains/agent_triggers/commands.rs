@@ -1275,6 +1275,7 @@ pub(super) async fn find_or_create_trigger_session(
     };
 
     let req = CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: Some(execution_context.harness_id),
