@@ -899,7 +899,9 @@ mod tests {
     #[test]
     fn project_session_output_returns_only_final_assistant_text() {
         use chrono::Utc;
+        use everruns_contracts::execution_phase::ExecutionPhase;
         use everruns_contracts::typed_id::{EventId, SessionId};
+        use everruns_core::ContentPart;
         use everruns_core::message::RuntimeMessage;
         use serde_json::json;
 

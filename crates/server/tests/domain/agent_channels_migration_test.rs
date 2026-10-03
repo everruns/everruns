@@ -28,8 +28,8 @@ use axum::{
 };
 use everruns_durable::InMemoryWorkflowEventStore;
 
-use everruns_platform::ChannelType;
 use everruns_contracts::typed_id::PrincipalId;
+use everruns_platform::ChannelType;
 use everruns_server::EventDelivery;
 use everruns_server::api;
 use everruns_server::domains::agent_channels::{hash_a2a_api_key, hash_channel_api_key};
@@ -1009,7 +1009,8 @@ async fn session_owned_by_another_principal_is_not_adopted() {
             &[tag],
         )
         .await
-        .expect("re
+        .expect("reuse lookup");
+
     assert!(
         found.is_none(),
         "a session owned by a different principal must not be adopted even when surface tags overlap"
@@ -1036,7 +1037,8 @@ async fn cross_org_reuse_fails() {
             &[tag],
         )
         .await
-        .expect("re
+        .expect("reuse lookup");
+
     assert!(
         found.is_none(),
         "a session in another org must not be adopted (TM-A2A-007)"
@@ -1089,7 +1091,8 @@ async fn cross_app_reuse_fails() {
             &[tag],
         )
         .await
-        .expect("re
+        .expect("reuse lookup");
+
     assert!(
         found.is_none(),
         "a session owned by a different app must not be adopted (TM-AUTHZ-009)"
@@ -1124,7 +1127,8 @@ async fn reuse_requires_containment_of_every_routing_tag() {
             &required,
         )
         .await
-        .expect("re
+        .expect("reuse lookup");
+
     assert!(
         found.is_none(),
         "reuse requires the candidate to contain every routing tag, not merely overlap"
@@ -1139,7 +1143,8 @@ async fn reuse_requires_containment_of_every_routing_tag() {
             &[endpoint_tag],
         )
         .await
-        .expect("re    assert!(
+        .expect("reuse lookup");
+    assert!(
         found.is_some(),
         "a candidate carrying a superset of the routing tags must still be adopted"
     );

@@ -172,6 +172,7 @@ pub fn hash_a2a_api_key(plaintext: &str) -> String {
 
 /// Hash a plaintext API channel execution key using SHA-256.
 pub fn hash_channel_api_key(plaintext: &str) -> String {
+    use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(plaintext.as_bytes()))
 }
 

@@ -304,6 +304,7 @@ async fn endpoint_version_pin_round_trips_and_unpins() {
 
 #[tokio::test]
 async fn endpoint_version_pin_rejects_invalid_selections() {
+    use everruns_platform::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let other_agent_id = seed_agent(&db).await;
@@ -358,6 +359,7 @@ async fn endpoint_version_pin_rejects_invalid_selections() {
 
 #[tokio::test]
 async fn endpoint_version_pin_requires_agent_versions_feature() {
+    use everruns_platform::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let version = seed_version(&db, &agent_id, true).await;
@@ -600,6 +602,7 @@ async fn live_channel_exposure_changes_require_dangerous_permission() {
 
 #[tokio::test]
 async fn draft_channel_edits_stay_available_to_managers() {
+    use everruns_core::OrgRole;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let member = role_ctxs(db)(OrgRole::Member);
