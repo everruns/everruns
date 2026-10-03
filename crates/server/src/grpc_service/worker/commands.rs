@@ -80,7 +80,13 @@ impl WorkerServiceImpl {
             }
         };
         let ctx = self.org_domain_ctx_for_caller(caller).await?;
-        let response = match crate::domains::common::dispatch(&req.name, params, &ctx).await {
+        let result = if req.runtime_view {
+            crate::services::runtime_command_view::dispatch_runtime_view(&req.name, params, &ctx)
+                .await
+        } else {
+            crate::domains::common::dispatch(&req.name, params, &ctx).await
+        };
+        let response = match result {
             Ok(ok_json) => ExecuteCommandResponse {
                 result: Some(proto::execute_command_response::Result::OkJson(
                     ok_json.into_bytes(),
@@ -325,6 +331,7 @@ pub(crate) mod test_support {
     ) -> serde_json::Value {
         let response = service
             .execute_command(Request::new(ExecuteCommandRequest {
+                runtime_view: false,
                 input_message_id: None,
                 platform_session_id: None,
 

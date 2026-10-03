@@ -1015,7 +1015,7 @@ jobs:
           # no credentials) and one of them was failing against committed code
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
-          cargo test -p everruns-contracts -p everruns-provider -p everruns-capability -p everruns-model-profiles --all-features
+          cargo test -p everruns-contracts --all-features
           cargo test -p everruns-engine -p everruns-builtins --all-features
           cargo test -p everruns-integrations-docker --all-features
           # The integration catalog is the one list naming every plugin-publishing
@@ -1026,6 +1026,11 @@ jobs:
           # were never added to the list and so never ran.
           cargo test -p everruns-platform --test background_execution_test \
             --test citation_pipeline_test --test prompt_budget --test subagent_test
+          # A separately resolved downstream host executes the stock subagent
+          # tools through a runtime-only PlatformStore and a real child turn.
+          CARGO_TARGET_DIR="$PWD/target" cargo test --locked \
+            --manifest-path crates/everruns/tests/fixtures/external-consumer/Cargo.toml \
+            -p external-platform-store
           # capability_boundary's dependency/narration invariants only hold
           # with `environment-capabilities` on: every hosted binary
           # (crates/server, crates/worker) enables it, and some hosted

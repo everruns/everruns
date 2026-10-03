@@ -104,6 +104,16 @@ if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum) (Agent|AgentVersion|Agent
   FAILED=1
 fi
 
+# Runtime hosted capabilities and their store also consume portable execution
+# views. Reject qualified record references, including test-only mocks: those
+# otherwise conceal a downstream implementation's dependency on hosted records.
+if matches=$(grep -rnE '(crate|everruns_platform)::((agent|harness|session)::)?(Agent|AgentStatus|Harness|HarnessStatus|Session|SessionStatus|SessionParticipant|SessionParticipantKind|SessionParticipantRole)([^[:alnum:]_]|$)' \
+  crates/platform/src/capabilities crates/platform/src/platform_store.rs crates/everruns/src/local/platform_store.rs --include='*.rs' 2>/dev/null); then
+  echo "Hosted capabilities and PlatformStore must use portable runtime views:"
+  echo "$matches"
+  FAILED=1
+fi
+
 # 2. Kernel crates: no everruns-platform edge of any kind.
 KERNEL_CRATES=(
   everruns-core

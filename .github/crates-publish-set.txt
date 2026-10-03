@@ -9,7 +9,6 @@ everruns-anthropic
 everruns-ard
 everruns-bedrock
 everruns-builtins
-everruns-capability
 everruns-cli
 everruns-cli-contract
 everruns-contracts
@@ -44,11 +43,9 @@ everruns-macros
 everruns-mai
 everruns-mcp
 everruns-meta
-everruns-model-profiles
 everruns-openai
 everruns-openrouter
 everruns-platform
-everruns-provider
 everruns-serve
 everruns-serve-agentcore
 everruns-serve-build

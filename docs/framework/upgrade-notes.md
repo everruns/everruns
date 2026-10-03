@@ -9,6 +9,25 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## Runtime store migration
+
+Custom hosts implementing `everruns_platform::PlatformStore` now return
+`everruns_core::AgentDefinition`, an inheritance-resolved
+`everruns_core::HarnessDefinition`, `everruns_core::ExecutionSession`, and
+`everruns_contracts::typed_id::SessionParticipantId`. Resolve authorization,
+record projection, harness inheritance, and lifecycle validation in the host
+adapter. The raw `get_harness_chain` method is removed.
+
+`PlatformStoreSubagentDelegate` remains available to attach this runtime store
+to a `ToolContext`; the stock `SubagentCapability` needs no host-specific override.
+`LocalPlatformStore` directly forwards its runner's portable session views.
+
+The deprecated provider, capability, and model-profile shims are removed after
+their final release. Depend on `everruns-contracts`; replace `everruns_provider::`
+with `everruns_contracts::`, `everruns_capability::` with
+`everruns_contracts::capability::`, and `everruns_model_profiles::` with
+`everruns_contracts::model_profiles::`.
+
 ## 0.18
 
 0.18 narrows `everruns-core` to the neutral execution kernel. Types that were persisted control-plane records, hosted service contracts, product composition or concrete integrations moved to the crate that owns them. The behaviour, the wire formats and the stored schema are unchanged, only the import paths.

@@ -15,13 +15,11 @@
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::PrincipalId;
+use everruns_contracts::typed_id::SessionParticipantId;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::session::ExecutionSession;
-use everruns_platform::Agent;
-use everruns_platform::Harness;
+use everruns_core::{AgentDefinition, HarnessDefinition};
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
-use everruns_platform::{Session, SessionParticipant};
 use std::sync::Arc;
 
 /// Drives real local sessions for the platform store. An embedder implements
@@ -124,14 +122,6 @@ impl LocalPlatformStore {
     pub fn new(runner: Arc<dyn LocalSessionRunner>) -> Self {
         Self { runner }
     }
-
-    /// Lift the runner's portable execution view into the stored platform
-    /// record the `PlatformStore` seam speaks (EVE-882). The local host has no
-    /// real session ownership catalog, so the record carries the fixed local
-    /// principal and neutral product defaults.
-    fn lift(&self, session: ExecutionSession) -> Session {
-        Session::from_execution_session(session, PrincipalId::from_seed(1))
-    }
 }
 
 #[async_trait]
@@ -141,26 +131,22 @@ impl PlatformStore for LocalPlatformStore {
     async fn create_session_with_options(
         &self,
         request: PlatformCreateSessionRequest,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         if request.blueprint_id.is_some() {
             return Err(unsupported("create_session(blueprint)"));
         }
-        Ok(self.lift(self.runner.create_session_with_options(request).await?))
+        self.runner.create_session_with_options(request).await
     }
 
-    async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
-        Ok(self
-            .runner
-            .get_session(id)
-            .await?
-            .map(|session| self.lift(session)))
+    async fn get_session_by_id(&self, id: SessionId) -> Result<Option<ExecutionSession>> {
+        self.runner.get_session(id).await
     }
 
     async fn add_agent_session_participant(
         &self,
         _session_id: SessionId,
         _agent_id: AgentId,
-    ) -> Result<SessionParticipant> {
+    ) -> Result<SessionParticipantId> {
         Err(unsupported("add_agent_session_participant"))
     }
 
@@ -191,10 +177,10 @@ impl PlatformStore for LocalPlatformStore {
 
     // ---- Platform-management-only: explicit unsupported ---------------------
 
-    async fn get_harness(&self, _id: HarnessId) -> Result<Option<Harness>> {
+    async fn get_harness(&self, _id: HarnessId) -> Result<Option<HarnessDefinition>> {
         Err(unsupported("get_harness"))
     }
-    async fn get_agent_by_id(&self, _id: AgentId) -> Result<Option<Agent>> {
+    async fn get_agent_by_id(&self, _id: AgentId) -> Result<Option<AgentDefinition>> {
         Err(unsupported("get_agent_by_id"))
     }
 }

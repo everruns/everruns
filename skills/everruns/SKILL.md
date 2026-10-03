@@ -72,13 +72,13 @@ must replace stores, filesystem factories, platform definitions, phase
 adapters, durable scheduling lifecycle, or worker topology:
 
 ```bash
-cargo add everruns everruns-host everruns-provider
+cargo add everruns everruns-host everruns-contracts
 ```
 
 ```rust
 use everruns::Provider;
 use everruns_host::{HostBackends, InProcessRuntimeBuilder};
-use everruns_provider::model_spec::ModelSpec;
+use everruns_contracts::model_spec::ModelSpec;
 # let _ = (HostBackends::in_memory, InProcessRuntimeBuilder::new);
 ```
 
