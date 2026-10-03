@@ -6,4 +6,7 @@ pub mod commands;
 pub mod queries;
 pub mod types;
 
+#[cfg(test)]
+mod policy_tests;
+
 pub use commands::*;

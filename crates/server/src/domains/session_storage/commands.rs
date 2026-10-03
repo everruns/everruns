@@ -33,6 +33,11 @@ impl Command for ListSessionStorage {
         Some("session_id")
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        // THREAT[TM-AUTHZ-023]: the list includes plaintext values.
+        Some(&crate::domains::sessions::SESSION_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<KeyValueInfo>, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
@@ -92,6 +97,11 @@ impl Command for ListSessionSecrets {
 
     fn positional_arg() -> Option<&'static str> {
         Some("session_id")
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        // THREAT[TM-AUTHZ-023]: names are credential metadata.
+        Some(&crate::domains::sessions::SESSION_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SecretInfo>, CommandError> {
