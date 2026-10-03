@@ -4,7 +4,7 @@
 # records.
 # Default features stay offline — the contained session filesystem is included,
 # while provider, shell, web, Lua, MCP, SQLx, server, and worker integrations
-# remain opt-in. Advanced hosts depend on `everruns-host` directly.
+# remain opt-in. Advanced hosts use `everruns-core::host` with the `host` feature.
 
 [package]
 name = "everruns"
@@ -88,7 +88,7 @@ lua = ["everruns-core/direct-egress", "dep:everruns-integrations-lua"]
 # that contains nothing; the contract types compile without it.
 host-compute = ["everruns-core/process"]
 mcp = ["everruns-core/mcp", "everruns-core/direct-egress"]
-# Enable local-process (stdio) MCP servers, mirroring `everruns-host/mcp-stdio`.
+# Enable local-process (stdio) MCP servers, using `everruns-core/mcp-stdio`.
 mcp-stdio = ["mcp", "everruns-core/mcp-stdio"]
 # Enable a crash-durable canonical event log, SQLite-backed session catalog and
 # task/schedule state, and real workspaces through `LocalConfig`. Conversation

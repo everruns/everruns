@@ -243,7 +243,7 @@ Token figures use the ~4-chars-per-token rule of thumb for JSON. 18 of the 19 to
 These numbers come from the `benchmark_prompt_size_reduction` test in `crates/core/src/builtins/tool_search.rs`, which also guards the reduction against regressions. Reproduce them with:
 
 ```bash
-cargo test -p everruns-builtins --lib benchmark_prompt_size_reduction -- --nocapture
+cargo test -p everruns-core --features builtins --lib benchmark_prompt_size_reduction -- --nocapture
 ```
 
 The trade-off is one extra `tool_search` round-trip per deferred tool before its first use; for many-tool agents the upfront token savings dominate.

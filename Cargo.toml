@@ -175,7 +175,7 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# OpenTelemetry (exporter deps are activated only by everruns-host's
+# OpenTelemetry (exporter deps are activated only by everruns-core's
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.33"
 opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
