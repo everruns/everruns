@@ -25,7 +25,7 @@ See `crates/platform/src/container_sandbox/client.rs` for the full API client im
 
 ### State Management
 
-Per-sandbox state (container ID, network ID, image, working directory) is stored in session-scoped secrets under `container_sandbox:{name}`. This ensures cross-session isolation, sessions cannot access each other's containers.
+Per-sandbox state (container ID, network ID, image, working directory) is stored in session-scoped secrets under `container_sandbox:{name}`. That prefix is reserved from the user-facing `secret_store`. Tools that act on a stored container or network ID re-inspect Docker labels (`managed-by=everruns`, `session=<current>`) before the operation, so a forged ID cannot redirect exec/file/manage calls to another container on a shared daemon.
 
 Leased resources track container lifecycle with 20-minute lease duration. The leased resource scheduler handles cleanup of abandoned containers.
 
@@ -68,10 +68,12 @@ See `crates/platform/src/container_sandbox/tools.rs` for full tool implementatio
 
 1. **Tool scoping**: container name derived from `ToolContext.session_id`, never user input
 2. **Per-sandbox Docker network**: `sandbox-{org}-{session}`, sole member = the sandbox
-3. **Label-filtered API calls**: all queries include `session` + `managed-by` labels
-4. **Per-org limits**: max concurrent sandboxes checked at create time via leased resources
-5. **Egress filtering**: block private IPs + cloud metadata from sandbox bridges
+3. **Label checks**: list filters plus per-op inspect of stored IDs for `session` + `managed-by`
+4. **Reserved state secrets**: `container_sandbox:` is not writable via user-facing `secret_store`
+5. **Per-org limits**: max concurrent sandboxes checked at create time via leased resources
 6. **Runtime isolation**: configurable (sysbox adds user-ns + procfs virtualization)
+
+Egress filtering (private IPs + cloud metadata) remains an operator network-layer responsibility; see TM-SANDBOX-003.
 
 ## Security
 

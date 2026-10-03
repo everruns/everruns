@@ -140,6 +140,17 @@ impl Capability for E2BCapability {
 mod tests {
     use super::*;
 
+    // Host reserves this prefix from secret_store but cannot import the
+    // constant (crate layering). Pin them so a rename cannot reopen forgery.
+    #[test]
+    fn the_e2b_sandbox_secret_prefix_is_reserved_from_session_storage() {
+        assert!(
+            everruns_platform::capabilities::is_internal_session_secret_name(&format!(
+                "{E2B_SANDBOX_SECRET_PREFIX}i-example"
+            ))
+        );
+    }
+
     #[test]
     fn capability_tools() {
         let cap = E2BCapability;

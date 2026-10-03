@@ -2,6 +2,14 @@
 
 ## 2026-10-03
 
+* **Sandbox secret forgery closed.** Capability-owned sandbox secret prefixes
+  (`container_sandbox:`, `daytona_sandbox:`, `e2b_sandbox:`, `deno_sandbox:`,
+  `sprites_sprite:`) are reserved from user-facing `secret_store`, and
+  container-sandbox tools re-inspect Docker `managed-by`/`session` labels
+  before every op that uses a stored ID (EVE-1151). See
+  [Container Sandbox](runtime-resources/container-sandbox.md) and
+  TM-SANDBOX-004.
+
 * **Time-annotation echo cleanup.** `message_metadata` also strips echoed
   `<facts>` blocks and whole-message degenerate `time <junk>` lines from
   assistant text, and ReasonAtom applies the same filters to `reason.item`
