@@ -1,8 +1,6 @@
 // In-memory budget storage
 
-use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::SessionId,
-};
+use crate::kernel_imports::{contracts::typed_id::AgentId, contracts::typed_id::SessionId};
 use anyhow::Result;
 use uuid::Uuid;
 

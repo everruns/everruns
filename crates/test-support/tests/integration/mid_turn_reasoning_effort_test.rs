@@ -11,13 +11,13 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use everruns_contracts::model::ReasoningEffort;
 use everruns_core::message::{ContentPart, RuntimeMessageRole};
 use everruns_core::message::{Controls, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{tool_context::ReasoningEffortHandle, tool_context::ToolContext};
 use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
-use everruns_provider::model::ReasoningEffort;
 use everruns_test_support::InMemoryAgenticLoop;
 
 /// A tool that, when invoked, sets the shared reasoning-effort handle to a new

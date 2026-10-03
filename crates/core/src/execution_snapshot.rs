@@ -344,7 +344,7 @@ mod tests {
         // `CapabilityRef` serializes to the persisted attachment shape, loads
         // back as `AgentCapabilityConfig` (the same type), and survives
         // snapshot projection (the worker resolution input) unchanged.
-        let framework_ref = everruns_capability::CapabilityRef::new("web_fetch")
+        let framework_ref = everruns_contracts::CapabilityRef::new("web_fetch")
             .config(serde_json::json!({"enable_file_download": true}));
         let persisted = serde_json::to_value(&framework_ref).unwrap();
         assert_eq!(

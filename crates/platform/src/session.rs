@@ -12,17 +12,17 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::tool_types::ToolDefinition;
+use everruns_contracts::typed_id::{
+    AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId, SessionParticipantId,
+    VirtualUserId, WorkspaceId,
+};
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::principal::PrincipalSummary;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
-use everruns_provider::tool_types::ToolDefinition;
-use everruns_provider::typed_id::{
-    AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId, SessionParticipantId,
-    VirtualUserId, WorkspaceId,
-};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -850,7 +850,7 @@ mod tests {
     #[test]
     fn lifted_execution_view_round_trips_through_the_stored_record() {
         let execution = ExecutionSession {
-            agent_id: Some(everruns_provider::typed_id::AgentId::from_seed(7)),
+            agent_id: Some(everruns_contracts::typed_id::AgentId::from_seed(7)),
             title: Some("Lifted".to_string()),
             tags: vec!["a".to_string()],
             status: SessionExecutionState::Idle,

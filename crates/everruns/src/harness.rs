@@ -3,11 +3,11 @@
 use std::fmt;
 use std::sync::Arc;
 
-use everruns_capability::serde::{Deserialize, Deserializer, Serialize, Serializer};
+use everruns_contracts::capability::serde::{Deserialize, Deserializer, Serialize, Serializer};
+use everruns_contracts::typed_id::HarnessId;
 use everruns_host::{
     ComputeCapabilities, ContainmentLevel, HarnessBuilder as RuntimeHarnessBuilder,
 };
-use everruns_provider::typed_id::HarnessId;
 
 use crate::session::{EnvironmentSessionBuilder, Session};
 use crate::{CapabilityRef, SessionEnvironmentError};
@@ -49,7 +49,7 @@ impl Harness {
     /// provisioned with.
     ///
     /// One definition, not a copy. Both this and `crates/server/src/harnesses/`
-    /// read `everruns_capability::generic_capabilities`, so an application
+    /// read `everruns_contracts::generic_capabilities`, so an application
     /// stops approximating the platform default with a builder chain that
     /// silently drifts from it (EVE-1041).
     ///
@@ -62,8 +62,8 @@ impl Harness {
     /// fatal, the same as any other reference to an unregistered capability,
     /// so this is usable from a facade built with a narrower feature set.
     pub fn generic() -> Self {
-        let mut builder = Harness::builder(everruns_capability::GENERIC_HARNESS_NAME);
-        for capability in everruns_capability::generic_capabilities() {
+        let mut builder = Harness::builder(everruns_contracts::capability::GENERIC_HARNESS_NAME);
+        for capability in everruns_contracts::generic_capabilities() {
             builder = builder.capability(capability);
         }
         builder
@@ -174,7 +174,7 @@ impl fmt::Debug for Harness {
 }
 
 #[derive(Serialize)]
-#[serde(crate = "everruns_capability::serde")]
+#[serde(crate = "everruns_contracts::capability::serde")]
 struct HarnessDefinitionRef<'a> {
     name: &'a str,
     required_capabilities: ComputeCapabilities,
@@ -184,7 +184,7 @@ struct HarnessDefinitionRef<'a> {
 }
 
 #[derive(Deserialize)]
-#[serde(crate = "everruns_capability::serde")]
+#[serde(crate = "everruns_contracts::capability::serde")]
 struct HarnessDefinitionValue {
     name: String,
     required_capabilities: ComputeCapabilities,
@@ -228,7 +228,7 @@ impl<'de> Deserialize<'de> for Harness {
         }
         builder
             .build()
-            .map_err(everruns_capability::serde::de::Error::custom)
+            .map_err(everruns_contracts::capability::serde::de::Error::custom)
     }
 }
 
@@ -274,7 +274,7 @@ impl HarnessBuilder {
         }
 
         let registry = crate::capability_config::framework_capability_registry(false);
-        let mut activated = everruns_capability::ActivationSet::new();
+        let mut activated = everruns_contracts::ActivationSet::new();
         let mut capabilities = Vec::with_capacity(self.capabilities.len());
         for capability in self.capabilities {
             capability
@@ -558,7 +558,7 @@ mod tests {
             .iter()
             .map(|capability| capability.capability_id())
             .collect();
-        let shared = everruns_capability::generic_capabilities();
+        let shared = everruns_contracts::generic_capabilities();
         assert_eq!(ids.len(), shared.len());
         for capability in &shared {
             assert!(
@@ -582,7 +582,7 @@ mod tests {
             .expect("web_fetch is part of generic");
         assert_eq!(
             web_fetch.config_value().get("enable_file_download"),
-            Some(&everruns_capability::serde_json::json!(true))
+            Some(&everruns_contracts::capability::serde_json::json!(true))
         );
     }
 

@@ -99,7 +99,7 @@ impl SessionService {
         agent_public_id: Option<AgentId>,
         app_internal_id: Option<Uuid>,
         agent_version_policy: AgentVersionPolicy,
-        agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+        agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
         // Internal id of the endpoint this ingress resolved, recorded as
         // `sessions.endpoint_id` so provenance names the door, not the bundle
         // (EVE-1004). `None` only where the caller genuinely has no endpoint
@@ -152,7 +152,7 @@ impl SessionService {
         trigger_internal_id: Option<Uuid>,
         // The trigger's own version selection (EVE-1139).
         agent_version_policy: AgentVersionPolicy,
-        agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+        agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
         source: SessionSource,
@@ -183,7 +183,7 @@ impl SessionService {
         agent_public_id: Option<AgentId>,
         agent_version_selection: Option<(
             AgentVersionPolicy,
-            Option<everruns_provider::typed_id::AgentVersionId>,
+            Option<everruns_contracts::typed_id::AgentVersionId>,
         )>,
         app_id: Option<Uuid>,
         // Endpoint whose ingress is creating this session (EVE-1004). Every
@@ -467,7 +467,7 @@ impl SessionService {
                 // the session report a workspace_id that 404s against the
                 // workspace API. Reject it with actionable guidance rather than
                 // silently misrendering.
-                if everruns_provider::typed_id::WorkspaceId::from_uuid(workspace.id).to_string()
+                if everruns_contracts::typed_id::WorkspaceId::from_uuid(workspace.id).to_string()
                     != workspace.public_id
                 {
                     return Err(BadRequestError::new(format!(

@@ -7,12 +7,12 @@
 
 #![allow(dead_code)] // Not all test binaries use every constant.
 
-use everruns_provider::credential_schema::assemble_credential_document;
-use everruns_provider::driver_registry::DriverDescriptor;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::driver_registry::ProviderConfig;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
+use everruns_contracts::credential_schema::assemble_credential_document;
+use everruns_contracts::driver_registry::DriverDescriptor;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::driver_registry::ProviderConfig;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
 use everruns_test_support::in_memory_loop::{InMemoryModelConfig, TurnResult};
 
 // ============================================================================
@@ -944,8 +944,8 @@ mod quota_detector_tests {
         LiveToolCallOutcome, assert_live_tool_call_contract, classify_live_tool_call,
         is_model_unavailable, is_quota_exhausted, is_transient_transport_error, live_retry_backoff,
     };
+    use everruns_contracts::typed_id::TurnId;
     use everruns_core::turn::TurnStopReason;
-    use everruns_provider::typed_id::TurnId;
     use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 
     /// Label for the synthetic retry/skip tests below. Deliberately not a real
@@ -954,10 +954,10 @@ mod quota_detector_tests {
     /// genuine quota skip of that model.
     /// Declares no environment variable, so the synthetic cell can never
     /// resolve a real credential however the environment is configured.
-    fn synthetic_descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
-        everruns_provider::driver_registry::DriverDescriptor {
-            credential_schema: everruns_provider::credential_schema::CredentialFormSchema::empty(),
-            ..everruns_provider::driver_registry::DriverDescriptor::chat_only(
+    fn synthetic_descriptor() -> everruns_contracts::driver_registry::DriverDescriptor {
+        everruns_contracts::driver_registry::DriverDescriptor {
+            credential_schema: everruns_contracts::credential_schema::CredentialFormSchema::empty(),
+            ..everruns_contracts::driver_registry::DriverDescriptor::chat_only(
                 super::DriverId::Anthropic,
                 |_| unreachable!("the synthetic cell never builds a driver"),
             )

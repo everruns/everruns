@@ -14,11 +14,11 @@
 
 use crate::grpc_adapters::GrpcAdapter;
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::{FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile};
 use everruns_internal_protocol::proto;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 
 /// The surface name carried into `require_org`'s error when this adapter has no

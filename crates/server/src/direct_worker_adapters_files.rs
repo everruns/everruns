@@ -7,9 +7,9 @@
 //! source-size ratchet.
 
 use super::direct_worker_adapters::{DirectWorkerAdapters, name_from_path, store_error};
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::{FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile};
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
 use uuid::Uuid;
 
 impl DirectWorkerAdapters {

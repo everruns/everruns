@@ -14,7 +14,7 @@
 // pooled keep-alive connection driven by another test's runtime could otherwise
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 #[cfg(any(feature = "cloudflare", feature = "vercel"))]
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     ChatDriver, DriverRegistry, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
     ProviderConfig, ServiceKind,
 };
@@ -22,7 +22,7 @@ use everruns_provider::driver_registry::{
 use futures::StreamExt;
 
 #[cfg(any(feature = "cloudflare", feature = "vercel"))]
-async fn drain_text(mut stream: everruns_provider::driver_registry::LlmResponseStream) -> String {
+async fn drain_text(mut stream: everruns_contracts::driver_registry::LlmResponseStream) -> String {
     let mut text = String::new();
     while let Some(event) = stream.next().await {
         match event.expect("stream item should not be a transport error") {
@@ -37,11 +37,11 @@ async fn drain_text(mut stream: everruns_provider::driver_registry::LlmResponseS
 #[cfg(feature = "cloudflare")]
 mod cloudflare {
     use super::*;
+    use everruns_contracts::DriverId;
     use everruns_drivers::cloudflare::{
         CLOUDFLARE_API_HOST, CloudflareAuth, CloudflareChatDriver, account_base_url, descriptor,
         provider, register_driver,
     };
-    use everruns_provider::DriverId;
     use wiremock::matchers::{header, header_exists, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -223,7 +223,7 @@ mod cloudflare {
             .create_chat_driver(
                 &ProviderConfig::new(DriverId::Cloudflare)
                     .with_api_key(
-                        everruns_provider::credential_schema::assemble_credential_document(
+                        everruns_contracts::credential_schema::assemble_credential_document(
                             &[
                                 ("api_key".to_string(), "cf-token".to_string()),
                                 ("account_id".to_string(), "acct123".to_string()),
@@ -242,7 +242,7 @@ mod cloudflare {
 
         let stream = driver
             .chat_completion_stream(
-                &everruns_provider::ProviderEndpoint::default(),
+                &everruns_contracts::ProviderEndpoint::default(),
                 vec![Message::text(MessageRole::User, "ping")],
                 &LlmCallConfig::new("openai/gpt-6-luna"),
             )
@@ -298,10 +298,10 @@ mod cloudflare {
 #[cfg(feature = "vercel")]
 mod vercel {
     use super::*;
+    use everruns_contracts::DriverId;
     use everruns_drivers::vercel::{
         VERCEL_AI_GATEWAY_DEFAULT_API_URL, VercelChatDriver, descriptor, provider, register_driver,
     };
-    use everruns_provider::DriverId;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -395,7 +395,7 @@ mod vercel {
 
         let stream = driver
             .chat_completion_stream(
-                &everruns_provider::ProviderEndpoint::default(),
+                &everruns_contracts::ProviderEndpoint::default(),
                 vec![Message::text(MessageRole::User, "ping")],
                 &LlmCallConfig::new("anthropic/claude-opus-5"),
             )

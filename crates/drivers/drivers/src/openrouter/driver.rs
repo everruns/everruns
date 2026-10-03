@@ -11,23 +11,23 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::TimeZone;
 
-use everruns_provider::OpenResponsesProtocolChatDriver;
-use everruns_provider::credential_schema::CredentialFormSchema;
-use everruns_provider::driver_helpers::fetch_models;
-use everruns_provider::driver_registry::{
+use everruns_contracts::OpenResponsesProtocolChatDriver;
+use everruns_contracts::credential_schema::CredentialFormSchema;
+use everruns_contracts::driver_helpers::fetch_models;
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmResponse, LlmResponseStream, Message,
 };
-use everruns_provider::error::Result;
-use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
-use everruns_provider::{BearerAuth, Provider, ProviderEndpoint};
+use everruns_contracts::error::Result;
+use everruns_contracts::openai_protocol::{models_url_for_api_url, url_host_eq};
+use everruns_contracts::{BearerAuth, Provider, ProviderEndpoint};
 
 use crate::openrouter::request_ext::OpenRouterRequestExtension;
 use crate::openrouter::types::OpenRouterModelsResponse;
 
 /// Ready-to-use OpenRouter provider assembly.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> Provider {
     Provider::new(id, OpenRouterChatDriver::new())
@@ -57,16 +57,16 @@ impl OpenRouterChatDriver {
     /// Configure retries for `429` and transient `5xx` responses.
     ///
     /// Retry time counts against any timeout the caller wraps around the call;
-    /// pass [`everruns_provider::LlmRetryConfig::no_retry`] to own retries in the host.
+    /// pass [`everruns_contracts::LlmRetryConfig::no_retry`] to own retries in the host.
     ///
     /// ```
-    /// use everruns_provider::LlmRetryConfig;
+    /// use everruns_contracts::LlmRetryConfig;
     /// use everruns_drivers::openrouter::OpenRouterChatDriver;
     ///
     /// let driver = OpenRouterChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
     /// # let _ = driver;
     /// ```
-    pub fn with_retry_config(mut self, config: everruns_provider::LlmRetryConfig) -> Self {
+    pub fn with_retry_config(mut self, config: everruns_contracts::LlmRetryConfig) -> Self {
         self.inner = self.inner.with_retry_config(config);
         self
     }
@@ -95,7 +95,7 @@ impl ChatDriver for OpenRouterChatDriver {
 
     async fn chat_completion_non_streaming(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
@@ -192,7 +192,7 @@ fn is_openrouter_api_url(api_url: &str) -> bool {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_provider::DriverRegistry;
+/// use everruns_contracts::DriverRegistry;
 /// use everruns_drivers::openrouter::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
@@ -212,7 +212,7 @@ pub fn descriptor() -> DriverDescriptor {
         // OpenRouter supports a one-click PKCE flow that hands back a
         // user-controlled API key, so an admin can connect without minting and
         // pasting a key manually. The key is stored like any other credential.
-        oauth: Some(everruns_provider::DriverOAuthConfig::openrouter()),
+        oauth: Some(everruns_contracts::DriverOAuthConfig::openrouter()),
         ..DriverDescriptor::chat_only(DriverId::OpenRouter, |config| {
             Provider::new(config.provider.clone(), OpenRouterChatDriver::new())
                 .base_url(
@@ -237,12 +237,12 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for OpenRouterChatDriver {
@@ -254,8 +254,8 @@ impl Default for OpenRouterChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{DriverId, ProviderConfig, ServiceKind};
-    use everruns_provider::error::{BillingPressureReason, LlmErrorKind};
+    use everruns_contracts::driver_registry::{DriverId, ProviderConfig, ServiceKind};
+    use everruns_contracts::error::{BillingPressureReason, LlmErrorKind};
 
     fn base_config(model: &str) -> LlmCallConfig {
         LlmCallConfig::new(model)
@@ -263,7 +263,7 @@ mod tests {
 
     #[tokio::test]
     async fn direct_and_registered_providers_send_complete_authenticated_requests() {
-        use everruns_provider::driver_registry::MessageRole;
+        use everruns_contracts::driver_registry::MessageRole;
         use serde_json::{Value, json};
         use wiremock::matchers::{header, method, path, query_param};
         use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -352,7 +352,7 @@ mod tests {
 
     #[tokio::test]
     async fn billing_pressure_402_reaches_consumers_with_reason_and_retry_after() {
-        use everruns_provider::driver_registry::MessageRole;
+        use everruns_contracts::driver_registry::MessageRole;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -418,7 +418,7 @@ mod tests {
 
     #[tokio::test]
     async fn discovery_preserves_the_approved_origin_before_resolving_credentials() {
-        use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+        use everruns_contracts::runtime_provider::{ProviderAuth, ProviderAuthRequest};
         struct Probe(&'static str);
         #[async_trait]
         impl ProviderAuth for Probe {
@@ -431,7 +431,7 @@ mod tests {
                     request.url, self.0,
                     "discovery must keep credentials on the approved origin"
                 );
-                Err(everruns_provider::error::AgentLoopError::config(
+                Err(everruns_contracts::error::AgentLoopError::config(
                     "probe stops before network",
                 ))
             }
@@ -501,7 +501,7 @@ mod tests {
             .expect("OpenRouter declares an OAuth connect flow");
         assert_eq!(
             oauth.flow,
-            everruns_provider::DriverOAuthFlow::OpenRouterPkce
+            everruns_contracts::DriverOAuthFlow::OpenRouterPkce
         );
         assert_eq!(oauth.authorize_url, "https://openrouter.ai/auth");
         assert_eq!(oauth.token_url, "https://openrouter.ai/api/v1/auth/keys");

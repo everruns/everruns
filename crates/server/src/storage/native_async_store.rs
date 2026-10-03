@@ -2,13 +2,13 @@
 
 use super::EncryptionService;
 use async_trait::async_trait;
+use everruns_contracts::{
+    error::{AgentLoopError, Result},
+    native_async::NativeAsyncCheckpoint,
+};
 use everruns_core::native_async_store::{
     MAX_NATIVE_ASYNC_CHECKPOINT_BYTES, NATIVE_ASYNC_LEASE_SECONDS, NativeAsyncLease,
     NativeAsyncStore,
-};
-use everruns_provider::{
-    error::{AgentLoopError, Result},
-    native_async::NativeAsyncCheckpoint,
 };
 use sqlx::PgPool;
 use std::sync::Arc;

@@ -273,7 +273,7 @@ mod tests {
     use super::*;
     use crate::driver_registry::{LlmContentPart, MessageContent, MessageRole};
     use crate::message::TextContentPart;
-    use everruns_provider::model::ReasoningEffort;
+    use everruns_contracts::model::ReasoningEffort;
 
     #[test]
     fn test_resolved_parallel_tool_calls_gating() {
@@ -557,8 +557,8 @@ mod tests {
 
     #[test]
     fn adapters_preserve_native_reasoning_without_flattening_replay_secrets() {
-        use everruns_provider::execution_phase::ExecutionPhase;
-        use everruns_provider::reasoning::ReasoningContentPart;
+        use everruns_contracts::execution_phase::ExecutionPhase;
+        use everruns_contracts::reasoning::ReasoningContentPart;
         let calls = vec![ToolCall {
             id: "call_1".into(),
             name: "lookup".into(),

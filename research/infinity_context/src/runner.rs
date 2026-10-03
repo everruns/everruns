@@ -14,9 +14,9 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::Capability;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -440,7 +440,7 @@ async fn execute_with_agentic_loop(
             .system_prompt(build_system_prompt(config.approach))
             .model((
                 model,
-                everruns_provider::driver_registry::ProviderConfig::new(provider_type.clone())
+                everruns_contracts::driver_registry::ProviderConfig::new(provider_type.clone())
                     .with_api_key(api_key.clone()),
             ))
             .driver_registry(create_driver_registry())

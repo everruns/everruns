@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use everruns_provider::typed_id::PrincipalId;
+use everruns_contracts::typed_id::PrincipalId;
 use everruns_server::storage::models::CreateSessionRow;
 
 /// Every field at its inert value: no agent, no ingress, no workspace, no

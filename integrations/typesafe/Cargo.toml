@@ -25,12 +25,10 @@ keywords = ["everruns", "typesafe", "agents", "classification", "llm"]
 categories = ["api-bindings", "development-tools"]
 
 [dependencies]
-everruns-capability = { workspace = true, features = ["definition"] }
+everruns-contracts = { workspace = true, default-features = false, features = ["definition"] }
 everruns-core.workspace = true
-everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
-everruns-platform = { workspace = true, optional = true }
 inventory = { workspace = true, optional = true }
 
 async-trait.workspace = true
@@ -43,7 +41,7 @@ tracing.workspace = true
 
 [features]
 default = ["hosted"]
-hosted = ["dep:everruns-platform", "dep:inventory"]
+hosted = ["dep:inventory"]
 # Gate real-API tests; CI passes these with the matching credential set.
 integration = []
 live-tests = []

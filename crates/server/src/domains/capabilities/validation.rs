@@ -11,8 +11,8 @@
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
 use anyhow::Result;
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
-use everruns_capability::{is_plugin_capability, parse_plugin_capability_id};
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::{is_plugin_capability, parse_plugin_capability_id};
 use everruns_core::capabilities::{
     CapabilityRegistry, declarative_capability_id, is_declarative_capability, is_skill_capability,
     parse_declarative_capability_id, parse_skill_capability_id,
@@ -99,7 +99,7 @@ pub async fn validate_capability_refs(
         // and JSON-object config boundary the Framework enforces at agent
         // build time, so invalid IDs and non-object configs fail identically
         // on product write paths.
-        if let Err(error) = everruns_capability::validate_capability_id(cap_id) {
+        if let Err(error) = everruns_contracts::validate_capability_id(cap_id) {
             return Err(BadRequestError::new(format!(
                 "Invalid capability reference '{cap_id}': {}",
                 error.reason()
@@ -107,7 +107,7 @@ pub async fn validate_capability_refs(
             .into());
         }
         if let Err(error) =
-            everruns_capability::validate_capability_config(cap_id, cap.config_value())
+            everruns_contracts::validate_capability_config(cap_id, cap.config_value())
         {
             return Err(BadRequestError::new(format!(
                 "Invalid capability config for '{cap_id}': {}",
@@ -229,9 +229,9 @@ mod tests {
     use crate::storage::models::{
         CreateDeclarativeCapabilityRow, CreateMcpServerRow, CreatePluginInstallRow, CreateSkillRow,
     };
-    use everruns_capability::plugin_capability_id;
+    use everruns_contracts::plugin_capability_id;
+    use everruns_contracts::typed_id::PluginInstallId;
     use everruns_core::DEFAULT_ORG_ID;
-    use everruns_provider::typed_id::PluginInstallId;
     use std::sync::Arc;
     use uuid::Uuid;
 
@@ -281,7 +281,7 @@ mod tests {
             "vendor/custom",
             "__everruns_private",
         ] {
-            let framework_reason = everruns_capability::validate_capability_id(id)
+            let framework_reason = everruns_contracts::validate_capability_id(id)
                 .unwrap_err()
                 .reason();
             let err =
@@ -336,7 +336,7 @@ mod tests {
         db.create_declarative_capability(
             DEFAULT_ORG_ID,
             CreateDeclarativeCapabilityRow {
-                public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new().to_string(),
+                public_id: everruns_contracts::typed_id::DeclarativeCapabilityId::new().to_string(),
                 name: "research_pack".to_string(),
                 display_name: Some("Research Pack".to_string()),
                 description: "Research defaults".to_string(),

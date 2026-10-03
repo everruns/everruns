@@ -1,7 +1,7 @@
 use super::*;
 use crate::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
-use everruns_provider::error::Result as StoreResult;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::error::Result as StoreResult;
+use everruns_contracts::typed_id::SessionId;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -495,7 +495,7 @@ fn native_tools_request_a_native_adapter_unless_turned_off() {
     assert_eq!(options.len(), 1);
     let options: std::collections::HashMap<_, _> = options.into_iter().collect();
     let native =
-        everruns_provider::native_computer::NativeComputerUse::from_driver_options(&options)
+        everruns_contracts::native_computer::NativeComputerUse::from_driver_options(&options)
             .expect("option parses");
     assert_eq!(native.display_width, 1024);
     assert_eq!(native.display_height, DEFAULT_DISPLAY_HEIGHT);

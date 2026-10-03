@@ -16,16 +16,16 @@ use async_trait::async_trait;
 use chrono::TimeZone;
 use serde::Deserialize;
 
-use everruns_provider::OpenResponsesProtocolChatDriver;
-use everruns_provider::credential_schema::CredentialFormSchema;
-use everruns_provider::driver_helpers::fetch_models;
-use everruns_provider::driver_registry::{
+use everruns_contracts::OpenResponsesProtocolChatDriver;
+use everruns_contracts::credential_schema::CredentialFormSchema;
+use everruns_contracts::driver_helpers::fetch_models;
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmResponse, LlmResponseStream, Message,
 };
-use everruns_provider::error::Result;
-use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
-use everruns_provider::{BearerAuth, Provider, ProviderEndpoint};
+use everruns_contracts::error::Result;
+use everruns_contracts::openai_protocol::{models_url_for_api_url, url_host_eq};
+use everruns_contracts::{BearerAuth, Provider, ProviderEndpoint};
 
 /// Vercel AI Gateway base URL.
 pub const VERCEL_AI_GATEWAY_DEFAULT_API_URL: &str = "https://ai-gateway.vercel.sh/v1";
@@ -38,7 +38,7 @@ pub const VERCEL_AI_GATEWAY_HOST: &str = "ai-gateway.vercel.sh";
 /// `api_key` is an AI Gateway API key or a Vercel OIDC token; the gateway
 /// accepts either in the same bearer header.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> Provider {
     Provider::new(id, VercelChatDriver::new())
@@ -231,12 +231,12 @@ pub fn descriptor() -> DriverDescriptor {
 /// # Example
 ///
 /// ```
-/// use everruns_provider::DriverRegistry;
+/// use everruns_contracts::DriverRegistry;
 /// use everruns_drivers::vercel::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
-/// assert!(registry.has_driver(&everruns_provider::DriverId::Vercel));
+/// assert!(registry.has_driver(&everruns_contracts::DriverId::Vercel));
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(descriptor());
@@ -247,10 +247,10 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }

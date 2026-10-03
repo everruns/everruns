@@ -8,14 +8,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result as CoreResult};
+use everruns_contracts::tool_types::ToolResultImage;
+use everruns_contracts::typed_id::{EventId, MessageId, SessionId};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventData, EventRequest, OutputMessageCompletedData};
 use everruns_core::message::{ContentPart, RuntimeMessage};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::message_retriever::{MessageHistory, MessageRetriever};
-use everruns_provider::error::{AgentLoopError, Result as CoreResult};
-use everruns_provider::tool_types::ToolResultImage;
-use everruns_provider::typed_id::{EventId, MessageId, SessionId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -1506,10 +1506,10 @@ fn parse_structured_tool_result_text(text: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::typed_id::{HarnessId, TurnId};
     use everruns_core::events::{
         EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData,
     };
-    use everruns_provider::typed_id::{HarnessId, TurnId};
 
     #[cfg(unix)]
     #[tokio::test]

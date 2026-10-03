@@ -8,7 +8,7 @@
 use crate::session_row_fixture::base_session_row;
 use crate::test_harness;
 use axum::http::StatusCode;
-use everruns_provider::typed_id::{PrincipalId, SessionId};
+use everruns_contracts::typed_id::{PrincipalId, SessionId};
 use everruns_server::storage::models::{
     CreateOrganizationRow, CreatePrincipalRow, CreateSessionRow, UpsertLeasedResourceRow,
 };

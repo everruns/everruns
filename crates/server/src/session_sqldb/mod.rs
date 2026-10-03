@@ -8,7 +8,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_provider::typed_id::SessionId;
+//! use everruns_contracts::typed_id::SessionId;
 //! use everruns_server::session_sqldb::InMemorySqlDbBackend;
 //!
 //! let backend = InMemorySqlDbBackend::new();

@@ -109,11 +109,13 @@ pub use events::{
     MAX_EVENT_HISTORY_REPLAY, MAX_EVENT_PAGE_SIZE, MAX_JSONL_RECOVERY_BYTES,
     MAX_JSONL_RECOVERY_EVENTS, NoopEventSink,
 };
+pub use everruns_contracts::error::{
+    AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind,
+};
+pub use everruns_contracts::typed_id::WorkspaceId;
 pub use everruns_core::AssembledTurnContext;
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use everruns_core::turn::TurnStopReason;
-pub use everruns_provider::error::{AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind};
-pub use everruns_provider::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 pub use extensions::{HostToolAugmentor, SubagentDelegateFactory, ToolContextExtensionsFactory};
 pub(crate) use file_store_decorators::apply_workspace_policy;

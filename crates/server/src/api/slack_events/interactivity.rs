@@ -210,7 +210,7 @@ async fn handle_block_action(
     // Resolve it org-scoped before anything is written.
     let Ok(session_id) = binding
         .session_id
-        .parse::<everruns_provider::typed_id::SessionId>()
+        .parse::<everruns_contracts::typed_id::SessionId>()
     else {
         tracing::warn!(app_id = %app_id, "Slack approval click named an unparseable session");
         return Ok(ack());
@@ -365,7 +365,7 @@ async fn respond_ephemeral(payload: &InteractionPayload, text: &str) {
 async fn post_decision_message(
     state: &SlackState,
     app: &IngressContext,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     org_id: i64,
     clicker: &str,
     slack_config: &SlackChannelConfig,

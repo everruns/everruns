@@ -12,7 +12,7 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
-use everruns_provider::typed_id::FileId;
+use everruns_contracts::typed_id::FileId;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};

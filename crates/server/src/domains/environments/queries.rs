@@ -7,8 +7,8 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use everruns_contracts::typed_id::{AgentId, SessionId};
 use everruns_core::merge_capabilities;
-use everruns_provider::typed_id::{AgentId, SessionId};
 
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::org_init;
@@ -21,7 +21,7 @@ use crate::storage::StorageBackend;
 pub async fn effective_session_capabilities(
     db: &Arc<StorageBackend>,
     session_id: SessionId,
-) -> anyhow::Result<Option<Vec<everruns_capability::CapabilityRef>>> {
+) -> anyhow::Result<Option<Vec<everruns_contracts::CapabilityRef>>> {
     let Some(org_id) = db
         .get_session_organization_id(session_id)
         .await
@@ -54,7 +54,7 @@ pub async fn effective_session_capabilities(
         Some(agent_id) => agent_capabilities(db, agent_id).await?,
         None => Vec::new(),
     };
-    let session_capabilities: Vec<everruns_capability::CapabilityRef> =
+    let session_capabilities: Vec<everruns_contracts::CapabilityRef> =
         serde_json::from_value(session_row.capabilities)
             .context("failed to parse session capabilities")?;
 
@@ -75,14 +75,14 @@ pub async fn effective_session_capabilities(
 async fn agent_capabilities(
     db: &Arc<StorageBackend>,
     agent_id: AgentId,
-) -> anyhow::Result<Vec<everruns_capability::CapabilityRef>> {
+) -> anyhow::Result<Vec<everruns_contracts::CapabilityRef>> {
     db.get_agent_capabilities(agent_id.uuid())
         .await
         .context("failed to load agent capabilities")
         .map(|rows| {
             rows.into_iter()
                 .map(|row| {
-                    everruns_capability::CapabilityRef::with_config(row.capability_id, row.config)
+                    everruns_contracts::CapabilityRef::with_config(row.capability_id, row.config)
                 })
                 .collect()
         })

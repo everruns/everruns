@@ -2,8 +2,8 @@
 
 use crate::kernel_imports::{
     EgressRequest, EgressRequestKind, EgressResponse, EgressService,
-    everruns_provider::url_validation::validate_safe_url,
-    everruns_provider::url_validation::validate_url_dns_pinned,
+    contracts::url_validation::validate_safe_url,
+    contracts::url_validation::validate_url_dns_pinned,
 };
 use async_trait::async_trait;
 use axum::http::StatusCode;

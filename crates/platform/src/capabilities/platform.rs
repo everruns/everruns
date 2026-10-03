@@ -8,6 +8,7 @@
 //! owner lacks.
 
 use async_trait::async_trait;
+use everruns_contracts::tool_types::{DeferrablePolicy, ToolHints};
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountPoint, RiskLevel,
     SystemPromptContext,
@@ -16,7 +17,6 @@ use everruns_core::capabilities::{
 use everruns_core::capability_types::{MountAccess, MountSource};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
-use everruns_provider::tool_types::{DeferrablePolicy, ToolHints};
 use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";
@@ -165,7 +165,7 @@ impl Capability for PlatformCapability {
     fn tool_definitions_with_config(
         &self,
         config: &Value,
-    ) -> Vec<everruns_provider::tool_types::ToolDefinition> {
+    ) -> Vec<everruns_contracts::tool_types::ToolDefinition> {
         self.tools_with_config(config)
             .iter()
             .map(|tool| tool.to_definition())
@@ -249,7 +249,7 @@ impl PlatformCommandTool {
 impl Tool for PlatformCommandTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_provider::tool_types::ToolCall,
+        _tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -471,7 +471,7 @@ fn script_input_schema(commands_description: &str) -> Value {
 mod tests {
     use super::*;
     use crate::platform_store::tests::MockPlatformStore;
-    use everruns_provider::typed_id::SessionId;
+    use everruns_contracts::typed_id::SessionId;
     use std::sync::Arc;
 
     #[test]
@@ -495,8 +495,8 @@ mod tests {
 
     #[test]
     fn tools_own_phase_aware_human_narration() {
+        use everruns_contracts::tool_types::ToolCall;
         use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-        use everruns_provider::tool_types::ToolCall;
 
         let cases = [
             (
@@ -638,7 +638,7 @@ mod shell_surface_tests {
     #[tokio::test]
     async fn the_shell_surface_drops_the_scripted_tool_prose() {
         let ctx =
-            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
         let shell = PlatformCapability
             .system_prompt_contribution_with_config(&ctx, &json!({ "surface": "shell" }))
             .await

@@ -13,7 +13,7 @@
 //!
 //! ```
 //! use everruns_drivers::gemini::register_driver;
-//! use everruns_provider::DriverRegistry;
+//! use everruns_contracts::DriverRegistry;
 //!
 //! let mut registry = DriverRegistry::new();
 //! register_driver(&mut registry);
@@ -24,4 +24,4 @@ mod driver;
 pub use driver::{GeminiChatDriver, descriptor, from_env, provider, register_driver};
 
 // Re-export core types for convenience
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};

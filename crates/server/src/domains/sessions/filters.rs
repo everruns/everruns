@@ -7,7 +7,7 @@ pub struct SessionFilterArgs {
     /// Agent's prefixed public identifier.
     pub agent_id: Option<AgentId>,
     /// Fixed Playground end-user identity.
-    pub playground_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+    pub playground_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     /// Return only archived sessions.
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub archived_only: Option<bool>,

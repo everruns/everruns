@@ -15,7 +15,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     // facade read the same list from `everruns-capability`, so the two cannot
     // drift; `shared_generic_capabilities_are_the_platform_ones` fails if
     // anyone re-hardcodes it here.
-    .with_capabilities(everruns_capability::generic_capabilities())
+    .with_capabilities(everruns_contracts::generic_capabilities())
 }
 
 const SYSTEM_PROMPT: &str = "\

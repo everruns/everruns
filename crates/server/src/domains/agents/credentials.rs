@@ -1,5 +1,5 @@
 use crate::domains::common::{Command, CommandError, CommandMeta, Ctx, classify_anyhow};
-use crate::kernel_imports::{CapabilityId, everruns_provider::typed_id::AgentId};
+use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
 use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use everruns_mcp::McpCapabilityIdExt;
 use serde::{Deserialize, Serialize};

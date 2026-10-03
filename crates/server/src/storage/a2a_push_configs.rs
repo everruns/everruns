@@ -2,7 +2,7 @@
 //! `knowledge/integrations/a2a-channel.md`.
 
 use chrono::{DateTime, Utc};
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use sqlx::FromRow;
 use uuid::Uuid;
 

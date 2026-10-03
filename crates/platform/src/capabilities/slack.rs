@@ -234,7 +234,7 @@ pub struct SlackAddReactionTool;
 impl Tool for SlackAddReactionTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -338,7 +338,7 @@ pub struct SlackUpdateMessageTool;
 impl Tool for SlackUpdateMessageTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_provider::tool_types::ToolCall,
+        _tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -439,7 +439,7 @@ pub struct SlackLookupUserTool;
 impl Tool for SlackLookupUserTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -526,7 +526,7 @@ pub struct SlackUploadFileTool;
 impl Tool for SlackUploadFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -644,7 +644,7 @@ impl Tool for SlackUploadFileTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::typed_id::SessionId;
+    use everruns_contracts::typed_id::SessionId;
     use std::sync::Arc;
     use std::sync::Mutex;
 

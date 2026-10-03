@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::storage::{EnvironmentRecord, PgSandboxCheckpointStore};
+use everruns_contracts::typed_id::SessionId;
 use everruns_platform::ResolvedEnvironmentProfile;
-use everruns_provider::typed_id::SessionId;
 
 impl StorageBackend {
     /// Pin the resolved profile exactly once for the lifetime of a Session.

@@ -18,16 +18,16 @@ use everruns_host::HostComposition;
 use everruns_llmsim::LlmSimRuntimeExt;
 use std::sync::Arc;
 
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::tool_types::ToolCall;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_llmsim::LlmSimConfig;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::tool_types::ToolCall;
 use tempfile::TempDir;
 
 #[tokio::main]
@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .harness(everruns_host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new(
+                capabilities: vec![everruns_contracts::CapabilityRef::new(
                     "session_file_system",
                 )],
                 ..HarnessDefinition::new("files", "Use the file_system tools.")
@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .session(ExecutionSession {
             id: session_id,
-            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
+            workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),

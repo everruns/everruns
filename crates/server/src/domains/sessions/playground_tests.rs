@@ -59,7 +59,7 @@ async fn playground_is_flag_gated_and_defaults_to_the_operator() {
     assert!(error.to_string().contains("playground"));
     ctx.feature_flags.playground = true;
     let mut inherited = req.clone();
-    inherited.budget_root_session_id = Some(everruns_provider::typed_id::SessionId::new());
+    inherited.budget_root_session_id = Some(everruns_contracts::typed_id::SessionId::new());
     assert!(CreateSession(inherited).run(&ctx).await.is_err());
     let session = CreateSession(req).run(&ctx).await.unwrap();
     assert_eq!(
@@ -101,13 +101,13 @@ async fn another_subject_requires_admin_and_must_be_active_in_org() {
     assert!(
         validate_subject(
             &ctx,
-            Some(everruns_provider::typed_id::VirtualUserId::new())
+            Some(everruns_contracts::typed_id::VirtualUserId::new())
         )
         .await
         .is_err()
     );
     for (org_id, usage) in [(ctx.org_id(), "service"), (ctx.org_id() + 1, "end_user")] {
-        let id = everruns_provider::typed_id::VirtualUserId::new();
+        let id = everruns_contracts::typed_id::VirtualUserId::new();
         ctx.db
             .create_virtual_user(crate::storage::models::CreateVirtualUserRow {
                 org_id,
@@ -153,7 +153,7 @@ async fn playground_is_shared_and_subject_filter_is_server_side() {
     let page = ListSessions {
         filters: SessionFilterArgs {
             source: Some("playground".into()),
-            playground_user_id: Some(everruns_provider::typed_id::VirtualUserId::new()),
+            playground_user_id: Some(everruns_contracts::typed_id::VirtualUserId::new()),
             ..Default::default()
         },
         ..Default::default()
@@ -188,25 +188,25 @@ impl everruns_worker::AgentRunner for NoopRunner {
     async fn start_run(
         &self,
         _: i64,
-        _: everruns_provider::typed_id::SessionId,
-        _: everruns_provider::typed_id::HarnessId,
-        _: Option<everruns_provider::typed_id::AgentId>,
-        _: everruns_provider::typed_id::MessageId,
+        _: everruns_contracts::typed_id::SessionId,
+        _: everruns_contracts::typed_id::HarnessId,
+        _: Option<everruns_contracts::typed_id::AgentId>,
+        _: everruns_contracts::typed_id::MessageId,
         _: Option<String>,
     ) -> anyhow::Result<()> {
         Ok(())
     }
     async fn resume_after_tool_results(
         &self,
-        _: everruns_provider::typed_id::SessionId,
+        _: everruns_contracts::typed_id::SessionId,
         _: Uuid,
     ) -> anyhow::Result<()> {
         Ok(())
     }
-    async fn cancel_run(&self, _: everruns_provider::typed_id::SessionId) -> anyhow::Result<()> {
+    async fn cancel_run(&self, _: everruns_contracts::typed_id::SessionId) -> anyhow::Result<()> {
         Ok(())
     }
-    async fn is_running(&self, _: everruns_provider::typed_id::SessionId) -> bool {
+    async fn is_running(&self, _: everruns_contracts::typed_id::SessionId) -> bool {
         false
     }
     async fn active_count(&self) -> usize {

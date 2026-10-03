@@ -165,7 +165,7 @@ pub struct ServerContext {
     pub event_delivery: crate::event_delivery::EventDelivery,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn AgentRunner>,
-    pub driver_registry: Arc<everruns_provider::driver_registry::DriverRegistry>,
+    pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
     pub host_composition: Arc<HostComposition>,
     /// System-wide email sender from the platform profile.
     pub email_sender: Arc<dyn everruns_platform::email::EmailSender>,
@@ -237,7 +237,7 @@ pub struct ServerAppBuilder {
     auth_factory: Option<AuthFactoryFn>,
     host_composition: Option<HostComposition>,
     built_in_harnesses: Option<Vec<everruns_platform::BuiltInHarnessDefinition>>,
-    connector_registry: Option<everruns_platform::connector::ConnectorRegistry>,
+    connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
     email_sender: Option<Arc<dyn everruns_platform::email::EmailSender>>,
     slack_app_provisioner:
         Option<Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>>,
@@ -318,7 +318,7 @@ impl ServerAppBuilder {
     /// not part of the shared `HostComposition` runtime surface.
     pub fn connector_registry(
         mut self,
-        registry: everruns_platform::connector::ConnectorRegistry,
+        registry: everruns_contracts::connector::ConnectorRegistry,
     ) -> Self {
         self.connector_registry = Some(registry);
         self
@@ -532,7 +532,7 @@ impl ServerAppBuilder {
         );
 
         let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> =
+        let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =
             Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));
         tracing::info!("Session SQL database store initialized (in-memory)");
 

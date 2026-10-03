@@ -25,11 +25,11 @@ use crate::result::extract_json_from_response;
 use crate::transport::{McpConnection, McpEndpoint, McpTransport};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use everruns_contracts::url_validation::validate_url_dns_pinned;
 use everruns_core::{
     EgressRequest, EgressRequestKind, EgressService, McpProtocolMode, McpToolCallResponse,
     McpToolCallResult, McpToolDefinition, McpToolsListResponse, normalize_mcp_error_code,
 };
-use everruns_provider::url_validation::validate_url_dns_pinned;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};

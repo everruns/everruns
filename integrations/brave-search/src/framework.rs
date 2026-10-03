@@ -1,6 +1,6 @@
 //! Application-owned Brave credentials and the Framework capability adapter.
 
-use everruns_capability::{
+use everruns_contracts::capability::{
     CapabilitySpec, IntoCapability,
     definition::{self, Handler},
 };

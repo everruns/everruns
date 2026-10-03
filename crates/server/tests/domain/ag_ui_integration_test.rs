@@ -591,7 +591,7 @@ async fn test_ag_ui_public_image_upload_returns_image_id() {
     let image_id = body["id"]
         .as_str()
         .unwrap()
-        .parse::<everruns_provider::typed_id::ImageId>()
+        .parse::<everruns_contracts::typed_id::ImageId>()
         .unwrap();
     let image = server
         .db

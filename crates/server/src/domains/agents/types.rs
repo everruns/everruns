@@ -4,11 +4,10 @@
 // has a single import path.
 
 use crate::kernel_imports::{
-    AgentCapabilityConfig, InitialFile, ScopedMcpServers,
-    everruns_provider::tool_types::ToolDefinition,
+    AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
+use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use everruns_platform::{AgentStatus, EnvironmentSet};
-use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -19,7 +18,7 @@ pub use crate::storage::models::{AgentRow, CreateAgentRow, UpdateAgent};
 pub struct CreateAgentRequest {
     #[serde(default)]
     #[schema(value_type=Option<String>)]
-    pub service_virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+    pub service_virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     /// Client-supplied agent ID (format: agent_{32-hex}).
     /// If not provided, one is auto-generated.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,7 +126,7 @@ pub struct UpdateAgentRequest {
     )]
     #[schema(value_type=Option<String>)]
     pub service_virtual_user_id:
-        everruns_durable::UpdateField<everruns_provider::typed_id::VirtualUserId>,
+        everruns_durable::UpdateField<everruns_contracts::typed_id::VirtualUserId>,
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "updated-support")]
@@ -456,7 +455,7 @@ mod tests {
         assert_eq!(req.tools.len(), 1);
         assert!(matches!(
             req.tools[0],
-            everruns_provider::tool_types::ToolDefinition::ClientSide(_)
+            everruns_contracts::tool_types::ToolDefinition::ClientSide(_)
         ));
     }
 
@@ -525,7 +524,7 @@ mod tests {
         assert_eq!(tools.len(), 1);
         assert!(matches!(
             tools[0],
-            everruns_provider::tool_types::ToolDefinition::ClientSide(_)
+            everruns_contracts::tool_types::ToolDefinition::ClientSide(_)
         ));
     }
 

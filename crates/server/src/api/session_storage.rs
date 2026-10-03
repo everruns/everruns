@@ -7,7 +7,7 @@ use crate::domains::common::{Command, Ctx};
 use crate::domains::session_storage::{
     BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage,
 };
-use crate::kernel_imports::{Caller, everruns_provider::typed_id::SessionId};
+use crate::kernel_imports::{Caller, contracts::typed_id::SessionId};
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use axum::{

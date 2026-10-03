@@ -7,14 +7,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::ard_attachment::{ArdAttachment, ArdAttachmentTarget};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
     session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
     tool_context::ToolContext,
 };
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 use wiremock::matchers::{method, path};
@@ -261,7 +261,7 @@ async fn attach_a2a_agent_produces_external_agent() {
     // session entry with the same logical ID, without duplicating the agent.
     let mut session = everruns_core::ExecutionSession::with_own_workspace(
         session_id,
-        everruns_provider::typed_id::HarnessId::new(),
+        everruns_contracts::typed_id::HarnessId::new(),
     );
     session.capabilities.push(serde_json::from_value(json!({
         "ref": "a2a_agent_delegation",

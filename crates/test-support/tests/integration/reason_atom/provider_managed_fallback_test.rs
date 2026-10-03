@@ -7,13 +7,13 @@ struct RejectingProviderManagedDriver {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for RejectingProviderManagedDriver {
+impl everruns_contracts::driver_registry::ChatDriver for RejectingProviderManagedDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::Message>,
-        config: &everruns_provider::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::LlmResponseStream> {
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<everruns_contracts::Message>,
+        config: &everruns_contracts::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::LlmResponseStream> {
         self.calls.lock().await.push((messages, config.clone()));
         if config
             .driver_options
@@ -21,8 +21,8 @@ impl everruns_provider::driver_registry::ChatDriver for RejectingProviderManaged
         {
             self.native_available.store(false, Ordering::SeqCst);
             return Err(
-                everruns_provider::error::AgentLoopError::provider_capability_rejected(
-                    everruns_provider::RejectedProviderCapability::AnthropicServerCompaction,
+                everruns_contracts::error::AgentLoopError::provider_capability_rejected(
+                    everruns_contracts::RejectedProviderCapability::AnthropicServerCompaction,
                     400,
                     r#"{"error":{"type":"invalid_request_error"}}"#,
                     "server compaction beta rejected",
@@ -30,16 +30,16 @@ impl everruns_provider::driver_registry::ChatDriver for RejectingProviderManaged
             );
         }
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::LlmStreamEvent::TextDelta(
+            Ok(everruns_contracts::LlmStreamEvent::TextDelta(
                 "legacy fallback succeeded".to_string(),
             )),
-            Ok(everruns_provider::LlmStreamEvent::Done(Box::default())),
+            Ok(everruns_contracts::LlmStreamEvent::Done(Box::default())),
         ])))
     }
 
     fn provider_managed_reduction_option(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
         _model: &str,
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
@@ -55,7 +55,7 @@ impl everruns_provider::driver_registry::ChatDriver for RejectingProviderManaged
 #[tokio::test]
 async fn pre_stream_capability_rejection_reassembles_legacy_history_once() {
     use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::execution_loading::SessionStore;
 
     let (
@@ -181,25 +181,25 @@ struct OutputBudgetFallbackDriver {
 }
 
 #[async_trait]
-impl everruns_provider::ChatDriver for OutputBudgetFallbackDriver {
+impl everruns_contracts::ChatDriver for OutputBudgetFallbackDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::Message>,
-        config: &everruns_provider::LlmCallConfig,
-    ) -> everruns_provider::Result<everruns_provider::LlmResponseStream> {
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<everruns_contracts::Message>,
+        config: &everruns_contracts::LlmCallConfig,
+    ) -> everruns_contracts::Result<everruns_contracts::LlmResponseStream> {
         self.calls.lock().await.push((messages, config.clone()));
         Ok(Box::pin(stream::iter(vec![
-            Ok(everruns_provider::LlmStreamEvent::TextDelta(
+            Ok(everruns_contracts::LlmStreamEvent::TextDelta(
                 "legacy output-budget fallback".to_string(),
             )),
-            Ok(everruns_provider::LlmStreamEvent::Done(Box::default())),
+            Ok(everruns_contracts::LlmStreamEvent::Done(Box::default())),
         ])))
     }
 
     fn provider_managed_reduction_option(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
         _model: &str,
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
@@ -211,8 +211,8 @@ impl everruns_provider::ChatDriver for OutputBudgetFallbackDriver {
 
     fn provider_managed_reduction_fallback_reason(
         &self,
-        _endpoint: &everruns_provider::ProviderEndpoint,
-        config: &everruns_provider::LlmCallConfig,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        config: &everruns_contracts::LlmCallConfig,
     ) -> Option<&'static str> {
         (config.max_tokens == Some(160_000)).then_some("configured_output_budget")
     }
@@ -221,7 +221,7 @@ impl everruns_provider::ChatDriver for OutputBudgetFallbackDriver {
 #[tokio::test]
 async fn configured_max_tokens_reassembles_legacy_history_before_the_call() {
     use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::execution_loading::SessionStore;
     use everruns_core::runtime_context::{TurnContextRequest, TurnContextResolver};
     use everruns_engine::ReasonAtom;

@@ -2,8 +2,8 @@
 //! file under the size ratchet (EVE-1057). It is a method on the same
 //! `RuntimeSessionLifecycle`, in its own impl block.
 
+use everruns_contracts::typed_id::{MessageId, TurnId};
 use everruns_core::events::{EventContext, EventRequest};
-use everruns_provider::typed_id::{MessageId, TurnId};
 
 use crate::host::{RuntimeHostAdapter, RuntimeSessionLifecycle};
 
@@ -23,12 +23,12 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         turn_id: Option<TurnId>,
         input_message_id: MessageId,
         calls: Vec<(String, serde_json::Value)>,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         for (tool_call_id, arguments) in calls {
-            let result = everruns_provider::unattended_ask_user_result(&arguments);
+            let result = everruns_contracts::unattended_ask_user_result(&arguments);
             let data = everruns_core::events::ToolCompletedData::success(
                 tool_call_id.clone(),
-                everruns_provider::ASK_USER_TOOL_NAME.to_string(),
+                everruns_contracts::ASK_USER_TOOL_NAME.to_string(),
                 vec![everruns_core::message::ContentPart::tool_result_text(
                     &result,
                 )],

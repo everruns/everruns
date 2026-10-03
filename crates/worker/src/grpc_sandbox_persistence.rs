@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::SessionId;
 use everruns_internal_protocol::proto;
 use everruns_platform::sandbox_checkpoint::{
     NewSandboxCheckpoint, SandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointStore,
@@ -9,7 +10,6 @@ use everruns_platform::sandbox_checkpoint::{
 };
 use everruns_platform::sandbox_state::{SandboxStateError, SandboxStateStore};
 use everruns_platform::session_sandbox::SessionSandboxState;
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use uuid::Uuid;
 

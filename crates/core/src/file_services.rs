@@ -6,7 +6,7 @@
 //! resolved to base64 data URLs at prompt-build time.
 
 use async_trait::async_trait;
-use everruns_provider::error::Result;
+use everruns_contracts::error::Result;
 use std::collections::HashMap;
 use uuid::Uuid;
 

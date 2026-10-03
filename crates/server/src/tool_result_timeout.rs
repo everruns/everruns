@@ -10,10 +10,10 @@ use crate::storage::StorageBackend;
 use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use chrono::Utc;
 use everruns_builtins::ask_user::{AskUserAnsweredBy, AskUserStatus};
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
 };
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use tokio::task::JoinHandle;

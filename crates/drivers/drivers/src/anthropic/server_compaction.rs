@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 
-use everruns_provider::ProviderEndpoint;
+use everruns_contracts::ProviderEndpoint;
 
 use crate::anthropic::driver::{normalize_anthropic_id, split_million_context};
 

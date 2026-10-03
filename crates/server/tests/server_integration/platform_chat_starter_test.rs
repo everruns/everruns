@@ -3,7 +3,7 @@
 use crate::test_harness::{self, TestServer};
 
 use axum::http::StatusCode;
-use everruns_provider::typed_id::PrincipalId;
+use everruns_contracts::typed_id::PrincipalId;
 use everruns_server::org_init;
 use everruns_server::storage::{CreatePrincipalRow, CreateSessionRow, Database, StorageBackend};
 use serde_json::json;

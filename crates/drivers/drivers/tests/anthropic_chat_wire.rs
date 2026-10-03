@@ -16,14 +16,14 @@
 // pooled keep-alive connection driven by another test's runtime could otherwise
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 
-use everruns_drivers::anthropic::AnthropicChatDriver;
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     CacheDiagnosticsConfig, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream,
     LlmStreamEvent, Message, MessageRole,
 };
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::{Provider, StaticHeaderAuth};
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::{Provider, StaticHeaderAuth};
+use everruns_drivers::anthropic::AnthropicChatDriver;
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -64,7 +64,7 @@ fn golden(event: LlmStreamEvent) -> Golden {
         LlmStreamEvent::ReasoningDelta { delta, .. } => Golden::Thinking(delta),
         LlmStreamEvent::ReasoningItem(item) => Golden::ReasoningItem {
             text: match &item.text {
-                Some(everruns_provider::reasoning::ReasoningText::Plain { text }) => {
+                Some(everruns_contracts::reasoning::ReasoningText::Plain { text }) => {
                     Some(text.clone())
                 }
                 _ => None,
@@ -72,7 +72,7 @@ fn golden(event: LlmStreamEvent) -> Golden {
             signature: item.signature.clone(),
             redacted: matches!(
                 item.text,
-                Some(everruns_provider::reasoning::ReasoningText::Redacted)
+                Some(everruns_contracts::reasoning::ReasoningText::Redacted)
             ),
         },
         LlmStreamEvent::ToolCalls(calls) => {

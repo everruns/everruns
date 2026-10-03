@@ -21,11 +21,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::background::{BackgroundEventSink, BackgroundOutcome, BackgroundProgress};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult, ToolRegistry};
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -237,7 +237,7 @@ spawn_background payload:\n{payload_json}"
 impl Tool for SpawnBackgroundTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1003,16 +1003,16 @@ fn is_canceled_outcome(
 pub async fn reattach_background_run(
     task: &everruns_core::session_task::SessionTask,
     context: &everruns_core::tool_context::ToolContext,
-) -> everruns_provider::error::Result<()> {
+) -> everruns_contracts::error::Result<()> {
     // Fail fast before spawning a tokio task so the reaper can fall back to
     // orphaned-fail rather than leaving the task stuck in Running forever.
     if context.file_store.is_none() {
-        return Err(everruns_provider::error::AgentLoopError::tool(
+        return Err(AgentLoopError::tool(
             "file store not available; cannot re-attach background run",
         ));
     }
     if context.session_task_registry.is_none() {
-        return Err(everruns_provider::error::AgentLoopError::tool(
+        return Err(AgentLoopError::tool(
             "task registry not available; cannot re-attach background run",
         ));
     }
@@ -1024,9 +1024,7 @@ pub async fn reattach_background_run(
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .ok_or_else(|| {
-            everruns_provider::error::AgentLoopError::tool(
-                "background_tool spec missing 'tool' field; cannot re-attach",
-            )
+            AgentLoopError::tool("background_tool spec missing 'tool' field; cannot re-attach")
         })?;
 
     let tool_args = task
@@ -1038,13 +1036,13 @@ pub async fn reattach_background_run(
     let registry = std::sync::Arc::new(ToolRegistry::with_defaults());
 
     let Some(tool) = registry.get(&tool_name).cloned() else {
-        return Err(everruns_provider::error::AgentLoopError::tool(format!(
+        return Err(AgentLoopError::tool(format!(
             "tool '{tool_name}' not found in built-in registry; cannot re-attach"
         )));
     };
 
     if tool.as_background_executable().is_none() {
-        return Err(everruns_provider::error::AgentLoopError::tool(format!(
+        return Err(AgentLoopError::tool(format!(
             "tool '{tool_name}' does not support background execution; cannot re-attach"
         )));
     }
@@ -1053,15 +1051,15 @@ pub async fn reattach_background_run(
     // spec["reattachable"], which could be forged via task creation APIs.
     let hints = tool.hints();
     if !hints.idempotent.unwrap_or(false) && !hints.readonly.unwrap_or(false) {
-        return Err(everruns_provider::error::AgentLoopError::tool(format!(
+        return Err(AgentLoopError::tool(format!(
             "tool '{tool_name}' is not idempotent or readonly; re-attach declined",
         )));
     }
 
     // Enforce the same concurrency caps as spawn_background so many concurrent
     // re-attaches cannot exhaust worker or session limits.
-    let background_run_permit = try_acquire_background_run_permit(task.session_id)
-        .map_err(everruns_provider::error::AgentLoopError::tool)?;
+    let background_run_permit =
+        try_acquire_background_run_permit(task.session_id).map_err(AgentLoopError::tool)?;
 
     // Restore original signaling behavior; default true for tasks created before
     // this field was persisted.
@@ -1174,7 +1172,7 @@ pub async fn reattach_background_run(
 
 async fn ensure_directory(
     file_store: &dyn everruns_core::session_files::SessionFileSystem,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     path: &str,
 ) -> Result<()> {
     if let Some(entry) = file_store.stat_file(session_id, path).await? {
@@ -1191,14 +1189,14 @@ async fn ensure_directory(
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use everruns_contracts::tool_types::ToolHints;
+    use everruns_contracts::typed_id::HarnessId;
     use everruns_core::background::BackgroundExecutableTool;
     use everruns_core::session_file::{FileInfo, FileStat, SessionFile};
     use everruns_core::session_task::SessionTaskRegistry;
     use everruns_core::subagent_delegation::SubagentSessionDelegate;
     use everruns_core::{session_files::SessionFileSystem, session_services::SessionScheduleStore};
     use everruns_core::{session_services::KeyInfo, session_services::SecretInfo};
-    use everruns_provider::tool_types::ToolHints;
-    use everruns_provider::typed_id::HarnessId;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc as StdArc, Mutex};
 
@@ -2207,27 +2205,27 @@ mod tests {
             _session_id: SessionId,
             _key: &str,
             _value: &str,
-        ) -> everruns_provider::error::Result<()> {
+        ) -> everruns_contracts::error::Result<()> {
             Ok(())
         }
         async fn get_value(
             &self,
             _session_id: SessionId,
             _key: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             Ok(None)
         }
         async fn delete_value(
             &self,
             _session_id: SessionId,
             _key: &str,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             Ok(false)
         }
         async fn list_keys(
             &self,
             _session_id: SessionId,
-        ) -> everruns_provider::error::Result<Vec<KeyInfo>> {
+        ) -> everruns_contracts::error::Result<Vec<KeyInfo>> {
             Ok(Vec::new())
         }
         async fn set_secret(
@@ -2235,27 +2233,27 @@ mod tests {
             _session_id: SessionId,
             _name: &str,
             _value: &str,
-        ) -> everruns_provider::error::Result<()> {
+        ) -> everruns_contracts::error::Result<()> {
             Ok(())
         }
         async fn get_secret(
             &self,
             _session_id: SessionId,
             _name: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             Ok(None)
         }
         async fn delete_secret(
             &self,
             _session_id: SessionId,
             _name: &str,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             Ok(false)
         }
         async fn list_secrets(
             &self,
             _session_id: SessionId,
-        ) -> everruns_provider::error::Result<Vec<SecretInfo>> {
+        ) -> everruns_contracts::error::Result<Vec<SecretInfo>> {
             Ok(Vec::new())
         }
     }
@@ -2275,7 +2273,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<Option<SessionFile>> {
+        ) -> everruns_contracts::error::Result<Option<SessionFile>> {
             Ok(self.files.lock().unwrap().get(path).cloned())
         }
 
@@ -2285,7 +2283,7 @@ mod tests {
             path: &str,
             content: &str,
             encoding: &str,
-        ) -> everruns_provider::error::Result<SessionFile> {
+        ) -> everruns_contracts::error::Result<SessionFile> {
             let now = chrono::Utc::now();
             let file = SessionFile {
                 id: uuid::Uuid::now_v7(),
@@ -2312,7 +2310,7 @@ mod tests {
             _session_id: SessionId,
             _path: &str,
             _recursive: bool,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             Ok(false)
         }
 
@@ -2320,7 +2318,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> everruns_provider::error::Result<Vec<FileInfo>> {
+        ) -> everruns_contracts::error::Result<Vec<FileInfo>> {
             Ok(Vec::new())
         }
 
@@ -2328,7 +2326,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<Option<FileStat>> {
+        ) -> everruns_contracts::error::Result<Option<FileStat>> {
             let file = self.files.lock().unwrap().get(path).cloned();
             Ok(file.map(|entry| FileStat {
                 path: entry.path,
@@ -2346,7 +2344,8 @@ mod tests {
             _session_id: SessionId,
             _pattern: &str,
             _path_pattern: Option<&str>,
-        ) -> everruns_provider::error::Result<Vec<everruns_core::session_file::GrepMatch>> {
+        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_file::GrepMatch>>
+        {
             Ok(Vec::new())
         }
 
@@ -2354,7 +2353,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<FileInfo> {
+        ) -> everruns_contracts::error::Result<FileInfo> {
             let now = chrono::Utc::now();
             let id = uuid::Uuid::now_v7();
             let dir = SessionFile {
@@ -2395,45 +2394,41 @@ mod tests {
     impl SubagentSessionDelegate for TestSubagentDelegate {
         async fn get_agent_by_id(
             &self,
-            _id: everruns_provider::typed_id::AgentId,
-        ) -> everruns_provider::error::Result<Option<everruns_core::AgentDefinition>> {
+            _id: everruns_contracts::typed_id::AgentId,
+        ) -> everruns_contracts::error::Result<Option<everruns_core::AgentDefinition>> {
             Ok(None)
         }
         async fn add_agent_session_participant(
             &self,
             _session_id: SessionId,
-            _agent_id: everruns_provider::typed_id::AgentId,
-        ) -> everruns_provider::error::Result<everruns_provider::typed_id::SessionParticipantId>
+            _agent_id: everruns_contracts::typed_id::AgentId,
+        ) -> everruns_contracts::error::Result<everruns_contracts::typed_id::SessionParticipantId>
         {
-            Err(everruns_provider::error::AgentLoopError::tool(
-                "test store does not add participants",
-            ))
+            Err(AgentLoopError::tool("test store does not add participants"))
         }
         async fn get_harness(
             &self,
             _id: HarnessId,
-        ) -> everruns_provider::error::Result<Option<everruns_core::HarnessDefinition>> {
+        ) -> everruns_contracts::error::Result<Option<everruns_core::HarnessDefinition>> {
             Ok(None)
         }
         async fn create_session_with_options(
             &self,
             _request: everruns_core::subagent_delegation::PlatformCreateSessionRequest,
-        ) -> everruns_provider::error::Result<everruns_core::ExecutionSession> {
-            Err(everruns_provider::error::AgentLoopError::tool(
-                "test store does not create sessions",
-            ))
+        ) -> everruns_contracts::error::Result<everruns_core::ExecutionSession> {
+            Err(AgentLoopError::tool("test store does not create sessions"))
         }
         async fn get_session_by_id(
             &self,
             _id: SessionId,
-        ) -> everruns_provider::error::Result<Option<everruns_core::ExecutionSession>> {
+        ) -> everruns_contracts::error::Result<Option<everruns_core::ExecutionSession>> {
             Ok(None)
         }
         async fn send_message(
             &self,
             _session_id: SessionId,
             content: &str,
-        ) -> everruns_provider::error::Result<()> {
+        ) -> everruns_contracts::error::Result<()> {
             self.sent_messages.lock().unwrap().push(content.to_string());
             Ok(())
         }
@@ -2441,7 +2436,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _limit: Option<usize>,
-        ) -> everruns_provider::error::Result<
+        ) -> everruns_contracts::error::Result<
             Vec<everruns_core::subagent_delegation::PlatformMessage>,
         > {
             Ok(Vec::new())
@@ -2450,7 +2445,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _timeout_secs: Option<u64>,
-        ) -> everruns_provider::error::Result<String> {
+        ) -> everruns_contracts::error::Result<String> {
             Ok("idle".to_string())
         }
     }
@@ -2465,7 +2460,7 @@ mod tests {
         async fn create(
             &self,
             input: everruns_core::session_task::CreateSessionTask,
-        ) -> everruns_provider::error::Result<everruns_core::session_task::SessionTask> {
+        ) -> everruns_contracts::error::Result<everruns_core::session_task::SessionTask> {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(id) = &input.id
                 && let Some(existing) = tasks.get(id)
@@ -2482,7 +2477,7 @@ mod tests {
             _session_id: SessionId,
             task_id: &str,
             update: everruns_core::session_task::SessionTaskUpdate,
-        ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>>
+        ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>>
         {
             let mut tasks = self.tasks.lock().unwrap();
             let Some(task) = tasks.get_mut(task_id) else {
@@ -2496,7 +2491,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             task_id: &str,
-        ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>>
+        ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>>
         {
             Ok(self.tasks.lock().unwrap().get(task_id).cloned())
         }
@@ -2505,7 +2500,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             filter: Option<&everruns_core::session_task::SessionTaskFilter>,
-        ) -> everruns_provider::error::Result<Vec<everruns_core::session_task::SessionTask>>
+        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_task::SessionTask>>
         {
             let tasks = self.tasks.lock().unwrap();
             Ok(tasks
@@ -2524,7 +2519,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             task_id: &str,
-        ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>>
+        ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>>
         {
             let mut tasks = self.tasks.lock().unwrap();
             let Some(task) = tasks.get_mut(task_id) else {
@@ -2541,11 +2536,11 @@ mod tests {
             _session_id: SessionId,
             task_id: &str,
             message: everruns_core::session_task::NewTaskMessage,
-        ) -> everruns_provider::error::Result<everruns_core::session_task::TaskMessage> {
+        ) -> everruns_contracts::error::Result<everruns_core::session_task::TaskMessage> {
             let tasks = self.tasks.lock().unwrap();
-            let _task = tasks.get(task_id).ok_or_else(|| {
-                everruns_provider::error::AgentLoopError::tool(format!("no task {task_id}"))
-            })?;
+            let _task = tasks
+                .get(task_id)
+                .ok_or_else(|| AgentLoopError::tool(format!("no task {task_id}")))?;
             Ok(everruns_core::session_task::TaskMessage {
                 id: everruns_core::session_task::generate_task_message_id(),
                 task_id: task_id.to_string(),
@@ -2562,7 +2557,7 @@ mod tests {
             _task_id: &str,
             _limit: Option<u32>,
             _after_id: Option<&str>,
-        ) -> everruns_provider::error::Result<Vec<everruns_core::session_task::TaskMessage>>
+        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_task::TaskMessage>>
         {
             Ok(Vec::new())
         }
@@ -2582,12 +2577,12 @@ mod tests {
             cron_expression: Option<String>,
             scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
             timezone: String,
-        ) -> everruns_provider::error::Result<everruns_core::session_schedule::SessionSchedule>
+        ) -> everruns_contracts::error::Result<everruns_core::session_schedule::SessionSchedule>
         {
             let schedule = everruns_core::session_schedule::SessionSchedule {
-                id: everruns_provider::typed_id::ScheduleId::new(),
+                id: everruns_contracts::typed_id::ScheduleId::new(),
                 session_id,
-                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 owner: None,
                 effective_owner: None,
@@ -2612,16 +2607,14 @@ mod tests {
         async fn cancel_schedule(
             &self,
             _session_id: SessionId,
-            schedule_id: everruns_provider::typed_id::ScheduleId,
-        ) -> everruns_provider::error::Result<everruns_core::session_schedule::SessionSchedule>
+            schedule_id: everruns_contracts::typed_id::ScheduleId,
+        ) -> everruns_contracts::error::Result<everruns_core::session_schedule::SessionSchedule>
         {
             let mut schedules = self.schedules.lock().unwrap();
             let schedule = schedules
                 .iter_mut()
                 .find(|schedule| schedule.id == schedule_id)
-                .ok_or_else(|| {
-                    everruns_provider::error::AgentLoopError::tool("Schedule not found".to_string())
-                })?;
+                .ok_or_else(|| AgentLoopError::tool("Schedule not found".to_string()))?;
             schedule.enabled = false;
             Ok(schedule.clone())
         }
@@ -2629,7 +2622,7 @@ mod tests {
         async fn list_schedules(
             &self,
             session_id: SessionId,
-        ) -> everruns_provider::error::Result<Vec<everruns_core::session_schedule::SessionSchedule>>
+        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_schedule::SessionSchedule>>
         {
             Ok(self
                 .schedules
@@ -2644,7 +2637,7 @@ mod tests {
         async fn count_active_schedules(
             &self,
             session_id: SessionId,
-        ) -> everruns_provider::error::Result<u32> {
+        ) -> everruns_contracts::error::Result<u32> {
             Ok(self
                 .schedules
                 .lock()
@@ -2654,7 +2647,7 @@ mod tests {
                 .count() as u32)
         }
 
-        async fn count_active_org_schedules(&self) -> everruns_provider::error::Result<u32> {
+        async fn count_active_org_schedules(&self) -> everruns_contracts::error::Result<u32> {
             // Test store is single-org; count all enabled schedules.
             Ok(self
                 .schedules

@@ -15,6 +15,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::SessionId;
 use everruns_platform::sandbox_checkpoint::{
     MAX_CHECKPOINT_COLLECT_LIMIT, NewSandboxCheckpoint, SandboxCheckpoint, SandboxCheckpointError,
     SandboxCheckpointKind, SandboxCheckpointStore, SandboxRef,
@@ -25,7 +26,6 @@ use everruns_platform::sandbox_state::{
 use everruns_platform::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
-use everruns_provider::typed_id::SessionId;
 use sqlx::PgPool;
 use uuid::Uuid;
 

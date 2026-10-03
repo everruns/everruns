@@ -4,11 +4,11 @@
 
 use super::EncryptionService;
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_core::agents_api_store::{
     AGENTS_API_LEASE_SECONDS, AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore,
     MAX_AGENTS_API_CHECKPOINT_BYTES,
 };
-use everruns_provider::error::{AgentLoopError, Result};
 use sqlx::PgPool;
 use std::sync::Arc;
 

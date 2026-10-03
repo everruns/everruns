@@ -2,6 +2,8 @@
 //! policy stops, and the tool-result outbox. Split from the driver so the
 //! durable orchestration and the policy decisions read separately.
 
+use everruns_contracts::execution_phase::ExecutionPhase;
+use everruns_contracts::tool_types::ToolCall;
 use everruns_core::RuntimeMessage;
 use everruns_core::agents_api_store::{
     ItemKind, ParkReason, PolicyStop, ReplacedMessage, ToolResultOutbox, ToolResultState,
@@ -9,8 +11,6 @@ use everruns_core::agents_api_store::{
 use everruns_core::events::{
     EventRequest, ModelMetadata, OutputMessageCompletedData, OutputMessageReplacedData,
 };
-use everruns_provider::execution_phase::ExecutionPhase;
-use everruns_provider::tool_types::ToolCall;
 use serde_json::{Value, json};
 
 use super::{

@@ -1,7 +1,7 @@
 use crate::kernel_imports::{
     COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
     CompactionCheckpointStore, ProactiveCompactionAttempt, ProactiveCompactionAttemptTracker,
-    everruns_provider::error::AgentLoopError, everruns_provider::typed_id::SessionId,
+    contracts::error::AgentLoopError, contracts::typed_id::SessionId,
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -46,7 +46,7 @@ impl CompactionCheckpointStore for DbCompactionCheckpointStore {
         session_id: SessionId,
         provider_type: &str,
         model: &str,
-    ) -> everruns_provider::error::Result<Option<CompactionCheckpoint>> {
+    ) -> everruns_contracts::error::Result<Option<CompactionCheckpoint>> {
         let row = self
             .db
             .get_compaction_checkpoint(
@@ -83,7 +83,7 @@ impl CompactionCheckpointStore for DbCompactionCheckpointStore {
         provider_type: &str,
         model: &str,
         format_version: u32,
-    ) -> everruns_provider::error::Result<Option<CompactionCheckpoint>> {
+    ) -> everruns_contracts::error::Result<Option<CompactionCheckpoint>> {
         let row = self
             .db
             .get_compaction_checkpoint(session_id, provider_type, model, format_version as i32)
@@ -112,7 +112,7 @@ impl CompactionCheckpointStore for DbCompactionCheckpointStore {
     async fn install(
         &self,
         checkpoint: CompactionCheckpoint,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         let source_sequence = i32::try_from(checkpoint.source_sequence).map_err(|_| {
             AgentLoopError::store("checkpoint source sequence exceeds storage range")
         })?;
@@ -146,7 +146,7 @@ impl CompactionCheckpointStore for DbCompactionCheckpointStore {
         session_id: SessionId,
         provider_type: &str,
         model: &str,
-    ) -> everruns_provider::error::Result<Option<ProactiveCompactionAttempt>> {
+    ) -> everruns_contracts::error::Result<Option<ProactiveCompactionAttempt>> {
         Ok(self
             .proactive_attempts
             .get(session_id, provider_type, model)
@@ -159,7 +159,7 @@ impl CompactionCheckpointStore for DbCompactionCheckpointStore {
         provider_type: &str,
         model: &str,
         attempt: ProactiveCompactionAttempt,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.proactive_attempts
             .record(session_id, provider_type, model, attempt)
             .await;

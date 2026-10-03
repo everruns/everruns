@@ -12,6 +12,9 @@
 // pooled keep-alive connection driven by another test's runtime could otherwise
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 
+use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::{BearerAuth, Provider};
 use everruns_drivers::openrouter::OpenRouterChatDriver;
 use everruns_drivers::openrouter::options::{
     OpenRouterDataCollection, OpenRouterMaxPrice, OpenRouterPluginConfig,
@@ -20,9 +23,6 @@ use everruns_drivers::openrouter::options::{
     OpenRouterServerToolKind, OpenRouterSortPartition, OpenRouterWebSearchPlugin,
     insert_routing_option,
 };
-use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::{BearerAuth, Provider};
 use serde_json::json;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -365,10 +365,10 @@ async fn retries_after_openrouter_rate_limit_reset() {
     let mut text = String::new();
     while let Some(event) = stream.next().await {
         match event.expect("stream item") {
-            everruns_provider::driver_registry::LlmStreamEvent::TextDelta(delta) => {
+            everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(delta) => {
                 text.push_str(&delta)
             }
-            everruns_provider::driver_registry::LlmStreamEvent::Error(error) => {
+            everruns_contracts::driver_registry::LlmStreamEvent::Error(error) => {
                 panic!("retry success stream should not emit an error: {error}")
             }
             _ => {}

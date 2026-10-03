@@ -19,7 +19,7 @@ documentation = "https://docs.rs/everruns-integrations-docker"
 
 [dependencies]
 everruns-core.workspace = true
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 
 # Serialization
 serde.workspace = true

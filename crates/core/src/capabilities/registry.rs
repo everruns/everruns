@@ -44,7 +44,7 @@ pub struct CapabilityRegistry {
     /// Canonical-id/alias bookkeeping delegated to the neutral capability
     /// contract so the Framework and product resolve identity identically
     /// (see [`Capability::aliases`]).
-    index: everruns_capability::CapabilityIdIndex,
+    index: everruns_contracts::CapabilityIdIndex,
 }
 
 impl CapabilityRegistry {
@@ -52,7 +52,7 @@ impl CapabilityRegistry {
     pub fn new() -> Self {
         Self {
             capabilities: HashMap::new(),
-            index: everruns_capability::CapabilityIdIndex::new(),
+            index: everruns_contracts::CapabilityIdIndex::new(),
         }
     }
 
@@ -83,7 +83,7 @@ impl CapabilityRegistry {
     pub fn try_register_arc(
         &mut self,
         capability: Arc<dyn Capability>,
-    ) -> Result<(), everruns_capability::CapabilityError> {
+    ) -> Result<(), everruns_contracts::CapabilityError> {
         let canonical = capability.id().to_string();
         self.index
             .insert(canonical.clone(), &capability.aliases())?;

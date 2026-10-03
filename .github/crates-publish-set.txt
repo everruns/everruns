@@ -10,6 +10,7 @@ everruns-builtins
 everruns-capability
 everruns-cli
 everruns-cli-contract
+everruns-contracts
 everruns-core
 everruns-drivers
 everruns-durable

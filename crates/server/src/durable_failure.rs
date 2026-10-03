@@ -6,16 +6,16 @@ use crate::domains::sessions::SessionService;
 use crate::durable_seal::{DurableTaskSessionContext, extract_context};
 use crate::kernel_imports::{Caller, RuntimeMessage, TURN_STARTED};
 use crate::services::EventService;
+use everruns_contracts::typed_id::TurnId;
+use everruns_contracts::user_facing_error::{
+    UserFacingErrorContext, classify_runtime_error_message,
+};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, OutputMessageCompletedData, SessionIdledData,
     TurnFailedData,
 };
 use everruns_durable::DeadTaskInfo;
-use everruns_provider::typed_id::TurnId;
-use everruns_provider::user_facing_error::{
-    UserFacingErrorContext, classify_runtime_error_message,
-};
 
 async fn recover_turn_id_from_events(
     event_service: &EventService,

@@ -35,13 +35,13 @@ use super::{
 };
 use async_trait::async_trait;
 use everruns_ag_ui::Message;
+use everruns_contracts::tool_types::ToolHints;
+use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTaskState, TASK_KIND_EXTERNAL_AG_UI, TaskLinks, TaskWakePolicy,
 };
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
-use everruns_provider::url_validation::validate_safe_url;
 use run::{AgUiRunRecord, DriveOutcome, drive_run, first_input, save_run, spawn_background};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -423,7 +423,7 @@ impl SpawnAgUiAgentTool {
 impl Tool for SpawnAgUiAgentTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,

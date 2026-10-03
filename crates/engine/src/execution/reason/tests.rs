@@ -4,7 +4,7 @@ use crate::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheStrategy,
 };
 use crate::events::CapabilityUsageKind;
-use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
+use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -31,7 +31,7 @@ fn compaction_cost_combines_with_actual_generation_cost() {
 
 fn replay_metadata() -> LlmCompletionMetadata {
     let mut metadata = LlmCompletionMetadata::default();
-    metadata.provider_opaque_content = Some(everruns_provider::ProviderOpaqueContent::new(
+    metadata.provider_opaque_content = Some(everruns_contracts::ProviderOpaqueContent::new(
         "anthropic",
         json!([{"type":"text","text":"provider text"}]),
     ));
@@ -852,8 +852,8 @@ use crate::events::{
     CompactionFailStage, CompactionSkipReason, CompactionTrigger, EventData, TokenUsage,
 };
 use crate::test_fixtures::TestEventEmitter;
-use everruns_provider::error::{AgentLoopError, Result as ProviderResult};
-use everruns_provider::runtime_provider::ProviderEndpoint;
+use everruns_contracts::error::{AgentLoopError, Result as ProviderResult};
+use everruns_contracts::runtime_provider::ProviderEndpoint;
 
 /// Policy stub with pressure forced on and native strategy configured.
 #[derive(Debug)]
@@ -968,8 +968,8 @@ impl ChatDriver for FailingCompactDriver {
     async fn compact(
         &self,
         _endpoint: &ProviderEndpoint,
-        _request: everruns_provider::compact::CompactRequest,
-    ) -> ProviderResult<Option<everruns_provider::compact::CompactResponse>> {
+        _request: everruns_contracts::compact::CompactRequest,
+    ) -> ProviderResult<Option<everruns_contracts::compact::CompactResponse>> {
         Err(AgentLoopError::config("stub native compaction failure"))
     }
 }
@@ -996,9 +996,9 @@ impl ChatDriver for InstallingCompactDriver {
     async fn compact(
         &self,
         _endpoint: &ProviderEndpoint,
-        _request: everruns_provider::compact::CompactRequest,
-    ) -> ProviderResult<Option<everruns_provider::compact::CompactResponse>> {
-        use everruns_provider::compact::{CompactOutputItem, CompactResponse, CompactUsage};
+        _request: everruns_contracts::compact::CompactRequest,
+    ) -> ProviderResult<Option<everruns_contracts::compact::CompactResponse>> {
+        use everruns_contracts::compact::{CompactOutputItem, CompactResponse, CompactUsage};
         Ok(Some(CompactResponse {
             output: vec![CompactOutputItem::Compaction {
                 encrypted_content: "stub-opaque-payload".to_string(),
@@ -1024,14 +1024,14 @@ impl crate::CompactionCheckpointStore for FailingInstallStore {
         _session_id: crate::typed_id::SessionId,
         _provider_type: &str,
         _model: &str,
-    ) -> everruns_provider::error::Result<Option<crate::CompactionCheckpoint>> {
+    ) -> everruns_contracts::error::Result<Option<crate::CompactionCheckpoint>> {
         Ok(None)
     }
 
     async fn install(
         &self,
         _checkpoint: crate::CompactionCheckpoint,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         Err(AgentLoopError::store("stub checkpoint install failure"))
     }
 
@@ -1040,7 +1040,7 @@ impl crate::CompactionCheckpointStore for FailingInstallStore {
         _session_id: crate::typed_id::SessionId,
         _provider_type: &str,
         _model: &str,
-    ) -> everruns_provider::error::Result<Option<crate::ProactiveCompactionAttempt>> {
+    ) -> everruns_contracts::error::Result<Option<crate::ProactiveCompactionAttempt>> {
         Ok(None)
     }
 
@@ -1050,7 +1050,7 @@ impl crate::CompactionCheckpointStore for FailingInstallStore {
         _provider_type: &str,
         _model: &str,
         _attempt: crate::ProactiveCompactionAttempt,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         Ok(())
     }
 }
@@ -1066,14 +1066,14 @@ impl crate::CompactionCheckpointStore for LifecycleStubStore {
         _session_id: crate::typed_id::SessionId,
         _provider_type: &str,
         _model: &str,
-    ) -> everruns_provider::error::Result<Option<crate::CompactionCheckpoint>> {
+    ) -> everruns_contracts::error::Result<Option<crate::CompactionCheckpoint>> {
         Ok(None)
     }
 
     async fn install(
         &self,
         _checkpoint: crate::CompactionCheckpoint,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         Ok(true)
     }
 
@@ -1082,7 +1082,7 @@ impl crate::CompactionCheckpointStore for LifecycleStubStore {
         _session_id: crate::typed_id::SessionId,
         _provider_type: &str,
         _model: &str,
-    ) -> everruns_provider::error::Result<Option<crate::ProactiveCompactionAttempt>> {
+    ) -> everruns_contracts::error::Result<Option<crate::ProactiveCompactionAttempt>> {
         Ok(None)
     }
 
@@ -1092,7 +1092,7 @@ impl crate::CompactionCheckpointStore for LifecycleStubStore {
         _provider_type: &str,
         _model: &str,
         _attempt: crate::ProactiveCompactionAttempt,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         Ok(())
     }
 }

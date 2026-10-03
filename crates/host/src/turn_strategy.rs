@@ -12,13 +12,13 @@
 
 use crate::{RuntimeHostAdapter, RuntimeSessionLifecycle};
 use chrono::Utc;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::Controls;
 use everruns_engine::{
     ActOutcome, ActSchedulingFacts, ActivityOutcome, Execution, HostFacts, ReasonResult,
     TurnLifecycleEffect, TurnPlan, TurnState, reason_schedules_act,
 };
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 
 /// Determine the next host step after an activity finishes.
 ///
@@ -78,7 +78,7 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
             Ok(transition.plan)
         }
         "act" => {
-            let client_tool_calls: Vec<everruns_provider::tool_types::ToolCall> = output
+            let client_tool_calls: Vec<everruns_contracts::tool_types::ToolCall> = output
                 .get("client_tool_calls")
                 .cloned()
                 .map(serde_json::from_value)
@@ -304,11 +304,11 @@ pub(crate) fn pending_ask_user_calls(
 }
 
 pub(crate) fn pending_ask_user_calls_from_slice(
-    client_tool_calls: &[everruns_provider::tool_types::ToolCall],
+    client_tool_calls: &[everruns_contracts::tool_types::ToolCall],
 ) -> Vec<(String, serde_json::Value)> {
     client_tool_calls
         .iter()
-        .filter(|call| call.name == everruns_provider::ASK_USER_TOOL_NAME)
+        .filter(|call| call.name == everruns_contracts::ASK_USER_TOOL_NAME)
         .map(|call| (call.id.clone(), call.arguments.clone()))
         .collect()
 }
@@ -318,7 +318,7 @@ pub(crate) fn has_pending_ask_user(act_result: &everruns_engine::ActResult) -> b
     act_result
         .client_tool_calls
         .iter()
-        .any(|call| call.name == everruns_provider::ASK_USER_TOOL_NAME)
+        .any(|call| call.name == everruns_contracts::ASK_USER_TOOL_NAME)
 }
 
 /// Build the planner's [`ActOutcome`] from a completed act, deriving the

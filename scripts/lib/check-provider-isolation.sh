@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Architecture guard (EVE-874): official wire-protocol provider crates build on
-# the provider SPI (`everruns-provider`) and the neutral capability contract
+# the provider SPI (`everruns-contracts`) and the neutral capability contract
 # alone — never on the monolithic kernel or product composition crates:
 #
 # 1. Provider crate sources (src/ AND tests/ — dev code included) must not
@@ -41,9 +41,11 @@ DRIVER_LAYOUT_NAMES=(
   drivers
 )
 PROVIDER_DIRS=(
+  crates/contracts
   crates/drivers/drivers
 )
 PROVIDER_CRATES=(
+  everruns-contracts
   everruns-drivers
 )
 # Retired shim crates must not return as parallel implementations.
@@ -105,13 +107,35 @@ done
 # 4. Shipped (normal-edge) trees with every vendor feature enabled: no heavy
 #    core feature subtree leaks into provider-only builds.
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(guard_cargo_tree -p "$crate" --all-features --edges normal --prefix none)
+  wire_features=(--all-features)
+  if [ "$crate" = "everruns-contracts" ]; then
+    # Contracts also own optional host codecs and sandbox registration. Exercise
+    # every wire transport here; those host opt-ins are not driver dependencies.
+    wire_features=(--no-default-features --features http,definition,responses-websocket)
+  fi
+  tree=$(guard_cargo_tree -p "$crate" "${wire_features[@]}" --edges normal --prefix none)
   if echo "$tree" | grep -qE "$HEAVY_TREE"; then
     echo "$crate must not ship heavy core feature subtrees (sqlx/utoipa/inventory/axum/tonic):"
     echo "$tree" | grep -E "$HEAVY_TREE" | sort -u
     FAILED=1
   fi
 done
+
+# Extension implementations depend on contracts rather than the hosted product.
+# Include optional/build/dev declarations: an integration test must not quietly
+# pull control-plane records back into a library host's dependency graph.
+for manifest in integrations/*/Cargo.toml crates/ard/Cargo.toml crates/turbopuffer/Cargo.toml; do
+  if matches=$(grep -nE '^[[:space:]]*everruns-platform[[:space:]]*[.=]' "$manifest"); then
+    echo "$manifest must use everruns-contracts extension SPIs, never platform:"
+    echo "$matches"
+    FAILED=1
+  fi
+done
+if matches=$(grep -rnE 'everruns_platform::' integrations crates/ard crates/turbopuffer --include='*.rs' 2>/dev/null); then
+  echo "Extension implementations must not reference platform records:"
+  echo "$matches"
+  FAILED=1
+fi
 
 # 5. Org-scoped code never pairs a driver's declared variable names with a real
 #    environment lookup. The names are the drivers'; the lookup belongs to
@@ -155,7 +179,7 @@ for dir in "${PROVIDER_DIRS[@]}"; do
 done
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Provider isolation guard failed. Wire-protocol crates build on everruns-provider alone (EVE-874), and credentials never reach org-scoped paths from the environment."
+  echo "Provider isolation guard failed. Wire-protocol crates build on everruns-contracts alone (EVE-874), and credentials never reach org-scoped paths from the environment."
   exit 1
 fi
 

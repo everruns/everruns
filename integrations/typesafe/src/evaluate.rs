@@ -1,6 +1,6 @@
 //! Shared tool protocol and operation used by both execution contexts.
 
-use everruns_capability::definition::schemars::{self, JsonSchema};
+use everruns_contracts::capability::definition::schemars::{self, JsonSchema};
 use serde::Deserialize;
 use serde_json::{Value, json};
 

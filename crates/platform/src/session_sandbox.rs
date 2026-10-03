@@ -1,4 +1,8 @@
-//! Provider-neutral managed Environment runtime.
+//! Hosted lifecycle orchestration for session-owned managed sandboxes.
+//!
+//! Provider contracts and inventory registration live in `everruns-contracts`.
+//! This module binds those providers to runtime storage, initialization, and
+//! authoritative checkpoint reconciliation.
 
 #[cfg(test)]
 mod concurrency_tests;
@@ -8,282 +12,21 @@ mod test_provider_files;
 mod workspace_seed;
 
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(test)]
+use serde_json::json;
 
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::tool_types::ToolHints;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
-use everruns_provider::tool_types::ToolHints;
 
 use crate::sandbox_state::load_state_for_provider;
 pub use crate::sandbox_state::{
     delete_session_sandbox_state, load_session_sandbox_state, save_session_sandbox_state,
 };
 
-/// Capability id for the managed session sandbox capability.
-pub const SESSION_SANDBOX_CAPABILITY_ID: &str = "session_sandbox";
-/// Secret name used to persist the managed sandbox record for a session.
-pub const SESSION_SANDBOX_SECRET_NAME: &str = "session_sandbox";
-/// Default idle timeout for auto-pausing the managed sandbox.
-pub const DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS: u64 = 180;
-
-/// Session sandbox configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SessionSandboxConfig {
-    /// Concrete provider id (e.g. `daytona`).
-    pub provider: String,
-    /// Start the sandbox proactively when the session is created.
-    #[serde(default = "default_true")]
-    pub auto_start: bool,
-    /// Pause the sandbox after this much session inactivity.
-    #[serde(default = "default_idle_timeout")]
-    pub idle_pause_after_seconds: u64,
-    /// Whether the control plane should pause this sandbox when the timeout elapses.
-    #[serde(default = "default_true")]
-    pub idle_pause_enabled: bool,
-    /// Provider-specific extra configuration.
-    #[serde(default = "default_provider_config")]
-    pub provider_config: Value,
-    /// Optional one-time initialization commands executed after create.
-    #[serde(default)]
-    pub init: SessionSandboxInitConfig,
-}
-
-impl Default for SessionSandboxConfig {
-    fn default() -> Self {
-        Self {
-            provider: String::new(),
-            auto_start: true,
-            idle_pause_after_seconds: DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS,
-            idle_pause_enabled: true,
-            provider_config: default_provider_config(),
-            init: SessionSandboxInitConfig::default(),
-        }
-    }
-}
-
-/// One-time sandbox initialization.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SessionSandboxInitConfig {
-    #[serde(default)]
-    pub commands: Vec<String>,
-}
-
-/// Runtime lifecycle status of the managed sandbox.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionSandboxStatus {
-    Running,
-    Paused,
-    /// The provider resource disappeared and must be replaced before use.
-    Lost,
-}
-
-/// Provider-owned physical environment instance record.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct SessionSandboxInstance {
-    /// Provider-specific stable identifier (e.g. Daytona sandbox id).
-    pub external_id: String,
-    /// Optional human-readable name.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-    /// Optional default workspace path inside the sandbox.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace_path: Option<String>,
-    /// Provider-specific non-secret payload needed for resume/ops.
-    #[serde(default)]
-    pub provider_state: Value,
-    /// Provider-specific non-secret metadata for UI/debugging.
-    #[serde(default)]
-    pub metadata: Value,
-}
-
-/// Persisted managed environment state.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SessionSandboxState {
-    /// Hosted logical-sandbox identity and incarnation fence. Legacy secret
-    /// records omit it and acquire one when they are adopted into durable
-    /// control-plane state.
-    #[serde(skip)]
-    pub sandbox: Option<crate::sandbox_checkpoint::SandboxRef>,
-    pub provider: String,
-    pub status: SessionSandboxStatus,
-    pub instance: SessionSandboxInstance,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub init_completed_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_init_error: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-/// Provider-neutral exec request.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SessionSandboxExecRequest {
-    pub command: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cwd: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout_ms: Option<u64>,
-    #[serde(default = "default_output_mode")]
-    pub output_mode: String,
-}
-
-/// Provider-neutral exec result.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SessionSandboxExecResponse {
-    pub exit_code: i32,
-    pub stdout: String,
-    pub stderr: String,
-    pub success: bool,
-    pub truncated: bool,
-    pub total_lines: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub raw_output: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hint: Option<String>,
-}
-
-/// Provider-neutral file read result.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SessionSandboxReadFileResponse {
-    pub path: String,
-    pub content: String,
-    pub encoding: String,
-}
-
-/// Provider-neutral file write result.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SessionSandboxWriteFileResponse {
-    pub path: String,
-    pub bytes_written: usize,
-}
-
-/// Provider-neutral status view.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SessionSandboxStatusResponse {
-    pub provider: String,
-    pub session_status: SessionSandboxStatus,
-    pub external_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace_path: Option<String>,
-    #[serde(default)]
-    pub metadata: Value,
-}
-
-/// Provider trait implemented by integration crates.
-#[async_trait::async_trait]
-pub trait SessionSandboxProvider: Send + Sync {
-    fn id(&self) -> &str;
-
-    async fn create(
-        &self,
-        context: &ToolContext,
-        config: &SessionSandboxConfig,
-    ) -> Result<SessionSandboxInstance, ToolExecutionResult>;
-
-    async fn resume(
-        &self,
-        context: &ToolContext,
-        config: &SessionSandboxConfig,
-        instance: &SessionSandboxInstance,
-    ) -> Result<SessionSandboxInstance, ToolExecutionResult>;
-
-    async fn pause(
-        &self,
-        context: &ToolContext,
-        config: &SessionSandboxConfig,
-        instance: &SessionSandboxInstance,
-    ) -> Result<SessionSandboxInstance, ToolExecutionResult>;
-
-    async fn delete(
-        &self,
-        context: &ToolContext,
-        config: &SessionSandboxConfig,
-        instance: &SessionSandboxInstance,
-    ) -> Result<(), ToolExecutionResult>;
-
-    async fn exec(
-        &self,
-        context: &ToolContext,
-        config: &SessionSandboxConfig,
-        instance: &SessionSandboxInstance,
-        request: &SessionSandboxExecRequest,
-    ) -> Result<SessionSandboxExecResponse, ToolExecutionResult>;
-
-    async fn read_file(
-        &self,
-        context: &ToolContext,
-        config: &SessionSandboxConfig,
-        instance: &SessionSandboxInstance,
-        path: &str,
-    ) -> Result<SessionSandboxReadFileResponse, ToolExecutionResult>;
-
-    async fn write_file(
-        &self,
-        context: &ToolContext,
-        config: &SessionSandboxConfig,
-        instance: &SessionSandboxInstance,
-        path: &str,
-        content: &[u8],
-    ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult>;
-
-    /// Persist the current workspace after a completed mutating operation.
-    /// Providers without disposable local filesystems may keep the default.
-    async fn checkpoint(
-        &self,
-        _context: &ToolContext,
-        _config: &SessionSandboxConfig,
-        instance: &SessionSandboxInstance,
-    ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
-        Ok(instance.clone())
-    }
-
-    /// Point the provider's recovery state at `revision`, or clear it when
-    /// `None`, without touching the running workspace.
-    ///
-    /// Reconciliation decides which revision a session may recover to from the
-    /// checkpoint records; this is how that decision reaches the provider state
-    /// the restore actually reads. Providers with no recovery state keep the
-    /// default: there is nothing to rewind, and reconciliation is a no-op for
-    /// them.
-    async fn rewind_checkpoint(
-        &self,
-        _context: &ToolContext,
-        _config: &SessionSandboxConfig,
-        instance: &SessionSandboxInstance,
-        _revision: Option<&str>,
-    ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
-        Ok(instance.clone())
-    }
-
-    async fn status(
-        &self,
-        context: &ToolContext,
-        config: &SessionSandboxConfig,
-        state: &SessionSandboxState,
-    ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult>;
-}
-
-/// Inventory registration point for concrete session sandbox providers.
-pub struct SessionSandboxProviderPlugin {
-    pub factory: fn() -> Box<dyn SessionSandboxProvider>,
-}
-
-inventory::collect!(SessionSandboxProviderPlugin);
-
-/// Look up a registered provider by id.
-pub fn create_session_sandbox_provider(
-    provider_id: &str,
-) -> Option<Box<dyn SessionSandboxProvider>> {
-    inventory::iter::<SessionSandboxProviderPlugin>
-        .into_iter()
-        .map(|plugin| (plugin.factory)())
-        .find(|provider| provider.id() == provider_id)
-}
+pub use everruns_contracts::session_sandbox::*;
 
 /// Extract the effective session sandbox config from a capability list.
 pub fn session_sandbox_config_from_capabilities(
@@ -740,19 +483,6 @@ pub fn session_sandbox_tool_hints() -> ToolHints {
         .with_long_running(true)
 }
 
-fn default_true() -> bool {
-    true
-}
-fn default_idle_timeout() -> u64 {
-    DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS
-}
-fn default_provider_config() -> Value {
-    json!({})
-}
-fn default_output_mode() -> String {
-    // EVE-489: persistence-first default for exec-style sandbox tools.
-    "auto".to_string()
-}
 fn now_rfc3339() -> String {
     Utc::now().to_rfc3339()
 }
@@ -784,43 +514,43 @@ mod tests {
     impl SessionStorageStore for MemorySecrets {
         async fn set_value(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             _key: &str,
             _value: &str,
-        ) -> everruns_provider::error::Result<()> {
+        ) -> everruns_contracts::error::Result<()> {
             unreachable!()
         }
 
         async fn get_value(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             _key: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             unreachable!()
         }
 
         async fn delete_value(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             _key: &str,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             unreachable!()
         }
 
         async fn list_keys(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
-        ) -> everruns_provider::error::Result<Vec<everruns_core::session_services::KeyInfo>>
+            _session_id: everruns_contracts::typed_id::SessionId,
+        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_services::KeyInfo>>
         {
             unreachable!()
         }
 
         async fn set_secret(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             name: &str,
             value: &str,
-        ) -> everruns_provider::error::Result<()> {
+        ) -> everruns_contracts::error::Result<()> {
             self.secrets
                 .lock()
                 .unwrap()
@@ -830,24 +560,24 @@ mod tests {
 
         async fn get_secret(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             name: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             Ok(self.secrets.lock().unwrap().get(name).cloned())
         }
 
         async fn delete_secret(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             name: &str,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             Ok(self.secrets.lock().unwrap().remove(name).is_some())
         }
 
         async fn list_secrets(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
-        ) -> everruns_provider::error::Result<Vec<SecretInfo>> {
+            _session_id: everruns_contracts::typed_id::SessionId,
+        ) -> everruns_contracts::error::Result<Vec<SecretInfo>> {
             Ok(self
                 .secrets
                 .lock()
@@ -898,8 +628,10 @@ mod tests {
     #[tokio::test]
     async fn session_sandbox_state_round_trip() {
         let storage = Arc::new(MemorySecrets::default());
-        let context =
-            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
+        let context = ToolContext::with_storage_store(
+            everruns_contracts::typed_id::SessionId::new(),
+            storage,
+        );
 
         let mut state = SessionSandboxState {
             sandbox: None,
@@ -1001,7 +733,7 @@ mod tests {
 
         async fn create(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
             let instance = test_instance("sb_created");
@@ -1015,7 +747,7 @@ mod tests {
 
         async fn resume(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -1033,7 +765,7 @@ mod tests {
 
         async fn pause(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -1042,7 +774,7 @@ mod tests {
 
         async fn delete(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<(), ToolExecutionResult> {
@@ -1051,7 +783,7 @@ mod tests {
 
         async fn exec(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             request: &SessionSandboxExecRequest,
@@ -1078,7 +810,7 @@ mod tests {
 
         async fn read_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -1093,7 +825,7 @@ mod tests {
 
         async fn write_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -1108,7 +840,7 @@ mod tests {
 
         async fn status(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             state: &SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
@@ -1154,8 +886,10 @@ mod tests {
         reset_test_provider_state(external_id, SessionSandboxStatus::Paused);
 
         let storage = Arc::new(MemorySecrets::default());
-        let context =
-            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
+        let context = ToolContext::with_storage_store(
+            everruns_contracts::typed_id::SessionId::new(),
+            storage,
+        );
         let mut state = SessionSandboxState {
             sandbox: None,
             provider: "core-test-session-sandbox".to_string(),
@@ -1186,8 +920,10 @@ mod tests {
         reset_test_provider_state(external_id, SessionSandboxStatus::Lost);
 
         let storage = Arc::new(MemorySecrets::default());
-        let context =
-            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
+        let context = ToolContext::with_storage_store(
+            everruns_contracts::typed_id::SessionId::new(),
+            storage,
+        );
         let mut state = SessionSandboxState {
             sandbox: None,
             provider: "core-test-session-sandbox".to_string(),
@@ -1218,8 +954,10 @@ mod tests {
         reset_test_provider_state(external_id, SessionSandboxStatus::Running);
 
         let storage = Arc::new(MemorySecrets::default());
-        let context =
-            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
+        let context = ToolContext::with_storage_store(
+            everruns_contracts::typed_id::SessionId::new(),
+            storage,
+        );
         let mut state = SessionSandboxState {
             sandbox: None,
             provider: "core-test-session-sandbox".to_string(),
@@ -1260,7 +998,7 @@ mod tests {
     impl crate::sandbox_checkpoint::SandboxCheckpointStore for RecordingCheckpointStore {
         async fn ensure_sandbox(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             provider: &str,
         ) -> Result<
             crate::sandbox_checkpoint::SandboxRef,
@@ -1367,7 +1105,7 @@ mod tests {
 
         async fn create(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
             unreachable!()
@@ -1375,7 +1113,7 @@ mod tests {
 
         async fn resume(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -1384,7 +1122,7 @@ mod tests {
 
         async fn pause(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -1393,7 +1131,7 @@ mod tests {
 
         async fn delete(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<(), ToolExecutionResult> {
@@ -1402,7 +1140,7 @@ mod tests {
 
         async fn checkpoint(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -1413,7 +1151,7 @@ mod tests {
 
         async fn exec(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _request: &SessionSandboxExecRequest,
@@ -1423,7 +1161,7 @@ mod tests {
 
         async fn read_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _path: &str,
@@ -1433,7 +1171,7 @@ mod tests {
 
         async fn write_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _path: &str,
@@ -1444,7 +1182,7 @@ mod tests {
 
         async fn status(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _state: &SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
@@ -1480,11 +1218,13 @@ mod tests {
     async fn checkpoint_records_revision_before_attaching_it() {
         let storage = Arc::new(MemorySecrets::default());
         let store = Arc::new(RecordingCheckpointStore::default());
-        let context =
-            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage)
-                .with_extension(Arc::new(
-                    crate::sandbox_checkpoint::SandboxCheckpointStoreExt(store.clone()),
-                ));
+        let context = ToolContext::with_storage_store(
+            everruns_contracts::typed_id::SessionId::new(),
+            storage,
+        )
+        .with_extension(Arc::new(
+            crate::sandbox_checkpoint::SandboxCheckpointStoreExt(store.clone()),
+        ));
 
         let mut state = revision_test_state();
         checkpoint_session_sandbox(
@@ -1520,7 +1260,7 @@ mod tests {
         // pre-EVE-870 secret-only behaviour rather than fail the tool.
         let storage = Arc::new(MemorySecrets::default());
         let context = ToolContext::with_storage_store(
-            everruns_provider::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
             storage.clone(),
         );
 
@@ -1553,7 +1293,7 @@ mod tests {
             fail_attach: true,
         });
         let context = ToolContext::with_storage_store(
-            everruns_provider::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
             storage.clone(),
         )
         .with_extension(Arc::new(
@@ -1611,7 +1351,7 @@ mod tests {
     impl crate::sandbox_checkpoint::SandboxCheckpointStore for ReconcileStore {
         async fn ensure_sandbox(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             _provider: &str,
         ) -> Result<
             crate::sandbox_checkpoint::SandboxRef,
@@ -1688,7 +1428,7 @@ mod tests {
             _tool_call_id: &str,
             _tool_name: &str,
             _args_fingerprint: &str,
-        ) -> everruns_provider::error::Result<everruns_core::durability::ToolCallClaimResult>
+        ) -> everruns_contracts::error::Result<everruns_core::durability::ToolCallClaimResult>
         {
             unreachable!("reconciliation only reads")
         }
@@ -1700,7 +1440,7 @@ mod tests {
             _result_json: serde_json::Value,
             _status: &str,
             _claim_token: uuid::Uuid,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             unreachable!("reconciliation only reads")
         }
 
@@ -1708,7 +1448,7 @@ mod tests {
             &self,
             _turn_id: &str,
             _tool_call_id: &str,
-        ) -> everruns_provider::error::Result<
+        ) -> everruns_contracts::error::Result<
             Option<everruns_core::durability::DurableToolCallStatus>,
         > {
             Ok(self.0.clone())
@@ -1729,7 +1469,7 @@ mod tests {
 
         async fn create(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
             unreachable!()
@@ -1737,7 +1477,7 @@ mod tests {
 
         async fn resume(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -1746,7 +1486,7 @@ mod tests {
 
         async fn pause(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
@@ -1755,7 +1495,7 @@ mod tests {
 
         async fn delete(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<(), ToolExecutionResult> {
@@ -1764,7 +1504,7 @@ mod tests {
 
         async fn exec(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _request: &SessionSandboxExecRequest,
@@ -1774,7 +1514,7 @@ mod tests {
 
         async fn read_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _path: &str,
@@ -1784,7 +1524,7 @@ mod tests {
 
         async fn write_file(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _path: &str,
@@ -1795,7 +1535,7 @@ mod tests {
 
         async fn rewind_checkpoint(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
             revision: Option<&str>,
@@ -1811,7 +1551,7 @@ mod tests {
 
         async fn status(
             &self,
-            _context: &ToolContext,
+            _context: &dyn SessionSandboxContext,
             _config: &SessionSandboxConfig,
             state: &SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
@@ -1848,7 +1588,7 @@ mod tests {
             rollbacks: rollbacks.clone(),
         });
         let mut context = ToolContext::with_storage_store(
-            everruns_provider::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
             Arc::new(MemorySecrets::default()),
         )
         .with_extension(Arc::new(

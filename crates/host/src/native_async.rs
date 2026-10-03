@@ -3,11 +3,11 @@
 //! another conversation. Distributed hosts need an equivalent fenced store.
 
 use async_trait::async_trait;
-use everruns_engine::native_async::NativeAsyncJournal;
-use everruns_provider::{
+use everruns_contracts::{
     error::{AgentLoopError, Result},
     native_async::NativeAsyncCheckpoint,
 };
+use everruns_engine::native_async::NativeAsyncJournal;
 use std::{
     fs::{self, File, OpenOptions},
     io::Write,
@@ -99,8 +99,8 @@ impl SharedNativeAsyncJournal {
     pub async fn acquire(
         store: std::sync::Arc<dyn everruns_core::native_async_store::NativeAsyncStore>,
         org_id: i64,
-        session_id: everruns_provider::typed_id::SessionId,
-        turn_id: everruns_provider::typed_id::TurnId,
+        session_id: everruns_contracts::typed_id::SessionId,
+        turn_id: everruns_contracts::typed_id::TurnId,
     ) -> Result<Self> {
         let lease = everruns_core::native_async_store::NativeAsyncLease {
             org_id,
@@ -149,9 +149,9 @@ impl<A: crate::RuntimeHostAdapter> everruns_engine::native_async::NativeAsyncExe
 {
     async fn authorize(
         &self,
-        call: &everruns_provider::native_async::NativeToolCall,
+        call: &everruns_contracts::native_async::NativeToolCall,
     ) -> Result<everruns_engine::native_async::NativeCallPolicy> {
-        use everruns_provider::tool_types::{SideEffectClass, ToolPolicy};
+        use everruns_contracts::tool_types::{SideEffectClass, ToolPolicy};
         let definition = self
             .template
             .tool_definitions
@@ -167,7 +167,7 @@ impl<A: crate::RuntimeHostAdapter> everruns_engine::native_async::NativeAsyncExe
         }
         // web_fetch also supports an optional file-saving mode despite its
         // read-only hint. Keep that mode on the ordinary synchronous path.
-        let saves_file = if let everruns_provider::native_async::NativeToolCall::Function {
+        let saves_file = if let everruns_contracts::native_async::NativeToolCall::Function {
             name,
             arguments,
             ..
@@ -201,9 +201,9 @@ impl<A: crate::RuntimeHostAdapter> everruns_engine::native_async::NativeAsyncExe
     }
     async fn execute(
         &self,
-        call: everruns_provider::native_async::NativeToolCall,
+        call: everruns_contracts::native_async::NativeToolCall,
     ) -> Result<String> {
-        use everruns_provider::native_async::NativeToolCall;
+        use everruns_contracts::native_async::NativeToolCall;
         let arguments = match &call {
             NativeToolCall::Function { arguments, .. } => serde_json::from_str(arguments)
                 .map_err(|_| AgentLoopError::tool("invalid native tool arguments"))?,
@@ -212,8 +212,8 @@ impl<A: crate::RuntimeHostAdapter> everruns_engine::native_async::NativeAsyncExe
             NativeToolCall::Custom { input, .. } => serde_json::Value::String(input.clone()),
         };
         let mut input = self.template.clone();
-        input.context.exec_id = everruns_provider::typed_id::ExecId::new();
-        input.tool_calls = vec![everruns_provider::tool_types::ToolCall {
+        input.context.exec_id = everruns_contracts::typed_id::ExecId::new();
+        input.tool_calls = vec![everruns_contracts::tool_types::ToolCall {
             id: call.id().to_owned(),
             name: call.name().to_owned(),
             arguments,
@@ -244,8 +244,8 @@ async fn persist_terminal_errors<A: crate::RuntimeHostAdapter>(
     context: &everruns_core::ExecutionContext,
     checkpoint: &NativeAsyncCheckpoint,
 ) -> Result<()> {
+    use everruns_contracts::native_async::PendingCallState;
     use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
-    use everruns_provider::native_async::PendingCallState;
     let errors: Vec<_> = checkpoint
         .calls
         .values()
@@ -501,7 +501,7 @@ pub(crate) async fn execute_reason<A: crate::RuntimeHostAdapter>(
                     .native_async_driver(&context.runtime_agent.model, tools.clone(), delivery)
                     .ok_or_else(|| AgentLoopError::config("native driver became unavailable"))?;
                 let mut next_input = input.clone();
-                next_input.context.exec_id = everruns_provider::typed_id::ExecId::new();
+                next_input.context.exec_id = everruns_contracts::typed_id::ExecId::new();
                 next_input.previous_response_id = previous_response_id;
                 next_input.iteration = input.iteration + prior_responses + round as u32;
                 let mut result = atom

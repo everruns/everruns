@@ -206,7 +206,7 @@ fn test_is_merge_serialization_act_events() {
 
 #[test]
 fn test_is_merge_serialization_tool_events() {
-    use everruns_provider::tool_types::ToolCall;
+    use everruns_contracts::tool_types::ToolCall;
 
     let listener = BraintrustListener::new(test_config()).unwrap();
     let turn_id = TurnId::new();

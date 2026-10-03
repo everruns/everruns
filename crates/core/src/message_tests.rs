@@ -27,7 +27,7 @@ fn assert_messages(actual: &[RuntimeMessage], expected: &[RuntimeMessage]) {
 
 #[test]
 fn native_custom_call_survives_transcript_serialization_and_conversion() {
-    let native = everruns_provider::native_async::NativeToolCall::Custom {
+    let native = everruns_contracts::native_async::NativeToolCall::Custom {
         call_id: "original-call".into(),
         name: "lookup".into(),
         input: "raw\nquery: \"value\"".into(),
@@ -434,7 +434,7 @@ fn controls_wire_contract_preserves_all_overrides_and_legacy_defaults() {
         model_id: Some(ModelId::from_uuid(uuid::Uuid::from_u128(6))),
         locale: Some("uk-UA".into()),
         reasoning: Some(ReasoningConfig {
-            effort: Some(everruns_provider::model::ReasoningEffort::High),
+            effort: Some(everruns_contracts::model::ReasoningEffort::High),
         }),
         speed: Some("priority".into()),
         verbosity: Some("low".into()),

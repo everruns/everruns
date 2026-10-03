@@ -5,11 +5,10 @@
 
 use crate::errors::ResourceNotFoundError;
 use crate::kernel_imports::{
-    Caller, Permission, Policy, Rule, everruns_provider::model::Model,
-    everruns_provider::model::ModelProfile, everruns_provider::model::ModelSource,
-    everruns_provider::model::ModelWithProvider,
-    everruns_provider::model_profiles::get_model_profile, everruns_provider::provider::DriverId,
-    everruns_provider::typed_id::ProviderId,
+    Caller, Permission, Policy, Rule, contracts::model::Model, contracts::model::ModelProfile,
+    contracts::model::ModelSource, contracts::model::ModelWithProvider,
+    contracts::model_profiles::get_model_profile, contracts::provider::DriverId,
+    contracts::typed_id::ProviderId,
 };
 use crate::services::ProviderResolverService;
 use crate::storage::{
@@ -693,7 +692,7 @@ impl ModelService {
         // Vendor/brand tag from the model registry (drives UI branding),
         // independent of the configured provider type.
         let model_vendor =
-            everruns_provider::model_profiles::get_model_vendor(&provider_type, &row.model_id);
+            everruns_contracts::model_profiles::get_model_vendor(&provider_type, &row.model_id);
 
         ModelWithProvider {
             id: row.id,
@@ -792,7 +791,7 @@ mod tests {
     async fn create_provider(
         db: &StorageBackend,
         org_id: i64,
-    ) -> everruns_provider::typed_id::ProviderId {
+    ) -> everruns_contracts::typed_id::ProviderId {
         db.create_provider(
             org_id,
             CreateProviderRow {
@@ -933,7 +932,7 @@ mod tests {
     async fn create_keyed_provider(
         db: &StorageBackend,
         org_id: i64,
-    ) -> everruns_provider::typed_id::ProviderId {
+    ) -> everruns_contracts::typed_id::ProviderId {
         db.create_provider(
             org_id,
             CreateProviderRow {
@@ -953,7 +952,7 @@ mod tests {
     async fn discover_model(
         db: &StorageBackend,
         org_id: i64,
-        provider_id: everruns_provider::typed_id::ProviderId,
+        provider_id: everruns_contracts::typed_id::ProviderId,
         model_id: &str,
         capabilities: &[&str],
     ) -> ModelRow {

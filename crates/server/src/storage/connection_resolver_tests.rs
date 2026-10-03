@@ -176,7 +176,7 @@ struct McpFixture {
     provider: String,
     user_id: Uuid,
     identity_id: VirtualUserId,
-    agent_id: everruns_provider::typed_id::AgentId,
+    agent_id: everruns_contracts::typed_id::AgentId,
 }
 
 /// Seed a session with both stores populated unless told otherwise, so a
@@ -221,7 +221,7 @@ async fn mcp_setup(
         .create_agent(
             DEFAULT_ORG_ID,
             crate::storage::models::CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: "Responder".into(),
                 display_name: None,
                 description: None,
@@ -230,7 +230,7 @@ async fn mcp_setup(
                 starters: serde_json::json!([]),
                 system_prompt: "".into(),
                 default_model_id: None,
-                harness_id: everruns_provider::typed_id::HarnessId::from_seed(1),
+                harness_id: everruns_contracts::typed_id::HarnessId::from_seed(1),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),

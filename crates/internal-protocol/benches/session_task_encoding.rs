@@ -22,9 +22,9 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use chrono::{TimeZone, Utc};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_task as st;
 use everruns_internal_protocol::{proto_to_session_task, session_task_to_proto};
-use everruns_provider::typed_id::SessionId;
 use prost::Message as _;
 
 fn sample_task() -> st::SessionTask {

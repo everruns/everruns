@@ -28,10 +28,10 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::kernel_imports::{
-    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::Message,
-    everruns_provider::driver_registry::MessageRole,
+    UtilityLlmRequest, UtilityLlmService, contracts::driver_registry::Message,
+    contracts::driver_registry::MessageRole,
 };
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::storage::StorageBackend;
@@ -424,7 +424,7 @@ impl everruns_core::event_listeners::EventListener for RunSummaryListener {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use everruns_provider::typed_id::EventId;
+    use everruns_contracts::typed_id::EventId;
     use serde_json::json;
 
     fn event(event_type: &str, data: serde_json::Value) -> crate::storage::models::EventRow {

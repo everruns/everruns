@@ -13,16 +13,16 @@ use crate::test_harness;
 use async_trait::async_trait;
 use axum::http::StatusCode;
 use everruns_builtins::{DurableToolApprover, ToolApprovalCapability};
+use everruns_contracts::tool_types::{
+    BuiltinTool, ToolApprovalRequired, ToolCall, ToolDefinition, ToolHints,
+};
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::capabilities::Capability;
 use everruns_core::session_services::SessionStorageStore;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_platform::{Agent, Session};
-use everruns_provider::tool_types::{
-    BuiltinTool, ToolApprovalRequired, ToolCall, ToolDefinition, ToolHints,
-};
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_server::storage::StorageBackend;
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};

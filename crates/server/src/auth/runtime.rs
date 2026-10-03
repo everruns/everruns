@@ -6,7 +6,7 @@ use axum::{
     http::{header, request::Parts},
 };
 use base64::Engine;
-use everruns_provider::typed_id::VirtualUserId;
+use everruns_contracts::typed_id::VirtualUserId;
 
 #[derive(Debug, Clone)]
 pub struct RuntimeAccount {
@@ -115,7 +115,7 @@ impl RuntimeAccount {
             everruns_platform::AgentVersionPolicy::Latest => {
                 db.get_latest_agent_version(
                     self.org_id,
-                    everruns_provider::typed_id::AgentId::from_uuid(endpoint.agent_id),
+                    everruns_contracts::typed_id::AgentId::from_uuid(endpoint.agent_id),
                 )
                 .await?
             }

@@ -1,9 +1,9 @@
 use super::*;
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::connection_services::ProviderCredentialStore;
 use everruns_core::connection_services::ProviderCredentials;
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 
 struct MockProviderCredentialStore {
@@ -433,7 +433,7 @@ fn system_prompt_marks_image_tools_as_directly_invokable() {
 #[tokio::test]
 async fn image_system_prompt_within_budget() {
     let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
-        everruns_provider::typed_id::SessionId::new(),
+        everruns_contracts::typed_id::SessionId::new(),
     );
     let prompt = GptImageGenCapability
         .system_prompt_contribution(&ctx)

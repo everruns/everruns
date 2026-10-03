@@ -24,10 +24,10 @@ use std::pin::pin;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::session::ExecutionSession;
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage};
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use tokio::sync::Notify;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
@@ -259,7 +259,7 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::error::AgentLoopError;
+    use everruns_contracts::error::AgentLoopError;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]

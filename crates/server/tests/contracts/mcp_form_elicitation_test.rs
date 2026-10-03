@@ -12,9 +12,9 @@ use crate::test_harness;
 
 use async_trait::async_trait;
 use axum::http::{Method, StatusCode};
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_platform::{Agent, Session};
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use std::sync::{

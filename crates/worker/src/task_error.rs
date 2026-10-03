@@ -3,8 +3,8 @@
 // task metadata and the full anyhow error chain for durable task surfaces.
 
 use anyhow::Error;
-use everruns_provider::error::AgentLoopError;
-use everruns_provider::user_facing_error::{
+use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::user_facing_error::{
     UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
 };
 use serde_json::Value;

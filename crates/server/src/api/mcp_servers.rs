@@ -14,8 +14,8 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_contracts::typed_id::McpServerId;
 use everruns_core::{Caller, McpServer, ResourceConfigResponse, evaluate_policies_with};
-use everruns_provider::typed_id::McpServerId;
 
 use super::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,

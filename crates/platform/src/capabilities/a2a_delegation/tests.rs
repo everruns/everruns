@@ -8,10 +8,10 @@ use a2a_server::{
     DefaultRequestHandler, InMemoryTaskStore, StaticAgentCard, jsonrpc::jsonrpc_router,
 };
 use axum::Router;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::session_task::SessionTaskRegistry;
-use everruns_provider::typed_id::SessionId;
 use futures::stream;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
@@ -261,7 +261,7 @@ impl a2a_server::AgentExecutor for EchoA2aExecutor {
 }
 
 async fn spawn_real_a2a_agent() -> String {
-    everruns_provider::install_default_crypto_provider();
+    everruns_contracts::install_default_crypto_provider();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let base_url = format!("http://{addr}");
@@ -561,7 +561,7 @@ fn validates_local_urls_only_with_escape_hatch() {
 
 #[test]
 fn reattach_network_access_prefers_persisted_run_policy() {
-    use everruns_provider::typed_id::SessionId;
+    use everruns_contracts::typed_id::SessionId;
 
     let config = ExternalA2aAgentConfig {
         id: "echo".to_string(),
@@ -603,8 +603,8 @@ fn reattach_network_access_prefers_persisted_run_policy() {
 
 #[test]
 fn enforce_network_access_blocks_disallowed_base_url() {
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::network_access::NetworkAccessList;
-    use everruns_provider::typed_id::SessionId;
 
     let agent = ExternalA2aAgentConfig {
         id: "a".to_string(),
@@ -657,8 +657,8 @@ fn enforce_network_access_blocks_disallowed_base_url() {
 
 #[test]
 fn enforce_network_access_blocks_disallowed_interface_url() {
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::network_access::NetworkAccessList;
-    use everruns_provider::typed_id::SessionId;
 
     let card = AgentCard {
         name: "a".to_string(),
@@ -693,8 +693,8 @@ fn enforce_network_access_blocks_disallowed_interface_url() {
 
 #[test]
 fn enforce_network_access_pre_resolve_skips_when_inline_card_present() {
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::network_access::NetworkAccessList;
-    use everruns_provider::typed_id::SessionId;
 
     // base_url not on the allowlist, but agent_card is supplied inline so
     // resolve_card never performs discovery against base_url. The pre-resolve
@@ -771,7 +771,7 @@ impl everruns_core::session_task::SessionTaskRegistry for InMemRegistry {
     async fn create(
         &self,
         input: everruns_core::session_task::CreateSessionTask,
-    ) -> everruns_provider::error::Result<everruns_core::session_task::SessionTask> {
+    ) -> everruns_contracts::error::Result<everruns_core::session_task::SessionTask> {
         let task = everruns_core::session_task::new_session_task(input, chrono::Utc::now());
         self.tasks
             .lock()
@@ -782,26 +782,26 @@ impl everruns_core::session_task::SessionTaskRegistry for InMemRegistry {
 
     async fn get(
         &self,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
         task_id: &str,
-    ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>> {
+    ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>> {
         Ok(self.tasks.lock().unwrap().get(task_id).cloned())
     }
 
     async fn list(
         &self,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
         _filter: Option<&everruns_core::session_task::SessionTaskFilter>,
-    ) -> everruns_provider::error::Result<Vec<everruns_core::session_task::SessionTask>> {
+    ) -> everruns_contracts::error::Result<Vec<everruns_core::session_task::SessionTask>> {
         Ok(self.tasks.lock().unwrap().values().cloned().collect())
     }
 
     async fn update(
         &self,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
         task_id: &str,
         update: everruns_core::session_task::SessionTaskUpdate,
-    ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>> {
+    ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>> {
         let mut tasks = self.tasks.lock().unwrap();
         let Some(task) = tasks.get_mut(task_id) else {
             return Ok(None);
@@ -812,30 +812,30 @@ impl everruns_core::session_task::SessionTaskRegistry for InMemRegistry {
 
     async fn request_cancel(
         &self,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
         _task_id: &str,
-    ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>> {
+    ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>> {
         Ok(None)
     }
 
     async fn record_message(
         &self,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
         _task_id: &str,
         _message: everruns_core::session_task::NewTaskMessage,
-    ) -> everruns_provider::error::Result<everruns_core::session_task::TaskMessage> {
-        Err(everruns_provider::error::AgentLoopError::tool(
+    ) -> everruns_contracts::error::Result<everruns_core::session_task::TaskMessage> {
+        Err(everruns_contracts::error::AgentLoopError::tool(
             "not implemented",
         ))
     }
 
     async fn list_messages(
         &self,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
         _task_id: &str,
         _limit: Option<u32>,
         _after_id: Option<&str>,
-    ) -> everruns_provider::error::Result<Vec<everruns_core::session_task::TaskMessage>> {
+    ) -> everruns_contracts::error::Result<Vec<everruns_core::session_task::TaskMessage>> {
         Ok(vec![])
     }
 }
@@ -933,7 +933,7 @@ async fn background_spawn_is_waitable_via_generic_wait_task() {
 
 /// Build a SessionTask snapshot for testing (not persisted in any store).
 fn fake_task_with_spec(
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     run_id: &str,
     attempt: i32,
 ) -> everruns_core::session_task::SessionTask {
@@ -971,7 +971,7 @@ fn fake_task_with_spec(
 async fn external_agent_executor_start_mirrors_terminal_run() {
     let storage = Arc::new(TestStorageStore::default());
     let registry = Arc::new(InMemRegistry::default());
-    let session_id = everruns_provider::typed_id::SessionId::new();
+    let session_id = everruns_contracts::typed_id::SessionId::new();
 
     let run_id = "run-terminal".to_string();
     let config = ExternalA2aAgentConfig {
@@ -1051,7 +1051,7 @@ async fn external_agent_executor_start_mirrors_terminal_run() {
 async fn wait_for_run_exits_superseded_on_fence_miss() {
     let storage = Arc::new(TestStorageStore::default());
     let registry = Arc::new(InMemRegistry::default());
-    let session_id = everruns_provider::typed_id::SessionId::new();
+    let session_id = everruns_contracts::typed_id::SessionId::new();
 
     let run_id = "run-superseded".to_string();
     // Inline card with a non-routable host: the heartbeat fence check
@@ -1176,7 +1176,7 @@ fn wait_outcome_timed_out_message_is_stable() {
 #[tokio::test]
 async fn external_agent_executor_start_errors_on_missing_remote_task_id() {
     let storage = Arc::new(TestStorageStore::default());
-    let session_id = everruns_provider::typed_id::SessionId::new();
+    let session_id = everruns_contracts::typed_id::SessionId::new();
 
     let run_id = "run-no-remote".to_string();
     let config = ExternalA2aAgentConfig {

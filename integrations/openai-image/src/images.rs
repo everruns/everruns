@@ -150,7 +150,7 @@ impl OpenAiImageClient {
     fn egress_request(&self, endpoint: &str) -> Result<EgressRequest> {
         let url = image_endpoint_url(self.base_url.as_deref(), endpoint)?;
         let (auth_header, auth_value) =
-            if everruns_provider::openai_protocol::is_azure_openai_api_url(url.as_str()) {
+            if everruns_contracts::openai_protocol::is_azure_openai_api_url(url.as_str()) {
                 ("api-key", self.api_key.clone())
             } else {
                 ("authorization", format!("Bearer {}", self.api_key))

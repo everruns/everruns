@@ -11,18 +11,18 @@
 use async_trait::async_trait;
 use chrono::TimeZone;
 
-use everruns_provider::OpenAIProtocolChatDriver;
-use everruns_provider::OpenResponsesProtocolChatDriver;
-use everruns_provider::credential_schema::CredentialFormSchema;
-use everruns_provider::driver_registry::{
+use everruns_contracts::OpenAIProtocolChatDriver;
+use everruns_contracts::OpenResponsesProtocolChatDriver;
+use everruns_contracts::credential_schema::CredentialFormSchema;
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     EmbeddingsDriverFactory, LlmCallConfig, LlmResponse, LlmResponseStream, Message, ServiceKind,
 };
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::openai_protocol::{
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::openai_protocol::{
     is_azure_openai_api_url, is_openai_api_url, models_api_status_error, models_url_for_api_url,
 };
-use everruns_provider::{
+use everruns_contracts::{
     BearerAuth, CompactRequest, CompactResponse, Provider, ProviderEndpoint, StaticHeaderAuth,
 };
 
@@ -30,7 +30,7 @@ use crate::openai::types::OpenAiModelsResponse;
 
 /// Ready-to-use OpenAI Responses provider assembly.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> Provider {
     Provider::new(id, OpenAIChatDriver::new())
@@ -40,7 +40,7 @@ pub fn provider(
 
 /// Ready-to-use Azure OpenAI Responses provider assembly.
 pub fn azure_provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     base_url: impl Into<String>,
     api_key: impl Into<String>,
 ) -> Provider {
@@ -51,7 +51,7 @@ pub fn azure_provider(
 
 /// Ready-to-use OpenAI Chat Completions provider assembly.
 pub fn completions_provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> Provider {
     Provider::new(id, OpenAICompletionsChatDriver::new())
@@ -117,7 +117,7 @@ impl OpenAIChatDriver {
     /// Stream every call over OpenAI's Responses WebSocket mode, keeping one
     /// connection open across the turns of a tool loop. Off by default; a
     /// single call can also opt in or out with the
-    /// [`OPENAI_WEBSOCKET_OPTION`](everruns_provider::OPENAI_WEBSOCKET_OPTION)
+    /// [`OPENAI_WEBSOCKET_OPTION`](everruns_contracts::OPENAI_WEBSOCKET_OPTION)
     /// driver option. Only `api.openai.com` is reached this way, and a socket
     /// that cannot connect or drops before the first event falls back to SSE.
     pub fn with_websocket_transport(mut self, enabled: bool) -> Self {
@@ -128,16 +128,16 @@ impl OpenAIChatDriver {
     /// Configure retries for `429` and transient `5xx` responses.
     ///
     /// Retry time counts against any timeout the caller wraps around the call;
-    /// pass [`everruns_provider::LlmRetryConfig::no_retry`] to own retries in the host.
+    /// pass [`everruns_contracts::LlmRetryConfig::no_retry`] to own retries in the host.
     ///
     /// ```
-    /// use everruns_provider::LlmRetryConfig;
+    /// use everruns_contracts::LlmRetryConfig;
     /// use everruns_drivers::openai::OpenAIChatDriver;
     ///
     /// let driver = OpenAIChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
     /// # let _ = driver;
     /// ```
-    pub fn with_retry_config(mut self, config: everruns_provider::LlmRetryConfig) -> Self {
+    pub fn with_retry_config(mut self, config: everruns_contracts::LlmRetryConfig) -> Self {
         self.inner = self.inner.with_retry_config(config);
         self
     }
@@ -179,7 +179,7 @@ impl ChatDriver for OpenAIChatDriver {
         &self,
         model: &str,
         tools: std::collections::BTreeMap<String, Option<serde_json::Value>>,
-        continuation: Option<everruns_provider::native_async::Delivery>,
+        continuation: Option<everruns_contracts::native_async::Delivery>,
     ) -> Option<std::sync::Arc<dyn ChatDriver>> {
         if model != "gpt-6-astra" && !model.starts_with("gpt-6-astra-") {
             return None;
@@ -228,7 +228,7 @@ impl ChatDriver for OpenAIChatDriver {
 
     async fn chat_completion_non_streaming(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
@@ -336,16 +336,16 @@ impl OpenAICompletionsChatDriver {
     /// Configure retries for `429` and transient `5xx` responses.
     ///
     /// Retry time counts against any timeout the caller wraps around the call;
-    /// pass [`everruns_provider::LlmRetryConfig::no_retry`] to own retries in the host.
+    /// pass [`everruns_contracts::LlmRetryConfig::no_retry`] to own retries in the host.
     ///
     /// ```
-    /// use everruns_provider::LlmRetryConfig;
+    /// use everruns_contracts::LlmRetryConfig;
     /// use everruns_drivers::openai::OpenAICompletionsChatDriver;
     ///
     /// let driver = OpenAICompletionsChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
     /// # let _ = driver;
     /// ```
-    pub fn with_retry_config(mut self, config: everruns_provider::LlmRetryConfig) -> Self {
+    pub fn with_retry_config(mut self, config: everruns_contracts::LlmRetryConfig) -> Self {
         self.inner = self.inner.with_retry_config(config);
         self
     }
@@ -370,7 +370,7 @@ impl ChatDriver for OpenAICompletionsChatDriver {
 
     async fn chat_completion_non_streaming(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
@@ -502,7 +502,7 @@ fn supports_model_listing(api_url: &str) -> bool {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_provider::DriverRegistry;
+/// use everruns_contracts::DriverRegistry;
 /// use everruns_drivers::openai::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
@@ -629,12 +629,12 @@ pub fn completions_descriptor() -> DriverDescriptor {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for OpenAIChatDriver {
@@ -652,7 +652,7 @@ impl Default for OpenAICompletionsChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+    use everruns_contracts::runtime_provider::{ProviderAuth, ProviderAuthRequest};
     use serde_json::json;
     #[tokio::test]
     async fn public_discovery_gates_both_protocols_before_accessing_credentials() {
@@ -750,7 +750,7 @@ mod tests {
         ] {
             let capture = std::sync::Arc::new(Capture(std::sync::Mutex::new(None)));
             let mut config = LlmCallConfig::new("gpt-6-astra");
-            config.reasoning_effort = Some(everruns_provider::model::ReasoningEffort::Max);
+            config.reasoning_effort = Some(everruns_contracts::model::ReasoningEffort::Max);
             let _ = Provider::new("openai", OpenAIChatDriver::new())
                 .base_url(base)
                 .auth_arc(capture.clone())

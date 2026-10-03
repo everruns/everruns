@@ -3,6 +3,10 @@
 // the neutral everruns-host execution contract.
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::error::Result;
+use everruns_contracts::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
+use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
 use everruns_core::tool_context::ToolContextExtensions;
 use everruns_core::{
     CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
@@ -27,10 +31,6 @@ use everruns_platform::{
     PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
     SandboxStateStoreExt, SessionSqlDbStoreExt, SlackActionInvokerExt,
 };
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::error::Result;
-use everruns_provider::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
-use everruns_provider::typed_id::{AgentId, MessageId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -261,7 +261,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 /// let adapters = GrpcWorkerAdapters::connect("127.0.0.1:9001").await?;
 /// let host = WorkerRuntimeHost::new(adapters);
 /// let result = execute_reason_activity(&host, org_id, reason_input).await?;
-/// # Ok::<(), everruns_provider::error::AgentLoopError>(())
+/// # Ok::<(), everruns_contracts::error::AgentLoopError>(())
 /// ```
 #[derive(Clone)]
 pub struct WorkerRuntimeHost<A: WorkerAdapters> {
@@ -334,7 +334,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.load_resolved_turn_for_execution(
             org_id,
             session_id,
-            everruns_provider::typed_id::MessageId::from_uuid(Uuid::nil()),
+            everruns_contracts::typed_id::MessageId::from_uuid(Uuid::nil()),
         )
         .await
     }
@@ -342,7 +342,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         session_id: SessionId,
-        input_message_id: everruns_provider::typed_id::MessageId,
+        input_message_id: everruns_contracts::typed_id::MessageId,
     ) -> Result<ResolvedTurnInputs> {
         // The batched control-plane transport still ships stored records (see
         // `WorkerAdapters::load_turn_context`).
@@ -367,7 +367,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             .get_harness(org_id, context.session.harness_id.uuid())
             .await?
             .ok_or_else(|| {
-                everruns_provider::error::AgentLoopError::harness_not_found(
+                everruns_contracts::error::AgentLoopError::harness_not_found(
                     context.session.harness_id,
                 )
             })?
@@ -692,7 +692,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         session_id: SessionId,
         agent_id: Option<AgentId>,
         input_message_id: MessageId,
-    ) -> Option<Arc<dyn everruns_provider::hosted_mcp::HostedMcpResolver>> {
+    ) -> Option<Arc<dyn everruns_contracts::hosted_mcp::HostedMcpResolver>> {
         Some(Arc::new(WorkerMcpResolver {
             input_message_id: Some(input_message_id.uuid()),
             adapters: self.adapters.clone(),
@@ -711,12 +711,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 /// fails the turn with a message naming where to connect it, and a server with
 /// secret-bound tool parameters is refused because OpenAI cannot inject them.
 #[async_trait]
-impl<A: WorkerAdapters> everruns_provider::hosted_mcp::HostedMcpResolver for WorkerMcpResolver<A> {
+impl<A: WorkerAdapters> everruns_contracts::hosted_mcp::HostedMcpResolver for WorkerMcpResolver<A> {
     async fn resolve(
         &self,
         server: &str,
-    ) -> Result<everruns_provider::hosted_mcp::ResolvedHostedMcp> {
-        let configuration = everruns_provider::error::AgentLoopError::Configuration;
+    ) -> Result<everruns_contracts::hosted_mcp::ResolvedHostedMcp> {
+        let configuration = everruns_contracts::error::AgentLoopError::Configuration;
         let prefix = everruns_core::mcp_server::sanitize_mcp_server_name(server);
         let connection = McpConnectionResolver::resolve(self, &prefix)
             .await
@@ -750,7 +750,7 @@ impl<A: WorkerAdapters> everruns_provider::hosted_mcp::HostedMcpResolver for Wor
                 )));
             }
         };
-        Ok(everruns_provider::hosted_mcp::ResolvedHostedMcp { url, headers })
+        Ok(everruns_contracts::hosted_mcp::ResolvedHostedMcp { url, headers })
     }
 }
 
@@ -784,10 +784,10 @@ mod mcp_credential_tests {
 
     use super::*;
     use crate::worker_adapters::WorkerAdapters;
+    use everruns_contracts::error::Result as CoreResult;
+    use everruns_contracts::typed_id::SessionId as CoreSessionId;
     use everruns_core::McpServerActsAs;
     use everruns_core::connection_services::UserConnectionResolver;
-    use everruns_provider::error::Result as CoreResult;
-    use everruns_provider::typed_id::SessionId as CoreSessionId;
     use std::collections::HashMap;
     use std::sync::Mutex as StdMutex;
 
@@ -817,7 +817,7 @@ mod mcp_credential_tests {
         ) -> CoreResult<Option<String>> {
             *self.legacy_calls.lock().unwrap() += 1;
             if self.fail {
-                return Err(everruns_provider::error::AgentLoopError::store("db down"));
+                return Err(everruns_contracts::error::AgentLoopError::store("db down"));
             }
             Ok(self.legacy_token.clone())
         }
@@ -830,7 +830,7 @@ mod mcp_credential_tests {
         ) -> CoreResult<Option<String>> {
             self.acts_as_calls.lock().unwrap().push(acts_as);
             if self.fail {
-                return Err(everruns_provider::error::AgentLoopError::store("db down"));
+                return Err(everruns_contracts::error::AgentLoopError::store("db down"));
             }
             Ok(self.acts_as_token.clone())
         }
@@ -957,7 +957,7 @@ mod mcp_credential_tests {
     /// the agent's own MCP tools would, and a missing grant fails the turn.
     #[tokio::test]
     async fn hosted_mcp_resolution_uses_the_same_credentials() {
-        use everruns_provider::hosted_mcp::HostedMcpResolver;
+        use everruns_contracts::hosted_mcp::HostedMcpResolver;
         let oauth = everruns_core::McpServerAuthMode::OAuth;
         let connected = hosted_resolver(
             server_info(McpServerActsAs::User, oauth.clone(), None, &[]),
@@ -1259,20 +1259,20 @@ mod mcp_credential_tests {
             &self,
             _org_id: i64,
             _model_id: Uuid,
-        ) -> CoreResult<Option<everruns_provider::model_spec::ModelSpec>> {
+        ) -> CoreResult<Option<everruns_contracts::model_spec::ModelSpec>> {
             unimplemented!()
         }
         async fn get_default_model_spec(
             &self,
             _org_id: i64,
-        ) -> CoreResult<Option<everruns_provider::model_spec::ModelSpec>> {
+        ) -> CoreResult<Option<everruns_contracts::model_spec::ModelSpec>> {
             unimplemented!()
         }
         async fn get_provider_config(
             &self,
             _org_id: i64,
-            _provider: &everruns_provider::runtime_provider::ProviderKey,
-        ) -> CoreResult<Option<everruns_provider::driver_registry::ProviderConfig>> {
+            _provider: &everruns_contracts::runtime_provider::ProviderKey,
+        ) -> CoreResult<Option<everruns_contracts::driver_registry::ProviderConfig>> {
             unimplemented!()
         }
         async fn resolve_image(
@@ -1396,14 +1396,14 @@ mod mcp_credential_tests {
         }
         async fn mark_leased_resource_released(
             &self,
-            _resource_id: everruns_provider::typed_id::LeasedResourceId,
+            _resource_id: everruns_contracts::typed_id::LeasedResourceId,
             _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
         ) -> CoreResult<bool> {
             unimplemented!()
         }
         async fn mark_leased_resource_cleanup_failed(
             &self,
-            _resource_id: everruns_provider::typed_id::LeasedResourceId,
+            _resource_id: everruns_contracts::typed_id::LeasedResourceId,
             _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
             _retry_after_seconds: u32,
             _error: &str,
@@ -1414,7 +1414,7 @@ mod mcp_credential_tests {
             &self,
             _stale_after: chrono::Duration,
             _limit: i64,
-        ) -> CoreResult<Vec<(everruns_provider::typed_id::SessionId, String)>> {
+        ) -> CoreResult<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
             unimplemented!()
         }
         async fn prune_terminal_session_tasks(
@@ -1428,13 +1428,13 @@ mod mcp_credential_tests {
         fn capability_registry(&self) -> everruns_core::capabilities::CapabilityRegistry {
             unimplemented!()
         }
-        fn driver_registry(&self) -> everruns_provider::DriverRegistry {
+        fn driver_registry(&self) -> everruns_contracts::DriverRegistry {
             unimplemented!()
         }
         fn sqldb_store(
             &self,
             _org_id: i64,
-        ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
+        ) -> std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> {
             unimplemented!()
         }
         fn storage_store(
@@ -1470,7 +1470,7 @@ mod mcp_credential_tests {
         fn platform_store(
             &self,
             _org_id: i64,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
         ) -> Arc<dyn everruns_platform::PlatformStore> {
             unimplemented!()
         }

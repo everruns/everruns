@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
-use everruns_provider::typed_id::ModelId;
+use everruns_contracts::typed_id::ModelId;
 use std::collections::HashMap;
 use uuid::Uuid;
 

@@ -20,10 +20,10 @@ use crate::openrouter::options::{
     OPENROUTER_X_TITLE_METADATA_KEY, OpenRouterCapacityStrategy, OpenRouterPluginConfig,
     OpenRouterRoutingConfig,
 };
-use everruns_provider::OpenResponsesRequestExtension;
-use everruns_provider::driver_registry::LlmCallConfig;
-use everruns_provider::error::{AgentLoopError, BillingPressureReason, LlmErrorKind, Result};
-use everruns_provider::llm_retry::{RateLimitInfo, RateLimitType};
+use everruns_contracts::OpenResponsesRequestExtension;
+use everruns_contracts::driver_registry::LlmCallConfig;
+use everruns_contracts::error::{AgentLoopError, BillingPressureReason, LlmErrorKind, Result};
+use everruns_contracts::llm_retry::{RateLimitInfo, RateLimitType};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
 use serde_json::{Value, json};
 

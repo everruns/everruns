@@ -1,11 +1,11 @@
 // PostgreSQL implementation of SubagentSpawnStore (EVE-535).
 
 use async_trait::async_trait;
+use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::{
     delegation_services::SpawnClaimResult, delegation_services::SubagentSpawnStore,
 };
-use everruns_provider::error::AgentLoopError;
-use everruns_provider::typed_id::SessionId;
 use sqlx::PgPool;
 use uuid::Uuid;
 

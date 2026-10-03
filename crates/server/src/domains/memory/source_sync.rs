@@ -478,8 +478,8 @@ mod tests {
     use super::*;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateMemoryRow;
+    use everruns_contracts::typed_id::MemoryId;
     use everruns_core::DEFAULT_ORG_ID;
-    use everruns_provider::typed_id::MemoryId;
 
     #[test]
     fn snapshot_directory_maps_paths_and_skips_git_metadata() {

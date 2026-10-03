@@ -19,12 +19,12 @@
 //! register_portable_capabilities(&mut registry)?;
 //! assert_eq!(CurrentTimeCapability.id(), "current_time");
 //! assert!(registry.get("current_time").is_some());
-//! # Ok::<(), everruns_capability::CapabilityError>(())
+//! # Ok::<(), everruns_contracts::CapabilityError>(())
 //! ```
 
 use std::sync::Arc;
 
-use everruns_capability::CapabilityError;
+use everruns_contracts::CapabilityError;
 
 // Public modules support focused imports; the root re-exports below are the
 // curated common surface.
@@ -81,6 +81,20 @@ pub use ask_user::{
     MAX_ASK_USER_SECRET_NAME_CHARS, SESSION_SECRET_REF_PREFIX, normalize_ask_user_arguments,
     session_secret_ref, validate_ask_user_request,
 };
+#[allow(unused_imports)]
+pub(crate) use everruns_contracts::driver_registry::{
+    LlmCompletionMetadata, LlmResponse, LlmResponseStream, Message, MessageRole,
+};
+#[allow(unused_imports)]
+pub(crate) use everruns_contracts::error::{AgentLoopError, Result};
+#[allow(unused_imports)]
+pub(crate) use everruns_contracts::typed_id::{PrincipalId, WorkspaceId};
+#[allow(unused_imports)]
+pub(crate) use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
+#[allow(unused_imports)]
+pub(crate) use everruns_contracts::{
+    driver_registry, error, model_profiles, provider, tool_types, typed_id, user_facing_error,
+};
 pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityRegistry, CapabilityStatus, Fact, FactsContext,
     ModelViewContext, ModelViewProvider, RiskLevel, SystemPromptContext, ToolDefinitionHook,
@@ -99,20 +113,6 @@ pub(crate) use everruns_core::{
     llm_conversions, llm_error_hook, mcp_server, message, message_filter, output_guardrail,
     runtime_agent, session, session_file, session_files, session_resource, session_schedule, skill,
     tool_context, tool_fingerprint, tool_narration, tool_output_sanitizer, tools, utility_llm,
-};
-#[allow(unused_imports)]
-pub(crate) use everruns_provider::driver_registry::{
-    LlmCompletionMetadata, LlmResponse, LlmResponseStream, Message, MessageRole,
-};
-#[allow(unused_imports)]
-pub(crate) use everruns_provider::error::{AgentLoopError, Result};
-#[allow(unused_imports)]
-pub(crate) use everruns_provider::typed_id::{PrincipalId, WorkspaceId};
-#[allow(unused_imports)]
-pub(crate) use everruns_provider::user_facing_error::codes as user_facing_error_codes;
-#[allow(unused_imports)]
-pub(crate) use everruns_provider::{
-    driver_registry, error, model_profiles, provider, tool_types, typed_id, user_facing_error,
 };
 
 #[cfg(test)]

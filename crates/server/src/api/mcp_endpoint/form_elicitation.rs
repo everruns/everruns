@@ -286,8 +286,8 @@ use super::{
     AppState, AuthUser, JsonRpcResponse, ResolvedOrg, classify_mcp_execute_error, elicitation,
     error_result_payload, resolve_org_override, tool_registry,
 };
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
-use everruns_provider::typed_id::SessionId;
 
 pub(super) async fn pending_questions_for_session(
     caller: &Caller,

@@ -8,13 +8,13 @@
 //! cover the driver-specific transition and lifecycle-event boundary.
 
 use chrono::{TimeZone, Utc};
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_engine::{
     ActOutcome, ActivityOutcome, Execution, HostFacts, ReasonResult, TurnLifecycleEffect, TurnPlan,
     TurnState,
 };
 use everruns_host::InProcessExecution;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_worker::DurableExecution;
 use serde_json::json;
 

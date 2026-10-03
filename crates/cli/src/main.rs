@@ -173,7 +173,7 @@ pub enum CapabilitiesCommand {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    everruns_provider::install_default_crypto_provider();
+    everruns_contracts::install_default_crypto_provider();
 
     // The CLI's own tree, plus every contract command it does not hand-write.
     // Parsing happens once, against the merged tree, so a mounted command gets

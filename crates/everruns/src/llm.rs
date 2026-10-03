@@ -39,27 +39,27 @@ use std::fmt;
 
 use std::time::Duration;
 
-use everruns_provider::driver_registry::{LlmCallConfig, LlmResponse, LlmResponseStream};
-use everruns_provider::error::AgentLoopError;
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::runtime_provider::Provider;
-use everruns_provider::tool_types::ToolDefinition;
+use everruns_contracts::driver_registry::{LlmCallConfig, LlmResponse, LlmResponseStream};
+use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::runtime_provider::Provider;
+use everruns_contracts::tool_types::ToolDefinition;
 use serde_json::Value;
 
 /// How a driver retries `429` and transient `5xx` responses before the first
 /// stream event. Pass [`LlmRetryConfig::no_retry`] to a driver's
 /// `with_retry_config` when the application owns retries itself.
-pub use everruns_provider::llm_retry::LlmRetryConfig;
+pub use everruns_contracts::llm_retry::LlmRetryConfig;
 
 /// The provider-facing message and role a direct model call carries.
 ///
 /// Re-exported here rather than at the crate root: the root's `MessageRole`
 /// belongs to stored session messages, which is the path most applications are
 /// on. `use everruns::llm::{Message, MessageRole}` keeps both plain-named.
-pub use everruns_provider::driver_registry::{Message, MessageContent, MessageRole};
+pub use everruns_contracts::driver_registry::{Message, MessageContent, MessageRole};
 
 /// A JSON Schema the model's reply must satisfy; see [`Completion::response_format`].
-pub use everruns_provider::structured_output::{JsonSchemaFormat, ResponseFormat};
+pub use everruns_contracts::structured_output::{JsonSchemaFormat, ResponseFormat};
 
 use crate::Model;
 
@@ -246,7 +246,7 @@ impl Completion {
     ///
     /// For callers that already hold definitions — read from their own
     /// configuration, or converted from OpenAI-shaped JSON with
-    /// [`openai_wire`](everruns_provider::openai_wire).
+    /// [`openai_wire`](everruns_contracts::openai_wire).
     pub fn tools(mut self, tools: impl IntoIterator<Item = ToolDefinition>) -> Self {
         self.config.tools.extend(tools);
         self

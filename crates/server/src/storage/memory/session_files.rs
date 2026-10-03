@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
 use anyhow::anyhow;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use uuid::Uuid;
 
 impl InMemoryDatabase {

@@ -646,7 +646,7 @@ impl StorageBackend {
     pub async fn get_agent_version(
         &self,
         org_id: i64,
-        id: everruns_provider::typed_id::AgentVersionId,
+        id: everruns_contracts::typed_id::AgentVersionId,
     ) -> Result<Option<AgentVersionRow>> {
         dispatch!(self, get_agent_version, org_id, id)
     }

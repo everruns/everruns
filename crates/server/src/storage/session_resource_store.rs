@@ -4,8 +4,7 @@
 // Any capability can register resources here for agent and infra visibility.
 
 use crate::kernel_imports::{
-    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
-    everruns_provider::typed_id::SessionId,
+    contracts::error::AgentLoopError, contracts::error::Result, contracts::typed_id::SessionId,
 };
 use async_trait::async_trait;
 use everruns_core::session_resource::{

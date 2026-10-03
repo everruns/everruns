@@ -19,7 +19,7 @@ async fn create_counted_session(server: &TestServer, org_id: i64) -> (Uuid, Uuid
     let principal = server
         .db
         .create_principal(CreatePrincipalRow {
-            id: everruns_provider::typed_id::PrincipalId::new(),
+            id: everruns_contracts::typed_id::PrincipalId::new(),
             org_id,
             kind: "system".to_string(),
             subject_id: Some(Uuid::now_v7()),

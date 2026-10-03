@@ -8,6 +8,10 @@
 // host root (the worktree-switch scenario) moves every surface together.
 
 use everruns_builtins::{DistillOutputHook, PersistOutputHook};
+use everruns_contracts::tool_types::{
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
+};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PostToolExecHook;
 #[cfg(any(feature = "bashkit", feature = "filesystem"))]
@@ -18,10 +22,6 @@ use everruns_host::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file
 use everruns_integrations_bashkit::BashTool;
 #[cfg(feature = "filesystem")]
 use everruns_integrations_filesystem::WriteFileTool;
-use everruns_provider::tool_types::{
-    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
-};
-use everruns_provider::typed_id::SessionId;
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::TempDir;

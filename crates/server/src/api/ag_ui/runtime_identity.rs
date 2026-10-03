@@ -158,7 +158,7 @@ pub(crate) async fn resolve_ingress_identity(
     provider: &str,
     realm: &str,
     subject: &str,
-) -> Result<everruns_provider::typed_id::VirtualUserId, Response> {
+) -> Result<everruns_contracts::typed_id::VirtualUserId, Response> {
     let user = state
         .db
         .resolve_runtime_identity(crate::storage::runtime_identity::VerifiedRuntimeIdentity {

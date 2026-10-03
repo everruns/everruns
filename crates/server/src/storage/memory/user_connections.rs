@@ -3,7 +3,7 @@ use super::super::mcp_catalog::UserMcpConnectionRow;
 use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
-use everruns_provider::typed_id::{SessionId, VirtualUserId};
+use everruns_contracts::typed_id::{SessionId, VirtualUserId};
 use uuid::Uuid;
 impl InMemoryDatabase {
     pub async fn upsert_user_connection(

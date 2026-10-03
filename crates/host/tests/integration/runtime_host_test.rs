@@ -1,5 +1,11 @@
 use async_trait::async_trait;
 use chrono::Utc;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::tool_types::{ToolCall, ToolResult};
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::ExecutionContext;
 use everruns_core::MessageRetriever;
 use everruns_core::capabilities::{
@@ -28,12 +34,6 @@ use everruns_host::{
     TurnStopReason, advance_host_execution, execute_act_activity, execute_input_activity,
     inspect_turn_context,
 };
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::tool_types::{ToolCall, ToolResult};
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
-use everruns_provider::user_facing_error::codes as user_facing_error_codes;
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, TestMathCapability,
     llmsim_driver::register_driver,
@@ -60,9 +60,9 @@ impl TestSessionStore {
         &self,
         session_id: SessionId,
         status: SessionExecutionState,
-    ) -> everruns_provider::error::Result<ExecutionSession> {
+    ) -> everruns_contracts::error::Result<ExecutionSession> {
         if self.fail_status_writes.load(Ordering::SeqCst) {
-            return Err(everruns_provider::error::AgentLoopError::config(
+            return Err(everruns_contracts::error::AgentLoopError::config(
                 "injected session status failure",
             ));
         }
@@ -78,7 +78,7 @@ impl SessionStore for TestSessionStore {
     async fn get_session(
         &self,
         session_id: SessionId,
-    ) -> everruns_provider::error::Result<Option<ExecutionSession>> {
+    ) -> everruns_contracts::error::Result<Option<ExecutionSession>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }
@@ -89,7 +89,7 @@ impl SessionMutator for TestSessionStore {
         &self,
         session_id: SessionId,
         title: String,
-    ) -> everruns_provider::error::Result<ExecutionSession> {
+    ) -> everruns_contracts::error::Result<ExecutionSession> {
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(&session_id).expect("session exists");
         session.title = Some(title);
@@ -118,7 +118,7 @@ impl RuntimeHostAdapter for MockHostAdapter {
         _org_id: i64,
         session_id: SessionId,
         status: SessionExecutionState,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.session_store.set_status(session_id, status).await?;
         Ok(())
     }
@@ -127,7 +127,7 @@ impl RuntimeHostAdapter for MockHostAdapter {
         &self,
         _org_id: i64,
         session_id: SessionId,
-    ) -> everruns_provider::error::Result<ResolvedTurnInputs> {
+    ) -> everruns_contracts::error::Result<ResolvedTurnInputs> {
         let session = self
             .session_store
             .get_session(session_id)
@@ -206,7 +206,7 @@ impl SessionTaskRegistry for TestTaskRegistry {
     async fn create(
         &self,
         input: CreateSessionTask,
-    ) -> everruns_provider::error::Result<SessionTask> {
+    ) -> everruns_contracts::error::Result<SessionTask> {
         let task = new_session_task(input, Utc::now());
         self.tasks.write().await.push(task.clone());
         Ok(task)
@@ -217,7 +217,7 @@ impl SessionTaskRegistry for TestTaskRegistry {
         session_id: SessionId,
         task_id: &str,
         update: SessionTaskUpdate,
-    ) -> everruns_provider::error::Result<Option<SessionTask>> {
+    ) -> everruns_contracts::error::Result<Option<SessionTask>> {
         let mut tasks = self.tasks.write().await;
         let Some(task) = tasks
             .iter_mut()
@@ -233,7 +233,7 @@ impl SessionTaskRegistry for TestTaskRegistry {
         &self,
         session_id: SessionId,
         task_id: &str,
-    ) -> everruns_provider::error::Result<Option<SessionTask>> {
+    ) -> everruns_contracts::error::Result<Option<SessionTask>> {
         Ok(self
             .tasks
             .read()
@@ -247,7 +247,7 @@ impl SessionTaskRegistry for TestTaskRegistry {
         &self,
         session_id: SessionId,
         filter: Option<&SessionTaskFilter>,
-    ) -> everruns_provider::error::Result<Vec<SessionTask>> {
+    ) -> everruns_contracts::error::Result<Vec<SessionTask>> {
         Ok(self
             .tasks
             .read()
@@ -267,7 +267,7 @@ impl SessionTaskRegistry for TestTaskRegistry {
         &self,
         session_id: SessionId,
         task_id: &str,
-    ) -> everruns_provider::error::Result<Option<SessionTask>> {
+    ) -> everruns_contracts::error::Result<Option<SessionTask>> {
         self.get(session_id, task_id).await
     }
 
@@ -276,8 +276,10 @@ impl SessionTaskRegistry for TestTaskRegistry {
         _session_id: SessionId,
         _task_id: &str,
         _message: NewTaskMessage,
-    ) -> everruns_provider::error::Result<TaskMessage> {
-        Err(everruns_provider::error::AgentLoopError::tool("not needed"))
+    ) -> everruns_contracts::error::Result<TaskMessage> {
+        Err(everruns_contracts::error::AgentLoopError::tool(
+            "not needed",
+        ))
     }
 
     async fn list_messages(
@@ -286,7 +288,7 @@ impl SessionTaskRegistry for TestTaskRegistry {
         _task_id: &str,
         _limit: Option<u32>,
         _after_id: Option<&str>,
-    ) -> everruns_provider::error::Result<Vec<TaskMessage>> {
+    ) -> everruns_contracts::error::Result<Vec<TaskMessage>> {
         Ok(vec![])
     }
 }
@@ -294,8 +296,8 @@ impl SessionTaskRegistry for TestTaskRegistry {
 async fn build_registry(
     capability_registry: &CapabilityRegistry,
     session_id: SessionId,
-    capabilities: &[everruns_capability::CapabilityRef],
-) -> everruns_provider::error::Result<ToolRegistry> {
+    capabilities: &[everruns_contracts::CapabilityRef],
+) -> everruns_contracts::error::Result<ToolRegistry> {
     let ctx = SystemPromptContext::without_file_store(session_id);
     let collected =
         collect_capabilities_with_configs(capabilities, capability_registry, &ctx).await;
@@ -326,8 +328,8 @@ impl Tool for PersistedOutputTool {
         json!({ "type": "object", "additionalProperties": false })
     }
 
-    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
-        everruns_provider::tool_types::ToolHints::default().with_persist_output(true)
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
+        everruns_contracts::tool_types::ToolHints::default().with_persist_output(true)
     }
 
     async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
@@ -460,7 +462,7 @@ impl everruns_core::tool_hooks::PostToolExecHook for OverlayHook {
     async fn after_exec(
         &self,
         _tool_call: &ToolCall,
-        _tool_def: &everruns_provider::tool_types::ToolDefinition,
+        _tool_def: &everruns_contracts::tool_types::ToolDefinition,
         result: &mut ToolResult,
         _context: &ToolContext,
     ) {
@@ -534,7 +536,7 @@ impl everruns_core::tool_hooks::PreToolUseHook for BlockEchoHook {
     async fn before_exec(
         &self,
         tool_call: ToolCall,
-        _tool_def: &everruns_provider::tool_types::ToolDefinition,
+        _tool_def: &everruns_contracts::tool_types::ToolDefinition,
         _context: &ToolContext,
     ) -> everruns_core::tool_hooks::PreToolUseDecision {
         if tool_call.name == "overlay_echo" {
@@ -689,7 +691,7 @@ struct ExplicitNarrationHook;
 impl everruns_core::capabilities::ToolCallHook for ExplicitNarrationHook {
     fn narration(
         &self,
-        _tool_def: Option<&everruns_provider::tool_types::ToolDefinition>,
+        _tool_def: Option<&everruns_contracts::tool_types::ToolDefinition>,
         tool_call: &ToolCall,
         _phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
@@ -737,7 +739,7 @@ impl Capability for ExplicitNarrationCapability {
 
 fn harness() -> HarnessDefinition {
     HarnessDefinition {
-        capabilities: vec![everruns_capability::CapabilityRef::new("test_math")],
+        capabilities: vec![everruns_contracts::CapabilityRef::new("test_math")],
         ..HarnessDefinition::new("math", "You are a math harness.")
     }
 }
@@ -745,7 +747,7 @@ fn harness() -> HarnessDefinition {
 pub(super) fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
     ExecutionSession {
         id: session_id,
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: None,
@@ -774,7 +776,7 @@ pub(super) fn session(session_id: SessionId, harness_id: HarnessId) -> Execution
 
 fn agent(
     agent_id: AgentId,
-    capabilities: Vec<everruns_capability::CapabilityRef>,
+    capabilities: Vec<everruns_contracts::CapabilityRef>,
 ) -> AgentDefinition {
     AgentDefinition {
         display_name: Some("Test Agent".into()),
@@ -811,7 +813,7 @@ pub(super) async fn advance_from_state(
     state: &TurnState,
     output: &serde_json::Value,
     pending_user_message_count: usize,
-) -> everruns_provider::error::Result<TurnPlan> {
+) -> everruns_contracts::error::Result<TurnPlan> {
     let mut execution = InProcessExecution::new(state.clone());
     advance_host_execution(
         adapter,
@@ -854,7 +856,7 @@ async fn reason_tool_definitions(
     session_id: SessionId,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
-) -> Vec<everruns_provider::tool_types::ToolDefinition> {
+) -> Vec<everruns_contracts::tool_types::ToolDefinition> {
     inspect_turn_context(
         adapter.harness_store.as_ref(),
         adapter.agent_store.as_ref(),
@@ -950,7 +952,7 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
     let tool_definitions = build_registry(
         &adapter.capability_registry,
         session_id,
-        &[everruns_capability::CapabilityRef::new("test_math")],
+        &[everruns_contracts::CapabilityRef::new("test_math")],
     )
     .await
     .unwrap()
@@ -997,7 +999,7 @@ async fn act_activity_persists_full_output_before_the_hard_limit() {
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     let input_message_id = MessageId::from_uuid(Uuid::now_v7());
-    let capability = everruns_capability::CapabilityRef::new("persisted_output_fixture");
+    let capability = everruns_contracts::CapabilityRef::new("persisted_output_fixture");
     let mut test_harness = harness();
     test_harness.capabilities = vec![capability.clone()];
     adapter
@@ -1068,7 +1070,7 @@ async fn runtime_host_services_reach_final_tool_context_in_parity() {
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     let input_message_id = MessageId::from_uuid(Uuid::now_v7());
     let mut test_harness = harness();
-    test_harness.capabilities = vec![everruns_capability::CapabilityRef::new("context_parity")];
+    test_harness.capabilities = vec![everruns_contracts::CapabilityRef::new("context_parity")];
     adapter
         .harness_store
         .add_harness(harness_id, test_harness)
@@ -1081,7 +1083,7 @@ async fn runtime_host_services_reach_final_tool_context_in_parity() {
     let tool_definitions = build_registry(
         &adapter.capability_registry,
         session_id,
-        &[everruns_capability::CapabilityRef::new("context_parity")],
+        &[everruns_contracts::CapabilityRef::new("context_parity")],
     )
     .await
     .unwrap()
@@ -1141,7 +1143,7 @@ async fn act_activity_uses_capability_tool_narration_on_act_path() {
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new("narrating")],
+                capabilities: vec![everruns_contracts::CapabilityRef::new("narrating")],
                 ..harness()
             },
         )
@@ -1153,7 +1155,7 @@ async fn act_activity_uses_capability_tool_narration_on_act_path() {
     let tool_definitions = build_registry(
         &adapter.capability_registry,
         session_id,
-        &[everruns_capability::CapabilityRef::new("narrating")],
+        &[everruns_contracts::CapabilityRef::new("narrating")],
     )
     .await
     .unwrap()
@@ -1230,9 +1232,7 @@ async fn act_activity_explicit_tool_call_hook_wins_over_capability_narration() {
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new(
-                    "explicit_narration",
-                )],
+                capabilities: vec![everruns_contracts::CapabilityRef::new("explicit_narration")],
                 ..harness()
             },
         )
@@ -1244,9 +1244,7 @@ async fn act_activity_explicit_tool_call_hook_wins_over_capability_narration() {
     let tool_definitions = build_registry(
         &adapter.capability_registry,
         session_id,
-        &[everruns_capability::CapabilityRef::new(
-            "explicit_narration",
-        )],
+        &[everruns_contracts::CapabilityRef::new("explicit_narration")],
     )
     .await
     .unwrap()
@@ -1310,7 +1308,7 @@ async fn act_activity_agent_session_executes_harness_overlay_tools_from_reason_p
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new("overlay_echo")],
+                capabilities: vec![everruns_contracts::CapabilityRef::new("overlay_echo")],
                 ..harness()
             },
         )
@@ -1381,7 +1379,7 @@ async fn act_activity_agent_session_resolves_transitive_overlay_capabilities() {
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new("overlay_alias")],
+                capabilities: vec![everruns_contracts::CapabilityRef::new("overlay_alias")],
                 ..harness()
             },
         )
@@ -1451,7 +1449,7 @@ async fn act_activity_agent_session_runs_post_tool_hooks_from_merged_overlay() {
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new("overlay_echo")],
+                capabilities: vec![everruns_contracts::CapabilityRef::new("overlay_echo")],
                 ..harness()
             },
         )
@@ -1523,8 +1521,8 @@ async fn act_activity_runs_capability_pre_tool_hook_and_blocks() {
             harness_id,
             HarnessDefinition {
                 capabilities: vec![
-                    everruns_capability::CapabilityRef::new("overlay_echo"),
-                    everruns_capability::CapabilityRef::new("gate"),
+                    everruns_contracts::CapabilityRef::new("overlay_echo"),
+                    everruns_contracts::CapabilityRef::new("gate"),
                 ],
                 ..harness()
             },
@@ -1610,8 +1608,8 @@ async fn act_activity_skips_pre_tool_hooks_from_unavailable_capability() {
             harness_id,
             HarnessDefinition {
                 capabilities: vec![
-                    everruns_capability::CapabilityRef::new("overlay_echo"),
-                    everruns_capability::CapabilityRef::new("coming_soon_gate"),
+                    everruns_contracts::CapabilityRef::new("overlay_echo"),
+                    everruns_contracts::CapabilityRef::new("coming_soon_gate"),
                 ],
                 ..harness()
             },
@@ -2286,10 +2284,10 @@ async fn execution_prefers_disclosed_user_facing_error_from_reason() {
         tool_definitions: vec![],
         max_iterations: 8,
         error: Some("LLM error: OpenAI API error (429): insufficient_quota".into()),
-        user_facing_error: Some(everruns_provider::user_facing_error::UserFacingError::new(
+        user_facing_error: Some(everruns_contracts::user_facing_error::UserFacingError::new(
             user_facing_error_codes::PROCESSING_ERROR,
         )),
-        error_disclosure: Some(everruns_provider::user_facing_error::ErrorDisclosure::Generic),
+        error_disclosure: Some(everruns_contracts::user_facing_error::ErrorDisclosure::Generic),
         usage: None,
         output_message_id: None,
         time_to_first_token_ms: None,
@@ -2441,7 +2439,7 @@ async fn user_prompt_submit_hook_blocks_turn_before_reason() {
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new(
+                capabilities: vec![everruns_contracts::CapabilityRef::new(
                     "lifecycle_hook_test",
                 )],
                 ..harness()
@@ -2513,7 +2511,7 @@ async fn user_prompt_submit_hook_blocks_injected_mid_turn_message() {
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new(
+                capabilities: vec![everruns_contracts::CapabilityRef::new(
                     "lifecycle_hook_test",
                 )],
                 ..harness()
@@ -2589,7 +2587,7 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new(
+                capabilities: vec![everruns_contracts::CapabilityRef::new(
                     "lifecycle_hook_test",
                 )],
                 ..harness()
@@ -2669,8 +2667,8 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
             harness_id,
             HarnessDefinition {
                 capabilities: vec![
-                    everruns_capability::CapabilityRef::new("lifecycle_hook_test"),
-                    everruns_capability::CapabilityRef::with_config(
+                    everruns_contracts::CapabilityRef::new("lifecycle_hook_test"),
+                    everruns_contracts::CapabilityRef::with_config(
                         "infinity_context",
                         json!({ "max_recent_messages": 1 }),
                     ),
@@ -2776,7 +2774,7 @@ async fn turn_end_hook_fires_on_turn_completion() {
         .add_harness(
             harness_id,
             HarnessDefinition {
-                capabilities: vec![everruns_capability::CapabilityRef::new(
+                capabilities: vec![everruns_contracts::CapabilityRef::new(
                     "lifecycle_hook_test",
                 )],
                 ..harness()

@@ -56,11 +56,11 @@ use axum::{
     response::{IntoResponse, Response},
     routing::post,
 };
+use everruns_contracts::session_sqldb::SessionSqlDbStore;
 use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
 use everruns_core::{Caller, OrgRole};
 use everruns_durable::WorkflowEventStore;
 use everruns_host::HostComposition;
-use everruns_platform::session_sqldb::SessionSqlDbStore;
 use everruns_platform::validate_org_public_id;
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
@@ -312,7 +312,7 @@ pub struct AppState {
     pub session_file_service: Arc<WorkspaceFileService>,
     pub session_sandbox_service: Option<Arc<SessionSandboxService>>,
     pub capability_service: Arc<CapabilityService>,
-    pub connector_registry: everruns_platform::connector::ConnectorRegistry,
+    pub connector_registry: everruns_contracts::connector::ConnectorRegistry,
     pub budget_service: Arc<BudgetService>,
     pub reporting_service: Arc<ReportingService>,
     pub runner: Arc<dyn AgentRunner>,
@@ -417,7 +417,7 @@ impl AppState {
 
     pub fn with_connector_registry(
         mut self,
-        registry: everruns_platform::connector::ConnectorRegistry,
+        registry: everruns_contracts::connector::ConnectorRegistry,
     ) -> Self {
         self.connector_registry = registry;
         self
@@ -1399,11 +1399,11 @@ async fn tool_session_get_status(
         .get("since_event_id")
         .and_then(|v| v.as_str())
         .map(|s| {
-            s.parse::<everruns_provider::typed_id::EventId>()
+            s.parse::<everruns_contracts::typed_id::EventId>()
                 .map(|id| id.to_string())
                 .or_else(|_| {
                     s.parse::<uuid::Uuid>()
-                        .map(|u| everruns_provider::typed_id::EventId::from_uuid(u).to_string())
+                        .map(|u| everruns_contracts::typed_id::EventId::from_uuid(u).to_string())
                 })
                 .map_err(|_| format!("Invalid since_event_id: {s}"))
         })
@@ -1485,7 +1485,7 @@ async fn tool_agent_get_card(
     // intentionally hit the storage layer directly here instead of going
     // through a list-and-count: callers asking for a card don't need the
     // list payload, and `count_sessions_for_agent` is a single COUNT query.
-    let agent_id = everruns_provider::typed_id::AgentId::from_uuid(agent.internal_id);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_uuid(agent.internal_id);
     let session_count = state
         .db
         .count_sessions_for_agent(org.org_id, agent_id)

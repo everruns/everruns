@@ -39,7 +39,14 @@ mod turn;
 
 // Internal aliases keep the execution algorithms focused on their contracts
 // while preserving the one-way engine -> core/provider/capability boundary.
-pub(crate) use everruns_capability::CapabilityRef;
+pub(crate) use everruns_contracts::CapabilityRef;
+pub(crate) use everruns_contracts::user_facing_error::{
+    ErrorDisclosure, UserFacingError, UserFacingErrorContext, codes as user_facing_error_codes,
+};
+pub(crate) use everruns_contracts::{
+    ChatDriver, CompactInputItem, ProviderEndpoint, ProviderOpaqueContext, compact,
+    driver_registry, error, llm_retry, model_profiles, tool_types, typed_id,
+};
 pub(crate) use everruns_core::{
     ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION, COMPACTION_CHECKPOINT_FORMAT_VERSION,
     CompactionCheckpoint, CompactionCheckpointPayload, CompactionCheckpointStore, DecisionsService,
@@ -50,13 +57,6 @@ pub(crate) use everruns_core::{
     message_retriever, mount_fs, network_access, output_guardrail, runtime_context, session_files,
     session_services, session_task, subagent_delegation, tool_context, tool_execution,
     tool_fingerprint, tool_narration, tools,
-};
-pub(crate) use everruns_provider::user_facing_error::{
-    ErrorDisclosure, UserFacingError, UserFacingErrorContext, codes as user_facing_error_codes,
-};
-pub(crate) use everruns_provider::{
-    ChatDriver, CompactInputItem, ProviderEndpoint, ProviderOpaqueContext, compact,
-    driver_registry, error, llm_retry, model_profiles, tool_types, typed_id,
 };
 
 pub(crate) mod tool_call_integrity {

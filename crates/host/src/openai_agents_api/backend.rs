@@ -24,6 +24,19 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use everruns_contracts::BearerAuth;
+use everruns_contracts::driver_registry::{DriverId, ProviderConfig};
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::openai_hosted_tools::OPENAI_HOSTED_TOOLS_OPTION;
+use everruns_contracts::runtime_provider::ProviderEndpoint;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{MessageId, SessionId};
+use everruns_contracts::user_facing_error::{
+    ErrorDisclosure, UserFacingError, UserFacingErrorContext, classify_runtime_error_message, codes,
+};
+use everruns_contracts::{
+    ASK_USER_TOOL_NAME, FormElicitationRequired, ToolApprovalRequired, UrlElicitationRequired,
+};
 use everruns_core::agents_api_store::ParkReason;
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::events::{
@@ -40,19 +53,6 @@ use everruns_core::{
     RuntimeAgent, RuntimeMessageRole, UtilityLlmService,
 };
 use everruns_engine::{ActOutcome, ActResult, NativeExecutionCounts, ReasonInput, ReasonResult};
-use everruns_provider::BearerAuth;
-use everruns_provider::driver_registry::{DriverId, ProviderConfig};
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::openai_hosted_tools::OPENAI_HOSTED_TOOLS_OPTION;
-use everruns_provider::runtime_provider::ProviderEndpoint;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{MessageId, SessionId};
-use everruns_provider::user_facing_error::{
-    ErrorDisclosure, UserFacingError, UserFacingErrorContext, classify_runtime_error_message, codes,
-};
-use everruns_provider::{
-    ASK_USER_TOOL_NAME, FormElicitationRequired, ToolApprovalRequired, UrlElicitationRequired,
-};
 
 use super::durable::{
     AgentsApiFunctionExecutor, AgentsApiLedger, AgentsApiOutputPolicy, AgentsApiTurnDriver,
@@ -61,7 +61,7 @@ use super::durable::{
 use super::{AgentsApiClient, AgentsApiError, RUNTIME_CAPABILITY_ID, build_session_config};
 
 /// Whether the resolved capabilities select the Agents API backend.
-pub fn selects_backend(capabilities: &[everruns_capability::CapabilityRef]) -> bool {
+pub fn selects_backend(capabilities: &[everruns_contracts::CapabilityRef]) -> bool {
     capabilities
         .iter()
         .any(|config| config.id() == RUNTIME_CAPABILITY_ID)
@@ -550,7 +550,7 @@ fn result_text(result: Option<&serde_json::Value>) -> String {
 }
 
 fn tool_result_value(
-    result: &everruns_provider::tool_types::ToolResult,
+    result: &everruns_contracts::tool_types::ToolResult,
 ) -> std::result::Result<String, String> {
     match &result.error {
         Some(error) => Err(error.clone()),
@@ -646,7 +646,7 @@ impl<A: crate::RuntimeHostAdapter> AgentsApiFunctionExecutor for HostFunctionExe
             return Ok(FunctionBatch::Halt { code, message });
         }
         let mut input = self.template.clone();
-        input.context.exec_id = everruns_provider::typed_id::ExecId::new();
+        input.context.exec_id = everruns_contracts::typed_id::ExecId::new();
         input.tool_calls = calls.to_vec();
         let result = crate::execute_act_activity(&self.adapter, input)
             .await
@@ -932,7 +932,7 @@ impl AgentsApiOutputPolicy for HostOutputPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_capability::CapabilityRef;
+    use everruns_contracts::CapabilityRef;
     use everruns_core::RuntimeMessage;
 
     #[test]
@@ -1033,7 +1033,7 @@ mod tests {
     ) -> everruns_engine::ToolCallResult {
         everruns_engine::ToolCallResult {
             tool_call: call.clone(),
-            result: everruns_provider::tool_types::ToolResult {
+            result: everruns_contracts::tool_types::ToolResult {
                 tool_call_id: call.id.clone(),
                 result,
                 images: None,
@@ -1064,7 +1064,7 @@ mod tests {
 
     fn approval_required(call: &ToolCall) -> serde_json::Value {
         serde_json::json!({
-            "code": everruns_provider::TOOL_APPROVAL_REQUIRED_CODE,
+            "code": everruns_contracts::TOOL_APPROVAL_REQUIRED_CODE,
             "error": "waiting for approval",
             "tool_call_id": call.id,
             "tool": call.name,
@@ -1143,7 +1143,7 @@ mod tests {
         let needs = call("call_1", "send_email");
         let mut needs_connection = executed(&needs, None, Some("connect gmail"));
         needs_connection.connection_required = Some(
-            everruns_provider::ConnectionRequired::provider_only("gmail"),
+            everruns_contracts::ConnectionRequired::provider_only("gmail"),
         );
         let result = act(vec![needs_connection.clone()], vec![]);
         assert_eq!(
@@ -1166,22 +1166,22 @@ mod tests {
         let (code, message) = budget_stop_for_status("exhausted").unwrap();
         assert_eq!(code, BUDGET_EXHAUSTED_STOP);
         assert_eq!(
-            everruns_provider::classify_runtime_error_message(
+            everruns_contracts::classify_runtime_error_message(
                 &message,
-                &everruns_provider::UserFacingErrorContext::default()
+                &everruns_contracts::UserFacingErrorContext::default()
             )
             .code,
-            everruns_provider::user_facing_error_codes::BUDGET_EXHAUSTED
+            everruns_contracts::user_facing_error_codes::BUDGET_EXHAUSTED
         );
         let (code, message) = budget_stop_for_status("paused").unwrap();
         assert_eq!(code, BUDGET_PAUSED_STOP);
         assert_eq!(
-            everruns_provider::classify_runtime_error_message(
+            everruns_contracts::classify_runtime_error_message(
                 &message,
-                &everruns_provider::UserFacingErrorContext::default()
+                &everruns_contracts::UserFacingErrorContext::default()
             )
             .code,
-            everruns_provider::user_facing_error_codes::BUDGET_PAUSED
+            everruns_contracts::user_facing_error_codes::BUDGET_PAUSED
         );
         for status in ["active", "warning", "no_budgets"] {
             assert!(budget_stop_for_status(status).is_none());

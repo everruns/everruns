@@ -10,12 +10,12 @@
 //! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-drivers --features openrouter --test openrouter_chat_live -- --ignored --nocapture`
 
+use everruns_contracts::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
+use everruns_contracts::model::ReasoningEffort;
 use everruns_drivers::openrouter::options::{
     OpenRouterRoute, OpenRouterRoutingConfig, insert_routing_option,
 };
 use everruns_drivers::openrouter::provider;
-use everruns_provider::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
-use everruns_provider::model::ReasoningEffort;
 use futures::StreamExt;
 
 #[tokio::test]

@@ -5,12 +5,12 @@
 //! ignored by default and require `MODEL_API_KEY`:
 //!   `doppler run -- cargo test -p everruns-drivers --features meta --test meta_model_api_live -- --ignored --nocapture`
 
-use everruns_drivers::meta::provider;
-use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::tool_types::{
+use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
+use everruns_drivers::meta::provider;
 
 const LIVE_MODEL: &str = "muse-spark-1.3-contributor";
 

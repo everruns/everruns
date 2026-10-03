@@ -5,7 +5,7 @@
 
 use super::super::models::*;
 use super::Database;
-use crate::kernel_imports::everruns_provider::typed_id::FileId;
+use crate::kernel_imports::contracts::typed_id::FileId;
 use anyhow::Result;
 use uuid::Uuid;
 

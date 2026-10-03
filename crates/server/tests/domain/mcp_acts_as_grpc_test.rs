@@ -4,12 +4,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs};
-use everruns_host::{HostComposition, RuntimeHostAdapter};
-use everruns_provider::{
+use everruns_contracts::{
     ToolCall, ToolResult,
     typed_id::{AgentId, HarnessId, PrincipalId, SessionId, VirtualUserId},
 };
+use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs};
+use everruns_host::{HostComposition, RuntimeHostAdapter};
 use everruns_server::grpc_service::WorkerServiceImpl;
 use everruns_server::storage::models::{
     CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,

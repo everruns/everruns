@@ -2,7 +2,7 @@
 
 use super::super::github_app_rows::*;
 use super::Database;
-use crate::kernel_imports::everruns_provider::typed_id::VirtualUserId;
+use crate::kernel_imports::contracts::typed_id::VirtualUserId;
 use anyhow::Result;
 use uuid::Uuid;
 

@@ -12,14 +12,14 @@
 use crate::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
     build_grep_search_result,
 };
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::{MountFs, WorkspaceRootSet};
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::SessionId;
 use ignore::WalkBuilder;
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};

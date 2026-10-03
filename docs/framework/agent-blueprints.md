@@ -56,8 +56,8 @@ struct is the single source of truth: field set, bounds, defaults, and descripti
 all reach the spawning agent from one place.
 
 ```rust ignore
-use everruns_capability::json_schema_for;
-use everruns_capability::schemars::JsonSchema;
+use everruns_contracts::capability::json_schema_for;
+use everruns_contracts::capability::schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The same ceiling the search tools apply to their own arguments.
@@ -66,7 +66,7 @@ const MAX_REPOS: u32 = 50;
 /// Configuration for the repository scout.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
-#[schemars(crate = "everruns_capability::schemars")]
+#[schemars(crate = "everruns_contracts::capability::schemars")]
 pub struct RepoScoutConfig {
     /// Maximum number of repositories to scan.
     #[schemars(range(min = 1, max = MAX_REPOS))]

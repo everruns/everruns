@@ -10,9 +10,9 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_contracts::typed_id::{ScheduleId, SessionId};
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::{Caller, Policy};
-use everruns_provider::typed_id::{ScheduleId, SessionId};
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, UrlBuilder, WithUrls, impl_auth_state,

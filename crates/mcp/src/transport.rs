@@ -7,10 +7,10 @@
 
 use crate::auth::McpCredential;
 use async_trait::async_trait;
+use everruns_contracts::ConnectionRequired;
 use everruns_core::{
     McpElicitationPolicy, McpProtocolMode, McpServerAuthMode, McpToolCallResult, McpToolDefinition,
 };
-use everruns_provider::ConnectionRequired;
 use serde_json::Value;
 use std::collections::HashMap;
 

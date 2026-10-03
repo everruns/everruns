@@ -10,10 +10,10 @@ use super::{
 };
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    Policy, everruns_provider::driver_registry::ServiceKind, everruns_provider::provider::DriverId,
+    Policy, contracts::driver_registry::ServiceKind, contracts::provider::DriverId,
 };
+use everruns_contracts::typed_id::{KnowledgeBaseId, KnowledgeEntryId};
 use everruns_durable::UpdateField;
-use everruns_provider::typed_id::{KnowledgeBaseId, KnowledgeEntryId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -129,8 +129,8 @@ fn validate_body(body: &str) -> Result<String, CommandError> {
 
 async fn validate_embedding_model_id(
     ctx: &Ctx,
-    model_id: everruns_provider::typed_id::ModelId,
-) -> Result<everruns_provider::typed_id::ModelId, CommandError> {
+    model_id: everruns_contracts::typed_id::ModelId,
+) -> Result<everruns_contracts::typed_id::ModelId, CommandError> {
     let model = ctx
         .db
         .get_model(ctx.org_id(), model_id.uuid())
@@ -227,7 +227,7 @@ pub struct CreateKnowledgeBase {
     #[serde(default)]
     #[schema(value_type = Option<String>)]
     /// Optional embedding model for hybrid retrieval.
-    pub embedding_model_id: Option<everruns_provider::typed_id::ModelId>,
+    pub embedding_model_id: Option<everruns_contracts::typed_id::ModelId>,
 }
 
 impl From<CreateKnowledgeBaseRequest> for CreateKnowledgeBase {
@@ -841,7 +841,7 @@ mod tests {
         org_id: i64,
         provider_type: &str,
         model_id: &str,
-    ) -> everruns_provider::typed_id::ModelId {
+    ) -> everruns_contracts::typed_id::ModelId {
         let provider = db
             .create_provider(
                 org_id,

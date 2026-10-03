@@ -15,7 +15,7 @@
 //   This ensures "default" means seeded, not privileged.
 
 use crate::kernel_imports::{
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::PluginMarketplaceId,
+    contracts::typed_id::HarnessId, contracts::typed_id::PluginMarketplaceId,
 };
 use crate::storage::{
     StorageBackend,

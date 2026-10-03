@@ -2,8 +2,8 @@ use super::queries as q;
 use super::{LLM_MODEL_MANAGE, LLM_MODEL_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    Policy, everruns_provider::model::Model, everruns_provider::model::ModelSource,
-    everruns_provider::model::ModelWithProvider, everruns_provider::typed_id::ProviderId,
+    Policy, contracts::model::Model, contracts::model::ModelSource,
+    contracts::model::ModelWithProvider, contracts::typed_id::ProviderId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;

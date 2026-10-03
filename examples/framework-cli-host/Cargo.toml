@@ -10,7 +10,7 @@ publish = false
 clap = { workspace = true, features = ["string", "color"] }
 everruns-host = { path = "../../crates/host", features = ["bashkit", "filesystem"] }
 everruns-core = { path = "../../crates/core" }
-everruns-provider = { path = "../../crates/provider" }
+everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["http"] }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
 everruns-llmsim = { path = "../../crates/drivers/llmsim", features = ["host"] }

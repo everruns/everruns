@@ -6,6 +6,10 @@
 #![cfg(feature = "filesystem")]
 
 use everruns_builtins::{DistillOutputHook, PersistOutputHook, ToolSearchCapability};
+use everruns_contracts::tool_types::{
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
+};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 use everruns_core::path_identity::{
     PathIdentityExpectations, assert_model_visible_value, assert_no_forbidden_prefixes,
@@ -24,10 +28,6 @@ use everruns_integrations_filesystem::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
     ReadFileTool, SESSION_FILE_SYSTEM_CAPABILITY_ID, StatFileTool, WriteFileTool,
 };
-use everruns_provider::tool_types::{
-    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
-};
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tempfile::TempDir;

@@ -192,7 +192,7 @@ mod native_tests {
     use super::*;
     #[test]
     fn early_native_result_replays_after_its_call_without_synthetic_failure() {
-        let native = everruns_provider::native_async::NativeToolCall::Function {
+        let native = everruns_contracts::native_async::NativeToolCall::Function {
             call_id: "original".into(),
             name: "lookup".into(),
             arguments: "{}".into(),

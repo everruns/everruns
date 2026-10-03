@@ -17,7 +17,7 @@ static SESSION_SANDBOX_LOCKS: LazyLock<Mutex<HashMap<String, Weak<SessionSandbox
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub(super) fn lifecycle_lock(
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
 ) -> Arc<SessionSandboxLock> {
     let mut locks = SESSION_SANDBOX_LOCKS
         .lock()
@@ -107,10 +107,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
+    use everruns_contracts::typed_id::{EventId, SessionId};
     use everruns_core::events::{
         ENVIRONMENT_INSTANCE_LOST, ENVIRONMENT_RECOVERED, Event, EventRequest,
     };
-    use everruns_provider::typed_id::{EventId, SessionId};
 
     use super::*;
     use crate::session_sandbox::SessionSandboxInstance;
@@ -123,7 +123,7 @@ mod tests {
         async fn emit(
             &self,
             request: EventRequest,
-        ) -> Result<Event, everruns_provider::error::AgentLoopError> {
+        ) -> Result<Event, everruns_contracts::error::AgentLoopError> {
             self.0.lock().unwrap().push(request.clone());
             Ok(request.into_event(EventId::new(), 1))
         }

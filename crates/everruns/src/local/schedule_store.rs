@@ -14,13 +14,13 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::{PrincipalId, ScheduleId, SessionId};
 use everruns_core::session_schedule::{
     DEFAULT_MAX_SCHEDULES_PER_ORG, DEFAULT_MIN_INTERVAL_SECONDS, MAX_ACTIVE_SCHEDULES_PER_SESSION,
     ScheduleLimitError, SessionSchedule, validate_cron_min_interval_with,
 };
 use everruns_core::session_services::SessionScheduleStore;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::{PrincipalId, ScheduleId, SessionId};
 use rusqlite::{OptionalExtension, TransactionBehavior};
 use serde_json::Value;
 use std::str::FromStr;

@@ -17,12 +17,12 @@
 // pooled keep-alive connection driven by another test's runtime could otherwise
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 
-use everruns_drivers::mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
-use everruns_provider::DriverRegistry;
-use everruns_provider::ProviderEndpoint;
-use everruns_provider::driver_registry::{
+use everruns_contracts::DriverRegistry;
+use everruns_contracts::ProviderEndpoint;
+use everruns_contracts::driver_registry::{
     ChatDriver, DriverId, LlmCallConfig, LlmStreamEvent, Message, MessageRole, ProviderConfig,
 };
+use everruns_drivers::mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
 use futures::StreamExt;
 use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -45,7 +45,7 @@ fn sse_chat_response() -> String {
     .join("\n")
 }
 
-async fn drain_text(mut stream: everruns_provider::driver_registry::LlmResponseStream) -> String {
+async fn drain_text(mut stream: everruns_contracts::driver_registry::LlmResponseStream) -> String {
     let mut text = String::new();
     while let Some(event) = stream.next().await {
         match event.expect("stream item should not be a transport error") {

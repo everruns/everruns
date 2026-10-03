@@ -21,7 +21,9 @@ use crate::domains::mcp_servers::McpServerService;
 use crate::domains::skills::queries as skill_q;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
-use everruns_capability::{CapabilityId, is_plugin_capability, parse_plugin_capability_id};
+use everruns_contracts::capability::{
+    CapabilityId, is_plugin_capability, parse_plugin_capability_id,
+};
 use everruns_core::capabilities::{Capability, CapabilityRegistry, SkillCapabilityIdExt};
 use everruns_core::{
     Caller, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition, RiskLevel, Skill,
@@ -46,7 +48,7 @@ pub struct CapabilityService {
 
 pub struct CapabilityPreview {
     pub system_prompt: String,
-    pub tools: Vec<everruns_provider::tool_types::ToolDefinition>,
+    pub tools: Vec<everruns_contracts::tool_types::ToolDefinition>,
     pub features: Vec<String>,
 }
 
@@ -611,8 +613,8 @@ impl CapabilityService {
         &self,
         org_id: i64,
         base_system_prompt: &str,
-        capability_configs: &[everruns_capability::CapabilityRef],
-    ) -> Result<(String, Vec<everruns_provider::tool_types::ToolDefinition>)> {
+        capability_configs: &[everruns_contracts::capability::CapabilityRef],
+    ) -> Result<(String, Vec<everruns_contracts::tool_types::ToolDefinition>)> {
         let preview = self
             .preview_with_features(org_id, base_system_prompt, capability_configs)
             .await?;
@@ -624,14 +626,14 @@ impl CapabilityService {
         &self,
         org_id: i64,
         base_system_prompt: &str,
-        capability_configs: &[everruns_capability::CapabilityRef],
+        capability_configs: &[everruns_contracts::capability::CapabilityRef],
     ) -> Result<CapabilityPreview> {
         use everruns_core::capabilities::{
             SystemPromptContext, collect_capabilities_with_configs, resolve_capability_configs,
         };
 
         let mut system_prompt_parts: Vec<String> = Vec::new();
-        let mut tool_definitions: Vec<everruns_provider::tool_types::ToolDefinition> = Vec::new();
+        let mut tool_definitions: Vec<everruns_contracts::tool_types::ToolDefinition> = Vec::new();
 
         // Plugin and declarative definitions are deliberately not persisted in
         // agent config. Resolve their current, exact definitions before the
@@ -647,7 +649,8 @@ impl CapabilityService {
         // Separate built-in capabilities from MCP capabilities
         // Skill capabilities (skill:{uuid}) are mount-only; skip in preview.
         let mut mcp_cap_ids: Vec<uuid::Uuid> = Vec::new();
-        let mut builtin_cap_configs: Vec<everruns_capability::CapabilityRef> = Vec::new();
+        let mut builtin_cap_configs: Vec<everruns_contracts::capability::CapabilityRef> =
+            Vec::new();
 
         for cap_config in &capability_configs {
             let cap_ref = &cap_config.typed_id();
@@ -672,7 +675,7 @@ impl CapabilityService {
         // Collect from resolved capabilities (includes dependencies in correct order)
         // Preview has no session context, so dynamic capabilities (agent_instructions) return None
         let ctx =
-            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
         let collected = collect_capabilities_with_configs(&resolved, &self.registry, &ctx).await;
         if let Some(prefix) = collected.system_prompt_prefix() {
             system_prompt_parts.push(prefix);
@@ -737,9 +740,9 @@ mod tests {
     use crate::storage::models::{
         CreateMcpServerRow, CreatePluginInstallRow, UpdateMcpServerTools,
     };
-    use everruns_capability::CapabilityRef;
+    use everruns_contracts::capability::CapabilityRef;
+    use everruns_contracts::typed_id::{PluginInstallId, SkillId};
     use everruns_core::McpServerAuthMode;
-    use everruns_provider::typed_id::{PluginInstallId, SkillId};
 
     fn make_service() -> CapabilityService {
         let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));
@@ -862,7 +865,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let capability_id = everruns_capability::plugin_capability_id(&public_id);
+        let capability_id = everruns_contracts::capability::plugin_capability_id(&public_id);
 
         let listed = svc.list_all(1).await.unwrap();
         let capability = listed
@@ -1052,7 +1055,7 @@ mod tests {
                 .create_declarative_capability(
                     1,
                     CreateDeclarativeCapabilityRow {
-                        public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new()
+                        public_id: everruns_contracts::typed_id::DeclarativeCapabilityId::new()
                             .to_string(),
                         name: "hidden_fetch".to_string(),
                         display_name: Some("Hidden Fetch".to_string()),

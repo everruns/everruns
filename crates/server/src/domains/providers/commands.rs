@@ -4,9 +4,9 @@ use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    Policy, everruns_provider::provider::DriverId, everruns_provider::provider::ProviderStatus,
+    Policy, contracts::provider::DriverId, contracts::provider::ProviderStatus,
 };
-use everruns_provider::provider::Provider;
+use everruns_contracts::provider::Provider;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -99,8 +99,8 @@ pub struct CreateProvider {
     /// Trace/observability link configuration override (driver defaults apply
     /// when omitted).
     #[serde(default)]
-    pub trace: Option<everruns_provider::provider::ProviderTraceConfig>,
-    pub request_options: Option<everruns_provider::provider::ProviderRequestOptions>,
+    pub trace: Option<everruns_contracts::provider::ProviderTraceConfig>,
+    pub request_options: Option<everruns_contracts::provider::ProviderRequestOptions>,
 }
 
 impl Command for CreateProvider {
@@ -293,8 +293,8 @@ pub struct UpdateProvider {
     /// Trace/observability link configuration override (merged into stored
     /// settings, preserving other keys).
     #[serde(default)]
-    pub trace: Option<everruns_provider::provider::ProviderTraceConfig>,
-    pub request_options: Option<everruns_provider::provider::ProviderRequestOptions>,
+    pub trace: Option<everruns_contracts::provider::ProviderTraceConfig>,
+    pub request_options: Option<everruns_contracts::provider::ProviderRequestOptions>,
 }
 
 impl Command for UpdateProvider {

@@ -30,9 +30,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{TOOL_CALL_REQUESTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED};
 use everruns_core::{EgressRequest, EgressRequestKind, EgressService, Event, EventListener};
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 
 use super::wire::{self, WireVersion};
@@ -101,7 +101,7 @@ pub(super) fn parse_config(config: &Value) -> Result<PushConfigInput, &'static s
     }
     // Static SSRF check at write time; delivery pins DNS (TM-A2A-015).
     if !url.starts_with("https://")
-        || everruns_provider::url_validation::validate_safe_url(&url).is_err()
+        || everruns_contracts::url_validation::validate_safe_url(&url).is_err()
     {
         return Err("Invalid params: `url` must be a public https URL");
     }

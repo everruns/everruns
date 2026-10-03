@@ -10,5 +10,5 @@ publish = false
 # facade, proving the open `IntoCapability`/`Definition` seams need no
 # central enum or Everruns source edit.
 [dependencies]
-everruns-capability = { path = "../../../../../../crates/capability" }
+everruns-contracts = { path = "../../../../../../crates/contracts", default-features = false, features = ["definition"] }
 serde_json = "1"

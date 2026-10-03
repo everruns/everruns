@@ -22,7 +22,7 @@ pub enum UtilityLlmReasoningEffort {
     High,
 }
 
-impl From<UtilityLlmReasoningEffort> for everruns_provider::model::ReasoningEffort {
+impl From<UtilityLlmReasoningEffort> for everruns_contracts::model::ReasoningEffort {
     fn from(value: UtilityLlmReasoningEffort) -> Self {
         match value {
             UtilityLlmReasoningEffort::Low => Self::Low,

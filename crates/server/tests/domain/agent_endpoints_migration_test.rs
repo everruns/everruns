@@ -28,8 +28,8 @@ use axum::{
 };
 use everruns_durable::InMemoryWorkflowEventStore;
 
+use everruns_contracts::typed_id::PrincipalId;
 use everruns_platform::EndpointTransport;
-use everruns_provider::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
 use everruns_server::domains::agent_endpoints::{hash_a2a_api_key, hash_endpoint_api_key};

@@ -2,8 +2,8 @@ use super::*;
 use crate::domains::harnesses::CreateHarness;
 use crate::domains::harnesses::types::CreateHarnessRequest;
 use crate::storage::StorageBackend;
+use everruns_contracts::typed_id::{HarnessId, SessionId};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole};
-use everruns_provider::typed_id::{HarnessId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
 

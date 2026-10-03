@@ -1,9 +1,9 @@
 use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::tool_context::ReasoningEffortHandle;
-use everruns_provider::DriverId;
+use everruns_contracts::DriverId;
 
 pub(super) struct RequestControls {
-    pub(super) reasoning_effort: Option<everruns_provider::ReasoningEffort>,
+    pub(super) reasoning_effort: Option<everruns_contracts::ReasoningEffort>,
     pub(super) speed: Option<String>,
     pub(super) verbosity: Option<String>,
 }
@@ -110,14 +110,14 @@ mod tests {
         let mut message = RuntimeMessage::user("hello");
         message.controls = Some(crate::message::Controls {
             reasoning: Some(crate::message::ReasoningConfig {
-                effort: Some(everruns_provider::ReasoningEffort::None),
+                effort: Some(everruns_contracts::ReasoningEffort::None),
             }),
             ..Default::default()
         });
         let controls = resolve_request_controls(&[message], None, &DriverId::OpenAI, "gpt-6-astra");
         assert_eq!(
             controls.reasoning_effort,
-            Some(everruns_provider::ReasoningEffort::None)
+            Some(everruns_contracts::ReasoningEffort::None)
         );
     }
 
@@ -126,7 +126,7 @@ mod tests {
         let mut message = RuntimeMessage::user("hello");
         message.controls = Some(crate::message::Controls {
             reasoning: Some(crate::message::ReasoningConfig {
-                effort: Some(everruns_provider::ReasoningEffort::None),
+                effort: Some(everruns_contracts::ReasoningEffort::None),
             }),
             ..Default::default()
         });

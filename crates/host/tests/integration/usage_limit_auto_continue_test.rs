@@ -10,6 +10,10 @@
 
 use async_trait::async_trait;
 use everruns_builtins::UsageLimitAutoContinueCapability;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, ScheduleId, SessionId};
 use everruns_core::CapabilityRegistry;
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::session_services::SessionScheduleStore;
@@ -17,10 +21,6 @@ use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, SimError, SimTurn};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId, ScheduleId, SessionId};
 use std::sync::{Arc, Mutex};
 
 /// Codex/ChatGPT usage-limit 429 body. Classifies to
@@ -42,7 +42,7 @@ impl SessionScheduleStore for RecordingScheduleStore {
         cron_expression: Option<String>,
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
         timezone: String,
-    ) -> everruns_provider::error::Result<SessionSchedule> {
+    ) -> everruns_contracts::error::Result<SessionSchedule> {
         self.created
             .lock()
             .unwrap()
@@ -72,25 +72,25 @@ impl SessionScheduleStore for RecordingScheduleStore {
         &self,
         _session_id: SessionId,
         _schedule_id: ScheduleId,
-    ) -> everruns_provider::error::Result<SessionSchedule> {
+    ) -> everruns_contracts::error::Result<SessionSchedule> {
         unimplemented!("not used by this test")
     }
 
     async fn list_schedules(
         &self,
         _session_id: SessionId,
-    ) -> everruns_provider::error::Result<Vec<SessionSchedule>> {
+    ) -> everruns_contracts::error::Result<Vec<SessionSchedule>> {
         Ok(vec![])
     }
 
     async fn count_active_schedules(
         &self,
         _session_id: SessionId,
-    ) -> everruns_provider::error::Result<u32> {
+    ) -> everruns_contracts::error::Result<u32> {
         Ok(0)
     }
 
-    async fn count_active_org_schedules(&self) -> everruns_provider::error::Result<u32> {
+    async fn count_active_org_schedules(&self) -> everruns_contracts::error::Result<u32> {
         Ok(0)
     }
 }

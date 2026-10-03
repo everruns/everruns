@@ -1,7 +1,6 @@
 // Subagent Capability
 //
-// Decision: 1 delegation tool — spawn_agent(target.type = "subagent").
-// - subagent delegation creates a child session with parent_session_id set
+// spawn_agent(target.type = "subagent") creates a child with parent_session_id set.
 //
 // Blueprint support: the subagent target accepts optional `blueprint` and `config`
 // params. When blueprint is set, the child session uses the blueprint's
@@ -31,6 +30,8 @@ use super::{
 };
 use crate::background_run::{BackgroundRunPermit, try_acquire_background_run_permit};
 use async_trait::async_trait;
+use everruns_contracts::tool_types::ToolHints;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session::SessionSeedMode;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
@@ -43,8 +44,6 @@ use everruns_core::{
     delegation_services::SpawnClaimResult, execution_loading::SessionStore,
     tool_context::ToolContext,
 };
-use everruns_provider::tool_types::ToolHints;
-use everruns_provider::typed_id::SessionId;
 
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
@@ -334,7 +333,7 @@ fn normalize_push_configs(arguments: &Value) -> Result<Option<Value>, ToolExecut
                 "Each push_configs entry requires a string `url`.",
             ));
         };
-        if let Err(e) = everruns_provider::url_validation::validate_safe_url(url) {
+        if let Err(e) = everruns_contracts::url_validation::validate_safe_url(url) {
             return Err(ToolExecutionResult::tool_error(format!(
                 "Invalid push_configs url \"{url}\": {e}"
             )));
@@ -704,7 +703,7 @@ pub struct SpawnSubagentAsAgentTool;
 impl Tool for SpawnSubagentAsAgentTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1141,7 +1140,7 @@ async fn spawn_agent_subagent_impl(
 /// Immediate tool result for a background spawn: the child is running and the
 /// task record is the surface for progress and the final result.
 fn background_running_result(
-    child_id: everruns_provider::typed_id::SessionId,
+    child_id: everruns_contracts::typed_id::SessionId,
     name: &str,
     task_id: &Option<String>,
     blueprint_param: &Option<String>,
@@ -1413,7 +1412,7 @@ async fn spawn_create_and_wait(
 async fn run_subagent_wait_and_settle(
     store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
-    child_id: everruns_provider::typed_id::SessionId,
+    child_id: everruns_contracts::typed_id::SessionId,
     name: &str,
     _instructions: &str,
     blueprint_param: &Option<String>,
@@ -1484,7 +1483,7 @@ async fn run_subagent_wait_and_settle(
 async fn settle_subagent_outcome(
     store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
-    child_id: everruns_provider::typed_id::SessionId,
+    child_id: everruns_contracts::typed_id::SessionId,
     status: &str,
     task_id: Option<&str>,
     settle_ctx: Option<(
@@ -1564,7 +1563,7 @@ async fn settle_subagent_outcome(
 #[allow(clippy::too_many_arguments)]
 fn spawn_background_watcher(
     context: &ToolContext,
-    child_id: everruns_provider::typed_id::SessionId,
+    child_id: everruns_contracts::typed_id::SessionId,
     name: &str,
     first_message: Option<String>,
     task_id: Option<String>,
@@ -1781,14 +1780,14 @@ impl TaskExecutor for SubagentTaskExecutor {
         task: &SessionTask,
         message: &TaskMessage,
         context: &ToolContext,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let Some(store) = context.subagent_delegate.as_ref() else {
-            return Err(everruns_provider::error::AgentLoopError::tool(
+            return Err(everruns_contracts::error::AgentLoopError::tool(
                 "subagent task delivery requires platform_store context",
             ));
         };
         let Some(child_id) = task.links.child_session_id else {
-            return Err(everruns_provider::error::AgentLoopError::tool(format!(
+            return Err(everruns_contracts::error::AgentLoopError::tool(format!(
                 "subagent task {} has no child session link",
                 task.id
             )));
@@ -1801,14 +1800,14 @@ impl TaskExecutor for SubagentTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let Some(store) = context.subagent_delegate.as_ref() else {
-            return Err(everruns_provider::error::AgentLoopError::tool(
+            return Err(everruns_contracts::error::AgentLoopError::tool(
                 "subagent task cancellation requires platform_store context",
             ));
         };
         let Some(child_id) = task.links.child_session_id else {
-            return Err(everruns_provider::error::AgentLoopError::tool(format!(
+            return Err(everruns_contracts::error::AgentLoopError::tool(format!(
                 "subagent task {} has no child session link",
                 task.id
             )));
@@ -1830,7 +1829,7 @@ impl TaskExecutor for SubagentTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         if task.state.is_terminal() {
             return Ok(());
         }
@@ -1857,7 +1856,7 @@ impl TaskExecutor for SubagentTaskExecutor {
         .await
         .map(|_| ())
         .map_err(|_| {
-            everruns_provider::error::AgentLoopError::tool(
+            everruns_contracts::error::AgentLoopError::tool(
                 "Failed to read subagent result during reconcile",
             )
         })
@@ -1888,7 +1887,7 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let Some(registry) = context.session_task_registry.as_ref() else {
             return Ok(());
         };
@@ -1910,7 +1909,7 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
                 "Peer session cancellation requested; tracking settled canceled.".to_string()
             }
             (None, Some(_)) => {
-                return Err(everruns_provider::error::AgentLoopError::tool(
+                return Err(everruns_contracts::error::AgentLoopError::tool(
                     "detached session task cancellation requires platform_store context",
                 ));
             }
@@ -2074,7 +2073,7 @@ mod tests {
     struct MockSessionStore(Arc<MockPlatformStore>);
 
     struct MockSessionCreationAuthority {
-        root: everruns_provider::typed_id::SessionId,
+        root: everruns_contracts::typed_id::SessionId,
         allowed: bool,
     }
 
@@ -2082,12 +2081,12 @@ mod tests {
     impl everruns_core::delegation_services::SessionCreationAuthority for MockSessionCreationAuthority {
         async fn authorize_session_creation(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
-        ) -> everruns_provider::error::Result<everruns_provider::typed_id::SessionId> {
+            _session_id: everruns_contracts::typed_id::SessionId,
+        ) -> everruns_contracts::error::Result<everruns_contracts::typed_id::SessionId> {
             if self.allowed {
                 Ok(self.root)
             } else {
-                Err(everruns_provider::error::AgentLoopError::tool(
+                Err(everruns_contracts::error::AgentLoopError::tool(
                     "org:sessions:manage is required",
                 ))
             }
@@ -2098,8 +2097,8 @@ mod tests {
     impl everruns_core::execution_loading::SessionStore for MockSessionStore {
         async fn get_session(
             &self,
-            session_id: everruns_provider::typed_id::SessionId,
-        ) -> everruns_provider::error::Result<Option<everruns_core::session::ExecutionSession>>
+            session_id: everruns_contracts::typed_id::SessionId,
+        ) -> everruns_contracts::error::Result<Option<everruns_core::session::ExecutionSession>>
         {
             // EVE-882: the store holds the platform record; execution sees the
             // projected view.
@@ -2121,7 +2120,7 @@ mod tests {
     fn spawn_context_for_session(
         store: &Arc<MockPlatformStore>,
         registry: Option<Arc<InMemorySessionTaskRegistry>>,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
     ) -> ToolContext {
         let mut context = ToolContext::new(session_id);
         context.subagent_delegate = Some(delegate(store.clone()));
@@ -2152,7 +2151,7 @@ mod tests {
     /// background watcher settles it from a detached tokio task).
     async fn wait_for_task_state(
         registry: &InMemorySessionTaskRegistry,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         task_id: &str,
         state: everruns_core::session_task::SessionTaskState,
     ) -> everruns_core::session_task::SessionTask {
@@ -2183,9 +2182,9 @@ mod tests {
 
         async fn read_file(
             &self,
-            session_id: everruns_provider::typed_id::SessionId,
+            session_id: everruns_contracts::typed_id::SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<Option<SessionFile>> {
+        ) -> everruns_contracts::error::Result<Option<SessionFile>> {
             let content = self
                 .files
                 .lock()
@@ -2209,11 +2208,11 @@ mod tests {
 
         async fn write_file(
             &self,
-            session_id: everruns_provider::typed_id::SessionId,
+            session_id: everruns_contracts::typed_id::SessionId,
             path: &str,
             content: &str,
             _encoding: &str,
-        ) -> everruns_provider::error::Result<SessionFile> {
+        ) -> everruns_contracts::error::Result<SessionFile> {
             self.files
                 .lock()
                 .unwrap()
@@ -2235,10 +2234,10 @@ mod tests {
 
         async fn delete_file(
             &self,
-            session_id: everruns_provider::typed_id::SessionId,
+            session_id: everruns_contracts::typed_id::SessionId,
             path: &str,
             _recursive: bool,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             Ok(self
                 .files
                 .lock()
@@ -2249,17 +2248,17 @@ mod tests {
 
         async fn list_directory(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             _path: &str,
-        ) -> everruns_provider::error::Result<Vec<everruns_core::session_file::FileInfo>> {
+        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_file::FileInfo>> {
             Ok(vec![])
         }
 
         async fn stat_file(
             &self,
-            session_id: everruns_provider::typed_id::SessionId,
+            session_id: everruns_contracts::typed_id::SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<Option<everruns_core::session_file::FileStat>>
+        ) -> everruns_contracts::error::Result<Option<everruns_core::session_file::FileStat>>
         {
             let content = self
                 .files
@@ -2282,18 +2281,19 @@ mod tests {
 
         async fn grep_files(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             _pattern: &str,
             _path_pattern: Option<&str>,
-        ) -> everruns_provider::error::Result<Vec<everruns_core::session_file::GrepMatch>> {
+        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_file::GrepMatch>>
+        {
             Ok(vec![])
         }
 
         async fn create_directory(
             &self,
-            session_id: everruns_provider::typed_id::SessionId,
+            session_id: everruns_contracts::typed_id::SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<everruns_core::session_file::FileInfo> {
+        ) -> everruns_contracts::error::Result<everruns_core::session_file::FileInfo> {
             Ok(everruns_core::session_file::FileInfo {
                 id: uuid::Uuid::new_v4(),
                 session_id: session_id.uuid(),
@@ -2310,7 +2310,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_rejects_invalid_mode() {
-        let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let context = ToolContext::new(SessionId::new());
         let result = spawn(
             &context,
             json!({"name": "Runner", "instructions": "go", "mode": "asap"}),
@@ -2324,7 +2324,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_rejects_other_target_types() {
-        let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let context = ToolContext::new(SessionId::new());
         let result = SpawnSubagentAsAgentTool
             .execute_with_context(
                 json!({
@@ -2395,7 +2395,7 @@ mod tests {
         let ToolExecutionResult::Success(value) = result else {
             panic!("expected success, got {result:?}");
         };
-        let child_id: everruns_provider::typed_id::SessionId = value["subagent_id"]
+        let child_id: everruns_contracts::typed_id::SessionId = value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2521,7 +2521,7 @@ mod tests {
     // origin root so a loop of detached spawns cannot run unbounded (TM-DOS).
 
     fn session_task_under(
-        root: everruns_provider::typed_id::SessionId,
+        root: everruns_contracts::typed_id::SessionId,
         kind: &str,
         state: SessionTaskState,
     ) -> CreateSessionTask {
@@ -2533,7 +2533,7 @@ mod tests {
             spec: json!({}),
             state,
             links: TaskLinks {
-                child_session_id: Some(everruns_provider::typed_id::SessionId::new()),
+                child_session_id: Some(SessionId::new()),
                 ..Default::default()
             },
             wake_policy: TaskWakePolicy::Silent,
@@ -2679,7 +2679,7 @@ mod tests {
         let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
-        let child_id = everruns_provider::typed_id::SessionId::new();
+        let child_id = SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: context.session_id,
@@ -2772,7 +2772,7 @@ mod tests {
     #[tokio::test]
     async fn detached_session_task_cancel_without_platform_store_fails_closed() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let mut context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let mut context = ToolContext::new(SessionId::new());
         context.session_task_registry = Some(registry.clone());
         let task = registry
             .create(CreateSessionTask {
@@ -2783,7 +2783,7 @@ mod tests {
                 spec: json!({}),
                 state: SessionTaskState::Running,
                 links: TaskLinks {
-                    child_session_id: Some(everruns_provider::typed_id::SessionId::new()),
+                    child_session_id: Some(SessionId::new()),
                     ..Default::default()
                 },
                 wake_policy: TaskWakePolicy::Silent,
@@ -2825,7 +2825,7 @@ mod tests {
         let ToolExecutionResult::Success(first_value) = first else {
             panic!("expected first spawn success, got {first:?}");
         };
-        let b_id: everruns_provider::typed_id::SessionId = first_value["subagent_id"]
+        let b_id: everruns_contracts::typed_id::SessionId = first_value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2840,7 +2840,7 @@ mod tests {
         let ToolExecutionResult::Success(second_value) = second else {
             panic!("expected second spawn success, got {second:?}");
         };
-        let c_id: everruns_provider::typed_id::SessionId = second_value["subagent_id"]
+        let c_id: everruns_contracts::typed_id::SessionId = second_value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2943,7 +2943,7 @@ mod tests {
         let ToolExecutionResult::Success(first_value) = first else {
             panic!("expected first spawn success, got {first:?}");
         };
-        let b_id: everruns_provider::typed_id::SessionId = first_value["subagent_id"]
+        let b_id: everruns_contracts::typed_id::SessionId = first_value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2959,7 +2959,7 @@ mod tests {
         let ToolExecutionResult::Success(second_value) = second else {
             panic!("expected second spawn success, got {second:?}");
         };
-        let c_id: everruns_provider::typed_id::SessionId = second_value["subagent_id"]
+        let c_id: everruns_contracts::typed_id::SessionId = second_value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -3090,10 +3090,10 @@ mod tests {
     async fn report_result_writes_result_file_and_updates_task() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let file_store = Arc::new(MemoryFileStore::default());
-        let parent_session_id = everruns_provider::typed_id::SessionId::new();
+        let parent_session_id = SessionId::new();
         let parent_workspace_id =
-            everruns_provider::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
-        let child_session_id = everruns_provider::typed_id::SessionId::new();
+            everruns_contracts::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let child_session_id = SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3161,10 +3161,10 @@ mod tests {
     async fn report_result_rejects_terminal_task_without_overwriting_result() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let file_store = Arc::new(MemoryFileStore::default());
-        let parent_session_id = everruns_provider::typed_id::SessionId::new();
+        let parent_session_id = SessionId::new();
         let parent_workspace_id =
-            everruns_provider::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
-        let child_session_id = everruns_provider::typed_id::SessionId::new();
+            everruns_contracts::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let child_session_id = SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3247,9 +3247,9 @@ mod tests {
     #[tokio::test]
     async fn report_result_rejects_invalid_result_schema_payload() {
         let tool = ReportResultTool::new(
-            everruns_provider::typed_id::SessionId::new(),
-            everruns_provider::typed_id::WorkspaceId::from_uuid(uuid::Uuid::new_v4()),
-            everruns_provider::typed_id::SessionId::new(),
+            SessionId::new(),
+            everruns_contracts::typed_id::WorkspaceId::from_uuid(uuid::Uuid::new_v4()),
+            SessionId::new(),
             "task_test".to_string(),
             json!({
                 "type": "object",
@@ -3314,7 +3314,7 @@ mod tests {
     #[tokio::test]
     async fn report_task_progress_posts_structured_outbound_message() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let parent_session_id = everruns_provider::typed_id::SessionId::new();
+        let parent_session_id = SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3343,7 +3343,7 @@ mod tests {
             task.spec["message_schema"].clone(),
         );
         assert_eq!(tool.name(), "report_task_progress");
-        let mut context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let mut context = ToolContext::new(SessionId::new());
         context.session_task_registry = Some(registry.clone());
 
         let result = tool
@@ -3371,7 +3371,7 @@ mod tests {
     #[tokio::test]
     async fn report_task_progress_rejects_stale_task_attempt() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let parent_session_id = everruns_provider::typed_id::SessionId::new();
+        let parent_session_id = SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3406,7 +3406,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let mut context = ToolContext::new(SessionId::new());
         context.session_task_registry = Some(registry.clone());
         let result = tool
             .execute_with_context(json!({"step": "late"}), &context)
@@ -3428,7 +3428,7 @@ mod tests {
     #[tokio::test]
     async fn report_task_progress_rejects_invalid_message_schema_payload() {
         let tool = ReportTaskProgressTool::new(
-            everruns_provider::typed_id::SessionId::new(),
+            SessionId::new(),
             "task_test".to_string(),
             1,
             json!({
@@ -3470,7 +3470,7 @@ mod tests {
         use everruns_core::tools::ToolRegistry;
 
         let subagent = ReportTaskProgressTool::new(
-            everruns_provider::typed_id::SessionId::new(),
+            SessionId::new(),
             "task_test".to_string(),
             1,
             json!({"type": "object"}),
@@ -3494,7 +3494,7 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_background_without_registry_errors() {
-        let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let context = ToolContext::new(SessionId::new());
         let result = spawn(
             &context,
             json!({"name": "Runner", "instructions": "go", "mode": "background"}),
@@ -3667,7 +3667,7 @@ mod tests {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
 
-        let child_id = everruns_provider::typed_id::SessionId::new();
+        let child_id = SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: context.session_id,
@@ -3715,7 +3715,7 @@ mod tests {
                 spec: json!({"mode": "background"}),
                 state: SessionTaskState::Running,
                 links: TaskLinks {
-                    child_session_id: Some(everruns_provider::typed_id::SessionId::new()),
+                    child_session_id: Some(SessionId::new()),
                     ..Default::default()
                 },
                 wake_policy: TaskWakePolicy::OnTerminal,

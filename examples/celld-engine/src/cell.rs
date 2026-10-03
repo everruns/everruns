@@ -34,12 +34,12 @@ use everruns_core::{
     TurnContextResolver, assemble_resolved_turn_context,
 };
 use everruns_engine::{ActAtom, ActInput, ReasonAtom, ReasonInput};
-use everruns_provider::driver_registry::ChatDriver;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::provider::DriverId;
-use everruns_provider::runtime_provider::ProviderKey;
-use everruns_provider::tool_types::{ToolCall, ToolDefinition};
-use everruns_provider::typed_id::{EventId, HarnessId, MessageId, SessionId, TurnId, WorkspaceId};
+use everruns_contracts::driver_registry::ChatDriver;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::runtime_provider::ProviderKey;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
+use everruns_contracts::typed_id::{EventId, HarnessId, MessageId, SessionId, TurnId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 
 use crate::agent;

@@ -22,8 +22,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
 use everruns_core::{DecisionDriver, DecisionOutcome, DecisionRequest, DecisionsService};
-use everruns_provider::error::Result;
 use tracing::Instrument;
 
 /// Why a registry could not produce a router.

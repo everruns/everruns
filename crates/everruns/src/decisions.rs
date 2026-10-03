@@ -56,11 +56,11 @@
 use std::fmt;
 use std::sync::Arc;
 
+use everruns_contracts::error::AgentLoopError;
 use everruns_core::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionsService,
 };
 use everruns_host::{DecisionDriverRegistry, DecisionRoutingError};
-use everruns_provider::error::AgentLoopError;
 
 /// Why a decision could not be made.
 ///
@@ -701,7 +701,7 @@ impl DecisionsService for SimulatedDecisionsService {
     async fn evaluate(
         &self,
         request: DecisionRequest,
-    ) -> everruns_provider::error::Result<DecisionOutcome> {
+    ) -> everruns_contracts::error::Result<DecisionOutcome> {
         // Names itself rather than a vendor model: `Answers::model` must never
         // let a stubbed answer pass for one a real decisions gave.
         let mut outcome = DecisionOutcome {
@@ -849,7 +849,7 @@ mod model_selection_tests {
         async fn evaluate(
             &self,
             request: DecisionRequest,
-        ) -> everruns_provider::error::Result<DecisionOutcome> {
+        ) -> everruns_contracts::error::Result<DecisionOutcome> {
             self.seen.lock().expect("lock").push(request.model.clone());
             Ok(DecisionOutcome::default())
         }

@@ -10,10 +10,11 @@
 use super::types::CapabilityInfo;
 use super::types::{DeclarativeCapability, DeclarativeCapabilityRow};
 use crate::kernel_imports::{
-    AgentCapabilityConfig, DeclarativeCapabilityDefinition, declarative_capability_id,
-    everruns_provider::typed_id::DeclarativeCapabilityId, hydrate_declarative_capability_config,
-    hydrate_plugin_capability_config, is_declarative_capability, is_plugin_capability,
-    parse_declarative_capability_id, parse_plugin_capability_id,
+    AgentCapabilityConfig, DeclarativeCapabilityDefinition,
+    contracts::typed_id::DeclarativeCapabilityId, declarative_capability_id,
+    hydrate_declarative_capability_config, hydrate_plugin_capability_config,
+    is_declarative_capability, is_plugin_capability, parse_declarative_capability_id,
+    parse_plugin_capability_id,
 };
 use crate::storage::StorageBackend;
 use std::collections::HashSet;
@@ -528,7 +529,7 @@ mod tests {
     #[tokio::test]
     async fn plugin_hydration_blocks_unresolved_authenticated_identity() {
         let db = StorageBackend::in_memory();
-        let public_id = everruns_provider::typed_id::PluginInstallId::new().to_string();
+        let public_id = everruns_contracts::typed_id::PluginInstallId::new().to_string();
         let stored = json!({
             "name": "legacy_oauth",
             "description": "Legacy OAuth plugin",
@@ -556,7 +557,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let cap_id = everruns_capability::plugin_capability_id(&public_id);
+        let cap_id = everruns_contracts::plugin_capability_id(&public_id);
 
         let error = hydrate_declarative_capability_configs(
             &db,

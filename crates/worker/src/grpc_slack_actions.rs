@@ -18,14 +18,14 @@ use crate::grpc_adapters::GrpcClient;
 pub struct GrpcSlackActionInvoker {
     client: GrpcClient,
     org_id: i64,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
 }
 
 impl GrpcSlackActionInvoker {
     pub fn new(
         client: GrpcClient,
         org_id: i64,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
     ) -> Self {
         Self {
             client,

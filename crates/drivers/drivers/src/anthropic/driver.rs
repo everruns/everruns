@@ -19,28 +19,28 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use crate::anthropic::server_compaction;
-use everruns_provider::RejectedProviderCapability;
-use everruns_provider::credential_schema::CredentialFormSchema;
-use everruns_provider::driver_helpers::{
+use everruns_contracts::RejectedProviderCapability;
+use everruns_contracts::credential_schema::CredentialFormSchema;
+use everruns_contracts::driver_helpers::{
     self, ANTHROPIC_NOT_FOUND_PATTERNS, ANTHROPIC_TOO_LARGE_PATTERNS, AUDIO_CONTENT_PLACEHOLDER,
     parse_data_url,
 };
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmContentPart, LlmResponseStream, LlmStreamEvent, Message,
     MessageContent, MessageRole, ProviderCheckpointCandidate, fold_system_messages,
 };
-use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_provider::is_provider_quota_message;
-use everruns_provider::llm_retry::{
+use everruns_contracts::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_contracts::is_provider_quota_message;
+use everruns_contracts::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
-use everruns_provider::stream_reconnect::connect_sse_with_reconnect;
-use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
-use everruns_provider::{ProviderOpaqueContent, ProviderOpaqueContext};
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
+use everruns_contracts::stream_reconnect::connect_sse_with_reconnect;
+use everruns_contracts::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
+use everruns_contracts::{ProviderOpaqueContent, ProviderOpaqueContext};
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -55,12 +55,12 @@ const SERVER_COMPACTION_CHECKPOINT_FORMAT: u32 = 2;
 
 /// Ready-to-use Anthropic Messages provider assembly.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
-) -> everruns_provider::Provider {
-    everruns_provider::Provider::new(id, AnthropicChatDriver::new())
+) -> everruns_contracts::Provider {
+    everruns_contracts::Provider::new(id, AnthropicChatDriver::new())
         .base_url(DEFAULT_BASE_URL)
-        .auth(everruns_provider::StaticHeaderAuth::new(
+        .auth(everruns_contracts::StaticHeaderAuth::new(
             "x-api-key",
             api_key,
         ))
@@ -234,7 +234,7 @@ impl AnthropicChatDriver {
         // client installs it as well, but that now happens on the first
         // request, and products expect the process-wide choice to be settled
         // while providers are being constructed.
-        everruns_provider::install_default_crypto_provider();
+        everruns_contracts::install_default_crypto_provider();
         Self {
             retry_config: LlmRetryConfig::default(),
         }
@@ -266,7 +266,7 @@ impl AnthropicChatDriver {
     /// exactly.
     async fn send_messages_request(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         request: Arc<Mutex<AnthropicRequest>>,
         options: SendMessagesOptions<'_>,
         retries_consumed: u32,
@@ -964,7 +964,7 @@ impl std::fmt::Debug for AnthropicChatDriver {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_provider::DriverRegistry;
+/// use everruns_contracts::DriverRegistry;
 /// use everruns_drivers::anthropic::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
@@ -988,12 +988,12 @@ pub fn descriptor() -> DriverDescriptor {
         // Point at a proxy with an explicit `.base_url(...)` instead.
         base_url_env: None,
         ..DriverDescriptor::chat_only(DriverId::Anthropic, |config| {
-            let provider = everruns_provider::Provider::new(
+            let provider = everruns_contracts::Provider::new(
                 config.provider.clone(),
                 AnthropicChatDriver::new(),
             )
             .base_url(config.base_url.as_deref().unwrap_or(DEFAULT_BASE_URL))
-            .auth(everruns_provider::StaticHeaderAuth::new(
+            .auth(everruns_contracts::StaticHeaderAuth::new(
                 "x-api-key",
                 config.api_key.as_deref().unwrap_or(""),
             ));
@@ -1012,12 +1012,12 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for AnthropicChatDriver {
@@ -1234,7 +1234,7 @@ struct AnthropicOutputConfig {
 /// Claude families that use adaptive thinking. On Fable 5.x, Opus 5.5/5/4.8/4.7,
 /// and Sonnet 5.5/5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6
 /// it is deprecated and adaptive is the recommended form. Keep in sync with the
-/// adaptive-thinking profiles in `everruns_provider::model_profiles`.
+/// adaptive-thinking profiles in `everruns_contracts::model_profiles`.
 ///
 /// `claude-fable-5-1` is listed on its own: `normalize_anthropic_id` only
 /// strips 8-digit date suffixes, so the `-1` does not collapse to Fable 5.
@@ -1768,8 +1768,8 @@ impl AnthropicModelInfo {
     ///
     /// This profile contains limits and capability flags discovered from the API.
     /// Cost data is NOT available from the API and remains in hardcoded profiles.
-    fn to_discovered_profile(&self) -> everruns_provider::model::ModelProfile {
-        use everruns_provider::model::*;
+    fn to_discovered_profile(&self) -> everruns_contracts::model::ModelProfile {
+        use everruns_contracts::model::*;
 
         let caps = self.capabilities.as_ref();
 
@@ -1858,8 +1858,8 @@ impl AnthropicModelInfo {
     fn build_reasoning_effort(
         &self,
         caps: Option<&AnthropicModelCapabilities>,
-    ) -> Option<everruns_provider::model::ReasoningEffortConfig> {
-        use everruns_provider::model::*;
+    ) -> Option<everruns_contracts::model::ReasoningEffortConfig> {
+        use everruns_contracts::model::*;
 
         let thinking = caps?.thinking.as_ref()?;
         if !thinking.supported {

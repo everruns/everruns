@@ -7,8 +7,8 @@
 use super::*;
 use crate::auth::AuthConfig;
 use crate::storage::models::{CreateMemoryRow, CreateSessionRow};
+use everruns_contracts::typed_id::PrincipalId;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
-use everruns_provider::typed_id::PrincipalId;
 use serde_json::json;
 
 const SECRET_PATH: &str = "/memory/user/secret-plan.md";
@@ -76,7 +76,7 @@ async fn fixture() -> Fixture {
     db.create_memory(
         DEFAULT_ORG_ID,
         CreateMemoryRow {
-            public_id: everruns_provider::typed_id::MemoryId::new().to_string(),
+            public_id: everruns_contracts::typed_id::MemoryId::new().to_string(),
             name: "owner-private".to_string(),
             description: None,
             scope: "user".to_string(),

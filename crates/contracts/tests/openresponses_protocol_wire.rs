@@ -1,0 +1,1204 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![cfg(feature = "http")]
+
+// Golden-event wire tests for the Open Responses protocol driver
+// (`OpenResponsesProtocolChatDriver`) — EVE-672.
+//
+// This driver backs the OpenAI (Responses API) and OpenRouter providers. The
+// fixtures below pin the exact `LlmStreamEvent` sequence for text streaming and
+// for a fragmented function call terminated by `response.output_item.done` and
+// `response.completed`. They give the shared streaming refactor a golden
+// contract to preserve.
+//
+// The SSE frames use the provider's `type`-tagged JSON events (the same shape
+// exercised by the OpenRouter wire tests), so the fixtures stay readable while
+// still driving the driver's real stream-conversion path end to end.
+
+use everruns_contracts::OpenResponsesProtocolChatDriver;
+use everruns_contracts::driver_registry::{
+    LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
+    ProviderOpaqueContext,
+};
+use everruns_contracts::error::LlmErrorKind;
+use everruns_contracts::user_facing_error::UserFacingErrorContext;
+use everruns_contracts::{BearerAuth, CompactContent, CompactOutputItem, Provider};
+use futures::StreamExt;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+fn config(model: &str) -> LlmCallConfig {
+    LlmCallConfig::new(model)
+}
+
+#[derive(Debug, PartialEq)]
+enum Golden {
+    Text(String),
+    ToolCall {
+        name: String,
+        args: String,
+    },
+    Done {
+        total: Option<u32>,
+        prompt: Option<u32>,
+        completion: Option<u32>,
+        cache_read: Option<u32>,
+        finish: Option<String>,
+    },
+    Error(String),
+    Reasoning {
+        delta: String,
+        summary: bool,
+    },
+    ReasoningItem {
+        item_id: Option<String>,
+        encrypted: Option<String>,
+    },
+}
+
+fn golden(event: LlmStreamEvent) -> Golden {
+    match event {
+        LlmStreamEvent::TextDelta(t) => Golden::Text(t),
+        LlmStreamEvent::ToolCalls(calls) => {
+            let tc = &calls[0];
+            Golden::ToolCall {
+                name: tc.name.clone(),
+                args: tc.arguments.to_string(),
+            }
+        }
+        LlmStreamEvent::Done(meta) => {
+            let LlmCompletionMetadata {
+                total_tokens,
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                finish_reason,
+                ..
+            } = *meta;
+            Golden::Done {
+                total: total_tokens,
+                prompt: prompt_tokens,
+                completion: completion_tokens,
+                cache_read: cache_read_tokens,
+                finish: finish_reason,
+            }
+        }
+        LlmStreamEvent::Error(e) => Golden::Error(e.to_string()),
+        LlmStreamEvent::ReasoningDelta { delta, summary } => Golden::Reasoning { delta, summary },
+        LlmStreamEvent::ReasoningItem(item) => Golden::ReasoningItem {
+            item_id: item.item_id.clone(),
+            encrypted: item.encrypted.clone(),
+        },
+        other => panic!("unexpected event variant in golden capture: {other:?}"),
+    }
+}
+
+async fn drain_golden(mut stream: LlmResponseStream) -> Vec<Golden> {
+    let mut out = Vec::new();
+    while let Some(item) = stream.next().await {
+        let g = golden(item.expect("stream item should not be a transport error"));
+        if matches!(&g, Golden::Text(t) if t.is_empty()) {
+            continue;
+        }
+        out.push(g);
+    }
+    out
+}
+
+/// Frame a minimal completed-response SSE body.
+fn sse_event(data: &str) -> String {
+    format!("data: {data}\n\ndata: [DONE]\n\n")
+}
+
+async fn mount_sse(server: &MockServer, body: String) {
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
+        .mount(server)
+        .await;
+}
+
+fn driver(server: &MockServer) -> Provider {
+    Provider::new("openresponses-test", OpenResponsesProtocolChatDriver::new())
+        .base_url(format!("{}/v1/responses", server.uri()))
+        .auth(BearerAuth::new("test-key"))
+}
+
+#[tokio::test]
+async fn provider_reported_model_is_distinct_and_optional_in_json_fallback() {
+    for reported in [Some("gpt-5.2-2026-09-01"), None] {
+        let server = MockServer::start().await;
+        let mut response = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp_model",
+                "status": "completed",
+                "output": [],
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            }
+        });
+        if let Some(model) = reported {
+            response["response"]["model"] = serde_json::json!(model);
+        }
+        mount_sse(&server, sse_event(&response.to_string())).await;
+
+        let response = driver(&server)
+            .chat_completion(
+                vec![Message::text(MessageRole::User, "hi")],
+                &config("gpt-5.2-latest"),
+            )
+            .await
+            .expect("completion should succeed");
+
+        assert_eq!(response.metadata.model.as_deref(), Some("gpt-5.2-latest"));
+        assert_eq!(response.metadata.response_model.as_deref(), reported);
+    }
+}
+
+/// Text streaming: two output-text deltas then a `response.completed` carrying
+/// usage. The golden output is the two text deltas plus a single `Done` with the
+/// disjoint token buckets (the driver subtracts the cached-read subset from the
+/// cache-inclusive input count).
+#[tokio::test]
+async fn text_stream_golden_events() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_text.delta","delta":"Hello"}"#,
+        "",
+        r#"data: {"type":"response.output_text.delta","delta":", world"}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":2,"input_tokens_details":{"cached_tokens":4}}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "hi")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::Text("Hello".into()),
+            Golden::Text(", world".into()),
+            Golden::Done {
+                total: Some(12), // input(10) + output(2)
+                prompt: Some(6), // 10 - 4 cached
+                completion: Some(2),
+                cache_read: Some(4),
+                finish: Some("stop".into()),
+            },
+        ]
+    );
+}
+
+/// Function call: an `output_item.added` announces the call, arguments arrive
+/// fragmented via `function_call_arguments.delta`, `output_item.done` flushes
+/// the assembled `ToolCalls` event, and `response.completed` closes with a
+/// `tool_calls` finish reason.
+#[tokio::test]
+async fn fragmented_function_call_golden_events() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_item.added","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather"}}"#,
+        "",
+        r#"data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"city\":"}"#,
+        "",
+        r#"data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"\"Paris\"}"}"#,
+        "",
+        r#"data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather"}}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_2","status":"completed","output":[],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "weather?")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::ToolCall {
+                name: "get_weather".into(),
+                args: r#"{"city":"Paris"}"#.into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
+
+#[tokio::test]
+async fn native_compact_context_is_the_exact_ordered_responses_input() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.completed","response":{"id":"resp_compact_retry","status":"completed","output":[],"usage":{"input_tokens":4,"output_tokens":1}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let output = vec![
+        CompactOutputItem::Message {
+            role: "user".to_string(),
+            content: CompactContent::Text("first".to_string()),
+        },
+        CompactOutputItem::Compaction {
+            encrypted_content: "opaque-native-context".to_string(),
+        },
+        CompactOutputItem::Message {
+            role: "user".to_string(),
+            content: CompactContent::Text("last".to_string()),
+        },
+    ];
+    let context = ProviderOpaqueContext::OpenResponsesCompact {
+        reasoning_state: None,
+        output: output.clone(),
+    };
+    let debug = format!("{context:?}");
+    assert!(debug.contains("item_count"));
+    assert!(!debug.contains("opaque-native-context"));
+    let encoded = serde_json::to_value(&context).expect("context should serialize");
+    assert_eq!(encoded["type"], "open_responses_compact");
+    assert_eq!(
+        serde_json::from_value::<ProviderOpaqueContext>(encoded).unwrap(),
+        context
+    );
+
+    let mut call_config = config("gpt-5-mini");
+    call_config.previous_response_id = Some("resp_must_not_be_mixed".to_string());
+    call_config.provider_opaque_context = Some(context);
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![
+                Message::text(MessageRole::System, "instructions"),
+                Message::text(MessageRole::User, "reconstructed transcript"),
+            ],
+            &call_config,
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.unwrap();
+    let request: serde_json::Value = requests[0].body_json().unwrap();
+    assert!(request.get("previous_response_id").is_none());
+    assert_eq!(request["instructions"], "instructions");
+    assert_eq!(
+        request["input"],
+        serde_json::json!([
+            { "type": "message", "role": "user", "content": "first" },
+            { "type": "compaction", "encrypted_content": "opaque-native-context" },
+            { "type": "message", "role": "user", "content": "last" },
+            { "type": "message", "role": "user", "content": "reconstructed transcript" }
+        ])
+    );
+}
+
+/// A reasoning request must opt into `reasoning.encrypted_content`.
+///
+/// The provider returns reasoning items with no payload unless asked, so
+/// without this the replay path exists but never has anything to replay: a
+/// stateless follow-up (after compaction, a model switch, or router failover)
+/// silently drops the reasoning chain with no error anywhere.
+#[tokio::test]
+async fn reasoning_request_opts_into_encrypted_content() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event(
+            r#"{"type":"response.completed","sequence_number":1,"response":{"id":"resp_1","usage":{"input_tokens":1,"output_tokens":1}}}"#,
+        ),
+    )
+    .await;
+
+    let mut call_config = config("gpt-5.2");
+    call_config.reasoning_effort = Some(everruns_contracts::model::ReasoningEffort::High);
+    let stream = driver(&server)
+        .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &call_config)
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.unwrap();
+    let request: serde_json::Value = requests[0].body_json().unwrap();
+    assert_eq!(
+        request["include"],
+        serde_json::json!(["reasoning.encrypted_content"]),
+        "got: {request}"
+    );
+}
+
+/// The opt-in is scoped to reasoning requests: a model that was not asked to
+/// reason has no reasoning payload to include.
+#[tokio::test]
+async fn non_reasoning_request_omits_include() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event(
+            r#"{"type":"response.completed","sequence_number":1,"response":{"id":"resp_1","usage":{"input_tokens":1,"output_tokens":1}}}"#,
+        ),
+    )
+    .await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "hi")],
+            &config("gpt-5.2"),
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.unwrap();
+    let request: serde_json::Value = requests[0].body_json().unwrap();
+    assert!(request.get("include").is_none(), "got: {request}");
+}
+
+/// Every reasoning item replays under the id the provider issued, and all of
+/// them replay — a turn with parallel tool calls emits several. Ids were
+/// previously synthesized from a counter, which the API cannot resolve.
+#[tokio::test]
+async fn reasoning_items_replay_under_their_provider_ids() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event(
+            r#"{"type":"response.completed","sequence_number":1,"response":{"id":"resp_1","usage":{"input_tokens":1,"output_tokens":1}}}"#,
+        ),
+    )
+    .await;
+
+    let mut assistant = Message::text(MessageRole::Assistant, "working on it");
+    assistant.reasoning = vec![
+        everruns_contracts::reasoning::ReasoningContentPart::opaque("openai")
+            .with_item_id("rs_first")
+            .with_encrypted("blob-one"),
+        everruns_contracts::reasoning::ReasoningContentPart::opaque("openai")
+            .with_item_id("rs_second")
+            .with_encrypted("blob-two"),
+        // No id and no payload: not replayable, and must be dropped rather
+        // than reconstructed under a made-up id.
+        everruns_contracts::reasoning::ReasoningContentPart::opaque("openai"),
+    ];
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![
+                Message::text(MessageRole::User, "go"),
+                assistant,
+                Message::text(MessageRole::User, "continue"),
+            ],
+            &config("gpt-5.2"),
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.unwrap();
+    let request: serde_json::Value = requests[0].body_json().unwrap();
+    let reasoning_items: Vec<&serde_json::Value> = request["input"]
+        .as_array()
+        .expect("input array")
+        .iter()
+        .filter(|item| item["type"] == "reasoning")
+        .collect();
+
+    assert_eq!(
+        reasoning_items,
+        vec![
+            // `summary` is required on a replayed reasoning item: omitting it
+            // is a 400 from the live API, which is what the multi-turn live
+            // test caught. An item that carried no summary replays as an empty
+            // array, not as an absent field.
+            &serde_json::json!({
+                "type": "reasoning",
+                "id": "rs_first",
+                "encrypted_content": "blob-one",
+                "summary": [],
+            }),
+            &serde_json::json!({
+                "type": "reasoning",
+                "id": "rs_second",
+                "encrypted_content": "blob-two",
+                "summary": [],
+            }),
+        ],
+        "got: {request}"
+    );
+}
+
+fn astra_state(
+    pending: Option<everruns_contracts::ReasoningEffort>,
+) -> everruns_contracts::reasoning_updates::ReasoningState {
+    use everruns_contracts::ReasoningEffort::{High, Low};
+    everruns_contracts::reasoning_updates::ReasoningState {
+        epoch: "test-epoch".into(),
+        baseline: Some(Low),
+        effective: Some(High),
+        pending,
+    }
+}
+
+fn astra_driver(server: &MockServer) -> Provider {
+    Provider::new(
+        "openai",
+        OpenResponsesProtocolChatDriver::new()
+            .with_native_features(true, true)
+            .with_stateful_responses(true),
+    )
+    .base_url(format!("{}/v1", server.uri()))
+}
+
+#[tokio::test]
+async fn astra_update_keeps_baseline_and_replays_after_response_id_rejection() {
+    use everruns_contracts::ReasoningEffort::{High, Low, Max};
+    use wiremock::matchers::body_partial_json;
+    for error_message in [
+        "No tool output found for function call call_1",
+        "Previous response not found",
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .and(body_partial_json(
+                serde_json::json!({"previous_response_id":"lost"}),
+            ))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error":{"message":error_message, "type":"invalid_request_error"}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST")).and(path("/v1/responses"))
+        .and(body_partial_json(serde_json::json!({"input":[
+            {"type":"message","role":"user","content":"first"},
+            {"type":"message","role":"assistant","content":"first answer"},
+            {"type":"configuration_update","reasoning":{"effort":"high"}},
+            {"type":"message","role":"user","content":"second"},
+            {"type":"message","role":"assistant","content":"second answer"},
+            {"type":"configuration_update","reasoning":{"effort":"max"}},
+            {"type":"message","role":"user","content":"third"}
+        ]})))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(sse_event(
+            r#"{"type":"response.completed","response":{"id":"fresh","output":[],"usage":{"input_tokens":10,"output_tokens":1}}}"#
+        ), "text/event-stream")).expect(1).mount(&server).await;
+        let mut second = Message::text(MessageRole::User, "second");
+        second.configuration_update = Some(High);
+        let messages = vec![
+            Message::text(MessageRole::User, "first"),
+            Message::text(MessageRole::Assistant, "first answer"),
+            second,
+            Message::text(MessageRole::Assistant, "second answer"),
+            Message::text(MessageRole::User, "third"),
+        ];
+        let mut cfg = config("gpt-6-astra");
+        cfg.reasoning_effort = Some(Low);
+        cfg.reasoning_state = Some(astra_state(Some(Max)));
+        cfg.reasoning_state.as_mut().unwrap().effective = Some(Max);
+        cfg.previous_response_id = Some("lost".into());
+        drain_golden(
+            astra_driver(&server)
+                .chat_completion_stream(messages, &cfg)
+                .await
+                .unwrap(),
+        )
+        .await;
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 2);
+        let first: serde_json::Value = requests[0].body_json().unwrap();
+        let retry: serde_json::Value = requests[1].body_json().unwrap();
+        assert_eq!(first["input"].as_array().unwrap().len(), 2);
+        assert_eq!(first["input"][0]["type"], "configuration_update");
+        for body in [&first, &retry] {
+            assert_eq!(body["reasoning"]["effort"], "low");
+            assert!(body.get("context_management").is_none());
+            assert!(body.get("truncation").is_none());
+        }
+        assert!(retry.get("previous_response_id").is_none());
+    }
+}
+
+#[tokio::test]
+async fn astra_explicit_compaction_preserves_output_and_reasserts_effort() {
+    use everruns_contracts::ReasoningEffort::{High, Low, Max};
+    use everruns_contracts::compact::{CompactInputItem, CompactRequest, ConfigurationReasoning};
+    use wiremock::matchers::body_partial_json;
+    let server = MockServer::start().await;
+    Mock::given(method("POST")).and(path("/v1/responses"))
+        .and(body_partial_json(serde_json::json!({"stream":false})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status":"completed", "output":[
+                {"type":"message","role":"assistant","content":"old"},
+                {"type":"compaction","encrypted_content":"opaque"},
+                {"type":"reasoning","id":"rs_retained","encrypted_content":"reasoning","summary":[]},
+                {"type":"message","role":"assistant","content":[{"type":"output_text","text":"retained"}]}
+            ], "usage":{"input_tokens":1000,"output_tokens":12,"total_tokens":1012}
+        }))).expect(1).mount(&server).await;
+    Mock::given(method("POST")).and(path("/v1/responses"))
+        .and(body_partial_json(serde_json::json!({"stream":true})))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(sse_event(
+            r#"{"type":"response.completed","response":{"id":"next","output":[],"usage":{"input_tokens":10,"output_tokens":1}}}"#
+        ), "text/event-stream")).expect(1).mount(&server).await;
+    let compacted = astra_driver(&server)
+        .into_boxed_driver()
+        .compact(
+            &everruns_contracts::ProviderEndpoint::default(),
+            CompactRequest {
+                model: "gpt-6-astra".into(),
+                reasoning_state: Some(astra_state(None)),
+                previous_response_id: None,
+                instructions: Some("keep instructions".into()),
+                input: vec![
+                    CompactInputItem::Message {
+                        role: "user".into(),
+                        content: CompactContent::Text("history".into()),
+                    },
+                    CompactInputItem::ConfigurationUpdate {
+                        reasoning: ConfigurationReasoning { effort: High },
+                    },
+                    CompactInputItem::Message {
+                        role: "user".into(),
+                        content: CompactContent::Text("hard work".into()),
+                    },
+                ],
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(compacted.output.len(), 3);
+    assert_eq!(compacted.usage.unwrap().output_tokens, None);
+    let mut cfg = config("gpt-6-astra");
+    cfg.reasoning_effort = Some(Low);
+    cfg.reasoning_state = Some(astra_state(Some(Max)));
+    cfg.reasoning_state.as_mut().unwrap().effective = Some(Max);
+    cfg.previous_response_id = Some("must-clear".into());
+    cfg.provider_opaque_context = Some(ProviderOpaqueContext::OpenResponsesCompact {
+        output: compacted.output,
+        reasoning_state: Some(astra_state(None)),
+    });
+    // Empty checkpoint suffix with a new desired effort must coalesce the
+    // checkpoint's high and pending max updates, never send adjacent updates.
+    drain_golden(
+        astra_driver(&server)
+            .chat_completion_stream(vec![Message::text(MessageRole::User, "continue")], &cfg)
+            .await
+            .unwrap(),
+    )
+    .await;
+    let requests = server.received_requests().await.unwrap();
+    let compact: serde_json::Value = requests[0].body_json().unwrap();
+    assert_eq!(
+        compact["input"][3],
+        serde_json::json!({"type":"compaction_trigger"})
+    );
+    assert_eq!(compact["reasoning"]["effort"], "low");
+    assert_eq!(compact["store"], false);
+    assert_eq!(compact["max_output_tokens"], 20_000);
+    assert!(compact.get("context_management").is_none());
+    let next: serde_json::Value = requests[1].body_json().unwrap();
+    assert_eq!(next["input"][0]["encrypted_content"], "opaque");
+    assert_eq!(next["input"][1]["id"], "rs_retained");
+    assert_eq!(next["input"][2]["content"][0]["text"], "retained");
+    assert_eq!(
+        next["input"][3],
+        serde_json::json!({"type":"configuration_update","reasoning":{"effort":"max"}})
+    );
+    assert_eq!(next["input"][4]["content"], "continue");
+    assert!(next.get("previous_response_id").is_none());
+}
+
+#[tokio::test]
+async fn astra_explicit_compaction_rejects_missing_or_incomplete_replacement() {
+    use everruns_contracts::compact::{CompactInputItem, CompactRequest};
+    for (status, output) in [
+        (
+            "completed",
+            serde_json::json!([{"type":"message","role":"assistant","content":"no compact"}]),
+        ),
+        (
+            "incomplete",
+            serde_json::json!([{"type":"compaction","encrypted_content":"partial"}]),
+        ),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"status":status,"output":output})),
+            )
+            .mount(&server)
+            .await;
+        let result = astra_driver(&server)
+            .into_boxed_driver()
+            .compact(
+                &everruns_contracts::ProviderEndpoint::default(),
+                CompactRequest {
+                    model: "gpt-6-astra".into(),
+                    reasoning_state: Some(astra_state(None)),
+                    input: vec![CompactInputItem::Message {
+                        role: "user".into(),
+                        content: CompactContent::Text("history".into()),
+                    }],
+                    previous_response_id: None,
+                    instructions: None,
+                },
+            )
+            .await;
+        assert!(result.is_err());
+    }
+}
+
+/// A gateway that never sends `response.output_item.added` for the call still
+/// gets the tool executed. The `done` frame describes the finished call in
+/// full, so it is the authoritative record of it; before this, only `added`
+/// supplied the name, and a nameless entry was filtered out of the snapshot —
+/// the turn ended with a text answer even though the model had called a tool.
+#[tokio::test]
+async fn function_call_without_output_item_added_still_emits_the_tool_call() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_3","status":"completed","output":[],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "weather?")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::ToolCall {
+                name: "get_weather".into(),
+                args: r#"{"city":"Paris"}"#.into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
+
+/// A model sometimes closes a synchronous function call with arguments that
+/// are not JSON (seen live: `{"name": "sql-style", "arguments": }`). That must
+/// not fail the whole turn: the call goes through the same lenient snapshot as
+/// streamed calls, so the tool sees empty arguments and can answer with an
+/// error the model recovers from.
+#[tokio::test]
+async fn malformed_sync_function_call_arguments_do_not_fail_the_turn() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"activate_skill","arguments":"{\"name\": \"sql-style\", \"arguments\": }"}}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_bad","status":"completed","output":[],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "load the skill")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::ToolCall {
+                name: "activate_skill".into(),
+                args: "{}".into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
+
+/// The terminal response resource is the last chance to notice a call the
+/// incremental frames never described. Reconciling against its `output` list
+/// emits the call ahead of `Done`, which is what ends the stream for the
+/// consumer.
+#[tokio::test]
+async fn function_call_only_in_the_completed_response_is_recovered() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_text.delta","delta":"Squash-merging."}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_4","status":"completed","output":[{"type":"function_call","id":"fc_9","call_id":"call_9","name":"bash","arguments":"{\"command\":\"gh pr merge\"}","status":"completed"}],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "merge it")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::Text("Squash-merging.".into()),
+            Golden::ToolCall {
+                name: "bash".into(),
+                args: r#"{"command":"gh pr merge"}"#.into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
+
+/// A terminal response can retain a function-call item whose generation was
+/// cut off. Neither the typed decoder nor the compatibility JSON decoder may
+/// turn that unfinished item into an executable call.
+#[tokio::test]
+async fn incomplete_terminal_function_call_is_not_emitted() {
+    for typed in [false, true] {
+        let server = MockServer::start().await;
+        let mut event = serde_json::json!({
+            "type": "response.incomplete",
+            "response": {
+                "id": "resp_incomplete_call",
+                "status": "incomplete",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "output": [{
+                    "type": "function_call",
+                    "id": "fc_partial",
+                    "call_id": "call_partial",
+                    "name": "bash",
+                    "arguments": "{\"command\":\"rm -rf",
+                    "status": "incomplete"
+                }]
+            }
+        });
+        if typed {
+            event["sequence_number"] = serde_json::json!(1);
+            event["response"]["object"] = serde_json::json!("response");
+            event["response"]["created_at"] = serde_json::json!(1);
+            event["response"]["model"] = serde_json::json!("gpt-5-mini");
+        }
+        mount_sse(&server, sse_event(&event.to_string())).await;
+
+        let stream = driver(&server)
+            .chat_completion_stream(vec![], &config("gpt-5-mini"))
+            .await
+            .expect("stream should start");
+
+        assert_eq!(
+            drain_golden(stream).await,
+            vec![Golden::Done {
+                total: Some(0),
+                prompt: Some(0),
+                completion: Some(0),
+                cache_read: None,
+                finish: Some("length".into()),
+            }],
+            "typed={typed}"
+        );
+    }
+}
+
+/// A truncated body is a reason to hand the tool `{}`, not to drop the call.
+/// The finish reason this driver derives already says `tool_calls`, so dropping
+/// would end the turn with nothing to run and no error for the model to recover
+/// from. `{}` reaches the tool, which rejects it, and the model retries. Either
+/// way the malformed body itself is never executed.
+#[tokio::test]
+async fn malformed_terminal_function_call_arguments_reach_the_tool_empty() {
+    for typed in [false, true] {
+        let server = MockServer::start().await;
+        let mut event = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp_malformed_call",
+                "status": "completed",
+                "output": [{
+                    "type": "function_call",
+                    "id": "fc_malformed",
+                    "call_id": "call_malformed",
+                    "name": "bash",
+                    "arguments": "{\"command\":",
+                    "status": "completed"
+                }]
+            }
+        });
+        if typed {
+            event["sequence_number"] = serde_json::json!(1);
+            event["response"]["object"] = serde_json::json!("response");
+            event["response"]["created_at"] = serde_json::json!(1);
+            event["response"]["model"] = serde_json::json!("gpt-5-mini");
+        }
+        mount_sse(&server, sse_event(&event.to_string())).await;
+
+        let stream = driver(&server)
+            .chat_completion_stream(vec![], &config("gpt-5-mini"))
+            .await
+            .expect("stream should start");
+
+        assert_eq!(
+            drain_golden(stream).await,
+            vec![
+                Golden::ToolCall {
+                    name: "bash".into(),
+                    args: "{}".into(),
+                },
+                Golden::Done {
+                    total: Some(0),
+                    prompt: Some(0),
+                    completion: Some(0),
+                    cache_read: None,
+                    finish: Some("tool_calls".into()),
+                }
+            ],
+            "typed={typed}"
+        );
+    }
+}
+/// Reconciling at completion stays a no-op when the incremental frames already
+/// delivered the call: the consumer overwrites its tool-call list on every
+/// `ToolCalls` event, so a redundant repeat would be harmless but the contract
+/// is that one call produces one event.
+#[tokio::test]
+async fn completed_response_does_not_re_emit_an_already_streamed_call() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_item.added","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather"}}"#,
+        "",
+        r#"data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"city\":\"Paris\"}"}"#,
+        "",
+        r#"data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_5","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}","status":"completed"}],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "weather?")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::ToolCall {
+                name: "get_weather".into(),
+                args: r#"{"city":"Paris"}"#.into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
+
+/// The OpenRouter attestation gate, off the wire (EVE-952). This transport is
+/// the one OpenRouter runs on, so serving the real `403` body here proves the
+/// classification at the seam the unit tests can only assume: the driver's own
+/// status/body boundary. Before this change the same response produced
+/// `Authentication` / `provider_misconfigured`, telling the reader to contact
+/// support and leaving the page that clears the gate inside the JSON.
+#[tokio::test]
+async fn attestation_gate_403_is_classified_at_the_driver_boundary() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": {
+                "message": "This model requires you to complete the following before use: 18+ age confirmation. Confirm at https://openrouter.ai/settings/preferences.",
+                "code": 403,
+                "metadata": {
+                    "missing_attestation_types": ["age_18plus"],
+                    "routing_funnel": [{"step": "Initial Endpoints", "endpoint_count": 1}],
+                    "failed_routing_step": "Gate Endpoints with Attestations"
+                }
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    // `LlmResponseStream` is not `Debug`, so unwrap the error by hand.
+    let Err(error) = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "hi")],
+            &config("meta/muse-spark-1.3-contributor"),
+        )
+        .await
+    else {
+        panic!("a gated model must not start a stream");
+    };
+
+    assert_eq!(
+        error.llm_error_kind(),
+        Some(LlmErrorKind::AttestationRequired)
+    );
+    // Non-transient: retrying cannot clear a confirmation only a human can make.
+    assert!(!error.is_transient_llm_error());
+    // The raw body stays available for detailed disclosure.
+    assert!(error.to_string().contains("missing_attestation_types"));
+    assert_eq!(
+        serde_json::to_value(
+            error.user_facing_error(UserFacingErrorContext::default().with_provider("openrouter"))
+        )
+        .unwrap(),
+        serde_json::json!({
+            "code": "provider_attestation_required",
+            "fields": {
+                "provider": "openrouter",
+                "missing_types": ["age_18plus"],
+                "confirm_url": "https://openrouter.ai/settings/preferences",
+            }
+        })
+    );
+}
+
+#[tokio::test]
+async fn completed_call_does_not_dispatch_partial_sibling() {
+    let server = MockServer::start().await;
+    let body = [
+        serde_json::json!({"type":"response.output_item.added","item":{"type":"function_call","id":"partial","call_id":"not_ready","name":"lookup"}}),
+        serde_json::json!({"type":"response.function_call_arguments.delta","item_id":"partial","delta":"{"}),
+        serde_json::json!({"type":"response.output_item.done","item":{"type":"function_call","id":"ready","call_id":"ready_call","name":"lookup","arguments":"{\"q\":\"complete\"}"}}),
+        // A replayed late delta cannot corrupt a call already marked complete.
+        serde_json::json!({"type":"response.function_call_arguments.delta","item_id":"ready","delta":"garbage"}),
+        serde_json::json!({"type":"response.output_item.done","item":{"type":"function_call","id":"second","call_id":"second_call","name":"lookup","arguments":"{}"}}),
+        serde_json::json!({"type":"response.completed","response":{"id":"response_latest","status":"completed","output":[]}}),
+    ].iter().map(|event| format!("data: {event}\n\n")).collect::<String>();
+    mount_sse(&server, body).await;
+    let mut stream = driver(&server)
+        .chat_completion_stream(vec![], &config("gpt-5-mini"))
+        .await
+        .unwrap();
+    let mut calls = Vec::new();
+    let mut response_id = None;
+    while let Some(event) = stream.next().await {
+        match event.unwrap() {
+            LlmStreamEvent::ToolCalls(snapshot) => calls = snapshot,
+            LlmStreamEvent::Done(metadata) => response_id = metadata.response_id,
+            _ => {}
+        }
+    }
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].id, "ready_call");
+    assert_eq!(calls[1].id, "second_call");
+    assert_eq!(calls[0].arguments, serde_json::json!({"q":"complete"}));
+    assert_eq!(response_id.as_deref(), Some("response_latest"));
+}
+
+#[tokio::test]
+async fn astra_cache_wire_and_usage_buckets() {
+    use everruns_contracts::driver_registry::{PromptCacheConfig, PromptCacheStrategy};
+    use serde_json::json;
+    // Missing sequence_number exercises the generic parser; the complete shape
+    // exercises the typed parser. Both must preserve identical billing buckets.
+    for typed in [false, true] {
+        let server = MockServer::start().await;
+        let mut event = json!({"type":"response.completed", "response": {
+            "id":"resp_cache", "object":"response", "created_at":1780000000,
+            "status":"completed", "model":"gpt-6-astra", "output":[],
+            "usage":{"input_tokens":2000,"output_tokens":20,"total_tokens":2020,
+                "input_tokens_details":{"cached_tokens":800,"cache_write_tokens":1000}}
+        }});
+        if typed {
+            event["sequence_number"] = json!(1);
+        }
+        mount_sse(&server, format!("data: {event}\n\n")).await;
+        let provider = Provider::new(
+            "openai",
+            OpenResponsesProtocolChatDriver::new()
+                .with_native_features(true, true)
+                .with_prompt_cache_options(true)
+                .with_stateful_responses(true),
+        )
+        .base_url(format!("{}/v1/responses", server.uri()));
+        let mut cfg = config("gpt-6-astra");
+        cfg.previous_response_id = Some("resp_previous".into());
+        cfg.reasoning_effort = Some(everruns_contracts::ReasoningEffort::Low);
+        cfg.reasoning_state = Some(astra_state(Some(everruns_contracts::ReasoningEffort::High)));
+        cfg.prompt_cache = Some(PromptCacheConfig {
+            enabled: true,
+            strategy: PromptCacheStrategy::Explicit,
+            ..Default::default()
+        });
+        let response = provider
+            .chat_completion(
+                vec![
+                    Message::text(MessageRole::System, "Stable policy"),
+                    Message::text(MessageRole::User, "Current question"),
+                ],
+                &cfg,
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.metadata.prompt_tokens, Some(200));
+        assert_eq!(response.metadata.cache_read_tokens, Some(800));
+        assert_eq!(response.metadata.cache_creation_tokens, Some(1000));
+        assert_eq!(response.metadata.total_tokens, Some(2020));
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(
+            body["prompt_cache_options"],
+            json!({"ttl":"30m","mode":"explicit"})
+        );
+        assert_eq!(
+            body["input"][0]["content"][0]["prompt_cache_breakpoint"],
+            json!({"mode":"explicit"})
+        );
+        assert_eq!(body["reasoning"]["effort"], "low");
+        assert_eq!(body["input"][1]["type"], "configuration_update");
+        assert_eq!(body["input"][1]["reasoning"]["effort"], "high");
+        assert_eq!(body["input"][2]["content"], "Current question");
+        assert!(body.get("instructions").is_none());
+        assert!(body.get("previous_response_id").is_none());
+        assert!(body["prompt_cache_key"].as_str().unwrap().len() <= 64);
+    }
+}
+
+#[tokio::test]
+async fn astra_invalid_effort_fails_before_http() {
+    let server = MockServer::start().await;
+    for effort in [
+        everruns_contracts::ReasoningEffort::None,
+        everruns_contracts::ReasoningEffort::Minimal,
+    ] {
+        let mut cfg = config("gpt-6-astra");
+        cfg.reasoning_effort = Some(effort);
+        let result = driver(&server).chat_completion(vec![], &cfg).await;
+        assert!(result.unwrap_err().to_string().contains("unsupported"));
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+/// The requested tier reaches the wire verbatim, and the completion carries the
+/// tier the provider says served the call (which prices it), through both the
+/// typed and the generic `response.completed` parsers.
+#[tokio::test]
+async fn service_tier_is_sent_and_the_served_tier_is_reported() {
+    use serde_json::json;
+    for (model, requested, served, typed) in [
+        ("gpt-6.1-sol", "fast", Some("fast"), true),
+        ("gpt-6-astra", "ultrafast", Some("ultrafast"), false),
+        // A ramp-limited premium request degrades to Standard.
+        ("gpt-6-astra", "ultrafast", Some("default"), true),
+        ("gpt-6.1-sol", "flex", None, false),
+    ] {
+        let server = MockServer::start().await;
+        let mut event = json!({"type":"response.completed", "response": {
+            "id":"resp_tier", "object":"response", "created_at":1780000000,
+            "status":"completed", "model":model, "output":[],
+            "usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}
+        }});
+        if let Some(served) = served {
+            event["response"]["service_tier"] = json!(served);
+        }
+        if typed {
+            event["sequence_number"] = json!(1);
+        }
+        mount_sse(&server, format!("data: {event}\n\n")).await;
+        let mut cfg = config(model);
+        cfg.speed = Some(requested.into());
+        let response = driver(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
+            .await
+            .unwrap();
+        assert_eq!(response.metadata.service_tier.as_deref(), served, "{model}");
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body["service_tier"], requested);
+    }
+}
+
+#[tokio::test]
+async fn tier_the_model_does_not_offer_fails_before_http() {
+    let server = MockServer::start().await;
+    let mut cfg = config("gpt-6.1-sol");
+    cfg.speed = Some("ultrafast".into());
+    let err = driver(&server)
+        .chat_completion(vec![], &cfg)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Speed 'ultrafast' is unsupported by gpt-6.1-sol"),
+        "{err}"
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+}

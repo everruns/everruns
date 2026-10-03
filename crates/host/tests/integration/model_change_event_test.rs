@@ -4,6 +4,10 @@
 
 use std::sync::Arc;
 
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use everruns_core::events::EventData;
 use everruns_core::message::{ContentPart, Controls, RuntimeMessageRole};
 use everruns_core::message_retriever::InputMessage;
@@ -15,10 +19,6 @@ use everruns_host::{
 };
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, SimTurn};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 
 fn agent(agent_id: AgentId) -> AgentDefinition {
     AgentBuilder::new("chat-agent", "Answer briefly.")

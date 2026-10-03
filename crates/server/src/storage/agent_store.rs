@@ -10,9 +10,9 @@
 // the correct org_id when creating the store.
 
 use crate::kernel_imports::{
-    AgentCapabilityConfig, AgentDefinition, DependencyBlocker, everruns_provider::error::Result,
-    everruns_provider::error::StoreResultExt, everruns_provider::error::from_json,
-    everruns_provider::typed_id::AgentId, execution_loading::AgentStore,
+    AgentCapabilityConfig, AgentDefinition, DependencyBlocker, contracts::error::Result,
+    contracts::error::StoreResultExt, contracts::error::from_json, contracts::typed_id::AgentId,
+    execution_loading::AgentStore,
 };
 use crate::max_iterations;
 use async_trait::async_trait;
