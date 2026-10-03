@@ -859,7 +859,7 @@ impl TestServer {
                 everruns_server::domains::session_commands::SessionCommandService::new(
                     db.clone(),
                     event_service.clone(),
-                    provider_resolver,
+                    provider_resolver.clone(),
                     mcp_service.clone(),
                     (*host_composition.capability_registry()).clone(),
                     driver_registry.as_ref().clone(),
@@ -1097,6 +1097,20 @@ impl TestServer {
             auth_config.base_url.clone(),
         );
 
+        let voice_state = api::voice::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            feature_flags.clone(),
+            api::voice::AppDependencies {
+                runner: runner.clone(),
+                message_service: messages_state.message_service.clone(),
+                provider_resolver: provider_resolver.clone(),
+                event_delivery: event_delivery.clone(),
+            },
+            host_composition.as_ref(),
+            &built_in_harnesses,
+        );
+
         // Build API routes
         let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
@@ -1110,6 +1124,7 @@ impl TestServer {
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
+            .merge(api::voice::routes(voice_state))
             .merge(api::messages::routes(messages_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))

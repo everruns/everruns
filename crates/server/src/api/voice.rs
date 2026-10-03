@@ -743,15 +743,23 @@ async fn authorize_session(
     org: &ResolvedOrg,
     session_id: SessionId,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    state
+    // THREAT[TM-TENANT-018]: the lookup is org-scoped, so another org's session
+    // id comes back as `Ok(None)`, and that must reject. Every voice route then
+    // writes leased resources and events keyed by the caller-supplied id, and
+    // those writes are not org-scoped. Foreign, missing, and failed lookups all
+    // answer the same 404 so a foreign session's existence is not disclosed.
+    match state
         .session_service
         .get(&Caller::from(org), session_id.uuid(), None)
         .await
-        .map(|_| ())
-        .map_err(|err| {
+    {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => Err(ErrorResponse::not_found("Session")),
+        Err(err) => {
             tracing::debug!(error = %err, "voice session authorization failed");
-            ErrorResponse::not_found("Session")
-        })
+            Err(ErrorResponse::not_found("Session"))
+        }
+    }
 }
 
 /// Resolve the realtime-voice provider connection for an org via service-bound
