@@ -23,7 +23,7 @@
 //!   `scroll_x`, `scroll_y`), `keypress` (`keys`), `wait`, `screenshot`;
 //! - a single `action` object (the preview shape) is accepted as a batch of one;
 //! - `pending_safety_checks` (preview) are carried into the call's arguments so
-//!   the approval gate asks a person, and acknowledged on replay only for a call
+//!   they stay visible for the replay loop, and acknowledged on replay only for a call
 //!   that ran;
 //! - `computer_call_output` has no error field, so a call that did not run is
 //!   answered with the last screenshot of the session (or a blank frame) and the
@@ -338,7 +338,7 @@ pub fn replay_call(call_id: &str, arguments: &Value) -> Value {
 }
 
 /// The `computer_call_output` input item answering `call_id` with `image_url`.
-/// `acknowledged` are the safety checks the person approved with the call.
+/// `acknowledged` are the safety checks the model reported with the call.
 pub fn replay_output(call_id: &str, image_url: &str, acknowledged: Option<&Value>) -> Value {
     let mut item = json!({
         "type": "computer_call_output",

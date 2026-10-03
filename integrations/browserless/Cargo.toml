@@ -21,9 +21,6 @@ documentation = "https://docs.rs/everruns-integrations-browserless"
 [dependencies]
 everruns-core.workspace = true
 everruns-provider.workspace = true
-# Hosted hard approval gate for computer use (EVE-1133): the durable
-# tool_approval gate with a computer-action policy.
-everruns-builtins.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 everruns-platform.workspace = true
