@@ -3,7 +3,7 @@
 import type { ComponentType } from "react";
 import Link from "next/link";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
-import { buttonVariants } from "@/components/ui/button";
+import { LinkButton, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { SessionForkButton } from "@/components/session/session-fork-button";
@@ -110,7 +110,7 @@ function SessionTraceBadge({ href, label }: { href?: string; label?: string }) {
       )}
       title={label}
     >
-      <ExternalLink className="icon-sharp h-3 w-3" />
+      <ExternalLink className="icon-sharp h-4 w-4" />
       {label}
     </a>
   );
@@ -254,13 +254,10 @@ function SessionRecordingActions({
       />
 
       {agentId && (
-        <Link
-          href={`/agents/${agentId}`}
-          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
-        >
+        <LinkButton href={`/agents/${agentId}`} variant="outline" size="sm" className="gap-1">
           <Bot className="icon-sharp h-4 w-4" />
           Open agent
-        </Link>
+        </LinkButton>
       )}
 
       <DropdownMenu>

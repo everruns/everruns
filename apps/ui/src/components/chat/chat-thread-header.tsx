@@ -13,13 +13,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { Check, Copy, ExternalLink, Pencil } from "lucide-react";
 import type { Session } from "@/lib/api/types";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
 import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
@@ -168,14 +167,16 @@ export function ChatThreadHeader({
         <ChatPinButton session={session} showLabel />
         <ChatArchiveButton session={session} showLabel />
         <ShareButton />
-        <Link
+        <LinkButton
           href={`/sessions/${session.id}/transcript`}
+          variant="outline"
+          size="sm"
           aria-label="Open session"
-          className="inline-flex items-center gap-1.5 border border-border/70 px-2.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-muted/40 max-sm:size-7 max-sm:justify-center max-sm:px-0"
+          className="max-sm:w-7 max-sm:px-0"
         >
-          <ExternalLink className="size-3.5" />
+          <ExternalLink className="size-4" />
           <span className="max-sm:hidden">Open session</span>
-        </Link>
+        </LinkButton>
       </div>
     </div>
   );

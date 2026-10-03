@@ -257,7 +257,7 @@ export function SelectedCapabilityList({
                       )}
                       aria-label="Toggle settings"
                     >
-                      <Settings className="w-3.5 h-3.5" />
+                      <Settings className="size-3.5" />
                     </button>
                   </CollapsibleTrigger>
                 )}
@@ -267,7 +267,7 @@ export function SelectedCapabilityList({
                   <Tooltip>
                     <TooltipTrigger>
                       <span className="text-muted-foreground/50 p-1 cursor-not-allowed">
-                        <Lock className="w-3 h-3" />
+                        <Lock className="size-3.5" />
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -285,7 +285,7 @@ export function SelectedCapabilityList({
                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive p-1 transition-opacity"
                     aria-label="Remove capability"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="size-3.5" />
                   </button>
                 )}
               </div>

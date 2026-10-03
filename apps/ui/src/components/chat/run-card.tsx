@@ -5,12 +5,12 @@
  */
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Bot, Cpu, ExternalLink, ListTodo, Radar } from "lucide-react";
 import type { SessionTask, SessionTaskState } from "@/lib/api/types";
 import { formatWorkedDuration } from "@/components/chat/turn-delimiter";
 import { runDurationMs, type ChatRun } from "@/components/chat/run-cards";
+import { LinkButton } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const STATUS_DOT: Record<SessionTaskState, string> = {
@@ -74,13 +74,10 @@ export function RunCard({ run, now }: { run: ChatRun; now: number }) {
         {durationMs != null && <span>{formatWorkedDuration(durationMs)}</span>}
       </span>
 
-      <Link
-        href={runHref(task)}
-        className="ml-auto inline-flex items-center gap-1.5 border border-border/70 px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/40"
-      >
-        <ExternalLink className="h-3 w-3" />
+      <LinkButton href={runHref(task)} variant="outline" size="sm" className="ml-auto">
+        <ExternalLink className="size-4" />
         Open session
-      </Link>
+      </LinkButton>
     </div>
   );
 }

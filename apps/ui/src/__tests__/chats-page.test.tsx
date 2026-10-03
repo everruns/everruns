@@ -259,10 +259,14 @@ describe("Thread surface", () => {
     expect(screen.getByRole("button", { name: "Rename thread" })).toHaveTextContent("Standup");
     expect(screen.getByRole("link", { name: "Scout" })).toHaveAttribute("href", "/agents/agent_1");
     expect(screen.getByText("chat-panel:Scout")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open session/ })).toHaveAttribute(
-      "href",
-      "/sessions/sess_1/transcript",
-    );
+    const openSession = screen.getByRole("link", { name: /Open session/ });
+    expect(openSession).toHaveAttribute("href", "/sessions/sess_1/transcript");
+    // Toolbar siblings must share the sm control height (h-7), not a taller
+    // hand-padded link.
+    expect(openSession).toHaveClass("h-7");
+    expect(screen.getByRole("button", { name: "Pin chat" })).toHaveClass("h-7");
+    expect(screen.getByRole("button", { name: "Archive chat" })).toHaveClass("h-7");
+    expect(screen.getByRole("button", { name: "Share" })).toHaveClass("h-7");
     fireEvent.click(screen.getByRole("button", { name: "Pin chat" }));
     expect(mockPinMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
   });
