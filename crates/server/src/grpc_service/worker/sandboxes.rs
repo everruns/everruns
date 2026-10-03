@@ -131,155 +131,152 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Sandbox persistence requires PostgreSQL"))?;
         let store = crate::storage::PgSandboxCheckpointStore::new(pool.clone());
 
-        let response = match request.operation.as_str() {
-            "load_current_state" => {
-                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
-                    &value,
-                    "session_id",
-                )?);
-                match store.load_current_state(session_id).await {
-                    Ok(state) => encode(json!({"state": state.map(state_value)}))?,
-                    Err(error) => state_error(error),
+        let response =
+            match request.operation.as_str() {
+                "load_current_state" => {
+                    let session_id = everruns_contracts::typed_id::SessionId::from_uuid(
+                        uuid_field(&value, "session_id")?,
+                    );
+                    match store.load_current_state(session_id).await {
+                        Ok(state) => encode(json!({"state": state.map(state_value)}))?,
+                        Err(error) => state_error(error),
+                    }
                 }
-            }
-            "load_state" => {
-                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
-                    &value,
-                    "session_id",
-                )?);
-                match store
-                    .load_state(session_id, field(&value, "provider")?)
-                    .await
-                {
-                    Ok(state) => encode(json!({"state": state.map(state_value)}))?,
-                    Err(error) => state_error(error),
+                "load_state" => {
+                    let session_id = everruns_contracts::typed_id::SessionId::from_uuid(
+                        uuid_field(&value, "session_id")?,
+                    );
+                    match store
+                        .load_state(session_id, field(&value, "provider")?)
+                        .await
+                    {
+                        Ok(state) => encode(json!({"state": state.map(state_value)}))?,
+                        Err(error) => state_error(error),
+                    }
                 }
-            }
-            "save_state" => {
-                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
-                    &value,
-                    "session_id",
-                )?);
-                let state: SessionSandboxState = serde_json::from_value(
-                    value
-                        .get("state")
-                        .cloned()
-                        .ok_or_else(|| Status::invalid_argument("Missing sandbox state"))?,
-                )
-                .map_err(|error| {
-                    Status::invalid_argument(format!("Invalid sandbox state: {error}"))
-                })?;
-                let expected = expected_sandbox_ref(&value)?;
-                match store
-                    .save_state(session_id, &state, expected.as_ref())
-                    .await
-                {
-                    Ok(reference) => encode(json!({"sandbox": sandbox_ref(&reference)}))?,
-                    Err(error) => state_error(error),
-                }
-            }
-            "delete_state" => {
-                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
-                    &value,
-                    "session_id",
-                )?);
-                let expected = expected_sandbox_ref(&value)?;
-                match store
-                    .delete_state(session_id, field(&value, "provider")?, expected.as_ref())
-                    .await
-                {
-                    Ok(deleted) => encode(json!({"deleted": deleted}))?,
-                    Err(error) => state_error(error),
-                }
-            }
-            "ensure_sandbox" => {
-                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid_field(
-                    &value,
-                    "session_id",
-                )?);
-                match store
-                    .ensure_sandbox(session_id, field(&value, "provider")?)
-                    .await
-                {
-                    Ok(reference) => encode(json!({"sandbox": sandbox_ref(&reference)}))?,
-                    Err(error) => checkpoint_error(error),
-                }
-            }
-            "record_checkpoint" => {
-                let checkpoint: NewSandboxCheckpoint = serde_json::from_value(
-                    value
-                        .get("checkpoint")
-                        .cloned()
-                        .ok_or_else(|| Status::invalid_argument("Missing sandbox checkpoint"))?,
-                )
-                .map_err(|error| {
-                    Status::invalid_argument(format!("Invalid sandbox checkpoint: {error}"))
-                })?;
-                match store.record_checkpoint(checkpoint).await {
-                    Ok(checkpoint) => encode(json!({"checkpoint": checkpoint}))?,
-                    Err(error) => checkpoint_error(error),
-                }
-            }
-            "attach_checkpoint" => match store
-                .attach_checkpoint(
-                    uuid_field(&value, "sandbox_id")?,
-                    uuid_field(&value, "checkpoint_id")?,
-                    value
-                        .get("generation")
-                        .and_then(Value::as_i64)
-                        .ok_or_else(|| Status::invalid_argument("Missing sandbox generation"))?,
-                )
-                .await
-            {
-                Ok(()) => encode(json!({}))?,
-                Err(error) => checkpoint_error(error),
-            },
-            "current_checkpoint" => match store
-                .current_checkpoint(uuid_field(&value, "sandbox_id")?)
-                .await
-            {
-                Ok(checkpoint) => encode(json!({"checkpoint": checkpoint}))?,
-                Err(error) => checkpoint_error(error),
-            },
-            "rollback_current_checkpoint" => match store
-                .rollback_current_checkpoint(
-                    uuid_field(&value, "sandbox_id")?,
-                    uuid_field(&value, "checkpoint_id")?,
-                    value
-                        .get("generation")
-                        .and_then(Value::as_i64)
-                        .ok_or_else(|| Status::invalid_argument("Missing sandbox generation"))?,
-                )
-                .await
-            {
-                Ok(checkpoint) => encode(json!({"checkpoint": checkpoint}))?,
-                Err(error) => checkpoint_error(error),
-            },
-            "collect_unattached_checkpoints" => {
-                let before: DateTime<Utc> = field(&value, "before")?
-                    .parse()
-                    .map_err(|_| Status::invalid_argument("Invalid checkpoint cutoff"))?;
-                match store
-                    .collect_unattached_checkpoints(
-                        uuid_field(&value, "sandbox_id")?,
-                        before,
+                "save_state" => {
+                    let session_id = everruns_contracts::typed_id::SessionId::from_uuid(
+                        uuid_field(&value, "session_id")?,
+                    );
+                    let state: SessionSandboxState = serde_json::from_value(
                         value
-                            .get("limit")
+                            .get("state")
+                            .cloned()
+                            .ok_or_else(|| Status::invalid_argument("Missing sandbox state"))?,
+                    )
+                    .map_err(|error| {
+                        Status::invalid_argument(format!("Invalid sandbox state: {error}"))
+                    })?;
+                    let expected = expected_sandbox_ref(&value)?;
+                    match store
+                        .save_state(session_id, &state, expected.as_ref())
+                        .await
+                    {
+                        Ok(reference) => encode(json!({"sandbox": sandbox_ref(&reference)}))?,
+                        Err(error) => state_error(error),
+                    }
+                }
+                "delete_state" => {
+                    let session_id = everruns_contracts::typed_id::SessionId::from_uuid(
+                        uuid_field(&value, "session_id")?,
+                    );
+                    let expected = expected_sandbox_ref(&value)?;
+                    match store
+                        .delete_state(session_id, field(&value, "provider")?, expected.as_ref())
+                        .await
+                    {
+                        Ok(deleted) => encode(json!({"deleted": deleted}))?,
+                        Err(error) => state_error(error),
+                    }
+                }
+                "ensure_sandbox" => {
+                    let session_id = everruns_contracts::typed_id::SessionId::from_uuid(
+                        uuid_field(&value, "session_id")?,
+                    );
+                    match store
+                        .ensure_sandbox(session_id, field(&value, "provider")?)
+                        .await
+                    {
+                        Ok(reference) => encode(json!({"sandbox": sandbox_ref(&reference)}))?,
+                        Err(error) => checkpoint_error(error),
+                    }
+                }
+                "record_checkpoint" => {
+                    let checkpoint: NewSandboxCheckpoint =
+                        serde_json::from_value(value.get("checkpoint").cloned().ok_or_else(
+                            || Status::invalid_argument("Missing sandbox checkpoint"),
+                        )?)
+                        .map_err(|error| {
+                            Status::invalid_argument(format!("Invalid sandbox checkpoint: {error}"))
+                        })?;
+                    match store.record_checkpoint(checkpoint).await {
+                        Ok(checkpoint) => encode(json!({"checkpoint": checkpoint}))?,
+                        Err(error) => checkpoint_error(error),
+                    }
+                }
+                "attach_checkpoint" => match store
+                    .attach_checkpoint(
+                        uuid_field(&value, "sandbox_id")?,
+                        uuid_field(&value, "checkpoint_id")?,
+                        value
+                            .get("generation")
                             .and_then(Value::as_i64)
-                            .ok_or_else(|| Status::invalid_argument("Missing checkpoint limit"))?,
+                            .ok_or_else(|| {
+                                Status::invalid_argument("Missing sandbox generation")
+                            })?,
                     )
                     .await
                 {
-                    Ok(revisions) => encode(json!({"revisions": revisions}))?,
+                    Ok(()) => encode(json!({}))?,
                     Err(error) => checkpoint_error(error),
+                },
+                "current_checkpoint" => match store
+                    .current_checkpoint(uuid_field(&value, "sandbox_id")?)
+                    .await
+                {
+                    Ok(checkpoint) => encode(json!({"checkpoint": checkpoint}))?,
+                    Err(error) => checkpoint_error(error),
+                },
+                "rollback_current_checkpoint" => match store
+                    .rollback_current_checkpoint(
+                        uuid_field(&value, "sandbox_id")?,
+                        uuid_field(&value, "checkpoint_id")?,
+                        value
+                            .get("generation")
+                            .and_then(Value::as_i64)
+                            .ok_or_else(|| {
+                                Status::invalid_argument("Missing sandbox generation")
+                            })?,
+                    )
+                    .await
+                {
+                    Ok(checkpoint) => encode(json!({"checkpoint": checkpoint}))?,
+                    Err(error) => checkpoint_error(error),
+                },
+                "collect_unattached_checkpoints" => {
+                    let before: DateTime<Utc> = field(&value, "before")?
+                        .parse()
+                        .map_err(|_| Status::invalid_argument("Invalid checkpoint cutoff"))?;
+                    match store
+                        .collect_unattached_checkpoints(
+                            uuid_field(&value, "sandbox_id")?,
+                            before,
+                            value.get("limit").and_then(Value::as_i64).ok_or_else(|| {
+                                Status::invalid_argument("Missing checkpoint limit")
+                            })?,
+                        )
+                        .await
+                    {
+                        Ok(revisions) => encode(json!({"revisions": revisions}))?,
+                        Err(error) => checkpoint_error(error),
+                    }
                 }
-            }
-            _ => {
-                return Err(Status::invalid_argument(
-                    "Unknown sandbox persistence operation",
-                ));
-            }
-        };
+                _ => {
+                    return Err(Status::invalid_argument(
+                        "Unknown sandbox persistence operation",
+                    ));
+                }
+            };
 
         Ok(Response::new(response))
     }

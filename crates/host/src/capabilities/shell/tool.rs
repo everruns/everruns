@@ -697,9 +697,9 @@ mod tests {
         use std::sync::Mutex;
 
         use async_trait::async_trait;
+        use everruns_contracts::typed_id::SessionId;
         use everruns_core::session_files::SessionFileSystem;
         use everruns_core::tools::Tool;
-        use everruns_contracts::typed_id::SessionId;
 
         use crate::RealDiskFileStore;
 

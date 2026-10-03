@@ -17,12 +17,12 @@
 // pooled keep-alive connection driven by another test's runtime could otherwise
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 
-use everruns_drivers::mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
 use everruns_contracts::DriverRegistry;
 use everruns_contracts::ProviderEndpoint;
 use everruns_contracts::driver_registry::{
     ChatDriver, DriverId, LlmCallConfig, LlmStreamEvent, Message, MessageRole, ProviderConfig,
 };
+use everruns_drivers::mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
 use futures::StreamExt;
 use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

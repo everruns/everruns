@@ -107,10 +107,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
+    use everruns_contracts::typed_id::{EventId, SessionId};
     use everruns_core::events::{
         ENVIRONMENT_INSTANCE_LOST, ENVIRONMENT_RECOVERED, Event, EventRequest,
     };
-    use everruns_contracts::typed_id::{EventId, SessionId};
 
     use super::*;
     use crate::session_sandbox::SessionSandboxInstance;

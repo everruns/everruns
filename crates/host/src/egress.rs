@@ -1,11 +1,11 @@
 //! Reqwest-backed implementation of the neutral Everruns egress contract.
 
 use async_trait::async_trait;
+use everruns_contracts::url_validation::{validate_url_dns_pinned, validate_url_with_resolver};
 use everruns_core::{
     EgressError, EgressRequest, EgressResponse, EgressResult, EgressService, EgressSigning,
     EgressStreamResponse, SystemAllowlist,
 };
-use everruns_contracts::url_validation::{validate_url_dns_pinned, validate_url_with_resolver};
 use futures::StreamExt;
 use std::future::Future;
 use std::net::SocketAddr;

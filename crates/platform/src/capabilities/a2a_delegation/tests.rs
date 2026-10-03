@@ -8,10 +8,10 @@ use a2a_server::{
     DefaultRequestHandler, InMemoryTaskStore, StaticAgentCard, jsonrpc::jsonrpc_router,
 };
 use axum::Router;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::session_task::SessionTaskRegistry;
-use everruns_contracts::typed_id::SessionId;
 use futures::stream;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
@@ -603,8 +603,8 @@ fn reattach_network_access_prefers_persisted_run_policy() {
 
 #[test]
 fn enforce_network_access_blocks_disallowed_base_url() {
-    use everruns_core::network_access::NetworkAccessList;
     use everruns_contracts::typed_id::SessionId;
+    use everruns_core::network_access::NetworkAccessList;
 
     let agent = ExternalA2aAgentConfig {
         id: "a".to_string(),
@@ -657,8 +657,8 @@ fn enforce_network_access_blocks_disallowed_base_url() {
 
 #[test]
 fn enforce_network_access_blocks_disallowed_interface_url() {
-    use everruns_core::network_access::NetworkAccessList;
     use everruns_contracts::typed_id::SessionId;
+    use everruns_core::network_access::NetworkAccessList;
 
     let card = AgentCard {
         name: "a".to_string(),
@@ -693,8 +693,8 @@ fn enforce_network_access_blocks_disallowed_interface_url() {
 
 #[test]
 fn enforce_network_access_pre_resolve_skips_when_inline_card_present() {
-    use everruns_core::network_access::NetworkAccessList;
     use everruns_contracts::typed_id::SessionId;
+    use everruns_core::network_access::NetworkAccessList;
 
     // base_url not on the allowlist, but agent_card is supplied inline so
     // resolve_card never performs discovery against base_url. The pre-resolve
