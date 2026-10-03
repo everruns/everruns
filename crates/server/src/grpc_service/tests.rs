@@ -1,7 +1,6 @@
 use super::worker::commands::test_support::execute_test_command;
 use super::*;
 use tonic::service::Interceptor;
-
 // Env-var-mutating tests must not run in parallel.
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const EXAMPLE_TOKEN: &str = "YExample0";
@@ -633,6 +632,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     let session = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,

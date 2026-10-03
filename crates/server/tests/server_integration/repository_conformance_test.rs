@@ -47,6 +47,7 @@ pub(crate) async fn create_test_principal(repo: &dyn Repository, label: &str) ->
 
 pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionRow {
     CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,

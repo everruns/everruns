@@ -7817,9 +7817,11 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      /** @description Fixed Playground end user. Defaults to the caller's linked virtual user. Only valid with source=playground. */
+      playground_user_id?: string | null;
       /**
-       * @description How this session was started. Clients may declare only `chat` (an
-       *     interactive thread) or `api` (the default); every other source is
+       * @description How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`
+       *     (the default); every other source is
        *     server-owned so the sessions facet rail stays trustworthy.
        * @example chat
        */
@@ -14051,6 +14053,8 @@ export interface components {
          *     Used to compute governed subagent delegation depth.
          */
         parent_session_id?: string | null;
+        /** @description Fixed end-user identity for a Playground conversation; independent of the resident service. */
+        playground_user_id?: string | null;
         /**
          * @description Preview text from the first user message (truncated).
          * @example Help me draft the Q3 marketing plan
@@ -14641,6 +14645,8 @@ export interface components {
          *     Used to compute governed subagent delegation depth.
          */
         parent_session_id?: string | null;
+        /** @description Fixed end-user identity for a Playground conversation; independent of the resident service. */
+        playground_user_id?: string | null;
         /**
          * @description Preview text from the first user message (truncated).
          * @example Help me draft the Q3 marketing plan
@@ -16585,6 +16591,8 @@ export interface components {
        *     Used to compute governed subagent delegation depth.
        */
       parent_session_id?: string | null;
+      /** @description Fixed end-user identity for a Playground conversation; independent of the resident service. */
+      playground_user_id?: string | null;
       /**
        * @description Preview text from the first user message (truncated).
        * @example Help me draft the Q3 marketing plan
@@ -16999,6 +17007,7 @@ export interface components {
      */
     SessionSource:
       | "chat"
+      | "playground"
       | "api"
       | "slack"
       | "ag_ui"
@@ -20930,6 +20939,8 @@ export interface components {
        *     Used to compute governed subagent delegation depth.
        */
       parent_session_id?: string | null;
+      /** @description Fixed end-user identity for a Playground conversation; independent of the resident service. */
+      playground_user_id?: string | null;
       /**
        * @description Preview text from the first user message (truncated).
        * @example Help me draft the Q3 marketing plan
@@ -31053,6 +31064,10 @@ export interface operations {
   list_sessions: {
     parameters: {
       query?: {
+        /** @description Filter by the fixed Playground end-user identity. */
+        playground_user_id?: string | null;
+        /** @description Return only archived sessions. */
+        archived_only?: boolean | null;
         /**
          * @description Filter sessions by agent ID.
          * @example agent_01933b5a00007000800000000000001
@@ -31207,6 +31222,10 @@ export interface operations {
   get_session_facets: {
     parameters: {
       query?: {
+        /** @description Filter by the fixed Playground end-user identity. */
+        playground_user_id?: string;
+        /** @description Return only archived sessions. */
+        archived_only?: boolean;
         /** @example agent_01933b5a00007000800000000000001 */
         agent_id?: string;
         search?: string;

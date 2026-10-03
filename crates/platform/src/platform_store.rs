@@ -368,6 +368,7 @@ pub mod tests {
                 session: {
                     let session_id = SessionId::new();
                     Session {
+                        playground_user_id: None,
                         source: Default::default(),
                         activity: Default::default(),
                         run_summary: None,

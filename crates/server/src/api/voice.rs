@@ -509,6 +509,7 @@ pub async fn create_agent_voice_session(
 > {
     ensure_voice_enabled(&org)?;
     let session = CreateSession(crate::api::sessions::CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: None,
@@ -738,29 +739,9 @@ fn realtime_session_payload(options: &NormalizedVoiceOptions) -> Value {
     payload
 }
 
-async fn authorize_session(
-    state: &AppState,
-    org: &ResolvedOrg,
-    session_id: SessionId,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    // THREAT[TM-TENANT-018]: the lookup is org-scoped, so another org's session
-    // id comes back as `Ok(None)`, and that must reject. Every voice route then
-    // writes leased resources and events keyed by the caller-supplied id, and
-    // those writes are not org-scoped. Foreign, missing, and failed lookups all
-    // answer the same 404 so a foreign session's existence is not disclosed.
-    match state
-        .session_service
-        .get(&Caller::from(org), session_id.uuid(), None)
-        .await
-    {
-        Ok(Some(_)) => Ok(()),
-        Ok(None) => Err(ErrorResponse::not_found("Session")),
-        Err(err) => {
-            tracing::debug!(error = %err, "voice session authorization failed");
-            Err(ErrorResponse::not_found("Session"))
-        }
-    }
-}
+#[path = "voice/authorization.rs"]
+mod authorization;
+use authorization::authorize_session;
 
 /// Resolve the realtime-voice provider connection for an org via service-bound
 /// resolution (knowledge/foundations/providers.md): the provider whose driver declares

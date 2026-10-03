@@ -86,12 +86,14 @@ The session owns exactly one sandbox, and provider selection comes from config.
 
 ### Platform
 
-`crates/platform/src/session_sandbox.rs` defines:
+`crates/platform/src/session_sandbox.rs` defines the experimental compatibility
+surface:
 
 - config, state, and response types
 - `SessionSandboxProvider` trait
 - provider plugin registration via `inventory`
-- state persistence helpers using session secret storage
+- state persistence helpers backed by first-class logical and physical rows on
+  hosted PostgreSQL deployments
 - generic create/resume/pause/delete/init/checkpoint helpers
 
 `crates/platform/src/capabilities/session_sandbox.rs` exposes the capability and
@@ -152,12 +154,19 @@ authoritative pointer to a revision no committed turn produced. Attaching is
 fenced on the sandbox generation, so a replaced sandbox cannot have its pointer
 advanced by an in-flight upload.
 
-Recovery still reads the revision from the encrypted `session_sandbox` secret,
-so the checkpoint records are observational for now and state persistence is
-still not in the same database transaction as the durable tool-result/event
-commit. Closing that window is the remaining EVE-870 work: reconcile the head
-checkpoint against `durable_tool_results` at resume, and move recovery onto
-`sandboxes.current_checkpoint_id`.
+Recovery reconciles `sandboxes.current_checkpoint_id` against
+`durable_tool_results` before resume. A checkpoint produced by a tool call that
+never settled is detached and the provider recovery pointer is rewound to the
+previous committed revision. This closes the crash window without reopening the
+frozen core transaction boundary.
+
+Hosted PostgreSQL deployments persist the current physical incarnation in
+`sandbox_instances` and point to it from the durable logical `sandboxes` row.
+Replacing a missing provider resource increments the logical generation and
+retires the former incarnation. Every subsequent state write and delete carries
+that generation; a late response from the retired provider resource is rejected
+instead of becoming current again. Existing encrypted `session_sandbox` records
+are adopted lazily and removed after the first successful database write.
 
 ### Server lifecycle
 
@@ -178,9 +187,15 @@ the feature graduates.
 
 ## State and cleanup
 
-Managed sandbox state is stored in encrypted session secret storage under the
-secret name `session_sandbox`. The logical recovery binding lives there; the
-Daytona sandbox id is an incarnation that may change after recovery.
+Hosted managed-environment state is queryable product state in `sandboxes`,
+`sandbox_instances`, and `sandbox_checkpoints`. These internal table names
+predate the public Environment vocabulary introduced by the execution
+environment surface; they do not create a second product resource. The Daytona
+sandbox id belongs to a disposable incarnation and may change after recovery.
+
+Framework, remote, and in-memory hosts that do not install the hosted state
+store continue to use the encrypted `session_sandbox` secret as a compatibility
+fallback. That fallback is not the hosted control-plane authority.
 
 Provider-owned remote resources should also register leased resources so the
 session resource registry and cleanup infrastructure can see them. Daytona does

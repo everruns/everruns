@@ -6,7 +6,6 @@ use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, PrincipalId, SessionId};
-
 /// Default pagination for tests (large enough to not truncate).
 fn default_pagination() -> Pagination {
     Pagination::new(0, 1000)
@@ -18,6 +17,7 @@ fn test_harness_id() -> HarnessId {
 
 fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,

@@ -71,6 +71,20 @@ impl Command for CreateMessage {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
         require_platform_chat_owner(ctx, &session).await?;
+        let (runtime_subject_principal_id, event_metadata) = if let Some(subject) =
+            session.playground_user_id
+        {
+            let principal =
+                crate::domains::sessions::playground::subject_principal(ctx, subject).await?;
+            (
+                Some(principal),
+                Some(
+                    serde_json::json!({"type": "playground", "operator_user_id": ctx.caller.user_id}),
+                ),
+            )
+        } else {
+            (None, None)
+        };
         let responder_agent_id = resolve_responder_agent_id(
             ctx,
             session_id,
@@ -82,13 +96,13 @@ impl Command for CreateMessage {
         q::message_service(ctx)?
             .create(
                 CreateMessageContext {
-                    runtime_subject_principal_id: None,
+                    runtime_subject_principal_id,
                     org_id: ctx.org_id(),
                     user_id: ctx.caller.user_id,
                     harness_id: session.harness_id.uuid(),
                     agent_id: responder_agent_id.map(|id| id.uuid()),
                     session_id: session_id.uuid(),
-                    event_metadata: None,
+                    event_metadata,
                     request_id: self.request_id,
                 },
                 req,
@@ -504,6 +518,7 @@ mod tests {
         let guest_agent = seed_agent(&db, harness.id, "routing-guest").await;
         let session = db
             .create_session(CreateSessionRow {
+                playground_user_id: None,
                 source: everruns_platform::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
@@ -664,6 +679,7 @@ mod tests {
             .expect("create Platform Chat harness");
         let row = db
             .create_session(CreateSessionRow {
+                playground_user_id: None,
                 source: everruns_platform::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,

@@ -5,7 +5,6 @@
 //
 // This implementation provides the same interface as GrpcWorkerAdapters
 // but with direct access to the storage backend, domains, and infra helpers.
-
 use crate::kernel_imports::{
     Caller, ContentPart, EgressRequest, EgressRequestKind, EgressService, EventData,
     RuntimeMessage, RuntimeMessageRole, ToolResultContentPart, UtilityLlmService,
@@ -433,6 +432,7 @@ impl DirectWorkerAdapters {
                 agent_id: r.agent_id,
                 agent_version_id: r.agent_version_id,
                 virtual_user_id: r.virtual_user_id,
+                playground_user_id: r.playground_user_id,
                 owner_principal_id: r.owner_principal_id,
                 resolved_owner_user_id: r.resolved_owner_user_id,
                 owner: None,
@@ -1363,12 +1363,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         ))
     }
 
-    fn sandbox_checkpoint_store(
+    fn sandbox_persistence_store(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
+    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
         self.db.pool().map(|pool| {
             Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()))
-                as Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>
+                as Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>
         })
     }
 
