@@ -79,5 +79,4 @@ integrations/daytona/src/client.rs
 integrations/daytona/src/tools.rs
 integrations/filesystem/src/lib.rs
 integrations/lua/src/lib.rs
-integrations/openai-image/src/image_capability.rs
 integrations/web-fetch/src/lib.rs

@@ -2,6 +2,11 @@
 
 ## 2026-10-03
 
+* **Image provider egress.** `gpt_image_gen` sends generation and edit
+  requests through the host egress boundary with DNS pinning, the session
+  network ACL, and no redirects, so an org-configured base URL cannot reach
+  internal addresses or carry the provider key to another origin (EVE-1174).
+  See [Capabilities](execution/capabilities.md) and TM-LLM-047.
 * **Untrusted host shell no longer trusts a program name.** `rg --pre` and the
   other options that start a program ask for approval, including when
   containment is already `danger-full-access`. `git status` asks unless the
