@@ -9,13 +9,18 @@ import { useOrg } from "@/providers/org-provider";
 import { usePageTitle } from "@/hooks";
 
 export function PlaygroundSetup() {
+  const { currentOrg } = useOrg();
+  return <Setup key={currentOrg?.public_id} />;
+}
+
+function Setup() {
   const { currentOrg, hasRole } = useOrg();
   const { data: me, error } = useVirtualUser("me");
   const [selected, setSelected] = useState("");
   const subject = selected || me?.id || "";
   usePageTitle("New conversation", "Playground");
   return (
-    <div key={currentOrg?.public_id} className="flex h-full flex-col bg-background bg-brand-dots">
+    <div className="flex h-full flex-col bg-background bg-brand-dots">
       <header className="border-b bg-background/80 px-6 py-4">
         <h1 className="text-lg font-semibold">New Playground conversation</h1>
         <p className="mt-1 text-sm text-muted-foreground">
