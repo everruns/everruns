@@ -10,7 +10,7 @@
 #
 # What breaks it: a dependency that needs threads, sockets or an OS clock
 # (Tokio's `full` feature, mio, aws-lc), or `std::time::Instant::now`, which
-# panics in the isolate. Use `everruns_provider::rt` and `web_time` instead.
+# panics in the isolate. Use `everruns_contracts::rt` and `web_time` instead.
 
 set -euo pipefail
 

@@ -12,7 +12,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_tags(["generic", "default", "built-in"])
     .with_roles([BuiltInHarnessRole::Default])
     // The one definition (EVE-1041). Org provisioning and the `everruns`
-    // facade read the same list from `everruns-capability`, so the two cannot
+    // facade read the same list from `everruns-contracts`, so the two cannot
     // drift; `shared_generic_capabilities_are_the_platform_ones` fails if
     // anyone re-hardcodes it here.
     .with_capabilities(everruns_contracts::generic_capabilities())

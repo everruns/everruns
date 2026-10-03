@@ -1,10 +1,10 @@
 //! Conversions between core agent-loop domain types and the provider driver
-//! types in `everruns-provider`.
+//! types in `everruns-contracts`.
 //!
-//! These adapters live here (not in `everruns-provider`) because they depend on
+//! These adapters live here (not in `everruns-contracts`) because they depend on
 //! core domain types (`Message`, `RuntimeAgent`). Keeping them
 //! on the core side keeps the crate dependency one-directional: core depends on
-//! everruns-provider, never the reverse. The orphan rule also prevents these
+//! everruns-contracts, never the reverse. The orphan rule also prevents these
 //! from being `From` impls in core (both the `From` trait and the driver types
 //! are foreign to core), so they are plain functions.
 

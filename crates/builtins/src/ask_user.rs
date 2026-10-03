@@ -18,7 +18,7 @@ use crate::typed_id::SessionId;
 use everruns_core::tool_context::ToolContext;
 
 pub const ASK_USER_CAPABILITY_ID: &str = "ask_user";
-// Defined in `everruns-provider` so the engine can recognise the call without
+// Defined in `everruns-contracts` so the engine can recognise the call without
 // depending on this crate; re-exported here so capability authors keep one path.
 pub use crate::tool_types::ASK_USER_TOOL_NAME;
 pub const DEFAULT_ASK_USER_TIMEOUT_SECONDS: u64 = 300;

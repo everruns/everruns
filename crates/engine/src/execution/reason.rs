@@ -1544,7 +1544,7 @@ impl ReasonAtom {
                         // EVE-806: a stream that produced no tokens within the
                         // liveness window is equivalent to a dropped connection.
                         // Route it through the same bounded transient-retry path
-                        // as an in-stream provider error (everruns-provider
+                        // as an in-stream provider error (everruns-contracts
                         // classifies this message as transient) instead of
                         // failing the turn immediately. Retrying re-issues the
                         // same request with no artificial history messages; a

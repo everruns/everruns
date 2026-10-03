@@ -3,7 +3,7 @@
 //!
 //! `everruns-drivers` is part of the [Everruns](https://everruns.com)
 //! ecosystem. Each module implements the [`ChatDriver`] contract from
-//! `everruns-provider` for one vendor and registers it into a
+//! `everruns-contracts` for one vendor and registers it into a
 //! [`DriverRegistry`]. Vendors whose API is OpenAI-compatible wrap one of that
 //! crate's shared protocol drivers and add only identity, credentials, auth,
 //! base URL, and model discovery; vendors with their own wire (Anthropic,
