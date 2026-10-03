@@ -2,7 +2,10 @@
 # Effectful source owners are excluded only from kernel scans; the kernel guard
 # separately verifies their feature gates in core/src/lib.rs.
 core_kernel_source_files() {
-  find crates/core/src     \( -path crates/core/src/host -o -path crates/core/src/mcp -o -path crates/core/src/ag_ui \) -prune -o     -name '*.rs' ! -path crates/core/src/a2a.rs -type f -print
+  find crates/core/src \
+    \( -path crates/core/src/host -o -path crates/core/src/mcp \
+       -o -path crates/core/src/ag_ui -o -path crates/core/src/a2a \) -prune -o \
+    -name '*.rs' ! -path crates/core/src/a2a.rs -type f -print
 }
 
 assert_core_feature_module_gates() {

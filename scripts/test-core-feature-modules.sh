@@ -18,14 +18,15 @@ for feature in host mcp ag-ui a2a; do
   fi
   grep -q 'must stay behind feature' "$work/out"
 done
-mkdir -p "$work/crates/core/src/host" "$work/crates/core/src/mcp" "$work/crates/core/src/ag_ui"
+mkdir -p "$work/crates/core/src/host" "$work/crates/core/src/mcp" "$work/crates/core/src/ag_ui" "$work/crates/core/src/a2a"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/kernel.rs"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/host/transport.rs"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/a2a.rs"
+printf 'reqwest::Client;\n' > "$work/crates/core/src/a2a/network.rs"
 cd "$work"
 files="$(core_kernel_source_files)"
 grep -q 'kernel.rs' <<<"$files"
-if grep -qE '/host/|/mcp/|/ag_ui/|/a2a.rs' <<<"$files"; then
+if grep -qE '/host/|/mcp/|/ag_ui/|/a2a/|/a2a.rs' <<<"$files"; then
   echo 'FAIL: feature-owned source leaked into the default kernel source list'
   exit 1
 fi
