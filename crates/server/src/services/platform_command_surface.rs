@@ -438,7 +438,7 @@ mod tests {
                 docker_capability: true,
                 container_sandbox: true,
                 lua: true,
-                    chatgpt_plan: false,
+                chatgpt_plan: false,
                 notifications: true,
                 evals: true,
                 skills: true,

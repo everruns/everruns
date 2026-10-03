@@ -897,5 +897,5 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 ## FEATURE_CHATGPT_PLAN
 
 Enable personal ChatGPT plan connections in self-hosted deployments. Defaults to
-`false`; each organization must also opt in. Requires a stable
+`off`; set `adoption` to make the feature available for organization opt-in. Requires a stable
 `SECRETS_ENCRYPTION_KEY`. See [ChatGPT plan](/features/chatgpt/).

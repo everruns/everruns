@@ -136,6 +136,7 @@ impl RotatingAuth {
                     grant.scopes = fresh.scopes;
                 }
             }
+            // THREAT[TM-LLM-048]: Rotation is durable before credentials leave the host lease.
             // Persist the entire rotated pair before exposing the access token.
             if !self
                 .store

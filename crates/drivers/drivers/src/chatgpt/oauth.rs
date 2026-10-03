@@ -364,6 +364,7 @@ pub struct Identity {
 
 /// Verify an ID token: RS256 signature against `jwks`, then issuer, audience
 /// (the issued client), expiry, and the nonce of this attempt.
+// THREAT[TM-AUTH-033]: Accept identity only after cryptographic and attempt-bound validation.
 pub fn validate_id_token(
     id_token: &str,
     jwks: &Jwks,

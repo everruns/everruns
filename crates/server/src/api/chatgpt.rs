@@ -9,28 +9,32 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
+use everruns_contracts::typed_id::ProviderId;
 use everruns_drivers::chatgpt::auth::TokenStore;
 use everruns_drivers::chatgpt::{ChatGptRegistration, CodexAuth, login::LoginAttempt, oauth};
-use everruns_contracts::typed_id::ProviderId;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ConnectionStatus {
     pub status: String,
     pub email: Option<String>,
     pub host_id: String,
     pub error: Option<String>,
+    /// Non-secret host registration, containing the issuing client and verified subject.
+    #[schema(value_type = Option<Object>)]
     pub registration: Option<ChatGptRegistration>,
     pub owner_user_id: Option<String>,
 }
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct LoginResponse {
     pub authorize_url: String,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct ImportedConnection {
+    /// Credential document emitted by the local helper; accepted only after ID-token validation.
+    #[schema(value_type = Object)]
     pub auth: CodexAuth,
     pub nonce: String,
     pub host_id: String,
@@ -59,6 +63,18 @@ async fn row(
         .ok_or_else(|| ErrorResponse::not_found("Provider"))?;
     Ok(row)
 }
+#[utoipa::path(
+    get,
+    path = "/v1/providers/{provider_id}/chatgpt",
+    params(("provider_id" = String, Path, description = "Personal provider ID")),
+    responses(
+        (status = 200, description = "Personal connection status", body = ConnectionStatus),
+        (status = 404, description = "Provider not found or owned by another user"),
+        (status = 400, description = "Invalid connection request"),
+        (status = 502, description = "Provider exchange or revocation failed")
+    ),
+    tag = "providers"
+)]
 pub async fn status(
     State(state): State<AppState>,
     org: ResolvedOrg,
@@ -78,6 +94,18 @@ pub async fn status(
             .and_then(|v| serde_json::from_value(v).ok()),
     }))
 }
+#[utoipa::path(
+    post,
+    path = "/v1/providers/{provider_id}/chatgpt/login",
+    params(("provider_id" = String, Path, description = "Personal provider ID")),
+    responses(
+        (status = 200, description = "Personal connection login", body = LoginResponse),
+        (status = 404, description = "Provider not found or owned by another user"),
+        (status = 400, description = "Invalid connection request"),
+        (status = 502, description = "Provider exchange or revocation failed")
+    ),
+    tag = "providers"
+)]
 pub async fn login(
     State(state): State<AppState>,
     org: ResolvedOrg,
@@ -102,6 +130,13 @@ pub async fn login(
         .lock()
         .await;
     let key = (org.org_id, row.id);
+    // THREAT[TM-DOS-046]: Bound process-local callback listeners and pending tasks.
+    if attempts.len() >= 32 && !attempts.contains_key(&key) {
+        return Err(
+            ErrorResponse::new("Too many ChatGPT sign-ins are pending. Retry shortly.")
+                .into_response(StatusCode::TOO_MANY_REQUESTS),
+        );
+    }
     if attempts.contains_key(&key) {
         return Err(ErrorResponse::conflict(
             "A ChatGPT sign-in is already pending. Wait for it to finish.",
@@ -279,6 +314,18 @@ async fn save_connection(
         .await?;
     Ok(())
 }
+#[utoipa::path(
+    delete,
+    path = "/v1/providers/{provider_id}/chatgpt",
+    params(("provider_id" = String, Path, description = "Personal provider ID")),
+    responses(
+        (status = 200, description = "Personal connection disconnect", body = serde_json::Value),
+        (status = 404, description = "Provider not found or owned by another user"),
+        (status = 400, description = "Invalid connection request"),
+        (status = 502, description = "Provider exchange or revocation failed")
+    ),
+    tag = "providers"
+)]
 pub async fn disconnect(
     State(state): State<AppState>,
     org: ResolvedOrg,
@@ -296,6 +343,19 @@ pub async fn disconnect(
     chatgpt::disconnect(&store).await.map_err(|_|ErrorResponse::new("Revocation was not confirmed. The connection was retained. Retry or disconnect the app in ChatGPT settings.").into_response(StatusCode::BAD_GATEWAY))?;
     Ok(Json(json!({"disconnected":true})))
 }
+#[utoipa::path(
+    post,
+    path = "/v1/providers/{provider_id}/chatgpt/import",
+    params(("provider_id" = String, Path, description = "Personal provider ID")),
+    request_body = ImportedConnection,
+    responses(
+        (status = 200, description = "Personal connection import", body = serde_json::Value),
+        (status = 404, description = "Provider not found or owned by another user"),
+        (status = 400, description = "Invalid connection request"),
+        (status = 502, description = "Provider exchange or revocation failed")
+    ),
+    tag = "providers"
+)]
 pub async fn import(
     State(state): State<AppState>,
     org: ResolvedOrg,

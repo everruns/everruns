@@ -498,6 +498,22 @@ mod tests {
     }
 
     #[test]
+    fn chatgpt_connections_require_deployment_and_org_enrolment() {
+        let off = policy(DeploymentGrade::Prod, FeatureFlagGrade::Off);
+        let enrolled = HashMap::from([("chatgpt_plan".into(), true)]);
+        assert!(!off.for_org(&enrolled).chatgpt_plan);
+        let available = off.with_grade("chatgpt_plan", FeatureFlagGrade::Adoption);
+        assert!(available.deployment_flags().chatgpt_plan);
+        assert!(!available.for_org(&HashMap::new()).chatgpt_plan);
+        assert!(available.for_org(&enrolled).chatgpt_plan);
+        assert!(
+            !available
+                .for_org(&HashMap::from([("chatgpt_plan".into(), false)]))
+                .chatgpt_plan
+        );
+    }
+
+    #[test]
     fn playground_is_not_a_feature_flag() {
         assert!(
             API_FEATURE_FLAG_DEFINITIONS

@@ -15,7 +15,7 @@ model, and OpenAI's open-source Sign in with ChatGPT preview.
 
 ## Enable in a self-hosted deployment
 
-Set `FEATURE_CHATGPT_PLAN=true` and a stable `SECRETS_ENCRYPTION_KEY`. Enable
+Set `FEATURE_CHATGPT_PLAN=adoption` and a stable `SECRETS_ENCRYPTION_KEY`. Enable
 **ChatGPT plan** for the organization in its feature settings. The deployment
 flag defaults to off; an organization cannot enable it when the deployment
 has disabled it. Hosted deployments keep it off unless explicitly supported.
