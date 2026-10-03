@@ -126,66 +126,6 @@ pub fn contract(wire_name: &str) -> Option<&'static ContractCommand> {
         .find(|contract| contract.wire_name == wire_name)
 }
 
-/// The orientation a Platform Chat prompt carries: what exists, at one level.
-///
-/// Without it a model opens every turn by asking. Observed against a real
-/// model, the standard move was `discover {phrase}` followed by
-/// `discover --all` — and `--all` returns the whole catalog, some 1500 tokens,
-/// for the same map this renders in about 120. Inlining it is cheaper than the
-/// call it replaces, not more expensive, and it pays that cost once per turn
-/// instead of once per lookup.
-///
-/// Generated from inventory rather than written down, so a new noun or a new
-/// domain cannot leave the prompt describing a surface that has moved.
-///
-/// It stops at one level on purpose. The tree's whole affordance is that help
-/// is bounded by shape: the root lists nouns, a node lists its children, a leaf
-/// renders its own flags. Pasting the second level into the prompt would spend
-/// the budget the tree exists to save.
-pub fn surface_orientation() -> String {
-    let mut text = String::from("## What you can operate on\n\n");
-    text.push_str(
-        "`everruns <noun> <verb> --flags` runs a platform operation. \
-These nouns are spelled that way:\n\n",
-    );
-
-    for (noun, about) in tree().children("") {
-        text.push_str(&format!("- `{noun}` — {about}\n"));
-    }
-
-    text.push_str(
-        "\nRun `everruns <noun> --help` for a noun's verbs, and \
-`everruns <noun> <verb> --help` for its flags and a worked example. \
-The flat operation names still work in the same script.\n\n",
-    );
-    text.push_str(
-        "The rest of the platform has no tree spelling and is reached by flat \
-operation name. `discover` searches those by name and description; they fall \
-into these families:\n\n",
-    );
-
-    let mut families: Vec<&str> = contracts_catalog_categories();
-    families.sort_unstable();
-    families.dedup();
-    text.push_str(&families.join(", "));
-    text.push_str(
-        ".\n\nSearch `discover` with a family name and what you want from it. \
-Listing the whole catalog is rarely the shortest path to one operation.\n",
-    );
-    text
-}
-
-/// Category names across every registered command.
-fn contracts_catalog_categories() -> Vec<&'static str> {
-    inventory::iter::<CommandDescriptor>
-        .into_iter()
-        .map(|desc| (desc.meta)().category)
-        // `test` holds one transport fixture. Naming it in an operator-facing
-        // map invites a question about a family that does nothing.
-        .filter(|category| *category != "test")
-        .collect()
-}
-
 static TREE: OnceLock<CliTree> = OnceLock::new();
 
 /// The process-wide tree, built once from inventory.
@@ -295,49 +235,9 @@ mod tests {
         );
     }
 
-    /// The harness the offline eval subject reproduces: the real system prompt
-    /// and the real tool schemas.
-    ///
-    /// Discoverability is most of what these cases measure, and discoverability
-    /// lives in the prompt. A fake with a paraphrased prompt would grade a
-    /// surface nobody ships.
-    #[test]
-    fn the_eval_harness_matches_the_shipped_one() {
-        use everruns_platform::capabilities::platform::{
-            discover_input_schema, execute_input_schema, query_input_schema,
-        };
-
-        let harness = serde_json::json!({
-            "system_prompt": crate::harnesses::platform_chat::system_prompt(),
-            "tools": [
-                { "name": "discover", "schema": discover_input_schema() },
-                { "name": "query", "schema": query_input_schema() },
-                { "name": "execute", "schema": execute_input_schema() },
-            ]
-        });
-        let generated = serde_json::to_string_pretty(&harness).expect("harness serializes") + "\n";
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../evals/platform-capability/harness.json"
-        );
-
-        if std::env::var("UPDATE_EVAL_CATALOG").is_ok() {
-            std::fs::write(path, &generated).expect("write harness.json");
-            return;
-        }
-
-        let checked_in = std::fs::read_to_string(path).expect("read harness.json");
-        assert_eq!(
-            checked_in.trim(),
-            generated.trim(),
-            "evals/platform-capability/harness.json is stale. Run \
-             `UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server the_eval_`."
-        );
-    }
-
     /// The node help the eval's shell serves, rendered by the shipped tree.
     ///
-    /// v2's whole discovery story is `--help`, so an eval whose help is
+    /// The shell's discovery story is `--help`, so an eval whose help is
     /// hand-rolled measures the hand-rolled help. A leaf's help already comes
     /// from the contract's own `clap::Command` on both sides; only the root and
     /// the grouping nodes are the tree's to render, so those are what travels.
@@ -387,21 +287,21 @@ mod tests {
         );
     }
 
-    /// The v2 harness the offline eval subject reproduces: its system prompt
+    /// The canonical harness the offline eval subject reproduces: its system prompt
     /// and its one tool.
     ///
-    /// v2's claim is that the platform is a command in the session's shell, so
+    /// The harness contract is that the platform is a command in the session's shell, so
     /// what the eval must reproduce is a `bash` tool and nothing else. Reading
     /// the schema off `BashTool` rather than restating it is what keeps the two
     /// arms of the A/B differing only in the surface under test.
     #[test]
-    fn the_eval_v2_harness_matches_the_shipped_one() {
+    fn the_eval_harness_matches_the_shipped_one() {
         use everruns_core::Tool;
         use everruns_integrations_bashkit::BashTool;
 
         let bash = BashTool::default();
         let harness = serde_json::json!({
-            "system_prompt": crate::harnesses::platform_chat_v2::system_prompt(),
+            "system_prompt": crate::harnesses::platform_chat::system_prompt(),
             "tools": [
                 {
                     "name": bash.name(),
@@ -413,19 +313,19 @@ mod tests {
         let generated = serde_json::to_string_pretty(&harness).expect("harness serializes") + "\n";
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../evals/platform-capability/harness-v2.json"
+            "/../../evals/platform-capability/harness.json"
         );
 
         if std::env::var("UPDATE_EVAL_CATALOG").is_ok() {
-            std::fs::write(path, &generated).expect("write harness-v2.json");
+            std::fs::write(path, &generated).expect("write harness.json");
             return;
         }
 
-        let checked_in = std::fs::read_to_string(path).expect("read harness-v2.json");
+        let checked_in = std::fs::read_to_string(path).expect("read harness.json");
         assert_eq!(
             checked_in.trim(),
             generated.trim(),
-            "evals/platform-capability/harness-v2.json is stale. Run \
+            "evals/platform-capability/harness.json is stale. Run \
              `UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server the_eval_`."
         );
     }

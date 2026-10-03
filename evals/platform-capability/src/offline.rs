@@ -40,7 +40,7 @@ impl OfflineSubject {
     /// - `OPENROUTER_API_KEY` (required)
     /// - `EVERRUNS_EVAL_OFFLINE_BASE_URL` (default OpenRouter)
     /// - `EVERRUNS_EVAL_HARNESS` (`platform-chat`, the default, or
-    ///   `platform-chat-v2`)
+    ///   `legacy`, the historical baseline)
     pub fn from_env() -> Self {
         Self {
             base_url: std::env::var("EVERRUNS_EVAL_OFFLINE_BASE_URL")
