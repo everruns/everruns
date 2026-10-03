@@ -24,7 +24,7 @@ export interface DevChatFixture {
   initialReasoningEffort: string;
 }
 
-function makeInputEvent({
+export function makeInputEvent({
   id,
   sequence,
   sessionId,
@@ -60,7 +60,7 @@ function makeInputEvent({
   };
 }
 
-function makeOutputEvent({
+export function makeOutputEvent({
   id,
   sequence,
   sessionId,

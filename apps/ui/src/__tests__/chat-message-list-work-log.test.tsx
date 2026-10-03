@@ -33,6 +33,11 @@ jest.mock("@/components/chat/message-content", () => ({
   MessageContent: ({ text }: { text: string }) => <div>{text}</div>,
 }));
 
+jest.mock("@/components/chat/ask-user-tool-call", () => ({
+  AskUserToolCall: () => <div>ask user card</div>,
+  isAskUserArguments: () => true,
+}));
+
 jest.mock("@/components/chat/tool-activity-group", () => ({
   ToolActivityGroup: () => <div data-testid="tool-output" />,
 }));
@@ -120,5 +125,74 @@ describe("ChatMessageList work-log narration", () => {
     expect(screen.getAllByTestId("work-log-narration")).toHaveLength(2);
     expect(screen.getByText("Checked **configuration**")).toBeInTheDocument();
     expect(screen.getByText("Created [Hourly Dad Jokes](/agents/agent_123)")).toBeInTheDocument();
+  });
+});
+
+describe("ChatMessageList folded work log", () => {
+  function renderEvents(chatEvents: Event[]) {
+    return render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={() => ""}
+        getToolCalls={() => []}
+      />,
+    );
+  }
+
+  const actStarted = event("act", "act.started", {
+    headline: "Creating the support agent",
+    tool_calls: [
+      { id: "tool-1", name: "create_agent", narration: "Creating the support agent" },
+      { id: "tool-2", name: "get_agent", narration: "Verifying the support agent" },
+    ],
+  });
+  const toolFailed = event("fail", "tool.completed", {
+    tool_call_id: "tool-1",
+    tool_name: "create_agent",
+    success: false,
+    status: "error",
+    error: "schema error: required property 'system_prompt' is missing",
+    result: [],
+  });
+
+  it("keeps a running turn folded, with its latest step and errors in the header", () => {
+    renderEvents([actStarted, toolFailed]);
+
+    expect(screen.getByRole("button", { name: /working/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByTestId("work-log-status")).toHaveTextContent("Creating the support agent");
+    expect(screen.getByTestId("work-log-error-count")).toHaveTextContent("1 error");
+  });
+
+  it("shows interactive requests outside the fold while the turn runs", () => {
+    renderEvents([
+      actStarted,
+      event("ask", "tool.call_requested", {
+        tool_calls: [{ id: "ask-1", name: "ask_user", arguments: { questions: [] } }],
+      }),
+    ]);
+
+    expect(screen.getByText("ask user card").closest("[aria-hidden='true']")).toBeNull();
+  });
+
+  it("keeps the error count once the turn completes", () => {
+    renderEvents([
+      actStarted,
+      toolFailed,
+      event("turn-completed", "turn.completed", { turn_id: "turn-1", duration_ms: 33000 }),
+    ]);
+
+    expect(screen.queryByTestId("work-log-status")).not.toBeInTheDocument();
+    expect(screen.getByTestId("work-log-error-count")).toHaveTextContent("1 error");
   });
 });

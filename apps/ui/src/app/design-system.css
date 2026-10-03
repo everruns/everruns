@@ -251,6 +251,60 @@
   animation: tool-progress-sheen 1.8s ease-in-out infinite;
 }
 
+/* Work log header while a turn runs: a sheen sweeps across the muted label so
+   the collapsed section still reads as alive. Reduced motion keeps plain text. */
+@keyframes work-log-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.work-log-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    hsl(var(--muted-foreground)) 0%,
+    hsl(var(--muted-foreground)) 40%,
+    hsl(var(--foreground)) 50%,
+    hsl(var(--muted-foreground)) 60%,
+    hsl(var(--muted-foreground)) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: work-log-shimmer 2.2s linear infinite;
+}
+
+@keyframes work-log-status-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-work-log-status-in {
+  animation: work-log-status-enter 240ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-log-shimmer {
+    animation: none;
+    background-image: none;
+    color: inherit;
+  }
+
+  .animate-work-log-status-in {
+    animation: none;
+  }
+}
+
 /* -----------------------------------------------------------------------
    Thinking indicator — combo wave bar animation
    ----------------------------------------------------------------------- */

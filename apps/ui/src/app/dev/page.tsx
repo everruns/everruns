@@ -41,6 +41,12 @@ const devPages = [
     icon: MessageSquare,
   },
   {
+    title: "Turn Work Log",
+    description: "Folded working section: live status, elapsed time, error count, completed turn",
+    href: "/dev/work-log",
+    icon: MessageSquare,
+  },
+  {
     title: "Tool Outputs",
     description: "Standalone, grouped, and narrated tool transcript components",
     href: "/dev/tool-activity",

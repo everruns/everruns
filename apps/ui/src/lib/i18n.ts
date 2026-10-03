@@ -24,6 +24,10 @@ const messages = {
     waiting_on_tools: "Waiting on tools",
     scheduled: "Scheduled",
     worked_for: "Worked for {duration}",
+    working_for: "Working for {duration}",
+    work_log_errors_one: "{count} error",
+    work_log_errors_few: "{count} errors",
+    work_log_errors_many: "{count} errors",
     type_message_or_commands: "Type a message or / for commands... (Enter to send)",
     type_message: "Type a message... (Enter to send)",
     reply_to: "Reply to {name}... (Enter to send)",
@@ -256,6 +260,10 @@ const messages = {
     waiting_on_tools: "Очікування інструментів",
     scheduled: "За розкладом",
     worked_for: "Працював {duration}",
+    working_for: "Працюю {duration}",
+    work_log_errors_one: "{count} помилка",
+    work_log_errors_few: "{count} помилки",
+    work_log_errors_many: "{count} помилок",
     type_message_or_commands: "Введіть повідомлення або / для команд... (Enter, щоб надіслати)",
     type_message: "Введіть повідомлення... (Enter, щоб надіслати)",
     reply_to: "Відповісти {name}... (Enter, щоб надіслати)",
@@ -540,6 +548,17 @@ export function formatImageCount(locale: SupportedLocale, count: number): string
   }
 
   return formatMessage(locale, count === 1 ? "image_count_one" : "image_count_many", { count });
+}
+
+export function formatWorkLogErrorCount(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    return formatMessage(locale, `work_log_errors_${form}`, { count });
+  }
+
+  return formatMessage(locale, count === 1 ? "work_log_errors_one" : "work_log_errors_many", {
+    count,
+  });
 }
 
 export function formatAtifImagesOmitted(locale: SupportedLocale, count: number): string {

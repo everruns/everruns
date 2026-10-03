@@ -134,6 +134,20 @@ function ReasoningLogRow({ text }: { text: string }) {
   );
 }
 
+/** First non-empty line of a Markdown summary, with inline emphasis stripped. */
+function getFirstPlainLine(text: string): string {
+  const line = text
+    .split("\n")
+    .map((part) =>
+      part
+        .replace(/^#+\s*/, "")
+        .replace(/[*_`]/g, "")
+        .trim(),
+    )
+    .find(Boolean);
+  return line ?? "";
+}
+
 function getMessageImages(content: ContentPart[]): Array<{ image_id: string; filename?: string }> {
   return content.filter(isImageFilePart).map((part) => ({
     image_id: part.image_id,
@@ -274,6 +288,14 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
     return groups;
   }, [chatEvents, isWorkLogEvent]);
+  const turnStartedAtByTurnId = useMemo(() => {
+    const startedAt = new Map<string, string>();
+    for (const event of events ?? []) {
+      const data = getEventData(event, "turn.started");
+      if (data && !startedAt.has(data.turn_id)) startedAt.set(data.turn_id, event.ts);
+    }
+    return startedAt;
+  }, [events]);
   const activityGroups = useMemo(
     () => buildToolActivityGroups(chatEvents, t("working"), locale),
     [chatEvents, t, locale],
@@ -373,133 +395,39 @@ export const ChatMessageList = memo(function ChatMessageList({
     [participantLabel],
   );
 
-  const renderWorkLog = (event: Event, children: ReactNode) => {
-    const turnId = getKnownTurnId(event);
-    const durationMs = turnId ? turnDurationByTurnId.get(turnId) : undefined;
-    const label =
-      durationMs == null
-        ? t("working")
-        : t("worked_for", { duration: formatWorkedDuration(durationMs) });
+  // Cards that ask the user for something (connection setup, URL elicitation,
+  // approvals, ask_user). While the turn runs they render outside the folded
+  // work log so a pending request is never hidden behind the collapse.
+  const renderInteractiveToolCalls = (event: Event): ReactNode => {
+    const requested = getEventData(event, "tool.call_requested");
+    if (!requested?.tool_calls?.length) return null;
 
-    return (
-      <TurnWorkLog key={event.id} label={label} isActive={durationMs == null}>
-        {children}
-      </TurnWorkLog>
-    );
-  };
-  const renderWorkLogEventContent = (event: Event) => {
-    const reasonItemData = getEventData(event, "reason.item");
-    if (reasonItemData) {
-      const summary = (reasonItemData.summary ?? [])
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .join("\n");
-      return summary ? <ReasoningLogRow key={event.id} text={summary} /> : null;
-    }
-
-    const reasonCompletedData = getEventData(event, "reason.completed");
-    if (reasonCompletedData) {
-      return reasonCompletedData.text_preview ? (
-        <ReasoningLogRow key={event.id} text={reasonCompletedData.text_preview} />
-      ) : null;
-    }
-
-    const group = activityGroups.byAnchorEventId.get(event.id);
-    if (group) {
-      const requested = getEventData(event, "tool.call_requested");
-      const connectionCalls =
-        requested?.tool_calls.filter((toolCall) => toolCall.name === "setup_connection") ?? [];
-      const elicitationCalls =
-        requested?.tool_calls.filter((toolCall) => toolCall.name === "confirm_url_elicitation") ??
-        [];
-      const askUserCalls =
-        requested?.tool_calls.filter((toolCall) => toolCall.name === "ask_user") ?? [];
-      const approvalCalls =
-        requested?.tool_calls.filter((toolCall) => toolCall.name === MCP_APPROVAL_TOOL) ?? [];
-      const toolApprovalCalls =
-        requested?.tool_calls.filter((toolCall) => toolCall.name === TOOL_APPROVAL_TOOL) ?? [];
-      return (
-        <div key={event.id} className="space-y-1">
-          <ToolActivityTimelineGroup
-            headline={group.headline}
-            completedHeadline={group.completedHeadline}
-            rows={group.rows}
-          />
-          {connectionCalls.map((toolCall) => (
-            <SetupConnectionToolCall
-              key={toolCall.id}
-              sessionId={sessionId}
-              toolCallId={toolCall.id}
-              provider={(toolCall.arguments as SetupConnectionArguments)?.provider ?? "unknown"}
-              subject={(toolCall.arguments as SetupConnectionArguments)?.subject}
-              setupUrl={(toolCall.arguments as SetupConnectionArguments)?.setup_url}
-              toolResultsMap={toolResultsMap}
-            />
-          ))}
-          {elicitationCalls.map((toolCall) => (
-            <UrlElicitationToolCall
-              key={toolCall.id}
-              sessionId={sessionId}
-              toolCallId={toolCall.id}
-              elicitation={(toolCall.arguments ?? {}) as UrlElicitationArguments}
-              toolResultsMap={toolResultsMap}
-            />
-          ))}
-          {approvalCalls.map((toolCall) => (
-            <McpApprovalToolCall
-              key={toolCall.id}
-              sessionId={sessionId}
-              toolCallId={toolCall.id}
-              approval={(toolCall.arguments ?? {}) as McpApprovalArguments}
-              toolResultsMap={toolResultsMap}
-            />
-          ))}
-          {toolApprovalCalls.length > 0 && (
-            <ToolApprovalRequests
-              sessionId={sessionId}
-              requests={toolApprovalCalls}
-              toolResultsMap={toolResultsMap}
-            />
-          )}
-          {askUserCalls.map((toolCall) =>
-            isAskUserArguments(toolCall.arguments) ? (
-              <AskUserToolCall
-                key={toolCall.id}
-                sessionId={sessionId}
-                toolCallId={toolCall.id}
-                request={toolCall.arguments}
-                requestedAt={event.ts}
-                toolResultsMap={toolResultsMap}
-              />
-            ) : null,
-          )}
-        </div>
-      );
-    }
-
-    if (activityGroups.groupedEventIds.has(event.id)) return null;
-
-    if (event.type !== "tool.call_requested") return null;
-
-    const reqData = getEventData(event, "tool.call_requested");
-    if (!reqData?.tool_calls?.length) return null;
-
-    const connectionCalls = reqData.tool_calls.filter(
+    const connectionCalls = requested.tool_calls.filter(
       (toolCall) => toolCall.name === "setup_connection",
     );
-    const elicitationCalls = reqData.tool_calls.filter(
+    const elicitationCalls = requested.tool_calls.filter(
       (toolCall) => toolCall.name === "confirm_url_elicitation",
     );
-    const askUserCalls = reqData.tool_calls.filter((toolCall) => toolCall.name === "ask_user");
-    const approvalCalls = reqData.tool_calls.filter(
+    const askUserCalls = requested.tool_calls.filter((toolCall) => toolCall.name === "ask_user");
+    const approvalCalls = requested.tool_calls.filter(
       (toolCall) => toolCall.name === MCP_APPROVAL_TOOL,
     );
-    const toolApprovalCalls = reqData.tool_calls.filter(
+    const toolApprovalCalls = requested.tool_calls.filter(
       (toolCall) => toolCall.name === TOOL_APPROVAL_TOOL,
     );
+    if (
+      connectionCalls.length +
+        elicitationCalls.length +
+        askUserCalls.length +
+        approvalCalls.length +
+        toolApprovalCalls.length ===
+      0
+    ) {
+      return null;
+    }
 
     return (
-      <div key={event.id} className="space-y-1">
+      <Fragment key={`interactive-${event.id}`}>
         {connectionCalls.map((toolCall) => (
           <SetupConnectionToolCall
             key={toolCall.id}
@@ -548,6 +476,111 @@ export const ChatMessageList = memo(function ChatMessageList({
             />
           ) : null,
         )}
+      </Fragment>
+    );
+  };
+
+  // One line for the collapsed header: the newest tool group's headline, or the
+  // first line of the newest reasoning summary.
+  const getWorkLogStatus = (workEvents: Event[]): string | undefined => {
+    for (let index = workEvents.length - 1; index >= 0; index -= 1) {
+      const event = workEvents[index];
+      const group = activityGroups.byAnchorEventId.get(event.id);
+      if (group) {
+        const running = group.rows.some(
+          (row) => row.state === "running" || row.state === "waiting",
+        );
+        return running ? group.headline : (group.completedHeadline ?? group.headline);
+      }
+      const summary =
+        getEventData(event, "reason.item")?.summary?.join("\n") ??
+        getEventData(event, "reason.completed")?.text_preview;
+      const line = summary ? getFirstPlainLine(summary) : "";
+      if (line) return line;
+    }
+    return undefined;
+  };
+
+  const countWorkLogErrors = (workEvents: Event[]): number =>
+    workEvents.reduce(
+      (total, event) =>
+        total +
+        (activityGroups.byAnchorEventId.get(event.id)?.rows.filter((row) => row.state === "error")
+          .length ?? 0),
+      0,
+    );
+
+  const renderWorkLog = (
+    event: Event,
+    workEvents: Event[],
+    renderBody: (isActive: boolean) => ReactNode,
+    extraErrorCount = 0,
+  ) => {
+    const turnId = getKnownTurnId(event);
+    const durationMs = turnId ? turnDurationByTurnId.get(turnId) : undefined;
+    const isActive = durationMs == null;
+    const label =
+      durationMs == null
+        ? t("working")
+        : t("worked_for", { duration: formatWorkedDuration(durationMs) });
+    const startedAt = (turnId && turnStartedAtByTurnId.get(turnId)) || event.ts;
+    const startedAtMs = Date.parse(startedAt);
+    const attentionCards = isActive
+      ? workEvents.map((workEvent) => renderInteractiveToolCalls(workEvent)).filter(Boolean)
+      : [];
+
+    return (
+      <TurnWorkLog
+        key={event.id}
+        label={label}
+        isActive={isActive}
+        startedAtMs={Number.isNaN(startedAtMs) ? undefined : startedAtMs}
+        status={isActive ? getWorkLogStatus(workEvents) : undefined}
+        errorCount={countWorkLogErrors(workEvents) + extraErrorCount}
+        attention={attentionCards.length > 0 ? attentionCards : null}
+      >
+        {renderBody(isActive)}
+      </TurnWorkLog>
+    );
+  };
+  const renderWorkLogEventContent = (event: Event, includeInteractive: boolean) => {
+    const reasonItemData = getEventData(event, "reason.item");
+    if (reasonItemData) {
+      const summary = (reasonItemData.summary ?? [])
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join("\n");
+      return summary ? <ReasoningLogRow key={event.id} text={summary} /> : null;
+    }
+
+    const reasonCompletedData = getEventData(event, "reason.completed");
+    if (reasonCompletedData) {
+      return reasonCompletedData.text_preview ? (
+        <ReasoningLogRow key={event.id} text={reasonCompletedData.text_preview} />
+      ) : null;
+    }
+
+    const interactive = includeInteractive ? renderInteractiveToolCalls(event) : null;
+    const group = activityGroups.byAnchorEventId.get(event.id);
+    if (group) {
+      return (
+        <div key={event.id} className="space-y-1">
+          <ToolActivityTimelineGroup
+            headline={group.headline}
+            completedHeadline={group.completedHeadline}
+            rows={group.rows}
+          />
+          {interactive}
+        </div>
+      );
+    }
+
+    if (activityGroups.groupedEventIds.has(event.id)) return null;
+    if (!interactive) return null;
+
+    return (
+      <div key={event.id} className="space-y-1">
+        {interactive}
       </div>
     );
   };
@@ -621,15 +654,16 @@ export const ChatMessageList = memo(function ChatMessageList({
             if (turnId) {
               const group = workLogEventsByTurnId.get(turnId) ?? [];
               if (group[0]?.id !== event.id) return null;
-              return renderWorkLog(
-                event,
+              return renderWorkLog(event, group, (isActive) => (
                 <div className="space-y-3">
-                  {group.map((groupEvent) => renderWorkLogEventContent(groupEvent))}
-                </div>,
-              );
+                  {group.map((groupEvent) => renderWorkLogEventContent(groupEvent, !isActive))}
+                </div>
+              ));
             }
 
-            return renderWorkLog(event, renderWorkLogEventContent(event));
+            return renderWorkLog(event, [event], (isActive) =>
+              renderWorkLogEventContent(event, !isActive),
+            );
           }
 
           const isUser = event.type === "input.message";
@@ -667,14 +701,18 @@ export const ChatMessageList = memo(function ChatMessageList({
             if (toolCalls.length === 0) return null;
             return renderWorkLog(
               event,
-              <div className="space-y-1">
-                <ToolActivityGroup
-                  toolCalls={toolCalls}
-                  toolResultsMap={toolResultsMap}
-                  toolProgressMap={toolProgressMap}
-                  toolOutputMap={toolOutputMap}
-                />
-              </div>,
+              [],
+              () => (
+                <div className="space-y-1">
+                  <ToolActivityGroup
+                    toolCalls={toolCalls}
+                    toolResultsMap={toolResultsMap}
+                    toolProgressMap={toolProgressMap}
+                    toolOutputMap={toolOutputMap}
+                  />
+                </div>
+              ),
+              toolCalls.filter((toolCall) => toolResultsMap.get(toolCall.id)?.error).length,
             );
           }
 
