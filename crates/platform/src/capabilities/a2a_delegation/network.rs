@@ -1,5 +1,7 @@
 //! Runtime network policy for outbound A2A delegation (EVE-1173 / TM-AGENT-024).
 //!
+//! CI retrigger marker: keep this module under the file-size threshold.
+//!
 //! Discovery and every AgentCard interface request use a no-redirect HTTP
 //! client. Unless the development hatch is on, each URL is DNS-pinned so the
 //! connected address is the one that passed the public-IP checks.
