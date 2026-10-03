@@ -145,7 +145,11 @@ impl EndpointAuthVerifier {
         headers: &HeaderMap,
     ) -> Result<EndpointAuthPrincipal, EndpointAuthError> {
         let token = extract_bearer(headers).ok_or(EndpointAuthError::Unauthorized)?;
-        let (issuer, jwks_url, requirements) = match auth.provider.as_ref() {
+        // `verifier_authority` names the key source that proves the claims. A
+        // configured JWKS URL is endpoint-owner input, so it is the authority;
+        // discovered keys are vouched for by the issuer itself, so the issuer is,
+        // which keeps identities stable if the IdP rotates its jwks_uri.
+        let (issuer, jwks_url, verifier_authority, requirements) = match auth.provider.as_ref() {
             Some(EndpointAuthProviderConfig::GoogleOidc {
                 client_id,
                 allowed_domains,
@@ -160,16 +164,24 @@ impl EndpointAuthVerifier {
                 (
                     "https://accounts.google.com".to_string(),
                     "https://www.googleapis.com/oauth2/v3/certs".to_string(),
+                    "oidc-discovery:https://accounts.google.com".to_string(),
                     requirements,
                 )
             }
             Some(EndpointAuthProviderConfig::Oidc { issuer, jwks_url }) => {
                 let discovery = self.discovery(issuer).await?;
+                let issuer = normalize_issuer(issuer);
+                let (jwks_url, verifier_authority) = match jwks_url {
+                    Some(url) => (url.clone(), format!("oidc-jwks:{url}")),
+                    None => (
+                        discovery.jwks_uri.to_string(),
+                        format!("oidc-discovery:{issuer}"),
+                    ),
+                };
                 (
-                    normalize_issuer(issuer),
-                    jwks_url
-                        .clone()
-                        .unwrap_or_else(|| discovery.jwks_uri.to_string()),
+                    issuer,
+                    jwks_url,
+                    verifier_authority,
                     auth.requirements.clone(),
                 )
             }
@@ -201,7 +213,7 @@ impl EndpointAuthVerifier {
             .map_err(|_| EndpointAuthError::Unauthorized)?
             .claims;
         validate_claim_requirements(&claims, &requirements)?;
-        principal_from_claims(&claims, &format!("oidc:{jwks_url}"))
+        principal_from_claims(&claims, &verifier_authority)
     }
 
     async fn verify_oauth2_introspection(
