@@ -2,6 +2,14 @@
 
 ## 2026-10-02
 
+* **Seeded Agents API sessions.** A turn that creates an OpenAI Agents API
+  provider session after one was replaced, released, or lost sends a bounded
+  transcript of the earlier turns (user and assistant text, completed tool
+  call/result pairs; newest 200 entries, 32 KiB) as a fenced user message ahead
+  of its input, since create `input` takes user-role messages only (verified
+  live). See [OpenAI Agents API Runtime](execution/openai-agents-api-runtime.md#portability);
+  TM-LLM-046.
+
 * **Agents API live conformance passed.** With the OpenAI organization funded,
   `live_conformance_one_client_function_and_one_allowed_mcp_tool` completed a
   turn with one client function and one allowed MCP tool (EVE-1144). See

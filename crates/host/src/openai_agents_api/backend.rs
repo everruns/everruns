@@ -336,6 +336,7 @@ fn prepare_request(
         input_message_id: input.context.input_message_id,
         iteration: input.iteration,
         input_text,
+        seed: super::seed::seed_transcript(&assembled.messages, input.context.input_message_id),
         config,
         event_context,
         provider: Some(assembled.model.provider_type.to_string()),

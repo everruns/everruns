@@ -80,7 +80,7 @@ pub fn classify(error: &AgentsApiError, has_session: bool) -> Option<LifecycleFa
         )),
         404 if has_session => Some(LifecycleFailure::new(
             codes::PROVIDER_SESSION_UNAVAILABLE,
-            "The OpenAI Agents API session behind this Everruns session no longer exists. The next message starts a new provider session, which does not carry the earlier conversation; the Everruns record keeps it.",
+            "The OpenAI Agents API session behind this Everruns session no longer exists. The next message starts a new provider session, seeded with the recent conversation from the Everruns record.",
         )),
         404 => Some(LifecycleFailure::new(
             codes::PROVIDER_MISCONFIGURED,

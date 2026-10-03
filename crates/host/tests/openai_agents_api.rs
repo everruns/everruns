@@ -567,3 +567,79 @@ async fn live_conformance_one_client_function_and_one_allowed_mcp_tool() {
     );
     ledger.assert_each_record_once();
 }
+
+/// Credentialed seeding (EVE-1146): a new provider session created from the
+/// Everruns record recalls the earlier exchange, a tool result included.
+///
+/// `doppler run -- cargo test -p everruns-host --features openai-agents-api \
+///   --test openai_agents_api -- --ignored live_`
+#[tokio::test]
+#[ignore = "calls the paid OpenAI Agents API; needs OPENAI_API_KEY"]
+async fn live_seeded_session_recalls_the_earlier_conversation() {
+    use everruns_core::RuntimeMessage;
+    use everruns_host::openai_agents_api::seed::seed_transcript;
+    let Ok(api_key) = std::env::var("OPENAI_API_KEY") else {
+        eprintln!("SKIP: OPENAI_API_KEY is not set");
+        return;
+    };
+    let call = ToolCall {
+        id: "toolu_01SeedProbe".into(),
+        name: "lookup_customer".into(),
+        arguments: json!({"customer_id": "4711"}),
+    };
+    let input = RuntimeMessage::user(
+        "Without calling any tool: what is our project's code word, and what is customer 4711's name? Answer in one sentence.",
+    );
+    let record = vec![
+        RuntimeMessage::user("Our project's code word is PERIWINKLE-42. Look up customer 4711."),
+        RuntimeMessage::assistant_with_tools("Looking it up.", vec![call]),
+        RuntimeMessage::tool_result(
+            "toolu_01SeedProbe",
+            Some(json!({"name": "Ada Lovelace"})),
+            None,
+        ),
+        RuntimeMessage::assistant("Customer 4711 is Ada Lovelace."),
+        input.clone(),
+    ];
+    let mut req = request(1, input.text().unwrap());
+    req.session_id = SessionId::new();
+    req.seed = seed_transcript(&record, input.id);
+    assert!(req.seed.is_some());
+    let ledger = Arc::new(TestLedger::default());
+    let executor = Arc::new(LiveExecutor {
+        ledger: ledger.clone(),
+        calls: AtomicUsize::new(0),
+    });
+    let client = AgentsApiClient::new(api_key);
+    let store = Arc::new(InMemoryAgentsApiStore::new());
+    let driver = AgentsApiTurnDriver::new(
+        client.clone(),
+        store.clone(),
+        ledger.clone(),
+        executor.clone(),
+    );
+    let outcome = driver.run(&req).await;
+    for (kind, data) in ledger.data() {
+        eprintln!("{kind} {data}");
+    }
+    // Do not leave the provider session behind.
+    if let Some(provider_session) = store
+        .snapshot(req.session_id)
+        .and_then(|checkpoint| checkpoint.provider_session_id)
+    {
+        client.delete_session(&provider_session).await.unwrap();
+    }
+    let outcome = outcome.expect("live turn reached a terminal state");
+    let AgentsApiTurnOutcome::Completed { final_text, .. } = &outcome else {
+        panic!("live turn did not complete: {outcome:?}");
+    };
+    assert!(final_text.contains("PERIWINKLE-42"), "{final_text}");
+    assert!(final_text.contains("Ada"), "{final_text}");
+    // Whether the model looks the customer up again is its choice (it did on
+    // 2026-10-02 despite the prompt); recall is the contract.
+    eprintln!(
+        "client function calls: {}",
+        executor.calls.load(Ordering::SeqCst)
+    );
+    ledger.assert_each_record_once();
+}

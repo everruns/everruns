@@ -15,6 +15,7 @@
 pub mod backend;
 pub mod durable;
 pub mod lifecycle;
+pub mod seed;
 
 use std::collections::HashMap;
 
@@ -144,6 +145,19 @@ pub fn build_message_input(text: &str) -> Value {
         "type": "agent.session.input.message",
         "input": [{"role": "user", "content": [{"type": "input_text", "text": text}]}],
     })
+}
+
+/// The session-create `input`: the turn's text alone, or, for a session
+/// seeded from the Everruns record ([`seed`]), the transcript and the turn's
+/// text as two user-role messages. Verified live on 2026-10-02: create input
+/// takes user-role messages only, and the provider folds them into one user
+/// item with one `input_text` part each.
+pub fn build_create_input(seed: Option<&str>, text: &str) -> Value {
+    let message = |text: &str| json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]});
+    match seed {
+        Some(seed) => json!([message(seed), message(text)]),
+        None => Value::String(text.to_string()),
+    }
 }
 
 /// Session-create configuration for `POST /v1/agents/sessions`.
@@ -1006,6 +1020,18 @@ mod tests {
             build_message_input("hi"),
             json!({"type": "agent.session.input.message",
                    "input": [{"role": "user", "content": [{"type": "input_text", "text": "hi"}]}]})
+        );
+    }
+
+    #[test]
+    fn a_seeded_create_sends_the_transcript_then_the_input_as_user_messages() {
+        assert_eq!(build_create_input(None, "hi"), json!("hi"));
+        assert_eq!(
+            build_create_input(Some("record"), "hi"),
+            json!([
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "record"}]},
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]}
+            ])
         );
     }
 

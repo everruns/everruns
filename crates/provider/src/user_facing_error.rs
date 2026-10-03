@@ -467,7 +467,7 @@ impl UserFacingError {
                 "The AI provider is experiencing issues. Please try again shortly.".to_string()
             }
             codes::PROVIDER_SESSION_UNAVAILABLE => {
-                "The AI provider no longer holds this session's remote state. Send your message again to continue in a new provider session; it does not carry the earlier conversation."
+                "The AI provider no longer holds this session's remote state. Send your message again to continue in a new provider session, which starts from the recent conversation in this session's record."
                     .to_string()
             }
             codes::DEPENDENCY_UNAVAILABLE => {

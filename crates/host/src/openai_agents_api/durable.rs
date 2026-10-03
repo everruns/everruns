@@ -77,8 +77,8 @@ mod settle;
 
 use super::{
     AgentsApiClient, AgentsApiError, AgentsApiEventStream, AgentsApiSessionConfig,
-    FunctionCallAction, build_message_input, build_tool_result_input, is_subagent_event,
-    message_item_text, provider_output_text, usage_from,
+    FunctionCallAction, build_create_input, build_message_input, build_tool_result_input,
+    is_subagent_event, message_item_text, provider_output_text, usage_from,
 };
 
 /// Metadata keys written on the provider session for adoption after an
@@ -107,6 +107,12 @@ pub struct AgentsApiTurnRequest {
     pub iteration: u32,
     /// The turn's user input.
     pub input_text: String,
+    /// Transcript of the conversation before this turn, from the Everruns
+    /// record ([`super::seed`]). Sent only when this turn creates a provider
+    /// session (the first one, or one replacing a replaced, released, or lost
+    /// session), so the new session carries the conversation; an existing
+    /// session already holds it.
+    pub seed: Option<String>,
     /// Agent definition for a new provider session; `input` and `metadata`
     /// are filled by the driver.
     pub config: AgentsApiSessionConfig,
@@ -558,7 +564,7 @@ impl Run<'_> {
         });
         self.save().await?;
         let mut config = self.request.config.clone();
-        config.input = Value::String(self.request.input_text.clone());
+        config.input = build_create_input(self.request.seed.as_deref(), &self.request.input_text);
         config.metadata.insert(
             METADATA_SESSION_KEY.to_string(),
             self.request.session_id.to_string(),
