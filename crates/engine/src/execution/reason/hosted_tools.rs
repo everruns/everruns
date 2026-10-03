@@ -5,9 +5,9 @@
 
 use std::collections::HashMap;
 
-use everruns_provider::DriverId;
-use everruns_provider::driver_registry::{HostedToolCall, HostedToolCallStatus};
-use everruns_provider::openai_hosted_tools::{
+use everruns_contracts::DriverId;
+use everruns_contracts::driver_registry::{HostedToolCall, HostedToolCallStatus};
+use everruns_contracts::openai_hosted_tools::{
     HOSTED_TOOLS_DRIVER_IDS, OPENAI_HOSTED_TOOLS_OPTION, hosted_calls_cost_usd,
 };
 use serde_json::Value;

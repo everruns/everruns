@@ -1,6 +1,7 @@
 //! Tests: the registry, the executor, and result shaping.
 
 use super::*;
+use crate::tool_types::ToolResultImage;
 
 struct CountingTool {
     calls: Arc<std::sync::atomic::AtomicUsize>,

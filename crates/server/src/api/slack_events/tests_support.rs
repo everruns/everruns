@@ -106,7 +106,7 @@ pub(crate) fn test_slack_file(
 
 pub(crate) async fn setup_test_session(
     db: &StorageBackend,
-) -> everruns_provider::typed_id::SessionId {
+) -> everruns_contracts::typed_id::SessionId {
     use crate::storage::models::CreateSessionRow;
 
     let row = CreateSessionRow {
@@ -117,16 +117,16 @@ pub(crate) async fn setup_test_session(
         app_id: None,
         endpoint_id: None,
         trigger_id: None,
-        harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
+        harness_id: Some(everruns_contracts::typed_id::HarnessId::from_uuid(
             uuid::Uuid::nil(),
         )),
-        agent_id: Some(everruns_provider::typed_id::AgentId::from_uuid(
+        agent_id: Some(everruns_contracts::typed_id::AgentId::from_uuid(
             uuid::Uuid::nil(),
         )),
         agent_version_id: None,
         agent_config_hash: None,
         virtual_user_id: None,
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
         title: Some("test".to_string()),
         locale: None,

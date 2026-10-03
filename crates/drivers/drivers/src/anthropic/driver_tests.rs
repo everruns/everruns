@@ -1,6 +1,6 @@
 use super::*;
-use everruns_provider::driver_registry::ChatDriver;
-use everruns_provider::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+use everruns_contracts::driver_registry::ChatDriver;
+use everruns_contracts::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
 fn contract_config(model: &str, max_tokens: Option<u32>) -> LlmCallConfig {
     let mut config = LlmCallConfig::new(model);
@@ -23,7 +23,7 @@ fn contract_tool(name: &str, deferrable: DeferrablePolicy) -> ToolDefinition {
 }
 
 async fn assert_contract_request(config: LlmCallConfig, registered: bool, expected: Value) {
-    use everruns_provider::{Provider, StaticHeaderAuth};
+    use everruns_contracts::{Provider, StaticHeaderAuth};
     use wiremock::matchers::{body_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     let server = MockServer::builder().start().await;
@@ -45,7 +45,7 @@ async fn assert_contract_request(config: LlmCallConfig, registered: bool, expect
         register_driver(&mut registry);
         registry
             .create_chat_driver(
-                &everruns_provider::driver_registry::ProviderConfig::new(DriverId::Anthropic)
+                &everruns_contracts::driver_registry::ProviderConfig::new(DriverId::Anthropic)
                     .with_api_key("synthetic-key")
                     .with_base_url(base),
             )
@@ -58,7 +58,7 @@ async fn assert_contract_request(config: LlmCallConfig, registered: bool, expect
     };
     let error = match driver
         .chat_completion_stream(
-            &everruns_provider::ProviderEndpoint::default(),
+            &everruns_contracts::ProviderEndpoint::default(),
             vec![Message::text(MessageRole::User, "hello")],
             &config,
         )
@@ -109,7 +109,7 @@ async fn registered_and_direct_requests_apply_parallel_preferences_only_with_too
 
 #[test]
 fn server_compaction_requires_direct_eligible_anthropic_models() {
-    use everruns_provider::Provider;
+    use everruns_contracts::Provider;
 
     let driver = AnthropicChatDriver::new();
     let direct = Provider::new("anthropic", AnthropicChatDriver::new())
@@ -157,12 +157,12 @@ fn server_compaction_requires_direct_eligible_anthropic_models() {
 
 #[test]
 fn server_compaction_rejects_a_configured_output_budget_below_the_minimum_trigger() {
-    use everruns_provider::Provider;
+    use everruns_contracts::Provider;
 
     let driver = Provider::new("anthropic", AnthropicChatDriver::new())
         .base_url(DEFAULT_BASE_URL)
         .into_boxed_driver();
-    let endpoint = everruns_provider::ProviderEndpoint::default();
+    let endpoint = everruns_contracts::ProviderEndpoint::default();
     let mut config = LlmCallConfig::new("claude-opus-4-8");
     config.max_tokens = Some(160_000);
 
@@ -922,7 +922,7 @@ fn test_tool_result_with_images_conversion() {
 
 #[tokio::test]
 async fn http_errors_preserve_semantic_classification_without_retrying() {
-    use everruns_provider::{Provider, StaticHeaderAuth};
+    use everruns_contracts::{Provider, StaticHeaderAuth};
     use wiremock::matchers::{body_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     let mut config = LlmCallConfig::new("claude-test");

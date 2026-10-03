@@ -1,15 +1,4 @@
-# Everruns Provider Abstraction
-# Decision: Foundation crate that holds the driver-facing types the LLM provider
-# interface is built on (typed IDs, credential form schema, user-facing error
-# taxonomy, OpenResponses wire types, URL validation). Extracted from
-# everruns-core so provider crates can depend on this instead of core. Core
-# consumes a narrow subset privately; callers use this crate's canonical API
-# instead of compatibility exports from core.
-#
-# Model profile types (`ModelProfile`, `ServiceKind`, etc.) and the built-in
-# profile registry now live in `everruns-model-profiles`, a dependency-light
-# leaf crate this one depends on; `model.rs`/`driver_registry.rs`/
-# `model_profiles.rs` re-export from it for source compatibility.
+# Deprecated shim: publish once, then remove after the migration release.
 
 [package]
 name = "everruns-provider"
@@ -21,85 +10,21 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-provider"
-description = "Provider/LLM abstraction foundation shared by Everruns core and provider crates"
+description = "Moved to everruns-contracts. Deprecated shim, no longer updated."
 readme = "README.md"
-keywords = ["everruns", "llm", "provider", "ai", "agents"]
+keywords = ["deprecated", "everruns", "agents"]
 categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
-everruns-model-profiles.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# IDs / time / text
-uuid.workspace = true
-regex.workspace = true
-url = "2"
-chrono.workspace = true
-
-# Async contracts. HTTP transport is isolated behind the default `http`
-# feature so contract-only consumers such as everruns-core stay transport-free.
-async-trait.workspace = true
-futures.workspace = true
-tokio = { version = "1.50", default-features = false, features = ["sync", "rt", "time"] }
-reqwest = { workspace = true, features = ["json", "stream", "rustls", "blocking"], optional = true }
-eventsource-stream = { version = "0.2", optional = true }
-http = { version = "1", optional = true }
-bytes = { version = "1", optional = true }
-tokio-tungstenite = { workspace = true, optional = true }
-
-# Encoding / hashing / rng
-base64.workspace = true
-sha2.workspace = true
-hex.workspace = true
-rand.workspace = true
-# Wall-clock and monotonic time that also work on wasm32-unknown-unknown
-# (re-exports std elsewhere). See `rt`.
-web-time = "1"
-
-# Errors / tracing
-anyhow.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
-
-# Optional integrations, mirroring everruns-core's feature gating.
-utoipa = { workspace = true, optional = true }
-sqlx = { workspace = true, optional = true }
-rustls = { workspace = true, optional = true }
-
-# wasm32-unknown-unknown (a celld or Cloudflare Durable Object, a browser):
-# randomness comes from the JS host's `crypto.getRandomValues`.
-[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-getrandom = { version = "0.4", features = ["wasm_js"] }
-getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
-uuid = { workspace = true, features = ["js"] }
-chrono = { workspace = true, features = ["wasmbind"] }
-gloo-timers = { version = "0.4", features = ["futures"] }
-wasm-bindgen-futures = "0.4"
+everruns-contracts = { workspace = true, default-features = false }
 
 [features]
 default = ["http"]
-# Shared protocol drivers, request helpers, and streaming reconnect support.
-http = ["dep:reqwest", "dep:eventsource-stream", "dep:http", "dep:bytes", "tokio/net", "tls-aws-lc-rs"]
-# OpenAI Responses API WebSocket transport, an opt-in alternative to SSE for
-# the Responses driver (`openai/websocket` driver option). Kept out of `http`
-# so contract and custom-provider consumers do not compile a WebSocket stack.
-responses-websocket = ["http", "dep:tokio-tungstenite"]
-# Process-wide crypto-provider install for products that build TLS clients.
-# The workspace links `aws-lc-rs` only (EVE-924).
-tls-aws-lc-rs = ["dep:rustls"]
+http = ["everruns-contracts/http"]
+responses-websocket = ["everruns-contracts/responses-websocket"]
+tls-aws-lc-rs = ["everruns-contracts/tls-aws-lc-rs"]
+openapi = ["everruns-contracts/openapi"]
+sqlx = ["everruns-contracts/sqlx"]
 
-# OpenAPI schema derives (utoipa::ToSchema).
-openapi = ["dep:utoipa", "everruns-model-profiles/openapi"]
-# sqlx Postgres encode/decode for TypedId.
-sqlx = ["dep:sqlx"]
-
-[[test]]
-name = "tls_startup"
-required-features = ["http", "tls-aws-lc-rs"]
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
+[lints]
+workspace = true

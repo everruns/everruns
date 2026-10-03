@@ -7,9 +7,9 @@
 // construction time, matching the Grpc/Adapter store pattern.
 
 use crate::kernel_imports::{
-    ExecutionSession, TokenUsage, everruns_provider::error::AgentLoopError,
-    everruns_provider::error::Result, everruns_provider::error::StoreResultExt,
-    everruns_provider::typed_id::SessionId, execution_loading::SessionStore,
+    ExecutionSession, TokenUsage, contracts::error::AgentLoopError, contracts::error::Result,
+    contracts::error::StoreResultExt, contracts::typed_id::SessionId,
+    execution_loading::SessionStore,
 };
 use crate::max_iterations;
 use async_trait::async_trait;
@@ -122,7 +122,7 @@ impl DbSessionStore {
                         row.last_turn_status.as_deref(),
                     ),
                     id: row.id,
-                    workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(
+                    workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(
                         row.workspace_id,
                     ),
                     organization_id: self.org_public_id.clone(),

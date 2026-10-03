@@ -1,7 +1,7 @@
 // Rows for per-agent GitHub Apps (`crate::github_apps`).
 
 use chrono::{DateTime, Utc};
-use everruns_provider::typed_id::VirtualUserId;
+use everruns_contracts::typed_id::VirtualUserId;
 use sqlx::FromRow;
 use uuid::Uuid;
 

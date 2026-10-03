@@ -10,9 +10,9 @@
 //! (`llm.input_messages.0.message.role`), which is why message builders here
 //! return `KeyValue` lists rather than JSON.
 
+use everruns_contracts::tool_types::ToolCall;
 use everruns_core::message::{ContentPart, RuntimeMessage};
 use everruns_core::telemetry::content;
-use everruns_provider::tool_types::ToolCall;
 use opentelemetry::KeyValue;
 
 /// The OpenInference span kind attribute.

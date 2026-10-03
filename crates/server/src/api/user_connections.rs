@@ -12,8 +12,8 @@ use crate::domains::mcp_servers::McpServerService;
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
     Caller, McpServerAuthMode,
-    everruns_provider::typed_id::{AgentId, SessionId, VirtualUserId},
-    everruns_provider::url_validation::validate_safe_url,
+    contracts::typed_id::{AgentId, SessionId, VirtualUserId},
+    contracts::url_validation::validate_safe_url,
     mcp_oauth_provider_id_for_uuid,
 };
 use crate::oauth_client::{OAuthCodeExchangeRequest, exchange_oauth_code};
@@ -28,7 +28,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
-use everruns_platform::connector::{
+use everruns_contracts::connector::{
     ConnectorFormSchema as CoreFormSchema, ConnectorRegistry, ConnectorType,
 };
 use rand::RngExt;
@@ -561,7 +561,7 @@ pub async fn create_api_key_connection(
     }
 
     // Validate all fields via the provider
-    let validation: everruns_platform::connector::ConnectorValidation =
+    let validation: everruns_contracts::connector::ConnectorValidation =
         provider.validate_fields(&fields).await.map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
@@ -885,7 +885,7 @@ async fn authorize_connection_inner(
         None => (
             None,
             Some(
-                everruns_provider::typed_id::VirtualUserId::from_uuid(authority.target_id)
+                everruns_contracts::typed_id::VirtualUserId::from_uuid(authority.target_id)
                     .to_string(),
             ),
         ),

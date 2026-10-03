@@ -6,12 +6,12 @@
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::message_filter::MessageQuery;
-use everruns_provider::typed_id::{
+use everruns_contracts::typed_id::{
     AgentId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId, KnowledgeIndexId,
     LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId, ScheduleId, SessionId,
     SessionParticipantId, TriggerId, VirtualUserId, WorkspaceId,
 };
+use everruns_core::message_filter::MessageQuery;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -144,11 +144,11 @@ mod resources_tasks;
 #[cfg(test)]
 mod retention_tests {
     use super::*;
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TaskLinks,
         TaskWakePolicy,
     };
-    use everruns_provider::typed_id::SessionId;
     use std::sync::Arc;
 
     // The retention prune deletes a task's recorded internal artifact subtree

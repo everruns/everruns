@@ -14,14 +14,14 @@
 //     yes/no answer.
 
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::WorkspacePolicy;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
     build_grep_search_result,
 };
 use everruns_core::session_files::SessionFileSystem;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::SessionId;
 use std::collections::{HashSet, VecDeque};
 use std::path::Component;
 use std::sync::Arc;

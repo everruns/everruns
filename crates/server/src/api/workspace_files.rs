@@ -34,8 +34,8 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use everruns_contracts::typed_id::WorkspaceId;
 use everruns_core::{Caller, FileInfo, FileStat, GrepResult, Policy, SessionFile};
-use everruns_provider::typed_id::WorkspaceId;
 use std::sync::Arc;
 use uuid::Uuid;
 

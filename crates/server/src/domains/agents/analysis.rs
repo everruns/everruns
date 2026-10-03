@@ -10,8 +10,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::kernel_imports::{
-    Caller, UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::Message,
-    everruns_provider::driver_registry::MessageRole, everruns_provider::tool_types::ToolDefinition,
+    Caller, UtilityLlmRequest, UtilityLlmService, contracts::driver_registry::Message,
+    contracts::driver_registry::MessageRole, contracts::tool_types::ToolDefinition,
 };
 use serde::Deserialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};

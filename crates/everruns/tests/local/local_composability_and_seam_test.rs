@@ -13,6 +13,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use everruns::local::{LocalBackends, LocalProfile, SqliteDb};
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::tool_types::ToolCall;
 use everruns_core::events::Event;
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::session_task::{
@@ -26,10 +30,6 @@ use everruns_host::{
     SessionFileSystemFactoryContext,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::tool_types::ToolCall;
 use everruns_test_support::TestMathCapability;
 
 // ---- Caller-supplied event bus decorator ----------------------------------
@@ -62,16 +62,16 @@ impl SessionFileSystemFactory for FlaggingFactory {
     async fn create_session_file_system(
         &self,
         _context: SessionFileSystemFactoryContext,
-    ) -> everruns_provider::error::Result<Arc<dyn SessionFileSystem>> {
+    ) -> everruns_contracts::error::Result<Arc<dyn SessionFileSystem>> {
         self.used.store(true, Ordering::SeqCst);
         Ok(Arc::new(RealDiskFileStore::new(self.root.clone())?))
     }
 }
 
 fn ids() -> (
-    everruns_provider::typed_id::HarnessId,
-    everruns_provider::typed_id::AgentId,
-    everruns_provider::typed_id::SessionId,
+    everruns_contracts::typed_id::HarnessId,
+    everruns_contracts::typed_id::AgentId,
+    everruns_contracts::typed_id::SessionId,
 ) {
     (
         "harness_00000000000000000000000000000091".parse().unwrap(),

@@ -25,7 +25,7 @@ fn test_reason_completed_data_roundtrip() {
 #[test]
 fn test_proto_agent_includes_capability_ids() {
     use chrono::Utc;
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use uuid::Uuid;
 
     // Create an Agent with capabilities
@@ -33,7 +33,7 @@ fn test_proto_agent_includes_capability_ids() {
     let agent = everruns_platform::Agent {
         service_virtual_user_id: None,
 
-        public_id: everruns_provider::typed_id::AgentId::from_uuid(id),
+        public_id: everruns_contracts::typed_id::AgentId::from_uuid(id),
         internal_id: id,
         name: "test-agent".to_string(),
         display_name: Some("Test Agent".to_string()),
@@ -43,7 +43,7 @@ fn test_proto_agent_includes_capability_ids() {
         starters: Vec::new(),
         system_prompt: "You are a helpful assistant".to_string(),
         default_model_id: None,
-        harness_id: everruns_provider::typed_id::HarnessId::new(),
+        harness_id: everruns_contracts::typed_id::HarnessId::new(),
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
@@ -109,7 +109,7 @@ fn test_proto_agent_without_capabilities() {
     let agent = everruns_platform::Agent {
         service_virtual_user_id: None,
 
-        public_id: everruns_provider::typed_id::AgentId::from_uuid(id),
+        public_id: everruns_contracts::typed_id::AgentId::from_uuid(id),
         internal_id: id,
         name: "test-agent".to_string(),
         display_name: Some("Test Agent".to_string()),
@@ -119,7 +119,7 @@ fn test_proto_agent_without_capabilities() {
         starters: Vec::new(),
         system_prompt: "You are a helpful assistant".to_string(),
         default_model_id: None,
-        harness_id: everruns_provider::typed_id::HarnessId::new(),
+        harness_id: everruns_contracts::typed_id::HarnessId::new(),
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
@@ -159,8 +159,8 @@ fn test_proto_agent_without_capabilities() {
 #[test]
 fn test_message_reasoning_roundtrip() {
     use chrono::Utc;
+    use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
     use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole};
-    use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
     use uuid::Uuid;
 
     // Two separately-signed reasoning artifacts, as interleaved thinking
@@ -187,8 +187,8 @@ fn test_message_reasoning_roundtrip() {
             ),
             ContentPart::text("Here is my response based on my analysis."),
         ],
-        phase: Some(everruns_provider::ExecutionPhase::Commentary),
-        phase_source: Some(everruns_provider::PhaseSource::Derived),
+        phase: Some(everruns_contracts::ExecutionPhase::Commentary),
+        phase_source: Some(everruns_contracts::PhaseSource::Derived),
         controls: None,
         metadata: None,
         external_actor: None,
@@ -216,8 +216,8 @@ fn test_message_reasoning_roundtrip() {
 #[test]
 fn test_message_phase_and_source_roundtrip() {
     use chrono::Utc;
+    use everruns_contracts::{ExecutionPhase, PhaseSource};
     use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole};
-    use everruns_provider::{ExecutionPhase, PhaseSource};
     use uuid::Uuid;
 
     for (phase, source) in [
@@ -342,10 +342,10 @@ fn test_external_actor_none_proto_roundtrip() {
 #[test]
 fn test_proto_session_roundtrip_includes_organization_id() {
     use chrono::Utc;
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
     let now = Utc::now();
-    let session_id = everruns_provider::typed_id::SessionId::new();
+    let session_id = everruns_contracts::typed_id::SessionId::new();
     let session = everruns_platform::Session {
         playground_user_id: None,
         source: Default::default(),
@@ -353,13 +353,13 @@ fn test_proto_session_roundtrip_includes_organization_id() {
         run_summary: None,
         id: session_id,
         // Equality invariant: workspace.id == session.id for default sessions.
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
         organization_id: "org_00000000000000000000000000000001".to_string(),
-        harness_id: everruns_provider::typed_id::HarnessId::new(),
+        harness_id: everruns_contracts::typed_id::HarnessId::new(),
         agent_id: None,
         agent_version_id: None,
         virtual_user_id: None,
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
         owner: None,
         effective_owner: None,
@@ -392,7 +392,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
         task_count: None,
         file_count: None,
         features: vec![],
-        parent_session_id: Some(everruns_provider::typed_id::SessionId::new()),
+        parent_session_id: Some(everruns_contracts::typed_id::SessionId::new()),
         forked_from_session_id: None,
         forked_from_sequence: None,
         blueprint_id: Some("oracle".to_string()),
@@ -559,23 +559,23 @@ fn agent_proto_without_full_configs_falls_back_to_capability_ids() {
 #[test]
 fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
     use chrono::Utc;
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
     let now = Utc::now();
-    let session_id = everruns_provider::typed_id::SessionId::new();
+    let session_id = everruns_contracts::typed_id::SessionId::new();
     let session = everruns_platform::Session {
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
         run_summary: None,
         id: session_id,
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
         organization_id: "org_00000000000000000000000000000001".to_string(),
-        harness_id: everruns_provider::typed_id::HarnessId::new(),
+        harness_id: everruns_contracts::typed_id::HarnessId::new(),
         agent_id: None,
         agent_version_id: None,
         virtual_user_id: None,
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
         owner: None,
         effective_owner: None,

@@ -1,7 +1,7 @@
 //! Anthropic's native computer toolset (EVE-1133, computer use phase 2).
 //!
 //! When the call asks for native computer use
-//! ([`everruns_provider::native_computer`]) and the model takes
+//! ([`everruns_contracts::native_computer`]) and the model takes
 //! `computer_toolset_20260801`, the `computer` function tool is replaced by the
 //! toolset entry. Claude then calls toolset members (`left_click`, `type`, ...)
 //! as `tool_use` blocks named after the member and marked
@@ -29,11 +29,11 @@
 
 use std::collections::HashSet;
 
-use everruns_provider::driver_registry::LlmCallConfig;
-use everruns_provider::native_computer::{
+use everruns_contracts::driver_registry::LlmCallConfig;
+use everruns_contracts::native_computer::{
     COMPUTER_TOOL_NAME, NativeComputerUse, anthropic_has_computer_toolset,
 };
-use everruns_provider::tool_types::ToolCall;
+use everruns_contracts::tool_types::ToolCall;
 use serde_json::{Map, Value, json};
 
 /// The toolset's `type`.
@@ -159,7 +159,7 @@ fn as_member_call(block: &mut Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::ToolDefinition;
+    use everruns_contracts::ToolDefinition;
 
     #[test]
     fn active_needs_the_option_the_tool_and_a_toolset_model() {

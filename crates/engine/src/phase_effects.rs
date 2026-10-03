@@ -7,9 +7,9 @@
 //! applies it immediately, preserving streaming and durable event order.
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
-use everruns_provider::error::Result;
 use std::sync::Arc;
 
 /// One effect produced during Input/Reason/Act execution.
@@ -89,9 +89,9 @@ impl<T: PhaseEffectSink + ?Sized> EventEmitter for PhaseEffectEmitter<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::RuntimeMessage;
     use everruns_core::events::{EventContext, INPUT_MESSAGE, InputMessageData};
-    use everruns_provider::typed_id::SessionId;
 
     #[tokio::test]
     async fn phase_effect_adapter_preserves_host_sequence_and_event_type() {

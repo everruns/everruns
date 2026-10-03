@@ -236,7 +236,7 @@ The model's identity, promoted from a runtime-computed shadow type to a first-cl
 
 - **Stable key**: `"{vendor}/{model}"` (e.g. `anthropic/claude-sonnet-4.6`, `openai/gpt-5.5`, `openai/text-embedding-3-large`).
 - **Service kind**: which service this model belongs to (`chat`, `embeddings`, `realtime`, ...). Pickers filter on it, chat pickers never show `gpt-realtime-2`; embedding configuration only shows embedding profiles. This removes the per-model special-casing the voice spec required.
-- **Metadata**: vendor, default display name, capabilities (tools, vision, reasoning, structured output), limits, cost, modalities, reasoning-effort config, speed (service-tier) config, everything `LlmModelProfile` carries today (`crates/provider/src/model.rs`), still sourced from models.dev cross-referenced with official provider docs (sourcing rules in `knowledge/foundations/models.md` apply unchanged).
+- **Metadata**: vendor, default display name, capabilities (tools, vision, reasoning, structured output), limits, cost, modalities, reasoning-effort config, speed (service-tier) config, everything `LlmModelProfile` carries today (`crates/contracts/src/model.rs`), still sourced from models.dev cross-referenced with official provider docs (sourcing rules in `knowledge/foundations/models.md` apply unchanged).
 - **Sources**: built-in code registry (as today) plus discovered profiles persisted from provider metadata (the OpenRouter `supported_parameters` path). Org-custom profiles are out of scope until self-hosted models need them.
 - **Invariant**: every model row has a profile. Discovery that cannot match a known profile creates a minimal one (key derived from the wire id, service `chat`, no cost/limits data, never guessed).
 
@@ -251,7 +251,7 @@ service kinds distinct from model families; live discovery remains authoritative
 for provider request ids and account availability. Registry order is deterministic,
 not a recommendation or flagship ranking. See the [enumeration contract and
 examples](../../crates/model-profiles/README.md#offline-enumeration) and
-[registry implementation](../../crates/model-profiles/src/profiles.rs).
+[registry implementation](../../crates/contracts/src/model_profile_data/profiles.rs).
 
 ## Resolution Contract
 
@@ -300,7 +300,7 @@ Consumers and their paths:
 
 The credential schema is a shared primitive between drivers and connectors:
 
-- **Schema**: named fields with a type (`password`, `text`, `url`), required flag, optional placeholder / help text / default value, and optional mutually-exclusive **group** label. Drivers and connectors declare schemas the same way (`crates/provider/src/credential_schema.rs`); the Settings UI renders both with one form component that lays out discrete typed inputs (multi-field credentials, grouped alternatives), no hand-authored JSON.
+- **Schema**: named fields with a type (`password`, `text`, `url`), required flag, optional placeholder / help text / default value, and optional mutually-exclusive **group** label. Drivers and connectors declare schemas the same way (`crates/contracts/src/credential_schema.rs`); the Settings UI renders both with one form component that lays out discrete typed inputs (multi-field credentials, grouped alternatives), no hand-authored JSON.
 - **Validation**: ungrouped required fields must be present; fields sharing a group label form one alternative method, and at least one group must be complete (`CredentialFormSchema::validate`). Connectors additionally declare async `validate()` against the upstream API.
 - **Environment names**: a driver's credential field also declares the variables that driver's *vendor SDK* reads (`FormField::env`, plus alternates the vendor honors), and the driver declares its endpoint variable as `DriverDescriptor::base_url_env`. Same declaration, both front doors: env resolution walks it with the same group semantics `validate` enforces, so a half-populated alternative configures nothing. Connectors are user-scoped accounts and leave it empty. A driver that declares nothing is never configured from the environment. Declaring a name reads nothing — see the Key Resolution Contract in [llm-drivers.md](llm-drivers.md) for who may pair a declaration with a lookup.
 - **Storage**: the submitted field map is assembled into one credential document (`assemble_credential_document`) and encrypted with the AES-256-GCM envelope (`knowledge/security/encryption.md`); values are never returned by any API. A lone `api_key` is stored as the raw key; multi-field credentials are stored as a JSON object keyed by field name. At driver-construction time the document is parsed back into the typed `DriverConfig::credentials` map (`parse_credential_document`), the single point where the stored string becomes typed fields for every path (server, worker, sync, dev).
@@ -311,7 +311,7 @@ Because the stored document is keyed by field name, existing Bedrock/MAI rows (w
 
 Env-var fallbacks for dev (`DEFAULT_*_API_KEY`, startup materialization into the default org) keep their existing semantics, mapped onto the credential document.
 
-Driver crates do **not** read the process environment for credentials; they only declare which variables their vendor uses. Credentials reach a driver through its constructor or `DriverConfig` (resolved from the encrypted database on the server path). Env-based loading for standalone/dev/CLI use is the single, injectable `CredentialProvider`/`EnvCredentialProvider` boundary in `crates/provider/src/credential_provider.rs`, which is the only place that pairs a declaration with a real lookup; the server never constructs an `EnvCredentialProvider`, and the provider isolation guard enforces that. See the Key Resolution Contract in [llm-drivers.md](llm-drivers.md).
+Driver crates do **not** read the process environment for credentials; they only declare which variables their vendor uses. Credentials reach a driver through its constructor or `DriverConfig` (resolved from the encrypted database on the server path). Env-based loading for standalone/dev/CLI use is the single, injectable `CredentialProvider`/`EnvCredentialProvider` boundary in `crates/contracts/src/credential_provider.rs`, which is the only place that pairs a declaration with a real lookup; the server never constructs an `EnvCredentialProvider`, and the provider isolation guard enforces that. See the Key Resolution Contract in [llm-drivers.md](llm-drivers.md).
 
 ### Credential check before storage
 
@@ -351,7 +351,7 @@ A driver may additionally declare an **interactive OAuth connect flow** so an or
 
 The capability is declared, not special-cased, mirroring services and credential schema:
 
-- `DriverDescriptor::oauth: Option<DriverOAuthConfig>` (`crates/provider/src/driver_registry.rs`). `Some` makes "Connect with {provider}" available; `None` means manual entry only. `DriverOAuthConfig` carries the authorize/token endpoints and a `DriverOAuthFlow` wire-flavor discriminator. Adding OAuth to another driver is filling in this field plus a `DriverOAuthFlow` variant, **no new endpoints**.
+- `DriverDescriptor::oauth: Option<DriverOAuthConfig>` (`crates/contracts/src/driver_registry.rs`). `Some` makes "Connect with {provider}" available; `None` means manual entry only. `DriverOAuthConfig` carries the authorize/token endpoints and a `DriverOAuthFlow` wire-flavor discriminator. Adding OAuth to another driver is filling in this field plus a `DriverOAuthFlow` variant, **no new endpoints**.
 - Two org-scoped endpoints under the existing provider resource drive every OAuth driver: `GET /v1/providers/{id}/oauth/authorize` (redirects to the provider with PKCE) and `GET /v1/providers/{id}/oauth/callback` (exchanges the code, stores the credential, redirects to Settings → Providers). Both require `provider.manage`.
 
 **OpenRouter** is the first driver to declare it (`DriverOAuthFlow::OpenRouterPkce`). OpenRouter's one-click PKCE flow returns a *user-controlled API key*; the admin authorizes once and the key is stored org-wide. PKCE uses a public client (no client id/secret or app registration). Note OpenRouter's callback URL must be HTTPS on port 443 or 3000 for non-localhost deployments.
@@ -437,24 +437,24 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 
 The refactor has landed; current implementations live at:
 
-- `crates/provider/src/provider.rs`, `Provider` entity + `DriverId`
-- `crates/provider/src/runtime_provider.rs`, runtime `Provider`, open
+- `crates/contracts/src/provider.rs`, `Provider` entity + `DriverId`
+- `crates/contracts/src/runtime_provider.rs`, runtime `Provider`, open
   `ProviderKey`, async/body-aware auth, endpoint redaction, and
   `ProviderRegistry`
-- `crates/provider/src/model_spec.rs`, credential-free execution model
+- `crates/contracts/src/model_spec.rs`, credential-free execution model
   selection
-- `crates/provider/src/model.rs`, `Model` / `ModelWithProvider` entity types
+- `crates/contracts/src/model.rs`, `Model` / `ModelWithProvider` entity types
   (re-exports `ModelProfile`/`ModelVendor`/etc. from `everruns-model-profiles`)
-- `crates/model-profiles/src/`, own crate: `ModelProfile`/`ModelVendor`/`ServiceKind`
+- `crates/contracts/src/model_profile_data/`, own crate: `ModelProfile`/`ModelVendor`/`ServiceKind`
   types (`types.rs`) and the built-in profile registry and lookup logic
   (`profiles.rs`), keyed by a plain provider wire-id string rather than
   `DriverId` so it does not depend on `everruns-provider`;
-  `crates/provider/src/model_profiles.rs` adapts the `DriverId`-typed API
+  `crates/contracts/src/model_profiles.rs` adapts the `DriverId`-typed API
   existing callers use
-- `crates/provider/src/model_discovery.rs`, host-side catalog presentation: driver `list_models` plus the OpenAI-compatible `GET <base>/models` fallback for endpoints the drivers decline, profile enrichment, and picker ranking (ported from yolop, which had reimplemented all of it), plus `search_provider_models`, a substring search across several providers' catalogs at once, returning provider-qualified exact ids. Partial results are the contract: a provider with no catalog is skipped, one that errors is reported in `provider_errors`, and the rest still return matches
-- `crates/provider/src/driver_registry.rs`, wire-only `ChatDriver`; transitional
+- `crates/contracts/src/model_discovery.rs`, host-side catalog presentation: driver `list_models` plus the OpenAI-compatible `GET <base>/models` fallback for endpoints the drivers decline, profile enrichment, and picker ranking (ported from yolop, which had reimplemented all of it), plus `search_provider_models`, a substring search across several providers' catalogs at once, returning provider-qualified exact ids. Partial results are the contract: a provider with no catalog is skipped, one that errors is reported in `provider_errors`, and the rest still return matches
+- `crates/contracts/src/driver_registry.rs`, wire-only `ChatDriver`; transitional
   `0.17.x` descriptor/catalog adapter and typed credential configuration
-- `crates/provider/src/credential_schema.rs`, declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
+- `crates/contracts/src/credential_schema.rs`, declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
 - `crates/core/src/provider_resolution.rs`, `ProviderStore` + `ResolvedModel`
 - `crates/server/src/services/provider_resolver.rs`, fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs`, model discovery

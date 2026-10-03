@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Portability guard: the execution kernel (everruns-provider, -core, -engine
+# Portability guard: the execution kernel (everruns-contracts, -core, -engine
 # with default features off) builds for wasm32-unknown-unknown, so it can run
 # inside a JavaScript isolate such as a celld or Cloudflare Durable Object.
 #
@@ -25,7 +25,7 @@ fi
 
 echo "1. kernel crates for $TARGET"
 cargo check --locked --target "$TARGET" --no-default-features \
-  -p everruns-provider -p everruns-core -p everruns-engine
+  -p everruns-contracts -p everruns-core -p everruns-engine
 
 EXAMPLE=examples/celld-engine/Cargo.toml
 echo "2. $EXAMPLE: native tests, then $TARGET"

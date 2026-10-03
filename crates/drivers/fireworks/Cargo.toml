@@ -23,7 +23,7 @@ keywords = ["deprecated", "everruns", "llm", "fireworks"]
 
 [dependencies]
 everruns-drivers = { workspace = true, features = ["fireworks"] }
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 
 [lints]
 workspace = true

@@ -6,7 +6,7 @@
 //! custom capabilities.
 
 use crate::capability_types::{MountDirectoryBuilder, MountPoint};
-use everruns_capability::CapabilityId;
+use everruns_contracts::CapabilityId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

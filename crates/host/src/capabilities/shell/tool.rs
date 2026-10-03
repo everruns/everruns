@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::containment::{ContainmentMode, SandboxOptions, SandboxProvider, policy};
 use async_trait::async_trait;
+use everruns_contracts::tool_types::{DeferrablePolicy, ToolCall, ToolHints};
 use everruns_core::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
@@ -14,7 +15,6 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase, narrate_shell_exec};
 use everruns_core::tool_output_sanitizer::output_verbosity_schema;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolHints};
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 
@@ -699,7 +699,7 @@ mod tests {
         use async_trait::async_trait;
         use everruns_core::session_files::SessionFileSystem;
         use everruns_core::tools::Tool;
-        use everruns_provider::typed_id::SessionId;
+        use everruns_contracts::typed_id::SessionId;
 
         use crate::RealDiskFileStore;
 

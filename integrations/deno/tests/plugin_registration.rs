@@ -1,10 +1,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for Deno plugin registration and capability.
 
+use everruns_contracts::connector::ConnectorPlugin;
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_integrations_deno::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
-use everruns_platform::connector::ConnectorPlugin;
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);

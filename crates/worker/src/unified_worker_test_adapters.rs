@@ -6,7 +6,7 @@
 //! the file again.
 
 use crate::worker_adapters::WorkerAdapters;
-use everruns_provider::error::Result as CoreResult;
+use everruns_contracts::error::Result as CoreResult;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -76,20 +76,20 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _org_id: i64,
         _model_id: Uuid,
-    ) -> CoreResult<Option<everruns_provider::model_spec::ModelSpec>> {
+    ) -> CoreResult<Option<everruns_contracts::model_spec::ModelSpec>> {
         unimplemented!()
     }
     async fn get_default_model_spec(
         &self,
         _org_id: i64,
-    ) -> CoreResult<Option<everruns_provider::model_spec::ModelSpec>> {
+    ) -> CoreResult<Option<everruns_contracts::model_spec::ModelSpec>> {
         unimplemented!()
     }
     async fn get_provider_config(
         &self,
         _org_id: i64,
-        _provider: &everruns_provider::runtime_provider::ProviderKey,
-    ) -> CoreResult<Option<everruns_provider::driver_registry::ProviderConfig>> {
+        _provider: &everruns_contracts::runtime_provider::ProviderKey,
+    ) -> CoreResult<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         unimplemented!()
     }
     async fn resolve_image(
@@ -213,14 +213,14 @@ impl WorkerAdapters for NoopAdapters {
     }
     async fn mark_leased_resource_released(
         &self,
-        _resource_id: everruns_provider::typed_id::LeasedResourceId,
+        _resource_id: everruns_contracts::typed_id::LeasedResourceId,
         _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
     ) -> CoreResult<bool> {
         unimplemented!()
     }
     async fn mark_leased_resource_cleanup_failed(
         &self,
-        _resource_id: everruns_provider::typed_id::LeasedResourceId,
+        _resource_id: everruns_contracts::typed_id::LeasedResourceId,
         _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
         _retry_after_seconds: u32,
         _error: &str,
@@ -231,7 +231,7 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _stale_after: chrono::Duration,
         _limit: i64,
-    ) -> CoreResult<Vec<(everruns_provider::typed_id::SessionId, String)>> {
+    ) -> CoreResult<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
         unimplemented!()
     }
     async fn prune_terminal_session_tasks(
@@ -245,13 +245,13 @@ impl WorkerAdapters for NoopAdapters {
     fn capability_registry(&self) -> everruns_core::capabilities::CapabilityRegistry {
         unimplemented!()
     }
-    fn driver_registry(&self) -> everruns_provider::DriverRegistry {
+    fn driver_registry(&self) -> everruns_contracts::DriverRegistry {
         unimplemented!()
     }
     fn sqldb_store(
         &self,
         _org_id: i64,
-    ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
+    ) -> std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> {
         unimplemented!()
     }
     fn storage_store(
@@ -286,7 +286,7 @@ impl WorkerAdapters for NoopAdapters {
     fn platform_store(
         &self,
         _org_id: i64,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
     ) -> Arc<dyn everruns_platform::PlatformStore> {
         unimplemented!()
     }

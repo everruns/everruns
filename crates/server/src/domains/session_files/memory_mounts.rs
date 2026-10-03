@@ -137,7 +137,7 @@ impl MemoryMountRouter {
     async fn resolve(&self, workspace_id: Uuid) -> Result<Vec<MemoryMount>> {
         let Some(session) = self
             .db
-            .get_session_unscoped(everruns_provider::typed_id::SessionId::from_uuid(
+            .get_session_unscoped(everruns_contracts::typed_id::SessionId::from_uuid(
                 workspace_id,
             ))
             .await?
@@ -207,7 +207,7 @@ impl MemoryMountRouter {
         mounts: &mut Vec<MemoryMount>,
         org_id: i64,
         scope: &str,
-        owner_agent_id: Option<everruns_provider::typed_id::AgentId>,
+        owner_agent_id: Option<everruns_contracts::typed_id::AgentId>,
         owner_user_id: Option<Uuid>,
         mount_path: &str,
     ) -> Result<()> {
@@ -447,7 +447,7 @@ pub(crate) async fn ensure_shared_memory(
         .create_memory(
             org_id,
             CreateMemoryRow {
-                public_id: everruns_provider::typed_id::MemoryId::new().to_string(),
+                public_id: everruns_contracts::typed_id::MemoryId::new().to_string(),
                 name: name.to_string(),
                 description: Some(
                     "Shared memory for every session of this chat surface.".to_string(),

@@ -26,7 +26,7 @@ default-credentials = ["everruns-drivers/bedrock-default-credentials"]
 
 [dependencies]
 everruns-drivers = { workspace = true, features = ["bedrock"] }
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 
 [lints]
 workspace = true

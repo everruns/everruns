@@ -30,12 +30,12 @@ pub mod connection;
 pub mod state;
 mod tools;
 
+use everruns_contracts::connector::ConnectorPlugin;
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
 use everruns_core::tools::Tool;
-use everruns_platform::connector::ConnectorPlugin;
 
 use std::sync::LazyLock;
 
@@ -145,9 +145,9 @@ mod tests {
     #[test]
     fn the_e2b_sandbox_secret_prefix_is_reserved_from_session_storage() {
         assert!(
-            everruns_platform::capabilities::is_internal_session_secret_name(&format!(
-                "{E2B_SANDBOX_SECRET_PREFIX}i-example"
-            ))
+            everruns_host::session_services::capabilities::is_internal_session_secret_name(
+                &format!("{E2B_SANDBOX_SECRET_PREFIX}i-example")
+            )
         );
     }
 
@@ -171,7 +171,7 @@ mod tests {
     async fn system_prompt_within_budget() {
         let cap = E2BCapability;
         let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
-            everruns_provider::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         // Bumped 1000 → 1300: EVE-778 grew the shared EXEC_OUTPUT_HINT with the

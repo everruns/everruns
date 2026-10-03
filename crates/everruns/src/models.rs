@@ -31,10 +31,10 @@
 //! chat calls expect them, merged with the profile registry for display names,
 //! descriptions, limits, and prices the API does not report.
 
-use everruns_provider::model::{ModelProfile, ModelVendor};
-use everruns_provider::model_profiles::{get_model_profile, get_model_vendor};
-use everruns_provider::provider::DriverId;
-use everruns_provider::runtime_provider::Provider;
+use everruns_contracts::model::{ModelProfile, ModelVendor};
+use everruns_contracts::model_profiles::{get_model_profile, get_model_vendor};
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::runtime_provider::Provider;
 
 use crate::Model;
 use std::fmt;
@@ -52,7 +52,7 @@ pub enum CatalogError {
     /// The provider offers no model catalog.
     NoCatalog,
     /// The catalog request itself failed.
-    Call(everruns_provider::error::AgentLoopError),
+    Call(everruns_contracts::error::AgentLoopError),
 }
 
 impl fmt::Display for CatalogError {
@@ -75,8 +75,8 @@ impl std::error::Error for CatalogError {
     }
 }
 
-impl From<everruns_provider::error::AgentLoopError> for CatalogError {
-    fn from(error: everruns_provider::error::AgentLoopError) -> Self {
+impl From<everruns_contracts::error::AgentLoopError> for CatalogError {
+    fn from(error: everruns_contracts::error::AgentLoopError) -> Self {
         CatalogError::Call(error)
     }
 }
@@ -253,7 +253,7 @@ mod tests {
                 "openai",
                 everruns_llmsim::LlmSimDriver::new(LlmSimConfig::fixed("unused")),
             )
-            .auth(everruns_provider::runtime_provider::BearerAuth::new(
+            .auth(everruns_contracts::runtime_provider::BearerAuth::new(
                 "sk-super-secret",
             )),
         };

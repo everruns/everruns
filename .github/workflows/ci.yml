@@ -246,7 +246,7 @@ jobs:
               # these sources (docs/** and crates/*/Cargo.toml are above).
               - 'scripts/check_docs_catalogs.py'
               - 'crates/core/src/events/mod.rs'
-              - 'crates/capability/src/presets.rs'
+              - 'crates/contracts/src/capability/presets.rs'
               - 'crates/server/src/harnesses/platform_chat.rs'
               # scripts/test-no-everruns-runtime.sh scans these trees too.
               - 'knowledge/**'
@@ -329,6 +329,7 @@ jobs:
               - 'crates/config/**'
               - 'crates/session-sqldb/**'
               - 'crates/provider/**'
+              - 'crates/contracts/**'
               - 'crates/drivers/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -347,6 +348,7 @@ jobs:
             # scripts/test-ci-provider-live-filter.sh pins the invariant.
             provider_live:
               - 'crates/provider/**'
+              - 'crates/contracts/**'
               - 'crates/drivers/**'
               - 'crates/llm-tests/**'
               - 'Cargo.toml'
@@ -1013,7 +1015,7 @@ jobs:
           # no credentials) and one of them was failing against committed code
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
-          cargo test -p everruns-provider -p everruns-model-profiles --all-features
+          cargo test -p everruns-contracts -p everruns-provider -p everruns-capability -p everruns-model-profiles --all-features
           cargo test -p everruns-engine -p everruns-builtins --all-features
           cargo test -p everruns-integrations-docker --all-features
           # The integration catalog is the one list naming every plugin-publishing

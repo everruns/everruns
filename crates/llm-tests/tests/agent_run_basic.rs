@@ -19,13 +19,13 @@
 
 mod llm_test_matrix;
 
-use everruns_provider::provider::DriverId;
+use everruns_contracts::provider::DriverId;
 use llm_test_matrix::*;
 use rstest::rstest;
 
 use everruns_builtins::CurrentTimeCapability;
+use everruns_contracts::model_spec::ModelSpec;
 use everruns_integrations_filesystem::FileSystemCapability;
-use everruns_provider::model_spec::ModelSpec;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 
 // ============================================================================
@@ -226,7 +226,7 @@ async fn test_model_not_available_returns_user_friendly_error(
     };
 
     let model = ModelSpec::on(provider_type.as_str(), model_name);
-    let provider_config = everruns_provider::driver_registry::ProviderConfig::new(provider_type)
+    let provider_config = everruns_contracts::driver_registry::ProviderConfig::new(provider_type)
         .with_api_key(api_key);
 
     let runner = InMemoryAgenticLoop::builder()

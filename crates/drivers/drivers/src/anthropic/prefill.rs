@@ -1,8 +1,8 @@
 //! Assistant-prefill guard, split out of `driver.rs` to keep that file under
 //! its size ratchet.
 
-use everruns_provider::driver_registry::{Message, MessageRole};
-use everruns_provider::error::{AgentLoopError, Result};
+use everruns_contracts::driver_registry::{Message, MessageRole};
+use everruns_contracts::error::{AgentLoopError, Result};
 
 use crate::anthropic::driver::uses_adaptive_thinking;
 

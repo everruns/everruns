@@ -15,9 +15,9 @@
 
 mod llm_test_matrix;
 
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::provider::DriverId;
-use everruns_provider::reasoning::ReasoningContentPart;
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::reasoning::ReasoningContentPart;
 use llm_test_matrix::*;
 use rstest::rstest;
 
@@ -318,7 +318,7 @@ fn reasoning_artifact_has_content(part: &ReasoningContentPart) -> bool {
 #[cfg(test)]
 mod reasoning_artifact_tests {
     use super::*;
-    use everruns_provider::reasoning::ReasoningText;
+    use everruns_contracts::reasoning::ReasoningText;
 
     #[test]
     fn opaque_openai_reasoning_requires_nonempty_replay_payload_and_id() {

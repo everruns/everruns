@@ -938,7 +938,7 @@ async fn create_second_org_backend(backend: &StorageBackend) -> i64 {
 async fn create_session_in_org(
     backend: &StorageBackend,
     org_id: i64,
-) -> everruns_provider::typed_id::SessionId {
+) -> everruns_contracts::typed_id::SessionId {
     let row = backend
         .create_session(CreateSessionRow {
             playground_user_id: None,
@@ -953,7 +953,7 @@ async fn create_session_in_org(
             agent_version_id: None,
             agent_config_hash: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Test Session".to_string()),
             locale: None,
@@ -1009,7 +1009,7 @@ async fn test_session_ownership_negative_cross_org() {
 async fn test_session_ownership_negative_nonexistent_session() {
     let backend = make_backend();
 
-    let fake_session_id = everruns_provider::typed_id::SessionId::new();
+    let fake_session_id = everruns_contracts::typed_id::SessionId::new();
 
     // Non-existent session returns 404
     let result = verify_session_ownership(&backend, ORG1, fake_session_id).await;

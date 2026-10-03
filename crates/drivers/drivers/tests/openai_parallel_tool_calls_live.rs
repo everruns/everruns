@@ -10,12 +10,12 @@
 //! Ignored by default (requires network + `OPENAI_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-drivers --features openai --test openai_parallel_tool_calls_live -- --ignored --nocapture`
 
-use everruns_drivers::openai::provider;
-use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::tool_types::{
+use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
+use everruns_drivers::openai::provider;
 
 const LIVE_MODEL: &str = "gpt-5.6-luna";
 

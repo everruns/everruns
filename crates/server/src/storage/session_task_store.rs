@@ -9,8 +9,7 @@
 // best-effort (log on error, never fail the operation).
 
 use crate::kernel_imports::{
-    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
-    everruns_provider::typed_id::SessionId,
+    contracts::error::AgentLoopError, contracts::error::Result, contracts::typed_id::SessionId,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -480,12 +479,12 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::typed_id::{EventId, MessageId, TurnId};
     use everruns_core::events::Event;
     use everruns_core::session_task::{
         TaskInputRequest, TaskLinks, TaskMessagePart, TaskWakePolicy,
         TurnCorrelatedSessionTaskRegistry,
     };
-    use everruns_provider::typed_id::{EventId, MessageId, TurnId};
     use std::sync::Mutex;
 
     #[derive(Default)]

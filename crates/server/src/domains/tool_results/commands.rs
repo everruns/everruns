@@ -3,9 +3,9 @@ use super::types::{ClientToolResult, SubmitToolResultsResponse};
 use crate::domains::common::*;
 use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
+use everruns_contracts::typed_id::{MessageId, TurnId};
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
-use everruns_provider::typed_id::{MessageId, TurnId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 

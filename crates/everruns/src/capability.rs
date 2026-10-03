@@ -80,13 +80,13 @@
 
 use std::sync::Arc;
 
+use everruns_contracts::tool_types::ToolHints;
 use everruns_core::capabilities::Capability as CoreCapability;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool as CoreTool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 
-pub use everruns_capability::definition::{
+pub use everruns_contracts::capability::definition::{
     CallCancellation, CancellationSignal, Context, Definition, Deserialize, Error, ErrorVisibility,
     Handler, Hints, JsonSchema, ProgressSink, Serialize, Tool, ToolSpec, async_trait, schemars,
     serde, serde_json,
@@ -241,7 +241,7 @@ impl CancellationSignal for TokenCancellationSignal {
         self.0.is_cancelled()
     }
 
-    fn cancelled<'a>(&'a self) -> everruns_capability::definition::BoxFuture<'a, ()> {
+    fn cancelled<'a>(&'a self) -> everruns_contracts::capability::definition::BoxFuture<'a, ()> {
         Box::pin(self.0.cancelled())
     }
 }
@@ -280,11 +280,11 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
+    use everruns_contracts::tool_types::ToolCall;
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::tool_context::ToolContext;
     use everruns_core::tools::Tool as _;
     use everruns_llmsim::LlmSimConfig;
-    use everruns_provider::tool_types::ToolCall;
-    use everruns_provider::typed_id::SessionId;
     use serde_json::{Value, json};
     use tokio::sync::Notify;
     use tokio::time::timeout;

@@ -26,8 +26,8 @@
 
 use std::collections::HashMap;
 
+use everruns_contracts::typed_id::MessageId;
 use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole};
-use everruns_provider::typed_id::MessageId;
 use serde_json::{Value, json};
 
 /// Most transcript entries a seed carries (newest kept).
@@ -182,8 +182,8 @@ fn clip(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::reasoning::ReasoningContentPart;
-    use everruns_provider::tool_types::ToolCall;
+    use everruns_contracts::reasoning::ReasoningContentPart;
+    use everruns_contracts::tool_types::ToolCall;
 
     fn lines(transcript: &str) -> Vec<Value> {
         let body = transcript

@@ -23,7 +23,7 @@ categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
 everruns-drivers = { workspace = true, features = ["meta"] }
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 
 [lints]
 workspace = true

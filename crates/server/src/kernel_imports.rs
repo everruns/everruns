@@ -3,36 +3,35 @@
 //! This is not a public compatibility surface. It keeps server modules focused
 //! on control-plane behavior while preserving the actual ownership split:
 //! execution contracts come from `everruns-core`, capability identity/config
-//! comes from `everruns-capability`, and provider/model/ID types come from
-//! `everruns-provider`.
+//! and provider/model/ID types come from `everruns-contracts`.
 
-pub(crate) use everruns_capability::{
+pub(crate) use ::everruns_contracts::{
     CapabilityId, CapabilityRef as AgentCapabilityConfig, is_plugin_capability,
     parse_plugin_capability_id, plugin_capability_id,
 };
 
 #[cfg(test)]
-pub(crate) use ::everruns_provider::compact::CompactOutputItem;
+pub(crate) use ::everruns_contracts::compact::CompactOutputItem;
 #[cfg(test)]
-pub(crate) use ::everruns_provider::driver_registry::{
+pub(crate) use ::everruns_contracts::driver_registry::{
     LlmCompletionMetadata, LlmResponse, LlmResponseStream, ProviderOpaqueContext,
 };
 #[cfg(test)]
-pub(crate) use ::everruns_provider::error::{AgentLoopError, Result};
+pub(crate) use ::everruns_contracts::error::{AgentLoopError, Result};
 #[cfg(test)]
-pub(crate) use ::everruns_provider::provider::{DriverId, ProviderTraceConfig};
+pub(crate) use ::everruns_contracts::provider::{DriverId, ProviderTraceConfig};
 #[cfg(test)]
-pub(crate) use ::everruns_provider::tool_types::ToolCall;
+pub(crate) use ::everruns_contracts::tool_types::ToolCall;
 #[cfg(test)]
-pub(crate) use ::everruns_provider::typed_id;
+pub(crate) use ::everruns_contracts::typed_id;
 #[cfg(test)]
-pub(crate) use ::everruns_provider::typed_id::{
+pub(crate) use ::everruns_contracts::typed_id::{
     HarnessId, MessageId, ModelId, PrincipalId, SessionId, TurnId, VirtualUserId,
 };
 pub(crate) use everruns_core::*;
 
-pub(crate) mod everruns_provider {
-    pub(crate) use ::everruns_provider::{
+pub(crate) mod contracts {
+    pub(crate) use ::everruns_contracts::{
         driver_registry, error, model, model_profiles, model_spec, openresponses_types, provider,
         tool_types, typed_id, url_validation, user_facing_error,
     };

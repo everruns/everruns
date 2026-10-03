@@ -540,7 +540,7 @@ use crate::tool_narration::{
     ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
 };
 use crate::tool_types::ToolCall;
-use everruns_provider::execution_phase::ExecutionPhase;
+use everruns_contracts::execution_phase::ExecutionPhase;
 
 /// File operation constants for `FileWrittenData.operation`.
 pub const FILE_OP_CREATE: &str = "create";

@@ -5,7 +5,7 @@ use crate::capabilities::CapabilityRegistry;
 use crate::output_guardrail::{
     OutputGuardrail, PostGenerationProvider, post_generation_guardrail_text,
 };
-use everruns_provider::reasoning::ReasoningContentPart;
+use everruns_contracts::reasoning::ReasoningContentPart;
 
 pub(super) fn client_visible_guardrail_text(
     text: &str,

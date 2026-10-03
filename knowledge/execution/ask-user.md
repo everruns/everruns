@@ -27,7 +27,7 @@ Permission for a destructive, irreversible, or outward-facing action uses
   strategies.
 - [`crates/everruns/src/ask_user.rs`](../../crates/everruns/src/ask_user.rs)
   projects the responder contract at its stable Framework path.
-- [`crates/provider/src/tool_types.rs`](../../crates/provider/src/tool_types.rs)
+- [`crates/contracts/src/tool_types.rs`](../../crates/contracts/src/tool_types.rs)
   owns the client-side tool-definition wire contract.
 - [`crates/engine/src/execution/act.rs`](../../crates/engine/src/execution/act.rs)
   owns client-call partitioning and the act pause boundary.

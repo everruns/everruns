@@ -99,7 +99,7 @@ pub(super) fn filter_response_text(
 /// filters (e.g. stripping echoed `[time …]` / `<facts>` / degenerate time
 /// lines). Plain chain-of-thought text is never published here.
 pub(super) fn filtered_reasoning_summary(
-    item: &everruns_provider::reasoning::ReasoningContentPart,
+    item: &everruns_contracts::reasoning::ReasoningContentPart,
     registry: &CapabilityRegistry,
     configs: &[crate::CapabilityRef],
 ) -> Vec<String> {
@@ -107,7 +107,7 @@ pub(super) fn filtered_reasoning_summary(
         .filter(|_| {
             !matches!(
                 item.text,
-                Some(everruns_provider::reasoning::ReasoningText::Plain { .. })
+                Some(everruns_contracts::reasoning::ReasoningText::Plain { .. })
             )
         })
         .map(|text| filter_response_text(registry, configs, text))

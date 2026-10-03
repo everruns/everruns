@@ -6,10 +6,10 @@ use super::types::{
 use super::{MEMORY_MANAGE, MEMORY_VIEW};
 use crate::domains::common::*;
 use crate::domains::git_sources::normalize_github_repository;
+use everruns_contracts::typed_id::MemoryId;
+use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::Policy;
 use everruns_durable::UpdateField;
-use everruns_provider::typed_id::MemoryId;
-use everruns_provider::url_validation::validate_safe_url;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;

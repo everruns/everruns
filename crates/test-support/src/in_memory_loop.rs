@@ -12,7 +12,13 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::driver_registry::ProviderConfig;
+use everruns_contracts::driver_registry::{DriverId, DriverRegistry};
+use everruns_contracts::error::Result;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::ExecutionContext;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
@@ -33,12 +39,6 @@ use everruns_host::{
     InMemorySessionStore, InProcessExecution, NoopEventSink, StoreTurnContextResolver,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
-use everruns_provider::driver_registry::ProviderConfig;
-use everruns_provider::driver_registry::{DriverId, DriverRegistry};
-use everruns_provider::error::Result;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 
 // ============================================================================
 // Turn Result
@@ -239,7 +239,7 @@ impl InMemoryAgenticLoopBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_provider::driver_registry::DriverRegistry;
+    /// use everruns_contracts::driver_registry::DriverRegistry;
     ///
     /// let mut driver_registry = DriverRegistry::new();
     /// everruns_drivers::anthropic::register_driver(&mut driver_registry);
@@ -326,7 +326,7 @@ impl InMemoryAgenticLoopBuilder {
         // definitions so ReasonAtom returns them and ActAtom executes them
         // (rather than treating them as unknown). Capability-provided tools are
         // already surfaced through the capability registry.
-        let explicit_tool_definitions: Vec<everruns_provider::tool_types::ToolDefinition> =
+        let explicit_tool_definitions: Vec<everruns_contracts::tool_types::ToolDefinition> =
             self.tools.iter().map(|tool| tool.to_definition()).collect();
 
         // Create agent
@@ -659,10 +659,9 @@ impl InMemoryAgenticLoop {
                                 blocked: act_result.blocked,
                                 waiting_for_tool_results: act_result.waiting_for_tool_results,
                                 waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
-                                waiting_for_ask_user: act_result
-                                    .client_tool_calls
-                                    .iter()
-                                    .any(|call| call.name == everruns_provider::ASK_USER_TOOL_NAME),
+                                waiting_for_ask_user: act_result.client_tool_calls.iter().any(
+                                    |call| call.name == everruns_contracts::ASK_USER_TOOL_NAME,
+                                ),
                                 waiting_for_tool_approval:
                                     everruns_engine::has_pending_tool_approval(
                                         &act_result.client_tool_calls,
@@ -885,7 +884,7 @@ impl InMemoryAgenticLoop {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_provider::tool_types::ToolCall;
+    /// use everruns_contracts::tool_types::ToolCall;
     /// use serde_json::json;
     ///
     /// let tool_call = ToolCall {

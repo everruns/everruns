@@ -10,7 +10,7 @@
 
 use std::fmt;
 
-use everruns_provider::credential_provider::EnvCredentialProvider;
+use everruns_contracts::credential_provider::EnvCredentialProvider;
 
 use crate::Provider;
 

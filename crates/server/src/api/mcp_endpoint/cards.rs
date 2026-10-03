@@ -412,9 +412,9 @@ fn format_date(ts: &DateTime<Utc>) -> String {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use everruns_contracts::typed_id::AgentId;
     use everruns_core::events::TokenUsage;
     use everruns_platform::{Agent, AgentStatus};
-    use everruns_provider::typed_id::AgentId;
 
     fn sample_agent() -> Agent {
         Agent {
@@ -430,7 +430,7 @@ mod tests {
             starters: Vec::new(),
             system_prompt: "you help".into(),
             default_model_id: None,
-            harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+            harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

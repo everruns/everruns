@@ -5,8 +5,8 @@ use super::super::repository::MESSAGE_SAFETY_LIMIT;
 use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::{EventId, MessageId, SessionId};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_provider::typed_id::{EventId, MessageId, SessionId};
 use tracing::warn;
 use uuid::Uuid;
 

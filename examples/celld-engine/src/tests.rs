@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_core::events::EventData;
-use everruns_provider::error::Result;
+use everruns_contracts::error::Result;
 use serde_json::{Value, json};
 
 use crate::cell::{Cell, Next, Progress, Store};
@@ -101,7 +101,7 @@ impl Transport for Scripted {
         assert!(url.ends_with("/chat/completions"));
         assert_eq!(bearer, "test-key");
         self.calls.fetch_add(1, Ordering::SeqCst);
-        everruns_provider::rt::sleep(self.delay).await;
+        everruns_contracts::rt::sleep(self.delay).await;
         let messages = body["messages"].as_array().unwrap();
         let answered = messages.iter().any(|m| m["role"] == "tool");
         if answered {

@@ -20,11 +20,11 @@ pub mod seed;
 use std::collections::HashMap;
 
 use eventsource_stream::Eventsource;
+use everruns_contracts::BearerAuth;
+use everruns_contracts::runtime_provider::ProviderEndpoint;
+use everruns_contracts::tool_types::ToolDefinition;
 use everruns_core::events::TokenUsage;
 use everruns_core::{McpServerTransportType, RuntimeAgent, ScopedMcpServer, ScopedMcpServers};
-use everruns_provider::BearerAuth;
-use everruns_provider::runtime_provider::ProviderEndpoint;
-use everruns_provider::tool_types::ToolDefinition;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -847,11 +847,11 @@ impl AgentsApiClient {
 struct EndpointAuth(ProviderEndpoint);
 
 #[async_trait::async_trait]
-impl everruns_provider::ProviderAuth for EndpointAuth {
+impl everruns_contracts::ProviderAuth for EndpointAuth {
     async fn headers(
         &self,
-        request: everruns_provider::ProviderAuthRequest<'_>,
-    ) -> everruns_provider::error::Result<Vec<(String, String)>> {
+        request: everruns_contracts::ProviderAuthRequest<'_>,
+    ) -> everruns_contracts::error::Result<Vec<(String, String)>> {
         Ok(self
             .0
             .resolve(request.method, request.url, request.body)
@@ -879,7 +879,7 @@ fn path_segment(id: &str) -> Result<&str, AgentsApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::tool_types::ClientSideTool;
+    use everruns_contracts::tool_types::ClientSideTool;
 
     fn prototype_config() -> AgentsApiSessionConfig {
         let mut agent = RuntimeAgent::new("Use both tools.", "gpt-6-astra");

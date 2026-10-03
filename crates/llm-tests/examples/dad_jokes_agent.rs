@@ -11,9 +11,9 @@
 //! Run with: cargo run -p everruns-llm-tests --example dad_jokes_agent
 
 use everruns_builtins::CurrentTimeCapability;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 
 const DAD_JOKES_SYSTEM_PROMPT: &str = r#"You are a Dad Jokes Bot - the world's greatest purveyor of groan-worthy humor!
@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
         .system_prompt(DAD_JOKES_SYSTEM_PROMPT)
         .model((
             model,
-            everruns_provider::driver_registry::ProviderConfig::new(DriverId::Anthropic)
+            everruns_contracts::driver_registry::ProviderConfig::new(DriverId::Anthropic)
                 .with_api_key(api_key),
         ))
         .driver_registry(driver_registry)

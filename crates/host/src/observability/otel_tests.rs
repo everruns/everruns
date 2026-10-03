@@ -6,13 +6,13 @@
 
 use super::*;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::events::{
     EventContext, LlmGenerationMetadata, LlmGenerationOutput, LlmRequestOptions,
     ToolDefinitionSummary,
 };
 use everruns_core::message::RuntimeMessage;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
 use opentelemetry::trace::{SpanId, TracerProvider as _};
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
 use serde_json::json;

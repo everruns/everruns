@@ -6,6 +6,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use everruns_contracts::typed_id::TurnId;
 use everruns_core::events::EventData;
 use everruns_core::turn::TurnStopReason;
 use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole};
@@ -13,7 +14,6 @@ use everruns_host::{
     EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit, EventReadRequest,
     TurnResult,
 };
-use everruns_provider::typed_id::TurnId;
 
 use super::Turn;
 use crate::{Agent, InMemoryEngine, Model};
@@ -177,7 +177,7 @@ fn turn_preserves_failure_and_stop_reason() {
 
 use std::time::Duration;
 
-use everruns_provider::tool_types::ToolCall;
+use everruns_contracts::tool_types::ToolCall;
 use serde_json::json;
 
 use crate::{CancellationToken, RunOptions, SessionEvent, SessionEventKind};

@@ -18,10 +18,9 @@ documentation = "https://docs.rs/everruns-integrations-deno"
 
 [dependencies]
 everruns-core.workspace = true
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
-everruns-platform.workspace = true
 reqwest = { workspace = true, features = ["multipart"] }
 serde.workspace = true
 serde_json.workspace = true

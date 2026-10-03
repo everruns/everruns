@@ -1,8 +1,8 @@
 use crate::support::*;
+use everruns_contracts::model::Model;
+use everruns_contracts::provider::Provider;
 use everruns_platform::Agent;
 use everruns_platform::Session;
-use everruns_provider::model::Model;
-use everruns_provider::provider::Provider;
 use serde_json::{Value, json};
 
 /// Test that message creation returns promptly and triggers agent workflow

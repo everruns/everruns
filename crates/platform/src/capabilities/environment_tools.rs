@@ -219,7 +219,7 @@ impl EnvironmentBashTool {
 impl Tool for EnvironmentBashTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -253,7 +253,7 @@ impl Tool for EnvironmentBashTool {
         })
     }
 
-    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
         session_sandbox_tool_hints()
     }
 
@@ -311,7 +311,7 @@ impl EnvironmentReadFileTool {
 impl Tool for EnvironmentReadFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -344,7 +344,7 @@ impl Tool for EnvironmentReadFileTool {
         })
     }
 
-    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
         session_sandbox_tool_hints()
             .with_readonly(true)
             .with_idempotent(true)
@@ -409,7 +409,7 @@ impl EnvironmentWriteFileTool {
 impl Tool for EnvironmentWriteFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -441,7 +441,7 @@ impl Tool for EnvironmentWriteFileTool {
         })
     }
 
-    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
         session_sandbox_tool_hints().with_destructive(true)
     }
 
@@ -522,7 +522,7 @@ impl EnvironmentEditFileTool {
 impl Tool for EnvironmentEditFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -556,7 +556,7 @@ impl Tool for EnvironmentEditFileTool {
         })
     }
 
-    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
         session_sandbox_tool_hints().with_destructive(true)
     }
 
@@ -653,7 +653,7 @@ impl EnvironmentGlobTool {
 impl Tool for EnvironmentGlobTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -686,7 +686,7 @@ impl Tool for EnvironmentGlobTool {
         })
     }
 
-    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
         session_sandbox_tool_hints()
             .with_readonly(true)
             .with_idempotent(true)
@@ -768,7 +768,7 @@ impl EnvironmentGrepTool {
 impl Tool for EnvironmentGrepTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -801,7 +801,7 @@ impl Tool for EnvironmentGrepTool {
         })
     }
 
-    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
         session_sandbox_tool_hints()
             .with_readonly(true)
             .with_idempotent(true)
@@ -912,7 +912,7 @@ mod tests {
     #[tokio::test]
     async fn bash_rejects_zero_timeout_before_provider_resolution() {
         let tool = EnvironmentBashTool::new(json!({"provider": "missing-provider"}));
-        let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        let context = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
 
         let result = tool
             .execute_with_context(json!({"command": "echo hi", "timeout_ms": 0}), &context)
@@ -927,7 +927,7 @@ mod tests {
     #[tokio::test]
     async fn file_and_shell_tools_share_one_provider_workspace() {
         let context = ToolContext::with_storage_store(
-            everruns_provider::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
             Arc::new(InMemorySessionStorageStore::new()),
         );
         let config = json!({"provider": "core-test-session-sandbox"});

@@ -45,7 +45,7 @@ Two variants: `Commentary` (intermediate, before/between tool calls) and `FinalA
 
 ## Model Profile Flag
 
-`supports_phases: bool` on `LlmModelProfile`, indicates whether the model accepts phase values in the provider API. Phase support is a model-level capability, not a driver-level one, the same OpenAI Responses API driver serves both phase-capable and non-phase models. See `crates/model-profiles/src/profiles.rs` for the per-model profile data and lookup logic.
+`supports_phases: bool` on `LlmModelProfile`, indicates whether the model accepts phase values in the provider API. Phase support is a model-level capability, not a driver-level one, the same OpenAI Responses API driver serves both phase-capable and non-phase models. See `crates/contracts/src/model_profile_data/profiles.rs` for the per-model profile data and lookup logic.
 
 ## Provider Mapping
 
@@ -57,7 +57,7 @@ The `phase` field is serialized as a string on assistant messages in the `input`
 
 For non-GPT-5.4 models on the same driver, the `phase` field is omitted from the wire format.
 
-See `crates/provider/src/openresponses_protocol.rs` for the mapping.
+See `crates/contracts/src/openresponses_protocol.rs` for the mapping.
 
 ### Anthropic / Gemini
 

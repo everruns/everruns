@@ -29,12 +29,12 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::{
     ACT_COMPLETED, ACT_STARTED, Event, EventData, EventListener, INPUT_MESSAGE, LLM_GENERATION,
     REASON_COMPLETED, REASON_STARTED, TOOL_COMPLETED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
     TURN_STARTED,
 };
-use everruns_provider::typed_id::SessionId;
 
 use crate::api::prometheus::names;
 

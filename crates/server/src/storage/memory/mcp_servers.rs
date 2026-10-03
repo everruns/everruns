@@ -9,7 +9,7 @@ use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
 use anyhow::anyhow;
-use everruns_provider::typed_id::McpServerId;
+use everruns_contracts::typed_id::McpServerId;
 use std::collections::HashSet;
 use uuid::Uuid;
 

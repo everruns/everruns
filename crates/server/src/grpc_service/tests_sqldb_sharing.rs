@@ -16,10 +16,10 @@ use super::*;
 /// so nothing looked broken from either side.
 #[tokio::test]
 async fn injected_sqldb_store_replaces_the_services_own() {
-    use everruns_platform::session_sqldb::SessionSqlDbStore;
+    use everruns_contracts::session_sqldb::SessionSqlDbStore;
 
     let mut service = test_worker_service().await;
-    let session_id = everruns_provider::typed_id::SessionId::from_uuid(uuid::Uuid::now_v7());
+    let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid::Uuid::now_v7());
 
     // Stand in for the HTTP app's store: create a database only it knows about.
     let app_store: Arc<dyn SessionSqlDbStore> =

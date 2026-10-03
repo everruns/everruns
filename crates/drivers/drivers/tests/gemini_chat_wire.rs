@@ -18,10 +18,10 @@
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 
 use everruns_drivers::gemini::GeminiChatDriver;
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
-use everruns_provider::{Provider, StaticHeaderAuth};
+use everruns_contracts::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
 use wiremock::matchers::{method, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -423,7 +423,7 @@ async fn tool_results_replay_function_names_and_object_payloads_on_wire() {
     let server = MockServer::start().await;
     mount_sse(&server, "data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":0}}\n\n".into()).await;
     let mut call = Message::text(MessageRole::Assistant, "");
-    call.tool_calls = Some(vec![everruns_provider::tool_types::ToolCall {
+    call.tool_calls = Some(vec![everruns_contracts::tool_types::ToolCall {
         id: "call_17".into(),
         name: "get_weather".into(),
         arguments: serde_json::json!({"city":"Paris"}),

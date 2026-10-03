@@ -1,7 +1,7 @@
 use crate::domains::budgets::BudgetService;
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow};
-use everruns_provider::typed_id::BudgetId;
+use everruns_contracts::typed_id::BudgetId;
 use std::sync::Arc;
 
 #[tokio::test]

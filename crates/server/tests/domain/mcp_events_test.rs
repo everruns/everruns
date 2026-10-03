@@ -141,7 +141,7 @@ async fn subscribe(
 
 fn event(session_id: &str, event_type: &str, data: Value) -> everruns_core::Event {
     everruns_core::Event {
-        id: everruns_provider::typed_id::EventId::new(),
+        id: everruns_contracts::typed_id::EventId::new(),
         event_type: event_type.to_string(),
         ts: chrono::Utc::now(),
         session_id: session_id.parse().expect("session id"),
@@ -157,7 +157,7 @@ fn turn_completed(session_id: &str) -> everruns_core::Event {
     event(
         session_id,
         "turn.completed",
-        json!({ "turn_id": everruns_provider::typed_id::TurnId::new().to_string(), "iterations": 1 }),
+        json!({ "turn_id": everruns_contracts::typed_id::TurnId::new().to_string(), "iterations": 1 }),
     )
 }
 
@@ -386,7 +386,7 @@ async fn questions_approvals_and_failures_are_announced() {
         &session_id,
         "turn.failed",
         json!({
-            "turn_id": everruns_provider::typed_id::TurnId::new().to_string(),
+            "turn_id": everruns_contracts::typed_id::TurnId::new().to_string(),
             "error": "provider said no: sk-secret",
             "error_code": "model_error",
         }),

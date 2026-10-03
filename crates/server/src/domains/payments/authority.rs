@@ -13,12 +13,12 @@ use crate::storage::models::{
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::{AgentId, PaymentAttemptId, SessionId};
 use everruns_core::payment::{
     MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail,
 };
 use everruns_core::tool_execution::PaymentAuthority;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::{AgentId, PaymentAttemptId, SessionId};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -538,7 +538,7 @@ fn subject_candidates(
     session_id: SessionId,
     agent_id: Option<AgentId>,
     agent_public_id: Option<String>,
-    virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+    virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     user_id: Option<uuid::Uuid>,
     endpoint_public_id: Option<String>,
 ) -> Vec<(&'static str, String)> {

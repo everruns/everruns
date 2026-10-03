@@ -17,9 +17,8 @@
 // NOT be called from any org-scoped execution path.
 
 use crate::kernel_imports::{
-    everruns_provider::driver_registry::DriverRegistry,
-    everruns_provider::driver_registry::ServiceKind, everruns_provider::provider::DriverId,
-    everruns_provider::typed_id::ProviderId,
+    contracts::driver_registry::DriverRegistry, contracts::driver_registry::ServiceKind,
+    contracts::provider::DriverId, contracts::typed_id::ProviderId,
 };
 use crate::storage::{EncryptionService, StorageBackend, models::ProviderRow};
 use anyhow::Result;
@@ -132,7 +131,7 @@ pub fn resolve_provider_api_key(
 /// offline.
 pub fn provider_request_options(
     settings: &serde_json::Value,
-) -> everruns_provider::provider::ProviderRequestOptions {
+) -> everruns_contracts::provider::ProviderRequestOptions {
     settings
         .get("request_options")
         .and_then(|value| serde_json::from_value(value.clone()).ok())
@@ -167,7 +166,7 @@ pub struct ResolvedServiceProvider {
     /// Decrypted credentials for the provider connection.
     pub credentials: ResolvedProviderCredentials,
     /// Connection-level request options stored on the provider row.
-    pub request_options: everruns_provider::provider::ProviderRequestOptions,
+    pub request_options: everruns_contracts::provider::ProviderRequestOptions,
 }
 
 /// Exact provider construction state for chat/runtime drivers.
@@ -180,7 +179,7 @@ pub(crate) struct ResolvedRuntimeProviderConfig {
     pub api_key: Option<String>,
     pub base_url: Option<String>,
     /// Connection-level request options stored on the provider row.
-    pub request_options: everruns_provider::provider::ProviderRequestOptions,
+    pub request_options: everruns_contracts::provider::ProviderRequestOptions,
 }
 
 /// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
@@ -1215,7 +1214,7 @@ mod tests {
         db: &StorageBackend,
         encryption: &EncryptionService,
         provider_type: &str,
-    ) -> everruns_provider::typed_id::ProviderId {
+    ) -> everruns_contracts::typed_id::ProviderId {
         use crate::storage::models::CreateProviderRow;
         let encrypted = encryption.encrypt_string("sk-test").unwrap();
         db.create_provider(
@@ -1422,7 +1421,7 @@ mod tests {
     async fn set_service_default(
         db: &StorageBackend,
         service: ServiceKind,
-        provider: everruns_provider::typed_id::ProviderId,
+        provider: everruns_contracts::typed_id::ProviderId,
     ) {
         let mut defaults = crate::storage::models::ServiceProviderDefaults::new();
         defaults.insert(service, provider);
@@ -1442,7 +1441,7 @@ mod tests {
         // The Postgres path stores this map as JSONB; assert ServiceKind keys
         // serialize snake_case and ProviderId values round-trip as strings.
         let mut map = crate::storage::models::ServiceProviderDefaults::new();
-        let pid = everruns_provider::typed_id::ProviderId::new();
+        let pid = everruns_contracts::typed_id::ProviderId::new();
         map.insert(ServiceKind::Realtime, pid);
         let value = serde_json::to_value(&map).unwrap();
         assert_eq!(value, serde_json::json!({ "realtime": pid.to_string() }));
@@ -1501,7 +1500,7 @@ mod tests {
         set_service_default(
             &db,
             ServiceKind::Realtime,
-            everruns_provider::typed_id::ProviderId::new(),
+            everruns_contracts::typed_id::ProviderId::new(),
         )
         .await;
         let resolver = service_resolver(db, Some(encryption));

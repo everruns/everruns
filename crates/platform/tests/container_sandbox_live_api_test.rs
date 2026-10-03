@@ -20,6 +20,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::capabilities::Capability;
 use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
 use everruns_core::tool_context::ToolContext;
@@ -31,8 +33,6 @@ use everruns_platform::container_sandbox::client::{
 use everruns_platform::container_sandbox::state::{
     CONTAINER_SANDBOX_SECRET_PREFIX, SandboxState, container_name, sandbox_labels,
 };
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
 use serde_json::json;
 use tokio::sync::Mutex;
 

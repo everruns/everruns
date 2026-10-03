@@ -11,11 +11,11 @@
 //! Ignored by default (requires network + `ANTHROPIC_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-drivers --features anthropic --test anthropic_parallel_tool_calls_live -- --ignored --nocapture`
 
-use everruns_drivers::anthropic::provider;
-use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
-use everruns_provider::tool_types::{
+use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
+use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
+use everruns_drivers::anthropic::provider;
 
 const LIVE_MODEL: &str = "claude-haiku-4-5-20251001";
 

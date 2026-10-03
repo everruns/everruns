@@ -10,14 +10,14 @@
 //! cargo run -p everruns-host --example in_process_runtime
 //! ```
 
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
 use everruns_core::CapabilityRegistry;
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_llmsim::LlmSimConfig;
 use everruns_llmsim::LlmSimRuntimeExt;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
 use everruns_test_support::TestMathCapability;
 
 #[tokio::main]
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .host_composition(platform)
         .llm_sim_as_default(
             LlmSimConfig::fixed("Let me calculate that.").with_tool_call_sequence(vec![
-                vec![everruns_provider::tool_types::ToolCall {
+                vec![everruns_contracts::tool_types::ToolCall {
                     id: "call_mul_1".into(),
                     name: "multiply".into(),
                     arguments: serde_json::json!({"a": 6, "b": 7}),

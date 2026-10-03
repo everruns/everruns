@@ -34,9 +34,9 @@ use everruns_core::session_task::{
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{session_services::SessionStorageStore, tool_context::ToolContext};
-use everruns_provider::error::Result;
-use everruns_provider::tool_types::ToolHints;
-use everruns_provider::url_validation::validate_safe_url;
+use everruns_contracts::error::Result;
+use everruns_contracts::tool_types::ToolHints;
+use everruns_contracts::url_validation::validate_safe_url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -701,7 +701,7 @@ fn run_key(run_id: &str) -> String {
 #[cfg(test)]
 async fn list_run_ids(
     storage: &dyn SessionStorageStore,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
 ) -> Vec<String> {
     storage
         .list_keys(session_id)
@@ -724,7 +724,7 @@ async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> 
         return Ok(());
     };
     let serialized = serde_json::to_string(record).map_err(|e| {
-        everruns_provider::error::AgentLoopError::store(format!(
+        everruns_contracts::error::AgentLoopError::store(format!(
             "failed to serialize agent run: {e}"
         ))
     })?;
@@ -1436,7 +1436,7 @@ impl SpawnAgentTool {
 impl Tool for SpawnAgentTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1782,10 +1782,10 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let record = load_run_for_task(context, task)
             .await
-            .map_err(everruns_provider::error::AgentLoopError::tool)?;
+            .map_err(everruns_contracts::error::AgentLoopError::tool)?;
         let context = context
             .clone()
             .with_network_access(reattach_network_access(&record, context));
@@ -1799,14 +1799,14 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         // Missing remote_task_id means we never sent to the remote agent —
         // there is nothing to poll; caller will fail this as orphaned.
         if record.remote_task_id.is_none() {
-            return Err(everruns_provider::error::AgentLoopError::tool(format!(
+            return Err(everruns_contracts::error::AgentLoopError::tool(format!(
                 "external_agent task {} has no remote_task_id; cannot re-attach",
                 task.id
             )));
         }
 
         let agent =
-            agent_snapshot(&record).map_err(everruns_provider::error::AgentLoopError::tool)?;
+            agent_snapshot(&record).map_err(everruns_contracts::error::AgentLoopError::tool)?;
 
         // Resume the background poll loop. Use the NEW attempt (bumped by the
         // reaper) for heartbeating so the superseded executor's stale writes
@@ -1830,12 +1830,12 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         task: &SessionTask,
         message: &TaskMessage,
         context: &ToolContext,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(everruns_provider::error::AgentLoopError::tool)?;
+            .map_err(everruns_contracts::error::AgentLoopError::tool)?;
         let agent =
-            agent_snapshot(&record).map_err(everruns_provider::error::AgentLoopError::tool)?;
+            agent_snapshot(&record).map_err(everruns_contracts::error::AgentLoopError::tool)?;
         let text = task_message_text(&message.content);
         let remote_task_id = record.remote_task_id.clone();
         let remote_context_id = record.remote_context_id.clone();
@@ -1850,17 +1850,17 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             remote_context_id,
         )
         .await
-        .map_err(everruns_provider::error::AgentLoopError::tool)
+        .map_err(everruns_contracts::error::AgentLoopError::tool)
     }
 
     async fn cancel(
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(everruns_provider::error::AgentLoopError::tool)?;
+            .map_err(everruns_contracts::error::AgentLoopError::tool)?;
         if record.status.is_terminal() {
             return Ok(());
         }
@@ -1871,10 +1871,10 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             return Ok(());
         };
         let agent =
-            agent_snapshot(&record).map_err(everruns_provider::error::AgentLoopError::tool)?;
+            agent_snapshot(&record).map_err(everruns_contracts::error::AgentLoopError::tool)?;
         let client = build_client(&agent, context)
             .await
-            .map_err(everruns_provider::error::AgentLoopError::tool)?;
+            .map_err(everruns_contracts::error::AgentLoopError::tool)?;
         let remote = client
             .cancel_task(&CancelTaskRequest {
                 id: remote_task_id,
@@ -1883,7 +1883,7 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             })
             .await
             .map_err(|e| {
-                everruns_provider::error::AgentLoopError::tool(format!(
+                everruns_contracts::error::AgentLoopError::tool(format!(
                     "A2A cancel_task failed: {e}"
                 ))
             })?;
@@ -1896,10 +1896,10 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(everruns_provider::error::AgentLoopError::tool)?;
+            .map_err(everruns_contracts::error::AgentLoopError::tool)?;
         if record.status.is_terminal() {
             return Ok(());
         }
@@ -1907,10 +1907,10 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             return Ok(());
         };
         let agent =
-            agent_snapshot(&record).map_err(everruns_provider::error::AgentLoopError::tool)?;
+            agent_snapshot(&record).map_err(everruns_contracts::error::AgentLoopError::tool)?;
         let client = build_client(&agent, context)
             .await
-            .map_err(everruns_provider::error::AgentLoopError::tool)?;
+            .map_err(everruns_contracts::error::AgentLoopError::tool)?;
         let remote = client
             .get_task(&GetTaskRequest {
                 id: remote_task_id,
@@ -1919,7 +1919,7 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             })
             .await
             .map_err(|e| {
-                everruns_provider::error::AgentLoopError::tool(format!("A2A get_task failed: {e}"))
+                everruns_contracts::error::AgentLoopError::tool(format!("A2A get_task failed: {e}"))
             })?;
         apply_task(&mut record, &remote);
         if record.status.is_terminal() {

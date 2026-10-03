@@ -22,7 +22,7 @@ publish = false
 
 [dependencies]
 everruns-core.workspace = true
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 
 async-trait.workspace = true
 futures.workspace = true

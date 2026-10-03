@@ -2,16 +2,16 @@
 pub use super::session_turn_claim::*;
 
 use crate::kernel_imports::{
-    everruns_provider::driver_registry::ServiceKind, everruns_provider::typed_id::AgentId,
-    everruns_provider::typed_id::AgentVersionId, everruns_provider::typed_id::EventId,
-    everruns_provider::typed_id::FileId, everruns_provider::typed_id::HarnessId,
-    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
-    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
-    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
-    everruns_provider::typed_id::PrincipalId, everruns_provider::typed_id::ProviderId,
-    everruns_provider::typed_id::ScheduleId, everruns_provider::typed_id::SessionId,
-    everruns_provider::typed_id::SessionParticipantId, everruns_provider::typed_id::SkillId,
-    everruns_provider::typed_id::TriggerId, everruns_provider::typed_id::VirtualUserId,
+    contracts::driver_registry::ServiceKind, contracts::typed_id::AgentId,
+    contracts::typed_id::AgentVersionId, contracts::typed_id::EventId, contracts::typed_id::FileId,
+    contracts::typed_id::HarnessId, contracts::typed_id::ImageId,
+    contracts::typed_id::LeasedResourceId, contracts::typed_id::McpServerId,
+    contracts::typed_id::MessageId, contracts::typed_id::ModelId,
+    contracts::typed_id::NotificationId, contracts::typed_id::PrincipalId,
+    contracts::typed_id::ProviderId, contracts::typed_id::ScheduleId,
+    contracts::typed_id::SessionId, contracts::typed_id::SessionParticipantId,
+    contracts::typed_id::SkillId, contracts::typed_id::TriggerId,
+    contracts::typed_id::VirtualUserId,
 };
 use chrono::{DateTime, Utc};
 use everruns_durable::UpdateField;
@@ -512,11 +512,11 @@ pub struct AgentRow {
     #[sqlx(default)]
     pub virtual_user_id: Option<VirtualUserId>,
     #[sqlx(default)]
-    pub default_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub default_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     #[sqlx(default)]
     pub forked_from_agent_id: Option<AgentId>,
     #[sqlx(default)]
-    pub forked_from_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub forked_from_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     #[sqlx(default)]
     pub root_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
@@ -579,7 +579,7 @@ pub struct AgentRow {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentVersionRow {
-    pub id: everruns_provider::typed_id::AgentVersionId,
+    pub id: everruns_contracts::typed_id::AgentVersionId,
     pub public_id: String,
     pub org_id: i64,
     pub agent_id: AgentId,
@@ -589,8 +589,8 @@ pub struct AgentVersionRow {
     pub semver_patch: i32,
     pub version: String,
     pub is_published: bool,
-    pub parent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
-    pub source_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub parent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
+    pub source_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub created_by_principal_id: Option<PrincipalId>,
     pub change_kind: String,
     pub summary: Option<String>,
@@ -630,7 +630,7 @@ pub struct UpsertAgentMcpSecretBindingRow {
 
 #[derive(Debug, Clone)]
 pub struct CreateAgentVersionRow {
-    pub id: everruns_provider::typed_id::AgentVersionId,
+    pub id: everruns_contracts::typed_id::AgentVersionId,
     pub public_id: String,
     pub org_id: i64,
     pub agent_id: AgentId,
@@ -640,8 +640,8 @@ pub struct CreateAgentVersionRow {
     pub semver_patch: i32,
     pub version: String,
     pub is_published: bool,
-    pub parent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
-    pub source_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub parent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
+    pub source_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub created_by_principal_id: Option<PrincipalId>,
     pub change_kind: String,
     pub summary: Option<String>,
@@ -700,9 +700,9 @@ pub struct UpdateAgent {
     pub default_model_id: Option<ModelId>,
     pub harness_id: Option<HarnessId>,
     pub harness_source: Option<String>,
-    pub default_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub default_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub forked_from_agent_id: Option<AgentId>,
-    pub forked_from_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub forked_from_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub root_agent_id: Option<AgentId>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
@@ -870,7 +870,7 @@ pub struct SessionRow {
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
     #[sqlx(default)]
-    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     #[sqlx(default)]
     pub agent_config_hash: Option<String>,
     #[sqlx(default)]
@@ -1064,7 +1064,7 @@ pub struct SessionParticipantRow {
     pub session_id: SessionId,
     pub kind: String,
     pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub principal_id: PrincipalId,
     pub display_name: Option<String>,
     pub role: String,
@@ -1097,7 +1097,7 @@ pub struct CreateSessionParticipantRow {
     pub session_id: SessionId,
     pub kind: SessionParticipantKind,
     pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub principal_id: PrincipalId,
     pub display_name: Option<String>,
     pub role: SessionParticipantRole,
@@ -1107,7 +1107,7 @@ pub struct CreateSessionParticipantRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSession {
     pub harness_id: Option<HarnessId>,
-    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub agent_config_hash: Option<String>,
     pub title: Option<String>,
     pub goal: Option<String>,
@@ -3678,7 +3678,7 @@ pub struct UnreconciledGeneration {
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct CompactionCheckpointRow {
     pub id: uuid::Uuid,
-    pub session_id: everruns_provider::typed_id::SessionId,
+    pub session_id: everruns_contracts::typed_id::SessionId,
     pub source_sequence: i32,
     pub provider_type: String,
     pub model: String,
@@ -3689,7 +3689,7 @@ pub struct CompactionCheckpointRow {
 #[derive(Debug, Clone)]
 pub struct InstallCompactionCheckpointRow {
     pub id: uuid::Uuid,
-    pub session_id: everruns_provider::typed_id::SessionId,
+    pub session_id: everruns_contracts::typed_id::SessionId,
     pub source_sequence: i32,
     pub provider_type: String,
     pub model: String,

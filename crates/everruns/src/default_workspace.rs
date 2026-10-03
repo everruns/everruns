@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use everruns_contracts::typed_id::{SessionId, WorkspaceId};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_host::{
     Environment, InMemorySessionFileStore, RealDiskFileStore, Workspace, WorkspaceBackend,
@@ -11,7 +12,6 @@ use everruns_host::{
     WorkspaceError, WorkspaceHeadAccess, WorkspaceHeadDescriptor, WorkspaceHeadId,
     WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
 };
-use everruns_provider::typed_id::{SessionId, WorkspaceId};
 use uuid::Uuid;
 
 pub(crate) struct DefaultWorkspace {

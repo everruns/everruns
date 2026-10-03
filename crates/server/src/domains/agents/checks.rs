@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-use crate::kernel_imports::{AgentCapabilityConfig, everruns_provider::tool_types::ToolDefinition};
+use crate::kernel_imports::{AgentCapabilityConfig, contracts::tool_types::ToolDefinition};
 use regex::Regex;
 use serde::Serialize;
 use utoipa::ToSchema;

@@ -9,6 +9,10 @@
 // This allows a single Worker implementation to work with either backend.
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::{
+    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
+};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
@@ -26,17 +30,13 @@ use everruns_core::{
     session_services::LeasedResourceStore, tool_execution::BudgetChecker,
     tool_execution::PaymentAuthority,
 };
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::{
-    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
-};
 // EVE-877: the stored Agent record moved to `everruns-platform`. WorkerAdapters
 // still transports it between control plane and worker; host/engine only ever
 // see the projected `AgentDefinition` / resolved execution snapshot.
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::tool_types::ToolDefinition;
 use everruns_platform::{Agent, Harness};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::tool_types::ToolDefinition;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -128,8 +128,8 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     async fn get_provider_config(
         &self,
         org_id: i64,
-        provider: &everruns_provider::runtime_provider::ProviderKey,
-    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>>;
+        provider: &everruns_contracts::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>>;
 
     // =========================================================================
     // Image Resolution Operations
@@ -250,7 +250,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
         if options.before_context != 0 || options.after_context != 0 {
-            return Err(everruns_provider::error::AgentLoopError::tool(
+            return Err(everruns_contracts::error::AgentLoopError::tool(
                 "this worker adapter does not support grep context",
             ));
         }
@@ -322,7 +322,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn sqldb_store(
         &self,
         org_id: i64,
-    ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>;
+    ) -> std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>;
 
     fn native_async_store(
         &self,
@@ -350,7 +350,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn slack_action_invoker(
         &self,
         _org_id: i64,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
     ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
         None
     }
@@ -434,7 +434,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn knowledge_index_search(
         &self,
         _org_id: i64,
-    ) -> Option<Arc<dyn everruns_platform::vector_store::KnowledgeIndexSearch>> {
+    ) -> Option<Arc<dyn everruns_contracts::vector_store::KnowledgeIndexSearch>> {
         None
     }
 
@@ -604,7 +604,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_provider::typed_id::SessionId, String)>>;
+    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>>;
 
     /// Session task registry for the reaper to call `update` through.
     /// Must include an event emitter so task.updated events fire on reap.
@@ -674,7 +674,7 @@ impl<A: WorkerAdapters> SessionAdapter<A> {
     /// one rather than inventing a default.
     fn require_org(&self, surface: &str) -> Result<i64> {
         self.org_id.ok_or_else(|| {
-            everruns_provider::error::AgentLoopError::store(format!(
+            everruns_contracts::error::AgentLoopError::store(format!(
                 "{surface} requires an org-scoped session adapter"
             ))
         })
@@ -810,8 +810,8 @@ impl<A: WorkerAdapters> everruns_core::provider_resolution::ProviderStore for Or
 
     async fn get_provider_config(
         &self,
-        provider: &everruns_provider::runtime_provider::ProviderKey,
-    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
+        provider: &everruns_contracts::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         self.adapters
             .get_provider_config(self.org_id, provider)
             .await

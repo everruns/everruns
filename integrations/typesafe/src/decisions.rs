@@ -15,11 +15,11 @@ use crate::client::{
     Answer, Evaluation, Question, RetryPolicy, TypeSafeAIClient, question::DEFAULT_MODEL,
 };
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_core::{
     DecisionAnswer, DecisionDriver, DecisionDriverCapabilities, DecisionOutcome, DecisionQuestion,
     DecisionRequest, DecisionUsage, DecisionsService, NativePrimitives,
 };
-use everruns_provider::error::{AgentLoopError, Result};
 
 /// Environment variable used by the deployment-owned judgment client.
 ///

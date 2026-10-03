@@ -1,7 +1,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use crate::kernel_imports::{
-    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
+    contracts::typed_id::SessionId, contracts::typed_id::SessionParticipantId,
 };
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use anyhow::{Result, bail};

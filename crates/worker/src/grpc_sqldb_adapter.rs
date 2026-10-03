@@ -8,14 +8,14 @@
 use crate::grpc_adapters::GrpcAdapter;
 use crate::grpc_adapters::{proto_value_to_json, uuid_to_proto};
 use async_trait::async_trait;
+use everruns_contracts::typed_id::SessionId;
 use everruns_internal_protocol::proto;
-use everruns_provider::typed_id::SessionId;
 
-use everruns_platform::session_sqldb::{
+use everruns_contracts::session_sqldb::{
     ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
     SqlQueryResult, TableSchema,
 };
-/// Alias std::result::Result to avoid shadowing by everruns_provider::error::Result.
+/// Alias std::result::Result to avoid shadowing by everruns_contracts::error::Result.
 type SqlDbResult<T> = std::result::Result<T, SessionSqlDbError>;
 
 /// Convert a gRPC status to a SessionSqlDbError, preserving error semantics.

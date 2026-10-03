@@ -1,7 +1,7 @@
 // Plugin domain types — API DTOs for marketplaces and installed plugins.
 
 use crate::kernel_imports::{
-    everruns_provider::typed_id::PluginInstallId, everruns_provider::typed_id::PluginMarketplaceId,
+    contracts::typed_id::PluginInstallId, contracts::typed_id::PluginMarketplaceId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

@@ -3,9 +3,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
-use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::VirtualUserId,
-};
+use crate::kernel_imports::{contracts::typed_id::AgentId, contracts::typed_id::VirtualUserId};
 use anyhow::Result;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -649,7 +647,7 @@ impl InMemoryDatabase {
     pub async fn get_agent_version(
         &self,
         org_id: i64,
-        id: everruns_provider::typed_id::AgentVersionId,
+        id: everruns_contracts::typed_id::AgentVersionId,
     ) -> Result<Option<AgentVersionRow>> {
         Ok(self
             .agent_versions

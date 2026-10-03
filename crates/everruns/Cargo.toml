@@ -60,7 +60,7 @@ macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # adapters here. It shares serde/schemars with `macros` but remains
 # independently gateable so the bare facade still compiles with
 # `--no-default-features`.
-capabilities = ["everruns-capability/definition", "dep:schemars", "dep:serde"]
+capabilities = ["everruns-contracts/definition", "dep:schemars", "dep:serde"]
 # Curated typed values plus the backend-neutral implementation bundle. Kept
 # optional so `default-features = false` Framework consumers compile no built-in
 # implementation package.
@@ -146,10 +146,9 @@ braintrust = ["everruns-host/braintrust"]
 # `CapabilitySpec`/`IntoCapability`, and (behind `capabilities`) the
 # code-defined authoring surface. The facade re-exports this contract as its
 # application capability API.
-everruns-capability.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 everruns-builtins = { workspace = true, optional = true }
 everruns-core.workspace = true
-everruns-provider.workspace = true
 everruns-host.workspace = true
 # Production-safe deterministic in-process simulator backing
 # `Model::simulated`; no dependency on testing/demo helpers.

@@ -1,14 +1,14 @@
 //! Adapter from hosted platform services to the neutral execution-host seams.
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::tool_types::ToolDefinition;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::execution_loading::SessionStore;
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::tools::{Tool, ToolRegistry};
 use everruns_host::HostToolAugmentor;
-use everruns_provider::error::Result;
-use everruns_provider::tool_types::ToolDefinition;
-use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 
 use crate::PlatformStore;

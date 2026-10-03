@@ -12,12 +12,12 @@
 use everruns_host::HostComposition;
 use std::sync::Arc;
 
+use everruns_contracts::error::Result;
+use everruns_contracts::model_spec::ModelSpec;
 use everruns_host::{
     InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory,
     SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
-use everruns_provider::error::Result;
-use everruns_provider::model_spec::ModelSpec;
 
 use super::backends::LocalBackends;
 use super::profile::LocalProfile;
@@ -85,7 +85,7 @@ impl LocalRuntimeBuilder {
     /// not part of the production dependency tree.
     pub fn provider_with_default_model(
         mut self,
-        provider: everruns_provider::runtime_provider::Provider,
+        provider: everruns_contracts::runtime_provider::Provider,
         model_id: impl Into<String>,
     ) -> Self {
         self.inner = self.inner.provider_with_default_model(provider, model_id);
@@ -138,7 +138,7 @@ impl LocalRuntimeBuilder {
     pub async fn build(self) -> Result<(InProcessRuntime, LocalBackends)> {
         self.profile
             .ensure_dirs()
-            .map_err(|e| everruns_provider::error::AgentLoopError::config(e.to_string()))?;
+            .map_err(|e| everruns_contracts::error::AgentLoopError::config(e.to_string()))?;
 
         let local = LocalBackends::new(
             self.profile.clone(),
@@ -159,7 +159,7 @@ impl LocalRuntimeBuilder {
                 });
                 HostComposition::builder()
                     .capability_registry(local_capability_registry())
-                    .driver_registry(everruns_provider::DriverRegistry::new())
+                    .driver_registry(everruns_contracts::DriverRegistry::new())
                     .egress_service(everruns_host::runtime_egress_service())
                     .session_file_system_factory(factory)
                     .build()

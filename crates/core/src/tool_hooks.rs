@@ -2,7 +2,7 @@
 
 use crate::tool_context::ToolContext;
 use async_trait::async_trait;
-use everruns_provider::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 /// Decision returned by a [`PreToolUseHook`] before a tool is dispatched.
 #[derive(Debug, Clone)]

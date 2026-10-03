@@ -6,6 +6,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+use everruns_contracts::driver_registry::{
+    ChatDriver, DriverRegistry, LlmCallConfig, Message, MessageRole, ToolSearchConfig,
+};
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::runtime_provider::ProviderEndpoint;
+use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::user_facing_error::UserFacingErrorContext;
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::command_host::{
     CommandHost, CommandTurnContext, SessionCompletion, SessionCompletionError,
@@ -21,13 +28,6 @@ use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::provider_resolution::ProviderStore;
 use everruns_core::runtime_context::{AssembledTurnContext, ResolvedModelExecution};
 use everruns_core::session_files::SessionFileSystem;
-use everruns_provider::driver_registry::{
-    ChatDriver, DriverRegistry, LlmCallConfig, Message, MessageRole, ToolSearchConfig,
-};
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::runtime_provider::ProviderEndpoint;
-use everruns_provider::typed_id::SessionId;
-use everruns_provider::user_facing_error::UserFacingErrorContext;
 
 use crate::runtime_context::{inspect_turn_context_for_session, resolve_model_execution};
 

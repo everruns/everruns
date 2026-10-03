@@ -7,13 +7,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_contracts::typed_id::WorkspaceId;
 use everruns_host::{
     RealDiskFileStore, WorkspaceBackend, WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint,
     WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHeadAccess,
     WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
     WorkspaceHeadStatus,
 };
-use everruns_provider::typed_id::WorkspaceId;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 use uuid::Uuid;
@@ -459,9 +459,9 @@ fn io_error(error: impl std::fmt::Display) -> WorkspaceError {
 mod tests {
     use std::process::Command as StdCommand;
 
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::session_files::SessionFileSystem;
     use everruns_host::{Workspace, WorkspaceError, WorkspaceHeadAccess};
-    use everruns_provider::typed_id::SessionId;
 
     use super::*;
 

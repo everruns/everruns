@@ -63,7 +63,7 @@ vendor's hosted variant.
 
 The capability contributes a provider-neutral driver option,
 `everruns/computer_use` with the display size
-([`crates/provider/src/native_computer.rs`](../../crates/provider/src/native_computer.rs)),
+([`crates/contracts/src/native_computer.rs`](../../crates/contracts/src/native_computer.rs)),
 unless `native_tools: false`. A driver swaps the `computer` function tool for
 its native tool only when the option is set, the call offers `computer`, and
 the model has the native tool; every other driver ignores the option and the
@@ -78,7 +78,7 @@ are the same on every path.
   as one. Provider safety checks travel in the arguments, gate the call, and
   are acknowledged on replay only when the call ran. Wire details the GA docs
   do not pin down are isolated in
-  [`crates/provider/src/openai_computer.rs`](../../crates/provider/src/openai_computer.rs).
+  [`crates/contracts/src/openai_computer.rs`](../../crates/contracts/src/openai_computer.rs).
 - **Anthropic** (`computer_toolset_20260801`, the models in
   `anthropic_has_computer_toolset`): member calls (`left_click`, `type`, ...)
   carry `toolset_name: "computer"` and become `computer` calls with the member

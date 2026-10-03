@@ -11,17 +11,17 @@ use async_trait::async_trait;
 use chrono::TimeZone;
 use serde::Deserialize;
 
-use everruns_provider::OpenAIProtocolChatDriver;
-use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
-use everruns_provider::driver_helpers::fetch_models;
-use everruns_provider::driver_registry::{
+use everruns_contracts::OpenAIProtocolChatDriver;
+use everruns_contracts::credential_schema::{CredentialFormSchema, FormField};
+use everruns_contracts::driver_helpers::fetch_models;
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmResponse, LlmResponseStream, Message,
 };
-use everruns_provider::error::Result;
-use everruns_provider::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
-use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
-use everruns_provider::{BearerAuth, Provider, ProviderEndpoint};
+use everruns_contracts::error::Result;
+use everruns_contracts::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
+use everruns_contracts::openai_protocol::{models_url_for_api_url, url_host_eq};
+use everruns_contracts::{BearerAuth, Provider, ProviderEndpoint};
 
 /// Fireworks AI serverless inference endpoint (OpenAI-compatible Chat
 /// Completions). The chat URL is the normalized `…/chat/completions` form.
@@ -30,7 +30,7 @@ pub const FIREWORKS_DEFAULT_API_URL: &str =
 
 /// Ready-to-use Fireworks provider assembly.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> Provider {
     Provider::new(id, FireworksChatDriver::new())
@@ -105,7 +105,7 @@ impl ChatDriver for FireworksChatDriver {
 
     async fn chat_completion_non_streaming(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
@@ -338,12 +338,12 @@ fn fireworks_credential_schema() -> CredentialFormSchema {
 /// # Example
 ///
 /// ```
-/// use everruns_provider::DriverRegistry;
+/// use everruns_contracts::DriverRegistry;
 /// use everruns_drivers::fireworks::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
-/// assert!(registry.has_driver(&everruns_provider::DriverId::Fireworks));
+/// assert!(registry.has_driver(&everruns_contracts::DriverId::Fireworks));
 /// ```
 /// This driver's descriptor: identity, services, and the credential schema
 /// that declares its own environment variables.
@@ -376,12 +376,12 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for FireworksChatDriver {
@@ -393,7 +393,7 @@ impl Default for FireworksChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{MessageRole, ProviderConfig, ServiceKind};
+    use everruns_contracts::driver_registry::{MessageRole, ProviderConfig, ServiceKind};
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -477,13 +477,13 @@ mod tests {
             .unwrap_err();
         assert_eq!(
             error.llm_error_kind(),
-            Some(everruns_provider::error::LlmErrorKind::Authentication)
+            Some(everruns_contracts::error::LlmErrorKind::Authentication)
         );
     }
 
     #[tokio::test]
     async fn discovery_host_gate_rejects_lookalikes_before_authentication() {
-        use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+        use everruns_contracts::runtime_provider::{ProviderAuth, ProviderAuthRequest};
         struct ForbiddenAuth;
         #[async_trait]
         impl ProviderAuth for ForbiddenAuth {

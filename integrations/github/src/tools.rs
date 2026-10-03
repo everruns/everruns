@@ -1,12 +1,12 @@
 //! Private tools for the GitHub Scout blueprint.
 
 use async_trait::async_trait;
+use everruns_contracts::tool_types::ToolHints;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 use tracing::{debug, error};
 
@@ -483,15 +483,15 @@ impl Tool for SearchGitHubIssuesTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::error::Result;
+    use everruns_contracts::typed_id::HarnessId;
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::{ExecutionSession, SessionExecutionState};
     use everruns_core::{
         connection_services::UserConnectionResolver, execution_loading::SessionStore,
         session_services::KeyInfo, session_services::SecretInfo,
         session_services::SessionStorageStore,
     };
-    use everruns_provider::error::Result;
-    use everruns_provider::typed_id::HarnessId;
-    use everruns_provider::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -624,7 +624,7 @@ mod tests {
     ) -> ExecutionSession {
         ExecutionSession {
             id: session_id,
-            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
+            workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),
             harness_id: HarnessId::new(),
             agent_id: None,

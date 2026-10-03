@@ -357,8 +357,8 @@ mod tests {
 
     mod durable {
         use super::*;
+        use everruns_contracts::error::Result as StoreResult;
         use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
-        use everruns_provider::error::Result as StoreResult;
 
         /// Session storage shared by every "process" in a test, the way the
         /// database is shared by every worker.
@@ -386,7 +386,7 @@ mod tests {
             }
             fn check(&self) -> StoreResult<()> {
                 if self.fail {
-                    Err(everruns_provider::error::AgentLoopError::Internal(
+                    Err(everruns_contracts::error::AgentLoopError::Internal(
                         anyhow::anyhow!("storage down"),
                     ))
                 } else {

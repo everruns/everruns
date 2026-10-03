@@ -873,10 +873,11 @@ async fn continued_session(
     state: &EndpointA2aState,
     auth: &AuthorizedA2a,
     message: &ParsedMessage,
-) -> Result<Option<everruns_provider::typed_id::SessionId>, RpcRejection> {
+) -> Result<Option<everruns_contracts::typed_id::SessionId>, RpcRejection> {
     const NOT_FOUND: RpcRejection = RpcRejection(-32001, "Task not found");
     let bound = |raw: Option<&str>| {
-        let parsed = raw.and_then(|raw| raw.parse::<everruns_provider::typed_id::SessionId>().ok());
+        let parsed =
+            raw.and_then(|raw| raw.parse::<everruns_contracts::typed_id::SessionId>().ok());
         async move {
             let session_id = parsed?;
             match state.db.get_session(auth.org_id, session_id).await {
@@ -904,12 +905,12 @@ async fn continued_session(
 /// computation.
 fn task_id_from_params(
     params: &Value,
-) -> Result<everruns_provider::typed_id::SessionId, &'static str> {
+) -> Result<everruns_contracts::typed_id::SessionId, &'static str> {
     let raw = params
         .get("id")
         .and_then(Value::as_str)
         .ok_or("Invalid params: missing required `id`")?;
-    raw.parse::<everruns_provider::typed_id::SessionId>()
+    raw.parse::<everruns_contracts::typed_id::SessionId>()
         .map_err(|_| "Invalid params: `id` is not a known task id")
 }
 
@@ -1009,7 +1010,7 @@ async fn handle_tasks_cancel(
 }
 
 fn build_task_json(
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     state_label: &str,
     error_message: Option<&str>,
 ) -> Value {
@@ -1035,18 +1036,18 @@ fn build_task_json(
 /// The current task state, from the session's latest turn.
 async fn derive_task_state_from_events(
     db: &Arc<StorageBackend>,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
 ) -> anyhow::Result<&'static str> {
     Ok(task_view::read_latest_turn(db, session_id).await?.state)
 }
 
 async fn cancel_a2a_session_turn(
     state: &EndpointA2aState,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
 ) -> anyhow::Result<()> {
+    use everruns_contracts::typed_id::{MessageId, TurnId};
     use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
     use everruns_core::message::RuntimeMessage;
-    use everruns_provider::typed_id::{MessageId, TurnId};
 
     // Best-effort cancel of the active workflow run. Errors are logged but
     // not surfaced — the turn-cancelled event is what tasks/get keys off.

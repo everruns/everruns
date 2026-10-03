@@ -6,7 +6,7 @@
 pub use everruns_core::CapabilityInfo;
 
 use crate::kernel_imports::{
-    DeclarativeCapabilityDefinition, everruns_provider::typed_id::DeclarativeCapabilityId,
+    DeclarativeCapabilityDefinition, contracts::typed_id::DeclarativeCapabilityId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

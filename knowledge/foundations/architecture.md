@@ -531,7 +531,7 @@ a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
 - **Better caching**: 40-80% better cache utilization vs Chat Completions API
 - **Provider-agnostic**: Events and responses follow a standardized format
 
-**Driver Selection**: `OpenAIChatDriver` (Responses API, recommended) or `OpenAICompletionsChatDriver` (Chat Completions). See `crates/drivers/drivers/src/openai/driver.rs` and the protocol implementations in `crates/provider/src/`.
+**Driver Selection**: `OpenAIChatDriver` (Responses API, recommended) or `OpenAICompletionsChatDriver` (Chat Completions). See `crates/drivers/drivers/src/openai/driver.rs` and the protocol implementations in `crates/contracts/src/`.
 
 ### LlmSim Driver (Testing)
 

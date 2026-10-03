@@ -6,7 +6,11 @@
 use crate::SessionMutator;
 use crate::turn_tool_context::{RuntimeToolCapabilityContext, runtime_tool_context_services};
 use async_trait::async_trait;
-use everruns_capability::CapabilityRef;
+use everruns_contracts::CapabilityRef;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::tool_types::ToolDefinition;
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId, TurnId};
+use everruns_contracts::user_facing_error::{ErrorDisclosure, UserFacingError};
 use everruns_core::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
@@ -38,10 +42,6 @@ use everruns_engine::{
     ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
 };
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::tool_types::ToolDefinition;
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId, TurnId};
-use everruns_provider::user_facing_error::{ErrorDisclosure, UserFacingError};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -120,7 +120,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         org_id: i64,
         session_id: SessionId,
         status: SessionExecutionState,
-    ) -> everruns_provider::error::Result<()>;
+    ) -> everruns_contracts::error::Result<()>;
 
     /// Load and resolve the turn's execution inputs.
     ///
@@ -133,14 +133,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> everruns_provider::error::Result<ResolvedTurnInputs>;
+    ) -> everruns_contracts::error::Result<ResolvedTurnInputs>;
 
     async fn load_resolved_turn_for_execution(
         &self,
         org_id: i64,
         session_id: SessionId,
         _input_message_id: MessageId,
-    ) -> everruns_provider::error::Result<ResolvedTurnInputs> {
+    ) -> everruns_contracts::error::Result<ResolvedTurnInputs> {
         self.load_resolved_turn(org_id, session_id).await
     }
 
@@ -337,7 +337,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     /// Bounded automatic-recovery policy for provider failures.
     /// Default: `None` (use the provider policy defaults).
-    fn provider_retry_config(&self) -> Option<everruns_provider::llm_retry::LlmRetryConfig> {
+    fn provider_retry_config(&self) -> Option<everruns_contracts::llm_retry::LlmRetryConfig> {
         None
     }
 
@@ -362,7 +362,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         _session_id: SessionId,
         _agent_id: Option<AgentId>,
         _input_message_id: MessageId,
-    ) -> Option<Arc<dyn everruns_provider::hosted_mcp::HostedMcpResolver>> {
+    ) -> Option<Arc<dyn everruns_contracts::hosted_mcp::HostedMcpResolver>> {
         None
     }
 }
@@ -394,7 +394,7 @@ struct RuntimeExecutionCapabilities {
 }
 
 fn subagent_nesting_policy_from_configs(
-    resolved_capability_configs: &[everruns_capability::CapabilityRef],
+    resolved_capability_configs: &[everruns_contracts::CapabilityRef],
 ) -> everruns_core::delegation_services::SubagentNestingPolicy {
     let subagents_config = resolved_capability_configs
         .iter()
@@ -450,7 +450,7 @@ fn subagent_nesting_policy_from_configs(
 /// `finalize_hook_specs` semantics: `{capability_id}:` namespace stamping,
 /// stable default ids, and `disabled_contributions` muting (TM-HOOK-004).
 fn finalize_specs_from_configs(
-    resolved_capability_configs: &[everruns_capability::CapabilityRef],
+    resolved_capability_configs: &[everruns_contracts::CapabilityRef],
     capability_registry: &CapabilityRegistry,
     tool_augmentor: Option<&dyn crate::HostToolAugmentor>,
 ) -> Vec<everruns_core::user_hook_types::UserHookSpec> {
@@ -485,7 +485,7 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
     session_id: SessionId,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
-) -> everruns_provider::error::Result<(
+) -> everruns_contracts::error::Result<(
     Vec<everruns_core::user_hook_types::UserHookSpec>,
     Arc<dyn everruns_core::hook_executor::BashHookDispatcher>,
 )> {
@@ -494,12 +494,12 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
         .harness_store(org_id)
         .get_harness(harness_id)
         .await?
-        .ok_or_else(|| everruns_provider::error::AgentLoopError::harness_not_found(harness_id))?;
+        .ok_or_else(|| everruns_contracts::error::AgentLoopError::harness_not_found(harness_id))?;
     let session = adapter
         .session_store(org_id)
         .get_session(session_id)
         .await?
-        .ok_or_else(|| everruns_provider::error::AgentLoopError::session_not_found(session_id))?;
+        .ok_or_else(|| everruns_contracts::error::AgentLoopError::session_not_found(session_id))?;
     let agent = match agent_id {
         Some(agent_id) => adapter.agent_store(org_id).get_agent(agent_id).await?,
         None => None,
@@ -544,13 +544,13 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         &self,
         status: SessionExecutionState,
         _action: &'static str,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.adapter
             .set_session_status(self.org_id, self.session_id, status)
             .await
     }
 
-    async fn emit_event(&self, request: EventRequest) -> everruns_provider::error::Result<()> {
+    async fn emit_event(&self, request: EventRequest) -> everruns_contracts::error::Result<()> {
         self.adapter.event_emitter().emit(request).await.map(|_| ())
     }
 
@@ -558,7 +558,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         &self,
         turn_id: TurnId,
         input_message_id: MessageId,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let input_content = self
             .adapter
             .message_store()
@@ -635,7 +635,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         &self,
         input_message_id: MessageId,
         data: TurnCompletedData,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let turn_id = data.turn_id;
         self.emit_event(EventRequest::new(
             self.session_id,
@@ -651,7 +651,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         iterations: Option<u32>,
         usage: Option<TokenUsage>,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.set_session_status(SessionExecutionState::Idle, "emit_session_idled")
             .await?;
 
@@ -674,7 +674,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         iterations: u32,
         usage: Option<TokenUsage>,
         input_content: Option<String>,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.emit_turn_completed(
             input_message_id,
             TurnCompletedData {
@@ -709,7 +709,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         reason: &str,
         iterations: u32,
         usage: Option<TokenUsage>,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let context = EventContext::turn(turn_id, input_message_id);
 
         self.emit_event(EventRequest::new(
@@ -790,9 +790,9 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         reason: &str,
         user_message: Option<&str>,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let user_error =
-            UserFacingError::new(everruns_provider::user_facing_error::codes::BLOCKED_BY_HOOK);
+            UserFacingError::new(everruns_contracts::user_facing_error::codes::BLOCKED_BY_HOOK);
         let shown = user_message.unwrap_or(reason);
         let mut error_message = RuntimeMessage::assistant(shown);
         let mut metadata = std::collections::HashMap::new();
@@ -816,7 +816,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         error: &str,
         user_error: Option<&UserFacingError>,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.turn_failed_with_disclosure(turn_id, input_message_id, error, user_error, None)
             .await
     }
@@ -831,7 +831,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         error: &str,
         user_error: Option<&UserFacingError>,
         disclosure: Option<ErrorDisclosure>,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.set_session_status(SessionExecutionState::Idle, "turn_failed")
             .await?;
 
@@ -866,7 +866,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         .await
     }
 
-    pub async fn waiting_for_tool_results(&self) -> everruns_provider::error::Result<()> {
+    pub async fn waiting_for_tool_results(&self) -> everruns_contracts::error::Result<()> {
         self.set_session_status(
             SessionExecutionState::WaitingForToolResults,
             "waiting_for_tool_results",
@@ -879,7 +879,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         turn_id: TurnId,
         input_message_id: MessageId,
         blocker: DependencyBlocker,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let user_error = UserFacingError::new(blocker.error_code())
             .with_field(
                 "dependency",
@@ -928,7 +928,7 @@ pub async fn detect_dependency_blocker<A: RuntimeHostAdapter>(
     org_id: i64,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
-) -> everruns_provider::error::Result<Option<DependencyBlocker>> {
+) -> everruns_contracts::error::Result<Option<DependencyBlocker>> {
     let harness_store = adapter.harness_store(org_id);
     let agent_store = adapter.agent_store(org_id);
     if let Some(blocker) = harness_store.get_harness_blocker(harness_id).await? {
@@ -946,7 +946,7 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     input: InputAtomInput,
-) -> everruns_provider::error::Result<InputAtomResult> {
+) -> everruns_contracts::error::Result<InputAtomResult> {
     // The live effort override is turn-scoped. Clear any value left by the
     // previous turn before ReasonAtom can prefer it over this turn's message
     // controls.
@@ -978,7 +978,7 @@ pub(crate) async fn run_user_prompt_submit_for_message<A: RuntimeHostAdapter>(
     org_id: i64,
     input: &ReasonInput,
     message_text: String,
-) -> everruns_provider::error::Result<Option<UserPromptHookResult>> {
+) -> everruns_contracts::error::Result<Option<UserPromptHookResult>> {
     let (specs, dispatcher) = match collect_lifecycle_hook_specs(
         adapter,
         org_id,
@@ -1027,7 +1027,7 @@ async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     input: &ReasonInput,
-) -> everruns_provider::error::Result<Option<UserPromptHookResult>> {
+) -> everruns_contracts::error::Result<Option<UserPromptHookResult>> {
     let message_text = adapter
         .message_store()
         .get(input.context.session_id, input.context.input_message_id)
@@ -1043,7 +1043,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     input: ReasonInput,
-) -> everruns_provider::error::Result<ReasonResult> {
+) -> everruns_contracts::error::Result<ReasonResult> {
     let prompt_message_ids = (input.iteration <= 1)
         .then_some(input.context.input_message_id)
         .into_iter()
@@ -1070,7 +1070,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     org_id: i64,
     input: ReasonInput,
     prompt_message_ids: Vec<MessageId>,
-) -> everruns_provider::error::Result<ReasonResult> {
+) -> everruns_contracts::error::Result<ReasonResult> {
     if let Some(blocker) =
         detect_dependency_blocker(adapter, org_id, input.harness_id, input.agent_id).await?
     {
@@ -1134,7 +1134,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         .get_session(input.context.session_id)
         .await?
         .ok_or_else(|| {
-            everruns_provider::error::AgentLoopError::session_not_found(input.context.session_id)
+            everruns_contracts::error::AgentLoopError::session_not_found(input.context.session_id)
         })?;
     let validation_capabilities = load_execution_capabilities(
         adapter,
@@ -1299,7 +1299,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                 .iter_mut()
                 .find(|message| message.id == message_id)
                 .ok_or_else(|| {
-                    everruns_provider::error::AgentLoopError::config(
+                    everruns_contracts::error::AgentLoopError::config(
                         "user_prompt_submit mutation: input message not found in assembled context",
                     )
                 })?;
@@ -1399,9 +1399,9 @@ fn model_switch(messages: &[RuntimeMessage]) -> Option<(ModelId, ModelId)> {
 pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     input: ActInput,
-) -> everruns_provider::error::Result<ActResult> {
+) -> everruns_contracts::error::Result<ActResult> {
     let org_id = input.org_id.ok_or_else(|| {
-        everruns_provider::error::AgentLoopError::config(
+        everruns_contracts::error::AgentLoopError::config(
             "ActInput.org_id must be set for runtime host execution",
         )
     })?;

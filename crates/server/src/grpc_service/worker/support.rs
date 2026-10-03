@@ -201,8 +201,8 @@ pub(crate) fn command_schema_hash(
 
 // Helper functions for status conversion
 
-pub(crate) fn payment_error_to_status(error: everruns_provider::error::AgentLoopError) -> Status {
-    use everruns_provider::error::AgentLoopError;
+pub(crate) fn payment_error_to_status(error: everruns_contracts::error::AgentLoopError) -> Status {
+    use everruns_contracts::error::AgentLoopError;
 
     match error {
         AgentLoopError::Configuration(message) | AgentLoopError::ToolExecution(message) => {

@@ -27,7 +27,7 @@ use everruns_builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
     AskUserResult, AskUserStatus, session_secret_ref,
 };
-use everruns_provider::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
+use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 
 /// How far back to look for the question set being answered. The card is emitted
 /// by the act that just paused, so it is within the last handful of events.
@@ -337,7 +337,7 @@ pub struct QuestionResolver<'a> {
 pub async fn resolve_question_answers(
     state: &QuestionResolver<'_>,
     caller: &everruns_core::Caller,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     tool_call_id: Option<&str>,
     status: AskUserStatus,
     submitted: &[AskUserAnswer],
@@ -357,7 +357,7 @@ pub async fn resolve_question_answers(
 pub(crate) async fn resolve_question_answers_with_source(
     state: &QuestionResolver<'_>,
     caller: &everruns_core::Caller,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     tool_call_id: Option<&str>,
     status: AskUserStatus,
     answered_by: AskUserAnsweredBy,
@@ -440,8 +440,8 @@ pub(crate) async fn resolve_question_answers_with_source(
 
     let result = build_result_with_source(status, answered_by, answers);
 
-    let turn_id = everruns_provider::typed_id::TurnId::from_uuid(session_id.uuid());
-    let event_message_id = everruns_provider::typed_id::MessageId::from_uuid(session_id.uuid());
+    let turn_id = everruns_contracts::typed_id::TurnId::from_uuid(session_id.uuid());
+    let event_message_id = everruns_contracts::typed_id::MessageId::from_uuid(session_id.uuid());
     let payload = serde_json::to_value(&result).unwrap_or_default();
 
     // The tool result alone. `ask_user` is called by the model, so the
@@ -605,7 +605,7 @@ pub(crate) fn form_elicitation_resolution(
 /// Controls from the most recent user message in this session, if any.
 async fn latest_user_controls(
     db: &std::sync::Arc<crate::storage::StorageBackend>,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
 ) -> Option<everruns_core::message::Controls> {
     let events = db
         .list_events(
@@ -742,7 +742,7 @@ pub async fn submit_question_answers(
     axum::extract::Path(session_id): axum::extract::Path<String>,
     axum::Json(req): axum::Json<QuestionAnswersRequest>,
 ) -> super::common::ApiResult<QuestionAnswersResponse> {
-    let session_id: everruns_provider::typed_id::SessionId =
+    let session_id: everruns_contracts::typed_id::SessionId =
         session_id.parse().map_err(|error| {
             super::common::ErrorResponse::new(format!("Invalid session ID: {error}"))
                 .into_response(axum::http::StatusCode::BAD_REQUEST)
@@ -822,8 +822,8 @@ mod tests {
     ) -> crate::storage::models::EventRow {
         let now = chrono::Utc::now();
         crate::storage::models::EventRow {
-            id: everruns_provider::typed_id::EventId::new(),
-            session_id: everruns_provider::typed_id::SessionId::new(),
+            id: everruns_contracts::typed_id::EventId::new(),
+            session_id: everruns_contracts::typed_id::SessionId::new(),
             sequence: 1,
             event_type: "tool.call_requested".to_string(),
             ts: now,

@@ -23,7 +23,7 @@ pub type MetaChatDriver = everruns_drivers::meta::MetaChatDriver;
 #[deprecated(
     note = "moved to everruns_drivers::meta::register_driver; everruns-meta is no longer updated"
 )]
-pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+pub fn register_driver(registry: &mut everruns_contracts::driver_registry::DriverRegistry) {
     everruns_drivers::meta::register_driver(registry);
 }
 
@@ -31,7 +31,7 @@ pub fn register_driver(registry: &mut everruns_provider::driver_registry::Driver
 #[deprecated(
     note = "moved to everruns_drivers::meta::descriptor; everruns-meta is no longer updated"
 )]
-pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+pub fn descriptor() -> everruns_contracts::driver_registry::DriverDescriptor {
     everruns_drivers::meta::descriptor()
 }
 
@@ -40,8 +40,8 @@ pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
     note = "moved to everruns_drivers::meta::from_env; everruns-meta is no longer updated"
 )]
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
-) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+    id: impl Into<everruns_contracts::ProviderKey>,
+) -> Result<everruns_contracts::Provider, everruns_contracts::credential_provider::EnvCredentialError>
 {
     everruns_drivers::meta::from_env(id)
 }

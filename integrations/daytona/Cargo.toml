@@ -18,10 +18,7 @@ description = "Daytona cloud sandbox integration for Everruns"
 
 [dependencies]
 everruns-core.workspace = true
-everruns-provider.workspace = true
-# Connector catalog (EVE-879): connectors register into the hosted connector
-# plugin system, which lives in the platform crate.
-everruns-platform.workspace = true
+everruns-contracts = { workspace = true, features = ["session-sandbox"] }
 inventory.workspace = true
 
 # HTTP client for Daytona API
@@ -45,6 +42,8 @@ daytona-live-tests = []
 test-util = []
 
 [dev-dependencies]
+# Verify the host reserves provider state from agent-visible secret storage.
+everruns-host.workspace = true
 # Enables `test-util` for this crate's own integration tests.
 everruns-integrations-daytona = { path = ".", features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }

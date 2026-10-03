@@ -32,15 +32,15 @@ fn main() {
 #[cfg(feature = "lua")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use everruns_contracts::driver_registry::DriverRegistry;
+    use everruns_contracts::model_spec::ModelSpec;
+    use everruns_contracts::provider::DriverId;
+    use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
     use everruns_core::CapabilityRegistry;
     use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
     use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
     use everruns_llmsim::LlmSimRuntimeExt;
     use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
-    use everruns_provider::driver_registry::DriverRegistry;
-    use everruns_provider::model_spec::ModelSpec;
-    use everruns_provider::provider::DriverId;
-    use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
     use everruns_test_support::TestMathCapability;
 
     // The math tools the agent will orchestrate through Lua. `tools.multiply` /

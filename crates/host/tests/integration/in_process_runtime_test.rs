@@ -8,6 +8,11 @@ use everruns_core::{
 };
 // Only the bashkit-gated prompt-hook test defines a capability of its own or
 // appends accepted input.
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::runtime_provider::Provider;
+use everruns_contracts::tool_types::ToolCall;
 #[cfg(feature = "bashkit")]
 use everruns_core::{Capability, CapabilityStatus};
 #[cfg(feature = "bashkit")]
@@ -19,11 +24,6 @@ use everruns_host::{
 };
 use everruns_llmsim::LlmSimConfig;
 use everruns_llmsim::LlmSimRuntimeExt;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::runtime_provider::Provider;
-use everruns_provider::tool_types::ToolCall;
 use everruns_test_support::TestMathCapability;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -87,7 +87,7 @@ async fn accepted_input_persisted_after_a_turn_ends_is_prompt_hook_enforced() {
     runtime
         .append_accepted_inputs(
             session_id,
-            everruns_provider::typed_id::TurnId::new(),
+            everruns_contracts::typed_id::TurnId::new(),
             vec![AcceptedTurnInput::new("raw unsafe prompt")],
         )
         .await
@@ -132,14 +132,14 @@ async fn simulator_registration_does_not_change_an_explicit_default_model() {
     assert_eq!(result.response, "selected provider");
 }
 
-fn harness(harness_id: everruns_provider::typed_id::HarnessId) -> everruns_host::SeededHarness {
+fn harness(harness_id: everruns_contracts::typed_id::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("math", "You are a math assistant.")
         .id(harness_id)
         .capability("test_math")
         .build()
 }
 
-fn agent(agent_id: everruns_provider::typed_id::AgentId) -> AgentDefinition {
+fn agent(agent_id: everruns_contracts::typed_id::AgentId) -> AgentDefinition {
     AgentBuilder::new("math-agent", "Use tools when needed.")
         .id(agent_id)
         .display_name("Math Agent")
@@ -148,9 +148,9 @@ fn agent(agent_id: everruns_provider::typed_id::AgentId) -> AgentDefinition {
 }
 
 fn session(
-    session_id: everruns_provider::typed_id::SessionId,
-    harness_id: everruns_provider::typed_id::HarnessId,
-    agent_id: Option<everruns_provider::typed_id::AgentId>,
+    session_id: everruns_contracts::typed_id::SessionId,
+    harness_id: everruns_contracts::typed_id::HarnessId,
+    agent_id: Option<everruns_contracts::typed_id::AgentId>,
 ) -> ExecutionSession {
     let builder = SessionBuilder::new(harness_id)
         .id(session_id)
@@ -173,9 +173,9 @@ impl SessionFileSystemFactory for ContextRealDiskFactory {
     async fn create_session_file_system(
         &self,
         context: SessionFileSystemFactoryContext,
-    ) -> everruns_provider::error::Result<Arc<dyn SessionFileSystem>> {
+    ) -> everruns_contracts::error::Result<Arc<dyn SessionFileSystem>> {
         let root = context.get::<PathBuf>().ok_or_else(|| {
-            everruns_provider::error::AgentLoopError::config("missing real-disk root")
+            everruns_contracts::error::AgentLoopError::config("missing real-disk root")
         })?;
         Ok(Arc::new(RealDiskFileStore::new(root.as_path())?))
     }
@@ -183,9 +183,9 @@ impl SessionFileSystemFactory for ContextRealDiskFactory {
 
 #[test]
 fn per_type_builders_produce_portable_execution_values() {
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(51);
-    let agent_id = everruns_provider::typed_id::AgentId::from_seed(51);
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(51);
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(51);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(51);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(51);
 
     let harness = HarnessBuilder::new("math", "prompt").id(harness_id).build();
     let agent = AgentBuilder::new("math-agent", "prompt")
@@ -379,9 +379,9 @@ async fn query_history_reads_messages_through_in_process_reason_act_path() {
 
 #[tokio::test]
 async fn query_history_reads_seeded_resumed_session_messages() {
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(797);
-    let agent_id = everruns_provider::typed_id::AgentId::from_seed(797);
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(797);
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(797);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(797);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(797);
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(InfinityContextCapability);
     let platform = HostComposition::new(capabilities, DriverRegistry::new());
@@ -489,7 +489,7 @@ async fn single_session_builder_seeds_runnable_runtime() {
 async fn single_session_builder_pins_session_id_when_set() {
     // Embedders that need the id ahead of build (e.g. a JSONL session log
     // whose filename encodes the id) must be able to pin it.
-    let expected = everruns_provider::typed_id::SessionId::from_seed(481);
+    let expected = everruns_contracts::typed_id::SessionId::from_seed(481);
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
         .llm_sim_as_default(LlmSimConfig::fixed("pinned id works"))
@@ -863,7 +863,7 @@ async fn execute_command_dispatches_to_capability_handler() {
             &self,
             request: &ExecuteCommandRequest,
             ctx: &CommandExecutionContext,
-        ) -> everruns_provider::error::Result<CommandResult> {
+        ) -> everruns_contracts::error::Result<CommandResult> {
             let arg = request.arguments.clone().unwrap_or_default();
             self.seen.lock().unwrap().push(arg.clone());
             Ok(CommandResult {
@@ -1010,9 +1010,9 @@ struct StaticTokenResolver {
 impl everruns_core::connection_services::UserConnectionResolver for StaticTokenResolver {
     async fn get_connection_token(
         &self,
-        _session_id: everruns_provider::typed_id::SessionId,
+        _session_id: everruns_contracts::typed_id::SessionId,
         provider: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         Ok((provider == self.provider).then(|| self.token.clone()))
     }
 }
@@ -1171,7 +1171,7 @@ async fn runtime_without_resolver_leaves_connection_resolver_unset() {
 async fn injected_resolver_reaches_tool_context_during_a_turn() {
     let harness_id = "harness_00000000000000000000000000000061".parse().unwrap();
     let agent_id = "agent_00000000000000000000000000000061".parse().unwrap();
-    let session_id: everruns_provider::typed_id::SessionId =
+    let session_id: everruns_contracts::typed_id::SessionId =
         "session_00000000000000000000000000000061".parse().unwrap();
 
     let resolver = Arc::new(StaticTokenResolver {
@@ -1245,7 +1245,7 @@ const MICROSOFT_DOCS_PLUGIN_DIR: &str = concat!(
 /// session whose agent enables `plugin:microsoft-docs`.
 async fn runtime_with_microsoft_docs_plugin() -> (
     everruns_host::InProcessRuntime,
-    everruns_provider::typed_id::SessionId,
+    everruns_contracts::typed_id::SessionId,
 ) {
     use std::path::Path;
 

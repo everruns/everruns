@@ -23,7 +23,7 @@ pub type MaiChatDriver = everruns_drivers::mai::MaiChatDriver;
 #[deprecated(
     note = "moved to everruns_drivers::mai::register_driver; everruns-mai is no longer updated"
 )]
-pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+pub fn register_driver(registry: &mut everruns_contracts::driver_registry::DriverRegistry) {
     everruns_drivers::mai::register_driver(registry);
 }
 
@@ -31,15 +31,15 @@ pub fn register_driver(registry: &mut everruns_provider::driver_registry::Driver
 #[deprecated(
     note = "moved to everruns_drivers::mai::descriptor; everruns-mai is no longer updated"
 )]
-pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+pub fn descriptor() -> everruns_contracts::driver_registry::DriverDescriptor {
     everruns_drivers::mai::descriptor()
 }
 
 /// Moved to [`everruns_drivers::mai::from_env`].
 #[deprecated(note = "moved to everruns_drivers::mai::from_env; everruns-mai is no longer updated")]
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
-) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+    id: impl Into<everruns_contracts::ProviderKey>,
+) -> Result<everruns_contracts::Provider, everruns_contracts::credential_provider::EnvCredentialError>
 {
     everruns_drivers::mai::from_env(id)
 }

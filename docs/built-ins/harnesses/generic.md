@@ -3,7 +3,7 @@ title: Generic Harness
 description: The default harness, bundling core capabilities for general-purpose agent sessions.
 ---
 
-The **Generic** harness is the recommended default for most use cases. It configures 25 capabilities (source: `generic_capabilities()` in `crates/capability/src/presets.rs`). Together they cover file operations, command execution, web access, memory, budgeting, context management, durable tool output, citations, and runtime safeguards.
+The **Generic** harness is the recommended default for most use cases. It configures 25 capabilities (source: `generic_capabilities()` in `crates/contracts/src/capability/presets.rs`). Together they cover file operations, command execution, web access, memory, budgeting, context management, durable tool output, citations, and runtime safeguards.
 
 ## When to Use
 

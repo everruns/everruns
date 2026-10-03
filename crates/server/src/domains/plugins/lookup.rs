@@ -1,6 +1,6 @@
 use super::types::PluginInstallRow;
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
-use crate::kernel_imports::everruns_provider::typed_id::PluginInstallId;
+use crate::kernel_imports::contracts::typed_id::PluginInstallId;
 
 pub(super) fn parse_plugin_public_id(id: &str) -> Result<PluginInstallId, CommandError> {
     id.parse::<PluginInstallId>()

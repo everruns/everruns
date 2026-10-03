@@ -916,7 +916,7 @@ pub(crate) async fn process_slack_message(
 pub(crate) async fn ensure_slack_user_participant(
     state: &SlackState,
     org_id: i64,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     actor: &everruns_core::ExternalActor,
 ) -> anyhow::Result<SessionParticipantRow> {
     let principal = PrincipalService::new(state.db.clone())

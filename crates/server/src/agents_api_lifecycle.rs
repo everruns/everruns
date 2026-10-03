@@ -24,11 +24,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::{DriverId, ProviderConfig};
+use everruns_contracts::runtime_provider::ProviderKey;
 use everruns_host::openai_agents_api::AgentsApiClient;
 use everruns_host::openai_agents_api::backend::official_endpoint;
 use everruns_host::openai_agents_api::lifecycle::{delete_provider_session, deletion_failure_code};
-use everruns_provider::driver_registry::{DriverId, ProviderConfig};
-use everruns_provider::runtime_provider::ProviderKey;
 use sqlx::PgPool;
 use tokio::task::JoinHandle;
 use uuid::Uuid;

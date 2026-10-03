@@ -14,6 +14,7 @@ members = [
     "crates/test-support",
     "crates/platform",
     "crates/provider",
+    "crates/contracts",
     "crates/model-profiles",
     "crates/mcp",
     "crates/llm-tests",
@@ -264,6 +265,7 @@ everruns-host = { path = "crates/host", version = "0.34.2" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.34.2", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.34.2", default-features = false }
 everruns-platform = { path = "crates/platform", version = "0.34.2" }
+everruns-contracts = { path = "crates/contracts", version = "0.34.2", default-features = false }
 everruns-provider = { path = "crates/provider", version = "0.34.2", default-features = false }
 everruns-model-profiles = { path = "crates/model-profiles", version = "0.34.2" }
 everruns-mcp = { path = "crates/mcp", version = "0.34.2" }

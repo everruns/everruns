@@ -5,8 +5,8 @@
 // request DTOs below are the flat shape callers send, which commands normalize.
 
 use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::AgentVersionId;
 use everruns_platform::{AgentTriggerType, AgentVersionPolicy, SessionBinding, TriggerEventFilter};
-use everruns_provider::typed_id::AgentVersionId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;

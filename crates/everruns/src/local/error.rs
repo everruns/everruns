@@ -1,7 +1,7 @@
 // Error type for the local crate. Converts cleanly into the core
-// `AgentLoopError` so trait implementations can return `everruns_provider::error::Result`.
+// `AgentLoopError` so trait implementations can return `everruns_contracts::error::Result`.
 
-use everruns_provider::error::AgentLoopError;
+use everruns_contracts::error::AgentLoopError;
 
 #[derive(Debug, thiserror::Error)]
 /// Failure produced while configuring or operating local persistence.

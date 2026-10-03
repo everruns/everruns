@@ -19,7 +19,7 @@ llm-tests = []
 [dependencies]
 everruns-core = { path = "../core" }
 everruns-engine.workspace = true
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 everruns-builtins = { path = "../builtins" }
 everruns-test-support = { path = "../test-support" }
 everruns-platform = { path = "../platform" }

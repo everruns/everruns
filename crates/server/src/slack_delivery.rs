@@ -13,6 +13,7 @@
 // to support concurrent turns in the same session.
 
 use async_trait::async_trait;
+use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery,
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
@@ -24,7 +25,6 @@ use everruns_core::progress_reporting::{
 };
 use everruns_platform::SlackReplyMode;
 use everruns_platform::exposure::{PublicToolVisibility, public_tool_activity_text};
-use everruns_provider::typed_id::{EventId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
@@ -2356,8 +2356,8 @@ mod tests {
         use super::*;
         use crate::storage::StorageBackend;
         use crate::storage::models::{CreateAppRow, CreateSessionRow, UpdateSession};
-        use everruns_provider::typed_id::PrincipalId;
-        use everruns_provider::typed_id::{AgentId, HarnessId};
+        use everruns_contracts::typed_id::PrincipalId;
+        use everruns_contracts::typed_id::{AgentId, HarnessId};
         use tokio::sync::broadcast;
 
         const ORG_APP_OWNER: i64 = 10;
@@ -2398,7 +2398,7 @@ mod tests {
             org_id: i64,
             app_id: Option<uuid::Uuid>,
             app_public_id: &str,
-        ) -> everruns_provider::typed_id::SessionId {
+        ) -> everruns_contracts::typed_id::SessionId {
             use crate::storage::models::CreateEventRow;
 
             let session = db

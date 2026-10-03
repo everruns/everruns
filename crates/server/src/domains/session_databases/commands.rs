@@ -1,13 +1,13 @@
 use super::queries as q;
 use super::types::{DatabaseInfoResponse, SchemaResponse};
 use crate::domains::common::*;
-use everruns_platform::session_sqldb::SessionSqlDbError;
+use everruns_contracts::session_sqldb::SessionSqlDbError;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 fn sqldb_store(
     ctx: &Ctx,
-) -> Result<&std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>, CommandError>
+) -> Result<&std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>, CommandError>
 {
     ctx.sqldb_store.as_ref().ok_or_else(|| {
         CommandError::internal(anyhow::anyhow!("Session SQL DB store not configured"))

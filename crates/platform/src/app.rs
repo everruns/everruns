@@ -8,11 +8,11 @@ use uuid::Uuid;
 
 pub use crate::agent_version_policy::AgentVersionPolicy;
 use crate::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
-pub use everruns_core::channel::SessionBinding;
-use everruns_core::principal::PrincipalSummary;
-use everruns_provider::typed_id::{
+use everruns_contracts::typed_id::{
     AgentEndpointId, AgentId, AgentVersionId, AppId, HarnessId, PrincipalId, VirtualUserId,
 };
+pub use everruns_core::channel::SessionBinding;
+use everruns_core::principal::PrincipalSummary;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;

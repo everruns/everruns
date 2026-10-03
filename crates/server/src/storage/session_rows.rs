@@ -29,9 +29,8 @@
 //! means nothing to an API caller reading the OpenAPI spec.
 
 use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::HarnessId,
-    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::VirtualUserId,
+    contracts::typed_id::AgentId, contracts::typed_id::HarnessId, contracts::typed_id::ModelId,
+    contracts::typed_id::PrincipalId, contracts::typed_id::VirtualUserId,
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -51,7 +50,7 @@ pub struct CreateSessionRow {
     pub trigger_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub agent_config_hash: Option<String>,
     pub virtual_user_id: Option<VirtualUserId>,
     pub playground_user_id: Option<VirtualUserId>,
@@ -84,9 +83,9 @@ pub struct CreateSessionRow {
     /// Validated blueprint config (JSONB in DB).
     pub blueprint_config: Option<serde_json::Value>,
     /// Parent session ID for governed subagent depth tracking.
-    pub parent_session_id: Option<everruns_provider::typed_id::SessionId>,
+    pub parent_session_id: Option<everruns_contracts::typed_id::SessionId>,
     /// Explicit internal-only budget/delegation root for detached peers.
-    pub budget_root_session_id: Option<everruns_provider::typed_id::SessionId>,
+    pub budget_root_session_id: Option<everruns_contracts::typed_id::SessionId>,
     /// Internal id of an existing workspace to attach this session to. When
     /// `None`, `create_session` auto-creates a default 1:1 workspace whose id
     /// equals the new session id (the equality invariant). When `Some`, the

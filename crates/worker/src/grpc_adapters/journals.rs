@@ -35,7 +35,7 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
     async fn acquire(
         &self,
         lease: everruns_core::native_async_store::NativeAsyncLease,
-    ) -> Result<everruns_provider::native_async::NativeAsyncCheckpoint> {
+    ) -> Result<everruns_contracts::native_async::NativeAsyncCheckpoint> {
         let bytes = self
             .native_async_operation(
                 lease,
@@ -48,7 +48,7 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
     async fn load(
         &self,
         lease: everruns_core::native_async_store::NativeAsyncLease,
-    ) -> Result<everruns_provider::native_async::NativeAsyncCheckpoint> {
+    ) -> Result<everruns_contracts::native_async::NativeAsyncCheckpoint> {
         let bytes = self
             .native_async_operation(
                 lease,
@@ -73,7 +73,7 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
     async fn save(
         &self,
         lease: everruns_core::native_async_store::NativeAsyncLease,
-        checkpoint: &everruns_provider::native_async::NativeAsyncCheckpoint,
+        checkpoint: &everruns_contracts::native_async::NativeAsyncCheckpoint,
     ) -> Result<()> {
         let bytes = serde_json::to_vec(checkpoint)
             .map_err(|error| AgentLoopError::store(error.to_string()))?;

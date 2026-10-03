@@ -17,7 +17,7 @@
 use crate::events::ToolDefinitionSummary;
 use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::tool_types::ToolCall;
-use everruns_provider::reasoning::ReasoningText;
+use everruns_contracts::reasoning::ReasoningText;
 use serde_json::{Value, json};
 
 // ============================================================================
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn captured_reasoning_omits_opaque_artifacts_and_redacted_parts() {
-        use everruns_provider::reasoning::ReasoningContentPart;
+        use everruns_contracts::reasoning::ReasoningContentPart;
         let artifact = || {
             ReasoningContentPart::opaque("provider")
                 .with_signature("PRIVATE-SIGNATURE")
@@ -720,7 +720,7 @@ mod tests {
             ContentPart::Reasoning(artifact().with_text(ReasoningText::Summary {
                 parts: vec!["first".into(), "second".into()],
             })),
-            ContentPart::ProviderOpaque(everruns_provider::ProviderOpaqueContent::new(
+            ContentPart::ProviderOpaque(everruns_contracts::ProviderOpaqueContent::new(
                 "anthropic",
                 json!([{"signature": "PRIVATE-OPAQUE"}]),
             )),

@@ -15,9 +15,9 @@
 //!   and no pull request can be opened.
 
 use async_trait::async_trait;
+use everruns_contracts::tool_types::ToolHints;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 
 use crate::client::GitHubClient;

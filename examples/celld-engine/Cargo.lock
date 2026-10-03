@@ -148,10 +148,9 @@ name = "celld-engine-cell"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "everruns-capability",
+ "everruns-contracts",
  "everruns-core",
  "everruns-engine",
- "everruns-provider",
  "futures",
  "js-sys",
  "serde",
@@ -278,11 +277,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
-name = "everruns-capability"
+name = "everruns-contracts"
 version = "0.34.2"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64",
+ "chrono",
+ "futures",
+ "getrandom 0.3.4",
+ "getrandom 0.4.3",
+ "gloo-timers",
+ "hex",
+ "rand 0.10.3",
+ "regex",
  "serde",
  "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "wasm-bindgen-futures",
+ "web-time",
 ]
 
 [[package]]
@@ -294,8 +312,7 @@ dependencies = [
  "base64",
  "chrono",
  "cron",
- "everruns-capability",
- "everruns-provider",
+ "everruns-contracts",
  "futures",
  "globset",
  "inventory",
@@ -322,9 +339,8 @@ version = "0.34.2"
 dependencies = [
  "async-trait",
  "chrono",
- "everruns-capability",
+ "everruns-contracts",
  "everruns-core",
- "everruns-provider",
  "futures",
  "serde",
  "serde_json",
@@ -333,41 +349,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
- "web-time",
-]
-
-[[package]]
-name = "everruns-model-profiles"
-version = "0.34.2"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "everruns-provider"
-version = "0.34.2"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64",
- "chrono",
- "everruns-model-profiles",
- "futures",
- "getrandom 0.3.4",
- "getrandom 0.4.3",
- "gloo-timers",
- "hex",
- "rand 0.10.3",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "tokio",
- "tracing",
- "url",
- "uuid",
- "wasm-bindgen-futures",
  "web-time",
 ]
 

@@ -4,7 +4,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use everruns_provider::tool_types::ToolCall;
+use everruns_contracts::tool_types::ToolCall;
 use serde_json::{Value, json};
 
 use super::*;

@@ -3,7 +3,7 @@
 use super::super::models::{SessionResourceRow, UpsertSessionResourceRow};
 use super::Database;
 use anyhow::Result;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 
 impl Database {
     pub async fn upsert_session_resource(

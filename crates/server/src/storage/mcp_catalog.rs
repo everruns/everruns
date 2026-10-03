@@ -1,4 +1,4 @@
-use crate::kernel_imports::everruns_provider::typed_id::McpServerId;
+use crate::kernel_imports::contracts::typed_id::McpServerId;
 use chrono::{DateTime, Utc};
 use sqlx::FromRow;
 

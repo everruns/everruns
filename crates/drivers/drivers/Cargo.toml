@@ -50,7 +50,7 @@ fireworks = []
 gemini = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
 mai = ["dep:tokio", "dep:tracing"]
 meta = []
-openai = ["dep:tokio", "dep:tracing", "everruns-provider/responses-websocket"]
+openai = ["dep:tokio", "dep:tracing", "everruns-contracts/responses-websocket"]
 openrouter = []
 vercel = []
 
@@ -93,7 +93,7 @@ aws-credential-types = { version = "1", optional = true }
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off.
-everruns-provider = { version = "0.34.2", path = "../../provider" }
+everruns-contracts = { path = "../../contracts", version = "0.34.2", default-features = false, features = ["http"] }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures the wire; futures drains the

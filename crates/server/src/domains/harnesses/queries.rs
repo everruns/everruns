@@ -5,8 +5,7 @@
 use crate::domains::common::CommandError;
 use crate::errors::ResourceNotFoundError;
 use crate::kernel_imports::{
-    AgentCapabilityConfig, InitialFile, everruns_provider::typed_id::HarnessId,
-    is_declarative_capability,
+    AgentCapabilityConfig, InitialFile, contracts::typed_id::HarnessId, is_declarative_capability,
 };
 use crate::storage::StorageBackend;
 use everruns_platform::{ConversationStarter, Harness, HarnessStatus, merge_harness};
@@ -172,8 +171,8 @@ pub async fn find_unique_name(
 pub async fn validate_model_id(
     db: &StorageBackend,
     org_id: i64,
-    model_id: Option<everruns_provider::typed_id::ModelId>,
-) -> anyhow::Result<Option<everruns_provider::typed_id::ModelId>> {
+    model_id: Option<everruns_contracts::typed_id::ModelId>,
+) -> anyhow::Result<Option<everruns_contracts::typed_id::ModelId>> {
     let Some(model_id) = model_id else {
         return Ok(None);
     };

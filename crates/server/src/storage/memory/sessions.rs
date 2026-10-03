@@ -4,9 +4,8 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::EventId,
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::SessionId,
+    contracts::typed_id::AgentId, contracts::typed_id::EventId, contracts::typed_id::HarnessId,
+    contracts::typed_id::PrincipalId, contracts::typed_id::SessionId,
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};

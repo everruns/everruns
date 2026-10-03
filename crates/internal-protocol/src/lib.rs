@@ -18,7 +18,7 @@ mod json_wire;
 mod rolling_upgrade_tests;
 mod slack_action_wire;
 use chrono::{DateTime, TimeZone, Utc};
-use everruns_provider::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
+use everruns_contracts::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 
 pub mod proto {
     tonic::include_proto!("everruns.internal");
@@ -653,11 +653,11 @@ pub fn proto_message_to_schema(
         phase: value
             .phase
             .as_deref()
-            .and_then(everruns_provider::ExecutionPhase::from_provider_str),
+            .and_then(everruns_contracts::ExecutionPhase::from_provider_str),
         phase_source: value
             .phase_source
             .as_deref()
-            .and_then(everruns_provider::PhaseSource::from_str_opt),
+            .and_then(everruns_contracts::PhaseSource::from_str_opt),
         controls,
         metadata,
         external_actor,

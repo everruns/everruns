@@ -6,7 +6,7 @@
 //! and registers the OpenRouter provider into a [`DriverRegistry`].
 //!
 //! OpenRouter exposes an OpenAI-compatible Responses API, so [`OpenRouterChatDriver`]
-//! wraps `everruns_provider::OpenResponsesProtocolChatDriver` tagged with
+//! wraps `everruns_contracts::OpenResponsesProtocolChatDriver` tagged with
 //! `DriverId::OpenRouter`. Its `/models` endpoint advertises richer metadata
 //! (a `supported_parameters` array) that the crate parses into capability
 //! profiles at discovery time.
@@ -14,7 +14,7 @@
 //! # Registering the Driver
 //!
 //! ```
-//! use everruns_provider::DriverRegistry;
+//! use everruns_contracts::DriverRegistry;
 //! use everruns_drivers::openrouter::register_driver;
 //!
 //! let mut registry = DriverRegistry::new();
@@ -34,4 +34,4 @@ pub use types::{
 };
 
 // Re-export core types for convenience
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};

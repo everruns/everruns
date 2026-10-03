@@ -151,8 +151,8 @@ fn executor(
     )
 }
 
-fn tool_call() -> everruns_provider::tool_types::ToolCall {
-    everruns_provider::tool_types::ToolCall {
+fn tool_call() -> everruns_contracts::tool_types::ToolCall {
+    everruns_contracts::tool_types::ToolCall {
         id: "call_1".to_string(),
         name: "mcp_deploys__release".to_string(),
         arguments: json!({}),
@@ -176,8 +176,9 @@ async fn a_form_pauses_once_and_the_recorded_answer_is_sent_typed() {
     let paused = everruns_core::McpToolInvoker::invoke(&executor, &tool_call())
         .await
         .expect("a pending form is a result, not a failure");
-    let pending = everruns_provider::tool_types::FormElicitationRequired::from_tool_result(&paused)
-        .expect("the call stands down with questions");
+    let pending =
+        everruns_contracts::tool_types::FormElicitationRequired::from_tool_result(&paused)
+            .expect("the call stands down with questions");
     assert_eq!(pending.server, "deploys");
     assert_eq!(pending.tool, "release");
     assert_eq!(pending.retry_tool, "mcp_deploys__release");
@@ -259,7 +260,7 @@ async fn a_recorded_decline_is_sent_as_a_decline() {
         .await
         .unwrap();
     let pending =
-        everruns_provider::tool_types::FormElicitationRequired::from_tool_result(&paused).unwrap();
+        everruns_contracts::tool_types::FormElicitationRequired::from_tool_result(&paused).unwrap();
     answers.records.lock().unwrap().push(StoredFormAnswer::new(
         &pending.server,
         &pending.tool,
@@ -303,7 +304,8 @@ async fn an_answer_to_other_questions_is_not_sent() {
         .unwrap();
 
     assert!(
-        everruns_provider::tool_types::FormElicitationRequired::from_tool_result(&result).is_some(),
+        everruns_contracts::tool_types::FormElicitationRequired::from_tool_result(&result)
+            .is_some(),
         "a stale answer asks again instead of answering"
     );
     assert!(

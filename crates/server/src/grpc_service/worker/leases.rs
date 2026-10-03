@@ -106,7 +106,7 @@ impl WorkerServiceImpl {
         let resources = rows
             .iter()
             .map(crate::storage::leased_resource_row_to_domain)
-            .collect::<everruns_provider::error::Result<Vec<_>>>()
+            .collect::<everruns_contracts::error::Result<Vec<_>>>()
             .map_err(|e| {
                 tracing::error!("Failed to map leased resources: {}", e);
                 Status::internal("Failed to map leased resources")
@@ -132,7 +132,7 @@ impl WorkerServiceImpl {
         let updated = self
             .db
             .mark_leased_resource_released(
-                everruns_provider::typed_id::LeasedResourceId::from_uuid(resource_id),
+                everruns_contracts::typed_id::LeasedResourceId::from_uuid(resource_id),
                 expected_cleanup_started_at,
             )
             .await
@@ -162,7 +162,7 @@ impl WorkerServiceImpl {
         let updated = self
             .db
             .mark_leased_resource_cleanup_failed(
-                everruns_provider::typed_id::LeasedResourceId::from_uuid(resource_id),
+                everruns_contracts::typed_id::LeasedResourceId::from_uuid(resource_id),
                 expected_cleanup_started_at,
                 req.retry_after_seconds as i32,
                 &req.error,

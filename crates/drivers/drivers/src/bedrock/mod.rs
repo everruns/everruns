@@ -22,7 +22,7 @@
 //!
 //! ```
 //! use everruns_drivers::bedrock::{BedrockChatDriver, register_driver};
-//! use everruns_provider::DriverRegistry;
+//! use everruns_contracts::DriverRegistry;
 //!
 //! let mut registry = DriverRegistry::new();
 //! register_driver(&mut registry);
@@ -38,4 +38,4 @@ pub use credential::BedrockCredential;
 pub use driver::provider_from_default_chain;
 pub use driver::{BedrockAuth, BedrockChatDriver, descriptor, from_env, provider, register_driver};
 
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};

@@ -90,10 +90,10 @@ impl EventListener for CompositeEventListener {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::NoopEventListener;
     use everruns_core::events::{EventContext, EventData, InputMessageData};
     use everruns_core::message::RuntimeMessage;
-    use everruns_provider::typed_id::SessionId;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     fn create_test_event() -> Event {

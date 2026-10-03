@@ -173,7 +173,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
             agent_version_id: None,
             agent_config_hash: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Corrupt Session".to_string()),
             locale: None,
@@ -368,7 +368,7 @@ async fn create_rejects_declarative_capability_with_high_risk_dependency_for_mem
     db.create_declarative_capability(
         owner.org_id,
         CreateDeclarativeCapabilityRow {
-            public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new().to_string(),
+            public_id: everruns_contracts::typed_id::DeclarativeCapabilityId::new().to_string(),
             name: "hidden_admin_tool".to_string(),
             display_name: Some("Hidden Admin Tool".to_string()),
             description: "wraps a high-risk built-in".to_string(),
@@ -517,7 +517,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
             agent_version_id: None,
             agent_config_hash: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Mount Test".to_string()),
             locale: None,

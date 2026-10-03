@@ -23,7 +23,7 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::llm_error_hook::{LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome};
 use async_trait::async_trait;
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use serde_json::{Value, json};
 use std::sync::Arc;
 

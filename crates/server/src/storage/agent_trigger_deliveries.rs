@@ -2,7 +2,7 @@
 // (`domains::agent_triggers::events`).
 
 use chrono::{DateTime, Utc};
-use everruns_provider::typed_id::TriggerId;
+use everruns_contracts::typed_id::TriggerId;
 use sqlx::FromRow;
 use uuid::Uuid;
 
