@@ -170,6 +170,15 @@ pub mod names {
     /// Wall-clock duration of every domain Command invocation. Same labels
     /// as `COMMANDS_TOTAL`.
     pub const COMMAND_DURATION: &str = "everruns_command_duration_seconds";
+    /// Input message persisted to `turn.started`: enqueue plus worker pickup.
+    pub const TURN_PICKUP_DURATION: &str = "everruns_turn_pickup_seconds";
+    /// Input message to the first streamed token of the turn's first LLM call.
+    pub const TURN_FIRST_TOKEN_DURATION: &str = "everruns_turn_first_token_seconds";
+    /// Hand-off between durable turn phases (queue wait). Label: phase
+    /// (reason | act), the phase being started.
+    pub const TURN_PHASE_GAP_DURATION: &str = "everruns_turn_phase_gap_seconds";
+    /// Turn wall-clock not spent in the LLM or tools. Label: outcome.
+    pub const TURN_OVERHEAD_DURATION: &str = "everruns_turn_overhead_seconds";
 }
 
 // ============================================================================

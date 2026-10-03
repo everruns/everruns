@@ -13,7 +13,7 @@ use everruns_worker::{
     AgentRunner, DurableTaskNotifier, RunnerBackend, create_runner_with_backend,
 };
 
-use crate::app_builder::{MigrationFn, ServerTaskNotifier};
+use crate::app_builder::MigrationFn;
 use crate::server::ServerConfig;
 
 pub(crate) struct StorageInit {
@@ -157,6 +157,18 @@ pub(crate) async fn init_storage(
         database_unpooled_url,
         task_broadcaster,
     })
+}
+
+/// Forwards the durable runner's "task enqueued" hint to the worker broadcaster.
+pub(crate) struct ServerTaskNotifier {
+    pub(crate) broadcaster: Arc<crate::task_notifications::TaskBroadcaster>,
+}
+
+#[async_trait::async_trait]
+impl DurableTaskNotifier for ServerTaskNotifier {
+    async fn notify_task_available(&self, activity_type: &str) {
+        self.broadcaster.notify_task_available(activity_type).await;
+    }
 }
 
 #[cfg(test)]

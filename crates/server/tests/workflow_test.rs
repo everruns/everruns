@@ -27,6 +27,8 @@ mod basics;
 mod capabilities;
 #[path = "workflow_test/filesystem.rs"]
 mod filesystem;
+#[path = "workflow_test/latency.rs"]
+mod latency;
 #[path = "workflow_test/messages.rs"]
 mod messages;
 #[path = "workflow_test/sessions.rs"]

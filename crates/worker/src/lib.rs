@@ -11,6 +11,7 @@ pub mod grpc_durable_store;
 pub mod grpc_files_adapter;
 pub mod grpc_slack_actions;
 pub mod grpc_sqldb_adapter;
+mod grpc_task_store;
 pub mod grpc_worker_adapters;
 pub mod leased_resource_cleanup;
 pub mod mcp_elicitation_consent;
@@ -26,9 +27,12 @@ pub mod task_error;
 mod task_heartbeat;
 #[cfg(test)]
 mod task_heartbeat_tests;
+pub mod task_wakeup;
 pub mod unified_worker;
 #[cfg(test)]
 mod unified_worker_test_adapters;
+#[cfg(test)]
+mod unified_worker_wake_tests;
 pub mod worker_adapters;
 
 // Re-export main types

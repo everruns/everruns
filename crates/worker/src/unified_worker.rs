@@ -28,16 +28,16 @@ use everruns_provider::typed_id::{ExecId, TurnId};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::durable_runner::DurableTurnInput;
-use crate::grpc_durable_store::GrpcDurableStore;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::{is_non_retryable_task_error, summarize_task_failure, user_facing_failure};
 use crate::task_heartbeat::{CancelSignals, spawn_task_heartbeat};
+use crate::task_wakeup::{TaskWakeups, spawn_wakeup_listener};
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledEndpointInput,
@@ -285,6 +285,18 @@ pub trait TaskStore: Send + Sync + 'static {
         workflow_id: Uuid,
         signal_type: &str,
     ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError>;
+
+    /// Open a push channel that signals new claimable work.
+    ///
+    /// `Ok(None)` means the store has none and the worker polls only. See
+    /// `crate::task_wakeup` for why the worker wants one.
+    async fn subscribe_task_wakeups(
+        &self,
+        _worker_id: &str,
+        _activity_types: &[String],
+    ) -> Result<Option<TaskWakeups>, StoreError> {
+        Ok(None)
+    }
 }
 
 #[async_trait]
@@ -454,228 +466,6 @@ where
     }
 }
 
-#[async_trait]
-impl TaskStore for GrpcDurableStore {
-    async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::register_worker(
-            &mut store,
-            &worker.id,
-            worker.worker_group,
-            worker.activity_types,
-            worker.max_concurrency,
-        )
-        .await
-        .map_err(store_error)
-    }
-
-    async fn worker_heartbeat(
-        &self,
-        worker_id: &str,
-        current_load: usize,
-        accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::heartbeat_worker(
-            &mut store,
-            worker_id,
-            current_load as u32,
-            accepting_tasks,
-        )
-        .await
-        .map_err(store_error)
-    }
-
-    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::deregister_worker(&mut store, worker_id)
-            .await
-            .map_err(store_error)
-    }
-
-    async fn claim_task(
-        &self,
-        worker_id: &str,
-        activity_types: &[String],
-        max_tasks: usize,
-    ) -> Result<Vec<ClaimedTask>, StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::claim_tasks(&mut store, worker_id, activity_types, max_tasks)
-            .await
-            .map_err(store_error)
-    }
-
-    async fn heartbeat_task(
-        &self,
-        task_id: Uuid,
-        worker_id: &str,
-        details: Option<serde_json::Value>,
-    ) -> Result<HeartbeatResponse, StoreError> {
-        let mut store = self.clone();
-        let response = GrpcDurableStore::heartbeat_task(&mut store, task_id, worker_id, details)
-            .await
-            .map_err(store_error)?;
-        Ok(HeartbeatResponse {
-            accepted: response.acknowledged,
-            should_cancel: response.should_cancel,
-        })
-    }
-
-    async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
-        let mut store = self.clone();
-        let (status, _, _) = GrpcDurableStore::get_workflow_status(&mut store, workflow_id)
-            .await
-            .map_err(store_error)?;
-        Ok(grpc_status_to_workflow_status(status))
-    }
-
-    async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {
-        // The control plane owns workflow history for gRPC workers. Claim,
-        // complete, fail, and enqueue RPCs record the durable task events.
-    }
-
-    async fn complete_task_and_record(
-        &self,
-        task: &ClaimedTask,
-        worker_id: &str,
-        output: serde_json::Value,
-    ) -> Result<(), StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::complete_task(&mut store, task.id, worker_id, output)
-            .await
-            .map_err(store_error)
-    }
-
-    async fn fail_task_and_record(
-        &self,
-        task: &ClaimedTask,
-        error: &str,
-        retryable: bool,
-    ) -> Result<TaskFailureOutcome, StoreError> {
-        let mut store = self.clone();
-        let (will_retry, terminal_failure_owner) =
-            GrpcDurableStore::fail_task(&mut store, task.id, error, retryable)
-                .await
-                .map_err(store_error)?;
-        Ok(grpc_task_failure_outcome(
-            will_retry,
-            terminal_failure_owner,
-            task.attempt,
-        ))
-    }
-
-    async fn enqueue_task_and_record(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> Result<Uuid, StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::enqueue_task(&mut store, workflow_id, activity_id, activity_type, input)
-            .await
-            .map_err(store_error)
-    }
-
-    async fn update_workflow_status(
-        &self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<WorkflowError>,
-    ) -> Result<(), StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::update_workflow_status(
-            &mut store,
-            workflow_id,
-            workflow_status_to_grpc_status(status),
-            output,
-            error.map(|err| err.message),
-        )
-        .await
-        .map_err(store_error)
-    }
-
-    async fn complete_workflow(
-        &self,
-        workflow_id: Uuid,
-        _event_output: serde_json::Value,
-        stored_output: Option<serde_json::Value>,
-        error: Option<WorkflowError>,
-    ) -> Result<(), StoreError> {
-        self.update_workflow_status(workflow_id, WorkflowStatus::Completed, stored_output, error)
-            .await
-    }
-
-    async fn consume_pending_signals(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::get_and_consume_signals(&mut store, workflow_id)
-            .await
-            .map_err(store_error)
-    }
-
-    async fn consume_pending_signals_by_type(
-        &self,
-        workflow_id: Uuid,
-        signal_type: &str,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::get_and_consume_signals_by_type(&mut store, workflow_id, signal_type)
-            .await
-            .map_err(store_error)
-    }
-}
-
-fn grpc_task_failure_outcome(
-    will_retry: bool,
-    terminal_failure_owner: bool,
-    attempt: u32,
-) -> TaskFailureOutcome {
-    if terminal_failure_owner {
-        TaskFailureOutcome::ExhaustedRetries
-    } else if will_retry {
-        TaskFailureOutcome::WillRetry {
-            next_attempt: attempt + 1,
-            delay: Duration::ZERO,
-        }
-    } else {
-        TaskFailureOutcome::MovedToDlq
-    }
-}
-
-fn store_error(error: anyhow::Error) -> StoreError {
-    StoreError::Database(error.to_string())
-}
-
-fn grpc_status_to_workflow_status(
-    status: crate::grpc_durable_store::WorkflowStatus,
-) -> WorkflowStatus {
-    match status {
-        crate::grpc_durable_store::WorkflowStatus::Pending => WorkflowStatus::Pending,
-        crate::grpc_durable_store::WorkflowStatus::Running => WorkflowStatus::Running,
-        crate::grpc_durable_store::WorkflowStatus::Completed => WorkflowStatus::Completed,
-        crate::grpc_durable_store::WorkflowStatus::Failed => WorkflowStatus::Failed,
-        crate::grpc_durable_store::WorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
-        crate::grpc_durable_store::WorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
-    }
-}
-
-fn workflow_status_to_grpc_status(
-    status: WorkflowStatus,
-) -> crate::grpc_durable_store::WorkflowStatus {
-    match status {
-        WorkflowStatus::Pending => crate::grpc_durable_store::WorkflowStatus::Pending,
-        WorkflowStatus::Running => crate::grpc_durable_store::WorkflowStatus::Running,
-        WorkflowStatus::Completed => crate::grpc_durable_store::WorkflowStatus::Completed,
-        WorkflowStatus::Failed => crate::grpc_durable_store::WorkflowStatus::Failed,
-        WorkflowStatus::Cancelled => crate::grpc_durable_store::WorkflowStatus::Cancelled,
-        WorkflowStatus::ContinuedAsNew => crate::grpc_durable_store::WorkflowStatus::ContinuedAsNew,
-    }
-}
-
 /// Unified worker that executes tasks from the durable task queue
 ///
 /// This worker is generic over:
@@ -692,6 +482,8 @@ where
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     in_flight: Arc<AtomicUsize>,
+    /// Cuts the poll backoff short when new work may be claimable.
+    wake: Arc<Notify>,
 }
 
 impl<S, A> TaskWorker<S, A>
@@ -720,6 +512,7 @@ where
             shutdown_tx,
             shutdown_rx,
             in_flight: Arc::new(AtomicUsize::new(0)),
+            wake: Arc::new(Notify::new()),
         }
     }
 
@@ -782,6 +575,14 @@ where
             }
         });
 
+        let wakeup_handle = spawn_wakeup_listener(
+            self.store.clone(),
+            self.config.worker_id.clone(),
+            self.config.activity_types.clone(),
+            self.wake.clone(),
+            self.shutdown_rx.clone(),
+        );
+
         // Adaptive poll backoff: doubles from `poll_interval` up to
         // `poll_backoff_max` while the queue is empty, so an idle worker stops
         // issuing tight-loop `claim_task` requests. Reset to base on any work.
@@ -799,9 +600,11 @@ where
 
             match self.poll_and_execute(&mut task_handles).await {
                 Ok(executed) => {
+                    let mut woken = false;
                     if executed == 0 {
                         tokio::select! {
                             _ = tokio::time::sleep(poll_backoff) => {}
+                            _ = self.wake.notified() => woken = true,
                             _ = self.shutdown_rx.changed() => {
                                 info!("Shutdown during poll wait");
                                 break;
@@ -812,7 +615,7 @@ where
                         poll_backoff,
                         self.config.poll_interval,
                         self.config.poll_backoff_max,
-                        executed > 0,
+                        executed > 0 || woken,
                     );
                 }
                 Err(e) => {
@@ -832,6 +635,7 @@ where
         }
         let _ = self.shutdown_tx.send(true);
         let _ = heartbeat_handle.await;
+        let _ = wakeup_handle.await;
 
         // Deregister on shutdown
         if let Err(e) = self.store.deregister_worker(&self.config.worker_id).await {
@@ -913,11 +717,15 @@ where
             let worker_id = self.config.worker_id.clone();
             let in_flight_guard = InFlightTaskGuard::increment(self.in_flight.clone());
             let heartbeat_interval = self.config.heartbeat_interval;
+            let wake = self.wake.clone();
 
             task_handles.spawn(async move {
                 let _in_flight_guard = in_flight_guard;
                 let result =
                     execute_task(&store, &adapters, &worker_id, heartbeat_interval, &task).await;
+                // A finished phase usually enqueued the next one (reason -> act
+                // -> reason); claim it now instead of after the poll backoff.
+                wake.notify_one();
 
                 if let Err(e) = result {
                     let failure = summarize_task_failure(
@@ -1885,25 +1693,6 @@ mod tests {
                 .count(),
             1
         );
-    }
-
-    #[test]
-    fn grpc_store_preserves_retry_and_terminal_ownership_outcomes() {
-        assert!(matches!(
-            grpc_task_failure_outcome(true, false, 2),
-            TaskFailureOutcome::WillRetry {
-                next_attempt: 3,
-                ..
-            }
-        ));
-        assert!(matches!(
-            grpc_task_failure_outcome(false, true, 5),
-            TaskFailureOutcome::ExhaustedRetries
-        ));
-        assert!(matches!(
-            grpc_task_failure_outcome(false, false, 5),
-            TaskFailureOutcome::MovedToDlq
-        ));
     }
 
     #[test]

@@ -175,7 +175,9 @@ behind green unit tests.
 
 ### Task Notifications
 
-Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS when available and PostgreSQL `NOTIFY` otherwise. Falls back to polling (10s) on disconnect.
+Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS when available and PostgreSQL `NOTIFY` otherwise. The standalone worker subscribes at startup (`crates/worker/src/task_wakeup.rs`) and every notification cuts its poll backoff short; a worker that finishes a task also wakes its own loop, because that task usually enqueued the next turn phase. Polling stays as the fallback, so a lost notification or a dropped stream costs at most one backoff interval (`WORKER_POLL_BACKOFF_MAX_MS`), and the worker resubscribes with a 1s to 30s backoff.
+
+Why it matters: every turn phase (`process_input`, `reason`, `act`) is its own queued task. Before the worker consumed these notifications, an idle worker sat in a backoff of up to 5s, so a new message waited up to 5s to start and each tool call paid that wait twice (reason to act, act to reason). Measured locally on a two-tool turn: pickup fell from about 1.5s to about 70ms and each phase hand-off from up to 1.5s to under 200ms. `crates/server/tests/workflow_test/latency.rs` guards the pickup end to end.
 
 Operational contract:
 
