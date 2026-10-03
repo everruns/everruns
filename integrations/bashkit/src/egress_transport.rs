@@ -15,7 +15,10 @@
 //! policy applies to redirect targets too. `pinned_addrs` carries bashkit's
 //! resolve-then-check result into `EgressRequest.pinned_addrs`, closing the
 //! DNS-rebind TOCTOU window at the egress client (TM-TOOL-018) — the same
-//! contract as the web_fetch fetchkit transport.
+//! contract as the web_fetch fetchkit transport. When bashkit's DNS precheck
+//! fails open with an empty pin list, this transport sets
+//! `require_dns_pinning()` so the egress boundary re-resolves and refuses
+//! private answers before connecting (EVE-1154).
 //!
 //! Error mapping is exit-code preserving: an egress policy denial becomes
 //! `HttpTransportError::Denied`, which curl/wget surface as their native
@@ -71,6 +74,11 @@ impl HttpTransport for BashkitEgressTransport {
             .iter()
             .map(|ip| SocketAddr::new(*ip, port))
             .collect();
+        // Bashkit 0.18.2 returns an empty pin list when DNS lookup fails
+        // (documented fail-open). `EgressRequest::pinned_addrs` treats empty
+        // as a no-op, so without this flag a later resolution of the same
+        // allowed hostname could connect without a private-address check.
+        let needs_egress_dns_pinning = pinned.is_empty();
 
         let mut egress_request = EgressRequest::new(
             request.method.as_str(),
@@ -85,6 +93,10 @@ impl HttpTransport for BashkitEgressTransport {
         .network_access(self.network_access.clone())
         .pinned_addrs(host, pinned)
         .timeout_ms(u64::try_from(request.timeout.as_millis()).unwrap_or(u64::MAX));
+        // THREAT[TM-BASH-003]: fail closed when the hop has no pins (EVE-1154).
+        if needs_egress_dns_pinning {
+            egress_request = egress_request.require_dns_pinning();
+        }
         for (name, value) in &request.headers {
             egress_request = egress_request.header(name, value);
         }

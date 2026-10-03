@@ -119,8 +119,10 @@ impl EgressRequest {
 
     /// Pin the outbound connection to pre-resolved addresses (TM-TOOL-018).
     ///
-    /// No-op when `addrs` is empty (e.g. IP-literal URLs where the static
-    /// check already validated the address).
+    /// No-op when `addrs` is empty (e.g. a DNS precheck that produced nothing
+    /// to pin). Callers that treat empty pins as "precheck failed" must also
+    /// set [`Self::require_dns_pinning`] so the boundary re-resolves and fails
+    /// closed rather than connecting unpinned (EVE-1154).
     ///
     /// Kept public for callers that resolve-then-check themselves and hand the
     /// pinned addresses in (e.g. the web_fetch fetchkit transport and the MCP

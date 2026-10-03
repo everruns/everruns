@@ -883,6 +883,8 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
 /// [`egress_transport::BashkitEgressTransport`], so the merged
 /// `NetworkAccessList` and the deployment-wide system allowlist are enforced
 /// at the egress boundary for every hop (curl/wget re-dispatch redirects).
+/// Empty pins from a failed bashkit DNS precheck fail closed via
+/// `require_dns_pinning()` (EVE-1154).
 ///
 /// THREAT[TM-BASH-003]: with `enable_http` off (the default) this function is
 /// a no-op and the interpreter has no network path. When on, there is no
@@ -3723,6 +3725,52 @@ mod tests {
             assert_eq!(host, "93.184.216.34");
             assert_eq!(addrs[0].ip().to_string(), "93.184.216.34");
             assert_eq!(addrs[0].port(), 80);
+            assert!(
+                !request.dns_pinning_required,
+                "pins already present; egress DNS re-resolve is unnecessary"
+            );
+        }
+
+        /// EVE-1154: bashkit's DNS precheck fails open with empty pins when
+        /// lookup fails (`.invalid` never resolves). The egress transport must
+        /// require egress-side DNS pinning so a later private answer cannot
+        /// connect unpinned.
+        #[tokio::test]
+        async fn dns_precheck_failure_requires_egress_dns_pinning() {
+            let url = "http://eve-1154-precheck-fail.invalid/";
+            let egress = Arc::new(MockEgress::with_responses(vec![Err(
+                EgressError::NetworkAccessDenied {
+                    url: url.to_string(),
+                },
+            )]));
+            let context = http_context(Some(egress.clone()));
+            let tool = BashTool { enable_http: true };
+
+            let result = tool
+                .execute_with_context(json!({"commands": format!("curl -s {url}")}), &context)
+                .await;
+
+            let ToolExecutionResult::Success(output) = result else {
+                panic!("expected success result wrapper");
+            };
+            assert_eq!(
+                *egress.stream_calls.lock().unwrap(),
+                1,
+                "transport must still be invoked after bashkit's fail-open precheck; stderr={}",
+                output["stderr"]
+            );
+            let requests = egress.requests.lock().unwrap();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].url, url);
+            assert!(
+                requests[0].pinned_addrs.is_none(),
+                "DNS precheck failure must leave pins empty"
+            );
+            assert!(
+                requests[0].dns_pinning_required,
+                "empty bashkit pins must fail closed via egress DNS pinning"
+            );
+            assert_eq!(output["exit_code"], 7, "stderr: {}", output["stderr"]);
         }
 
         #[tokio::test]
