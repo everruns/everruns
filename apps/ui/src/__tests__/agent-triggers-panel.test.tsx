@@ -109,9 +109,19 @@ describe("AgentTriggersPanel", () => {
     expect(screen.getByText("Token Configured")).toBeInTheDocument();
     expect(screen.getAllByText(/\/api\/v1\/e\/appchan_webhook\/webhook/).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "Run now" }));
+    const runNow = screen.getByRole("button", { name: "Run now" });
+    const quickEdit = screen.getByRole("button", { name: "Quick edit trigger" });
+    const openEditor = screen.getAllByRole("link", { name: "Open trigger editor" })[0];
+    const deleteTrigger = screen.getAllByRole("button", { name: "Delete trigger" })[0];
+    // Schedule action siblings share h-7 (sm / icon-sm), not mixed icon (h-8).
+    expect(runNow).toHaveClass("h-7");
+    expect(quickEdit).toHaveClass("size-7");
+    expect(openEditor).toHaveClass("size-7");
+    expect(deleteTrigger).toHaveClass("size-7");
+
+    fireEvent.click(runNow);
     fireEvent.click(screen.getAllByRole("switch", { name: "Disable trigger" })[0]);
-    fireEvent.click(screen.getAllByRole("button", { name: "Delete trigger" })[0]);
+    fireEvent.click(deleteTrigger);
 
     expect(run).toHaveBeenCalledWith("trg_123");
     expect(update).toHaveBeenCalledWith({ triggerId: "trg_123", request: { enabled: false } });
