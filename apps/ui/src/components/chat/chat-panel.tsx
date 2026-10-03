@@ -103,6 +103,8 @@ function parseSystemCommandInvocation(
 }
 
 export interface ChatPanelProps {
+  /** Hosts with their own context rail may hide the shared participant rail. */
+  showParticipants?: boolean;
   /**
    * Who the composer is replying to. The Chats thread surface names the bound
    * agent here; other surfaces leave it unset and keep the generic prompt.
@@ -124,6 +126,7 @@ export interface ChatPanelProps {
 export function ChatPanel({
   replyToLabel,
   showRunCards = false,
+  showParticipants = true,
   platformIcon,
   platformIntro,
   platformStarters = [],
@@ -746,7 +749,7 @@ export function ChatPanel({
           />
         </div>
 
-        <SessionParticipantsRail sessionId={sessionId} />
+        {showParticipants && <SessionParticipantsRail sessionId={sessionId} />}
       </div>
 
       <Dialog open={!!commandOverlay} onOpenChange={(open) => !open && closeCommandOverlay()}>
