@@ -1,19 +1,19 @@
-version: 0.36.0
+version: 0.37.0
 date: 2026-10-03
 headline:
-  - Your agent.
-  - Your choice.
+  - Your approvals.
+  - Your channels.
 summary:
-  - Choose Bashkit or Daytona for each new session.
-  - Slack setup gets repaired, and session storage
-  - reads enforce the caller’s view permission.
+  - Review recorded consent and agent channels.
+  - Agent tabs survive refresh. SDK contracts
+  - move to one shared home.
 highlights:
-  - title: Choose an environment
-    description: Author agent profiles and select one for Chat or Playground.
-    source: "#4098"
-  - title: Slack setup repaired
-    description: Install draft endpoints with declared bot scopes and compact errors.
-    source: "#4075"
-  - title: Private storage protected
-    description: Session view is required to list stored values and secret names.
-    source: "#4099"
+  - title: Approval history
+    description: See consent requests and records in chat; admins can filter existing audit history.
+    source: "#4110"
+  - title: Channels at a glance
+    description: See live, draft and disabled channels on agent cards, with links to Integrations.
+    source: "#4109"
+  - title: SDK import migration
+    description: Move provider, capability and model imports to everruns-contracts.
+    source: "#4077"

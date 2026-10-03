@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -412,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -475,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-drivers"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-typesafe"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "everruns-contracts",
