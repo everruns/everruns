@@ -183,7 +183,10 @@ function PlaygroundLibrary() {
                     </p>
                   </TableCell>
                   <TableCell>
-                    {agents.find((a) => a.id === session.agent_id)?.name ?? "Harness conversation"}
+                    {(() => {
+                      const agent = agents.find((a) => a.id === session.agent_id);
+                      return agent ? getDisplayName(agent) : "Harness conversation";
+                    })()}
                   </TableCell>
                   <TableCell>
                     <SubjectName id={session.playground_user_id} />
