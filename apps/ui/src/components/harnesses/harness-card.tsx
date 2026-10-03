@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { EntityStatus } from "@/components/ui/entity-status";
 import { LinkButton } from "@/components/ui/button";
-import { EntityCard, EntityCardFooter, EntityCardTags } from "@/components/ui/entity-card";
+import {
+  EntityCard,
+  EntityCardFooter,
+  EntityCardTags,
+  EntityCardDescription,
+  EntityCardCapabilities,
+} from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { GitBranch, Pencil } from "lucide-react";
 import { IconTile } from "@/components/layout/page-layout";
@@ -16,11 +23,7 @@ import {
 } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import {
-  getDisplayName,
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-} from "@/lib/entity-lifecycle";
+import { getDisplayName, getEntityNameClassName } from "@/lib/entity-lifecycle";
 import { formatCountLabel } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
 import type { HarnessInheritance } from "@/lib/harness-inheritance";
@@ -63,7 +66,6 @@ export function HarnessCard({
       title={getDisplayName(harness)}
       href={`/harnesses/${harness.id}`}
       titleClassName={getEntityNameClassName(harness.status)}
-      copyValue={harness.id}
       headerActions={
         <>
           {harness.is_built_in && (
@@ -71,7 +73,7 @@ export function HarnessCard({
               Built-in
             </Badge>
           )}
-          <Badge variant={getEntityStatusBadgeVariant(harness.status)}>{harness.status}</Badge>
+          <EntityStatus status={harness.status} />
         </>
       }
       footer={
@@ -79,8 +81,6 @@ export function HarnessCard({
           meta={
             <>
               <span>{formatCountLabel(sessionCount, "session")}</span>
-              <span className="mx-2">·</span>
-              <span>Created {new Date(harness.created_at).toLocaleDateString()}</span>
             </>
           }
           actions={
@@ -102,9 +102,9 @@ export function HarnessCard({
       }
     >
       {harness.description ? (
-        <div className="text-sm text-muted-foreground mb-3 line-clamp-2">
+        <EntityCardDescription>
           <InlineStreamdownMessage>{harness.description}</InlineStreamdownMessage>
-        </div>
+        </EntityCardDescription>
       ) : (
         <p className="text-sm text-muted-foreground mb-3 italic">No description provided</p>
       )}
@@ -142,21 +142,20 @@ export function HarnessCard({
         </div>
       )}
 
-      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="space-y-3">
         {/* Capabilities display */}
         {harnessCapabilities.length > 0 && (
-          <div
-            className="flex flex-wrap items-center gap-1"
-            aria-label="Locally declared capabilities"
-          >
-            <span className="mr-1 text-[11px] text-muted-foreground">Declared capabilities</span>
-            <TooltipProvider>
+          <TooltipProvider>
+            <EntityCardCapabilities
+              label="Declared capabilities"
+              ariaLabel="Locally declared capabilities"
+            >
               {harnessCapabilities.map((capConfig) => {
                 const cap = getCapabilityInfo(capConfig.ref);
                 if (!cap) return null;
                 return (
                   <Tooltip key={capConfig.ref}>
-                    <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
+                    <TooltipTrigger className="inline-flex cursor-default items-center gap-1.5 text-xs text-muted-foreground">
                       <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
                       {!compact && <span>{localizedCapabilityName(cap, locale)}</span>}
                     </TooltipTrigger>
@@ -169,8 +168,8 @@ export function HarnessCard({
                   </Tooltip>
                 );
               })}
-            </TooltipProvider>
-          </div>
+            </EntityCardCapabilities>
+          </TooltipProvider>
         )}
 
         <EntityCardTags tags={tags} />

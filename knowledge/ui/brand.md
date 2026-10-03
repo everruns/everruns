@@ -184,86 +184,30 @@ structurally and against WCAG contrast with `pnpm run design:lint` (in
 `apps/ui`), which runs `@google/design.md lint`. This spec captures intent only;
 do not duplicate the full token tables here, read them from those two files.
 
-#### Corners & Radius
+#### Shape, hierarchy, and navigation
 
-**Sharp corners (0px)** throughout for a clean, developer-focused aesthetic.
+Slate keeps sharp corners, flat surfaces, the current grayscale foundation, and navy/gold
+accents. Hierarchy comes from readable descriptions, quiet configuration and tags, and
+consistent spacing. Entity overview screens preserve the context needed to choose an entity,
+including agent channels, while moving identification and creation metadata to details.
 
-```css
---radius: 0px;
---radius-sm: 0px;
---radius-md: 0px;
---radius-lg: 0px;
-```
+List summaries should not repeat the same counts in a masthead, tabs, rail, and footer.
+Retain real filtering controls and contextual detail panels. Navigation selection combines a
+narrow primary marker with a subtle tint; whitespace groups the sections.
 
-#### Active State Pattern
-
-Navigation and interactive elements use **left/right border accents** instead of background fills:
-
-```css
-/* Active navigation item - left border */
-.nav-active {
-  background: hsl(43 60% 53% / 0.1);
-  color: hsl(43 60% 30%);
-  border-left: 2px solid hsl(43 60% 53%);
-}
-
-/* User message - right border */
-.user-message {
-  background: hsl(43 60% 53% / 0.1);
-  border-right: 2px solid hsl(43 60% 53%);
-}
-```
-
-#### Color Tokens
-
-| Token | Light Mode | Dark Mode | Usage |
-|-------|------------|-----------|-------|
-| `--primary` | Navy (#0A1636) | Light gray | Primary buttons, actions |
-| `--accent` | Gold (#D4A43A) | Gold | Active states, highlights, focus rings |
-| `--background` | Off-white (98%) | Dark blue-gray (8%) | Page background |
-| `--muted` | Light gray (96%) | Dark gray (15%) | Hover states, disabled |
-| `--border` | Gray (88%) | Dark gray (18%) | Borders, dividers |
-
-#### Hover States
-
-Use `bg-muted` for hover states instead of accent colors to keep UI calm:
-
-```css
-/* Correct */
-hover:bg-muted hover:text-foreground
-
-/* Avoid */
-hover:bg-accent hover:text-accent-foreground
-```
+The component anatomy, theme values, and density rules are owned by
+[`apps/ui/DESIGN.md`](../../apps/ui/DESIGN.md), implemented by the shared
+[page layout](../../apps/ui/src/components/layout/page-layout.tsx),
+[entity cards](../../apps/ui/src/components/ui/entity-card.tsx), and
+[navigation](../../apps/ui/src/components/layout/sidebar-navigation.tsx).
 
 ### Branded Background
 
-Subtle dot grid pattern applied to all surfaces (app, docs). Provides texture without distraction.
-
-```css
-/* Light mode - Navy dots */
-background-image: radial-gradient(
-  circle at center,
-  hsl(220 62% 13% / 0.08) 1px,
-  transparent 1px
-);
-background-size: 24px 24px;
-
-/* Dark mode - Gold dots */
-background-image: radial-gradient(
-  circle at center,
-  hsl(43 60% 53% / 0.1) 1px,
-  transparent 1px
-);
-background-size: 24px 24px;
-```
-
-| Property | Light | Dark |
-|----------|-------|------|
-| Color | Navy | Gold |
-| Opacity | 8% | 10% |
-| Dot size | 1px | 1px |
-| Grid spacing | 24px | 24px |
+The dot grid is a faint brand texture in unused page space. Cards, inputs, navigation, and
+reading surfaces stay solid so the texture does not compete with content. Light and dark
+use the existing brand colors with different opacity. Exact geometry and theme treatment
+live in [`design-system.css`](../../apps/ui/src/app/design-system.css); the application
+refinement does not change the public site's palette.
 
 ### Application Guidelines
 

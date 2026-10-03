@@ -1,8 +1,9 @@
 "use client";
 
+import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { EntityCard } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
@@ -29,14 +30,7 @@ import { usePolicies } from "@/hooks/use-policies";
 import { Plus, Trash2, Upload, FileText, Archive, Box } from "lucide-react";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import type { Skill, SkillUsage } from "@/lib/api/types";
-import {
-  getDisplayName,
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-  isArchivedStatus,
-} from "@/lib/entity-lifecycle";
-import { pluralize } from "@/lib/formatting";
-import { cn } from "@/lib/utils";
+import { getDisplayName, getEntityNameClassName, isArchivedStatus } from "@/lib/entity-lifecycle";
 import {
   PageContainer,
   PageBreadcrumb,
@@ -45,11 +39,7 @@ import {
   PageControlStrip,
   SectionTabs,
   EmptyState,
-  PageColumns,
   PageMain,
-  PageRail,
-  RailSection,
-  PageFooter,
 } from "@/components/layout";
 import { SkillUsageRow } from "@/components/skills/skill-usage-row";
 
@@ -81,10 +71,9 @@ function SkillRow({
       title={getDisplayName(skill)}
       href={`/skills/${skill.id}`}
       titleClassName={getEntityNameClassName(skill.status)}
-      copyValue={skill.id}
       inlineBadges={
         <>
-          <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>
+          <EntityStatus status={skill.status} />
           <Badge variant="secondary" className="text-xs">
             {skill.source_type}
           </Badge>
@@ -114,9 +103,7 @@ function SkillRow({
       }
     >
       <div className="mt-1 space-y-1.5 text-sm">
-        {skill.description && (
-          <p className="line-clamp-2 text-muted-foreground">{skill.description}</p>
-        )}
+        {skill.description && <EntityCardDescription>{skill.description}</EntityCardDescription>}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {skill.license && <span>License: {skill.license}</span>}
           {skill.allowed_tools && <span>Tools: {skill.allowed_tools}</span>}
@@ -291,15 +278,6 @@ export default function SkillsPageClient() {
     });
   }, [skills, search, statusTab]);
 
-  // Source-type usage counts across the fetched skills, for the rail facet.
-  const sourceFacets = useMemo(() => {
-    const tally = new Map<string, number>();
-    for (const skill of skills ?? []) {
-      tally.set(skill.source_type, (tally.get(skill.source_type) ?? 0) + 1);
-    }
-    return [...tally.entries()].sort((a, b) => b[1] - a[1]);
-  }, [skills]);
-
   const handleDeleteSkill = async () => {
     if (!pendingDeleteSkill) return;
     await destroySkillMutation.mutateAsync(pendingDeleteSkill.id);
@@ -319,18 +297,7 @@ export default function SkillsPageClient() {
       <PageMasthead
         icon={<SkillsIcon />}
         title="Skills"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {counts.all}
-          </Badge>
-        }
         description="Reusable Agent Skills — SKILL.md instructions and optional bundled files."
-        meta={
-          <>
-            <span>{counts.active} active</span>
-            <span>{counts.archived} archived</span>
-          </>
-        }
         actions={
           <>
             <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
@@ -361,118 +328,60 @@ export default function SkillsPageClient() {
         />
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          <QueryStateWrapper
-            isLoading={isLoading}
-            error={error}
-            data={filteredSkills}
-            errorMessagePrefix="Failed to load skills"
-            loadingSkeleton={
-              <div className="flex flex-col gap-3">
-                {[...Array(6)].map((_, i) => (
-                  <SkillRowSkeleton key={i} />
-                ))}
-              </div>
-            }
-            emptyState={
-              <EmptyState
-                icon={<SkillsIcon />}
-                title={
-                  search.trim() || statusTab !== "active"
-                    ? "No skills match your filters."
-                    : "No skills yet"
-                }
-                action={
-                  !search.trim() &&
-                  statusTab === "active" && (
-                    <>
-                      <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
-                        <Upload className="size-4" />
-                        Upload ZIP
-                      </Button>
-                      <Button variant="accent" onClick={() => setAddSkillOpen(true)}>
-                        <Plus className="size-4" />
-                        Add Skill
-                      </Button>
-                    </>
-                  )
-                }
-              />
-            }
-          >
-            {(items) => (
-              <div className="flex flex-col gap-3">
-                {items.map((skill) => (
-                  <SkillRow
-                    key={skill.id}
-                    skill={skill}
-                    usage={usage?.[skill.id]}
-                    canDestroy={canDestroy}
-                    onDelete={setPendingDeleteSkill}
-                  />
-                ))}
-              </div>
-            )}
-          </QueryStateWrapper>
-        </PageMain>
-
-        <PageRail>
-          <RailSection label="Status">
-            <div className="flex flex-col gap-1.5 text-[13px]">
-              {statusItems.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setStatusTab(item.value)}
-                  className={cn(
-                    "flex items-center justify-between transition-colors hover:text-foreground",
-                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-muted-foreground">{counts[item.value]}</span>
-                </button>
+      <PageMain>
+        <QueryStateWrapper
+          isLoading={isLoading}
+          error={error}
+          data={filteredSkills}
+          errorMessagePrefix="Failed to load skills"
+          loadingSkeleton={
+            <div className="flex flex-col gap-3">
+              {[...Array(6)].map((_, i) => (
+                <SkillRowSkeleton key={i} />
               ))}
             </div>
-          </RailSection>
-
-          {sourceFacets.length > 0 && (
-            <RailSection label="Source">
-              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
-                {sourceFacets.map(([source, count]) => (
-                  <div key={source} className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5">
-                      {source === "archive" ? (
-                        <Archive className="size-3.5" />
-                      ) : (
-                        <FileText className="size-3.5" />
-                      )}
-                      {source}
-                    </span>
-                    <span>{count}</span>
-                  </div>
-                ))}
-              </div>
-            </RailSection>
+          }
+          emptyState={
+            <EmptyState
+              icon={<SkillsIcon />}
+              title={
+                search.trim() || statusTab !== "active"
+                  ? "No skills match your filters."
+                  : "No skills yet"
+              }
+              action={
+                !search.trim() &&
+                statusTab === "active" && (
+                  <>
+                    <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
+                      <Upload className="size-4" />
+                      Upload ZIP
+                    </Button>
+                    <Button variant="accent" onClick={() => setAddSkillOpen(true)}>
+                      <Plus className="size-4" />
+                      Add Skill
+                    </Button>
+                  </>
+                )
+              }
+            />
+          }
+        >
+          {(items) => (
+            <div className="flex flex-col gap-3">
+              {items.map((skill) => (
+                <SkillRow
+                  key={skill.id}
+                  skill={skill}
+                  usage={usage?.[skill.id]}
+                  canDestroy={canDestroy}
+                  onDelete={setPendingDeleteSkill}
+                />
+              ))}
+            </div>
           )}
-        </PageRail>
-      </PageColumns>
-
-      <PageFooter>
-        <span>
-          Showing {filteredSkills.length} of {counts.all} {pluralize(counts.all, "skill")}
-        </span>
-        {counts.archived > 0 && statusTab !== "archived" && (
-          <button
-            type="button"
-            onClick={() => setStatusTab("archived")}
-            className="text-primary transition-colors hover:underline"
-          >
-            View archived →
-          </button>
-        )}
-      </PageFooter>
+        </QueryStateWrapper>
+      </PageMain>
 
       <AddSkillDialog open={addSkillOpen} onOpenChange={setAddSkillOpen} />
       <UploadSkillDialog open={uploadSkillOpen} onOpenChange={setUploadSkillOpen} />

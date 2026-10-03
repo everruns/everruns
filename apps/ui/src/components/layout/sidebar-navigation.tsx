@@ -45,9 +45,9 @@ function NavLink({
         // The active item tracks the route commit. A color transition keeps
         // painting after the page is already on screen, which reads as the
         // sidebar redrawing once the page has loaded.
-        "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] font-semibold leading-5",
+        "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] font-medium leading-5",
         isActive
-          ? "border-l-primary bg-card text-foreground"
+          ? "border-l-primary bg-primary/5 font-semibold text-foreground"
           : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card/80 hover:text-foreground",
       )}
     >
@@ -84,13 +84,13 @@ function NavSection({
 
   return (
     <>
-      {!isFirst && <div className="my-2 border-t" />}
+      {!isFirst && <div className="my-3" />}
       {section.label &&
         (isCollapsible ? (
           <button
             type="button"
             onClick={() => setCollapsed((value) => !value)}
-            className="flex w-full items-center justify-between px-3 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
+            className="flex w-full items-center justify-between px-3 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-foreground"
           >
             {section.label}
             {collapsed ? (
@@ -100,7 +100,7 @@ function NavSection({
             )}
           </button>
         ) : (
-          <p className="px-3 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="px-3 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
             {section.label}
           </p>
         ))}

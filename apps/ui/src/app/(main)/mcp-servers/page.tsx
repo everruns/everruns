@@ -1,5 +1,6 @@
 "use client";
 
+import { EntityStatus } from "@/components/ui/entity-status";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,11 +60,7 @@ import {
   mcpServerFormSchema,
   type FieldErrors,
 } from "@/lib/form-validation";
-import {
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-  isArchivedStatus,
-} from "@/lib/entity-lifecycle";
+import { getEntityNameClassName, isArchivedStatus } from "@/lib/entity-lifecycle";
 import {
   PageContainer,
   PageBreadcrumb,
@@ -72,11 +69,7 @@ import {
   SectionTabs,
   EmptyState,
   IconTile,
-  PageColumns,
   PageMain,
-  PageRail,
-  RailSection,
-  PageFooter,
 } from "@/components/layout";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import { pluralize } from "@/lib/formatting";
@@ -187,7 +180,7 @@ function McpServerRow({
                 {server.name}
               </EntityIdentity>
             </div>
-            <div className="max-w-[32ch] truncate text-xs text-muted-foreground">
+            <div className="max-w-[32ch] truncate text-xs text-foreground/75">
               {server.description || "Catalog preset"}
             </div>
           </div>
@@ -216,7 +209,7 @@ function McpServerRow({
         </span>
       </TableCell>
       <TableCell>
-        <Badge variant={getEntityStatusBadgeVariant(server.status)}>{server.status}</Badge>
+        <EntityStatus status={server.status} />
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-2">
@@ -1139,24 +1132,7 @@ export default function McpServersPage() {
       <PageMasthead
         icon={<McpIcon />}
         title="MCP"
-        badges={
-          activeSurface === "catalog" ? (
-            <Badge variant="outline" className="font-mono">
-              {counts.all}
-            </Badge>
-          ) : undefined
-        }
         description="Browse organization MCP presets and manage the connections you authorized."
-        meta={
-          activeSurface === "catalog" ? (
-            <>
-              <span>{counts.active} active</span>
-              <span>{counts.archived} archived</span>
-            </>
-          ) : (
-            <span>{connections.data?.length ?? 0} connected</span>
-          )
-        }
         actions={
           activeSurface === "catalog" && canManage ? (
             <Button variant="accent" onClick={() => setAddServerOpen(true)}>
@@ -1185,193 +1161,191 @@ export default function McpServersPage() {
             <SectionTabs
               value={statusTab}
               onValueChange={(value) => setStatusTab(value as StatusTab)}
-              items={statusItems}
+              items={statusItems.map((item) => ({ ...item, count: counts[item.value] }))}
             />
           </>
         )}
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          {policyLoading ? (
-            <Table>
-              <TableBody>
-                {[...Array(3)].map((_, index) => (
-                  <McpServerRowSkeleton key={index} />
-                ))}
-              </TableBody>
-            </Table>
-          ) : activeSurface === "catalog" ? (
-            <QueryStateWrapper
-              isLoading={catalog.isLoading}
-              error={catalog.error}
-              data={filteredServers}
-              errorMessagePrefix="Failed to load MCP catalog"
-              loadingSkeleton={
-                <Table>
-                  <TableBody>
-                    {[...Array(3)].map((_, index) => (
-                      <McpServerRowSkeleton key={index} />
-                    ))}
-                  </TableBody>
-                </Table>
-              }
-              emptyState={
-                <EmptyState
-                  icon={<McpIcon />}
-                  title={search ? "No catalog presets match your search" : "No MCP presets"}
-                  description={
-                    search
-                      ? undefined
-                      : "Add an MCP preset so agents can attach a shared transport and authentication policy."
-                  }
-                  action={
-                    !search && canManage ? (
-                      <Button variant="accent" onClick={() => setAddServerOpen(true)}>
-                        <Plus className="size-4" />
-                        Add Server
-                      </Button>
-                    ) : undefined
-                  }
-                />
-              }
-            >
-              {(items) => (
-                <div className="space-y-3">
-                  <div className="border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Host</TableHead>
-                          <TableHead>Transport / era</TableHead>
-                          <TableHead>Auth</TableHead>
-                          <TableHead>
-                            <span title="Active agents only. Archived agents are excluded.">
-                              Used by
-                            </span>
-                          </TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {items.map((server) => (
-                          <McpServerRow
-                            key={server.id}
-                            server={server}
-                            canManage={canManage}
-                            canDestroy={canDestroy}
-                            onEdit={setEditServer}
-                            onDelete={setPendingDeleteServer}
-                            onArchive={setPendingArchiveServer}
-                            onSetApiKey={setApiKeyServer}
-                            onManageHeaders={setHeadersServer}
-                          />
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  {catalog.hasNextPage && (
-                    <div className="flex justify-center">
-                      <Button
-                        variant="outline"
-                        disabled={catalog.isFetchingNextPage}
-                        onClick={() => catalog.fetchNextPage()}
-                      >
-                        {catalog.isFetchingNextPage ? "Loading…" : "Load more presets"}
-                      </Button>
-                    </div>
-                  )}
+      <PageMain>
+        {policyLoading ? (
+          <Table>
+            <TableBody>
+              {[...Array(3)].map((_, index) => (
+                <McpServerRowSkeleton key={index} />
+              ))}
+            </TableBody>
+          </Table>
+        ) : activeSurface === "catalog" ? (
+          <QueryStateWrapper
+            isLoading={catalog.isLoading}
+            error={catalog.error}
+            data={filteredServers}
+            errorMessagePrefix="Failed to load MCP catalog"
+            loadingSkeleton={
+              <Table>
+                <TableBody>
+                  {[...Array(3)].map((_, index) => (
+                    <McpServerRowSkeleton key={index} />
+                  ))}
+                </TableBody>
+              </Table>
+            }
+            emptyState={
+              <EmptyState
+                icon={<McpIcon />}
+                title={search ? "No catalog presets match your search" : "No MCP presets"}
+                description={
+                  search
+                    ? undefined
+                    : "Add an MCP preset so agents can attach a shared transport and authentication policy."
+                }
+                action={
+                  !search && canManage ? (
+                    <Button variant="accent" onClick={() => setAddServerOpen(true)}>
+                      <Plus className="size-4" />
+                      Add Server
+                    </Button>
+                  ) : undefined
+                }
+              />
+            }
+          >
+            {(items) => (
+              <div className="space-y-3">
+                <div className="border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Host</TableHead>
+                        <TableHead>Transport / era</TableHead>
+                        <TableHead>Auth</TableHead>
+                        <TableHead>
+                          <span title="Active agents only. Archived agents are excluded.">
+                            Used by
+                          </span>
+                        </TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((server) => (
+                        <McpServerRow
+                          key={server.id}
+                          server={server}
+                          canManage={canManage}
+                          canDestroy={canDestroy}
+                          onEdit={setEditServer}
+                          onDelete={setPendingDeleteServer}
+                          onArchive={setPendingArchiveServer}
+                          onSetApiKey={setApiKeyServer}
+                          onManageHeaders={setHeadersServer}
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              )}
-            </QueryStateWrapper>
-          ) : (
-            <QueryStateWrapper
-              isLoading={connections.isLoading}
-              error={connections.error}
-              data={connections.data ?? []}
-              errorMessagePrefix="Failed to load your MCP connections"
-              loadingSkeleton={<Skeleton className="h-32 w-full" />}
-              emptyState={
-                <EmptyState
-                  icon={<McpIcon />}
-                  title="No MCP connections"
-                  description="Connections you authorize for acts-as-user MCP attachments will appear here."
-                />
-              }
-            >
-              {(items) => (
-                <div className="space-y-3">
-                  <div className="border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Server</TableHead>
-                          <TableHead>Host</TableHead>
-                          <TableHead>Account</TableHead>
-                          <TableHead>Scopes</TableHead>
-                          <TableHead>Connected</TableHead>
-                          <TableHead>State</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {items.map((connection) => {
-                          let host = connection.server_url;
-                          try {
-                            host = new URL(connection.server_url).host;
-                          } catch {}
-                          const unavailable = connection.server_status === "deleted";
-                          return (
-                            <TableRow key={connection.provider}>
-                              <TableCell className="font-medium">
-                                {unavailable ? "Preset unavailable" : connection.server_name}
-                              </TableCell>
-                              <TableCell className="font-mono text-xs">{host}</TableCell>
-                              <TableCell>{connection.provider_username || "—"}</TableCell>
-                              <TableCell>{connection.scopes || "—"}</TableCell>
-                              <TableCell>
-                                {new Date(connection.connected_at).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={unavailable ? "secondary" : "outline"}>
-                                  {unavailable ? "unavailable" : "connected"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={revokeConnection.isPending}
-                                  onClick={() => revokeConnection.mutate(connection.provider)}
-                                >
-                                  Revoke
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                {catalog.hasNextPage && (
+                  <div className="flex justify-center">
+                    <Button
+                      variant="outline"
+                      disabled={catalog.isFetchingNextPage}
+                      onClick={() => catalog.fetchNextPage()}
+                    >
+                      {catalog.isFetchingNextPage ? "Loading…" : "Load more presets"}
+                    </Button>
                   </div>
-                  {connections.hasNextPage && (
-                    <div className="flex justify-center">
-                      <Button
-                        variant="outline"
-                        disabled={connections.isFetchingNextPage}
-                        onClick={() => connections.fetchNextPage()}
-                      >
-                        {connections.isFetchingNextPage ? "Loading…" : "Load more connections"}
-                      </Button>
-                    </div>
-                  )}
+                )}
+              </div>
+            )}
+          </QueryStateWrapper>
+        ) : (
+          <QueryStateWrapper
+            isLoading={connections.isLoading}
+            error={connections.error}
+            data={connections.data ?? []}
+            errorMessagePrefix="Failed to load your MCP connections"
+            loadingSkeleton={<Skeleton className="h-32 w-full" />}
+            emptyState={
+              <EmptyState
+                icon={<McpIcon />}
+                title="No MCP connections"
+                description="Connections you authorize for acts-as-user MCP attachments will appear here."
+              />
+            }
+          >
+            {(items) => (
+              <div className="space-y-3">
+                <div className="border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Server</TableHead>
+                        <TableHead>Host</TableHead>
+                        <TableHead>Account</TableHead>
+                        <TableHead>Scopes</TableHead>
+                        <TableHead>Connected</TableHead>
+                        <TableHead>State</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((connection) => {
+                        let host = connection.server_url;
+                        try {
+                          host = new URL(connection.server_url).host;
+                        } catch {}
+                        const unavailable = connection.server_status === "deleted";
+                        return (
+                          <TableRow key={connection.provider}>
+                            <TableCell className="font-medium">
+                              {unavailable ? "Preset unavailable" : connection.server_name}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">{host}</TableCell>
+                            <TableCell>{connection.provider_username || "—"}</TableCell>
+                            <TableCell>{connection.scopes || "—"}</TableCell>
+                            <TableCell>
+                              {new Date(connection.connected_at).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={unavailable ? "secondary" : "outline"}>
+                                {unavailable ? "unavailable" : "connected"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={revokeConnection.isPending}
+                                onClick={() => revokeConnection.mutate(connection.provider)}
+                              >
+                                Revoke
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
-              )}
-            </QueryStateWrapper>
-          )}
-        </PageMain>
-      </PageColumns>
+                {connections.hasNextPage && (
+                  <div className="flex justify-center">
+                    <Button
+                      variant="outline"
+                      disabled={connections.isFetchingNextPage}
+                      onClick={() => connections.fetchNextPage()}
+                    >
+                      {connections.isFetchingNextPage ? "Loading…" : "Load more connections"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </QueryStateWrapper>
+        )}
+      </PageMain>
 
       <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
       <EditMcpServerDialog

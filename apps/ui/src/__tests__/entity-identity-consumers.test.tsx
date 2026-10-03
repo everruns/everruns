@@ -65,20 +65,23 @@ const plugin: InstalledPlugin = {
 };
 
 describe("entity identity consumers", () => {
-  it("places the agent ID action beside the readable agent name", () => {
+  it("keeps agent overview identity readable and links to its full details", () => {
     render(<AgentCard agent={agent} />);
-
-    const identityLine = screen.getByText("Deep Research").closest('[data-slot="entity-identity"]');
-    expect(identityLine).toContainElement(
-      screen.getByRole("button", { name: `Copy ID: ${agent.id}` }),
+    expect(screen.getByRole("link", { name: "Deep Research" })).toHaveAttribute(
+      "href",
+      `/agents/${agent.id}`,
     );
+    expect(screen.queryByRole("button", { name: `Copy ID: ${agent.id}` })).not.toBeInTheDocument();
+    expect(screen.queryByText(agent.name)).not.toBeInTheDocument();
   });
 
-  it("uses the shared identity line without a duplicate raw virtual user ID", () => {
+  it("keeps virtual user identifiers in details while preserving named navigation", () => {
     render(<VirtualUserCard identity={identity} />);
-
     expect(screen.queryByText(identity.id)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: `Copy ID: ${identity.id}` })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: identity.name })).toHaveAttribute(
+      "href",
+      `/virtual-users/${identity.id}`,
+    );
   });
 
   it("keeps the full namespace-prefixed plugin ID out of the card layout", () => {

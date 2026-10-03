@@ -1,11 +1,12 @@
 "use client";
 
+import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
 import { Plus, UserRound } from "lucide-react";
 import { Button, LinkButton } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
-import { EntityCard } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useVirtualUsers } from "@/hooks/use-virtual-users";
 import { usePageTitle } from "@/hooks";
@@ -17,19 +18,11 @@ import {
   PageControlStrip,
   SectionTabs,
   EmptyState,
-  PageColumns,
   PageMain,
-  PageRail,
-  RailSection,
   PageFooter,
 } from "@/components/layout";
-import {
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-  isArchivedStatus,
-} from "@/lib/entity-lifecycle";
+import { getEntityNameClassName, isArchivedStatus } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
-import { cn } from "@/lib/utils";
 import type { VirtualUser } from "@/lib/api/types";
 
 type StatusTab = "all" | "active" | "archived";
@@ -41,14 +34,11 @@ export function VirtualUserCard({ identity }: { identity: VirtualUser }) {
       title={identity.name}
       href={`/virtual-users/${identity.id}`}
       titleClassName={getEntityNameClassName(identity.status)}
-      copyValue={identity.id}
-      headerActions={
-        <Badge variant={getEntityStatusBadgeVariant(identity.status)}>{identity.status}</Badge>
-      }
+      headerActions={<EntityStatus status={identity.status} />}
     >
       <div className="space-y-3">
         {identity.description && (
-          <p className="line-clamp-2 text-sm text-muted-foreground">{identity.description}</p>
+          <EntityCardDescription>{identity.description}</EntityCardDescription>
         )}
         <Badge variant="outline">{identity.usage === "end_user" ? "End user" : "Service"}</Badge>
         <p className="text-[13px] text-muted-foreground">
@@ -84,28 +74,6 @@ export default function VirtualUsersPage() {
     return { all: list.length, active: list.length - archived, archived };
   }, [identities]);
 
-  const localeFacets = useMemo(() => {
-    const tally = new Map<string, number>();
-    for (const identity of identities ?? []) {
-      if (identity.locale) tally.set(identity.locale, (tally.get(identity.locale) ?? 0) + 1);
-    }
-    return [...tally.entries()]
-      .map(([locale, count]) => ({ locale, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 8);
-  }, [identities]);
-
-  const timezoneFacets = useMemo(() => {
-    const tally = new Map<string, number>();
-    for (const identity of identities ?? []) {
-      if (identity.timezone) tally.set(identity.timezone, (tally.get(identity.timezone) ?? 0) + 1);
-    }
-    return [...tally.entries()]
-      .map(([timezone, count]) => ({ timezone, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 8);
-  }, [identities]);
-
   const filteredIdentities = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (identities ?? []).filter((identity: VirtualUser) => {
@@ -134,18 +102,7 @@ export default function VirtualUsersPage() {
       <PageMasthead
         icon={<UserRound />}
         title="Virtual Users"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {total ?? counts.all}
-          </Badge>
-        }
         description="Profiles and connections for people using agents and service accounts."
-        meta={
-          <>
-            <span>{counts.active} active</span>
-            <span>{counts.archived} archived</span>
-          </>
-        }
         actions={
           <LinkButton variant="accent" href="/virtual-users/new">
             <Plus className="size-4" />
@@ -184,96 +141,47 @@ export default function VirtualUsersPage() {
         />
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          {isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="border bg-card p-4">
-                  <Skeleton className="mb-3 h-6 w-1/2" />
-                  <Skeleton className="h-4 w-full" />
-                </div>
-              ))}
-            </div>
-          ) : filteredIdentities.length === 0 ? (
-            <EmptyState
-              icon={<UserRound />}
-              title={
-                search || statusTab !== "active"
-                  ? "No virtual users match your filters."
-                  : "No virtual users yet."
-              }
-              action={
-                !search &&
-                statusTab === "active" && (
-                  <LinkButton variant="accent" href="/virtual-users/new">
-                    <Plus className="size-4" />
-                    Create your first virtual user
-                  </LinkButton>
-                )
-              }
-            />
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {filteredIdentities.map((identity) => (
-                <VirtualUserCard key={identity.id} identity={identity} />
-              ))}
-            </div>
-          )}
-          {hasNextPage && (
-            <Button variant="outline" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
-              Load more
-            </Button>
-          )}
-        </PageMain>
-
-        <PageRail>
-          <RailSection label="Status">
-            <div className="flex flex-col gap-1.5 text-[13px]">
-              {statusItems.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setStatusTab(item.value)}
-                  className={cn(
-                    "flex items-center justify-between transition-colors hover:text-foreground",
-                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-muted-foreground">{counts[item.value]}</span>
-                </button>
-              ))}
-            </div>
-          </RailSection>
-
-          {localeFacets.length > 0 && (
-            <RailSection label="Locale">
-              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
-                {localeFacets.map((facet) => (
-                  <div key={facet.locale} className="flex items-center justify-between">
-                    <span>{facet.locale}</span>
-                    <span>{facet.count}</span>
-                  </div>
-                ))}
+      <PageMain>
+        {isLoading ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="border bg-card p-4">
+                <Skeleton className="mb-3 h-6 w-1/2" />
+                <Skeleton className="h-4 w-full" />
               </div>
-            </RailSection>
-          )}
-
-          {timezoneFacets.length > 0 && (
-            <RailSection label="Timezone">
-              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
-                {timezoneFacets.map((facet) => (
-                  <div key={facet.timezone} className="flex items-center justify-between">
-                    <span className="truncate">{facet.timezone}</span>
-                    <span>{facet.count}</span>
-                  </div>
-                ))}
-              </div>
-            </RailSection>
-          )}
-        </PageRail>
-      </PageColumns>
+            ))}
+          </div>
+        ) : filteredIdentities.length === 0 ? (
+          <EmptyState
+            icon={<UserRound />}
+            title={
+              search || statusTab !== "active"
+                ? "No virtual users match your filters."
+                : "No virtual users yet."
+            }
+            action={
+              !search &&
+              statusTab === "active" && (
+                <LinkButton variant="accent" href="/virtual-users/new">
+                  <Plus className="size-4" />
+                  Create your first virtual user
+                </LinkButton>
+              )
+            }
+          />
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {filteredIdentities.map((identity) => (
+              <VirtualUserCard key={identity.id} identity={identity} />
+            ))}
+          </div>
+        )}
+        {hasNextPage && (
+          <Button variant="outline" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
+            Load more
+          </Button>
+        )}
+      </PageMain>
 
       <PageFooter>
         <span>

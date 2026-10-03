@@ -79,7 +79,7 @@ export function ModelRow({
   const profile = model.profile;
 
   return (
-    <div className="border overflow-hidden">
+    <div className="border bg-card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 p-3">
         <div className="flex min-w-0 flex-[1_1_18rem] items-center gap-3">
           <ModelIcon

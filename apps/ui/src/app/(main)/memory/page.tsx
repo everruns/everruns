@@ -1,5 +1,6 @@
 "use client";
 
+import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -18,7 +19,7 @@ import { ArchiveMemoryDialog } from "@/components/memory/archive-memory-dialog";
 import { MemoryFormDialog } from "@/components/memory/memory-form-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
-import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardFooter, EntityCardDescription } from "@/components/ui/entity-card";
 import { SearchInput } from "@/components/ui/search-input";
 import {
   PageContainer,
@@ -27,11 +28,7 @@ import {
   PageControlStrip,
   SectionTabs,
   EmptyState,
-  PageColumns,
   PageMain,
-  PageRail,
-  RailSection,
-  PageFooter,
   IconTile,
 } from "@/components/layout";
 import {
@@ -43,14 +40,8 @@ import {
   useMemories,
 } from "@/hooks";
 import type { CreateMemoryRequest, UpdateMemoryRequest, Memory } from "@/lib/api/types";
-import {
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-  isArchivedStatus,
-  isReadOnlyStatus,
-} from "@/lib/entity-lifecycle";
-import { formatRelativeTime, pluralize } from "@/lib/formatting";
-import { cn } from "@/lib/utils";
+import { getEntityNameClassName, isArchivedStatus, isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import { formatRelativeTime } from "@/lib/formatting";
 
 type StatusTab = "active" | "archived";
 
@@ -77,20 +68,6 @@ export default function MemoryPage() {
     return list.filter((m) => isArchivedStatus(m.status));
   }, [list, showArchived]);
 
-  const counts = useMemo(() => {
-    const archived = list.filter((m) => isArchivedStatus(m.status)).length;
-    return { active: list.length - archived, archived };
-  }, [list]);
-
-  // Source-type usage counts for the rail facet.
-  const sourceFacets = useMemo(() => {
-    const tally = new Map<string, number>();
-    for (const m of filteredMemory) {
-      tally.set(m.source_type, (tally.get(m.source_type) ?? 0) + 1);
-    }
-    return [...tally.entries()].sort((a, b) => b[1] - a[1]);
-  }, [filteredMemory]);
-
   const statusItems = [
     { value: "active" as const, label: "Active" },
     { value: "archived" as const, label: "Archived" },
@@ -103,11 +80,6 @@ export default function MemoryPage() {
       <PageMasthead
         icon={<Brain />}
         title="Memory"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {filteredMemory.length}
-          </Badge>
-        }
         description="Knowledge stores that agents can read — manual notes or synced from Git."
         actions={
           <Button variant="accent" onClick={() => setCreateOpen(true)}>
@@ -133,104 +105,44 @@ export default function MemoryPage() {
         />
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          <QueryStateWrapper
-            isLoading={isLoading}
-            error={error}
-            data={filteredMemory}
-            errorMessagePrefix="Failed to load memory"
-            skeletonCount={6}
-            emptyState={
-              <EmptyState
-                icon={<Brain />}
-                title={search.trim() ? "No memory found" : "No memory"}
-                action={
-                  !search.trim() && (
-                    <Button variant="accent" onClick={() => setCreateOpen(true)}>
-                      <Plus className="size-4" />
-                      New Memory
-                    </Button>
-                  )
-                }
-              />
-            }
-          >
-            {(items) => (
-              <div className="grid gap-4 xl:grid-cols-2">
-                {items.map((memory) => (
-                  <MemoryCard
-                    key={memory.id}
-                    memory={memory}
-                    onEdit={setEditingMemory}
-                    onArchive={setArchivingMemory}
-                    onSync={(candidate) => syncMemory.mutate(candidate.id)}
-                    isSyncing={syncMemory.isPending}
-                  />
-                ))}
-              </div>
-            )}
-          </QueryStateWrapper>
-        </PageMain>
-
-        <PageRail>
-          <RailSection label="Status">
-            <div className="flex flex-col gap-1.5 text-[13px]">
-              {statusItems.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setStatusTab(item.value)}
-                  className={cn(
-                    "flex items-center justify-between transition-colors hover:text-foreground",
-                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-muted-foreground">{counts[item.value]}</span>
-                </button>
+      <PageMain>
+        <QueryStateWrapper
+          isLoading={isLoading}
+          error={error}
+          data={filteredMemory}
+          errorMessagePrefix="Failed to load memory"
+          skeletonCount={6}
+          emptyState={
+            <EmptyState
+              icon={<Brain />}
+              title={search.trim() ? "No memory found" : "No memory"}
+              action={
+                !search.trim() && (
+                  <Button variant="accent" onClick={() => setCreateOpen(true)}>
+                    <Plus className="size-4" />
+                    New Memory
+                  </Button>
+                )
+              }
+            />
+          }
+        >
+          {(items) => (
+            <div className="grid gap-4 xl:grid-cols-2">
+              {items.map((memory) => (
+                <MemoryCard
+                  key={memory.id}
+                  memory={memory}
+                  onEdit={setEditingMemory}
+                  onArchive={setArchivingMemory}
+                  onSync={(candidate) => syncMemory.mutate(candidate.id)}
+                  isSyncing={syncMemory.isPending}
+                />
               ))}
             </div>
-          </RailSection>
-
-          {sourceFacets.length > 0 && (
-            <RailSection label="Source">
-              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
-                {sourceFacets.map(([source, count]) => (
-                  <div key={source} className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5">
-                      {source === "github" ? (
-                        <Github className="size-3.5" />
-                      ) : source === "git" ? (
-                        <GitBranch className="size-3.5" />
-                      ) : (
-                        <HardDrive className="size-3.5" />
-                      )}
-                      {source === "manual" ? "Manual" : source}
-                    </span>
-                    <span>{count}</span>
-                  </div>
-                ))}
-              </div>
-            </RailSection>
           )}
-        </PageRail>
-      </PageColumns>
-
-      <PageFooter>
-        <span>
-          Showing {filteredMemory.length} {pluralize(filteredMemory.length, "memory", "memories")}
-        </span>
-        {counts.archived > 0 && statusTab !== "archived" && (
-          <button
-            type="button"
-            onClick={() => setStatusTab("archived")}
-            className="text-primary transition-colors hover:underline"
-          >
-            View archived →
-          </button>
-        )}
-      </PageFooter>
+        </QueryStateWrapper>
+      </PageMain>
 
       <MemoryFormDialog
         mode="create"
@@ -287,10 +199,9 @@ function MemoryCard({
       title={memory.name}
       href={`/memory/${memory.id}`}
       titleClassName={getEntityNameClassName(memory.status)}
-      copyValue={memory.id}
       headerActions={
         <div className="flex flex-col items-end gap-1">
-          <Badge variant={getEntityStatusBadgeVariant(memory.status)}>{memory.status}</Badge>
+          <EntityStatus status={memory.status} />
           {memory.is_readonly && <Badge variant="secondary">Read-only</Badge>}
         </div>
       }
@@ -338,9 +249,7 @@ function MemoryCard({
         />
       }
     >
-      <p className="mb-3 min-h-10 text-sm text-muted-foreground">
-        {memory.description || "No description"}
-      </p>
+      <EntityCardDescription>{memory.description || "No description"}</EntityCardDescription>
       <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
         <div>
           <div className="font-medium text-foreground">Source</div>
@@ -358,10 +267,6 @@ function MemoryCard({
         <div>
           <div className="font-medium text-foreground">Sync</div>
           <div>{formatSyncStatus(memory)}</div>
-        </div>
-        <div>
-          <div className="font-medium text-foreground">Created</div>
-          <div>{formatRelativeTime(memory.created_at)}</div>
         </div>
         <div>
           <div className="font-medium text-foreground">Updated</div>
