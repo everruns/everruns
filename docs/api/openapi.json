@@ -14117,6 +14117,9 @@
           "400": {
             "description": "Invalid session ID or request"
           },
+          "403": {
+            "description": "Caller may not manage this session"
+          },
           "404": {
             "description": "Session or pending elicitation not found"
           },
