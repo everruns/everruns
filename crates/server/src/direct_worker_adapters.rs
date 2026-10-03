@@ -1363,12 +1363,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         ))
     }
 
-    fn sandbox_checkpoint_store(
+    fn sandbox_persistence_store(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
+    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
         self.db.pool().map(|pool| {
             Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()))
-                as Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>
+                as Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>
         })
     }
 
