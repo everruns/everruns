@@ -46,6 +46,29 @@ const INSERT_CHANNEL_SQL: &str = r#"
 "#;
 
 impl Database {
+    pub async fn list_agent_channel_summaries(
+        &self,
+        org_id: i64,
+        agent_ids: &[Uuid],
+    ) -> Result<Vec<super::super::AgentChannelSummaryRow>> {
+        // Project only non-secret fields and fetch the current page in one query.
+        sqlx::query_as(
+            r#"
+            SELECT ae.agent_id, ae.public_id, ae.channel_type, ae.enabled, ae.status
+            FROM agent_endpoints ae
+            JOIN agents agent ON agent.id = ae.agent_id
+            WHERE agent.org_id = $1 AND ae.agent_id = ANY($2)
+                AND ae.channel_type <> 'schedule'
+            ORDER BY ae.created_at, ae.id
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+
     // ============================================
     // Agent endpoint CRUD
     // ============================================

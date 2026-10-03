@@ -1,16 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import {
-  CalendarClock,
-  ChevronDown,
-  Hash,
-  Monitor,
-  MoreHorizontal,
-  Play,
-  Webhook,
-} from "lucide-react";
-import { SlackIcon as Slack } from "@/components/icons/slack-icon";
+import { ChevronDown, MoreHorizontal, Play } from "lucide-react";
+import { ChannelIcon } from "./channel-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -26,7 +18,6 @@ import { MiniTimeline, type TimelineBin } from "@/components/apps/mini-timeline"
 import type {
   AgUiChannelConfig,
   AgentEndpoint,
-  EndpointTransport,
   PublicChatChannelConfig,
   ScheduleChannelConfig,
   SlackChannelConfig,
@@ -36,23 +27,6 @@ import {
   getEndpointTransportDisplayName,
   getEndpointLifecyclePresentation,
 } from "@/lib/endpoint-display";
-
-function iconFor(kind: EndpointTransport) {
-  switch (kind) {
-    case "schedule":
-      return CalendarClock;
-    case "webhook":
-      return Webhook;
-    case "ag_ui":
-      return Monitor;
-    case "fcp":
-      return Hash;
-    case "slack":
-      return Slack;
-    default:
-      return Hash;
-  }
-}
 
 function relativeTime(value?: string | null): string {
   if (!value) return "never";
@@ -167,7 +141,6 @@ export function ChannelRow({
   configureHref?: string;
   timeline?: TimelineBin[];
 }) {
-  const Icon = iconFor(channel.channel_type);
   const lifecycle = getEndpointLifecyclePresentation(channel);
   const { isLive } = lifecycle;
   const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
@@ -199,7 +172,7 @@ export function ChannelRow({
         >
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center border bg-background">
-              <Icon className="size-4" />
+              <ChannelIcon kind={channel.channel_type} className="size-4" />
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">

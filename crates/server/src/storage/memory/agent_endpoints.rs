@@ -8,6 +8,33 @@ use anyhow::Result;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
+    pub async fn list_agent_channel_summaries(
+        &self,
+        org_id: i64,
+        agent_ids: &[Uuid],
+    ) -> Result<Vec<crate::storage::AgentChannelSummaryRow>> {
+        let endpoints = self.ingress_endpoints.read();
+        let mut rows: Vec<_> = endpoints
+            .values()
+            .filter(|endpoint| {
+                endpoint.org_id == org_id
+                    && agent_ids.contains(&endpoint.agent_id)
+                    && endpoint.channel_type != "schedule"
+            })
+            .collect();
+        rows.sort_by_key(|endpoint| (endpoint.created_at, endpoint.endpoint_id));
+        Ok(rows
+            .into_iter()
+            .map(|endpoint| crate::storage::AgentChannelSummaryRow {
+                agent_id: endpoint.agent_id,
+                public_id: endpoint.endpoint_public_id.clone(),
+                channel_type: endpoint.channel_type.clone(),
+                enabled: endpoint.enabled,
+                status: endpoint.endpoint_status.clone(),
+            })
+            .collect())
+    }
+
     fn sync_ingress_endpoint(&self, channel: &AgentEndpointRow) {
         let mut endpoints = self.ingress_endpoints.write();
         let Some(endpoint) = endpoints.get_mut(&channel.id) else {

@@ -3,7 +3,13 @@
 // Enums that stay generated (closed sets the server owns) while the entity they
 // annotate is still hand-maintained here.
 import type { DriverId } from "./provider-driver-types";
-import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
+import type {
+  EndpointStatus,
+  LlmRetryInfo,
+  SessionActivity,
+  SessionSource,
+  OpenApiAgentChannelSummary,
+} from "./schema-types";
 
 // From legacy agent-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // ============================================
@@ -18,6 +24,8 @@ export interface AgentHarnessSummary {
   source: "explicit" | "organization_default";
   status: "active" | "archived" | "deleted" | "unresolved";
 }
+
+export type AgentChannelSummary = OpenApiAgentChannelSummary;
 
 /**
  * A conversation starter shown on a fresh Platform Chat thread. Selecting one
@@ -91,6 +99,8 @@ export interface Agent {
   app_count?: number;
   /** Harness a newly created session for this agent will resolve to. */
   effective_harness?: AgentHarnessSummary;
+  /** Non-secret inbound endpoint summaries; schedules are separate triggers. */
+  channels?: AgentChannelSummary[];
 }
 
 export type AgentVersionChangeKind =

@@ -4949,6 +4949,13 @@ export interface components {
       /** @description Reference to the capability ID */
       ref: string;
     };
+    /** @description Non-secret metadata for an agent's inbound channels. Schedules are triggers. */
+    AgentChannelSummary: {
+      channel_type: components["schemas"]["ChannelType"];
+      enabled: boolean;
+      id: string;
+      status: components["schemas"]["EndpointStatus"];
+    };
     /** @description Metadata for a write-only credential bound to one agent and MCP tool parameter. */
     AgentCredentialBinding: {
       /**
@@ -5324,6 +5331,7 @@ export interface components {
     AgentWithCounts: components["schemas"]["Agent"] & {
       /** Format: int64 */
       app_count: number;
+      channels: components["schemas"]["AgentChannelSummary"][];
       effective_harness: components["schemas"]["AgentHarnessSummary"];
       /** Format: int64 */
       session_count: number;
@@ -14368,6 +14376,7 @@ export interface components {
       data: ((components["schemas"]["Agent"] & {
         /** Format: int64 */
         app_count: number;
+        channels: components["schemas"]["AgentChannelSummary"][];
         effective_harness: components["schemas"]["AgentHarnessSummary"];
         /** Format: int64 */
         session_count: number;
@@ -19913,6 +19922,7 @@ export interface components {
     WithUrls_AgentWithCounts: (components["schemas"]["Agent"] & {
       /** Format: int64 */
       app_count: number;
+      channels: components["schemas"]["AgentChannelSummary"][];
       effective_harness: components["schemas"]["AgentHarnessSummary"];
       /** Format: int64 */
       session_count: number;

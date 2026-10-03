@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { AgentCard } from "@/components/agents/agent-card";
+import { HarnessCard } from "@/components/harnesses/harness-card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -86,7 +87,17 @@ import {
   RailSection,
   SectionTabs,
 } from "@/components/layout/page-layout";
-import type { Agent } from "@/lib/api/types";
+import type { Agent, Capability } from "@/lib/api/types";
+
+const sampleCapabilities: Capability[] = [
+  {
+    id: "current_time",
+    name: "Current Time",
+    description: "Returns the current time.",
+    icon: "clock",
+    status: "available",
+  },
+];
 
 const sampleId = "agent_019fda100f037c008024046d6b3d74c0";
 const sampleAgent: Agent = {
@@ -98,7 +109,7 @@ const sampleAgent: Agent = {
   harness_id: "harness_generic",
   default_model_id: "model_gpt_5",
   tags: ["research", "production"],
-  capabilities: [],
+  capabilities: [{ ref: "current_time", config: {} }],
   status: "active",
   created_at: "2026-08-04T14:30:00Z",
   updated_at: "2026-08-07T16:10:00Z",
@@ -106,6 +117,20 @@ const sampleAgent: Agent = {
   deleted_at: null,
   session_count: 12,
   app_count: 2,
+  effective_harness: {
+    id: "harness_generic",
+    name: "generic",
+    display_name: "Generic",
+    source: "explicit",
+    status: "active",
+  },
+  channels: [
+    { id: "aep_slack", channel_type: "slack", enabled: true, status: "live" },
+    { id: "aep_chat", channel_type: "public_chat", enabled: true, status: "live" },
+    { id: "aep_hook", channel_type: "webhook", enabled: true, status: "draft" },
+    { id: "aep_a2a", channel_type: "a2a", enabled: false, status: "disabled" },
+    { id: "aep_api", channel_type: "api_endpoint", enabled: true, status: "live" },
+  ],
 };
 
 function ShowcaseSection({
@@ -259,7 +284,11 @@ export default function DevUiComponentsPage() {
               <PageColumns>
                 <PageMain>
                   <div className="grid gap-4">
-                    <AgentCard agent={sampleAgent} showEditButton />
+                    <AgentCard
+                      agent={sampleAgent}
+                      allCapabilities={sampleCapabilities}
+                      showEditButton
+                    />
                   </div>
                 </PageMain>
                 <PageRail>
@@ -424,10 +453,51 @@ export default function DevUiComponentsPage() {
               <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
                 Production AgentCard
               </p>
-              <AgentCard agent={sampleAgent} showEditButton />
+              <AgentCard agent={sampleAgent} allCapabilities={sampleCapabilities} showEditButton />
+              <AgentCard
+                agent={{
+                  ...sampleAgent,
+                  id: "agent_empty",
+                  display_name: "No channels",
+                  channels: [],
+                }}
+                showEditButton
+              />
+              <AgentCard
+                agent={{
+                  ...sampleAgent,
+                  id: "agent_suspended",
+                  display_name: "Suspended channels",
+                  exposures_suspended: true,
+                }}
+              />
             </div>
 
             <div className="space-y-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                Production HarnessCard
+              </p>
+              <HarnessCard
+                harness={{
+                  id: "harness_generic",
+                  name: "generic",
+                  display_name: "Generic",
+                  description: "A general-purpose harness for everyday agents.",
+                  parent_harness_id: null,
+                  default_model_id: null,
+                  tags: ["general"],
+                  capabilities: sampleAgent.capabilities,
+                  is_built_in: true,
+                  status: "active",
+                  created_at: sampleAgent.created_at,
+                  updated_at: sampleAgent.updated_at,
+                  archived_at: null,
+                  deleted_at: null,
+                  session_count: 12,
+                  app_count: 2,
+                }}
+                allCapabilities={sampleCapabilities}
+              />
               <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
                 EntityCard row variant
               </p>

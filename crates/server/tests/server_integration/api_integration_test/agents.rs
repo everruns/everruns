@@ -1395,3 +1395,72 @@ async fn test_invalid_scoped_mcp_config_is_rejected_with_400_and_a_reason() {
         );
     }
 }
+
+#[tokio::test]
+async fn test_agent_channel_summaries_follow_endpoint_lifecycle() {
+    let server = TestServer::in_memory().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({"name": "channel-card", "system_prompt": "Test"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let id = agent["id"].as_str().unwrap();
+    let endpoints_path = format!("/v1/agents/{id}/endpoints");
+    let endpoint: Value = server.post(&endpoints_path, json!({
+        "channel_type": "webhook", "enabled": true,
+        "channel_config": {"token": "summary-must-not-leak", "message": "Process {{payload}}"}
+    })).await.assert_status(StatusCode::CREATED).json();
+    let endpoint_id = endpoint["id"].as_str().unwrap();
+    for (action, status) in [
+        (None, "draft"),
+        (Some("publish"), "live"),
+        (Some("unpublish"), "draft"),
+    ] {
+        if let Some(action) = action {
+            server
+                .post(
+                    &format!("{endpoints_path}/{endpoint_id}/{action}"),
+                    json!({}),
+                )
+                .await
+                .assert_status(StatusCode::OK);
+        }
+        let detail: Value = server
+            .get(&format!("/v1/agents/{id}"))
+            .await
+            .assert_status(StatusCode::OK)
+            .json();
+        let listed: Value = server
+            .get("/v1/agents?search=channel-card")
+            .await
+            .assert_status(StatusCode::OK)
+            .json();
+        assert_eq!(detail["channels"], listed["data"][0]["channels"]);
+        assert_eq!(detail["channels"][0]["id"], endpoint_id);
+        assert_eq!(detail["channels"][0]["channel_type"], "webhook");
+        assert_eq!(detail["channels"][0]["status"], status);
+        assert_eq!(detail["channels"][0].as_object().unwrap().len(), 4);
+        assert!(
+            !detail["channels"]
+                .to_string()
+                .contains("summary-must-not-leak")
+        );
+    }
+    server
+        .patch(
+            &format!("{endpoints_path}/{endpoint_id}"),
+            json!({"enabled": false}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let disabled: Value = server
+        .get(&format!("/v1/agents/{id}"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(disabled["channels"][0]["enabled"], false);
+    assert_eq!(disabled["channels"][0]["status"], "disabled");
+}

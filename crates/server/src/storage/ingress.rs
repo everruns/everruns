@@ -3,6 +3,16 @@ use everruns_durable::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 
+/// Non-secret endpoint metadata for agent collection cards.
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentChannelSummaryRow {
+    pub agent_id: Uuid,
+    pub public_id: String,
+    pub channel_type: String,
+    pub enabled: bool,
+    pub status: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateAgentEndpointRow {
     pub agent_id: Uuid,

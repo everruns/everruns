@@ -20,8 +20,8 @@ use everruns_core::{
     ScopedMcpServers, evaluate_policies_with,
 };
 use everruns_host::HostComposition;
-use everruns_platform::Agent;
 use everruns_platform::BuiltInHarnessRole;
+use everruns_platform::{Agent, EndpointStatus, EndpointTransport};
 use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use futures::future::try_join_all;
 
@@ -246,12 +246,22 @@ pub struct AgentHarnessSummary {
     pub status: AgentHarnessStatus,
 }
 
+/// Non-secret metadata for an agent's inbound channels. Schedules are triggers.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AgentChannelSummary {
+    pub id: String,
+    pub channel_type: EndpointTransport,
+    pub enabled: bool,
+    pub status: EndpointStatus,
+}
+
 /// Agent list/detail payload with relationship counts and resolved harness metadata.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentWithCounts {
     pub session_count: u64,
     pub app_count: u64,
     pub effective_harness: AgentHarnessSummary,
+    pub channels: Vec<AgentChannelSummary>,
     #[serde(flatten)]
     pub inner: Agent,
 }
@@ -388,6 +398,7 @@ async fn add_agent_counts(
     org_id: i64,
     agent: Agent,
     effective_harness: AgentHarnessSummary,
+    channels: Vec<AgentChannelSummary>,
 ) -> Result<AgentWithCounts, (StatusCode, Json<ErrorResponse>)> {
     let agent_id = AgentId::from_uuid(agent.internal_id);
     let session_count = async {
@@ -406,6 +417,7 @@ async fn add_agent_counts(
         session_count,
         app_count,
         effective_harness,
+        channels,
         inner: agent,
     })
 }
@@ -417,6 +429,27 @@ async fn add_agents_counts(
     fallback_harness_name: Option<&str>,
 ) -> Result<Vec<AgentWithCounts>, (StatusCode, Json<ErrorResponse>)> {
     let mut harnesses = resolve_agent_harnesses(db, org_id, &agents, fallback_harness_name).await?;
+    let mut channels: HashMap<_, Vec<AgentChannelSummary>> = HashMap::new();
+    if !agents.is_empty() {
+        let ids: Vec<_> = agents.iter().map(|agent| agent.internal_id).collect();
+        for row in db
+            .list_agent_channel_summaries(org_id, &ids)
+            .await
+            .log_internal_error_json("list agent channels")?
+        {
+            let channel_type = EndpointTransport::from_str_opt(&row.channel_type)
+                .ok_or_else(ErrorResponse::internal_error)?;
+            channels
+                .entry(row.agent_id)
+                .or_default()
+                .push(AgentChannelSummary {
+                    id: row.public_id,
+                    channel_type,
+                    enabled: row.enabled,
+                    status: EndpointStatus::from(row.status.as_str()),
+                });
+        }
+    }
     try_join_all(agents.into_iter().map(|agent| {
         let effective_harness =
             harnesses
@@ -428,7 +461,8 @@ async fn add_agents_counts(
                     source: AgentHarnessSource::Explicit,
                     status: AgentHarnessStatus::Unresolved,
                 });
-        add_agent_counts(db, org_id, agent, effective_harness)
+        let agent_channels = channels.remove(&agent.internal_id).unwrap_or_default();
+        add_agent_counts(db, org_id, agent, effective_harness, agent_channels)
     }))
     .await
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
-import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardFooter, EntityCardTags } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { GitBranch, Pencil } from "lucide-react";
 import { IconTile } from "@/components/layout/page-layout";
@@ -47,7 +47,6 @@ export function HarnessCard({
   const harnessCapabilities = harness.capabilities ?? [];
   const tags = normalizeTags(harness.tags);
   const sessionCount = harness.session_count ?? 0;
-  const appCount = harness.app_count ?? 0;
   const directParent = inheritance?.directParent;
   const directParentName = directParent ? getDisplayName(directParent) : null;
   const inheritanceSummary = inheritance?.hasCycle
@@ -79,11 +78,9 @@ export function HarnessCard({
         <EntityCardFooter
           meta={
             <>
-              <span>Created {new Date(harness.created_at).toLocaleDateString()}</span>
+              <span>{formatCountLabel(sessionCount, "session")}</span>
               <span className="mx-2">·</span>
-              <span>
-                {formatCountLabel(sessionCount, "session")} · {formatCountLabel(appCount, "app")}
-              </span>
+              <span>Created {new Date(harness.created_at).toLocaleDateString()}</span>
             </>
           }
           actions={
@@ -145,46 +142,39 @@ export function HarnessCard({
         </div>
       )}
 
-      {/* Capabilities display */}
-      {harnessCapabilities.length > 0 && (
-        <div
-          className="flex flex-wrap items-center gap-1 mb-3"
-          aria-label="Locally declared capabilities"
-        >
-          <span className="mr-1 text-[11px] text-muted-foreground">Declared capabilities</span>
-          <TooltipProvider>
-            {harnessCapabilities.map((capConfig) => {
-              const cap = getCapabilityInfo(capConfig.ref);
-              if (!cap) return null;
-              return (
-                <Tooltip key={capConfig.ref}>
-                  <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
-                    <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
-                    {!compact && <span>{localizedCapabilityName(cap, locale)}</span>}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {localizedCapabilityDescription(cap, locale)}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </TooltipProvider>
-        </div>
-      )}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+        {/* Capabilities display */}
+        {harnessCapabilities.length > 0 && (
+          <div
+            className="flex flex-wrap items-center gap-1"
+            aria-label="Locally declared capabilities"
+          >
+            <span className="mr-1 text-[11px] text-muted-foreground">Declared capabilities</span>
+            <TooltipProvider>
+              {harnessCapabilities.map((capConfig) => {
+                const cap = getCapabilityInfo(capConfig.ref);
+                if (!cap) return null;
+                return (
+                  <Tooltip key={capConfig.ref}>
+                    <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
+                      <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
+                      {!compact && <span>{localizedCapabilityName(cap, locale)}</span>}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {localizedCapabilityDescription(cap, locale)}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </TooltipProvider>
+          </div>
+        )}
 
-      {/* Tags */}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-        </div>
-      )}
+        <EntityCardTags tags={tags} />
+      </div>
     </EntityCard>
   );
 }
