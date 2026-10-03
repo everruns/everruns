@@ -47,7 +47,7 @@ async fn one_turn_records_each_item_once_across_stream_disconnects() {
         turn.tool_results["call_1"].state,
         ToolResultState::Submitted { success: true, .. }
     ));
-    let mcp = h.ledger.of_type("tool.completed");
+    let mcp = h.ledger.of_type("tool.hosted_call");
     assert!(
         mcp.iter()
             .any(|r| r["tool_name"] == "mcp_docs__search_openai_docs")
@@ -357,6 +357,18 @@ async fn replay_run(
     Arc<TestLedger>,
     Arc<TestExecutor>,
 ) {
+    replay_request(recording, &request(1, text)).await
+}
+
+async fn replay_request(
+    recording: &str,
+    req: &AgentsApiTurnRequest,
+) -> (
+    Replay,
+    AgentsApiTurnOutcome,
+    Arc<TestLedger>,
+    Arc<TestExecutor>,
+) {
     let replay = Replay::new(recording);
     let server = MockServer::start().await;
     Mock::given(any())
@@ -373,8 +385,222 @@ async fn replay_run(
     )
     .with_reconnect_policy(4, Duration::from_millis(1))
     .with_usage_poll(2, Duration::from_millis(1));
-    let outcome = driver.run(&request(1, text)).await.unwrap();
+    let outcome = driver.run(req).await.unwrap();
     (replay, outcome, ledger, executor)
+}
+
+#[tokio::test]
+async fn recorded_provider_mcp_inventory_is_hosted_work_without_act_records() {
+    // Live 2026-10-02: tools: [], environment: none, yet the managed harness
+    // called its own codex inventory tools. IDs are normalized in the fixture.
+    let recording = include_str!("fixtures/agents_api_live_mcp_inventory.json");
+    let events: Vec<Value> = serde_json::from_str(recording).unwrap();
+    assert_eq!(events[0]["session"]["agent"]["tools"], json!([]));
+    assert_eq!(events[0]["session"]["environment"]["type"], "none");
+    let mut req = request(1, "List MCP resources.");
+    req.config.agent.tools.clear();
+    req.tools.clear();
+    let (replay, outcome, ledger, executor) = replay_request(recording, &req).await;
+    assert!(matches!(
+        outcome,
+        AgentsApiTurnOutcome::Completed { tool_calls: 2, .. }
+    ));
+    assert_eq!(executor.calls.load(Ordering::SeqCst), 0);
+    assert!(replay.submitted.lock().unwrap().is_empty());
+    assert!(ledger.of_type("tool.started").is_empty());
+    assert!(ledger.of_type("tool.completed").is_empty());
+    let hosted = ledger.of_type("tool.hosted_call");
+    for name in ["list_mcp_resources", "list_mcp_resource_templates"] {
+        let calls: Vec<_> = hosted
+            .iter()
+            .filter(|call| call["tool_name"] == format!("mcp_codex__{name}"))
+            .collect();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0]["status"], "in_progress");
+        assert_eq!(calls[1]["status"], "completed");
+        assert_eq!(calls[0]["call_id"], calls[1]["call_id"]);
+    }
+    let messages = ledger.of_type("output.message.completed");
+    assert_eq!(
+        messages.len(),
+        2,
+        "only provider commentary and final answer"
+    );
+    assert!(messages.iter().all(|message| {
+        message["message"]["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|part| part["type"] != "tool_call")
+    }));
+    for event in ledger
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|event| event.event_type == "tool.hosted_call")
+    {
+        let metadata = event.metadata.as_ref().unwrap();
+        assert_eq!(metadata["provider_session_id"], "sess_inventory_1");
+        assert_eq!(metadata["provider_turn_id"], "turn_inventory_1");
+        let data = serde_json::to_value(&event.data).unwrap();
+        assert_eq!(metadata["provider_item_id"], data["call_id"]);
+        assert_eq!(data["turn_id"], request(1, "").turn_id.to_string());
+    }
+    ledger.assert_each_record_once();
+}
+
+#[tokio::test]
+async fn provider_mcp_payloads_do_not_enter_the_canonical_record() {
+    let mut events: Vec<Value> =
+        serde_json::from_str(include_str!("fixtures/agents_api_live_round_trip.json")).unwrap();
+    let secret = "private-mcp-payload".repeat(10_000);
+    for event in &mut events {
+        if event["item"]["type"] == "mcp_call" {
+            let item = &mut event["item"];
+            item["arguments"] = json!({"credential": secret});
+            item["output"] = json!({"private_result": secret});
+            if item["status"] == "failed" {
+                // A provider may also put a failure in error even when its
+                // status says completed; both are a failed hosted call.
+                item["status"] = json!("completed");
+                item["error"] = json!({"message": secret});
+            }
+        }
+    }
+    let (_, outcome, ledger, executor) = replay_run(
+        &serde_json::to_string(&events).unwrap(),
+        "Who is customer 123?",
+    )
+    .await;
+    assert!(matches!(
+        outcome,
+        AgentsApiTurnOutcome::Completed { tool_calls: 3, .. }
+    ));
+    assert_eq!(executor.calls.load(Ordering::SeqCst), 1);
+    let hosted = ledger.of_type("tool.hosted_call");
+    assert_eq!(hosted.len(), 4);
+    assert!(hosted.iter().any(
+        |call| call["tool_name"] == "mcp_docs__fetch_openai_doc" && call["status"] == "failed"
+    ));
+    for call in &hosted {
+        assert_eq!(call["summary"], "Provider-run MCP call");
+        assert!(call["summary"].as_str().unwrap().len() <= 256);
+    }
+    assert!(
+        !serde_json::to_string(&ledger.data())
+            .unwrap()
+            .contains("private-mcp-payload")
+    );
+    assert_eq!(ledger.of_type("output.message.completed").len(), 3);
+    assert_eq!(ledger.of_type("tool.completed").len(), 1);
+    assert!(ledger.of_type("tool.started").is_empty());
+}
+
+#[tokio::test]
+async fn restart_after_provider_mcp_completion_does_not_repeat_its_lifecycle_or_charge() {
+    use everruns_core::agents_api_store::ItemState;
+    let h = Harness::new().await;
+    h.fake.with(|s| s.duplicate = true);
+    h.store.crash_when(|cp| {
+        cp.turn.as_ref().is_some_and(|turn| {
+            turn.items
+                .get("hosted-done:mcp_1")
+                .is_some_and(|item| item.state == ItemState::Completed)
+        })
+    });
+    let req = request(1, "Who is customer 123?");
+    let (outcome, crashes) = h.run(&req).await;
+    assert_eq!(crashes, 1);
+    assert_completed(&outcome);
+    assert_turn_record(&h.ledger, 1);
+    assert_eq!(h.executor.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(h.ledger.of_type("tool.hosted_call").len(), 2);
+    let generation = h.ledger.of_type("llm.generation");
+    assert_eq!(generation.len(), 1);
+    let components = generation[0]["metadata"]["cost_components"]
+        .as_array()
+        .unwrap();
+    let mcp = components
+        .iter()
+        .find(|component| component["name"] == "mcp_call")
+        .unwrap();
+    assert_eq!(mcp["kind"], "hosted_tool");
+    assert_eq!(mcp["quantity"], 1);
+    assert!(mcp["cost_usd"].is_null(), "unknown price stays explicit");
+    let before = h.ledger.data().len();
+    let (replayed, _) = h.run(&req).await;
+    assert_completed(&replayed);
+    assert_eq!(h.ledger.data().len(), before);
+}
+
+#[tokio::test]
+async fn legacy_provider_mcp_checkpoints_reconcile_without_double_counting() {
+    use everruns_core::agents_api_store::{ItemCorrelation, ItemKind, ItemState};
+    for completed in [false, true] {
+        let h = Harness::new().await;
+        let req = request(1, "Who is customer 123?");
+        let (outcome, _) = h.run(&req).await;
+        assert_completed(&outcome);
+        let mut checkpoint = h.checkpoint();
+        let turn = checkpoint.turn.as_mut().unwrap();
+        turn.outcome = None;
+        turn.items.remove("usage:turn_1");
+        turn.items.remove("hosted:mcp_1");
+        turn.items.remove("hosted-done:mcp_1");
+        turn.items.insert(
+            "mcp:mcp_1".to_string(),
+            ItemCorrelation {
+                kind: ItemKind::McpCall,
+                local_id: MessageId::new().to_string(),
+                state: ItemState::Completed,
+            },
+        );
+        if completed {
+            turn.items.insert(
+                "mcp-result:mcp_1".to_string(),
+                ItemCorrelation {
+                    kind: ItemKind::McpCall,
+                    local_id: "mcp_1".to_string(),
+                    state: ItemState::Completed,
+                },
+            );
+        }
+        h.ledger.events.lock().unwrap().retain(|event| {
+            !matches!(
+                event.event_type.as_str(),
+                "tool.hosted_call" | "llm.generation"
+            )
+        });
+        // Replace only the persisted representation, as an older worker's
+        // checkpoint would be encountered after the deployment.
+        h.store.inner.expire(req.session_id);
+        let lease = AgentsApiLease {
+            org_id: req.org_id,
+            session_id: req.session_id,
+            owner: uuid::Uuid::new_v4(),
+        };
+        h.store.inner.acquire(lease).await.unwrap();
+        h.store.inner.save(lease, &checkpoint).await.unwrap();
+        h.store.inner.release(lease).await.unwrap();
+        let (outcome, crashes) = h.run(&req).await;
+        assert_eq!(crashes, 0);
+        assert_completed(&outcome);
+        assert_eq!(
+            h.ledger.of_type("tool.hosted_call").len(),
+            if completed { 0 } else { 2 }
+        );
+        assert_eq!(h.executor.calls.load(Ordering::SeqCst), 1);
+        let generation = h.ledger.of_type("llm.generation");
+        let components = generation[0]["metadata"]["cost_components"]
+            .as_array()
+            .unwrap();
+        let mcp = components
+            .iter()
+            .find(|component| component["name"] == "mcp_call")
+            .unwrap();
+        assert_eq!(mcp["quantity"], 1);
+    }
 }
 
 #[tokio::test]
@@ -422,19 +648,18 @@ async fn recorded_live_round_trip_projects_one_function_and_two_mcp_calls() {
         .collect();
     assert_eq!(phases.first(), Some(&json!("commentary")));
     assert_eq!(phases.last(), Some(&json!("final_answer")));
-    // Commentary, the function call, two MCP calls, and the final answer.
-    assert_eq!(messages.len(), 5);
-    let results = ledger.of_type("tool.completed");
-    assert_eq!(results.len(), 3);
-    assert!(
-        results.iter().any(|r| {
-            r["tool_name"] == "mcp_docs__search_openai_docs" && r["status"] == "success"
-        })
-    );
+    // Commentary, the client function call, and the final answer.
+    assert_eq!(messages.len(), 3);
+    assert_eq!(ledger.of_type("tool.completed").len(), 1);
+    let results = ledger.of_type("tool.hosted_call");
+    assert_eq!(results.len(), 4);
+    assert!(results.iter().any(|r| {
+        r["tool_name"] == "mcp_docs__search_openai_docs" && r["status"] == "completed"
+    }));
     assert!(
         results
             .iter()
-            .any(|r| { r["tool_name"] == "mcp_docs__fetch_openai_doc" && r["status"] == "error" })
+            .any(|r| { r["tool_name"] == "mcp_docs__fetch_openai_doc" && r["status"] == "failed" })
     );
 }
 
@@ -553,14 +778,16 @@ async fn live_conformance_one_client_function_and_one_allowed_mcp_tool() {
         "one client function call"
     );
     let mcp_results: Vec<_> = ledger
-        .of_type("tool.completed")
+        .of_type("tool.hosted_call")
         .into_iter()
-        .filter(|result| result["tool_name"] == "mcp_docs__search_openai_docs")
+        .filter(|result| {
+            result["tool_name"] == "mcp_docs__search_openai_docs" && result["status"] == "completed"
+        })
         .collect();
     assert!(!mcp_results.is_empty(), "the allowed MCP tool ran");
     assert!(
         ledger
-            .of_type("tool.completed")
+            .of_type("tool.hosted_call")
             .iter()
             .all(|result| result["tool_name"] != "mcp_docs__fetch_openai_doc"),
         "a tool outside the allowlist ran"
