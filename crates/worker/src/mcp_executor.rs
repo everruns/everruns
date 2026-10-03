@@ -3,7 +3,7 @@
 // Spec: knowledge/integrations/mcp-servers.md (execution detail), knowledge/integrations/runtime-mcp.md (D5).
 //
 // The transport-agnostic MCP client (discovery, tools/call, SSE parsing, SSRF)
-// now lives in the shared `everruns_core::mcp` module. This module only carries the
+// now lives in the core MCP module. This module only carries the
 // gRPC-resolved server descriptor (`McpServerInfo`) used by the worker's
 // gRPC adapters; the previous worker-local JSON-RPC executor was removed to
 // avoid duplicating that client (goal: no duplication).
