@@ -60,7 +60,7 @@ async fn exchange(
         .resolve_runtime_identity(crate::storage::runtime_identity::VerifiedRuntimeIdentity {
             org_id: context.org_id,
             provider: "oidc".into(),
-            realm: principal.issuer.clone(),
+            realm: principal.identity_realm.clone(),
             subject: principal.subject.clone(),
             name: "User".into(),
             avatar_url: None,
@@ -79,7 +79,9 @@ async fn exchange(
     let binding = bindings
         .iter()
         .find(|b| {
-            b.provider == "oidc" && b.realm == principal.issuer && b.subject == principal.subject
+            b.provider == "oidc"
+                && b.realm == principal.identity_realm
+                && b.subject == principal.subject
         })
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     let token = crate::auth::jwt::JwtService::new(state.auth.config.jwt.clone())

@@ -88,7 +88,7 @@ pub(super) async fn authorize_ag_ui_request(
                     state,
                     context.org_id,
                     "oidc",
-                    &principal.issuer,
+                    &principal.identity_realm,
                     &principal.subject,
                 )
                 .await?,
