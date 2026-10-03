@@ -212,6 +212,14 @@ impl MessageService {
             created_at: now,
         };
         let event_metadata = if let Some(principal_id) = ctx.runtime_subject_principal_id {
+            let display_name = match runtime_subject {
+                Some(id) => self
+                    .db
+                    .get_virtual_user(ctx.org_id, id)
+                    .await?
+                    .map(|v| v.name),
+                None => None,
+            };
             self.db
                 .ensure_active_user_session_participant(CreateSessionParticipantRow {
                     org_id: ctx.org_id,
@@ -220,7 +228,7 @@ impl MessageService {
                     agent_id: None,
                     agent_version_id: None,
                     principal_id,
-                    display_name: None,
+                    display_name,
                     role: SessionParticipantRole::Member,
                     joined_at: None,
                 })
