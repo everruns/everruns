@@ -4,6 +4,7 @@ import EditAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/[endp
 import NewAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/new/page";
 import { ChannelForm, getDefaultChannelFormState } from "@/components/apps/channel-form";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import { ApiError } from "@/lib/api/client";
 import type { SlackInstallCapability, SlackWorkspace } from "@/lib/api/agent-endpoints";
 import { classifySlackConfigToken } from "@/components/slack/slack-workspaces";
 import type { Agent, AgentEndpoint } from "@/lib/api/types";
@@ -150,6 +151,42 @@ describe("Slack endpoint first run", () => {
       (_request: unknown, options: { onSuccess: (endpoint: AgentEndpoint) => void }) =>
         options.onSuccess(slackEndpoint()),
     );
+  });
+
+  it("keeps install failures compact, reveals diagnostics on demand, and allows retry", async () => {
+    (beginSlackInstall as jest.Mock).mockRejectedValue(
+      new ApiError(
+        502,
+        "Bad Gateway",
+        "<!DOCTYPE html><html>gateway page</html>",
+        undefined,
+        "request-123",
+        "ray-456",
+      ),
+    );
+    render(
+      <ChannelForm
+        state={{ ...getDefaultChannelFormState("slack"), slackInstallTeamId: "T1" }}
+        onChange={jest.fn()}
+        mode="edit"
+        endpointId="appchan_123"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add to Slack" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn’t connect to Slack");
+    expect(alert).not.toHaveTextContent("DOCTYPE");
+    expect(screen.queryByText(/Request ID: request-123/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
+    expect(await screen.findByText(/Request ID: request-123/)).toBeVisible();
+    expect(screen.getByText(/HTTP 502/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Copy technical details" })).toBeVisible();
+
+    (beginSlackInstall as jest.Mock).mockImplementation(() => new Promise(() => undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Opening Slack…" })).toBeDisabled();
   });
 
   it("starts with manual Slack credentials collapsed", () => {

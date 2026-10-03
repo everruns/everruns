@@ -63,6 +63,7 @@ import {
 } from "@/components/slack/slack-workspaces";
 import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
 import { ApiError } from "@/lib/api/client";
+import { SlackInstallError } from "@/components/slack/slack-install-error";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
@@ -579,7 +580,7 @@ function FieldGrid({ children }: { children: React.ReactNode }) {
 function useSlackInstall(endpointId?: string, teamId?: string, onUnavailable?: () => void) {
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   const begin = useCallback(async () => {
     if (!endpointId) return;
@@ -595,7 +596,9 @@ function useSlackInstall(endpointId?: string, teamId?: string, onUnavailable?: (
         setUnavailable(true);
         onUnavailable?.();
       } else {
-        setError(caught instanceof Error ? caught.message : "Could not start the Slack install.");
+        setError(
+          caught instanceof Error ? caught : new Error("Could not start the Slack install."),
+        );
       }
       setPending(false);
     }
@@ -1309,7 +1312,7 @@ export function ChannelForm({
                   {slackInstall.pending ? "Opening Slack…" : "Add to Slack"}
                 </Button>
                 {slackInstall.error && (
-                  <p className="text-xs text-destructive">{slackInstall.error}</p>
+                  <SlackInstallError error={slackInstall.error} onRetry={slackInstall.begin} />
                 )}
               </div>
             )}

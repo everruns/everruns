@@ -461,19 +461,38 @@ async fn begin_install(
         &state.slack.api_base_url,
         &endpoint.public_id.to_string(),
     );
+    let authorize_url = authorize_url(
+        &client_id,
+        &install_state,
+        &redirect_uri,
+        team_id_for_consent.as_deref(),
+        config.agent_surface_enabled,
+    );
+    Ok(Json(BeginInstallResponse { authorize_url }))
+}
+
+fn authorize_url(
+    client_id: &str,
+    install_state: &str,
+    redirect_uri: &str,
+    team_id: Option<&str>,
+    agent_surface_enabled: bool,
+) -> String {
+    let scopes = super::slack_events::slack_bot_scopes(agent_surface_enabled).join(",");
     let mut authorize_url = format!(
-        "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}",
-        urlencoding_encode(&client_id),
-        urlencoding_encode(&install_state),
-        urlencoding_encode(&redirect_uri),
+        "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}&scope={}",
+        urlencoding_encode(client_id),
+        urlencoding_encode(install_state),
+        urlencoding_encode(redirect_uri),
+        urlencoding_encode(&scopes),
     );
     // Pre-select the workspace on Slack's consent screen. Without it Slack
     // offers every workspace the operator belongs to, and picking any other
     // fails, since the app exists only in this one.
-    if let Some(team_id) = &team_id_for_consent {
+    if let Some(team_id) = team_id {
         authorize_url.push_str(&format!("&team={}", urlencoding_encode(team_id)));
     }
-    Ok(Json(BeginInstallResponse { authorize_url }))
+    authorize_url
 }
 
 #[derive(Deserialize)]
@@ -707,7 +726,9 @@ fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Js
                 .into_response(StatusCode::NOT_FOUND)
         }
         SlackProvisioningError::Rejected(code) => {
+            tracing::warn!(slack_error = %code, "Slack app provisioning rejected");
             ErrorResponse::new(format!("Slack rejected the app creation: {code}"))
+                .with_code(code)
                 .into_response(StatusCode::BAD_GATEWAY)
         }
         SlackProvisioningError::Unreachable(detail) => {
@@ -1035,12 +1056,55 @@ mod tests {
     }
 
     #[test]
+    fn consent_requests_manifest_scopes_for_both_slack_surfaces() {
+        for agent_surface_enabled in [false, true] {
+            let redirect = "https://example.com/api/v1/e/test/slack/oauth/callback";
+            let url = url::Url::parse(&authorize_url(
+                "client-id",
+                "nonce",
+                redirect,
+                Some("T1"),
+                agent_surface_enabled,
+            ))
+            .unwrap();
+            let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
+            assert_eq!(params["client_id"], "client-id");
+            assert_eq!(params["state"], "nonce");
+            assert_eq!(params["redirect_uri"], redirect);
+            assert_eq!(params["team"], "T1");
+            let scopes: Vec<_> = params["scope"].split(',').collect();
+            assert!(scopes.contains(&"chat:write"));
+            assert_eq!(scopes.contains(&"assistant:write"), agent_surface_enabled);
+
+            let yaml = super::super::slack_events::build_manifest_yaml(
+                "Agent",
+                "Agent",
+                None,
+                "https://example.com/events",
+                "https://example.com/actions",
+                redirect,
+                agent_surface_enabled,
+                &[],
+            );
+            let manifest: serde_json::Value = serde_yaml::from_str(&yaml).unwrap();
+            let declared: Vec<_> = manifest["oauth_config"]["scopes"]["bot"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|scope| scope.as_str().unwrap())
+                .collect();
+            assert_eq!(scopes, declared);
+        }
+    }
+
+    #[test]
     fn an_absent_provisioner_answers_not_implemented_rather_than_error() {
         let (status, _) = provisioning_error_response(SlackProvisioningError::Unavailable);
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-        let (status, _) =
+        let (status, Json(problem)) =
             provisioning_error_response(SlackProvisioningError::Rejected("ratelimited".into()));
         assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(problem.code.as_deref(), Some("ratelimited"));
     }
 
     #[tokio::test]

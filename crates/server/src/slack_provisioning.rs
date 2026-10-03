@@ -520,11 +520,20 @@ impl SlackAppProvisioner for SlackApiProvisioner {
         manifest_yaml: &str,
     ) -> SlackProvisioningResult<SlackAppCredentials> {
         let row = self.connection_for(org_id, team_id).await?;
+        // Slack's manifest API requires a JSON-encoded string. The UI's
+        // copy-paste flow accepts YAML, but sending that YAML to this API
+        // fails with invalid_manifest even for an otherwise valid manifest.
+        let manifest: serde_json::Value = serde_yaml::from_str(manifest_yaml).map_err(|_| {
+            SlackProvisioningError::Unreachable("Could not encode Slack app manifest".to_string())
+        })?;
+        let manifest_json = serde_json::to_string(&manifest).map_err(|_| {
+            SlackProvisioningError::Unreachable("Could not encode Slack app manifest".to_string())
+        })?;
         let response = self
             .manifest_call(
                 row,
                 "/apps.manifest.create",
-                serde_json::json!({"manifest": manifest_yaml}),
+                serde_json::json!({"manifest": manifest_json}),
             )
             .await?;
         let response: CreateAppResponse = serde_json::from_value(response)
@@ -769,6 +778,49 @@ mod tests {
             provisioner.create_app(41, Some("T9"), "{}").await,
             Err(SlackProvisioningError::WorkspaceNotConnected)
         ));
+    }
+
+    #[tokio::test]
+    async fn app_creation_encodes_the_generated_yaml_as_json_for_slack() {
+        let server = MockServer::start().await;
+        let manifest = crate::api::slack_events::build_manifest_yaml(
+            "Support Agent",
+            "Support Agent",
+            Some("Answers questions"),
+            "https://example.com/api/v1/e/test/slack/events",
+            "https://example.com/api/v1/e/test/slack/interactivity",
+            "https://example.com/api/v1/e/test/slack/oauth/callback",
+            true,
+            &[],
+        );
+        let expected: serde_json::Value = serde_yaml::from_str(&manifest).unwrap();
+        Mock::given(method("POST"))
+            .and(path("/apps.manifest.create"))
+            .and(wiremock::matchers::body_json(serde_json::json!({
+                "manifest": serde_json::to_string(&expected).unwrap()
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "app_id": "A1",
+                "credentials": {
+                    "client_id": "c1",
+                    "client_secret": "s1",
+                    "signing_secret": "g1"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (provisioner, db) = provisioner(&server);
+        db.upsert_org_slack_connection(stored(41, "T1", chrono::Duration::hours(1)))
+            .await
+            .unwrap();
+
+        let created = provisioner
+            .create_app(41, Some("T1"), &manifest)
+            .await
+            .unwrap();
+        assert_eq!(created.app_id, "A1");
     }
 
     #[tokio::test]
