@@ -171,6 +171,8 @@ Confirmed against the live API on 2026-10-01: sessions accept and return `metada
 
 Confirmed against the live API on 2026-10-02: session-create `input` accepts an array of messages, but only with role `user` (an `assistant` message returns `invalid_value` on `input[n].role`, and a `function_call` item returns `missing_required_parameter` for its `role`); `{"type": "message", "role": "user", "content": [{"type": "input_text", "text": ...}]}` works, and the provider folds several user messages into one saved user item with one `input_text` part each, which the driver does not project. A seeded session answered from the transcript in the same turn.
 
+Confirmed against the live API on 2026-10-03: with no offered tools, no MCP connection, and `environment: none`, the harness emits `mcp_call` items for its own two `codex` inventory helpers. Their completed MCP text envelopes contained only empty resources or resource templates. This demonstrates the observed result, not the provider's internal permissions or absence of possible side effects. No suppression setting for these helpers was verified in the [documented configuration](https://developers.openai.com/api/docs/guides/agents-api/configuration); a probe of `agent.tool_choice: "none"` was rejected with `unknown_parameter`, so the backend does not send it. The runtime accepts only the verified empty inventory shape and rejects other observed provider work; the provider trust limit is described in [Policy at the tool and output boundaries](#policy-at-the-tool-and-output-boundaries).
+
 Version-sensitive: exact event and item payloads, usage field names, built-in tool inventory, import/export completeness, environment policy fields, webhook coverage, and whether tool-result submissions honor `Idempotency-Key` as input events do.
 
 ## Live validation
@@ -181,13 +183,14 @@ What the live run taught, beyond the documentation: the preamble and the final a
 
 The credentialed conformance test (`live_conformance_one_client_function_and_one_allowed_mcp_tool`, ignored by default, needs `OPENAI_API_KEY`) runs the durable driver with one client function and one MCP server restricted by `allowed_tools`. On 2026-10-01 it reached the API, created a session, and projected the provider's `usage_limit_exceeded` failure, because the organization had no credits left (the Responses API returned `credit_balance_exhausted` at the same time). On 2026-10-02, with a funded key, it completed: one `lookup_customer` call, one allowed MCP search, and a final answer. `live_seeded_session_recalls_the_earlier_conversation` seeds a session with an earlier exchange (a code word and a tool result) and checks the answer recalls both; it passed the same day. Both runs showed the managed harness calling its own `codex` MCP resource listings (`list_mcp_resources`, `list_mcp_resource_templates`) with no MCP server configured and `environment: none`; they are provider `mcp_call` items projected as `tool.hosted_call` records.
 
+The production-policy conformance test (`live_runtime_policy_accepts_only_empty_codex_inventory`) uses an empty tool list and no environment, enables the same strict driver policy as the backend, and requires both empty inventory calls to complete visibly without invoking a local function or creating an Act record. The sanitized captured stream is replayed independently in deterministic tests. On 2026-10-03 the credentialed strict-policy test passed against OpenAI: both inventories completed, no local function executed, and no Act record was created. The canonical PostgreSQL-backed API/worker stack passed the same day with the strict backend: the persisted event endpoint returned both hosted lifecycles, a completed turn with two tool calls, and no Act starts or results. Actual health and UI endpoints passed; the smoke session was deleted through the normal cleanup path.
+
 ## Go / no-go
 
 Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a default or as a replacement for the native runtime. Durable orchestration, policy at the tool and output boundaries, the event, usage, and cost projection, and the session lifecycle are in place. Whether the provider keeps a required action open for as long as an approval may take (15 minutes by default) is unverified against the live API; a provider timeout fails the turn with `tool_action_expired`.
 
 ## Follow-up issues
 
-* The managed harness's own `codex` MCP resource-listing calls (observed live on 2026-10-02) run outside Everruns' tool pipeline; confirm what they can reach and whether the configuration can turn them off.
 * An uncertain create whose Everruns session is deleted before the next turn adopts it leaves that provider session to OpenAI's retention.
 
 ## References
