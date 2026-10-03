@@ -10,6 +10,8 @@ export type {
   AgentChannelSummary,
   ConversationStarter,
 } from "./agent-types";
+import type { SlackChannelConfig } from "./slack-api-types";
+export type { SlackChannelConfig, SlackReplyMode, SlackResponsePolicy } from "./slack-api-types";
 import type { DriverId } from "./provider-driver-types";
 import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
 
@@ -409,8 +411,6 @@ export type SessionBinding =
  */
 export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channel" | "per_user">;
 
-export type SlackReplyMode = "all_messages" | "report_progress_only";
-
 /**
  * The bindings a trigger or request/reply endpoint can offer — nothing is
  * listening on a thread, so the exposure owns the session. Mirrors
@@ -483,19 +483,6 @@ export interface EndpointAuthConfig {
   mode: EndpointAuthMode;
   provider?: EndpointAuthProviderConfig;
   requirements?: EndpointAuthRequirements;
-}
-
-export interface SlackChannelConfig {
-  signing_secret?: string;
-  signing_secret_configured?: boolean;
-  bot_token?: string;
-  bot_token_configured?: boolean;
-  channel_id?: string;
-  team_id?: string;
-  session_strategy: SessionStrategy;
-  reply_mode?: SlackReplyMode;
-  webhook_verified_at?: string | null;
-  first_message_received_at?: string | null;
 }
 
 /** Default thread expiration window for AG-UI (6 hours, in seconds). */

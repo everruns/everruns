@@ -277,33 +277,17 @@ impl SessionService {
             .as_ref()
             .map(|agent| serde_json::from_value(agent.mcp_servers.clone()).unwrap_or_default());
 
-        let resolved_agent_version = if FeatureFlags::current().agent_versions {
-            if let Some(agent_id) = agent_id {
-                let (version_policy, pinned_version_id) =
-                    agent_version_selection.unwrap_or_default();
-                match version_policy {
-                    AgentVersionPolicy::Pinned => {
-                        if let Some(version_id) = pinned_version_id {
-                            self.db.get_agent_version(org_id, version_id).await?
-                        } else {
-                            None
-                        }
-                    }
-                    AgentVersionPolicy::Latest => {
-                        self.db.get_latest_agent_version(org_id, agent_id).await?
-                    }
-                    AgentVersionPolicy::Default => {
-                        if let Some(version_id) = agent.as_ref().and_then(|a| a.default_version_id)
-                        {
-                            self.db.get_agent_version(org_id, version_id).await?
-                        } else {
-                            None
-                        }
-                    }
-                }
-            } else {
-                None
-            }
+        let resolved_agent_version = if let Some(agent) = &agent {
+            let (policy, version_id) = agent_version_selection.unwrap_or_default();
+            crate::domains::agents::version_policy::resolve_exposure_version(
+                &self.db,
+                org_id,
+                agent,
+                policy,
+                version_id,
+                FeatureFlags::current().agent_versions,
+            )
+            .await?
         } else {
             None
         };

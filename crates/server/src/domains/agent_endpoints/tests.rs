@@ -707,3 +707,37 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn slack_response_policies_are_available_without_feature_enrollment() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let agent_id = seed_agent(&db).await;
+    let ctx = test_ctx(db).with_feature_flags(everruns_platform::FeatureFlags::default());
+    let create = |policy: &str| CreateAgentEndpoint {
+        agent_id: agent_id.clone(),
+        req: CreateAgentEndpointRequest {
+            channel_type: EndpointTransport::Slack,
+            channel_config: json!({"response_policy": policy}),
+            enabled: true,
+            agent_version_policy: None,
+            agent_version_id: None,
+        },
+    };
+    for policy in ["mentions_only", "relevant_messages"] {
+        let endpoint = create(policy).run(&ctx).await.unwrap();
+        assert_eq!(endpoint.channel_config["response_policy"], policy);
+        let reset = UpdateAgentEndpointCmd {
+            agent_id: agent_id.clone(),
+            endpoint_id: endpoint.public_id.to_string(),
+            req: UpdateAgentEndpointRequest {
+                channel_config: Some(json!({"response_policy": "all_messages"})),
+                ..Default::default()
+            },
+        }
+        .run(&ctx)
+        .await
+        .unwrap();
+        assert_eq!(reset.channel_config["response_policy"], "all_messages");
+    }
+    assert!(create("not_a_policy").run(&ctx).await.is_err());
+}

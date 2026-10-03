@@ -523,6 +523,12 @@ pub(crate) async fn process_slack_message(
     event: &SlackEvent,
     request_id: Option<String>,
 ) -> anyhow::Result<()> {
+    if !response_policy::should_process_message(state, app, slack_channel, slack_config, event)
+        .await
+    {
+        return Ok(());
+    }
+
     let org_id = app.org_id;
     let slack_user_id = event.user.clone().unwrap_or_default();
 
@@ -958,6 +964,17 @@ pub(crate) fn slack_message_metadata(
             serde_json::Value::String(event.channel.clone().unwrap_or_default()),
         ),
         (
+            "slack_thread_ts".to_string(),
+            serde_json::Value::String(
+                event
+                    .thread_ts
+                    .as_ref()
+                    .or(event.ts.as_ref())
+                    .cloned()
+                    .unwrap_or_default(),
+            ),
+        ),
+        (
             "slack_ts".to_string(),
             serde_json::Value::String(event.ts.clone().unwrap_or_default()),
         ),
@@ -979,7 +996,7 @@ pub(crate) fn slack_message_metadata(
     metadata
 }
 
-async fn find_slack_session(
+pub(crate) async fn find_slack_session(
     state: &SlackState,
     app: &crate::api::endpoint_ingress::IngressContext,
     slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,

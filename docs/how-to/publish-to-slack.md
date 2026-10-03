@@ -29,6 +29,24 @@ This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For 
 | `per_channel` | One session per channel | Persistent channel assistant, context shared across the channel |
 | `per_user` | One session per user | Personal assistant, each user has their own ongoing chat |
 
+## Choose when the agent responds
+
+The Slack endpoint editor shows a **Response policy** selector:
+
+- **All messages** preserves the existing behavior and is the default.
+- **Mentions only** responds to direct messages and explicit `@mentions`.
+- **Relevant messages** also responds to clear requests within the agent's purpose,
+  including contextual thread follow-ups. Unrelated and uncertain messages stay silent.
+
+Relevant messages requires a configured deployment Decisions service. For Jev, set
+`UTILITY_TYPESAFE_API_KEY` and select `DECISIONS_DRIVER=typesafe`. Mentions and direct
+messages work without a classifier. A missing classifier or a failed decision leaves
+unmentioned messages silent, without posting an acknowledgement or running the agent.
+
+Reply mode still controls what an accepted turn posts to Slack. Response policy
+controls whether that turn starts. Select **All messages** to restore the previous
+behavior.
+
 ## Publish and Connect
 
 Your organization must have a Slack workspace connected in **Settings** > **Slack workspaces** first; an administrator does this once. See [Connect a Slack Workspace](/capabilities/slack/#connect-a-slack-workspace).

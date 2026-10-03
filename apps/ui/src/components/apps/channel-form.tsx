@@ -45,6 +45,7 @@ import type {
   SessionStrategy,
   SlackChannelConfig,
   SlackReplyMode,
+  SlackResponsePolicy,
   WebhookChannelConfig,
 } from "@/lib/api/types";
 import {
@@ -106,6 +107,7 @@ export type ChannelFormState = {
   slackAppId: string;
   slackSessionStrategy: SessionStrategy;
   slackReplyMode: SlackReplyMode;
+  slackResponsePolicy: SlackResponsePolicy;
   scheduleCronExpression: string;
   scheduleTimezone: string;
   invocationSessionMode: InvocationSessionMode;
@@ -163,6 +165,7 @@ export function getDefaultChannelFormState(
     slackAppId: "",
     slackSessionStrategy: "per_thread",
     slackReplyMode: "all_messages",
+    slackResponsePolicy: "all_messages",
     scheduleCronExpression: "0 0 * * * * *",
     scheduleTimezone: "UTC",
     invocationSessionMode: "shared_session",
@@ -315,6 +318,7 @@ export function getDefaultChannelFormState(
       slackAppId: (config as SlackChannelConfig & SlackProvisionedConfig).slack_app_id || "",
       slackSessionStrategy: config.session_strategy || "per_thread",
       slackReplyMode: config.reply_mode || "all_messages",
+      slackResponsePolicy: config.response_policy || "all_messages",
     };
   }
   return { ...base, kind: channel.channel_type };
@@ -430,6 +434,9 @@ export function buildChannelConfig(state: ChannelFormState) {
         ...(state.slackChannelId.trim() ? { channel_id: state.slackChannelId.trim() } : {}),
         session_strategy: state.slackSessionStrategy,
         reply_mode: state.slackReplyMode,
+        ...(state.slackResponsePolicy !== "all_messages"
+          ? { response_policy: state.slackResponsePolicy }
+          : {}),
       };
     default:
       return {};
@@ -1319,6 +1326,8 @@ export function ChannelForm({
         <SlackConversationSettings
           sessionStrategy={state.slackSessionStrategy}
           replyMode={state.slackReplyMode}
+          responsePolicy={state.slackResponsePolicy}
+          onResponsePolicyChange={(value) => update("slackResponsePolicy", value)}
           onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
           onReplyModeChange={(value) => update("slackReplyMode", value)}
         />

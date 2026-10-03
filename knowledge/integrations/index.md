@@ -1,5 +1,7 @@
 # MCP, integrations, and apps
 
+* [Slack Response Policy](slack-response-policy.md) - Decide whether an agent should participate before starting a turn.
+
 * [MCP (Model Context Protocol) Specification](mcp.md) - MCP server endpoint, OAuth 2.1 authentication, protocol, security.
 * [MCP Server Specification](mcp-servers.md) - MCP client remote server registration, CRUD API, tool naming, execution.
 * [Runtime MCP Client Specification](runtime-mcp.md) - MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth.
