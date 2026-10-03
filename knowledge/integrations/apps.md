@@ -55,7 +55,7 @@ They return frozen records for archival consumers. Create, update, delete, publi
 
 Traffic-serving resolution reads `agent_channels JOIN agents`. It does not read `apps` or `app_channels`, directly or indirectly. This rule applies to Slack, AG-UI, FCP, A2A, API channel, Public Chat, webhook, and schedule compatibility paths.
 
-An channel accepts traffic only when:
+A channel accepts traffic only when:
 
 - the channel status is `live`
 - the channel is enabled
