@@ -173,6 +173,20 @@
    loads BEFORE Route@astro (OpenAPI), so same-specificity rules lose by
    source order. We must use strictly higher specificity. */
 
+/* Block metrics: one radius, no drop shadow, and a slightly smaller code font
+   with more line height, so wrapped lines (defaultProps.wrap in
+   astro.config.mjs) stay readable. Unlayered, so it beats EC's layered
+   variable defaults. */
+:root .expressive-code {
+  --ec-brdRad: 8px;
+  --ec-codeFontSize: 0.8125rem;
+  --ec-codeLineHt: 1.65;
+  --ec-codePadBlk: 0.875rem;
+  --ec-codePadInl: 1.125rem;
+  --ec-frm-frameBoxShdCssVal: none;
+  margin-block: 1.25rem;
+}
+
 /* Higher specificity than OpenAPI's `div.expressive-code .frame pre` (0,1,3).
    Adding :root bumps us to (0,1,4) which wins regardless of load order. */
 :root div.expressive-code .frame pre,
