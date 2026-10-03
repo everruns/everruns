@@ -8,6 +8,13 @@ fn host_manifest_has_no_edge_to_facades_or_adapters() {
     let manifest = std::fs::read_to_string(&manifest_path)
         .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display()));
 
+    // Skip prose comments while retaining aliased package declarations.
+    let declarations = manifest
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
+
     for forbidden in [
         "everruns =",
         "everruns-worker",
@@ -19,8 +26,8 @@ fn host_manifest_has_no_edge_to_facades_or_adapters() {
         "everruns-integrations-",
     ] {
         assert!(
-            !manifest.contains(forbidden),
-            "everruns-host must not depend on {forbidden}; adapters and facades depend on host"
+            !declarations.contains(forbidden),
+            "the core host module must not depend on {forbidden}; adapters and facades depend on host"
         );
     }
 

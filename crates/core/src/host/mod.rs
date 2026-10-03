@@ -37,7 +37,6 @@ pub mod execution_snapshot;
 mod extensions;
 mod file_store_decorators;
 mod grep_limits;
-mod host;
 mod in_memory;
 mod in_process_execution;
 #[cfg(feature = "mcp")]
@@ -54,6 +53,8 @@ mod real_disk;
 mod reason_backend;
 mod runtime;
 mod runtime_context;
+#[path = "host.rs"]
+mod runtime_host;
 mod session_file_system_factory;
 pub mod session_services;
 mod turn_strategy;
@@ -110,11 +111,6 @@ pub use decisions::{
     DecisionDriverRegistry, DecisionRouter, DecisionRoutingError, LLM_DECISION_DRIVER_ID,
     LlmDecisionDriver,
 };
-pub use host::{
-    ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, ToolContextRequest,
-    detect_dependency_blocker, execute_act_activity, execute_input_activity,
-    execute_reason_activity, execute_reason_activity_with_prompt_messages,
-};
 pub use in_memory::{
     InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
     InMemoryProviderStore, InMemorySessionFileStore, InMemorySessionFileSystemFactory,
@@ -132,6 +128,11 @@ pub use runtime::{
 pub use runtime_context::{
     StoreTurnContextResolver, assemble_turn_context, assemble_turn_context_from_snapshot,
     inspect_turn_context,
+};
+pub use runtime_host::{
+    ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, ToolContextRequest,
+    detect_dependency_blocker, execute_act_activity, execute_input_activity,
+    execute_reason_activity, execute_reason_activity_with_prompt_messages,
 };
 pub use session_file_system_factory::{
     DisabledSessionFileSystemFactory, FixedSessionFileSystemFactory, SessionFileSystemFactory,

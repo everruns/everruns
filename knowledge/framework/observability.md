@@ -22,11 +22,11 @@ awaited lifecycle hooks on `AgentBuilder` (`crates/everruns/src/agent.rs`).
 
 It could not register a push listener. OpenTelemetry and Braintrust exist as
 `everruns_core::EventListener` implementations in `everruns-host/observability`
-(`crates/host/src/observability/mod.rs`), but only the server wires them
+(`crates/core/src/host/observability/mod.rs`), but only the server wires them
 (`crates/server/src/app_builder.rs`). A framework user has to pump each
 session's stream by hand, re-deserialize core events, and remember to do it again for
 every resumed or spawned session. Short-lived programs also lose the last traces,
-because Braintrust flushes only on its interval ticker (`crates/host/src/observability/braintrust.rs`) and has
+because Braintrust flushes only on its interval ticker (`crates/core/src/host/observability/braintrust.rs`) and has
 no flush or shutdown call.
 
 ## Goals
@@ -36,7 +36,7 @@ no flush or shutdown call.
 - Enable OTel and Braintrust through a feature flag and one builder call, with no
   hand-written glue.
 - Never slow down or fail a turn because of an observer. This matches the
-  `EventSink` contract (`crates/host/src/events.rs`).
+  `EventSink` contract (`crates/core/src/host/events.rs`).
 - Keep core and host event and store types off the public surface, as
   `crates/everruns/src/events.rs` requires.
 - Let short-lived programs flush before they exit.
@@ -126,7 +126,7 @@ The framework never installs a global tracer or `tracing` subscriber on its own.
   `OpenTelemetry::from_env()` reads the content-capture and convention env vars,
   as `OtelEventListener::new` does today.
 - `everruns::observability::install_otlp_from_env() -> TelemetryGuard` is an
-  opt-in convenience over `init_telemetry` (`crates/host/src/observability/telemetry.rs`). Its docs say it
+  opt-in convenience over `init_telemetry` (`crates/core/src/host/observability/telemetry.rs`). Its docs say it
   installs globals.
 - Message content stays off by default:
   `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` or `.record_content(true)`

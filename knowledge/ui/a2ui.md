@@ -101,7 +101,7 @@ they parse.
 
 ## Module: `everruns_builtins::a2ui`
 
-Path: `crates/builtins/src/a2ui/`.
+Path: `crates/core/src/builtins/a2ui/`.
 
 Mirrors the `everruns_builtins::openui` pattern: static Rust catalog definitions plus a
 prompt generator. No runtime parsing, the LLM receives a prompt and the renderer
@@ -126,7 +126,7 @@ lives in the UI.
 5. **Streaming guidance**: emit shell first, fill children progressively
 6. **Important rules**: stay within catalog, omit unknown props, prefer lists over repeats
 
-Ref: `crates/builtins/src/a2ui/prompt.rs`.
+Ref: `crates/core/src/builtins/a2ui/prompt.rs`.
 
 ### Canonical catalog
 
@@ -152,7 +152,7 @@ prompt to the agent's system prompt and contributes no tools.
 The capability coexists with `openui`. Enabling both is legal but wasteful,
 instruct the agent to prefer one. Neither is enabled by default.
 
-Ref: `crates/builtins/src/a2ui.rs`.
+Ref: `crates/core/src/builtins/a2ui.rs`.
 
 ## UI Integration
 

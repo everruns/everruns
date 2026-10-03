@@ -19,11 +19,11 @@ The low-level crates expose focused contracts for:
 - the shared Input/Reason/Act kernel and sans-I/O turn planner;
 - runtime host phases, canonical event history, and in-memory reference stores;
 - local SQLite-backed task and schedule state;
-- platform/control-plane entities and durable deployment components.
+- portable session and agent definitions, plus explicitly selected durable deployment components.
 
-An advanced host depends on `everruns` plus `everruns-host` and the focused
-crates it actually needs. `everruns-host` is the only low-level host boundary:
-there is no separate runtime crate. It is healthy for such a host to use
+An advanced host depends on `everruns`, `everruns-core` with the `host` feature,
+and `everruns-contracts` for neutral service contracts. The low-level boundary
+is `everruns_core::host`; concrete integrations are selected on the facade. It is healthy for such a host to use
 low-level extension traits; the goal is not to re-export every backend through
 one facade.
 
@@ -33,12 +33,13 @@ one facade.
 sessions, history, and resume authority. It is the normal Framework entrypoint,
 not an extension trait. Applications do not implement it.
 
-`everruns-engine` is the lower-level shared execution kernel. Advanced hosts
+`everruns_core::engine` is the shared execution kernel, enabled by the `engine`
+feature. Advanced hosts
 compose its `Execution` contract and serializable `TurnExecution` state machine,
 `InputAtom`/`ReasonAtom`/`ActAtom`, and phase values. The immediate implementation
-lives in `everruns-host`; the checkpointed implementation lives in
-`everruns-durable`. Both use narrow contracts from `everruns-core`. The kernel
-has no dependency on host, platform, server, worker, or durable crates. Do not
+lives in `everruns_core::host`; the checkpointed implementation lives in
+`everruns-durable`. Both use narrow contracts from `everruns-core`. The engine feature has no dependency on host effects, platform, server, worker,
+or durable crates. Do not
 copy state advancement or the phase loop into a custom backend; implement the
 execution boundary and keep deployment-specific service selection in the host.
 

@@ -339,7 +339,7 @@ Two sources feed the chain, in this order:
 1. **Capability hooks**: from active capabilities via `Capability::pre_tool_use_hooks()`. This is the boundary for in-process, cross-cutting policy such as approval gating (consult an approval gate, honoring each tool's `ToolHints`).
 2. **User-hook specs**: `pre_tool_use` hooks dispatched per `knowledge/runtime-resources/user-hooks.md`.
 
-Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/host/src/host.rs` (`load_execution_capabilities`).
+Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/core/src/host/host.rs` (`load_execution_capabilities`).
 
 ### PostToolExecHook (per-tool hooks)
 
@@ -353,12 +353,12 @@ Two hook slots run in sequence:
 2. **Final hooks** (`final_post_tool_hooks`), always-on infrastructure (e.g. EVE-225 hard limit)
 
 Current hooks:
-- **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/outputs/{tool_call_id}.stdout` and stderr to `/outputs/{tool_call_id}.stderr` in session VFS. It injects `full_output`, `total_lines`, and `output_files` only for persisted content absent from the inline result, keeping complete-output retention internal. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/builtins/src/tool_output_persistence.rs`.
-- **DistillOutputHook** (`tool_output_distillation` capability): For tools that do *not* declare `persist_output` (notably MCP and `web_fetch`), produces a content-aware compact inline view of large results (array sampling, string head+tail, unified-diff summary) while self-persisting the full original to `/outputs/{tool_call_id}.stdout` and injecting the same `output_files` pointer. Runs as a capability hook (before the final hooks); the `output_files` guard above prevents double-writes with PersistOutputHook. Restores the verbatim original if persistence fails. See `crates/builtins/src/tool_output_distillation.rs` and `knowledge/execution/tool-output-distillation.md`.
+- **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/outputs/{tool_call_id}.stdout` and stderr to `/outputs/{tool_call_id}.stderr` in session VFS. It injects `full_output`, `total_lines`, and `output_files` only for persisted content absent from the inline result, keeping complete-output retention internal. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/core/src/builtins/tool_output_persistence.rs`.
+- **DistillOutputHook** (`tool_output_distillation` capability): For tools that do *not* declare `persist_output` (notably MCP and `web_fetch`), produces a content-aware compact inline view of large results (array sampling, string head+tail, unified-diff summary) while self-persisting the full original to `/outputs/{tool_call_id}.stdout` and injecting the same `output_files` pointer. Runs as a capability hook (before the final hooks); the `output_files` guard above prevents double-writes with PersistOutputHook. Restores the verbatim original if persistence fails. See `crates/core/src/builtins/tool_output_distillation.rs` and `knowledge/execution/tool-output-distillation.md`.
 
 Current final hooks (always-on, cannot be removed):
 - **PersistOutputHook**: Persists full output for any tool that declares `persist_output: true` before hard-limit truncation, independent of whether a harness explicitly enabled the persistence capability.
-- **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/engine/src/execution/act_hooks.rs`.
+- **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/engine/execution/act_hooks.rs`.
 
 ### Loop Detection (EVE-227)
 
@@ -375,7 +375,7 @@ This is intentionally a rolling-window detector: hosts are not required to read 
 
 **Configuration:** `{"threshold": 5}` to change the default repeat count for identical results, identical call batches, and repeated read ranges.
 
-See `crates/builtins/src/loop_detection.rs`.
+See `crates/core/src/builtins/loop_detection.rs`.
 
 ### Tool Policies
 
@@ -395,7 +395,7 @@ See `crates/builtins/src/loop_detection.rs`.
 
 ### Tool Scheduling
 
-`ActAtom` receives the whole batch of tool calls the model emitted in one turn and decides *how* to run them. The policy lives in `crates/engine/src/execution/tool_scheduler.rs`; it is driven entirely by per-tool `ToolHints`, not hardcoded per tool name.
+`ActAtom` receives the whole batch of tool calls the model emitted in one turn and decides *how* to run them. The policy lives in `crates/core/src/engine/execution/tool_scheduler.rs`; it is driven entirely by per-tool `ToolHints`, not hardcoded per tool name.
 
 - **Concurrent by default.** Calls with no `concurrency_class` run concurrently. Read-only tools and unannotated/MCP/dynamic tools therefore parallelize freely (permissive default).
 - **Class serialization.** Calls that share a non-empty `concurrency_class` run sequentially in arrival order, so mutations to the same shared resource cannot interleave. Annotated classes today: `session_workspace` (bash, `write_file`/`edit_file`/`delete_file`), `session_sql` (`sql_execute`), `session_todos` (`write_todos`), `session_storage` (`kv_store`/`secret_store`). Different classes run in parallel with each other.

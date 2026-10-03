@@ -21,7 +21,7 @@ Permission for a destructive, irreversible, or outward-facing action uses
 
 ## Sources of truth
 
-- [`crates/builtins/src/ask_user.rs`](../../crates/builtins/src/ask_user.rs)
+- [`crates/core/src/builtins/ask_user.rs`](../../crates/core/src/builtins/ask_user.rs)
   owns the request and result types, exact input schema, validation, default
   materialization, prompt guidance, host responder trait, and both execution
   strategies.
@@ -29,9 +29,9 @@ Permission for a destructive, irreversible, or outward-facing action uses
   projects the responder contract at its stable Framework path.
 - [`crates/contracts/src/tool_types.rs`](../../crates/contracts/src/tool_types.rs)
   owns the client-side tool-definition wire contract.
-- [`crates/engine/src/execution/act.rs`](../../crates/engine/src/execution/act.rs)
+- [`crates/core/src/engine/execution/act.rs`](../../crates/core/src/engine/execution/act.rs)
   owns client-call partitioning and the act pause boundary.
-- [`crates/engine/src/execution/act_hooks.rs`](../../crates/engine/src/execution/act_hooks.rs)
+- [`crates/core/src/engine/execution/act_hooks.rs`](../../crates/core/src/engine/execution/act_hooks.rs)
   owns request-event emission and waiting-state signaling.
 - [`crates/server/src/api/tool_results.rs`](../../crates/server/src/api/tool_results.rs)
   owns result persistence and durable workflow resume.

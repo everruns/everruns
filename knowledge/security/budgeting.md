@@ -30,7 +30,7 @@ See source files for full definitions:
 - Storage: `crates/server/src/storage/repositories/budgets.rs`, `crates/server/src/storage/memory/budgets.rs`
 - Service: `crates/server/src/domains/budgets/service.rs`
 - API: `crates/server/src/api/budgets.rs`
-- Capability: `crates/builtins/src/budgeting.rs`
+- Capability: `crates/core/src/builtins/budgeting.rs`
 - Migrations: `crates/server/migrations/010_v0.8.9.sql`, `crates/server/migrations/020_budget_journal_ledger.sql`
 
 ## Concepts
@@ -304,7 +304,7 @@ The `self_budget` capability contributes prompt-only guidance. It ships no tools
 
 The two capabilities are non-conflicting and co-exist in the built-in `generic` harness. Agents without a need for platform enforcement can still enable only `self_budget`; agents that need strict enforcement should enable `budgeting` (and typically both).
 
-File: `crates/builtins/src/self_budget.rs`.
+File: `crates/core/src/builtins/self_budget.rs`.
 
 ## Design Decisions
 

@@ -29,11 +29,11 @@ use crate::host::builders::SingleSessionBuilder;
 use crate::host::events::{
     EventHistory, EventLog, EventReadLimit, EventReadRequest, HostEventEmitter,
 };
-use crate::host::host::{
+use crate::host::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
+use crate::host::runtime_host::{
     ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity, execute_input_activity,
     execute_reason_activity_with_prompt_messages, run_user_prompt_submit_for_message,
 };
-use crate::host::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
 use crate::host::turn_strategy::resolve_pause_hints;
 use crate::lifecycle_hooks::UserPromptDecision;
 use crate::message::{ContentPart, RuntimeMessage};
@@ -1944,7 +1944,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn tool_context_extensions(
         &self,
-        request: crate::host::host::ToolContextRequest<'_>,
+        request: crate::host::runtime_host::ToolContextRequest<'_>,
     ) -> crate::tool_context::ToolContextExtensions {
         self.tool_context_extensions_factory
             .as_ref()

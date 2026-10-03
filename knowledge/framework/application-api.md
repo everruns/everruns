@@ -134,7 +134,7 @@ The inventory covers the public [repository README](../../README.md),
 [Everruns skill](../../skills/everruns/SKILL.md), and
 [custom backends guide](../../docs/framework/custom-backends.md). It also includes
 the in-process, inspection, real-disk, plugin, mount, and Lua examples
-under [the host examples](../../crates/host/examples/in_process_runtime.rs)
+under [the host examples](../../crates/everruns/examples/advanced/in_process_runtime.rs)
 and the provider-facing [OpenAI README](../../crates/drivers/openai/README.md).
 
 Repository consumers were audited separately because they exercise topologies
@@ -406,7 +406,7 @@ entrypoints.
 - `crates/everruns/tests/facade/session_work.rs`
 - `crates/everruns/tests/facade/lifecycle_hooks.rs`
 - `examples/coding-cli/tests/application_parity.rs`
-- `crates/host/src/runtime.rs`
-- `crates/host/src/events.rs`
-- `crates/host/src/lib.rs`
+- `crates/core/src/host/runtime.rs`
+- `crates/core/src/host/events.rs`
+- `crates/core/src/host/mod.rs`
 - `crates/everruns/src/local/`

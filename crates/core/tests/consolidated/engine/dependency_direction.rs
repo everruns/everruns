@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! EVE-840 dependency-direction guard.
 //!
-//! The allowed direction is `everruns-engine -> core/provider/capability`.
+//! The execution module depends only on the portable core and contracts.
 //! Planning is sans I/O and the execution kernel reaches effects only through
 //! injected contracts. Deployment hosts and backends depend on engine, never
 //! the reverse.
@@ -9,13 +9,18 @@
 use std::path::Path;
 
 #[test]
-fn engine_manifest_has_no_edge_to_hosts_or_backends() {
+fn core_manifest_has_no_edge_to_deployment_hosts_or_backends() {
     let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     let manifest = std::fs::read_to_string(&manifest_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", manifest_path.display()));
 
+    let parsed: toml::Value = toml::from_str(&manifest).expect("parse core manifest");
+    let dependencies = parsed["dependencies"].as_table().expect("dependency table");
+
     for forbidden in [
+        "everruns",
         "everruns-host",
+        "everruns-drivers",
         "everruns-server",
         "everruns-worker",
         "everruns-capabilities",
@@ -23,8 +28,11 @@ fn engine_manifest_has_no_edge_to_hosts_or_backends() {
         "everruns-scale",
     ] {
         assert!(
-            !manifest.contains(forbidden),
-            "everruns-engine must not depend on {forbidden} \
+            !dependencies.iter().any(|(name, value)| {
+                name == forbidden
+                    || value.get("package").and_then(toml::Value::as_str) == Some(forbidden)
+            }),
+            "everruns-core must not depend on {forbidden} \
              (deployment hosts and backends depend on the shared engine, not the reverse)"
         );
     }

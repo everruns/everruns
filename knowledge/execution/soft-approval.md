@@ -12,7 +12,7 @@ tags:
 # Soft Approval
 
 Status: implemented. Capability `soft_approval`, source
-`crates/builtins/src/soft_approval.rs`.
+`crates/core/src/builtins/soft_approval.rs`.
 
 ## Why
 
@@ -34,7 +34,7 @@ in the conversation.
 ### Levels
 
 One setting, `mode`, picks how cautious the agent is. The vocabulary is
-[`ApprovalMode`](../../crates/builtins/src/tool_approval.rs), shared with the
+[`ApprovalMode`](../../crates/core/src/builtins/tool_approval.rs), shared with the
 hard [`tool_approval`](capabilities.md#toolapproval) gate so a deployment tunes
 both layers with one word:
 
@@ -147,7 +147,7 @@ Effective level = session or host override, else capability config, else
 `normal`.
 
 The durable level is the agent's capability config. The override is an
-[`ApprovalModeStore`](../../crates/builtins/src/soft_approval.rs); the default
+[`ApprovalModeStore`](../../crates/core/src/builtins/soft_approval.rs); the default
 implementation is per-session and in-memory, which is exactly as long-lived as
 the "be more careful for the rest of this conversation" it exists to hold. A
 host whose approval level is its own durable, cross-session setting (a terminal

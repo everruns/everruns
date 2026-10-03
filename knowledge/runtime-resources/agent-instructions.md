@@ -45,7 +45,7 @@ async method (via `SystemPromptContext`) to access the session filesystem. Its `
 intentionally returns `None`: untrusted workspace content must stay below harness safety instructions
 in the instruction hierarchy and out of the cache-stable system prefix.
 
-See `crates/builtins/src/agent_instructions.rs` for the `AgentInstructionsCapability` implementation.
+See `crates/core/src/builtins/agent_instructions.rs` for the `AgentInstructionsCapability` implementation.
 
 ## SystemPromptContext
 
@@ -83,11 +83,11 @@ XML tags provide clear boundaries between sections. See `knowledge/project/xml-p
 
 ## ReasonAtom Changes
 
-ReasonAtom holds an optional `SessionFileSystem` that is passed to capabilities via `SystemPromptContext`. See `crates/engine/src/execution/reason.rs` for the `with_file_store` builder method.
+ReasonAtom holds an optional `SessionFileSystem` that is passed to capabilities via `SystemPromptContext`. See `crates/core/src/engine/execution/reason.rs` for the `with_file_store` builder method.
 
 ## Constants
 
-See `crates/builtins/src/agent_instructions.rs` for `MAX_AGENTS_MD_SIZE` (32 KiB), `MAX_TOTAL_AGENT_INSTRUCTIONS_BYTES` (128 KiB), `AGENTS_MD_PATH`, `DEFAULT_AGENT_INSTRUCTIONS_FILE`, `MAX_AGENT_INSTRUCTIONS_FILES`, and `AGENT_INSTRUCTIONS_CAPABILITY_ID`.
+See `crates/core/src/builtins/agent_instructions.rs` for `MAX_AGENTS_MD_SIZE` (32 KiB), `MAX_TOTAL_AGENT_INSTRUCTIONS_BYTES` (128 KiB), `AGENTS_MD_PATH`, `DEFAULT_AGENT_INSTRUCTIONS_FILE`, `MAX_AGENT_INSTRUCTIONS_FILES`, and `AGENT_INSTRUCTIONS_CAPABILITY_ID`.
 
 ## API
 

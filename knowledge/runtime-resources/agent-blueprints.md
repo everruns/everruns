@@ -32,7 +32,7 @@ do not introduce a second execution engine.
   typed capability tool schemas.
 - [`crates/core/src/session.rs`](../../crates/core/src/session.rs) owns persisted
   session blueprint references.
-- [`crates/host/src/`](../../crates/host/src) owns runtime-agent assembly
+- [`crates/core/src/host/`](../../crates/core/src/host) owns runtime-agent assembly
   and execution for blueprint sessions.
 - [`integrations/github/`](../../integrations/github) and
   [`integrations/openrouter/src/model_scout.rs`](../../integrations/openrouter/src/model_scout.rs)

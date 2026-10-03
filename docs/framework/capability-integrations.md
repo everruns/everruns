@@ -20,13 +20,13 @@ execution or network surface.
 | `bashkit` | No | `everruns-integrations-bashkit` | Sandboxed shell; HTTP remains capability-config and egress-policy gated |
 | `web-fetch` | No | `everruns-integrations-web-fetch` | FetchKit requests through the host egress contract |
 | `lua` | No | `everruns-integrations-lua` | Vendored Lua 5.4 sandbox; also requires `FEATURE_LUA=true` at runtime |
-| `mcp` | No | `everruns-mcp` | Remote HTTP MCP through the host egress contract |
-| `mcp-stdio` | No | `everruns-mcp` | Adds local-process MCP servers and implies `mcp` |
-| `host-shell` | No | `everruns-host` | `bash` tool over real host processes, bounded by a kernel policy; implies `host-compute` |
+| `mcp` | No | `everruns-core` (`mcp` feature) | Remote HTTP MCP through the host egress contract |
+| `mcp-stdio` | No | `everruns-core` (`mcp` feature) | Adds local-process MCP servers and implies `mcp` |
+| `host-shell` | No | `everruns-core` (`host` feature) | `bash` tool over real host processes, bounded by a kernel policy; implies `host-compute` |
 | `duckduckgo` | No | `everruns-integrations-duckduckgo` | DuckDuckGo web search through the host egress contract |
 | `a2a` | No | `everruns-capabilities` | Outbound A2A delegation to remote agents; implies `local` |
-| `otel` | No | `everruns-host` | OpenTelemetry exporter; see [Observability](/observability/) |
-| `braintrust` | No | `everruns-host` | Braintrust exporter; see [Observability](/observability/) |
+| `otel` | No | `everruns-core` (`host` feature) | OpenTelemetry exporter; see [Observability](/observability/) |
+| `braintrust` | No | `everruns-core` (`host` feature) | Braintrust exporter; see [Observability](/observability/) |
 
 The default is offline: the filesystem capability can only use the
 session-filesystem implementation supplied by the host. Shell, web, Lua, MCP,
@@ -70,18 +70,18 @@ and operation. Framework calls use the application's direct HTTP client.
 
 ## Advanced host composition
 
-Advanced embedders select integrations on `everruns-host` and build the
-runtime registry through `everruns_host::runtime_capability_registry()`:
+Advanced embedders select integrations on `everruns` and build the
+runtime registry through `everruns::batteries::runtime_capability_registry()`:
 
 ```toml
 [dependencies]
 everruns-core = "0.34"
-everruns-host = { version = "0.34", features = ["filesystem", "web-fetch"] }
+everruns = { version = "0.34", default-features = false, features = ["filesystem", "web-fetch"] }
 ```
 
 ```rust
-let registry = everruns_host::runtime_capability_registry();
-let egress = everruns_host::runtime_egress_service();
+let registry = everruns::batteries::runtime_capability_registry();
+let egress = everruns::batteries::runtime_egress_service();
 assert!(registry.has("session_file_system"));
 assert!(registry.has("web_fetch"));
 assert!(!registry.has("bashkit_shell"));
@@ -90,10 +90,10 @@ assert!(!registry.has("bashkit_shell"));
 
 If the host starts from a caller-owned registry, preserve it and apply the same
 feature-selected integrations with
-`everruns_host::compose_runtime_capability_registry(registry)`.
+`everruns::batteries::compose_runtime_capability_registry(registry)`.
 
 Hosted server and worker composition uses
-`everruns_platform::capabilities::hosted_capability_registry_for_grade` with
+`everruns_capabilities::capabilities::hosted_capability_registry_for_grade` with
 the platform's `environment-capabilities` feature. That preset preserves the
 hosted catalog while keeping the implementations outside core.
 
@@ -106,14 +106,14 @@ types. The former core paths move as follows:
 | `everruns_core::BashkitShellCapability`, `BashTool`, and adapter | `everruns_integrations_bashkit::*` |
 | `everruns_core::WebFetchCapability`, `WebFetchTool`, and bot-auth helpers | `everruns_integrations_web_fetch::*` |
 | `everruns_core::LuaCapability` and `LuaCodeModeCapability` | `everruns_integrations_lua::*` |
-| `everruns_core::McpCapability` and MCP capability-ID helpers | `everruns_mcp::*` |
-| `everruns_core::DirectEgressService` | `everruns_host::DirectEgressService` with `direct-egress` |
-| `everruns_core::SystemEmailConfig` and Resend types | `everruns_platform::*` |
+| `everruns_core::McpCapability` and MCP capability-ID helpers | `everruns_core::mcp::*` |
+| `everruns_core::DirectEgressService` | `everruns_core::host::DirectEgressService` with `direct-egress` |
+| `everruns_core::SystemEmailConfig` and Resend types | `everruns_capabilities::*` |
 | `everruns_core::ModelScoutCapability` and `OpenRouterWorkspaceCapability` | `everruns_integrations_openrouter::*` |
 | `everruns_core::OpenRouterServerToolsCapability` | `everruns_integrations_openrouter::OpenRouterServerToolsCapability` |
-| `everruns_core::{HumanIntentCapability, InfinityContextCapability, SkillsCapability, AttachSkillCapability, ToolApprovalCapability}` | `everruns_builtins::*` |
-| `everruns_core::{OpenUiCapability, A2UiCapability}` | `everruns_builtins::*` with `ui-capabilities` |
-| `everruns_core::skill::ProcessCommandExecutor` | `everruns_host::ProcessCommandExecutor` with the host `process` feature |
+| `everruns_core::{HumanIntentCapability, InfinityContextCapability, SkillsCapability, AttachSkillCapability, ToolApprovalCapability}` | `everruns_core::builtins::*` |
+| `everruns_core::{OpenUiCapability, A2UiCapability}` | `everruns_core::builtins::*` with `ui-capabilities` |
+| `everruns_core::skill::ProcessCommandExecutor` | `everruns_core::host::ProcessCommandExecutor` with the host `process` feature |
 
 Continue with [Configure and author capabilities](/framework/advanced-capabilities/)
 for agent-level activation or [Custom backends](/framework/custom-backends/)

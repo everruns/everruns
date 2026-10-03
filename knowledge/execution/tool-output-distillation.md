@@ -37,7 +37,7 @@ tool returns result
 
 `DistillOutputHook` is a **capability** hook, so it runs **before** the final infrastructure hooks. For non-exec tools, `PersistOutputHook` does not fire (no `persist_output` hint), so distillation self-persists and the hard-limit hook only ever sees the already-distilled (smaller) result.
 
-Both the in-process host and the durable worker assemble hooks through the same `RuntimeHostAdapter`-generic path (`crates/host/src/host.rs::execute_act_activity` → `load_execution_capabilities`), so the hook runs identically in embedded and durable execution.
+Both the in-process host and the durable worker assemble hooks through the same `RuntimeHostAdapter`-generic path (`crates/core/src/host/host.rs::execute_act_activity` → `load_execution_capabilities`), so the hook runs identically in embedded and durable execution.
 
 ## Algorithm
 
@@ -63,7 +63,7 @@ Recursive, bounded by `MAX_DEPTH` and `MAX_NODES`:
 | Object | Recurse into each field; small fields untouched. |
 | Scalar / small value | Unchanged. |
 
-Constants (no per-agent config in v1): `MIN_DISTILL_BYTES = 8 KiB`, `MAX_FIELD_BYTES = 2 KiB`, `SAMPLE_ROWS = 5`, `MAX_DEPTH = 8`, `MAX_NODES = 100_000`, `MAX_DISTILL_INPUT_BYTES = 1 MiB`. See `crates/builtins/src/tool_output_distillation.rs`.
+Constants (no per-agent config in v1): `MIN_DISTILL_BYTES = 8 KiB`, `MAX_FIELD_BYTES = 2 KiB`, `SAMPLE_ROWS = 5`, `MAX_DEPTH = 8`, `MAX_NODES = 100_000`, `MAX_DISTILL_INPUT_BYTES = 1 MiB`. See `crates/core/src/builtins/tool_output_distillation.rs`.
 
 ## Recovery Contract
 
@@ -91,6 +91,6 @@ It is included by default in the **generic harness** (`crates/server/src/harness
 
 - `knowledge/execution/tool-execution.md`, output budgets, `PersistOutputHook`, hook ordering
 - `knowledge/execution/capabilities.md`, capability system
-- `crates/builtins/src/tool_output_distillation.rs`, implementation
-- `crates/builtins/src/tool_output_persistence.rs`, reused persistence helpers
+- `crates/core/src/builtins/tool_output_distillation.rs`, implementation
+- `crates/core/src/builtins/tool_output_persistence.rs`, reused persistence helpers
 - `docs/advanced/tool-output-pipeline.md`, end-to-end pipeline and destinations
