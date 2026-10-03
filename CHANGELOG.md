@@ -71,6 +71,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(ci): stabilize live-model tests and pin cargo-binstall ([#4080](https://github.com/everruns/everruns/pull/4080)) by [@chaliy](https://github.com/chaliy)
 - fix(auth): bind runtime identities to verifier authority ([#4017](https://github.com/everruns/everruns/pull/4017)) by [@chaliy](https://github.com/chaliy)
 
+- chore(deps): bump gloo-timers from 0.3.0 to 0.4.0 in the cargo group ([#4057](https://github.com/everruns/everruns/pull/4057)) by [@dependabot](https://github.com/dependabot)
+- test(voice): prove cross-org session ids are rejected before writes ([#4082](https://github.com/everruns/everruns/pull/4082)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): revoke anonymous PATs when leaving AUTH_MODE=none ([#4066](https://github.com/everruns/everruns/pull/4066)) by [@chaliy](https://github.com/chaliy)
+- fix(workspaces): protect private user memory on workspace file routes ([#4085](https://github.com/everruns/everruns/pull/4085)) by [@chaliy](https://github.com/chaliy)
+- fix(browserless): scroll off-screen elements into view before clicking ([#4087](https://github.com/everruns/everruns/pull/4087)) by [@chaliy](https://github.com/chaliy)
+- fix(host): gate executable read-only shell options ([cbd8e2aa](https://github.com/everruns/everruns/commit/cbd8e2aaf60085bcaad51700de39861540a27970)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): authorize URL consent against session owner and policy ([#4088](https://github.com/everruns/everruns/pull/4088)) by [@chaliy](https://github.com/chaliy)
+- fix(image): route image-provider requests through guarded egress ([#4089](https://github.com/everruns/everruns/pull/4089)) by [@chaliy](https://github.com/chaliy)
+- feat(environments): add versioned execution profiles ([#4086](https://github.com/everruns/everruns/pull/4086)) by [@chaliy](https://github.com/chaliy)
+- fix(ag-ui): apply anonymous lock and token to inline anonymous auth ([#4091](https://github.com/everruns/everruns/pull/4091)) by [@chaliy](https://github.com/chaliy)
+- fix(endpoints): require dangerous permission to alter live endpoint exposure ([#4092](https://github.com/everruns/everruns/pull/4092)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): retry transient transport errors in tool_search live cases ([#4093](https://github.com/everruns/everruns/pull/4093)) by [@chaliy](https://github.com/chaliy)
+- fix(memory): validate and pin DNS at Git fetch time ([#4094](https://github.com/everruns/everruns/pull/4094)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): apply session permission policy to schedule routes ([#4095](https://github.com/everruns/everruns/pull/4095)) by [@chaliy](https://github.com/chaliy)
+- test(drivers): close mock connections in wire tests to stop cross-test reuse ([#4096](https://github.com/everruns/everruns/pull/4096)) by [@chaliy](https://github.com/chaliy)
+- feat(environments): unify sandbox tools and recovery ([#4090](https://github.com/everruns/everruns/pull/4090)) by [@chaliy](https://github.com/chaliy)
+
 ### Crate Releases
 
 All 52 published crates ship at the platform version 0.35.0.
