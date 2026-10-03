@@ -10,7 +10,7 @@ use everruns_core::{
     Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole, Permission,
     PermissionResolver,
 };
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use uuid::Uuid;
 
 use crate::domains::common::{Command, CommandErrorKind, Ctx, dispatch};

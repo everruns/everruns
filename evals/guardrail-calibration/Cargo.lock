@@ -400,9 +400,8 @@ dependencies = [
  "async-trait",
  "chrono",
  "chrono-tz",
- "everruns-capability",
+ "everruns-contracts",
  "everruns-core",
- "everruns-provider",
  "serde",
  "serde_json",
  "sha2",
@@ -412,13 +411,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-capability"
+name = "everruns-contracts"
 version = "0.36.0"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "base64",
+ "bytes",
+ "chrono",
+ "eventsource-stream",
+ "futures",
+ "getrandom 0.3.4",
+ "getrandom 0.4.3",
+ "gloo-timers",
+ "hex",
+ "http",
+ "rand 0.10.3",
+ "regex",
+ "reqwest",
+ "rustls",
  "schemars",
  "serde",
  "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "wasm-bindgen-futures",
+ "web-time",
 ]
 
 [[package]]
@@ -430,8 +452,7 @@ dependencies = [
  "base64",
  "chrono",
  "cron",
- "everruns-capability",
- "everruns-provider",
+ "everruns-contracts",
  "futures",
  "globset",
  "inventory",
@@ -458,7 +479,7 @@ version = "0.36.0"
 dependencies = [
  "async-trait",
  "chrono",
- "everruns-provider",
+ "everruns-contracts",
  "reqwest",
  "serde",
  "serde_json",
@@ -470,9 +491,8 @@ version = "0.36.0"
 dependencies = [
  "async-trait",
  "chrono",
- "everruns-capability",
+ "everruns-contracts",
  "everruns-core",
- "everruns-provider",
  "futures",
  "serde",
  "serde_json",
@@ -490,10 +510,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "everruns-builtins",
+ "everruns-contracts",
  "everruns-core",
  "everruns-host",
  "everruns-integrations-typesafe",
- "everruns-provider",
  "mira-eval",
  "serde_json",
  "tokio",
@@ -505,11 +525,10 @@ version = "0.36.0"
 dependencies = [
  "async-trait",
  "chrono",
- "everruns-capability",
+ "everruns-contracts",
  "everruns-core",
  "everruns-drivers",
  "everruns-engine",
- "everruns-provider",
  "fs2",
  "futures",
  "ignore",
@@ -529,55 +548,14 @@ name = "everruns-integrations-typesafe"
 version = "0.36.0"
 dependencies = [
  "async-trait",
- "everruns-capability",
+ "everruns-contracts",
  "everruns-core",
- "everruns-provider",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "everruns-model-profiles"
-version = "0.36.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "everruns-provider"
-version = "0.36.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64",
- "bytes",
- "chrono",
- "eventsource-stream",
- "everruns-model-profiles",
- "futures",
- "getrandom 0.3.4",
- "getrandom 0.4.3",
- "gloo-timers",
- "hex",
- "http",
- "rand 0.10.3",
- "regex",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "tokio",
- "tracing",
- "url",
- "uuid",
- "wasm-bindgen-futures",
- "web-time",
 ]
 
 [[package]]
