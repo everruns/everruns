@@ -6,6 +6,7 @@ use crate::driver_registry::LlmCallConfig;
 use crate::error::{AgentLoopError, Result};
 #[cfg(feature = "http")]
 use crate::model_profiles::get_model_profile;
+#[cfg(feature = "http")]
 use crate::openai_protocol::{is_azure_openai_api_url, is_openai_api_url};
 use crate::provider::DriverId;
 #[cfg(feature = "http")]
@@ -290,6 +291,7 @@ pub fn chat_completions_url(endpoint: &ProviderEndpoint) -> Result<String> {
 /// servers this driver also serves may only implement the original name.
 /// Narrowing the change to the hosts that reject `max_tokens` keeps the blast
 /// radius at exactly the endpoints that need it.
+#[cfg(feature = "http")]
 pub fn max_output_fields(api_url: &str, max_tokens: Option<u32>) -> (Option<u32>, Option<u32>) {
     if is_openai_api_url(api_url) || is_azure_openai_api_url(api_url) {
         (None, max_tokens)
@@ -298,7 +300,7 @@ pub fn max_output_fields(api_url: &str, max_tokens: Option<u32>) -> (Option<u32>
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http"))]
 mod output_cap_tests {
     use super::max_output_fields;
 
