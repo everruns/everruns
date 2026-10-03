@@ -302,6 +302,10 @@ impl StorageBackend {
         dispatch!(self, delete_personal_access_token, id, user_id)
     }
 
+    pub async fn delete_personal_access_tokens_for_user(&self, user_id: Uuid) -> Result<u64> {
+        dispatch!(self, delete_personal_access_tokens_for_user, user_id)
+    }
+
     // ============================================
     // CLI Auth Sessions
     // ============================================

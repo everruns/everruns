@@ -18,14 +18,15 @@ use crate::storage::{
 };
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
 use everruns_host::HostComposition;
-use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+mod anonymous;
 mod mcp_servers;
 mod models;
+use anonymous::seed_anonymous_user_for_auth_mode;
 use mcp_servers::seed_mcp_servers;
 use models::SEED_MODELS;
 
@@ -229,53 +230,6 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
             result.unchanged += 1;
         }
     }
-
-    Ok(result)
-}
-
-// ============================================
-// Anonymous User Seeder
-// ============================================
-
-/// Seed anonymous user for auth=none mode.
-/// Uses ANONYMOUS_USER_ID so all code paths (org membership, API keys, etc.)
-/// work without special-casing a nil/missing user.
-async fn seed_anonymous_user(
-    db: &StorageBackend,
-    harness_definitions: &[everruns_platform::BuiltInHarnessDefinition],
-) -> anyhow::Result<SeedResult> {
-    let mut result = SeedResult::default();
-
-    let input = CreateUserRow {
-        email: ANONYMOUS_USER_EMAIL.to_string(),
-        name: ANONYMOUS_USER_NAME.to_string(),
-        avatar_url: None,
-        roles: vec!["admin".to_string()],
-        password_hash: None,
-        email_verified: true,
-        auth_provider: Some("none".to_string()),
-        auth_provider_id: None,
-        external_id: None,
-    };
-
-    match db.create_user_with_id(ANONYMOUS_USER_ID, input).await? {
-        Some(_) => {
-            tracing::info!("Created anonymous user");
-            result.created += 1;
-        }
-        None => {
-            tracing::debug!("Anonymous user up to date");
-            result.unchanged += 1;
-        }
-    }
-
-    // Ensure anonymous user is owner of default org
-    db.ensure_membership(ANONYMOUS_USER_ID, DEFAULT_ORG_ID, "owner")
-        .await?;
-
-    // Ensure default org has built-in harnesses (same safety net as registration handlers)
-    org_init::initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, harness_definitions)
-        .await?;
 
     Ok(result)
 }
@@ -1986,8 +1940,9 @@ pub async fn seed_all_with_host_composition(
     );
     result.merge(org_result);
 
-    // Seed anonymous user (for auth=none mode, depends on default org)
-    let anon_result = seed_anonymous_user(db, built_in_harnesses).await?;
+    // Anonymous identity + revoke of none-mode PATs when auth is enabled
+    // (EVE-1153 / TM-AUTH-032). See `seed::anonymous`.
+    let anon_result = seed_anonymous_user_for_auth_mode(db, auth_ctx, built_in_harnesses).await?;
     tracing::debug!(
         created = anon_result.created,
         updated = anon_result.updated,

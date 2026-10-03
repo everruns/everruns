@@ -32338,6 +32338,13 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Caller may not manage this session */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Session or pending elicitation not found */
       404: {
         headers: {

@@ -16,7 +16,10 @@ use crate::api::session_files::{
     raw_file_response, sandboxed_html_response, wants_raw_file,
 };
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::session_files::queries::{USER_MEMORY_MOUNT_PATH, redact_user_memory_files};
+use crate::domains::session_files::queries::{
+    USER_MEMORY_MOUNT_PATH, is_user_memory_path, is_user_memory_path_or_ancestor,
+    redact_user_memory_files, user_memory_allowed_for_workspace,
+};
 use crate::domains::session_files::{
     CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput,
     UpdateFileInput, WorkspaceFileService,
@@ -121,6 +124,70 @@ fn is_reserved_path(path: &str) -> bool {
     path.starts_with('_') || path.split('/').any(|segment| segment.starts_with('_'))
 }
 
+/// A workspace the caller passed the org/policy check for, plus whether the
+/// caller owns the private `/memory/user` subtree mounted into it.
+///
+// THREAT[TM-TENANT-013]: `WORKSPACE_VIEW`/`WORKSPACE_MANAGE` are org-wide, so
+// they cannot decide access to one member's private memory. Every handler
+// below checks `/memory/user` paths against `user_memory_allowed` before it
+// calls the file service, so a denial is the same 403 whether or not the path
+// exists, and listings drop the subtree instead of failing.
+#[derive(Debug, Clone, Copy)]
+struct WorkspaceAccess {
+    key: Uuid,
+    user_memory_allowed: bool,
+}
+
+impl WorkspaceAccess {
+    /// Reads (get, stat, download, preview) of a path inside `/memory/user`.
+    fn ensure_read(&self, path: &str) -> Result<(), (StatusCode, String)> {
+        if !self.user_memory_allowed && is_user_memory_path(path) {
+            return Err(user_memory_forbidden());
+        }
+        Ok(())
+    }
+
+    /// Mutations also cover ancestors: deleting or moving `/memory` would
+    /// carry the private subtree with it.
+    fn ensure_mutation(&self, path: &str) -> Result<(), (StatusCode, String)> {
+        if !self.user_memory_allowed && is_user_memory_path_or_ancestor(path) {
+            return Err(user_memory_forbidden());
+        }
+        Ok(())
+    }
+
+    fn redact(&self, files: Vec<FileInfo>) -> Vec<FileInfo> {
+        if self.user_memory_allowed {
+            files
+        } else {
+            redact_user_memory_files(files, |file| &file.path)
+        }
+    }
+}
+
+fn user_memory_forbidden() -> (StatusCode, String) {
+    (
+        StatusCode::FORBIDDEN,
+        "User memory is private to the session owner".to_string(),
+    )
+}
+
+async fn workspace_access(
+    state: &AppState,
+    org: &ResolvedOrg,
+    row: &WorkspaceRow,
+) -> Result<WorkspaceAccess, (StatusCode, String)> {
+    let caller = Caller::from(org);
+    let user_memory_allowed =
+        user_memory_allowed_for_workspace(&state.db, org.org_id, row.id, &caller)
+            .await
+            .map_err(internal_error)?;
+    Ok(WorkspaceAccess {
+        key: row.id,
+        user_memory_allowed,
+    })
+}
+
 async fn resolve_workspace(
     state: &AppState,
     org: &ResolvedOrg,
@@ -154,9 +221,9 @@ async fn resolve_for_read(
     org: &ResolvedOrg,
     workspace_id: &str,
     operation: &str,
-) -> Result<Uuid, (StatusCode, String)> {
+) -> Result<WorkspaceAccess, (StatusCode, String)> {
     let row = resolve_workspace(state, org, workspace_id, &WORKSPACE_VIEW, operation).await?;
-    Ok(row.id)
+    workspace_access(state, org, &row).await
 }
 
 async fn resolve_for_write(
@@ -164,7 +231,7 @@ async fn resolve_for_write(
     org: &ResolvedOrg,
     workspace_id: &str,
     operation: &str,
-) -> Result<Uuid, (StatusCode, String)> {
+) -> Result<WorkspaceAccess, (StatusCode, String)> {
     let row = resolve_workspace(state, org, workspace_id, &WORKSPACE_MANAGE, operation).await?;
     if row.status != "active" {
         return Err((
@@ -172,7 +239,7 @@ async fn resolve_for_write(
             format!("Workspace is {} and cannot be modified", row.status),
         ));
     }
-    Ok(row.id)
+    workspace_access(state, org, &row).await
 }
 
 fn internal_error<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
@@ -224,7 +291,7 @@ pub async fn get_root(
     Path(workspace_id): Path<String>,
     Query(query): Query<GetQuery>,
 ) -> Result<Json<ListResponse<FileInfo>>, (StatusCode, String)> {
-    let uuid = resolve_for_read(
+    let access = resolve_for_read(
         &state,
         &org,
         &workspace_id,
@@ -232,12 +299,12 @@ pub async fn get_root(
     )
     .await?;
     let files = if query.recursive {
-        state.file_service.list_all(uuid).await
+        state.file_service.list_all(access.key).await
     } else {
-        state.file_service.list_directory(uuid, "/").await
+        state.file_service.list_directory(access.key, "/").await
     }
     .map_err(service_error)?;
-    Ok(Json(ListResponse::new(files)))
+    Ok(Json(ListResponse::new(access.redact(files))))
 }
 
 /// GET /v1/workspaces/{workspace_id}/fs/{path} - Read file or list directory
@@ -263,27 +330,31 @@ pub async fn get_path(
     headers: HeaderMap,
     Query(query): Query<GetQuery>,
 ) -> Result<Response, (StatusCode, String)> {
-    let uuid =
+    let access =
         resolve_for_read(&state, &org, &workspace_id, "authorize read workspace file").await?;
     let path = normalize_path(&path);
+    access.ensure_read(&path)?;
     let stat = state
         .file_service
-        .stat(uuid, &path)
+        .stat(access.key, &path)
         .await
         .map_err(service_error)?
         .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
     if stat.is_directory {
         let files = if query.recursive {
-            state.file_service.list_all(uuid).await
+            state.file_service.list_all(access.key).await
         } else {
-            state.file_service.list_directory(uuid, &path).await
+            state.file_service.list_directory(access.key, &path).await
         }
         .map_err(service_error)?;
-        Ok(Json(GetResponse::Listing(ListResponse::new(files))).into_response())
+        Ok(Json(GetResponse::Listing(ListResponse::new(
+            access.redact(files),
+        )))
+        .into_response())
     } else {
         let file = state
             .file_service
-            .read_file(uuid, &path)
+            .read_file(access.key, &path)
             .await
             .map_err(service_error)?
             .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
@@ -324,7 +395,7 @@ pub async fn create_path(
     Path((workspace_id, path)): Path<(String, String)>,
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
-    let uuid = resolve_for_write(
+    let access = resolve_for_write(
         &state,
         &org,
         &workspace_id,
@@ -332,6 +403,7 @@ pub async fn create_path(
     )
     .await?;
     let path = normalize_path(&path);
+    access.ensure_mutation(&path)?;
     if is_reserved_path(&path) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -342,7 +414,7 @@ pub async fn create_path(
     let file = if req.is_directory.unwrap_or(false) {
         let dir = state
             .file_service
-            .create_directory(uuid, CreateDirectoryInput { path })
+            .create_directory(access.key, CreateDirectoryInput { path })
             .await
             .map_err(service_error)?;
         SessionFile {
@@ -362,7 +434,7 @@ pub async fn create_path(
         state
             .file_service
             .create_file(
-                uuid,
+                access.key,
                 CreateFileInput {
                     path,
                     content: req.content,
@@ -399,7 +471,7 @@ pub async fn update_path(
     Path((workspace_id, path)): Path<(String, String)>,
     Json(req): Json<UpdateFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
-    let uuid = resolve_for_write(
+    let access = resolve_for_write(
         &state,
         &org,
         &workspace_id,
@@ -407,6 +479,7 @@ pub async fn update_path(
     )
     .await?;
     let path = normalize_path(&path);
+    access.ensure_mutation(&path)?;
     if is_reserved_path(&path) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -416,7 +489,7 @@ pub async fn update_path(
     let file = state
         .file_service
         .update_file(
-            uuid,
+            access.key,
             &path,
             UpdateFileInput {
                 content: req.content,
@@ -460,7 +533,7 @@ pub async fn delete_path(
     Path((workspace_id, path)): Path<(String, String)>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<Json<DeleteResponse>, (StatusCode, String)> {
-    let uuid = resolve_for_write(
+    let access = resolve_for_write(
         &state,
         &org,
         &workspace_id,
@@ -468,9 +541,10 @@ pub async fn delete_path(
     )
     .await?;
     let path = normalize_path(&path);
+    access.ensure_mutation(&path)?;
     let deleted = state
         .file_service
-        .delete(uuid, &path, query.recursive)
+        .delete(access.key, &path, query.recursive)
         .await
         .map_err(service_error)?;
     Ok(Json(DeleteResponse { deleted }))
@@ -497,12 +571,13 @@ pub async fn stat_file(
     Path(workspace_id): Path<String>,
     Json(req): Json<StatRequest>,
 ) -> Result<Json<FileStat>, (StatusCode, String)> {
-    let uuid =
+    let access =
         resolve_for_read(&state, &org, &workspace_id, "authorize stat workspace file").await?;
     let path = normalize_path(&req.path);
+    access.ensure_read(&path)?;
     let stat = state
         .file_service
-        .stat(uuid, &path)
+        .stat(access.key, &path)
         .await
         .map_err(service_error)?
         .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
@@ -530,7 +605,7 @@ pub async fn grep_files(
     Path(workspace_id): Path<String>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResult>>, (StatusCode, String)> {
-    let uuid = resolve_for_read(
+    let access = resolve_for_read(
         &state,
         &org,
         &workspace_id,
@@ -539,7 +614,7 @@ pub async fn grep_files(
     .await?;
     let results = state
         .file_service
-        .grep(uuid, workspace_grep_input(req))
+        .grep(access.key, workspace_grep_input(req))
         .await
         .map_err(service_error)?;
     let results = redact_user_memory_files(results, |result| &result.path);
@@ -579,12 +654,14 @@ pub async fn move_file(
     Path(workspace_id): Path<String>,
     Json(req): Json<MoveFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
-    let uuid =
+    let access =
         resolve_for_write(&state, &org, &workspace_id, "authorize move workspace file").await?;
+    access.ensure_mutation(&req.src_path)?;
+    access.ensure_mutation(&req.dst_path)?;
     let file = state
         .file_service
         .move_file(
-            uuid,
+            access.key,
             MoveFileInput {
                 src_path: req.src_path,
                 dst_path: req.dst_path,
@@ -619,12 +696,14 @@ pub async fn copy_file(
     Path(workspace_id): Path<String>,
     Json(req): Json<CopyFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
-    let uuid =
+    let access =
         resolve_for_write(&state, &org, &workspace_id, "authorize copy workspace file").await?;
+    access.ensure_mutation(&req.src_path)?;
+    access.ensure_mutation(&req.dst_path)?;
     let file = state
         .file_service
         .copy_file(
-            uuid,
+            access.key,
             CopyFileInput {
                 src_path: req.src_path,
                 dst_path: req.dst_path,
@@ -657,7 +736,7 @@ pub async fn download_path(
     State(state): State<AppState>,
     Path((workspace_id, path)): Path<(String, String)>,
 ) -> Result<Response, (StatusCode, String)> {
-    let uuid = resolve_for_read(
+    let access = resolve_for_read(
         &state,
         &org,
         &workspace_id,
@@ -665,9 +744,10 @@ pub async fn download_path(
     )
     .await?;
     let path = normalize_path(&path);
+    access.ensure_read(&path)?;
     let stat = state
         .file_service
-        .stat(uuid, &path)
+        .stat(access.key, &path)
         .await
         .map_err(service_error)?
         .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
@@ -679,7 +759,7 @@ pub async fn download_path(
     }
     let file = state
         .file_service
-        .read_file(uuid, &path)
+        .read_file(access.key, &path)
         .await
         .map_err(service_error)?
         .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
@@ -714,7 +794,7 @@ pub async fn preview_path(
     State(state): State<AppState>,
     Path((workspace_id, path)): Path<(String, String)>,
 ) -> Result<Response, (StatusCode, String)> {
-    let uuid = resolve_for_read(
+    let access = resolve_for_read(
         &state,
         &org,
         &workspace_id,
@@ -722,6 +802,7 @@ pub async fn preview_path(
     )
     .await?;
     let path = normalize_path(&path);
+    access.ensure_read(&path)?;
     if !is_html_preview_path(&path) {
         return Err((
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -730,7 +811,7 @@ pub async fn preview_path(
     }
     let stat = state
         .file_service
-        .stat(uuid, &path)
+        .stat(access.key, &path)
         .await
         .map_err(service_error)?
         .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
@@ -742,7 +823,7 @@ pub async fn preview_path(
     }
     let file = state
         .file_service
-        .read_file(uuid, &path)
+        .read_file(access.key, &path)
         .await
         .map_err(service_error)?
         .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
@@ -785,3 +866,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "workspace_files_private_memory_tests.rs"]
+mod private_memory_tests;

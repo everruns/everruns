@@ -21,6 +21,11 @@ export AUTH_MODE=none
 
 All requests will be allowed with full admin access.
 
+If you later restart the same database with `AUTH_MODE=admin` or `AUTH_MODE=full`,
+startup revokes personal access tokens owned by the seeded anonymous admin user so
+a token minted in no-auth development cannot remain privileged after authentication
+is enabled.
+
 ### 2. Admin Mode (Simple Development)
 
 Use for local development with basic access control:
