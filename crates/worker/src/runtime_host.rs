@@ -1,6 +1,6 @@
 // Runtime-host adapter bridge for durable/server-backed workers.
 // Decision: everruns-worker exposes first-party adapters from WorkerAdapters to
-// the neutral everruns_core::host execution contract.
+// the neutral core host execution contract.
 
 use crate::core::tool_context::ToolContextExtensions;
 use crate::core::{
@@ -249,7 +249,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
     }
 }
 
-/// First-party adapter from worker backends into `everruns_core::host` execution.
+/// First-party adapter from worker backends into core host execution.
 ///
 /// This is the bridge that lets durable workers execute the shared runtime
 /// host phases without depending on in-process-only stores.
