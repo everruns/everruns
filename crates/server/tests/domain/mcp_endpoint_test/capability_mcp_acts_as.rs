@@ -249,6 +249,7 @@ async fn create_agent_and_session(
     .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             source: everruns_platform::SessionSource::Api,
