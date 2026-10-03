@@ -1,19 +1,19 @@
-version: 0.35.0
+version: 0.36.0
 date: 2026-10-03
 headline:
-  - Platform Chat.
-  - For every org.
+  - Your agent.
+  - Your choice.
 summary:
-  - Shell-powered chat reaches every organization,
-  - agents can ask questions mid-turn, and
-  - sandbox HTTP egress fails closed.
+  - Choose Bashkit or Daytona for each new session.
+  - Slack setup gets repaired, and session storage
+  - reads enforce the caller’s view permission.
 highlights:
-  - title: Platform Chat for all
-    description: The shell-powered harness becomes the default for every organization.
-    source: "#4060"
-  - title: Interactive questions
-    description: AskUser runs through interactive chat turns.
-    source: "#4044"
-  - title: Fail-closed HTTP egress
-    description: Empty DNS pins cannot fall back to unrestricted HTTP access.
-    source: "#4058"
+  - title: Choose an environment
+    description: Author agent profiles and select one for Chat or Playground.
+    source: "#4098"
+  - title: Slack setup repaired
+    description: Install draft endpoints with declared bot scopes and compact errors.
+    source: "#4075"
+  - title: Private storage protected
+    description: Session view is required to list stored values and secret names.
+    source: "#4099"

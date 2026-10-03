@@ -92,7 +92,7 @@ aws-credential-types = { version = "1", optional = true }
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off.
-everruns-provider = { version = "0.35.0", path = "../../provider" }
+everruns-provider = { version = "0.36.0", path = "../../provider" }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures the wire; futures drains the
