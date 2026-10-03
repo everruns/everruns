@@ -355,13 +355,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Logical sandbox and checkpoint persistence (EVE-870). Defaults to none:
-    /// like the durable tool-result store, this is an in-process control-plane
-    /// service with no gRPC surface, so remote workers keep the pre-EVE-870
-    /// secret-only behaviour.
-    fn sandbox_checkpoint_store(
+    /// Logical environment state and checkpoint persistence (EVE-870).
+    /// Remote workers retain the compatibility secret representation until a
+    /// control-plane RPC can implement this composite store.
+    fn sandbox_persistence_store(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
+    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
         None
     }
 

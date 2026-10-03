@@ -14,6 +14,11 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
 use everruns_provider::tool_types::ToolHints;
 
+use crate::sandbox_state::load_state_for_provider;
+pub use crate::sandbox_state::{
+    delete_session_sandbox_state, load_session_sandbox_state, save_session_sandbox_state,
+};
+
 /// Capability id for the managed session sandbox capability.
 pub const SESSION_SANDBOX_CAPABILITY_ID: &str = "session_sandbox";
 /// Secret name used to persist the managed sandbox record for a session.
@@ -69,7 +74,7 @@ pub enum SessionSandboxStatus {
     Lost,
 }
 
-/// Provider-owned sandbox instance record persisted in session secrets.
+/// Provider-owned physical environment instance record.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct SessionSandboxInstance {
     /// Provider-specific stable identifier (e.g. Daytona sandbox id).
@@ -88,9 +93,14 @@ pub struct SessionSandboxInstance {
     pub metadata: Value,
 }
 
-/// Persisted managed sandbox state.
+/// Persisted managed environment state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionSandboxState {
+    /// Hosted logical-sandbox identity and incarnation fence. Legacy secret
+    /// records omit it and acquire one when they are adopted into durable
+    /// control-plane state.
+    #[serde(skip)]
+    pub sandbox: Option<crate::sandbox_checkpoint::SandboxRef>,
     pub provider: String,
     pub status: SessionSandboxStatus,
     pub instance: SessionSandboxInstance,
@@ -293,67 +303,6 @@ pub fn session_sandbox_config_from_capabilities(
     Ok(Some(config))
 }
 
-/// Load the managed sandbox state from session secret storage.
-pub async fn load_session_sandbox_state(
-    context: &ToolContext,
-) -> Result<Option<SessionSandboxState>, ToolExecutionResult> {
-    let storage = context
-        .storage_store
-        .as_ref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("Storage not available in this context"))?;
-
-    let Some(raw) = storage
-        .get_secret(context.session_id, SESSION_SANDBOX_SECRET_NAME)
-        .await
-        .map_err(ToolExecutionResult::internal_error)?
-    else {
-        return Ok(None);
-    };
-
-    let state: SessionSandboxState = serde_json::from_str(&raw).map_err(|e| {
-        ToolExecutionResult::internal_error_msg(format!("Corrupt session sandbox state: {e}"))
-    })?;
-    Ok(Some(state))
-}
-
-/// Persist the managed sandbox state into session secret storage.
-pub async fn save_session_sandbox_state(
-    context: &ToolContext,
-    state: &SessionSandboxState,
-) -> Result<(), ToolExecutionResult> {
-    let storage = context
-        .storage_store
-        .as_ref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("Storage not available in this context"))?;
-
-    let raw = serde_json::to_string(state).map_err(|e| {
-        ToolExecutionResult::internal_error_msg(format!(
-            "Failed to encode session sandbox state: {e}"
-        ))
-    })?;
-
-    storage
-        .set_secret(context.session_id, SESSION_SANDBOX_SECRET_NAME, &raw)
-        .await
-        .map_err(ToolExecutionResult::internal_error)
-}
-
-/// Delete the managed sandbox state from session secret storage.
-pub async fn delete_session_sandbox_state(
-    context: &ToolContext,
-) -> Result<(), ToolExecutionResult> {
-    let storage = context
-        .storage_store
-        .as_ref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("Storage not available in this context"))?;
-
-    storage
-        .delete_secret(context.session_id, SESSION_SANDBOX_SECRET_NAME)
-        .await
-        .map_err(ToolExecutionResult::internal_error)?;
-    Ok(())
-}
-
 /// Start the managed sandbox when absent and resume it when paused.
 pub async fn ensure_session_sandbox_running(
     context: &ToolContext,
@@ -366,7 +315,7 @@ pub async fn ensure_session_sandbox_running(
         )));
     };
 
-    match load_session_sandbox_state(context).await? {
+    match load_state_for_provider(context, &config.provider).await? {
         Some(existing) => {
             if existing.provider != config.provider {
                 return Err(ToolExecutionResult::tool_error(format!(
@@ -396,7 +345,7 @@ pub async fn ensure_session_sandbox_running(
                 state.status = SessionSandboxStatus::Running;
                 state.last_init_error = None;
                 state.updated_at = now_rfc3339();
-                save_session_sandbox_state(context, &state).await?;
+                save_session_sandbox_state(context, &mut state).await?;
             }
 
             run_session_sandbox_init_if_needed(context, provider.as_ref(), config, &mut state)
@@ -406,6 +355,7 @@ pub async fn ensure_session_sandbox_running(
         None => {
             let instance = provider.create(context, config).await?;
             let mut state = SessionSandboxState {
+                sandbox: None,
                 provider: config.provider.clone(),
                 status: SessionSandboxStatus::Running,
                 instance,
@@ -414,7 +364,7 @@ pub async fn ensure_session_sandbox_running(
                 created_at: now_rfc3339(),
                 updated_at: now_rfc3339(),
             };
-            save_session_sandbox_state(context, &state).await?;
+            save_session_sandbox_state(context, &mut state).await?;
             run_session_sandbox_init_if_needed(context, provider.as_ref(), config, &mut state)
                 .await?;
             Ok(state)
@@ -427,7 +377,7 @@ pub async fn pause_session_sandbox(
     context: &ToolContext,
     config: &SessionSandboxConfig,
 ) -> Result<Option<SessionSandboxState>, ToolExecutionResult> {
-    let Some(mut state) = load_session_sandbox_state(context).await? else {
+    let Some(mut state) = load_state_for_provider(context, &config.provider).await? else {
         return Ok(None);
     };
 
@@ -451,7 +401,7 @@ pub async fn pause_session_sandbox(
     state.instance = provider.pause(context, config, &state.instance).await?;
     state.status = SessionSandboxStatus::Paused;
     state.updated_at = now_rfc3339();
-    save_session_sandbox_state(context, &state).await?;
+    save_session_sandbox_state(context, &mut state).await?;
     Ok(Some(state))
 }
 
@@ -460,7 +410,7 @@ pub async fn delete_session_sandbox(
     context: &ToolContext,
     config: &SessionSandboxConfig,
 ) -> Result<bool, ToolExecutionResult> {
-    let Some(state) = load_session_sandbox_state(context).await? else {
+    let Some(state) = load_state_for_provider(context, &config.provider).await? else {
         return Ok(false);
     };
 
@@ -479,7 +429,7 @@ pub async fn delete_session_sandbox(
     };
 
     provider.delete(context, config, &state.instance).await?;
-    delete_session_sandbox_state(context).await?;
+    delete_session_sandbox_state(context, &state).await?;
     Ok(true)
 }
 
@@ -550,8 +500,8 @@ const CHECKPOINT_REVISION_METADATA_KEY: &str = "checkpoint_revision";
 ///
 /// 1. the provider uploads the archive and names a revision;
 /// 2. the revision is recorded as an *unattached* checkpoint;
-/// 3. the secret binding is written, which is what makes the revision
-///    recoverable today;
+/// 3. the current environment binding is written, which makes the revision
+///    recoverable (a hosted row, or the compatibility secret fallback);
 /// 4. the checkpoint is attached, marking it authoritative.
 ///
 /// A crash between 2 and 4 therefore leaves a checkpoint row nothing points at,
@@ -583,10 +533,10 @@ pub async fn checkpoint_session_sandbox(
         save_session_sandbox_state(context, state).await?;
 
         if let Some((store, sandbox, checkpoint_id)) = recorded {
-            // The secret binding is still what recovery reads, so a failure to
-            // attach must not fail the tool: it leaves a collectable orphan and
-            // the pre-EVE-870 behaviour. This becomes fatal in the slice that
-            // moves recovery onto `sandboxes.current_checkpoint_id`.
+            // A failure to attach must not fail the tool: the provider binding
+            // has already advanced. The record remains collectable and the
+            // error is surfaced operationally without falsely making it the
+            // authoritative checkpoint.
             if let Err(error) = store
                 .attach_checkpoint(sandbox.id, checkpoint_id, sandbox.generation)
                 .await
@@ -958,7 +908,8 @@ mod tests {
         let context =
             ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
 
-        let state = SessionSandboxState {
+        let mut state = SessionSandboxState {
+            sandbox: None,
             provider: "daytona".to_string(),
             status: SessionSandboxStatus::Running,
             instance: SessionSandboxInstance {
@@ -974,7 +925,9 @@ mod tests {
             updated_at: now_rfc3339(),
         };
 
-        save_session_sandbox_state(&context, &state).await.unwrap();
+        save_session_sandbox_state(&context, &mut state)
+            .await
+            .unwrap();
         let loaded = load_session_sandbox_state(&context).await.unwrap().unwrap();
         assert_eq!(loaded.provider, "daytona");
         assert_eq!(loaded.instance.external_id, "sb_test");
@@ -1205,7 +1158,8 @@ mod tests {
         let storage = Arc::new(MemorySecrets::default());
         let context =
             ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
-        let state = SessionSandboxState {
+        let mut state = SessionSandboxState {
+            sandbox: None,
             provider: "core-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
             instance: test_instance(external_id),
@@ -1214,7 +1168,9 @@ mod tests {
             created_at: now_rfc3339(),
             updated_at: now_rfc3339(),
         };
-        save_session_sandbox_state(&context, &state).await.unwrap();
+        save_session_sandbox_state(&context, &mut state)
+            .await
+            .unwrap();
 
         let resolved = ensure_session_sandbox_running(&context, &test_config_with_init(vec![]))
             .await
@@ -1234,7 +1190,8 @@ mod tests {
         let storage = Arc::new(MemorySecrets::default());
         let context =
             ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
-        let state = SessionSandboxState {
+        let mut state = SessionSandboxState {
+            sandbox: None,
             provider: "core-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
             instance: test_instance(external_id),
@@ -1243,7 +1200,9 @@ mod tests {
             created_at: now_rfc3339(),
             updated_at: now_rfc3339(),
         };
-        save_session_sandbox_state(&context, &state).await.unwrap();
+        save_session_sandbox_state(&context, &mut state)
+            .await
+            .unwrap();
 
         let resolved = ensure_session_sandbox_running(&context, &test_config_with_init(vec![]))
             .await
@@ -1263,7 +1222,8 @@ mod tests {
         let storage = Arc::new(MemorySecrets::default());
         let context =
             ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
-        let state = SessionSandboxState {
+        let mut state = SessionSandboxState {
+            sandbox: None,
             provider: "core-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
             instance: test_instance(external_id),
@@ -1272,7 +1232,9 @@ mod tests {
             created_at: now_rfc3339(),
             updated_at: now_rfc3339(),
         };
-        save_session_sandbox_state(&context, &state).await.unwrap();
+        save_session_sandbox_state(&context, &mut state)
+            .await
+            .unwrap();
 
         let resolved =
             ensure_session_sandbox_running(&context, &test_config_with_init(vec!["echo ready"]))
@@ -1494,6 +1456,7 @@ mod tests {
 
     fn revision_test_state() -> SessionSandboxState {
         SessionSandboxState {
+            sandbox: None,
             provider: "revision-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
             instance: test_instance("sb_revision"),
@@ -1901,6 +1864,7 @@ mod tests {
         }
 
         let state = SessionSandboxState {
+            sandbox: None,
             provider: "rewind-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
             instance: test_instance("sb_reconcile"),

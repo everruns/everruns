@@ -306,6 +306,7 @@ async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
             &context,
             &config,
             &everruns_platform::session_sandbox::SessionSandboxState {
+                sandbox: None,
                 provider: "daytona".to_string(),
                 status: everruns_platform::session_sandbox::SessionSandboxStatus::Running,
                 instance: instance.clone(),
@@ -601,6 +602,7 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
             &context,
             &config,
             &everruns_platform::session_sandbox::SessionSandboxState {
+                sandbox: None,
                 provider: "daytona".to_string(),
                 status: everruns_platform::session_sandbox::SessionSandboxStatus::Running,
                 instance: resumed.clone(),

@@ -436,6 +436,7 @@ async fn test_live_session_sandbox_provider_flow() {
             &context,
             &config,
             &SessionSandboxState {
+                sandbox: None,
                 provider: "daytona".to_string(),
                 status: SessionSandboxStatus::Running,
                 instance: resumed.clone(),
@@ -517,6 +518,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
     }
     assert!(sandbox_is_absent, "physical sandbox deletion timed out");
     let state = SessionSandboxState {
+        sandbox: None,
         provider: "daytona".to_string(),
         status: SessionSandboxStatus::Running,
         instance: checkpointed.clone(),
