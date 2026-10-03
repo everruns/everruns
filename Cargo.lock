@@ -3072,6 +3072,7 @@ dependencies = [
  "base64 0.23.1",
  "eventsource-stream",
  "everruns-core",
+ "everruns-host",
  "everruns-provider",
  "futures",
  "reqwest",

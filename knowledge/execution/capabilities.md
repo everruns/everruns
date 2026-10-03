@@ -598,7 +598,7 @@ Some capabilities call provider APIs directly instead of routing through the LLM
 - `provider_credential_store` for resolving default provider credentials without reading provider environment variables in tool code
 - `image_store` for durable image artifact persistence and later reuse by ID
 
-`gpt_image_gen` is the first built-in example of this pattern: it resolves OpenAI credentials through session secrets or the provider credential store, persists generated outputs in org-scoped image storage, and can optionally mirror them into the session filesystem.
+`gpt_image_gen` is the first built-in example of this pattern: it resolves OpenAI credentials through session secrets or the provider credential store, persists generated outputs in org-scoped image storage, and can optionally mirror them into the session filesystem. Because the org-configured base URL receives the decrypted provider key, its HTTP traffic goes through `ToolContext.egress_service` with `require_dns_pinning()` and the session ACL, and redirects are errors; without an egress service the tools fail closed (EVE-1174, TM-LLM-047).
 
 ### Capability Features
 

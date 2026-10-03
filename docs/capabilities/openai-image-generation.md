@@ -42,6 +42,10 @@ The capability never reads provider credentials from session secrets or environm
 2. Default Azure OpenAI provider credentials from the control plane
 3. Default Meta or OpenRouter provider credentials from the control plane (Muse image model)
 
+## Network Policy
+
+Image requests leave through the platform's outbound network boundary, like web fetch and MCP. The provider base URL must be allowed by the session's network access policy and, when enabled, the system allowlist. Its hostname must resolve to public addresses only, and the connection is pinned to those addresses. Redirects from the image API are treated as errors and never followed, so the provider key is only sent to the configured host.
+
 ## Tools
 
 ### `generate_image`
