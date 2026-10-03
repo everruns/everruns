@@ -303,6 +303,57 @@ impl Database {
         Ok(row)
     }
 
+    /// Move live bindings off the retired preview. Keep its row for immutable
+    /// usage/evaluation history; those records must never be rewritten.
+    pub async fn consolidate_platform_chat(&self, org_id: i64) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let removed_flag = sqlx::query(
+            "DELETE FROM org_feature_flags WHERE org_id = $1 AND flag_name = 'platform_chat_v2'",
+        )
+        .bind(org_id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            > 0;
+        let ids: Option<(Uuid, Uuid)> = sqlx::query_as(
+            "SELECT old.id, canonical.id FROM harnesses old JOIN harnesses canonical \
+             ON canonical.org_id = old.org_id AND canonical.name = 'platform-chat' \
+             AND canonical.is_built_in AND canonical.status = 'active' \
+             WHERE old.org_id = $1 AND old.name = 'platform-chat-v2' \
+             AND old.is_built_in AND old.status != 'deleted' FOR UPDATE OF old, canonical",
+        )
+        .bind(org_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((old, canonical)) = ids else {
+            tx.commit().await?;
+            return Ok(removed_flag);
+        };
+        for statement in [
+            "UPDATE sessions SET harness_id = $3 WHERE org_id = $1 AND harness_id = $2",
+            "UPDATE agents SET harness_id = $3 WHERE org_id = $1 AND harness_id = $2",
+            "UPDATE apps SET harness_id = $3 WHERE org_id = $1 AND harness_id = $2",
+            "UPDATE harnesses SET parent_harness_id = $3 WHERE org_id = $1 AND parent_harness_id = $2",
+            "UPDATE organization_settings SET default_harness_id = $3 WHERE org_id = $1 AND default_harness_id = $2",
+            "UPDATE organization_settings SET base_harness_id = $3 WHERE org_id = $1 AND base_harness_id = $2",
+            "UPDATE agent_triggers SET execution_harness_id = $3 WHERE org_id = $1 AND execution_harness_id = $2",
+        ] {
+            sqlx::query(statement)
+                .bind(org_id)
+                .bind(old)
+                .bind(canonical)
+                .execute(&mut *tx)
+                .await?;
+        }
+        sqlx::query("UPDATE harnesses SET status = 'deleted', deleted_at = NOW(), updated_at = NOW() WHERE org_id = $1 AND id = $2")
+            .bind(org_id)
+            .bind(old)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
     /// Release built-in flag on the harness with `name` in `org_id`, if it
     /// exists and is currently flagged as built-in. Used during reconciliation
     /// when a previously default-installed harness is moved to the example

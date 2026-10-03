@@ -1,4 +1,4 @@
-agents analyze	--capabilities --mcp-servers --system-prompt --tools
+agents analyze	--capabilities --harness-id --initial-files --mcp-servers --system-prompt --tools
 agents check-name	--exclude-id --name!
 agents check-rules delete	--rule-id!
 agents check-rules list	
@@ -26,7 +26,7 @@ agents health-checks list	--agent-id!
 agents health-checks trigger	--agent-id!
 agents import	--capabilities --default-model-id --description --display-name --harness-id --harness-name --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools
 agents list	
-agents preview	--capabilities --mcp-servers --system-prompt --tools
+agents preview	--capabilities --harness-id --initial-files --mcp-servers --system-prompt --tools
 agents triggers create	--agent-id! --agent-version-id --agent-version-policy --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-type
 agents triggers delete	--agent-id! --trigger-id!
 agents triggers deliveries list	--agent-id! --limit --trigger-id!

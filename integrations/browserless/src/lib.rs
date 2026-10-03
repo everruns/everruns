@@ -51,8 +51,9 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
         factory: || Box::new(BrowserlessCapability),
     },
     // Computer use ships behind experimental mode. The native OpenAI and
-    // Anthropic adapters and the hard approval gate are in (EVE-1133); it
-    // leaves experimental once the native OpenAI path is verified live.
+    // Anthropic adapters are in with soft approval only, no hard gate
+    // (EVE-1133); it leaves experimental once the native OpenAI path is
+    // verified live.
     IntegrationPlugin {
         experimental_only: true,
         feature_flag: None,

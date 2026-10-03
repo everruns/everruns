@@ -607,9 +607,10 @@ impl everruns_core::capabilities::Capability for BrowserlessComputerUseCapabilit
     }
 
     fn pre_tool_use_hooks_with_config(&self, _config: &Value) -> Vec<Arc<dyn PreToolUseHook>> {
-        // THREAT[TM-TOOL-008]: typing, Enter, navigation and provider safety
-        // checks wait for a person's approval of that exact call.
-        vec![everruns_builtins::computer_use_approval::computer_use_approval_hook()]
+        // Computer use relies on soft approval (the stop-and-ask prompt
+        // rule): no per-call hard gate (EVE-1133 decision; EVE-1140 found
+        // hosted sessions have no hard gate at all).
+        vec![]
     }
 
     fn dependencies(&self) -> Vec<&'static str> {

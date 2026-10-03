@@ -41,7 +41,23 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     // deleting it would lift the per-session action cap.
     everruns_core::computer_use::COMPUTER_USE_ACTION_COUNT_KEY,
 ];
-const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:", "mcp_oauth:"];
+// Capability-owned secret namespaces. Literals are repeated from the owning
+// crates (platform / integrations) because host must not import those crates
+// (check-agent-record-isolation.sh). Each owning crate pins its constant to
+// these reservations with a unit test beside the definition.
+//
+// THREAT[TM-SANDBOX-004] / THREAT[TM-AGENT-020]: session actors must not
+// overwrite sandbox state secrets via the user-facing secret_store; those
+// records carry provider resource IDs that tools then act on.
+const INTERNAL_SECRET_PREFIXES: &[&str] = &[
+    "browserless_internal:",
+    "mcp_oauth:",
+    "container_sandbox:",
+    "daytona_sandbox:",
+    "e2b_sandbox:",
+    "deno_sandbox:",
+    "sprites_sprite:",
+];
 // Exact reserved secret names. Unlike the prefixes above, this one cannot
 // reference its canonical constant: SESSION_SANDBOX_SECRET_NAME is defined in
 // the platform crate, which depends on this one and which host source must not
@@ -731,8 +747,17 @@ mod tests {
         assert!(is_internal_session_secret_name(
             "mcp_oauth:server:access_token"
         ));
+        assert!(is_internal_session_secret_name(
+            "container_sandbox:evr-deadbeef-sandbox"
+        ));
+        assert!(is_internal_session_secret_name("daytona_sandbox:sbx-123"));
+        assert!(is_internal_session_secret_name("e2b_sandbox:i-abc"));
+        assert!(is_internal_session_secret_name("deno_sandbox:sb_1"));
+        assert!(is_internal_session_secret_name("sprites_sprite:sprite-1"));
         assert!(is_internal_session_secret_name("session_sandbox"));
         assert!(!is_internal_session_secret_name("api_key"));
+        assert!(!is_internal_session_secret_name("container_sandbox"));
+        assert!(!is_internal_session_secret_name("daytona_sandbox"));
     }
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
@@ -853,5 +878,153 @@ mod tests {
         } else {
             panic!("Expected tool error");
         }
+    }
+
+    // EVE-1151: capability-owned sandbox state namespaces stay out of secret_store.
+    #[tokio::test]
+    async fn test_secret_store_rejects_reserved_sandbox_prefixes() {
+        #[derive(Default)]
+        struct SecretMemory {
+            secrets: Mutex<HashMap<String, String>>,
+        }
+
+        #[async_trait]
+        impl SessionStorageStore for SecretMemory {
+            async fn set_value(
+                &self,
+                _session_id: SessionId,
+                _key: &str,
+                _value: &str,
+            ) -> Result<()> {
+                Ok(())
+            }
+            async fn get_value(
+                &self,
+                _session_id: SessionId,
+                _key: &str,
+            ) -> Result<Option<String>> {
+                Ok(None)
+            }
+            async fn delete_value(&self, _session_id: SessionId, _key: &str) -> Result<bool> {
+                Ok(false)
+            }
+            async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<KeyInfo>> {
+                Ok(vec![])
+            }
+            async fn set_secret(
+                &self,
+                _session_id: SessionId,
+                name: &str,
+                value: &str,
+            ) -> Result<()> {
+                self.secrets
+                    .lock()
+                    .unwrap()
+                    .insert(name.to_string(), value.to_string());
+                Ok(())
+            }
+            async fn get_secret(
+                &self,
+                _session_id: SessionId,
+                name: &str,
+            ) -> Result<Option<String>> {
+                Ok(self.secrets.lock().unwrap().get(name).cloned())
+            }
+            async fn delete_secret(&self, _session_id: SessionId, name: &str) -> Result<bool> {
+                Ok(self.secrets.lock().unwrap().remove(name).is_some())
+            }
+            async fn list_secrets(
+                &self,
+                _session_id: SessionId,
+            ) -> Result<Vec<everruns_core::session_services::SecretInfo>> {
+                let now = chrono::Utc::now();
+                Ok(self
+                    .secrets
+                    .lock()
+                    .unwrap()
+                    .keys()
+                    .map(|name| everruns_core::session_services::SecretInfo {
+                        name: name.clone(),
+                        created_at: now,
+                        updated_at: now,
+                    })
+                    .collect())
+            }
+        }
+
+        let tool = SecretStoreTool;
+        let session_id = SessionId::new();
+        let storage = Arc::new(SecretMemory::default());
+        // System-written trusted records (bypass the tool).
+        for name in [
+            "container_sandbox:evr-owned-sandbox",
+            "daytona_sandbox:sbx-1",
+            "e2b_sandbox:i-1",
+            "deno_sandbox:sb_1",
+            "sprites_sprite:sprite-1",
+        ] {
+            storage
+                .set_secret(session_id, name, "trusted")
+                .await
+                .unwrap();
+        }
+        let context = ToolContext::with_storage_store(session_id, storage.clone());
+
+        for name in [
+            "container_sandbox:evr-owned-sandbox",
+            "daytona_sandbox:sbx-1",
+            "e2b_sandbox:i-1",
+            "deno_sandbox:sb_1",
+            "sprites_sprite:sprite-1",
+        ] {
+            let set_result = tool
+                .execute_with_context(
+                    json!({"operation": "set", "name": name, "value": "forged"}),
+                    &context,
+                )
+                .await;
+            assert!(
+                matches!(set_result, ToolExecutionResult::ToolError(ref msg) if msg.contains("reserved")),
+                "{name}: set must be reserved, got {set_result:?}"
+            );
+
+            // get deliberately looks like a miss so reserved names cannot be enumerated
+            let get_result = tool
+                .execute_with_context(json!({"operation": "get", "name": name}), &context)
+                .await;
+            assert!(
+                matches!(get_result, ToolExecutionResult::ToolError(ref msg) if msg.contains("not found")),
+                "{name}: get must look like a miss, got {get_result:?}"
+            );
+
+            let delete_result = tool
+                .execute_with_context(json!({"operation": "delete", "name": name}), &context)
+                .await;
+            assert!(
+                matches!(delete_result, ToolExecutionResult::ToolError(ref msg) if msg.contains("reserved")),
+                "{name}: delete must be reserved, got {delete_result:?}"
+            );
+
+            assert_eq!(
+                storage
+                    .get_secret(session_id, name)
+                    .await
+                    .unwrap()
+                    .as_deref(),
+                Some("trusted"),
+                "{name}: system-written secret must stay untouched"
+            );
+        }
+
+        let ToolExecutionResult::Success(listed) = tool
+            .execute_with_context(json!({"operation": "list"}), &context)
+            .await
+        else {
+            panic!("expected successful list");
+        };
+        assert_eq!(
+            listed["count"], 0,
+            "reserved sandbox secrets must not be listed: {listed}"
+        );
     }
 }

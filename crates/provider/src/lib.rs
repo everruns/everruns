@@ -158,6 +158,7 @@ pub use tool_types::{
 pub use turn_collector::{CollectedTurn, TurnLimits, TurnTiming, collect_turn, limit_stream};
 pub use url_validation::{
     UrlValidationError, is_blocked_ip, validate_safe_url, validate_url_dns_pinned,
+    validate_url_with_resolver,
 };
 pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,

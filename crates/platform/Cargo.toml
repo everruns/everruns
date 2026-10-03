@@ -53,7 +53,9 @@ environment-capabilities = [
 ]
 lua = ["dep:everruns-integrations-lua"]
 # Outbound A2A delegation is product-owned and optional for lightweight hosts.
-a2a = ["dep:a2a", "dep:a2a-client", "dep:url"]
+# reqwest is declared so discovery/transport can inject a DNS-pinned,
+# no-redirect client (EVE-1173); a2a-client already depends on it.
+a2a = ["dep:a2a", "dep:a2a-client", "dep:url", "dep:reqwest"]
 # Outbound AG-UI delegation (`ag_ui_delegation`): product-owned and optional,
 # like `a2a`. Pulls in the AG-UI SSE client and an HTTP stack.
 ag-ui = ["dep:everruns-ag-ui", "dep:reqwest", "dep:url", "dep:futures-util"]

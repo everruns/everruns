@@ -309,6 +309,14 @@ pub const OPENAI_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
 )
 .reasoning_as_text();
 
+/// Balanced GPT-5.6 tier used by production hosted-search sessions (EVE-1164).
+pub const OPENAI_GPT56_TERRA: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-5.6-terra",
+    everruns_drivers::openai::descriptor,
+)
+.reasoning_as_text();
+
 // GPT-6 Astra is covered by the basic and reasoning-plus-tool-call scenarios.
 // Its reasoning can carry opaque encrypted replay state without readable text.
 pub const OPENAI_GPT6_ASTRA: ProviderModelConfig = ProviderModelConfig::new(

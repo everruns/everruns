@@ -162,6 +162,16 @@ impl Capability for PlatformCapability {
         self.tools()
     }
 
+    fn tool_definitions_with_config(
+        &self,
+        config: &Value,
+    ) -> Vec<everruns_provider::tool_types::ToolDefinition> {
+        self.tools_with_config(config)
+            .iter()
+            .map(|tool| tool.to_definition())
+            .collect()
+    }
+
     /// The tool prose is wrong in shell mode and has to go with the tools.
     ///
     /// It tells the model that platform builtins have no `--help` and that
@@ -595,12 +605,23 @@ mod shell_surface_tests {
     #[test]
     fn the_default_surface_still_carries_the_three_tools() {
         assert_eq!(names(json!({})), ["discover", "query", "execute"]);
+        assert_eq!(
+            PlatformCapability
+                .tool_definitions_with_config(&json!({}))
+                .len(),
+            3
+        );
     }
 
     /// The point of the mode.
     #[test]
     fn the_shell_surface_carries_no_model_facing_tools() {
         assert!(names(json!({ "surface": "shell" })).is_empty());
+        assert!(
+            PlatformCapability
+                .tool_definitions_with_config(&json!({ "surface": "shell" }))
+                .is_empty()
+        );
     }
 
     /// An unrecognized surface is the default, not an empty toolset: a typo in

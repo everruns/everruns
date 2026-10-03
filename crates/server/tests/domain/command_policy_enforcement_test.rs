@@ -88,6 +88,34 @@ fn minimal_harness(name: &str) -> CreateHarnessRequest {
     }
 }
 
+#[tokio::test]
+async fn agent_preview_requires_harness_view_before_resolving_inheritance() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(AgentsOnlyResolver),
+    );
+    let preview = |harness_id| everruns_server::domains::agents::PreviewAgent {
+        harness_id,
+        initial_files: Vec::new(),
+        system_prompt: Some("Draft instructions".to_string()),
+        capabilities: Vec::new(),
+        tools: Vec::new(),
+        mcp_servers: Default::default(),
+    };
+    preview(None)
+        .run(&ctx)
+        .await
+        .expect("agent-only preview is allowed");
+    let error = preview(Some(everruns_provider::typed_id::HarnessId::new()))
+        .run(&ctx)
+        .await
+        .expect_err("harness contents require harness.view, even for agent viewers");
+    assert!(
+        matches!(error.kind, CommandErrorKind::Forbidden(_)),
+        "{error:?}"
+    );
+}
+
 /// Denies every permission — models a SaaS tier that blocks all writes.
 struct DenyAllResolver;
 

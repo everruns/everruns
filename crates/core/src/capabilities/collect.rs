@@ -656,7 +656,7 @@ pub async fn collect_capabilities_with_configs(
 
             // Collect tool definitions, propagating capability category if not already set
             let cap_category = effective.category();
-            for def in effective.tool_definitions() {
+            for def in effective.tool_definitions_with_config(cap_config.config_value()) {
                 let def = match (def.category(), cap_category) {
                     (None, Some(cat)) => def.with_category(cat),
                     _ => def,

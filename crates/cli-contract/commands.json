@@ -16,6 +16,18 @@
         "required": false
       },
       {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "mcp_servers",
         "long": "mcp-servers",
         "kind": "json",
@@ -1122,6 +1134,18 @@
       {
         "field": "capabilities",
         "long": "capabilities",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
         "kind": "json",
         "required": false
       },

@@ -88,7 +88,7 @@ Each tool has a `deferrable` policy that controls whether its schema can be defe
 It configures the LLM driver and adds no tool.
 
 1. **Threshold check**: tool_search only activates when the total tool count meets or exceeds the threshold (default: 15)
-2. **Namespace grouping**: tools are grouped by their capability's category into [namespace](https://platform.openai.com/docs/api-reference/responses/create#responses-create-tools) entries, giving the model semantic structure for discovery
+2. **Namespace grouping**: tools are grouped by their capability's category into [namespace](https://platform.openai.com/docs/api-reference/responses/create#responses-create-tools) entries, giving the model semantic structure for discovery. Wire namespace `name` values are normalized to provider-safe identifiers (for example `File Operations` → `File_Operations`); descriptions keep the human-readable category label
 3. **Deferred schemas**: tools marked as deferrable have `defer_loading: true` set, meaning only name + description are sent upfront
 4. **`tool_search` entry**: a `{"type": "tool_search"}` activator is appended to the tools array, enabling the model's built-in tool search index
 5. **Transparent execution**: tool calls and results work identically; the only difference is how tools are presented to the model

@@ -231,6 +231,10 @@ async fn cost_aggregates_root_subagent_and_tool_charges() {
         .unwrap();
     assert_eq!(search["quantity"], 1);
     assert_eq!(search["cost_usd"], 0.01);
+    let mcp = components.iter().find(|c| c["name"] == "mcp_call").unwrap();
+    assert_eq!(mcp["kind"], "hosted_tool");
+    assert_eq!(mcp["quantity"], 1);
+    assert!(mcp["cost_usd"].is_null());
     let estimated = root["metadata"]["usage"]["estimated_cost_usd"]
         .as_f64()
         .unwrap();
@@ -328,7 +332,7 @@ async fn reconnects_duplicates_and_restarts_bill_each_provider_turn_once() {
     assert_eq!(generations(&h).len(), 2);
     assert_eq!(h.ledger.of_type("reason.item").len(), 1);
     assert_eq!(h.ledger.of_type("context.compacted").len(), 1);
-    assert_eq!(h.ledger.of_type("tool.hosted_call").len(), 4);
+    assert_eq!(h.ledger.of_type("tool.hosted_call").len(), 6);
 }
 
 #[tokio::test]

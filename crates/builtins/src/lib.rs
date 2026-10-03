@@ -39,7 +39,6 @@ pub mod budgeting;
 pub mod channel_context;
 pub mod claude_tool_search;
 pub mod compaction;
-pub mod computer_use_approval;
 pub mod current_time;
 pub mod error_disclosure;
 mod framework_config;
@@ -157,7 +156,8 @@ pub use infinity_context::{
 pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
 pub use message_metadata::{
     MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
-    MessageMetadataField, render_annotation, strip_leading_timestamp_annotations,
+    MessageMetadataField, render_annotation, strip_degenerate_time_echo,
+    strip_leading_facts_blocks, strip_leading_timestamp_annotations,
 };
 pub use openai_server_tools::{
     OPENAI_SERVER_TOOLS_CAPABILITY_ID, OpenAiServerToolsCapability, hosted_tools_from_config,

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { InitialFilesPreview } from "@/components/files/initial-files-preview";
+import { PreviewFeatures } from "@/components/agents/preview-features";
 import type {
   AgentCapabilityConfig,
   AgentPreviewResponse,
@@ -95,6 +96,7 @@ export function HarnessPreview({
 
   return (
     <div className="space-y-6">
+      <PreviewFeatures features={preview.features ?? []} />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

@@ -7,10 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { InitialFilesPreview } from "@/components/files/initial-files-preview";
+import { PreviewFeatures } from "@/components/agents/preview-features";
 import type {
   AgentCapabilityConfig,
   AgentPreviewResponse,
   InitialFile,
+  PreviewAgentRequest,
   ToolDefinition,
 } from "@/lib/api/types";
 import { Wrench, FileText, AlertCircle } from "lucide-react";
@@ -18,6 +20,8 @@ import { Wrench, FileText, AlertCircle } from "lucide-react";
 interface AgentPreviewProps {
   systemPrompt: string;
   capabilities: AgentCapabilityConfig[];
+  harnessId?: string;
+  mcpServers?: PreviewAgentRequest["mcpServers"];
   // Accept missing `initial_files` from agents persisted before that field existed.
   initialFiles: InitialFile[] | null | undefined;
   tools?: ToolDefinition[];
@@ -26,6 +30,8 @@ interface AgentPreviewProps {
 export function AgentPreview({
   systemPrompt,
   capabilities,
+  harnessId,
+  mcpServers,
   initialFiles,
   tools = [],
 }: AgentPreviewProps) {
@@ -33,21 +39,35 @@ export function AgentPreview({
   const [preview, setPreview] = useState<AgentPreviewResponse | null>(null);
 
   useEffect(() => {
+    let active = true;
     // Fetch preview when props change
     previewMutation.mutate(
       {
         system_prompt: systemPrompt,
+        harness_id: harnessId,
         capabilities,
+        initial_files: initialFiles ?? [],
         tools,
+        mcpServers,
       },
       {
         onSuccess: (data) => {
-          setPreview(data);
+          if (active) setPreview(data);
         },
       },
     );
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systemPrompt, JSON.stringify(capabilities), JSON.stringify(tools)]);
+  }, [
+    harnessId,
+    systemPrompt,
+    JSON.stringify(capabilities),
+    JSON.stringify(initialFiles),
+    JSON.stringify(tools),
+    JSON.stringify(mcpServers),
+  ]);
 
   if (previewMutation.isPending && !preview) {
     return (
@@ -96,6 +116,7 @@ export function AgentPreview({
 
   return (
     <div className="space-y-6">
+      <PreviewFeatures features={preview.features ?? []} />
       {/* System Prompt Preview */}
       <Card>
         <CardHeader>
@@ -104,7 +125,7 @@ export function AgentPreview({
             Full System Prompt
           </CardTitle>
           <CardDescription>
-            The complete system prompt including capability additions
+            The complete system prompt including harness and capability additions
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -124,7 +145,7 @@ export function AgentPreview({
               {preview.tools.length}
             </Badge>
           </CardTitle>
-          <CardDescription>Tools the agent can use from the enabled capabilities</CardDescription>
+          <CardDescription>Tools from the harness, enabled capabilities, and agent</CardDescription>
         </CardHeader>
         <CardContent>
           {preview.tools.length === 0 ? (
@@ -141,7 +162,10 @@ export function AgentPreview({
         </CardContent>
       </Card>
 
-      <InitialFilesPreview files={initialFiles} />
+      <InitialFilesPreview
+        files={preview.initial_files ?? initialFiles}
+        description="Files from the harness and agent. Agent files override inherited files with the same path."
+      />
     </div>
   );
 }

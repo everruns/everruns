@@ -327,7 +327,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         // Harness examples
         api::harness_examples::list_examples,
         // Agents - additional
-        api::agents::preview_agent,
+        api::agents::preview::preview_agent,
         api::agents::analyze_agent,
         api::agents::trigger_health_check,
         api::agents::list_health_checks,
