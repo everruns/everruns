@@ -15,6 +15,11 @@ use crate::kernel_imports::{
     Caller, ResourceConfigResponse, ScopedMcpServers, SessionContextReport, SessionSeedMode,
     contracts::tool_types::ToolDefinition, evaluate_policies_with, is_mcp_tool,
 };
+use crate::records::BuiltInHarnessRole;
+use crate::records::{
+    EnvironmentSelection, Session, SessionParticipant, SessionParticipantKind,
+    SessionParticipantRole,
+};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
@@ -28,11 +33,6 @@ use everruns_contracts::typed_id::{
     AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
 };
 use everruns_host::HostComposition;
-use everruns_platform::BuiltInHarnessRole;
-use everruns_platform::{
-    EnvironmentSelection, Session, SessionParticipant, SessionParticipantKind,
-    SessionParticipantRole,
-};
 use everruns_worker::AgentRunner;
 
 use super::common::{
@@ -336,7 +336,7 @@ impl AppState {
         runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         host_composition: &HostComposition,
-        built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
+        built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
@@ -348,7 +348,7 @@ impl AppState {
             db,
             runner,
             auth,
-            fallback_default_harness_name: everruns_platform::harness_for_role(
+            fallback_default_harness_name: crate::records::harness_for_role(
                 built_in_harnesses,
                 BuiltInHarnessRole::Default,
             )

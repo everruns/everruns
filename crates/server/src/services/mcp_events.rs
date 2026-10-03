@@ -20,6 +20,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::records::FeatureFlags;
 use anyhow::Context as _;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -28,7 +29,6 @@ use everruns_core::{
     Caller, EgressRequest, EgressRequestKind, EgressService, Event, EventListener, OrgRole,
     PermissionResolver,
 };
-use everruns_platform::FeatureFlags;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;

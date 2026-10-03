@@ -1,11 +1,11 @@
 //! API integration tests: files misc.
 
 use super::support::*;
+use crate::records::Agent;
+use crate::records::Session;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_core::SessionFile;
-use everruns_platform::Agent;
-use everruns_platform::Session;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

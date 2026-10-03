@@ -12,6 +12,8 @@
 // Design Decision: Delivery context is keyed by (session_id, input_message_id)
 // to support concurrent turns in the same session.
 
+use crate::records::SlackReplyMode;
+use crate::records::exposure::{PublicToolVisibility, public_tool_activity_text};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::channel::{
@@ -23,8 +25,6 @@ use everruns_core::events;
 use everruns_core::progress_reporting::{
     ProgressReportPayload, REPORT_PROGRESS_TOOL_NAME, format_progress_report_for_slack,
 };
-use everruns_platform::SlackReplyMode;
-use everruns_platform::exposure::{PublicToolVisibility, public_tool_activity_text};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
@@ -2690,7 +2690,7 @@ mod tests {
                     recipient_user_id: None,
                     recipient_team_id: None,
                     tool_visibility: PublicToolVisibility::default(),
-                    generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                    generic_tool_text: crate::records::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
                     approvals_enabled: true,
                 })
@@ -2955,7 +2955,7 @@ mod tests {
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
                     tool_visibility: PublicToolVisibility::default(),
-                    generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                    generic_tool_text: crate::records::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
                     approvals_enabled: true,
                 })
@@ -3375,7 +3375,7 @@ mod tests {
     /// EVE-975: the pane's live status line, driven by turn and tool lifecycle.
     ///
     /// What may be shown is not decided here — `public_tool_activity_text` in
-    /// `everruns_platform::exposure` owns that for every public surface, and AG-UI
+    /// `crate::records::exposure` owns that for every public surface, and AG-UI
     /// reads the same function. These tests pin that the dispatcher asks it and
     /// honours the answer.
     mod agent_surface_tests {
@@ -3478,7 +3478,7 @@ mod tests {
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
                     tool_visibility,
-                    generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                    generic_tool_text: crate::records::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
                     approvals_enabled: true,
                 })
@@ -3523,7 +3523,7 @@ mod tests {
                 vec![
                     Surfaced::Status(SLACK_THINKING_STATUS.to_string()),
                     Surfaced::Status(
-                        everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
+                        crate::records::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
                     ),
                     Surfaced::Status(SLACK_THINKING_STATUS.to_string()),
                     // The terminal event clears the line; a status left set says
@@ -3590,7 +3590,7 @@ mod tests {
             )
             .await;
 
-            let generic = everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string();
+            let generic = crate::records::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string();
             assert_eq!(
                 surfaced.last(),
                 Some(&Surfaced::Status(generic)),

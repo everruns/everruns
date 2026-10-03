@@ -4,9 +4,10 @@
 // column is a JSONB blob parsed through its trigger-specific config type; the
 // request DTOs below are the flat shape callers send, which commands normalize.
 
+use crate::records::{AgentTriggerType, AgentVersionPolicy, TriggerEventFilter};
 use chrono::{DateTime, Utc};
+use everruns_capabilities::SessionBinding;
 use everruns_contracts::typed_id::AgentVersionId;
-use everruns_platform::{AgentTriggerType, AgentVersionPolicy, SessionBinding, TriggerEventFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;

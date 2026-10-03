@@ -10,7 +10,7 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use everruns_platform::App;
+use crate::records::App;
 use everruns_server::storage::EncryptionService;
 
 fn unique_id(prefix: &str) -> String {

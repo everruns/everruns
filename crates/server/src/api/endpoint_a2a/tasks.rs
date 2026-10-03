@@ -22,12 +22,12 @@
 //   The subscription is opened before the task is read, so no event between
 //   the read and the first frame is lost; the first frame is the full task.
 
+use crate::records::SessionActivity;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
-use everruns_platform::SessionActivity;
 use serde_json::{Value, json};
 use uuid::Uuid;
 

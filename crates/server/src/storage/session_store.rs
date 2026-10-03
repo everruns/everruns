@@ -12,8 +12,8 @@ use crate::kernel_imports::{
     execution_loading::SessionStore,
 };
 use crate::max_iterations;
+use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use async_trait::async_trait;
-use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 
 use super::repositories::Database;
 

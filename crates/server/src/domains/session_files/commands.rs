@@ -731,7 +731,7 @@ mod tests {
     fn session_row(workspace_id: Option<Uuid>) -> CreateSessionRow {
         CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             endpoint_id: None,

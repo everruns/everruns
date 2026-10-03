@@ -1,5 +1,5 @@
+use crate::records::Model;
 use crate::support::*;
-use everruns_contracts::model::Model;
 use everruns_contracts::provider::Provider;
 use serde_json::{Value, json};
 

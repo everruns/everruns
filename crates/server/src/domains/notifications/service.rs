@@ -269,7 +269,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_platform::SessionSource::Api,
+                source: crate::records::SessionSource::Api,
                 workspace_id: None,
                 org_id: 1,
                 app_id: None,

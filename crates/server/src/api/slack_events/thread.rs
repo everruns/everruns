@@ -1,7 +1,7 @@
 //! Thread backfill: paging replies, injecting context, and posting back.
 
+use crate::records::SlackReplyMode;
 use everruns_core::channel::ThreadContext;
-use everruns_platform::SlackReplyMode;
 
 use crate::storage::StorageBackend;
 

@@ -20,14 +20,14 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _org_id: i64,
         _agent_id: Uuid,
-    ) -> CoreResult<Option<everruns_platform::Agent>> {
+    ) -> CoreResult<Option<everruns_capabilities::Agent>> {
         unimplemented!()
     }
     async fn get_harness(
         &self,
         _org_id: i64,
         _harness_id: Uuid,
-    ) -> CoreResult<Option<everruns_platform::Harness>> {
+    ) -> CoreResult<Option<everruns_capabilities::Harness>> {
         unimplemented!()
     }
     async fn get_session(
@@ -287,7 +287,7 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _org_id: i64,
         _session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Arc<dyn everruns_platform::PlatformStore> {
+    ) -> Arc<dyn everruns_capabilities::PlatformStore> {
         unimplemented!()
     }
     fn connection_resolver(

@@ -3,6 +3,13 @@
 // the neutral everruns-host execution contract.
 
 use async_trait::async_trait;
+use everruns_capabilities::SessionMutator;
+use everruns_capabilities::capabilities::PLATFORM_CAPABILITY_ID;
+use everruns_capabilities::{
+    DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
+    PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
+    SandboxStateStoreExt, SessionSqlDbStoreExt, SlackActionInvokerExt,
+};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::error::Result;
 use everruns_contracts::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
@@ -23,13 +30,6 @@ use everruns_core::{
 use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
-};
-use everruns_platform::SessionMutator;
-use everruns_platform::capabilities::PLATFORM_CAPABILITY_ID;
-use everruns_platform::{
-    DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
-    PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
-    SandboxStateStoreExt, SessionSqlDbStoreExt, SlackActionInvokerExt,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -538,8 +538,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             extensions.insert(Arc::new(SlackActionInvokerExt(invoker)));
         }
         if let Some(store) = self.adapters.sandbox_persistence_store() {
-            let checkpoints: Arc<dyn everruns_platform::SandboxCheckpointStore> = store.clone();
-            let state: Arc<dyn everruns_platform::SandboxStateStore> = store;
+            let checkpoints: Arc<dyn everruns_capabilities::SandboxCheckpointStore> = store.clone();
+            let state: Arc<dyn everruns_capabilities::SandboxStateStore> = store;
             extensions.insert(Arc::new(SandboxCheckpointStoreExt(checkpoints)));
             extensions.insert(Arc::new(SandboxStateStoreExt(state)));
             // Checkpoint reconciliation needs both; installing one without the
@@ -755,7 +755,7 @@ impl<A: WorkerAdapters> everruns_contracts::hosted_mcp::HostedMcpResolver for Wo
 }
 
 struct PlatformExecutionScope {
-    store: Arc<dyn everruns_platform::PlatformStore>,
+    store: Arc<dyn everruns_capabilities::PlatformStore>,
     has_catalog: bool,
 }
 impl everruns_core::tool_context::ExecutionServices for PlatformExecutionScope {
@@ -1203,14 +1203,14 @@ mod mcp_credential_tests {
             &self,
             _org_id: i64,
             _agent_id: Uuid,
-        ) -> CoreResult<Option<everruns_platform::Agent>> {
+        ) -> CoreResult<Option<everruns_capabilities::Agent>> {
             unimplemented!()
         }
         async fn get_harness(
             &self,
             _org_id: i64,
             _harness_id: Uuid,
-        ) -> CoreResult<Option<everruns_platform::Harness>> {
+        ) -> CoreResult<Option<everruns_capabilities::Harness>> {
             unimplemented!()
         }
         async fn get_session(
@@ -1471,7 +1471,7 @@ mod mcp_credential_tests {
             &self,
             _org_id: i64,
             _session_id: everruns_contracts::typed_id::SessionId,
-        ) -> Arc<dyn everruns_platform::PlatformStore> {
+        ) -> Arc<dyn everruns_capabilities::PlatformStore> {
             unimplemented!()
         }
         fn connection_resolver(

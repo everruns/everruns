@@ -7,9 +7,9 @@ use crate::kernel_imports::{
     Caller, ExternalActor, PrincipalKind, PrincipalSummary, contracts::typed_id::PrincipalId,
     org_public_id_from_internal,
 };
+use crate::records::{ANONYMOUS_USER_ID, Principal, PrincipalStatus};
 use anyhow::{Result, anyhow};
 use everruns_durable::UpdateField;
-use everruns_platform::{ANONYMOUS_USER_ID, Principal, PrincipalStatus};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -404,8 +404,8 @@ pub fn row_to_principal(row: PrincipalRow) -> Principal {
 mod tests {
     use super::*;
     use crate::kernel_imports::{DEFAULT_ORG_ID, VirtualUserId};
+    use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
     use crate::storage::{CreateUserRow, CreateVirtualUserRow, StorageBackend};
-    use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 
     async fn create_user_with_principal(
         db: &Arc<StorageBackend>,

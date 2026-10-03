@@ -17,10 +17,10 @@ use std::{
 
 use async_trait::async_trait;
 
+use crate::records::{Agent, Session};
 use axum::http::StatusCode;
 use everruns_builtins::normalize_ask_user_arguments;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
-use everruns_platform::{Agent, Session};
 use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use everruns_worker::AgentRunner;
 use serde_json::json;
@@ -52,7 +52,7 @@ fn test_agent_with_client_side_tools_serialization() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_platform::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: crate::records::Agent = serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"
@@ -93,7 +93,7 @@ fn test_agent_with_mixed_tools_serialization() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_platform::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: crate::records::Agent = serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"
@@ -130,7 +130,7 @@ fn test_agent_with_no_tools_omits_field() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_platform::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: crate::records::Agent = serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"

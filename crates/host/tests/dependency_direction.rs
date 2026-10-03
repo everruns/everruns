@@ -13,7 +13,7 @@ fn host_manifest_has_no_edge_to_facades_or_adapters() {
         "everruns-worker",
         "everruns-server",
         "everruns-durable",
-        "everruns-platform",
+        "everruns-capabilities",
     ] {
         assert!(
             !manifest.contains(forbidden),

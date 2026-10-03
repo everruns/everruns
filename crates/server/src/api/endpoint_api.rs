@@ -576,7 +576,7 @@ async fn authenticate_request(
         .ok_or_else(|| bad_request("Invalid api_endpoint channel configuration"))?;
 
     if let Some(auth) = channel.auth.as_ref() {
-        if auth.mode == everruns_platform::EndpointAuthMode::ApiKey {
+        if auth.mode == crate::records::EndpointAuthMode::ApiKey {
             verify_api_key(headers, &config.api_key_hash)?;
         } else {
             state

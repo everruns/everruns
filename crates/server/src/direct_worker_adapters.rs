@@ -18,6 +18,12 @@ use crate::kernel_imports::{
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
     tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
+use crate::records::Harness;
+use crate::records::Harness;
+use crate::records::{Agent, AgentStatus};
+use crate::records::{Agent, AgentStatus};
+use crate::records::{Session, SessionParticipant, SessionStatus};
+use crate::records::{Session, SessionStatus};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -31,9 +37,6 @@ use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
-use everruns_platform::Harness;
-use everruns_platform::{Agent, AgentStatus};
-use everruns_platform::{Session, SessionStatus};
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
@@ -419,10 +422,10 @@ impl DirectWorkerAdapters {
         Ok(Some({
             // Parse capabilities from JSON
             Session {
-                source: everruns_platform::SessionSource::from(r.source.as_str()),
+                source: crate::records::SessionSource::from(r.source.as_str()),
                 run_summary: r.run_summary.clone(),
-                activity: everruns_platform::SessionActivity::derive(
-                    &everruns_platform::SessionStatus::from(r.status.as_str()),
+                activity: crate::records::SessionActivity::derive(
+                    &crate::records::SessionStatus::from(r.status.as_str()),
                     r.last_turn_status.as_deref(),
                 ),
                 id: r.id,
@@ -1354,7 +1357,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         org_id: i64,
         session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+    ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
         Some(crate::slack_actions::in_process_invoker(
             &self.db,
             self.encryption.as_ref(),
@@ -1365,10 +1368,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn sandbox_persistence_store(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
+    ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
         self.db.pool().map(|pool| {
             Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()))
-                as Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>
+                as Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>
         })
     }
 
@@ -1414,7 +1417,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
     }
 
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_platform::KnowledgeStore>> {
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         Some(Arc::new(
             crate::knowledge_store::StorageBackendKnowledgeStore::new(self.db.clone()),
         ))
@@ -1666,7 +1669,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_platform::PlatformStore> {
+    ) -> Arc<dyn everruns_capabilities::PlatformStore> {
         Arc::new(DirectPlatformStore::new(
             org_id,
             session_id,
@@ -2369,7 +2372,7 @@ impl DirectPlatformStore {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             self.org_id,
-            &everruns_platform::FeatureFlags::current(),
+            &crate::records::FeatureFlags::current(),
         )
         .await
         .map_err(|error| {

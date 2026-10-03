@@ -19,7 +19,7 @@ pub mod examples;
 mod generic;
 pub(crate) mod platform_chat;
 
-use everruns_platform::BuiltInHarnessDefinition;
+use crate::records::BuiltInHarnessDefinition;
 
 pub use examples::{
     HarnessExampleDef, LEGACY_BUILT_IN_NAMES, find_harness_example, harness_examples,

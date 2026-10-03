@@ -22,7 +22,7 @@ everruns-engine.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
 everruns-builtins = { path = "../builtins" }
 everruns-test-support = { path = "../test-support" }
-everruns-platform = { path = "../platform" }
+everruns-capabilities = { path = "../capabilities" }
 # Host + local wiring for the live subagent end-to-end test.
 everruns-host = { path = "../host" }
 everruns = { path = "../everruns", features = ["local"] }

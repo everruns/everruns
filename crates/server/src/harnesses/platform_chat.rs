@@ -1,6 +1,6 @@
 //! Platform Chat — one shell over the platform CLI, docs, and durable memory.
 
-use everruns_platform::{
+use crate::records::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, ConversationStarter,
 };
 

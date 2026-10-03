@@ -252,7 +252,8 @@ pub fn environment_from_record(
 /// its plugin is actually registered in this binary.
 pub fn environment_targets() -> Vec<EnvironmentTargetDescriptor> {
     let daytona_registered =
-        everruns_platform::session_sandbox::create_session_sandbox_provider("daytona").is_some();
+        everruns_capabilities::session_sandbox::create_session_sandbox_provider("daytona")
+            .is_some();
 
     vec![
         EnvironmentTargetDescriptor {

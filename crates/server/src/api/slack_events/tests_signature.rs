@@ -1,12 +1,12 @@
 //! Tests: signature.
 
 use super::*;
+use crate::records::{SlackChannelConfig, SlackReplyMode};
 use crate::slack_delivery::SlackSurface;
 use crate::storage::StorageBackend;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use everruns_core::channel::{InboundAttachment, SessionBinding};
-use everruns_platform::{SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 
@@ -848,7 +848,7 @@ mod pane_rename_tests {
             .db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_platform::SessionSource::Api,
+                source: crate::records::SessionSource::Api,
                 workspace_id: None,
                 org_id: app.org_id,
                 app_id: Some(app.internal_id),

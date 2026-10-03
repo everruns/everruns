@@ -1,8 +1,8 @@
 //! EVE-837 dependency-direction guard.
 //!
-//! The allowed identity-crate direction is `everruns-platform -> everruns-core`.
+//! The allowed identity-crate direction is `everruns-capabilities -> everruns-core`.
 //! `everruns-core` must never gain a dependency edge back on
-//! `everruns-platform`; if it did, the two crates would form a cycle and the
+//! `everruns-capabilities`; if it did, the two crates would form a cycle and the
 //! platform aggregates could no longer be carved out of core. This test fails
 //! the core build the moment a manifest edit introduces the reverse edge.
 
@@ -16,12 +16,12 @@ fn core_manifest_has_no_edge_to_platform() {
 
     assert!(
         !declares_platform_edge(&manifest),
-        "everruns-core must not depend on everruns-platform \
+        "everruns-core must not depend on everruns-capabilities \
          (allowed direction is platform -> core)"
     );
 }
 
-/// Whether the manifest *declares* a dependency on `everruns-platform`.
+/// Whether the manifest *declares* a dependency on `everruns-capabilities`.
 ///
 /// Comments are stripped first: prose that merely names the crate — such as a
 /// note recording where a module moved — documents the boundary rather than
@@ -30,18 +30,18 @@ fn declares_platform_edge(manifest: &str) -> bool {
     manifest
         .lines()
         .map(|line| line.split_once('#').map_or(line, |(code, _)| code))
-        .any(|code| code.contains("everruns-platform"))
+        .any(|code| code.contains("everruns-capabilities"))
 }
 
 #[test]
 fn comments_naming_the_crate_are_not_edges() {
     assert!(!declares_platform_edge(
-        "# email senders moved out of core (everruns-mcp, everruns-platform)\nserde = \"1\"\n"
+        "# email senders moved out of core (everruns-mcp, everruns-capabilities)\nserde = \"1\"\n"
     ));
     assert!(declares_platform_edge(
-        "everruns-platform = { path = \"../platform\" }"
+        "everruns-capabilities = { path = \"../platform\" }"
     ));
     assert!(declares_platform_edge(
-        "everruns-platform = { path = \"../platform\" } # still an edge"
+        "everruns-capabilities = { path = \"../platform\" } # still an edge"
     ));
 }

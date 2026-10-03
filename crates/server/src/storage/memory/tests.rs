@@ -1,11 +1,11 @@
 use super::super::models::*;
 use super::*;
 use crate::api::common::Pagination;
+use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use chrono::Utc;
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, PrincipalId, SessionId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 /// Default pagination for tests (large enough to not truncate).
 fn default_pagination() -> Pagination {
     Pagination::new(0, 1000)
@@ -18,7 +18,7 @@ fn test_harness_id() -> HarnessId {
 fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: everruns_platform::SessionSource::Api,
+        source: crate::records::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
         app_id: None,

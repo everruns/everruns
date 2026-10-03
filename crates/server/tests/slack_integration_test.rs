@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 use test_harness::TestServer;
 
-use everruns_platform::App;
+use crate::records::App;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -1250,7 +1250,7 @@ async fn test_slack_replay_attack_old_timestamp() {
 /// mocked unit tests could not see it because they matched what we sent.
 #[tokio::test]
 async fn test_real_slack_reads_the_configuration_refresh_token() {
-    use everruns_platform::slack_provisioning::SlackProvisioningError;
+    use crate::records::slack_provisioning::SlackProvisioningError;
     use everruns_server::slack_provisioning::SlackApiProvisioner;
     use everruns_server::storage::{EncryptionService, StorageBackend};
     use std::sync::Arc;

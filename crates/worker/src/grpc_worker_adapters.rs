@@ -4,6 +4,7 @@
 // Decision: Used by external workers that connect to control-plane via gRPC
 
 use async_trait::async_trait;
+use everruns_capabilities::{Agent, Harness};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::model_spec::ModelSpec;
@@ -25,7 +26,6 @@ use everruns_core::{
     image_services::ResolvedImage,
 };
 use everruns_host::HostComposition;
-use everruns_platform::{Agent, Harness};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -547,7 +547,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_platform::PlatformStore> {
+    ) -> Arc<dyn everruns_capabilities::PlatformStore> {
         Arc::new(
             crate::grpc_adapters::GrpcOrgAdapter::new_for_platform_session(
                 self.client.clone(),
@@ -610,7 +610,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
         session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+    ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
         Some(Arc::new(
             crate::grpc_slack_actions::GrpcSlackActionInvoker::new(
                 self.client.clone(),

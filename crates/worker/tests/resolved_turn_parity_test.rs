@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_capabilities::Harness;
 use everruns_contracts::error::Result as CoreResult;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{DEFAULT_ORG_ID, ExecutionSession, ResolvedExecutionSnapshot};
 use everruns_host::{RuntimeHostAdapter, SessionBuilder};
-use everruns_platform::Harness;
 // EVE-877: the hosted adapters transport the stored platform record; the
 // loading seam projects it into the portable execution definition.
-use everruns_platform::{Agent, AgentStatus};
+use everruns_capabilities::{Agent, AgentStatus};
 use everruns_worker::{WorkerAdapters, WorkerRuntimeHost, WorkerTurnContext};
 use uuid::Uuid;
 
@@ -46,7 +46,7 @@ fn fixture_records() -> (Harness, Agent, ExecutionSession) {
         mcp_servers: Default::default(),
         embedder_metadata: Default::default(),
         is_built_in: false,
-        status: everruns_platform::HarnessStatus::Active,
+        status: everruns_capabilities::HarnessStatus::Active,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         archived_at: None,
@@ -395,7 +395,7 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _org_id: i64,
                 _session_id: SessionId,
-            ) -> Arc<dyn everruns_platform::PlatformStore> {
+            ) -> Arc<dyn everruns_capabilities::PlatformStore> {
                 unimplemented!()
             }
             fn connection_resolver(

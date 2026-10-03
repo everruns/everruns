@@ -1,6 +1,6 @@
 //! EVE-839 guard: `everruns-core` must not name the hosted `PlatformStore`.
 //!
-//! The hosted store seam moved to `everruns-platform`; core depends only on the
+//! The hosted store seam moved to `everruns-capabilities`; core depends only on the
 //! narrow `SubagentSessionDelegate`. This test scans core's own source (skipping
 //! comment lines, which may reference the platform type in prose/doc links) and
 //! fails if the `PlatformStore` symbol reappears in code — the regression this
@@ -19,7 +19,7 @@ fn scan(dir: &Path, hits: &mut Vec<String>) {
             for (i, line) in text.lines().enumerate() {
                 let trimmed = line.trim_start();
                 // Skip line comments and doc comments — prose may reference the
-                // platform type by name (e.g. doc links to everruns-platform).
+                // platform type by name (e.g. doc links to everruns-capabilities).
                 if trimmed.starts_with("//") {
                     continue;
                 }
@@ -39,7 +39,7 @@ fn core_source_has_no_platform_store_symbol() {
     assert!(
         hits.is_empty(),
         "everruns-core must not use the `PlatformStore` symbol (it lives in \
-         everruns-platform; core uses the narrow `SubagentSessionDelegate`). \
+         everruns-capabilities; core uses the narrow `SubagentSessionDelegate`). \
          Offending lines:\n{}",
         hits.join("\n")
     );

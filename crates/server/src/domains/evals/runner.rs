@@ -10,13 +10,13 @@ use crate::api::messages::{CreateMessageRequest, InputMessage};
 use crate::api::sessions::CreateSessionRequest;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
+use crate::records::eval::*;
 use crate::storage::StorageBackend;
 use crate::storage::models::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use everruns_core::message::{TextAnnotation, VerificationStatus};
-use everruns_platform::eval::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -298,7 +298,7 @@ async fn execute_case_inner(
             harness_id,
             agent_id,
             agent_id.map(everruns_contracts::typed_id::AgentId::from_uuid),
-            everruns_platform::SessionSource::Eval,
+            crate::records::SessionSource::Eval,
             CreateSessionRequest {
                 playground_user_id: None,
                 source: None,

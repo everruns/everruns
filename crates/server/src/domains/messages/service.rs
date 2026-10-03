@@ -10,6 +10,7 @@ use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::errors::{BadRequestError, ConflictError, ResourceNotFoundError};
 use crate::execution_metadata;
+use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::services::{EventService, PrincipalService};
 use crate::storage::StorageBackend;
@@ -25,7 +26,6 @@ use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
     ToolCompletedData, deserialize_event_data,
 };
-use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_worker::AgentRunner;
 use serde_json::json;
 use std::sync::Arc;
@@ -766,7 +766,7 @@ mod tests {
     ) -> crate::storage::models::SessionRow {
         db.create_session(crate::storage::models::CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id,
             harness_id: None,

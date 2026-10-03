@@ -1,14 +1,14 @@
 //! API integration tests: agents.
 
 use super::support::seed_archival_app;
+use crate::records::Agent;
+use crate::records::Model;
+use crate::records::Session;
 use crate::test_harness;
 use axum::http::StatusCode;
-use everruns_contracts::model::Model;
 use everruns_contracts::provider::Provider;
 use everruns_contracts::typed_id::{AgentId, HarnessId, VirtualUserId};
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::Agent;
-use everruns_platform::Session;
 use everruns_server::storage::models::{
     CreateAgentRow, CreateMcpServerRow, UpdateOrganizationSettings,
 };
@@ -598,7 +598,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .unwrap();
     assert_eq!(deleted_item["effective_harness"]["status"], "deleted");
 
-    let session: everruns_platform::Session = server
+    let session: crate::records::Session = server
         .post(
             "/v1/sessions",
             json!({ "agent_id": inherited["id"], "title": "Inherited harness proof" }),
@@ -812,10 +812,7 @@ async fn test_delete_agent() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(
-        archived_agent.status,
-        everruns_platform::AgentStatus::Archived
-    );
+    assert_eq!(archived_agent.status, crate::records::AgentStatus::Archived);
 
     let default_list: Value = server
         .get("/v1/agents")

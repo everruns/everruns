@@ -3,7 +3,7 @@
 // Decision: the org/product feature-flag records and management logic
 // (`FeatureFlags`, `FeatureFlagMap`, `FeatureFlagDefinition`,
 // `API_FEATURE_FLAG_DEFINITIONS`, org opt-in resolution) moved to the
-// `everruns-platform` crate — they are hosted control-plane state resolved by
+// `everruns-capabilities` crate — they are hosted control-plane state resolved by
 // the server before execution. Core retains only the narrowly required
 // execution feature decisions consumed at capability-registration time:
 // - `InternalFeatureFlags`: backend-only infrastructure gates computed from

@@ -13,8 +13,8 @@ use crate::test_harness;
 
 use std::time::Duration;
 
+use crate::records::Session;
 use axum::http::StatusCode;
-use everruns_platform::Session;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

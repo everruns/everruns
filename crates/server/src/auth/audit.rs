@@ -12,11 +12,11 @@
 //   auth.oauth.success, auth.oauth.failure
 
 use crate::auth::rate_limit::extract_client_ip_from_parts;
+use crate::records::{AuditEvent, AuditLogger};
 use crate::storage::StorageBackend;
 use crate::storage::models::CreateAuditLogRow;
 use axum::extract::{ConnectInfo, Extension};
 use axum::http::HeaderMap;
-use everruns_platform::{AuditEvent, AuditLogger};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;

@@ -20,6 +20,8 @@
 
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin};
+use crate::records::email::{EmailError, EmailMessage, EmailSender, branded_button};
+use crate::records::{AuditEvent, ManagementAction};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     AcceptOrgInvitationOutcome, CreateOrgInvitation, OrgInvitationRow, UserRow,
@@ -31,8 +33,6 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::OrgRole;
-use everruns_platform::email::{EmailError, EmailMessage, EmailSender, branded_button};
-use everruns_platform::{AuditEvent, ManagementAction};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -841,8 +841,8 @@ pub async fn accept_my_invitation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::records::email::{EmailResult, NoopEmailSender, SentEmail};
     use async_trait::async_trait;
-    use everruns_platform::email::{EmailResult, NoopEmailSender, SentEmail};
 
     fn db() -> StorageBackend {
         StorageBackend::in_memory()
@@ -877,7 +877,7 @@ mod tests {
     async fn seed_org(db: &StorageBackend) -> i64 {
         let org = db
             .create_organization(crate::storage::models::CreateOrganizationRow {
-                public_id: everruns_platform::generate_org_public_id(),
+                public_id: crate::records::generate_org_public_id(),
                 name: "Acme".to_string(),
                 created_by: None,
             })

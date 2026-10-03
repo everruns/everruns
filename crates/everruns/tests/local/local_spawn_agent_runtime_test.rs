@@ -32,6 +32,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_capabilities::capabilities::{AgentHandoffCapability, SubagentCapability};
+use everruns_capabilities::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::error::Result;
 use everruns_contracts::model_spec::ModelSpec;
@@ -49,8 +51,6 @@ use everruns_host::{
 };
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
-use everruns_platform::capabilities::{AgentHandoffCapability, SubagentCapability};
-use everruns_platform::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 
 /// Substrings that steer the content-keyed llmsim: a parent prompt containing
 /// one of these makes the model emit the matching `spawn_agent` call. Child

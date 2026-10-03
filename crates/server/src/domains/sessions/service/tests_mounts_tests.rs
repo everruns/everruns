@@ -162,7 +162,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
     let session_row = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: caller.org_id,
             app_id: None,
@@ -506,7 +506,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
     let session_row = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: caller.org_id,
             app_id: None,
@@ -1110,7 +1110,7 @@ async fn concurrent_session_cap_enforced() {
 async fn session_start_hook_fires_on_create() {
     let db = Arc::new(StorageBackend::in_memory());
     let mut registry = CapabilityRegistry::new();
-    registry.register(everruns_platform::capabilities::UserHooksCapability);
+    registry.register(everruns_capabilities::capabilities::UserHooksCapability);
     let session_service = SessionService::with_registry(db.clone(), registry);
     let caller = Caller::internal(DEFAULT_ORG_ID);
 
@@ -1151,7 +1151,7 @@ async fn session_start_hook_fires_on_create() {
 async fn session_end_hook_fires_on_delete_without_blocking() {
     let db = Arc::new(StorageBackend::in_memory());
     let mut registry = CapabilityRegistry::new();
-    registry.register(everruns_platform::capabilities::UserHooksCapability);
+    registry.register(everruns_capabilities::capabilities::UserHooksCapability);
     let session_service = SessionService::with_registry(db.clone(), registry);
     let caller = Caller::internal(DEFAULT_ORG_ID);
 

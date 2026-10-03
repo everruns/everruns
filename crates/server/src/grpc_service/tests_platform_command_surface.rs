@@ -35,7 +35,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         .db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,
@@ -116,7 +116,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         .db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,
@@ -176,7 +176,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         .db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,

@@ -30,13 +30,13 @@ use everruns_core::{
     session_services::LeasedResourceStore, tool_execution::BudgetChecker,
     tool_execution::PaymentAuthority,
 };
-// EVE-877: the stored Agent record moved to `everruns-platform`. WorkerAdapters
+// EVE-877: the stored Agent record moved to `everruns-capabilities`. WorkerAdapters
 // still transports it between control plane and worker; host/engine only ever
 // see the projected `AgentDefinition` / resolved execution snapshot.
+use everruns_capabilities::{Agent, Harness};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::tool_types::ToolDefinition;
-use everruns_platform::{Agent, Harness};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -351,7 +351,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         _org_id: i64,
         _session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+    ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
         None
     }
 
@@ -361,7 +361,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// session storage.
     fn sandbox_persistence_store(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
+    ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
         None
     }
 
@@ -421,7 +421,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_platform::PlatformStore>;
+    ) -> Arc<dyn everruns_capabilities::PlatformStore>;
 
     /// Get the user connection resolver for lazy token lookup.
     fn connection_resolver(
@@ -525,7 +525,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     /// Knowledge store backing the `search_knowledge` tool. Default: `None`.
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_platform::KnowledgeStore>> {
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         None
     }
 
@@ -784,7 +784,7 @@ impl<A: WorkerAdapters> everruns_core::execution_loading::SessionStore for OrgAd
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_platform::SessionMutator for OrgAdapter<A> {
+impl<A: WorkerAdapters> everruns_capabilities::SessionMutator for OrgAdapter<A> {
     async fn update_session_title(
         &self,
         session_id: SessionId,

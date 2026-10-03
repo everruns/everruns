@@ -218,7 +218,7 @@ impl ToolContextServices {
 }
 
 /// Type-erased bag of host-supplied extension services carried on a
-/// [`ToolContext`]. Crates layered above core (e.g. `everruns-platform`) insert
+/// [`ToolContext`]. Crates layered above core (e.g. `everruns-capabilities`) insert
 /// a concrete wrapper type and resolve it by type, so core need not name the
 /// hosted service (EVE-839).
 #[derive(Clone, Default)]
@@ -335,7 +335,7 @@ pub struct ToolContext {
     /// adapter implements this contract and platform tools use typed extensions.
     pub subagent_delegate: Option<Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>>,
     /// Type-erased, host-supplied extensions keyed by concrete type. Lets crates
-    /// layered above core (e.g. `everruns-platform`) hang typed services on the
+    /// layered above core (e.g. `everruns-capabilities`) hang typed services on the
     /// tool context without core naming them (EVE-839).
     pub extensions: ToolContextExtensions,
     /// Optional leased resource store for lifecycle-managed provider resources.
@@ -810,7 +810,7 @@ impl ToolContext {
         self
     }
 
-    /// Insert a type-keyed host extension (e.g. `everruns-platform`'s
+    /// Insert a type-keyed host extension (e.g. `everruns-capabilities`'s
     /// `PlatformStoreExt`) and return the updated context.
     pub fn with_extension<T: std::any::Any + Send + Sync>(mut self, value: Arc<T>) -> Self {
         self.extensions.insert(value);

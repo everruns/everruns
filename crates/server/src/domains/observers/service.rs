@@ -7,6 +7,7 @@
 
 use crate::api::observers::{CreateObserverRequest, UpdateObserverRequest};
 use crate::errors::BadRequestError;
+use crate::records::observer::*;
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     CreateObserverRow, ListTraceScoresParams, ObserverRow, TraceScoreRow, UpdateObserverRow,
@@ -14,7 +15,6 @@ use crate::storage::models::{
 use anyhow::Result;
 use everruns_contracts::typed_id::{ObserverId, SessionId};
 use everruns_core::{Caller, Permission, Policy, Rule};
-use everruns_platform::observer::*;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -102,7 +102,7 @@ fn validate(sampling_rate: f64, scorers: &[ObserverScorerConfig]) -> Result<()> 
             ScorerMethod::Rule { rule } => {
                 // file_contains needs the session filesystem, which is not part
                 // of the observable trace contract. Reject it for observers.
-                if matches!(rule, everruns_platform::eval::Scorer::FileContains { .. }) {
+                if matches!(rule, crate::records::eval::Scorer::FileContains { .. }) {
                     anyhow::bail!(BadRequestError::new(
                         "file_contains scorer is not supported by observers"
                     ));
@@ -370,16 +370,16 @@ pub fn row_to_trace_score(row: TraceScoreRow, observer_id: ObserverId) -> Result
 mod tests {
     use super::*;
     use crate::api::observers::CreateObserverRequest;
+    use crate::records::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
     use crate::storage::models::CreateTraceScoreRow;
     use everruns_contracts::typed_id::TraceScoreId;
-    use everruns_platform::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
 
     fn contains_scorer(key: impl Into<String>, text: impl Into<String>) -> ObserverScorerConfig {
         ObserverScorerConfig {
             key: key.into(),
             scope: ObserverScope::Turn,
             method: ScorerMethod::Rule {
-                rule: everruns_platform::eval::Scorer::Contains {
+                rule: crate::records::eval::Scorer::Contains {
                     text: text.into(),
                     weight: 1.0,
                 },
@@ -473,9 +473,9 @@ mod tests {
         assert_eq!(scores[0].observer_id, observer.public_id);
     }
 
+    use crate::records::observer::LlmJudgeConfig;
     use crate::storage::models::{CreateModelRow, CreateProviderRow};
     use everruns_contracts::typed_id::ModelId;
-    use everruns_platform::observer::LlmJudgeConfig;
 
     /// Create a model in `org_id` and return its id. `enabled` controls whether
     /// it is usable (disabled models are invisible to `get_model`).

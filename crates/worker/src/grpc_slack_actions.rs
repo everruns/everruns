@@ -36,15 +36,15 @@ impl GrpcSlackActionInvoker {
 }
 
 #[async_trait]
-impl everruns_platform::slack_action::SlackActionInvoker for GrpcSlackActionInvoker {
+impl everruns_capabilities::slack_action::SlackActionInvoker for GrpcSlackActionInvoker {
     async fn invoke(
         &self,
-        action: everruns_platform::slack_action::SlackAction,
+        action: everruns_capabilities::slack_action::SlackAction,
     ) -> std::result::Result<
-        everruns_platform::slack_action::SlackActionOutcome,
-        everruns_platform::slack_action::SlackActionError,
+        everruns_capabilities::slack_action::SlackActionOutcome,
+        everruns_capabilities::slack_action::SlackActionError,
     > {
-        use everruns_platform::slack_action::{SlackActionError, SlackActionOutcome};
+        use everruns_capabilities::slack_action::{SlackActionError, SlackActionOutcome};
 
         let request = proto::InvokeSlackActionRequest {
             org_id: self.org_id,

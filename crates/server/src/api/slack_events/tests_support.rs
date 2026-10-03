@@ -1,9 +1,9 @@
 //! Fixtures shared by the test modules.
 
 use super::*;
+use crate::records::{ConversationStarter, SlackChannelConfig, SlackReplyMode};
 use crate::storage::StorageBackend;
 use everruns_core::channel::SessionBinding;
-use everruns_platform::{ConversationStarter, SlackChannelConfig, SlackReplyMode};
 use hmac::{KeyInit, Mac};
 use std::ops::{Deref, DerefMut};
 
@@ -34,8 +34,8 @@ impl DerefMut for TestIngress {
 }
 
 pub(crate) fn test_app() -> TestIngress {
-    use everruns_platform::AgentEndpointId;
-    use everruns_platform::{EndpointStatus, EndpointTransport};
+    use crate::records::AgentEndpointId;
+    use crate::records::{EndpointStatus, EndpointTransport};
 
     TestIngress {
         context: crate::api::endpoint_ingress::IngressContext::for_test("Test App", None),
@@ -66,7 +66,7 @@ pub(crate) fn test_config(strategy: SessionBinding) -> SlackChannelConfig {
         webhook_verified_at: None,
         first_message_received_at: None,
         tool_visibility: Default::default(),
-        generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
+        generic_tool_text: crate::records::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
     }
 }
 
@@ -111,7 +111,7 @@ pub(crate) async fn setup_test_session(
 
     let row = CreateSessionRow {
         playground_user_id: None,
-        source: everruns_platform::SessionSource::Api,
+        source: crate::records::SessionSource::Api,
         workspace_id: None,
         org_id: 1,
         app_id: None,

@@ -36,6 +36,7 @@ use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
+use crate::records::{AgentTriggerType, FeatureFlags, McpEventTriggerConfig};
 use crate::services::standard_webhooks::{self, SignedHeaders, VerifyError};
 use crate::storage::StorageBackend;
 use crate::storage::agent_trigger_mcp_subscriptions::{
@@ -46,7 +47,6 @@ use crate::storage::encryption::EncryptionService;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
 use chrono::{DateTime, Utc};
 use everruns_core::{EgressService, McpServerActsAs, McpServerAuthMode, ScopedMcpServer};
-use everruns_platform::{AgentTriggerType, FeatureFlags, McpEventTriggerConfig};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -99,7 +99,7 @@ pub(super) async fn create_config(
 pub(super) async fn update_config(
     ctx: &Ctx,
     agent: &AgentRow,
-    trigger: &everruns_platform::AgentTrigger,
+    trigger: &crate::records::AgentTrigger,
     req: &UpdateAgentTriggerRequest,
 ) -> Result<(Value, bool), CommandError> {
     let before = trigger
@@ -845,7 +845,7 @@ impl McpEventTriggers {
                 message_template: &config.message,
                 session_mode: config.session_mode,
                 filter: config.filter.as_ref(),
-                session_source: everruns_platform::SessionSource::Webhook,
+                session_source: crate::records::SessionSource::Webhook,
                 webhook_compat: None,
             },
             TriggerEvent {

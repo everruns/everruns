@@ -13,6 +13,7 @@ use crate::kernel_imports::{
     AgentDefinition, Caller, CapabilityRegistry, contracts::driver_registry::DriverRegistry,
     contracts::error::AgentLoopError,
 };
+use crate::records::Harness;
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::StorageBackend;
 use anyhow::Result;
@@ -23,7 +24,6 @@ use everruns_core::command::{
 use everruns_core::execution_loading::AgentStore;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
 use everruns_host::StoreCommandHost;
-use everruns_platform::Harness;
 use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -226,7 +226,7 @@ impl SessionCommandService {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Result<(Harness, Option<AgentDefinition>, everruns_platform::Session)> {
+    ) -> Result<(Harness, Option<AgentDefinition>, crate::records::Session)> {
         let adapters = self.adapters();
         let agent_store = OrgAdapter::new(adapters.clone(), org_id);
 
@@ -255,7 +255,7 @@ impl SessionCommandService {
 fn authorize_platform_chat_owner(
     caller: &Caller,
     harness: &Harness,
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
 ) -> Result<()> {
     // The adapters return the pre-merged record whose identity/built-in flag
     // are leaf-owned, matching the historical single-element chain check.

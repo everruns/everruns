@@ -4,8 +4,8 @@
 //! opt into this projection after the same policies authorize each operation.
 
 use crate::domains::common::{CommandError, Ctx, dispatch};
+use crate::records::{Agent, Harness, Session, SessionParticipant};
 use everruns_contracts::typed_id::HarnessId;
-use everruns_platform::{Agent, Harness, Session, SessionParticipant};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -61,7 +61,7 @@ pub(crate) async fn dispatch_runtime_view(
                 chain.push(parent);
             }
             chain.reverse();
-            let definition = everruns_platform::harness::resolve_execution_harness(&chain, id)
+            let definition = crate::records::harness::resolve_execution_harness(&chain, id)
                 .map_err(|error| CommandError::bad_request(error.to_string()))?;
             encode(&definition)
         }

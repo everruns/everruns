@@ -7,8 +7,8 @@
 
 use std::sync::LazyLock;
 
+use crate::records::eval::{CaseResultStatus, EvalCaseResult, EvalRun};
 use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
-use everruns_platform::eval::{CaseResultStatus, EvalCaseResult, EvalRun};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -256,7 +256,7 @@ fn metadata(run: &EvalRun, result: &EvalCaseResult) -> Value {
     })
 }
 
-fn model_of_target(target: &everruns_platform::eval::EvalTarget) -> Option<String> {
+fn model_of_target(target: &crate::records::eval::EvalTarget) -> Option<String> {
     // `EvalTarget::Session` carries the model as `model_id`; read that first and
     // fall back to a generic `model` field for other arms.
     let value = serde_json::to_value(target).ok()?;
@@ -371,9 +371,9 @@ pub fn build_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::records::eval::EvalCaseResult;
     use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
     use everruns_core::message::{RuntimeMessage, RuntimeMessageRole, TextContentPart};
-    use everruns_platform::eval::EvalCaseResult;
 
     fn result_with(status: CaseResultStatus, scores: Value) -> EvalCaseResult {
         EvalCaseResult {
@@ -420,8 +420,8 @@ mod tests {
             target: None,
             model_override: Some("gpt-test".into()),
             filter_tags: None,
-            status: everruns_platform::eval::EvalRunStatus::Completed,
-            source: everruns_platform::eval::EvalRunSource::Internal,
+            status: crate::records::eval::EvalRunStatus::Completed,
+            source: crate::records::eval::EvalRunSource::Internal,
             attribution: None,
             triggered_by: "test".into(),
             started_at: None,

@@ -5,6 +5,8 @@ use preview::preview_agent;
 
 use crate::auth::rate_limit::OrgRateLimiter;
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::records::Agent;
+use crate::records::BuiltInHarnessRole;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -21,8 +23,6 @@ use everruns_core::{
     ScopedMcpServers, evaluate_policies_with,
 };
 use everruns_host::HostComposition;
-use everruns_platform::Agent;
-use everruns_platform::BuiltInHarnessRole;
 use futures::future::try_join_all;
 
 use super::common::{
@@ -142,7 +142,7 @@ pub struct AppState {
     pub grade: DeploymentGrade,
     pub host_composition: Arc<HostComposition>,
     /// Operator-composed built-in harness templates (EVE-881).
-    pub built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
+    pub built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     pub org_rate_limiter: OrgRateLimiter,
 }
@@ -154,7 +154,7 @@ impl AppState {
         auth: AuthState,
         grade: DeploymentGrade,
         host_composition: Arc<HostComposition>,
-        built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
+        built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
     ) -> Self {
         Self {
             db,
@@ -192,11 +192,8 @@ impl AppState {
         )
         .with_feature_flags(org.feature_flags.clone())
         .with_fallback_harness_name(
-            everruns_platform::harness_for_role(
-                &self.built_in_harnesses,
-                BuiltInHarnessRole::Default,
-            )
-            .map(|harness| harness.name.clone()),
+            crate::records::harness_for_role(&self.built_in_harnesses, BuiltInHarnessRole::Default)
+                .map(|harness| harness.name.clone()),
         )
         .with_utility_llm_service(self.host_composition.utility_llm_service());
         if let Some(service) = &self.health_check_service {
@@ -623,7 +620,7 @@ pub async fn list_agents(
     authorize_effective_harness_view(state.auth.permission_resolver.as_ref(), &Caller::from(&org))?;
 
     let fallback_harness_name =
-        everruns_platform::harness_for_role(&state.built_in_harnesses, BuiltInHarnessRole::Default)
+        crate::records::harness_for_role(&state.built_in_harnesses, BuiltInHarnessRole::Default)
             .map(|harness| harness.name.as_str());
     let data = add_agents_counts(&state.db, org.org_id, result.data, fallback_harness_name).await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -662,7 +659,7 @@ pub async fn get_agent(
     .await?;
     authorize_effective_harness_view(state.auth.permission_resolver.as_ref(), &Caller::from(&org))?;
     let fallback_harness_name =
-        everruns_platform::harness_for_role(&state.built_in_harnesses, BuiltInHarnessRole::Default)
+        crate::records::harness_for_role(&state.built_in_harnesses, BuiltInHarnessRole::Default)
             .map(|harness| harness.name.as_str());
     let agent = add_agents_counts(&state.db, org.org_id, vec![agent], fallback_harness_name)
         .await?
@@ -811,7 +808,7 @@ pub async fn copy_agent(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Saved agent versions", body = Vec<everruns_platform::AgentVersion>),
+        (status = 200, description = "Saved agent versions", body = Vec<crate::records::AgentVersion>),
         (status = 404, description = "Agent not found or agent_versions disabled", body = ErrorResponse),
     ),
     tag = "agents"
@@ -820,7 +817,7 @@ pub async fn list_agent_versions(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
-) -> ApiResult<Vec<everruns_platform::AgentVersion>> {
+) -> ApiResult<Vec<crate::records::AgentVersion>> {
     require_agent_versions_enabled(&org)?;
     state
         .dispatcher(&org)
@@ -837,7 +834,7 @@ pub async fn list_agent_versions(
     ),
     request_body = CreateAgentVersionRequest,
     responses(
-        (status = 200, description = "Agent version created", body = everruns_platform::AgentVersion),
+        (status = 200, description = "Agent version created", body = crate::records::AgentVersion),
         (status = 400, description = "Invalid request", body = ErrorResponse),
         (status = 404, description = "Agent not found or agent_versions disabled", body = ErrorResponse),
     ),
@@ -848,7 +845,7 @@ pub async fn create_agent_version(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
     Json(req): Json<CreateAgentVersionRequest>,
-) -> ApiResult<everruns_platform::AgentVersion> {
+) -> ApiResult<crate::records::AgentVersion> {
     require_agent_versions_enabled(&org)?;
     state
         .dispatcher(&org)
