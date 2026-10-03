@@ -130,7 +130,7 @@ every transport, backend, or integration is re-exported by one facade.
 ## Audited application and host surfaces
 
 The inventory covers the public [repository README](../../README.md),
-[host README](../../crates/host/README.md),
+[core README](../../crates/core/README.md),
 [Everruns skill](../../skills/everruns/SKILL.md), and
 [custom backends guide](../../docs/framework/custom-backends.md). It also includes
 the in-process, inspection, real-disk, plugin, mount, and Lua examples

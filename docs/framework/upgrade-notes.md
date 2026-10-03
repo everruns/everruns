@@ -23,8 +23,8 @@ the Framework database, retain `SqliteDb` and use its `with_conn` callbacks.
 
 `everruns-core` now owns the execution, host, built-in, MCP, AG-UI, and A2A
 modules. Its default features remain portable; opt into the modules your host
-uses. The five former packages ship one final deprecated shim release before
-removal. Existing behavior and protocol formats are preserved. The earlier
+uses. The five former packages are removed after their final deprecated shim
+release. Existing behavior and protocol formats are preserved. The earlier
 `everruns-platform` shim has completed that window; hosted capability hosts now
 depend on `everruns-capabilities` and library hosts use portable definitions.
 

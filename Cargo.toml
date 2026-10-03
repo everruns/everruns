@@ -6,14 +6,10 @@ members = [
     "crates/worker",
     "crates/everruns",
     "crates/macros",
-    "crates/builtins",
     "crates/core",
-    "crates/engine",
-    "crates/host",
     "crates/test-support",
     "crates/capabilities",
     "crates/contracts",
-    "crates/mcp",
     "crates/llm-tests",
     # LLM drivers. Every vendor driver is a module of crates/drivers/drivers
     # (everruns-drivers). The per-vendor packages below are deprecated shims
@@ -35,7 +31,6 @@ members = [
     "crates/durable",
     "crates/durable-engine",
     "crates/ard",
-    "crates/ag-ui",
     "crates/integrations-catalog",
     "crates/docs-snippets",
     # serve: experimental agent framework (Alpha, published as everruns-serve*). See crates/serve/README.md.
@@ -185,7 +180,7 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# OpenTelemetry (exporter deps are activated only by everruns-host's
+# OpenTelemetry (exporter deps are activated only by core's optional host
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.33"
 opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
@@ -255,17 +250,13 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-builtins = { path = "crates/builtins", version = "0.34.2" }
 everruns-core = { path = "crates/core", version = "0.34.2", default-features = false }
 everruns-durable = { path = "crates/durable", version = "0.34.2" }
 everruns-durable-engine = { path = "crates/durable-engine" }
-everruns-engine = { path = "crates/engine", version = "0.34.2" }
-everruns-host = { path = "crates/host", version = "0.34.2" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.34.2", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.34.2", default-features = false }
 everruns-capabilities = { path = "crates/capabilities", version = "0.34.2", default-features = false }
 everruns-contracts = { path = "crates/contracts", version = "0.34.2", default-features = false }
-everruns-mcp = { path = "crates/mcp", version = "0.34.2" }
 everruns-ard = { path = "crates/ard", version = "0.34.2" }
 everruns-drivers = { path = "crates/drivers/drivers", version = "0.34.2", default-features = false }
 everruns = { path = "crates/everruns", version = "0.34.2", default-features = false }
@@ -274,7 +265,6 @@ everruns-serve = { path = "crates/serve", version = "0.34.2" }
 everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.34.2" }
 everruns-serve-celld = { path = "crates/serve-celld", version = "0.34.2" }
 everruns-serve-build = { path = "crates/serve-build", version = "0.34.2" }
-everruns-ag-ui = { path = "crates/ag-ui", version = "0.34.2" }
 everruns-serve-macros = { path = "crates/serve-macros", version = "0.34.2" }
 everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.34.2" }
 everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.34.2" }

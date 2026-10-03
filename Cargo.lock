@@ -2370,13 +2370,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-ag-ui"
-version = "0.34.2"
-dependencies = [
- "everruns-core",
-]
-
-[[package]]
 name = "everruns-anthropic"
 version = "0.34.2"
 dependencies = [
@@ -2417,13 +2410,6 @@ version = "0.34.2"
 dependencies = [
  "everruns-contracts",
  "everruns-drivers",
-]
-
-[[package]]
-name = "everruns-builtins"
-version = "0.34.2"
-dependencies = [
- "everruns-core",
 ]
 
 [[package]]
@@ -2709,13 +2695,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-engine"
-version = "0.34.2"
-dependencies = [
- "everruns-core",
-]
-
-[[package]]
 name = "everruns-example-demo"
 version = "0.1.0"
 dependencies = [
@@ -2782,15 +2761,6 @@ version = "0.34.2"
 dependencies = [
  "everruns-contracts",
  "everruns-drivers",
-]
-
-[[package]]
-name = "everruns-host"
-version = "0.34.2"
-dependencies = [
- "everruns",
- "everruns-core",
- "tokio",
 ]
 
 [[package]]
@@ -3256,13 +3226,6 @@ version = "0.34.2"
 dependencies = [
  "everruns-contracts",
  "everruns-drivers",
-]
-
-[[package]]
-name = "everruns-mcp"
-version = "0.34.2"
-dependencies = [
- "everruns-core",
 ]
 
 [[package]]
