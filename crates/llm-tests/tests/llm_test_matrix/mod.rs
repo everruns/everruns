@@ -935,13 +935,6 @@ pub fn live_retry_backoff(attempt: u32) -> std::time::Duration {
 /// Registry with all real providers registered.
 pub fn all_providers_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
-    everruns_drivers::anthropic::register_driver(&mut registry);
-    everruns_drivers::openai::register_driver(&mut registry);
-    everruns_drivers::openrouter::register_driver(&mut registry);
-    everruns_drivers::fireworks::register_driver(&mut registry);
-    everruns_drivers::gemini::register_driver(&mut registry);
-    everruns_drivers::bedrock::register_driver(&mut registry);
-    everruns_drivers::meta::register_driver(&mut registry);
     everruns_drivers::register_drivers(&mut registry);
     registry
 }
