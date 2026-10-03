@@ -42,10 +42,10 @@ configuration UI.
 
 ## Demo state
 
-Start the canonical local stack with session sandboxes enabled:
+Start the canonical local stack:
 
 ```bash
-PORT_PREFIX=271 AUTH_MODE=none FEATURE_SESSION_SANDBOX=true ./scripts/start-agent-dev.sh
+PORT_PREFIX=271 AUTH_MODE=none ./scripts/start-agent-dev.sh
 ```
 
 Use Platform Chat to send `Create 10 agents, imagine something`, then approve with `Yep`. The scene

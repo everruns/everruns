@@ -620,7 +620,7 @@ impl JwtService {
     pub fn generate_runtime_token(
         &self,
         org: i64,
-        subject: everruns_provider::typed_id::VirtualUserId,
+        subject: everruns_contracts::typed_id::VirtualUserId,
         endpoint: String,
         binding: Uuid,
     ) -> Result<String> {
@@ -657,7 +657,7 @@ mod runtime_token_tests {
     #[test]
     fn runtime_and_management_credentials_have_separate_audiences() {
         let jwt = JwtService::new(JwtConfig::default());
-        let id = everruns_provider::typed_id::VirtualUserId::new();
+        let id = everruns_contracts::typed_id::VirtualUserId::new();
         let binding = Uuid::new_v4();
         let token = jwt
             .generate_runtime_token(42, id, "endpoint-a".into(), binding)
@@ -687,7 +687,7 @@ mod runtime_token_tests {
         let token = jwt
             .generate_runtime_token(
                 1,
-                everruns_provider::typed_id::VirtualUserId::new(),
+                everruns_contracts::typed_id::VirtualUserId::new(),
                 "endpoint".into(),
                 Uuid::new_v4(),
             )

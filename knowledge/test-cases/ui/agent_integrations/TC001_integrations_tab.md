@@ -31,7 +31,7 @@ Verifies the Agent detail Integrations tab lists the agent's endpoints and trigg
 
 1. Navigate to `/agents` and open the agent's detail page.
 2. Verify the tab rail shows **Integrations** and shows neither **Triggers** nor **Integrate**.
-3. Open the Integrations tab.
+3. Open the Integrations tab. Verify the address is `/agents/{agentId}?tab=integrations`, then reload and confirm Integrations is still selected.
 4. Verify the stat strip shows Health, Invocations 24h, Success rate, and Activity, and that Health counts live endpoints rather than enabled ones.
 5. Verify the **Endpoints** section lists the endpoint, with a status badge reading `draft`.
 6. Toggle the row's **Live** switch on.

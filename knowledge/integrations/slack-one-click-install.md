@@ -53,12 +53,19 @@ are observed API responses, not readings of documentation.
 
 | Question | Result |
 |---|---|
-| Does `apps.manifest.create` accept the manifest we generate? | **Yes**, complete — `agent_view`, `assistant:write`, interactivity, all nine bot events |
+| Does `apps.manifest.create` accept the manifest we generate? | **Yes**, after encoding its content as a JSON string — `agent_view`, `assistant:write`, interactivity, all nine bot events |
 | Does it return credentials? | **Yes** — `client_id`, `client_secret`, `signing_secret`, `verification_token` |
 | Does it verify `request_url` at save time? | **No** — a manifest naming an unreachable host was accepted |
 | Can a created app install without a consent screen? | **No** — for an ordinary app, `/oauth/v2/authorize` shows a full consent screen |
 
-Each of those still holds. What did not hold was the inference drawn from them:
+The manifest's content is accepted, but the API's wire encoding matters: the
+copy-paste UI accepts YAML, while the manifest API requires a JSON-encoded
+string. A read-only validation probe against the connected production workspace
+on 2026-10-03 rejected YAML as `invalid_manifest` and accepted the equivalent
+JSON. `SlackApiProvisioner::create_app` now converts the generated YAML at the
+API boundary; its regression test checks the actual request body.
+
+What did not hold was the inference drawn from the original PoC:
 the PoC ran entirely inside one workspace, so it never touched the
 cross-workspace constraint above, and its conclusions were generalised past
 what it measured. See [What this corrected](#what-this-corrected).
@@ -223,6 +230,27 @@ The generated manifest declared no `oauth_config.redirect_urls`. Slack rejects
 configured URIs" — so no generated app could ever be installed by OAuth. The
 omission was invisible because the copy-paste flow never runs OAuth. See
 `slack_oauth_redirect_url` in `crates/server/src/api/slack_events/manifest.rs`.
+
+Consent also has to request the bot permissions explicitly. Declaring them in
+the manifest does not replace requesting them in the OAuth URL. The manifest
+and install URL now use the same scope source, including the additive agent
+surface permission, so the installed bot receives what the endpoint needs.
+
+Setup must also work before publication. The authenticated install action and
+nonce-protected callback resolve a draft endpoint without applying the webhook's
+liveness check. Incoming Slack events remain blocked until the endpoint is live;
+installation alone never publishes it. The install integration test exercises
+consent, token persistence, invalid state, replay rejection, and blocked draft ingress.
+
+The OAuth callback returns to the owning agent's endpoint editor after a valid
+install nonce, including declined consent and exchange failures. Unverified,
+replayed, or unknown callbacks return to the agents list without revealing the
+owning agent. Both destinations are real UI routes; installation must not leave
+the operator on a 404 after credentials have been saved.
+
+Native endpoint config writes must not decode the archival App-linked row: native endpoints have no `app_id`. The ingress config writer updates the encrypted transport payload directly, preserves first-class endpoint authentication, and requires an existing row. The installation regression exercises both memory and PostgreSQL storage.
+
+See the [installation regression](../../crates/server/tests/domain/slack_install_integration_test.rs).
 
 ## Open questions
 

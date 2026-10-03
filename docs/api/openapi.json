@@ -12368,6 +12368,30 @@
         "operationId": "list_sessions",
         "parameters": [
           {
+            "name": "playground_user_id",
+            "in": "query",
+            "description": "Filter by the fixed Playground end-user identity.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "archived_only",
+            "in": "query",
+            "description": "Return only archived sessions.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "agent_id",
             "in": "query",
             "description": "Filter sessions by agent ID.",
@@ -12614,6 +12638,24 @@
         "summary": "GET /v1/sessions/facets - Facet counts and masthead metrics",
         "operationId": "get_session_facets",
         "parameters": [
+          {
+            "name": "playground_user_id",
+            "in": "query",
+            "description": "Filter by the fixed Playground end-user identity.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "archived_only",
+            "in": "query",
+            "description": "Return only archived sessions.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
           {
             "name": "agent_id",
             "in": "query",
@@ -14074,6 +14116,9 @@
           },
           "400": {
             "description": "Invalid session ID or request"
+          },
+          "403": {
+            "description": "Caller may not manage this session"
           },
           "404": {
             "description": "Session or pending elicitation not found"
@@ -18521,6 +18566,17 @@
             "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
             "example": "Customer Support Agent"
           },
+          "environments": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentSet",
+                "description": "Named execution environments offered by this Agent version. A Session\npins one resolved profile when it is created; later edits affect only\nnew Sessions."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "exposed": {
             "type": "boolean",
             "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
@@ -18712,6 +18768,30 @@
           "ref": {
             "type": "string",
             "description": "Reference to the capability ID"
+          }
+        }
+      },
+      "AgentChannelSummary": {
+        "type": "object",
+        "description": "Non-secret metadata for an agent's inbound channels. Schedules are triggers.",
+        "required": [
+          "id",
+          "channel_type",
+          "enabled",
+          "status"
+        ],
+        "properties": {
+          "channel_type": {
+            "$ref": "#/components/schemas/ChannelType"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EndpointStatus"
           }
         }
       },
@@ -19476,13 +19556,20 @@
             "required": [
               "session_count",
               "app_count",
-              "effective_harness"
+              "effective_harness",
+              "channels"
             ],
             "properties": {
               "app_count": {
                 "type": "integer",
                 "format": "int64",
                 "minimum": 0
+              },
+              "channels": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AgentChannelSummary"
+                }
               },
               "effective_harness": {
                 "$ref": "#/components/schemas/AgentHarnessSummary"
@@ -22270,6 +22357,17 @@
             "description": "Human-readable display name shown in UI.\nFalls back to `name` when absent.",
             "example": "Customer Support Agent"
           },
+          "environments": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentSet",
+                "description": "Named execution environments this Agent offers. One profile must be\nnamed by `default`; Sessions may inherit it or select another profile."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "harness_id": {
             "type": [
               "string",
@@ -23757,6 +23855,17 @@
               }
             ]
           },
+          "environment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentSelection",
+                "description": "Execution environment for this Session. Omit to inherit the Agent's\ndefault profile, use `{ \"use\": \"name\" }` to select a named profile, or\ninline a profile for a caller-authored one-off environment."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "goal": {
             "type": [
               "string",
@@ -23859,12 +23968,19 @@
             "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to inherit\nthe agent/harness preference or the provider default.",
             "example": true
           },
+          "playground_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fixed Playground end user. Defaults to the caller's linked virtual user. Only valid with source=playground."
+          },
           "source": {
             "type": [
               "string",
               "null"
             ],
-            "description": "How this session was started. Clients may declare only `chat` (an\ninteractive thread) or `api` (the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
+            "description": "How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`\n(the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
             "example": "chat"
           },
           "system_prompt": {
@@ -24661,6 +24777,18 @@
           }
         }
       },
+      "EnvironmentBootstrap": {
+        "type": "object",
+        "description": "Reproducible initialization pinned with the profile snapshot.",
+        "properties": {
+          "commands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "EnvironmentCapabilities": {
         "type": "object",
         "description": "What the environment can actually do.\n\nRead this before assuming a shell behaves like Linux. Bashkit reports\n`native_processes: false`, which is why a build fails there; the answer is\navailable before the first turn rather than after a confusing tool error.",
@@ -24711,6 +24839,266 @@
           }
         }
       },
+      "EnvironmentContainmentLevel": {
+        "type": "string",
+        "enum": [
+          "none",
+          "native",
+          "isolated"
+        ]
+      },
+      "EnvironmentContainmentProfile": {
+        "type": "object",
+        "description": "What commands may touch.",
+        "required": [
+          "level"
+        ],
+        "properties": {
+          "escalation": {
+            "$ref": "#/components/schemas/EnvironmentEscalation"
+          },
+          "filesystem": {
+            "$ref": "#/components/schemas/EnvironmentFilesystemPolicy"
+          },
+          "level": {
+            "$ref": "#/components/schemas/EnvironmentContainmentLevel"
+          },
+          "network": {
+            "$ref": "#/components/schemas/EnvironmentNetworkPolicy"
+          }
+        }
+      },
+      "EnvironmentDurability": {
+        "type": "string",
+        "description": "What survives physical compute loss.",
+        "enum": [
+          "checkpointed",
+          "provider_snapshot",
+          "none"
+        ]
+      },
+      "EnvironmentEscalation": {
+        "type": "string",
+        "description": "Who may widen containment after a session starts.",
+        "enum": [
+          "never",
+          "approval",
+          "auto"
+        ]
+      },
+      "EnvironmentFilesystemPolicy": {
+        "type": "object",
+        "description": "Filesystem paths the target permits command execution to mutate.",
+        "properties": {
+          "writable_roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "EnvironmentIdleAction": {
+        "type": "string",
+        "enum": [
+          "checkpoint_and_stop",
+          "stop",
+          "keep_running"
+        ]
+      },
+      "EnvironmentLifecycle": {
+        "type": "object",
+        "description": "Control-plane lifecycle intent. Providers do not own these timers.",
+        "properties": {
+          "idle_action": {
+            "$ref": "#/components/schemas/EnvironmentIdleAction"
+          },
+          "idle_after_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "EnvironmentLifecycleData": {
+        "type": "object",
+        "description": "Non-secret lifecycle details for a managed Environment incarnation.",
+        "required": [
+          "provider",
+          "previous_instance_id",
+          "process_state_lost"
+        ],
+        "properties": {
+          "current_instance_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement physical resource. Present only on `environment.recovered`."
+          },
+          "environment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable logical Environment identifier, when hosted persistence is available."
+          },
+          "generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Current incarnation fence, when hosted persistence is available."
+          },
+          "previous_instance_id": {
+            "type": "string",
+            "description": "Physical provider resource that was lost or replaced."
+          },
+          "process_state_lost": {
+            "type": "boolean",
+            "description": "Provider process state is ephemeral and is not restored across replacement."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Compute provider selected by the Environment profile."
+          }
+        }
+      },
+      "EnvironmentNetworkPolicy": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "deny"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "allowed_hosts",
+              "mode"
+            ],
+            "properties": {
+              "allowed_hosts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "allowlist"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "allow"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Outbound network policy the target must actually enforce."
+      },
+      "EnvironmentProfile": {
+        "type": "object",
+        "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
+        "required": [
+          "target"
+        ],
+        "properties": {
+          "bootstrap": {
+            "$ref": "#/components/schemas/EnvironmentBootstrap"
+          },
+          "containment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentContainmentProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "durability": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentDurability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/EnvironmentLifecycle"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EnvironmentTargetProfile"
+          }
+        }
+      },
+      "EnvironmentSelection": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "use"
+            ],
+            "properties": {
+              "use": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/EnvironmentProfile"
+          }
+        ],
+        "description": "Session-level selection: use an Agent profile, or provide an inline one."
+      },
+      "EnvironmentSet": {
+        "type": "object",
+        "description": "Named execution environments offered by an Agent version.",
+        "required": [
+          "default"
+        ],
+        "properties": {
+          "default": {
+            "type": "string",
+            "description": "Profile inherited when session creation does not choose one explicitly."
+          },
+          "profiles": {
+            "type": "object",
+            "description": "Human-authored profiles addressable by name at session creation.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EnvironmentProfile"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "EnvironmentTarget": {
         "type": "object",
         "description": "Where a session's commands run.",
@@ -24718,6 +25106,13 @@
           "kind"
         ],
         "properties": {
+          "connection_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Registered connection used by a machine target."
+          },
           "kind": {
             "type": "string",
             "description": "Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`."
@@ -24774,6 +25169,47 @@
               "null"
             ],
             "description": "Why it is unavailable. Present only when `available` is false."
+          }
+        }
+      },
+      "EnvironmentTargetKind": {
+        "type": "string",
+        "description": "Provider-neutral target class.",
+        "enum": [
+          "host",
+          "machine",
+          "vfs",
+          "container",
+          "managed"
+        ]
+      },
+      "EnvironmentTargetProfile": {
+        "type": "object",
+        "description": "Where commands execute.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "connection_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Credential/transport binding for a registered machine target."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EnvironmentTargetKind"
+          },
+          "options": {
+            "type": "object",
+            "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Concrete adapter for target kinds with more than one implementation."
           }
         }
       },
@@ -25080,6 +25516,12 @@
           },
           {
             "$ref": "#/components/schemas/SessionModelChangedData"
+          },
+          {
+            "$ref": "#/components/schemas/EnvironmentLifecycleData"
+          },
+          {
+            "$ref": "#/components/schemas/EnvironmentLifecycleData"
           },
           {
             "$ref": "#/components/schemas/SessionTaskEventData"
@@ -28521,6 +28963,17 @@
                   ],
                   "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
                   "example": "Customer Support Agent"
+                },
+                "environments": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EnvironmentSet",
+                      "description": "Named execution environments offered by this Agent version. A Session\npins one resolved profile when it is created; later edits affect only\nnew Sessions."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "exposed": {
                   "type": "boolean",
@@ -33792,7 +34245,7 @@
       },
       "ModelProfile": {
         "type": "object",
-        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nThe registry of profiles lives in `crate::profiles`; retired models are\ndropped from it as vendors sunset them.",
+        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nThe registry of profiles lives in `crate::model_profile_data::profiles`; retired models are\ndropped from it as vendors sunset them.",
         "required": [
           "name",
           "family",
@@ -34958,6 +35411,13 @@
                   ],
                   "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
                 },
+                "playground_user_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Fixed end-user identity for a Playground conversation; independent of the resident service."
+                },
                 "preview": {
                   "type": [
                     "string",
@@ -35297,13 +35757,20 @@
                       "required": [
                         "session_count",
                         "app_count",
-                        "effective_harness"
+                        "effective_harness",
+                        "channels"
                       ],
                       "properties": {
                         "app_count": {
                           "type": "integer",
                           "format": "int64",
                           "minimum": 0
+                        },
+                        "channels": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/AgentChannelSummary"
+                          }
                         },
                         "effective_harness": {
                           "$ref": "#/components/schemas/AgentHarnessSummary"
@@ -35923,6 +36390,13 @@
                         "null"
                       ],
                       "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
+                    },
+                    "playground_user_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Fixed end-user identity for a Playground conversation; independent of the resident service."
                     },
                     "preview": {
                       "type": [
@@ -37897,6 +38371,34 @@
           }
         }
       },
+      "ResolvedEnvironmentProfile": {
+        "type": "object",
+        "description": "Session-pinned profile. Every security- and recovery-relevant default has\nbeen made explicit.",
+        "required": [
+          "target",
+          "containment",
+          "durability",
+          "lifecycle",
+          "bootstrap"
+        ],
+        "properties": {
+          "bootstrap": {
+            "$ref": "#/components/schemas/EnvironmentBootstrap"
+          },
+          "containment": {
+            "$ref": "#/components/schemas/EnvironmentContainmentProfile"
+          },
+          "durability": {
+            "$ref": "#/components/schemas/EnvironmentDurability"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/EnvironmentLifecycle"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EnvironmentTargetProfile"
+          }
+        }
+      },
       "ResourceConfigResponse": {
         "type": "object",
         "description": "Response type for per-resource config endpoints.\n\nEvery resource exposes `GET /v1/{resource}/config` returning this type.\nUI uses it to gate controls (create/edit/delete buttons, admin panels).",
@@ -39024,6 +39526,13 @@
             ],
             "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
           },
+          "playground_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fixed end-user identity for a Playground conversation; independent of the resident service."
+          },
           "preview": {
             "type": [
               "string",
@@ -39262,9 +39771,68 @@
           "containment": {
             "$ref": "#/components/schemas/EnvironmentContainment"
           },
+          "current_checkpoint_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "desired_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Control-plane lifecycle intent and latest observed physical state."
+          },
           "durability": {
             "type": "string",
             "description": "`checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a\nsession on somebody else's machine is never reported as recoverable."
+          },
+          "generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Physical incarnation fence. Increments whenever compute is replaced."
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable logical Environment id. Absent for legacy capability-derived sessions."
+          },
+          "last_activity_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent profile name selected for this Session (`inline` for one-offs)."
+          },
+          "observed_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedEnvironmentProfile",
+                "description": "Immutable resolved profile pinned when the Session was created."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "resolved_from": {
             "type": "string",
@@ -39711,6 +40279,7 @@
         "description": "How a session came into existence.\n\nClosed set: the sessions facet rail enumerates every variant, so the value\nis typed rather than a free-form string. Ingress paths set it server-side —\nclients may only declare the two variants they can legitimately be\n(`Chat` and `Api`), which keeps a facet like \"started by a schedule\"\ntrustworthy. Rows that predate the column, or whose origin could not be\ninferred at backfill time, carry `Unknown`.",
         "enum": [
           "chat",
+          "playground",
           "api",
           "slack",
           "ag_ui",
@@ -42316,6 +42885,17 @@
             "description": "Human-readable display name shown in UI.",
             "example": "Updated Support Agent"
           },
+          "environments": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentSet",
+                "description": "Replace or clear the Agent's named execution environments."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "harness_id": {
             "type": [
               "string",
@@ -44844,6 +45424,17 @@
                 "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
                 "example": "Customer Support Agent"
               },
+              "environments": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/EnvironmentSet",
+                    "description": "Named execution environments offered by this Agent version. A Session\npins one resolved profile when it is created; later edits affect only\nnew Sessions."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "exposed": {
                 "type": "boolean",
                 "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
@@ -45054,13 +45645,20 @@
                 "required": [
                   "session_count",
                   "app_count",
-                  "effective_harness"
+                  "effective_harness",
+                  "channels"
                 ],
                 "properties": {
                   "app_count": {
                     "type": "integer",
                     "format": "int64",
                     "minimum": 0
+                  },
+                  "channels": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AgentChannelSummary"
+                    }
                   },
                   "effective_harness": {
                     "$ref": "#/components/schemas/AgentHarnessSummary"
@@ -46878,6 +47476,13 @@
                   "null"
                 ],
                 "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
+              },
+              "playground_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Fixed end-user identity for a Playground conversation; independent of the resident service."
               },
               "preview": {
                 "type": [

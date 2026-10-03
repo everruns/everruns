@@ -3,12 +3,12 @@
 //! Run only after the account has credits:
 //! doppler run --project everruns-dev --config dev -- cargo test -p everruns-drivers --features openai --test openai_astra_compaction_live -- --ignored --nocapture
 
-use everruns_provider::compact::{CompactRequest, messages_to_compact_input};
-use everruns_provider::driver_registry::{
+use everruns_contracts::compact::{CompactRequest, messages_to_compact_input};
+use everruns_contracts::driver_registry::{
     LlmCallConfig, Message, MessageRole, ProviderOpaqueContext,
 };
-use everruns_provider::reasoning_updates::ReasoningState;
-use everruns_provider::{ProviderEndpoint, ReasoningEffort};
+use everruns_contracts::reasoning_updates::ReasoningState;
+use everruns_contracts::{ProviderEndpoint, ReasoningEffort};
 use serde_json::json;
 
 #[tokio::test]

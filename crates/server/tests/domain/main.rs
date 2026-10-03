@@ -5,8 +5,9 @@
 //! most of the shard's wall-clock was compiling, not testing. Merging these
 //! modules into one target pays that link cost once instead of once per file.
 //!
-//! Run with: `cargo test -p everruns-server --test domain -- --test-threads=1`
-//! Run one module: `cargo test -p everruns-server --test domain <module>:: -- --test-threads=1`
+//! Local A2A fixtures require `DEPLOYMENT_GRADE=dev` to permit loopback URLs.
+//! Run with: `DEPLOYMENT_GRADE=dev cargo test -p everruns-server --test domain -- --test-threads=1`
+//! Run one module: `DEPLOYMENT_GRADE=dev cargo test -p everruns-server --test domain <module>:: -- --test-threads=1`
 //!
 //! A handful of `tests/*.rs` files stay as their own binaries and are not
 //! listed here: some install process-global state (a metrics recorder, an
@@ -32,6 +33,7 @@ mod cli_auth_test;
 mod client_side_tools_test;
 mod command_policy_enforcement_test;
 mod db_pool_isolation_test;
+mod dev_grade;
 mod endpoint_a2a_ask_user_test;
 mod endpoint_a2a_integration_test;
 mod endpoint_a2a_protocol_test;
@@ -72,3 +74,5 @@ mod workspace_files_integration_test;
 mod virtual_users_migration_test;
 
 mod virtual_users_api_test;
+
+mod slack_install_integration_test;

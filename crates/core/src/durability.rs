@@ -123,7 +123,7 @@ pub trait StreamHeartbeater: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct PartialStreamState {
     /// Prepared Astra effort recovered from the matching stream-start event.
-    pub reasoning_state: Option<everruns_provider::reasoning_updates::ReasoningState>,
+    pub reasoning_state: Option<everruns_contracts::reasoning_updates::ReasoningState>,
     /// Stable public id from the latest `output.message.started` event.
     pub message_id: MessageId,
 

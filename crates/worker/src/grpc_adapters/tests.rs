@@ -6,17 +6,17 @@ fn worker_parses_the_neutral_capability_reference_shape() {
     // EVE-873: worker resolution consumes the same `{"ref", "config"}`
     // representation the Framework serializes and the control plane
     // persists — no worker-side semantic model.
-    let framework_ref = everruns_capability::CapabilityRef::new("web_fetch")
+    let framework_ref = everruns_contracts::CapabilityRef::new("web_fetch")
         .config(serde_json::json!({"enable_file_download": true}));
     let wire = serde_json::to_string(&framework_ref).unwrap();
 
-    let parsed = serde_json::from_str::<everruns_capability::CapabilityRef>(&wire).unwrap();
+    let parsed = serde_json::from_str::<everruns_contracts::CapabilityRef>(&wire).unwrap();
     assert_eq!(parsed, framework_ref);
     assert_eq!(parsed.capability_id(), "web_fetch");
 
     // Legacy rows without a config payload load as `{}`.
     let bare =
-        serde_json::from_str::<everruns_capability::CapabilityRef>(r#"{"ref":"current_time"}"#)
+        serde_json::from_str::<everruns_contracts::CapabilityRef>(r#"{"ref":"current_time"}"#)
             .unwrap();
     assert_eq!(bare.config_value(), &serde_json::json!({}));
 }
@@ -246,7 +246,7 @@ fn test_grpc_missing_field() {
 
 #[test]
 fn test_proto_stored_image_info_to_schema_roundtrips_image_id_uuid_transport() {
-    let image_id = everruns_provider::typed_id::ImageId::new();
+    let image_id = everruns_contracts::typed_id::ImageId::new();
     let info = proto_stored_image_info_to_schema(proto::StoredImageInfo {
         id: Some(proto::Uuid {
             value: image_id.uuid().to_string(),

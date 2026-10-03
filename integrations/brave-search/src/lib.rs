@@ -29,11 +29,11 @@ pub use framework::BraveSearch;
 pub use search::SearchInput;
 
 #[cfg(feature = "hosted")]
+use everruns_contracts::connector::ConnectorPlugin;
+#[cfg(feature = "hosted")]
 use everruns_core::capabilities::IntegrationPlugin;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tools::Tool;
-#[cfg(feature = "hosted")]
-use everruns_platform::connector::ConnectorPlugin;
 
 #[cfg(feature = "hosted")]
 use connection::BraveSearchConnector;
@@ -164,7 +164,7 @@ mod tests {
     async fn system_prompt_within_budget() {
         let cap = BraveSearchCapability;
         let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
-            everruns_provider::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(prompt.len() <= 250, "prompt is {} bytes", prompt.len());

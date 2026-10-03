@@ -12,11 +12,16 @@
 // stream by closing the connection (no `[DONE]` marker), which the driver's
 // finish handling collapses into a single terminal `Done` event.
 
-use everruns_drivers::gemini::GeminiChatDriver;
-use everruns_provider::driver_registry::{
+// Every mock answers with `Connection: close`. The drivers share one process-wide
+// HTTP client, and wiremock recycles a dropped server's port to the next test, so a
+// pooled keep-alive connection driven by another test's runtime could otherwise
+// serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
+
+use everruns_contracts::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
-use everruns_provider::{Provider, StaticHeaderAuth};
+use everruns_contracts::{Provider, StaticHeaderAuth};
+use everruns_drivers::gemini::GeminiChatDriver;
 use futures::StreamExt;
 use wiremock::matchers::{method, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -134,7 +139,11 @@ async fn mount_sse(server: &MockServer, body: String) {
     Mock::given(method("POST"))
         .and(path_regex(r"^/models/.+:streamGenerateContent$"))
         .and(query_param("alt", "sse"))
-        .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_raw(body, "text/event-stream"),
+        )
         .mount(server)
         .await;
 }
@@ -414,7 +423,7 @@ async fn tool_results_replay_function_names_and_object_payloads_on_wire() {
     let server = MockServer::start().await;
     mount_sse(&server, "data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":0}}\n\n".into()).await;
     let mut call = Message::text(MessageRole::Assistant, "");
-    call.tool_calls = Some(vec![everruns_provider::tool_types::ToolCall {
+    call.tool_calls = Some(vec![everruns_contracts::tool_types::ToolCall {
         id: "call_17".into(),
         name: "get_weather".into(),
         arguments: serde_json::json!({"city":"Paris"}),

@@ -7,7 +7,127 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Migration Notes
+## [0.36.0] - 2026-10-03
+
+### Highlights
+
+- **Choose an Agent Environment** - Author named Bashkit or Daytona profiles and select the profile when starting a Chat or Playground session.
+- **Slack installation repair** - Add to Slack works for draft endpoints, requests declared bot scopes, and shows compact errors with retry.
+- **Session storage permissions** - Listing stored values or secret names requires session view; denied callers receive no private data.
+
+### What's Changed
+
+- fix(sessions): require session view to list storage ([#4099](https://github.com/everruns/everruns/pull/4099)) by [@chaliy](https://github.com/chaliy)
+
+- chore(models): prefer GPT-6.1 Sol over GPT-6 Sol ([#4100](https://github.com/everruns/everruns/pull/4100)) by [@chaliy](https://github.com/chaliy)
+- perf(release): poll exact sparse-index artifact visibility ([#4101](https://github.com/everruns/everruns/pull/4101)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): manage and select agent environments ([#4098](https://github.com/everruns/everruns/pull/4098)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): repair app installation and compact error handling ([#4075](https://github.com/everruns/everruns/pull/4075)) by [@chaliy](https://github.com/chaliy)
+- refactor(drivers): retire vendor shim crates ([#4072](https://github.com/everruns/everruns/pull/4072)) by [@chaliy](https://github.com/chaliy)
+
+![Compact Slack installation errors](https://github.com/user-attachments/assets/115d69b1-e0d3-4596-928b-bab3dff71d10)
+
+### Crate Releases
+
+All 44 published crates ship at the platform version 0.36.0.
+
+Retired after their deprecated 0.35.0 forwarding release:
+
+- `everruns-anthropic` → `everruns-drivers` (`anthropic`)
+- `everruns-bedrock` → `everruns-drivers` (`bedrock`)
+- `everruns-fireworks` → `everruns-drivers` (`fireworks`)
+- `everruns-gemini` → `everruns-drivers` (`gemini`)
+- `everruns-mai` → `everruns-drivers` (`mai`)
+- `everruns-meta` → `everruns-drivers` (`meta`)
+- `everruns-openai` → `everruns-drivers` (`openai`)
+- `everruns-openrouter` → `everruns-drivers` (`openrouter`)
+
+Published 0.35.0 shims remain available; no capability is removed.
+
+## [0.35.0] - 2026-10-03
+
+### Highlights
+
+- **Safer sandbox tools** - HTTP egress fails closed on empty DNS pins, and forged session secrets cannot redirect Docker tools ([#4058](https://github.com/everruns/everruns/pull/4058), [#4061](https://github.com/everruns/everruns/pull/4061)).
+- **Interactive questions in chat** - AskUser runs through interactive turns so agents can ask for input while working ([#4044](https://github.com/everruns/everruns/pull/4044)).
+- **Platform Chat for every organization** - the shell-powered Platform Chat harness becomes the default for every organization ([#4060](https://github.com/everruns/everruns/pull/4060)).
+
+### What's Changed
+
+- test(docs): check docs catalogs and code snippets against the code ([#4028](https://github.com/everruns/everruns/pull/4028)) by [@chaliy](https://github.com/chaliy)
+- docs: consolidate duplicate pages (194 → 170) ([#4029](https://github.com/everruns/everruns/pull/4029)) by [@chaliy](https://github.com/chaliy)
+- ci(release): retry crates.io network failures in crate publishing ([#4031](https://github.com/everruns/everruns/pull/4031)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): send the output cap under the field name the endpoint accepts ([#4032](https://github.com/everruns/everruns/pull/4032)) by [@chaliy](https://github.com/chaliy)
+- docs: add missing capability and Framework pages, and six new diagrams ([#4033](https://github.com/everruns/everruns/pull/4033)) by [@chaliy](https://github.com/chaliy)
+- fix(scripts): exclude commits already on main from pre-push range ([#4004](https://github.com/everruns/everruns/pull/4004)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): record passing Agents API live conformance ([#4005](https://github.com/everruns/everruns/pull/4005)) by [@chaliy](https://github.com/chaliy)
+- fix(harnesses): point Data Analyst and memory seed agents at /memory/agent ([#4034](https://github.com/everruns/everruns/pull/4034)) by [@chaliy](https://github.com/chaliy)
+- feat(host): seed a fresh Agents API session from the Everruns record ([#4007](https://github.com/everruns/everruns/pull/4007)) by [@chaliy](https://github.com/chaliy)
+- ci(release): check the version and publish set before a release spends them ([#4030](https://github.com/everruns/everruns/pull/4030)) by [@chaliy](https://github.com/chaliy)
+- docs: wrap long code lines and tighten code block styling ([#4036](https://github.com/everruns/everruns/pull/4036)) by [@chaliy](https://github.com/chaliy)
+- refactor(drivers): fold vendor driver crates into everruns-drivers ([#4035](https://github.com/everruns/everruns/pull/4035)) by [@chaliy](https://github.com/chaliy)
+- ci(release): audit release provenance and retry a failed publish once ([#4037](https://github.com/everruns/everruns/pull/4037)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): keep the chat work log folded while the agent works ([#4039](https://github.com/everruns/everruns/pull/4039)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): send tooling.tokens.rotate arguments as a form body ([#4038](https://github.com/everruns/everruns/pull/4038)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): keep chat work logs cheap with thousands of tool calls ([#4040](https://github.com/everruns/everruns/pull/4040)) by [@chaliy](https://github.com/chaliy)
+- test(slack): live contract check that Slack reads the config refresh token ([#4041](https://github.com/everruns/everruns/pull/4041)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): specify the target crate layout and migration order ([#4042](https://github.com/everruns/everruns/pull/4042)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): balance toolbar control heights across action rows ([#4045](https://github.com/everruns/everruns/pull/4045)) by [@chaliy](https://github.com/chaliy)
+- perf(worker): wake idle workers on new tasks and log per-turn latency ([#4046](https://github.com/everruns/everruns/pull/4046)) by [@chaliy](https://github.com/chaliy)
+- fix(chat): wire AskUser through interactive turns ([#4044](https://github.com/everruns/everruns/pull/4044)) by [@chaliy](https://github.com/chaliy)
+- chore(ag-ui): complete protocol migration guidance ([#4047](https://github.com/everruns/everruns/pull/4047)) by [@chaliy](https://github.com/chaliy)
+- fix(builtins): strip degenerate time and facts echoes from work logs ([#4043](https://github.com/everruns/everruns/pull/4043)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): force sequential tool use for Anthropic computer toolset ([#4048](https://github.com/everruns/everruns/pull/4048)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump astro from 7.3.2 to 7.3.5 in /apps/docs ([#4050](https://github.com/everruns/everruns/pull/4050)) by [@dependabot](https://github.com/dependabot)
+- chore(deps-dev): bump jest from 30.5.1 to 30.5.2 in /apps/ui ([#4056](https://github.com/everruns/everruns/pull/4056)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump @tanstack/react-query from 5.102.8 to 5.104.0 in /apps/ui ([#4054](https://github.com/everruns/everruns/pull/4054)) by [@dependabot](https://github.com/dependabot)
+- fix(host): identify provider MCP calls as hosted work ([#4059](https://github.com/everruns/everruns/pull/4059)) by [@chaliy](https://github.com/chaliy)
+- chore(deps-dev): bump @types/node from 25.9.4 to 26.6.3 in /apps/ui ([#4053](https://github.com/everruns/everruns/pull/4053)) by [@dependabot](https://github.com/dependabot)
+- fix(sandbox): block forged session secrets from redirecting Docker tools ([#4061](https://github.com/everruns/everruns/pull/4061)) by [@chaliy](https://github.com/chaliy)
+- fix(bashkit): fail closed on empty HTTP egress DNS pins ([#4058](https://github.com/everruns/everruns/pull/4058)) by [@chaliy](https://github.com/chaliy)
+- fix(preview): include inherited harness tools and session features ([#4055](https://github.com/everruns/everruns/pull/4055)) by [@chaliy](https://github.com/chaliy)
+- fix(openai): normalize hosted tool-search namespaces — Fixes EVE-1164 ([#4052](https://github.com/everruns/everruns/pull/4052)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): reveal AskUser shortcuts while holding Command ([#4062](https://github.com/everruns/everruns/pull/4062)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump pinned transitive deps to patched versions ([#4063](https://github.com/everruns/everruns/pull/4063)) by [@chaliy](https://github.com/chaliy)
+- fix(computer-use): drop hard per-call approval gate, soft approvals only ([#4064](https://github.com/everruns/everruns/pull/4064)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): start test chat from agent page masthead ([#4049](https://github.com/everruns/everruns/pull/4049)) by [@chaliy](https://github.com/chaliy)
+- chore(deepsec): upgrade and configure Codex scanning ([#4071](https://github.com/everruns/everruns/pull/4071)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): promote shell-based Platform Chat for every organization ([#4060](https://github.com/everruns/everruns/pull/4060)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): retarget flaky GPT-5.4 tool_search cases to Terra ([#4070](https://github.com/everruns/everruns/pull/4070)) by [@chaliy](https://github.com/chaliy)
+- fix(host): enforce Agents API provider tool policy ([#4067](https://github.com/everruns/everruns/pull/4067)) by [@chaliy](https://github.com/chaliy)
+- fix(platform): enforce runtime network policy for A2A delegation ([#4068](https://github.com/everruns/everruns/pull/4068)) by [@chaliy](https://github.com/chaliy)
+
+- test(host): verify Agents API provider tool boundary ([#4074](https://github.com/everruns/everruns/pull/4074)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): describe deferred tool search namespaces ([#4073](https://github.com/everruns/everruns/pull/4073)) by [@chaliy](https://github.com/chaliy)
+
+- chore(deps): bump @astrojs/starlight from 0.41.7 to 0.42.4 in /apps/docs ([#4051](https://github.com/everruns/everruns/pull/4051)) by [@dependabot](https://github.com/dependabot)
+- feat(playground): add shared agent testing conversations ([#4076](https://github.com/everruns/everruns/pull/4076)) by [@chaliy](https://github.com/chaliy)
+
+- feat(environments): persist physical sandbox incarnations ([#4079](https://github.com/everruns/everruns/pull/4079)) by [@chaliy](https://github.com/chaliy)
+
+- fix(ci): stabilize live-model tests and pin cargo-binstall ([#4080](https://github.com/everruns/everruns/pull/4080)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): bind runtime identities to verifier authority ([#4017](https://github.com/everruns/everruns/pull/4017)) by [@chaliy](https://github.com/chaliy)
+
+- chore(deps): bump gloo-timers from 0.3.0 to 0.4.0 in the cargo group ([#4057](https://github.com/everruns/everruns/pull/4057)) by [@dependabot](https://github.com/dependabot)
+- test(voice): prove cross-org session ids are rejected before writes ([#4082](https://github.com/everruns/everruns/pull/4082)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): revoke anonymous PATs when leaving AUTH_MODE=none ([#4066](https://github.com/everruns/everruns/pull/4066)) by [@chaliy](https://github.com/chaliy)
+- fix(workspaces): protect private user memory on workspace file routes ([#4085](https://github.com/everruns/everruns/pull/4085)) by [@chaliy](https://github.com/chaliy)
+- fix(browserless): scroll off-screen elements into view before clicking ([#4087](https://github.com/everruns/everruns/pull/4087)) by [@chaliy](https://github.com/chaliy)
+- fix(host): gate executable read-only shell options ([cbd8e2aa](https://github.com/everruns/everruns/commit/cbd8e2aaf60085bcaad51700de39861540a27970)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): authorize URL consent against session owner and policy ([#4088](https://github.com/everruns/everruns/pull/4088)) by [@chaliy](https://github.com/chaliy)
+- fix(image): route image-provider requests through guarded egress ([#4089](https://github.com/everruns/everruns/pull/4089)) by [@chaliy](https://github.com/chaliy)
+- feat(environments): add versioned execution profiles ([#4086](https://github.com/everruns/everruns/pull/4086)) by [@chaliy](https://github.com/chaliy)
+- fix(ag-ui): apply anonymous lock and token to inline anonymous auth ([#4091](https://github.com/everruns/everruns/pull/4091)) by [@chaliy](https://github.com/chaliy)
+- fix(endpoints): require dangerous permission to alter live endpoint exposure ([#4092](https://github.com/everruns/everruns/pull/4092)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): retry transient transport errors in tool_search live cases ([#4093](https://github.com/everruns/everruns/pull/4093)) by [@chaliy](https://github.com/chaliy)
+- fix(memory): validate and pin DNS at Git fetch time ([#4094](https://github.com/everruns/everruns/pull/4094)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): apply session permission policy to schedule routes ([#4095](https://github.com/everruns/everruns/pull/4095)) by [@chaliy](https://github.com/chaliy)
+- test(drivers): close mock connections in wire tests to stop cross-test reuse ([#4096](https://github.com/everruns/everruns/pull/4096)) by [@chaliy](https://github.com/chaliy)
+- feat(environments): unify sandbox tools and recovery ([#4090](https://github.com/everruns/everruns/pull/4090)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All 52 published crates ship at the platform version 0.35.0.
 
 - **One crate for all LLM drivers.** `everruns-anthropic`, `everruns-bedrock`,
   `everruns-fireworks`, `everruns-gemini`, `everruns-mai`, `everruns-meta`,

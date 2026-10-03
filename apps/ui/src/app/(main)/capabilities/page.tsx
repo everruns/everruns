@@ -10,11 +10,19 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { CircleOff, Bot, Layers, Plus, Pencil } from "lucide-react";
-import { EntityCard } from "@/components/ui/entity-card";
+import { EntityStatus } from "@/components/ui/entity-status";
+import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
@@ -25,7 +33,6 @@ import {
 } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel, pluralize } from "@/lib/formatting";
 import {
   PageContainer,
@@ -34,13 +41,9 @@ import {
   PageControlStrip,
   SectionTabs,
   IconTile,
-  PageColumns,
   PageMain,
-  PageRail,
-  RailSection,
   PageFooter,
 } from "@/components/layout";
-import { cn } from "@/lib/utils";
 
 const UNCATEGORIZED = "Uncategorized";
 // Retired capabilities are not fetched on this page (the API excludes them
@@ -125,18 +128,13 @@ function CapabilityCard({ capability }: { capability: Capability }) {
       icon={<IconTile size="md" icon={<CapabilityIcon icon={capability.icon} />} />}
       title={localizedCapabilityName(capability, locale)}
       href={`/capabilities/${capability.id}`}
-      copyValue={capability.id}
-      headerActions={
-        <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
-          {getStatusLabel(capability.status)}
-        </Badge>
-      }
+      headerActions={<EntityStatus status={getStatusLabel(capability.status)} />}
     >
-      <div className="text-sm text-muted-foreground mb-3 line-clamp-3">
+      <EntityCardDescription>
         <InlineStreamdownMessage>
           {localizedCapabilityDescription(capability, locale)}
         </InlineStreamdownMessage>
-      </div>
+      </EntityCardDescription>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         {capability.category ? (
           <Badge variant="outline" className="text-xs">
@@ -191,7 +189,7 @@ export default function CapabilitiesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [statusTab, setStatusTab] = useState<StatusTab>("all");
 
-  const { categories, categoryCounts } = useMemo(() => {
+  const { categories } = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const cap of capabilities ?? []) {
       const key = cap.category || UNCATEGORIZED;
@@ -269,20 +267,7 @@ export default function CapabilitiesPage() {
       <PageMasthead
         icon={<CapabilitiesIcon />}
         title="Capabilities"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {totalCount}
-          </Badge>
-        }
         description="Building blocks — system prompt additions and tools agents and harnesses can use."
-        meta={
-          <>
-            <span>{statusCounts.available} available</span>
-            <span>{statusCounts.coming_soon} coming soon</span>
-            <span>{statusCounts.deprecated} deprecated</span>
-            <span>{statusCounts.needs_identity} need identity</span>
-          </>
-        }
         actions={
           <LinkButton variant="accent" href="/capabilities/declarative/new">
             <Plus className="size-4" />
@@ -304,172 +289,132 @@ export default function CapabilitiesPage() {
           onChange={(e) => setSearchQuery(e.target.value)}
           containerClassName="w-72"
         />
+        <Select
+          value={selectedCategory ?? "all"}
+          onValueChange={(value) => setSelectedCategory(value === "all" ? null : value)}
+        >
+          <SelectTrigger aria-label="Category" className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All categories</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category} value={category}>
+                {category}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <div className="flex-1" />
         <SectionTabs
           value={statusTab}
           onValueChange={(v) => setStatusTab(v as StatusTab)}
-          items={statusItems}
+          items={statusItems.map((item) => ({
+            ...item,
+            count: item.value === "all" ? totalCount : statusCounts[item.value],
+          }))}
         />
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          {filteredDeclarative.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Declarative Capabilities</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {filteredDeclarative.map((capability) => (
-                  <DeclarativeCapabilityRow key={capability.id} capability={capability} />
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {[...Array(6)].map((_, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <Skeleton className="h-6 w-3/4" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-4 w-full mb-2" />
-                    <Skeleton className="h-4 w-2/3" />
-                  </CardContent>
-                </Card>
+      <PageMain>
+        {filteredDeclarative.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Declarative Capabilities</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {filteredDeclarative.map((capability) => (
+                <DeclarativeCapabilityRow key={capability.id} capability={capability} />
               ))}
-            </div>
-          ) : totalCount === 0 ? (
-            <Card className="p-8 text-center">
-              <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No capabilities available</h3>
-              <p className="text-muted-foreground">
-                Capabilities will appear here once they are configured.
-              </p>
-            </Card>
-          ) : filteredCount === 0 ? (
-            <Card className="p-8 text-center">
-              <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No matches</h3>
-              <p className="text-muted-foreground mb-4">
-                No capabilities match the current search and filters.
-              </p>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchQuery("");
-                  setSelectedCategory(null);
-                  setStatusTab("all");
-                }}
-              >
-                Clear filters
-              </Button>
-            </Card>
-          ) : (
-            <div className="space-y-8">
-              {grouped.map(([category, caps]) => (
-                <section key={category}>
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                      {category}
-                    </h2>
-                    <span className="text-xs text-muted-foreground">
-                      {formatCountLabel(caps.length, "capability", "capabilities")}
-                    </span>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {caps.map((capability) => (
-                      <CapabilityCard key={capability.id} capability={capability} />
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          )}
-        </PageMain>
-
-        <PageRail>
-          <RailSection label="Status">
-            <div className="flex flex-col gap-1.5 text-[13px]">
-              {statusItems.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setStatusTab(item.value)}
-                  className={cn(
-                    "flex items-center justify-between transition-colors hover:text-foreground",
-                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-muted-foreground">{statusCounts[item.value]}</span>
-                </button>
-              ))}
-            </div>
-          </RailSection>
-
-          {categories.length > 0 && (
-            <RailSection label="Category">
-              <div className="flex flex-col gap-1.5 text-[13px]">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory(null)}
-                  aria-pressed={selectedCategory === null}
-                  className={cn(
-                    "flex items-center justify-between transition-colors hover:text-foreground",
-                    selectedCategory === null ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span>All</span>
-                  <span className="text-muted-foreground">
-                    {Object.values(categoryCounts).reduce((a, b) => a + b, 0)}
-                  </span>
-                </button>
-                {categories.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() =>
-                      setSelectedCategory(category === selectedCategory ? null : category)
-                    }
-                    aria-pressed={selectedCategory === category}
-                    className={cn(
-                      "flex items-center justify-between transition-colors hover:text-foreground",
-                      selectedCategory === category ? "text-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    <span>{category}</span>
-                    <span className="text-muted-foreground">{categoryCounts[category] ?? 0}</span>
-                  </button>
-                ))}
-              </div>
-            </RailSection>
-          )}
-        </PageRail>
-      </PageColumns>
-
-      <PageFooter>
-        <span>
-          {isFiltering
-            ? `Showing ${filteredCount} of ${totalCount} ${pluralize(totalCount, "capability", "capabilities")}`
-            : `Showing ${formatCountLabel(totalCount, "capability", "capabilities")}`}
-        </span>
-        {isFiltering && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchQuery("");
-              setSelectedCategory(null);
-              setStatusTab("all");
-            }}
-            className="text-primary transition-colors hover:underline"
-          >
-            Clear filters →
-          </button>
+            </CardContent>
+          </Card>
         )}
-      </PageFooter>
+
+        {isLoading ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <Skeleton className="h-6 w-3/4" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-4 w-full mb-2" />
+                  <Skeleton className="h-4 w-2/3" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : totalCount === 0 ? (
+          <Card className="p-8 text-center">
+            <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No capabilities available</h3>
+            <p className="text-muted-foreground">
+              Capabilities will appear here once they are configured.
+            </p>
+          </Card>
+        ) : filteredCount === 0 ? (
+          <Card className="p-8 text-center">
+            <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No matches</h3>
+            <p className="text-muted-foreground mb-4">
+              No capabilities match the current search and filters.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearchQuery("");
+                setSelectedCategory(null);
+                setStatusTab("all");
+              }}
+            >
+              Clear filters
+            </Button>
+          </Card>
+        ) : (
+          <div className="space-y-8">
+            {grouped.map(([category, caps]) => (
+              <section key={category}>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    {category}
+                  </h2>
+                  <span className="text-xs text-muted-foreground">
+                    {formatCountLabel(caps.length, "capability", "capabilities")}
+                  </span>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {caps.map((capability) => (
+                    <CapabilityCard key={capability.id} capability={capability} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </PageMain>
+
+      {isFiltering && (
+        <PageFooter>
+          <span>
+            {isFiltering
+              ? `Showing ${filteredCount} of ${totalCount} ${pluralize(totalCount, "capability", "capabilities")}`
+              : `Showing ${formatCountLabel(totalCount, "capability", "capabilities")}`}
+          </span>
+          {isFiltering && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setSelectedCategory(null);
+                setStatusTab("all");
+              }}
+              className="text-primary transition-colors hover:underline"
+            >
+              Clear filters →
+            </button>
+          )}
+        </PageFooter>
+      )}
     </PageContainer>
   );
 }

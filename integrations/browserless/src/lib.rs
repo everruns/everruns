@@ -22,14 +22,14 @@ pub mod state;
 mod tools;
 mod validation;
 
+use everruns_contracts::connector::ConnectorPlugin;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
 use everruns_core::tool_narration::ToolNarrationPhase;
 use everruns_core::tools::Tool;
-use everruns_platform::connector::ConnectorPlugin;
-use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 
 use connection::BrowserlessConnector;
 
@@ -51,8 +51,9 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
         factory: || Box::new(BrowserlessCapability),
     },
     // Computer use ships behind experimental mode. The native OpenAI and
-    // Anthropic adapters and the hard approval gate are in (EVE-1133); it
-    // leaves experimental once the native OpenAI path is verified live.
+    // Anthropic adapters are in with soft approval only, no hard gate
+    // (EVE-1133); it leaves experimental once the native OpenAI path is
+    // verified live.
     IntegrationPlugin {
         experimental_only: true,
         feature_flag: None,
@@ -405,7 +406,7 @@ mod tests {
     async fn system_prompt_within_budget() {
         let cap = BrowserlessCapability;
         let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
-            everruns_provider::typed_id::SessionId::new(),
+            everruns_contracts::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(prompt.len() <= 400, "prompt is {} bytes", prompt.len());

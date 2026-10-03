@@ -6,14 +6,14 @@ import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import type { OrgRole } from "@/lib/api/types";
 
-export function useMembers() {
+export function useMembers(enabled = true) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
     queryKey: queryKeys.organizations.members(org ?? ""),
     queryFn: () => listMembers(org!),
-    enabled: !!org,
+    enabled: !!org && enabled,
     staleTime: 10000,
   });
 

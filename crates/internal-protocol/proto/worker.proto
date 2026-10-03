@@ -39,6 +39,10 @@ service WorkerService {
     rpc AddMessage(AddMessageRequest) returns (AddMessageResponse);
     rpc GetCompactionCheckpoint(GetCompactionCheckpointRequest) returns (GetCompactionCheckpointResponse);
     rpc InstallCompactionCheckpoint(InstallCompactionCheckpointRequest) returns (InstallCompactionCheckpointResponse);
+    // Provider-neutral Environment state and checkpoint persistence. One typed
+    // operation envelope keeps the worker boundary aligned with the platform
+    // store traits without exposing the control-plane database.
+    rpc SandboxPersistence(SandboxPersistenceRequest) returns (SandboxPersistenceResponse);
 
     rpc NativeAsyncJournal(NativeAsyncJournalRequest) returns (NativeAsyncJournalResponse);
     rpc AgentsApiJournal(AgentsApiJournalRequest) returns (AgentsApiJournalResponse);
@@ -558,6 +562,17 @@ message InstallCompactionCheckpointRequest {
 
 message InstallCompactionCheckpointResponse {
     bool installed = 1;
+}
+
+message SandboxPersistenceRequest {
+    string operation = 1;
+    bytes payload_json = 2;
+}
+
+message SandboxPersistenceResponse {
+    bytes payload_json = 1;
+    optional string error_kind = 2;
+    optional bytes error_json = 3;
 }
 
 message AddMessageRequest {

@@ -24,9 +24,9 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::{MessageId, SessionId, SessionParticipantId};
+use everruns_contracts::{ExecutionPhase, PhaseSource};
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
-use everruns_provider::typed_id::{MessageId, SessionId, SessionParticipantId};
-use everruns_provider::{ExecutionPhase, PhaseSource};
 use std::time::{Duration, Instant};
 
 use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
@@ -315,6 +315,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
+        .with_feature_flags(org.feature_flags.clone())
         .with_session_service(self.session_service.clone())
         .with_message_service(self.message_service.clone())
         .with_event_service(self.event_service.clone())

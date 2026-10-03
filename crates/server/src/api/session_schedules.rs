@@ -3,14 +3,16 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_schedules::SessionScheduleService;
+use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_contracts::typed_id::{ScheduleId, SessionId};
 use everruns_core::session_schedule::SessionSchedule;
-use everruns_provider::typed_id::{ScheduleId, SessionId};
+use everruns_core::{Caller, Policy};
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, UrlBuilder, WithUrls, impl_auth_state,
@@ -80,6 +82,7 @@ pub fn routes(state: AppState) -> Router {
     path = "/v1/sessions/{session_id}/schedules",
     responses(
         (status = 200, description = "List of schedules", body = [WithUrls<SessionSchedule>]),
+        (status = 403, description = "Caller may not view this session"),
     ),
     tag = "session-schedules"
 )]
@@ -88,6 +91,7 @@ pub async fn list_schedules(
     State(state): State<AppState>,
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<Vec<WithUrls<SessionSchedule>>> {
+    authorize(&state, &org, &SESSION_VIEW)?;
     let schedules = state
         .schedule_service
         .list(org.org_id, session_id)
@@ -104,6 +108,7 @@ pub async fn list_schedules(
     path = "/v1/sessions/{session_id}/schedules/{schedule_id}",
     responses(
         (status = 200, description = "Schedule details", body = WithUrls<SessionSchedule>),
+        (status = 403, description = "Caller may not view this session"),
         (status = 404, description = "Schedule not found"),
     ),
     tag = "session-schedules"
@@ -113,6 +118,7 @@ pub async fn get_schedule(
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
+    authorize(&state, &org, &SESSION_VIEW)?;
     let schedule =
         get_schedule_in_session(&state, org.org_id, session_id, schedule_id, "get schedule")
             .await?;
@@ -128,6 +134,7 @@ pub async fn get_schedule(
     request_body = UpdateScheduleRequest,
     responses(
         (status = 200, description = "Updated schedule", body = WithUrls<SessionSchedule>),
+        (status = 403, description = "Caller may not manage this session"),
         (status = 404, description = "Schedule not found"),
     ),
     tag = "session-schedules"
@@ -138,6 +145,7 @@ pub async fn update_schedule(
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
     Json(req): Json<UpdateScheduleRequest>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
+    authorize(&state, &org, &SESSION_MANAGE)?;
     let enabled = req.enabled.unwrap_or(true);
     get_schedule_in_session(
         &state,
@@ -165,6 +173,7 @@ pub async fn update_schedule(
     path = "/v1/sessions/{session_id}/schedules/{schedule_id}",
     responses(
         (status = 204, description = "Schedule deleted"),
+        (status = 403, description = "Caller may not manage this session"),
         (status = 404, description = "Schedule not found"),
     ),
     tag = "session-schedules"
@@ -174,6 +183,7 @@ pub async fn delete_schedule(
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    authorize(&state, &org, &SESSION_MANAGE)?;
     get_schedule_in_session(
         &state,
         org.org_id,
@@ -203,6 +213,7 @@ pub async fn delete_schedule(
     path = "/v1/sessions/{session_id}/schedules/{schedule_id}/trigger",
     responses(
         (status = 200, description = "Schedule triggered", body = WithUrls<SessionSchedule>),
+        (status = 403, description = "Caller may not manage this session"),
         (status = 404, description = "Schedule not found"),
     ),
     tag = "session-schedules"
@@ -212,6 +223,7 @@ pub async fn trigger_schedule(
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
+    authorize(&state, &org, &SESSION_MANAGE)?;
     get_schedule_in_session(
         &state,
         org.org_id,
@@ -230,6 +242,23 @@ pub async fn trigger_schedule(
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(schedule)))
+}
+
+/// Schedules belong to a session, so they take the session's policies:
+/// reading needs `SESSION_VIEW`, changing or firing needs `SESSION_MANAGE`.
+///
+/// THREAT[TM-SCHED-007]: evaluated with the configured resolver before any
+/// schedule lookup, so a same-org caller the resolver denies learns nothing
+/// about the schedule and cannot change it. Org scoping and the parent-session
+/// match below still apply to callers who pass.
+fn authorize(
+    state: &AppState,
+    org: &ResolvedOrg,
+    policy: &Policy,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    policy
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(org))
+        .map_err(|error| ErrorResponse::new(error.to_string()).into_response(StatusCode::FORBIDDEN))
 }
 
 async fn get_schedule_in_session(

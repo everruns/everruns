@@ -9,8 +9,8 @@ use super::super::models::{
 };
 use super::InMemoryDatabase;
 use anyhow::Result;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_task::{SessionTask, SessionTaskUpdate, apply_task_update};
-use everruns_provider::typed_id::SessionId;
 
 impl InMemoryDatabase {
     /// Insert a task. Idempotent on `id`: when the row already exists it is
@@ -258,7 +258,7 @@ impl InMemoryDatabase {
                     .map(str::to_string)?;
 
                 // Parse the schedule_id as a UUID/ScheduleId.
-                let schedule_id: everruns_provider::typed_id::ScheduleId =
+                let schedule_id: everruns_contracts::typed_id::ScheduleId =
                     schedule_id_str.parse().ok()?;
 
                 // Fired one-shots are disabled before their monitor can be
@@ -417,7 +417,7 @@ impl InMemoryDatabase {
 mod tests {
     use super::*;
     use chrono::{Duration, Utc};
-    use everruns_provider::typed_id::SessionId;
+    use everruns_contracts::typed_id::SessionId;
 
     fn terminal_row(
         db: &InMemoryDatabase,

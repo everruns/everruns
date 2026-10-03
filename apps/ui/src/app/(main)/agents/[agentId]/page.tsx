@@ -5,7 +5,7 @@
 // The system prompt is the page (wide left pane); a narrow config column holds
 // the primary settings and a quiet "More" list whose rows open side sheets.
 // Edit mode is page-level and in place: the same panes turn writable, the
-// header swaps New session for Save changes / Discard, and one Save sends the
+// header swaps Test chat for Save changes / Discard, and one Save sends the
 // whole draft so a prompt edit and the capability change that goes with it
 // land together. The old /edit route redirects here with `?mode=edit`.
 //
@@ -23,9 +23,9 @@ import {
   Copy,
   Download,
   GitBranch,
+  MessageCircle,
   MoreHorizontal,
   Pencil,
-  Plus,
   Telescope,
   Trash2,
 } from "lucide-react";
@@ -88,7 +88,13 @@ import {
   AgentSettingsSheet,
   type AgentSettingsSection,
 } from "@/components/agents/agent-settings-sheet";
-import { getAgentTabItems, resolveAgentTab, type AgentTab } from "@/components/agents/agent-tabs";
+import {
+  agentTabHref,
+  getAgentTabItems,
+  isAgentTab,
+  resolveAgentTab,
+  type AgentTab,
+} from "@/components/agents/agent-tabs";
 import { BRANDING_FIELDS, useAgentDraft } from "@/components/agents/use-agent-draft";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import { normalizeNetworkAccess } from "@/components/network-access-editor";
@@ -100,6 +106,7 @@ import {
   getEntityStatusBadgeVariant,
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
+import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useWebMcp } from "@/providers/webmcp-context";
@@ -120,9 +127,17 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { agentId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const deepLink = resolveAgentTab(searchParams.get("tab"));
+  const tabParam = searchParams.get("tab");
+  const deepLink = resolveAgentTab(tabParam);
   const [activeTab, setActiveTab] = useState<AgentTab>(deepLink.tab);
   const [openSection, setOpenSection] = useState<AgentSettingsSection | null>(deepLink.section);
+  // Follow the address bar when it changes without a click (refresh already
+  // lands here; back/forward and a replaced query must too).
+  const [tabParamSeen, setTabParamSeen] = useState<string | null>(tabParam);
+  if (tabParam !== tabParamSeen) {
+    setTabParamSeen(tabParam);
+    setActiveTab(deepLink.tab);
+  }
   const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
 
@@ -175,9 +190,23 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     [],
   );
 
+  const selectTab = useCallback(
+    (tab: AgentTab) => {
+      setActiveTab(tab);
+      const href = agentTabHref(agentId, tab, searchParams);
+      const query = searchParams.toString();
+      const currentHref = query ? `/agents/${agentId}?${query}` : `/agents/${agentId}`;
+      if (href !== currentHref) router.replace(href, { scroll: false });
+    },
+    [agentId, router, searchParams],
+  );
+
   const exitEdit = () => {
     setEditRequested(false);
-    if (searchParams.get("mode") === "edit") router.replace(`/agents/${agentId}`);
+    if (searchParams.get("mode") !== "edit") return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("mode");
+    router.replace(agentTabHref(agentId, activeTab, params), { scroll: false });
   };
 
   const handleDiscard = () => {
@@ -189,7 +218,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const handleSave = async () => {
     const result = draft.buildRequest();
     if (!result.ok) {
-      setActiveTab("agent");
+      selectTab("agent");
       if (BRANDING_FIELDS.some((field) => result.errors[field])) setOpenSection("branding");
       return;
     }
@@ -202,35 +231,42 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     }
   };
 
-  const createAgentSession = useCallback(
+  // Same create shape as NewChatForm: interactive threads live under /chats;
+  // /sessions is the read-only recording surface.
+  const createAgentChat = useCallback(
     async (title?: string) => {
       // Agent-first: omit the harness so the server derives it from the agent's
       // own harness (falling back to the org default only when the agent has none).
       const session = await createSession.mutateAsync({
-        request: { agent_id: agentId, ...(title ? { title } : {}) },
+        request: {
+          agent_id: agentId,
+          source: "chat",
+          tags: [CHAT_THREAD_TAG],
+          ...(title ? { title } : {}),
+        },
       });
-      router.push(`/sessions/${session.id}/transcript`);
+      router.push(`/chats/${session.id}`);
       return session;
     },
     [agentId, createSession, router],
   );
 
-  const handleNewSession = async () => {
+  const handleTestChat = async () => {
     try {
-      await createAgentSession();
+      await createAgentChat();
     } catch (error) {
-      console.error("Failed to create session:", error);
+      console.error("Failed to start test chat:", error);
     }
   };
 
-  const startSessionTool = useMemo<WebMcpToolDefinition>(
+  const startChatTool = useMemo<WebMcpToolDefinition>(
     () => ({
       name: "everruns_start_session",
-      description: "Create and open a session for the agent displayed on this Everruns page.",
+      description: "Start a test chat with the agent displayed on this Everruns page.",
       inputSchema: {
         type: "object",
         properties: {
-          title: { type: "string", description: "Optional session title." },
+          title: { type: "string", description: "Optional chat title." },
         },
         additionalProperties: false,
       },
@@ -241,7 +277,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           throw new DOMException("The bound agent is no longer active", "AbortError");
         }
         if (webMcpSessionPendingRef.current || createSession.isPending) {
-          throw new Error("A session is already being created");
+          throw new Error("A chat is already being started");
         }
         const rawTitle = input.title;
         if (rawTitle !== undefined && typeof rawTitle !== "string") {
@@ -249,28 +285,28 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         }
         const title = typeof rawTitle === "string" ? rawTitle.trim().slice(0, 200) : undefined;
         await webmcp.requestApproval({
-          title: "Start an agent session?",
-          description: `Create a new session for ${getDisplayName(agent)}${title ? ` titled “${title}”` : ""}. This may lead to billable model usage when a message is sent.`,
-          confirmLabel: "Create session",
+          title: "Start a test chat?",
+          description: `Start a test chat with ${getDisplayName(agent)}${title ? ` titled “${title}”` : ""}. This may lead to billable model usage when a message is sent.`,
+          confirmLabel: "Start chat",
         });
         webmcp.assertBinding(webmcp.bindingToken);
         webMcpSessionPendingRef.current = true;
         try {
-          const session = await createAgentSession(title || undefined);
+          const session = await createAgentChat(title || undefined);
           return {
             created: true,
             session_id: session.id,
-            path: `/sessions/${session.id}/transcript`,
+            path: `/chats/${session.id}`,
           };
         } finally {
           webMcpSessionPendingRef.current = false;
         }
       },
     }),
-    [agent, agentId, createAgentSession, createSession.isPending, webmcp],
+    [agent, agentId, createAgentChat, createSession.isPending, webmcp],
   );
 
-  useWebMcpTool(startSessionTool, {
+  useWebMcpTool(startChatTool, {
     enabled: agent?.status === "active",
     scopeKey: agent?.id,
   });
@@ -375,6 +411,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           : "Inherited",
     },
     {
+      id: "environments",
+      label: "Environments",
+      summary: draft.environments
+        ? `${Object.keys(draft.environments.profiles ?? {}).length} · default ${draft.environments.default}`
+        : "None",
+    },
+    {
       id: "usage",
       label: "Token usage",
       summary: agent.usage
@@ -464,11 +507,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       {overflowMenu}
       <Button
         variant="accent"
-        onClick={handleNewSession}
+        onClick={handleTestChat}
         disabled={createSession.isPending || !isActive}
       >
-        <Plus className="size-4" />
-        {createSession.isPending ? "Creating..." : "New session"}
+        <MessageCircle className="size-4" />
+        {createSession.isPending ? "Starting..." : "Test chat"}
       </Button>
     </>
   );
@@ -514,7 +557,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           <PageControlStrip>
             <SectionTabs
               value={activeTab}
-              onValueChange={(value) => setActiveTab(value as AgentTab)}
+              onValueChange={(value) => {
+                if (isAgentTab(value)) selectTab(value);
+              }}
               items={getAgentTabItems(sessionCount)}
               className="border-x border-t bg-background px-2"
             />

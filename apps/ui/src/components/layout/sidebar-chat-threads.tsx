@@ -24,8 +24,7 @@ import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-const rowClass =
-  "flex items-center gap-2 border-l-2 py-1 pl-9 pr-3 text-[13px] leading-5 transition-colors";
+const rowClass = "flex items-center gap-2 border-l-2 py-1 pl-9 pr-3 text-[13px] leading-5";
 
 /** Hold `value` steady while `frozen` is true, adopting the latest on thaw. */
 function useFrozen<T>(value: T, frozen: boolean): T {

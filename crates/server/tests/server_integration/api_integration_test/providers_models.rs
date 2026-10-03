@@ -3,10 +3,10 @@
 use super::support::*;
 use crate::test_harness;
 use axum::http::StatusCode;
+use everruns_contracts::model::Model;
+use everruns_contracts::provider::Provider;
 use everruns_platform::Agent;
 use everruns_platform::Session;
-use everruns_provider::model::Model;
-use everruns_provider::provider::Provider;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -379,11 +379,11 @@ async fn test_events_do_not_publish_reasoning_replay_state() {
 
     let mut message = everruns_core::RuntimeMessage::assistant("the answer");
     message.content.push(everruns_core::ContentPart::reasoning(
-        everruns_provider::reasoning::ReasoningContentPart::opaque("anthropic")
+        everruns_contracts::reasoning::ReasoningContentPart::opaque("anthropic")
             .with_item_id("rs_abc")
             .with_signature("sig-do-not-publish")
             .with_encrypted("enc-do-not-publish")
-            .with_text(everruns_provider::reasoning::ReasoningText::Plain {
+            .with_text(everruns_contracts::reasoning::ReasoningText::Plain {
                 text: "visible reasoning".to_string(),
             }),
     ));

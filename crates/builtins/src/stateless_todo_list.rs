@@ -50,9 +50,9 @@ pub const STATELESS_TODO_LIST_CAPABILITY_ID: &str = "stateless_todo_list";
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StatelessTodoList;
 
-impl everruns_capability::IntoCapability for StatelessTodoList {
-    fn into_capability(self) -> everruns_capability::CapabilitySpec {
-        everruns_capability::CapabilityRef::new(STATELESS_TODO_LIST_CAPABILITY_ID).into()
+impl everruns_contracts::IntoCapability for StatelessTodoList {
+    fn into_capability(self) -> everruns_contracts::CapabilitySpec {
+        everruns_contracts::CapabilityRef::new(STATELESS_TODO_LIST_CAPABILITY_ID).into()
     }
 }
 

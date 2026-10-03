@@ -40,7 +40,7 @@
 //! never surprising. [`ApprovalPolicy`] is where an allowlist or any-member
 //! setting attaches.
 
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;

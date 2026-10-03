@@ -32,21 +32,16 @@ crates/host/src/observability/braintrust.rs
 crates/host/src/runtime.rs
 crates/host/tests/integration/runtime_host_test.rs
 crates/internal-protocol/src/lib.rs
-crates/model-profiles/src/profiles.rs
 crates/platform/src/app.rs
 crates/platform/src/background_run.rs
-crates/platform/src/capabilities/a2a_delegation.rs
+crates/platform/src/capabilities/a2a_delegation/mod.rs
 crates/platform/src/capabilities/agent_handoff.rs
 crates/platform/src/capabilities/subagents.rs
 crates/platform/src/session_sandbox.rs
-crates/provider/src/driver_registry.rs
-crates/provider/src/openai_protocol.rs
-crates/provider/src/openresponses_types.rs
 crates/server/src/api/agents.rs
 crates/server/src/api/common.rs
 crates/server/src/api/durable.rs
 crates/server/src/api/mcp_endpoint/mod.rs
-crates/server/src/api/sessions.rs
 crates/server/src/api/voice.rs
 crates/server/src/app_builder.rs
 crates/server/src/atif.rs
@@ -61,7 +56,6 @@ crates/server/src/domains/evals/service.rs
 crates/server/src/domains/models/service.rs
 crates/server/src/domains/session_files/service.rs
 crates/server/src/domains/session_tasks/commands.rs
-crates/server/src/domains/sessions/commands.rs
 crates/server/src/seed.rs
 crates/server/src/services/provider_resolver.rs
 crates/server/src/slack_delivery.rs
@@ -81,5 +75,4 @@ integrations/daytona/src/client.rs
 integrations/daytona/src/tools.rs
 integrations/filesystem/src/lib.rs
 integrations/lua/src/lib.rs
-integrations/openai-image/src/image_capability.rs
 integrations/web-fetch/src/lib.rs

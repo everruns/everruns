@@ -6,6 +6,15 @@ import {
 } from "@/lib/tool-registry";
 
 describe("tool-registry", () => {
+  it("classifies provider-neutral environment tools", () => {
+    expect(getToolCategory("bash")).toBe("shell");
+    expect(getToolCategory("read_file")).toBe("read");
+    expect(getToolCategory("write_file")).toBe("write");
+    expect(getToolCategory("edit_file")).toBe("write");
+    expect(getToolCategory("glob")).toBe("search");
+    expect(getToolCategory("grep")).toBe("search");
+  });
+
   it("classifies managed sandbox file tools consistently", () => {
     expect(getToolEntry("sandbox_read_file")).toEqual({
       category: "read",

@@ -8,8 +8,8 @@ fn test_cost(
     input: f64,
     output: f64,
     cache_read: Option<f64>,
-) -> everruns_provider::model::ModelCost {
-    let mut cost = everruns_provider::model::ModelCost::new(input, output);
+) -> everruns_contracts::model::ModelCost {
+    let mut cost = everruns_contracts::model::ModelCost::new(input, output);
     cost.cache_read = cache_read;
     cost
 }
@@ -66,7 +66,7 @@ fn merge_hardcoded_wins_for_curated_fields() {
 
 #[test]
 fn merge_discovered_fills_gaps() {
-    use everruns_provider::model::ModelLimits;
+    use everruns_contracts::model::ModelLimits;
 
     let hardcoded = ModelProfile {
         limits: None,
@@ -98,7 +98,7 @@ fn merge_discovered_fills_gaps() {
 
 #[test]
 fn merge_hardcoded_limits_take_precedence() {
-    use everruns_provider::model::ModelLimits;
+    use everruns_contracts::model::ModelLimits;
 
     let hardcoded = ModelProfile {
         limits: Some(ModelLimits {
@@ -125,7 +125,7 @@ fn merge_hardcoded_limits_take_precedence() {
 
 #[test]
 fn merge_preserves_hardcoded_verbosity() {
-    use everruns_provider::model::{Verbosity, VerbosityConfig, VerbosityValue};
+    use everruns_contracts::model::{Verbosity, VerbosityConfig, VerbosityValue};
 
     let hardcoded = ModelProfile {
         verbosity: Some(VerbosityConfig {
@@ -154,9 +154,9 @@ fn extract_discovered_profile_from_metadata() {
     });
 
     let row = ModelWithProviderRow {
-        id: everruns_provider::typed_id::ModelId::new(),
+        id: everruns_contracts::typed_id::ModelId::new(),
         org_id: 1,
-        provider_id: everruns_provider::typed_id::ProviderId::new(),
+        provider_id: everruns_contracts::typed_id::ProviderId::new(),
         model_id: "test-model".into(),
         display_name: "Test".into(),
         capabilities: serde_json::json!([]),
@@ -184,9 +184,9 @@ fn extract_discovered_profile_returns_none_without_metadata() {
     use chrono::Utc;
 
     let row = ModelWithProviderRow {
-        id: everruns_provider::typed_id::ModelId::new(),
+        id: everruns_contracts::typed_id::ModelId::new(),
         org_id: 1,
-        provider_id: everruns_provider::typed_id::ProviderId::new(),
+        provider_id: everruns_contracts::typed_id::ProviderId::new(),
         model_id: "test-model".into(),
         display_name: "Test".into(),
         capabilities: serde_json::json!([]),

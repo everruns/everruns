@@ -20,10 +20,10 @@ rollouts with 20+ tool calls, and recommends for `service_tier: "ultrafast"`.
 Everruns offers it as an opt-in transport of the Open Responses driver. SSE
 stays the default and the fallback.
 
-Source: [`websocket.rs`](../../crates/provider/src/openresponses_protocol/websocket.rs)
-(policy), [`websocket_transport.rs`](../../crates/provider/src/openresponses_protocol/websocket_transport.rs)
+Source: [`websocket.rs`](../../crates/contracts/src/openresponses_protocol/websocket.rs)
+(policy), [`websocket_transport.rs`](../../crates/contracts/src/openresponses_protocol/websocket_transport.rs)
 (transport, behind the `responses-websocket` feature of `everruns-provider`),
-and [`tests_websocket.rs`](../../crates/provider/src/openresponses_protocol/tests_websocket.rs)
+and [`tests_websocket.rs`](../../crates/contracts/src/openresponses_protocol/tests_websocket.rs)
 (mock-server tests).
 
 ## Wire contract

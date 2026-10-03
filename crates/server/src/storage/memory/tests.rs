@@ -2,11 +2,10 @@ use super::super::models::*;
 use super::*;
 use crate::api::common::Pagination;
 use chrono::Utc;
+use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, PrincipalId, SessionId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
-use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, PrincipalId, SessionId};
-
 /// Default pagination for tests (large enough to not truncate).
 fn default_pagination() -> Pagination {
     Pagination::new(0, 1000)
@@ -18,6 +17,7 @@ fn test_harness_id() -> HarnessId {
 
 fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
@@ -77,6 +77,7 @@ async fn test_create_and_get_agent() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -100,7 +101,7 @@ async fn test_declarative_capability_storage_searches_name_and_display_name() {
         .create_declarative_capability(
             DEFAULT_ORG_ID,
             CreateDeclarativeCapabilityRow {
-                public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new().to_string(),
+                public_id: everruns_contracts::typed_id::DeclarativeCapabilityId::new().to_string(),
                 name: "research_pack".to_string(),
                 display_name: Some("Research Pack".to_string()),
                 description: "Curated research defaults".to_string(),
@@ -175,6 +176,7 @@ async fn test_create_and_list_sessions() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -185,7 +187,7 @@ async fn test_create_and_list_sessions() {
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             title: Some("Test Session".to_string()),
             ..Default::default()
         })
@@ -215,7 +217,7 @@ async fn test_set_session_fork_lineage_roundtrip() {
 
     let new_session = || CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         ..Default::default()
     };
 
@@ -562,6 +564,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -597,7 +600,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             org_id: DEFAULT_ORG_ID,
             harness_id: Some(harness.id),
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             title: Some("Stats Session".to_string()),
             ..Default::default()
         })
@@ -673,6 +676,7 @@ async fn test_session_updated_at() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -684,7 +688,7 @@ async fn test_session_updated_at() {
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             title: Some("Test Session".to_string()),
             ..Default::default()
         })
@@ -743,6 +747,7 @@ async fn test_events_sequence() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -753,7 +758,7 @@ async fn test_events_sequence() {
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await
@@ -812,6 +817,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -822,7 +828,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await
@@ -881,7 +887,7 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await
@@ -962,7 +968,7 @@ async fn test_session_connections_never_use_management_owner_lineage() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(42),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(42),
             resolved_owner_user_id: Some(owner.id),
             title: Some("connection-owner-scope".to_string()),
             ..Default::default()
@@ -1091,7 +1097,7 @@ async fn test_unpin_session_is_scoped_by_org() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: Some(user_id),
             title: Some("Pinned Session".to_string()),
             ..Default::default()
@@ -1146,6 +1152,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1156,7 +1163,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await
@@ -1844,6 +1851,7 @@ async fn test_list_events_empty_session_with_limit() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1854,7 +1862,7 @@ async fn test_list_events_empty_session_with_limit() {
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await
@@ -1894,6 +1902,7 @@ async fn test_sessions_pagination() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1905,7 +1914,7 @@ async fn test_sessions_pagination() {
         db.create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             title: Some(format!("Session {}", i)),
             ..Default::default()
         })
@@ -2020,6 +2029,7 @@ async fn test_sessions_pagination_ordering() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2031,7 +2041,7 @@ async fn test_sessions_pagination_ordering() {
         db.create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             title: Some(format!("Session {}", i)),
             ..Default::default()
         })
@@ -2514,6 +2524,7 @@ async fn create_test_agent(
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            environments: None,
             is_built_in: false,
         },
     )
@@ -2758,7 +2769,7 @@ async fn test_search_sessions_by_title() {
     db.create_session(CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
         agent_id: Some(agent.id),
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         title: Some("Debug production memory leak".to_string()),
         ..Default::default()
     })
@@ -2768,7 +2779,7 @@ async fn test_search_sessions_by_title() {
     db.create_session(CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
         agent_id: Some(agent.id),
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         title: Some("Refactor auth module".to_string()),
         ..Default::default()
     })
@@ -2801,7 +2812,7 @@ async fn test_search_sessions_with_agent_filter() {
     db.create_session(CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
         agent_id: Some(agent1.id),
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         title: Some("Shared keyword session".to_string()),
         ..Default::default()
     })
@@ -2811,7 +2822,7 @@ async fn test_search_sessions_with_agent_filter() {
     db.create_session(CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
         agent_id: Some(agent2.id),
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         title: Some("Shared keyword session".to_string()),
         ..Default::default()
     })
@@ -2956,7 +2967,7 @@ async fn test_search_apps() {
             agent_version_policy: "default".to_string(),
             agent_version_id: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             channel_type: Some("slack".to_string()),
             channel_config: serde_json::json!({}),
@@ -2977,7 +2988,7 @@ async fn test_search_apps() {
             agent_version_policy: "default".to_string(),
             agent_version_id: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             channel_type: Some("web".to_string()),
             channel_config: serde_json::json!({}),
@@ -3029,6 +3040,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -3039,7 +3051,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             agent_id: Some(agent.id),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await
@@ -3211,7 +3223,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
     let s1 = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             capabilities: serde_json::json!({}),
             ..Default::default()
         })
@@ -3220,7 +3232,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
     let s2 = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             capabilities: serde_json::json!({}),
             ..Default::default()
         })
@@ -3229,7 +3241,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
     let s3 = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             capabilities: serde_json::json!({}),
             ..Default::default()
         })
@@ -3304,7 +3316,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             title: Some("Override Test".to_string()),
             system_prompt: Some("You are a session-level override".to_string()),
             initial_files: initial_files.clone(),
@@ -3339,7 +3351,7 @@ async fn test_session_system_prompt_defaults_to_none() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await
@@ -3564,10 +3576,7 @@ async fn test_user_preferences_crud_and_isolation() {
     );
 }
 
-// Account linking: signing in with an OAuth provider whose verified email
-// matches an existing password account must attach the provider identity to
-// that account (same email = same account) WITHOUT dropping password auth.
-// Mirrors the linking branch in `oauth_callback` (crates/server/src/auth/routes.rs).
+// OAuth linking must preserve password authentication for an existing email.
 #[tokio::test]
 async fn link_oauth_identity_attaches_provider_and_preserves_password() {
     let db = InMemoryDatabase::new();
@@ -3724,11 +3733,7 @@ async fn link_oauth_identity_does_not_replace_existing_provider_subject() {
     );
 }
 
-// EVE-704: user email is a case-insensitive identity. Registering `John@x.com`
-// then `john@x.com` must resolve to a single account, and login / OAuth-linking
-// lookups must find that account regardless of the casing supplied. This test
-// fails against the pre-fix backend (verbatim store + exact-match lookup),
-// where the second casing would appear as a distinct, unfound account.
+// EVE-704: user email is case-insensitive across login and OAuth linking.
 #[tokio::test]
 async fn test_user_email_is_case_insensitive_identity() {
     let db = InMemoryDatabase::new();
@@ -3780,14 +3785,12 @@ fn test_normalize_email_trims_and_lowercases() {
     assert_eq!(normalize_email("\tBob@X.io\n"), "bob@x.io");
 }
 
-// ============================================
 // Agent trigger round-trips (EVE-757)
-// ============================================
 
 fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow {
     CreateAgentTriggerRow {
         org_id: DEFAULT_ORG_ID,
-        id: everruns_provider::typed_id::TriggerId::new(),
+        id: everruns_contracts::typed_id::TriggerId::new(),
         agent_id,
         trigger_type: "schedule".to_string(),
         ingress_id: None,
@@ -3817,7 +3820,6 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
     let db = InMemoryDatabase::new();
     let agent_id = AgentId::new();
 
-    // Create
     let created = db
         .create_agent_trigger(schedule_trigger_input(agent_id))
         .await
@@ -3834,7 +3836,6 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
     assert_eq!(schedule.cron_expression, "0 0 * * * *");
     assert_eq!(schedule.message, "hello");
 
-    // Get
     let fetched = db
         .get_agent_trigger(DEFAULT_ORG_ID, created.id)
         .await
@@ -3850,7 +3851,6 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
             .is_none()
     );
 
-    // List
     let listed = db
         .list_agent_triggers(DEFAULT_ORG_ID, None, false)
         .await

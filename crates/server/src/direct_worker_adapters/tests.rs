@@ -68,7 +68,7 @@ fn test_adapters() -> DirectWorkerAdapters {
     let cap_registry = CapabilityRegistry::new();
     let driver_registry = everruns_worker::create_driver_registry();
     let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
-    let sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> =
+    let sqldb_store: std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =
         Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));
 
     DirectWorkerAdapters::new(
@@ -131,11 +131,11 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
     use crate::storage::models::{
         CreateAgentRow, CreateAgentVersionRow, CreateMcpServerRow, CreateSessionRow,
     };
+    use everruns_contracts::typed_id::{AgentVersionId, PrincipalId};
     use everruns_internal_protocol::proto::{
         GetMcpServerByPrefixRequest, Uuid as ProtoUuid,
         worker_service_server::WorkerService as GrpcWorkerService,
     };
-    use everruns_provider::typed_id::{AgentVersionId, PrincipalId};
 
     let adapters = test_adapters();
     let org_id = everruns_core::DEFAULT_ORG_ID;
@@ -190,6 +190,7 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -234,6 +235,7 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
     let session = adapters
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
@@ -412,6 +414,7 @@ async fn seed_platform_session(
 
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
@@ -423,7 +426,7 @@ async fn seed_platform_session(
             agent_version_id: None,
             agent_config_hash: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id,
             title: Some("platform-store-test".to_string()),
             locale: None,
@@ -677,7 +680,7 @@ async fn seed_agent(db: &StorageBackend) -> Uuid {
         starters: serde_json::json!([]),
         system_prompt: String::new(),
         default_model_id: None,
-        harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+        harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
         tags: vec![],
         initial_files: serde_json::Value::Array(vec![]),
         tools: serde_json::Value::Array(vec![]),
@@ -685,6 +688,7 @@ async fn seed_agent(db: &StorageBackend) -> Uuid {
         max_iterations: None,
         network_access: None,
         parallel_tool_calls: None,
+        environments: None,
         is_built_in: false,
     };
     db.create_agent_with_id(everruns_core::DEFAULT_ORG_ID, id, create)
@@ -761,7 +765,7 @@ async fn platform_store_cross_org_isolation() {
         .for_execution(session_org1.uuid())
         .unwrap();
     let agent = store_org1
-        .get_agent_by_id(everruns_provider::typed_id::AgentId::from_uuid(agent_id))
+        .get_agent_by_id(everruns_contracts::typed_id::AgentId::from_uuid(agent_id))
         .await
         .unwrap();
     assert!(agent.is_some(), "agent should be visible in org 1");
@@ -772,7 +776,7 @@ async fn platform_store_cross_org_isolation() {
         .for_execution(session_org2.uuid())
         .unwrap();
     let agent = store_org2
-        .get_agent_by_id(everruns_provider::typed_id::AgentId::from_uuid(agent_id))
+        .get_agent_by_id(everruns_contracts::typed_id::AgentId::from_uuid(agent_id))
         .await
         .unwrap();
     assert!(agent.is_none(), "agent must NOT be visible in org 2");
@@ -827,7 +831,7 @@ fn test_adapters_with_encryption() -> DirectWorkerAdapters {
     let cap_registry = CapabilityRegistry::new();
     let driver_registry = everruns_worker::create_driver_registry();
     let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
-    let sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> =
+    let sqldb_store: std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =
         Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));
 
     DirectWorkerAdapters::new(
@@ -1276,6 +1280,7 @@ async fn get_session_carries_org_public_id() {
     let row = adapters
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
@@ -1287,7 +1292,7 @@ async fn get_session_carries_org_public_id() {
             agent_config_hash: None,
             virtual_user_id: None,
             harness_id: Some(HarnessId::from_seed(1)),
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: None,
             locale: None,

@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 #[derive(sqlx::FromRow)]
 struct McpOAuthSessionCredentialColumns {
-    virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+    virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     access_token_encrypted: Option<Vec<u8>>,
     refresh_token_encrypted: Option<Vec<u8>>,
     expires_at_encrypted: Option<Vec<u8>>,
@@ -166,7 +166,7 @@ impl Database {
     /// Read a session-scoped MCP OAuth grant as one database snapshot.
     pub async fn get_mcp_oauth_session_credentials(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         server_id: uuid::Uuid,
     ) -> Result<Option<McpOAuthSessionCredentialsRow>> {
         let access_name = everruns_core::mcp_oauth_session_secret_name(server_id, "access_token");

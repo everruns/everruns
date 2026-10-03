@@ -55,6 +55,7 @@ fn encryption() -> EncryptionService {
 
 fn session_input(owner_user_id: Option<Uuid>) -> CreateSessionRow {
     CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         workspace_id: None,
@@ -175,7 +176,7 @@ struct McpFixture {
     provider: String,
     user_id: Uuid,
     identity_id: VirtualUserId,
-    agent_id: everruns_provider::typed_id::AgentId,
+    agent_id: everruns_contracts::typed_id::AgentId,
 }
 
 /// Seed a session with both stores populated unless told otherwise, so a
@@ -220,7 +221,7 @@ async fn mcp_setup(
         .create_agent(
             DEFAULT_ORG_ID,
             crate::storage::models::CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: "Responder".into(),
                 display_name: None,
                 description: None,
@@ -229,7 +230,7 @@ async fn mcp_setup(
                 starters: serde_json::json!([]),
                 system_prompt: "".into(),
                 default_model_id: None,
-                harness_id: everruns_provider::typed_id::HarnessId::from_seed(1),
+                harness_id: everruns_contracts::typed_id::HarnessId::from_seed(1),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -237,6 +238,7 @@ async fn mcp_setup(
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1203,4 +1205,76 @@ async fn seed_runtime_user(db: &StorageBackend, id: VirtualUserId, usage: &str) 
     })
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
+    let fixture = mcp_setup(ATTENDED, true, true).await;
+    let subject = fixture
+        .db
+        .runtime_invocation_subject(fixture.session_id, INPUT_MESSAGE)
+        .await
+        .unwrap()
+        .unwrap();
+    if let StorageBackend::InMemory(db) = &fixture.db {
+        let mut rows = db.sessions.write();
+        let row = rows.get_mut(&fixture.session_id).unwrap();
+        row.source = "playground".into();
+        row.playground_user_id = Some(subject);
+    }
+    let resolver = resolver_for(&fixture);
+    assert_eq!(
+        resolver
+            .get_mcp_connection_token(fixture.session_id, &fixture.provider, McpServerActsAs::User)
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        resolver
+            .get_mcp_connection_token(
+                fixture.session_id,
+                &fixture.provider,
+                McpServerActsAs::Service
+            )
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("identity-token")
+    );
+    let child = fixture
+        .db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            parent_session_id: Some(fixture.session_id),
+            source: everruns_platform::SessionSource::Subagent,
+            agent_id: Some(fixture.agent_id),
+            virtual_user_id: Some(fixture.identity_id),
+            owner_principal_id: PrincipalId::from_seed(1),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let input = Uuid::now_v7();
+    fixture
+        .db
+        .record_runtime_invocation(
+            DEFAULT_ORG_ID,
+            child.id,
+            input,
+            Some(subject),
+            None,
+            Some(fixture.agent_id.uuid()),
+        )
+        .await
+        .unwrap();
+    assert!(fixture.db.is_playground_session(child.id).await.unwrap());
+    assert_eq!(
+        resolver
+            .bound_to_input_message(input)
+            .get_mcp_connection_token(child.id, &fixture.provider, McpServerActsAs::User)
+            .await
+            .unwrap(),
+        None
+    );
 }

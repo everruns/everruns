@@ -15,15 +15,15 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::tool_types::ToolDefinition;
+use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId};
 use everruns_core::AgentDefinition;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::session_file::InitialFile;
-use everruns_provider::error::AgentLoopError;
-use everruns_provider::tool_types::ToolDefinition;
-use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -198,7 +198,7 @@ pub struct Agent {
     /// Org-scoped service account used when a tool acts as the agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature="openapi",schema(value_type=Option<String>))]
-    pub service_virtual_user_id: Option<everruns_provider::typed_id::VirtualUserId>,
+    pub service_virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     /// External identifier (agent_<32-hex>). Shown as "id" in API.
     /// Client-supplied or auto-generated.
     #[serde(rename = "id")]
@@ -288,6 +288,11 @@ pub struct Agent {
         schema(value_type = Vec<crate::CapabilityRefSchema>)
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Named execution environments offered by this Agent version. A Session
+    /// pins one resolved profile when it is created; later edits affect only
+    /// new Sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environments: Option<crate::EnvironmentSet>,
     /// Starter files copied into each new session for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_files: Vec<InitialFile>,
@@ -382,7 +387,7 @@ impl Agent {
     ///
     /// Archived and deleted records fail here — before host execution — with
     /// the same error the snapshot projection historically produced.
-    pub fn execution_definition(&self) -> everruns_provider::error::Result<AgentDefinition> {
+    pub fn execution_definition(&self) -> everruns_contracts::error::Result<AgentDefinition> {
         match self.status {
             AgentStatus::Active => Ok(self.definition()),
             AgentStatus::Archived | AgentStatus::Deleted => Err(AgentLoopError::config(format!(
@@ -478,6 +483,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            environments: None,
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),
             status: AgentStatus::Active,

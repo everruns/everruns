@@ -172,8 +172,8 @@ async fn test_seed_surfaces_current_gen_models() {
     );
     assert_eq!(
         openai.get("gpt-6-sol"),
-        Some(&(true, true)),
-        "GPT-6 Sol must be seeded as an enabled favorite"
+        Some(&(true, false)),
+        "legacy GPT-6 Sol must not be recommended"
     );
     assert_eq!(
         openai.get("gpt-6-luna"),

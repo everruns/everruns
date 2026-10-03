@@ -13,7 +13,7 @@
 //! (`ToolHints`), while leaving *what each call does* to the caller:
 //!
 //! - Calls that share a non-empty
-//!   [`ToolHints::concurrency_class`](everruns_provider::tool_types::ToolHints::concurrency_class)
+//!   [`ToolHints::concurrency_class`](everruns_contracts::tool_types::ToolHints::concurrency_class)
 //!   are
 //!   serialized in arrival order; calls in different classes (or with no class)
 //!   run concurrently. Read-only tools declare no class and always parallelize.

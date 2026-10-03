@@ -9,7 +9,7 @@ use crate::kernel_imports::Caller;
 use crate::services::PrincipalService;
 use crate::storage::StorageBackend;
 use crate::storage::models::{AgentRow, CreateVirtualUserRow, PrincipalRow};
-use everruns_provider::typed_id::VirtualUserId;
+use everruns_contracts::typed_id::VirtualUserId;
 use std::sync::Arc;
 
 /// Resolve the virtual-user principal that owns this agent's unattended work,
@@ -108,7 +108,7 @@ mod tests {
     use super::*;
     use crate::kernel_imports::DEFAULT_ORG_ID;
     use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
-    use everruns_provider::typed_id::AgentId;
+    use everruns_contracts::typed_id::AgentId;
 
     /// An agent needs a harness, so seed both. Mirrors the trigger-side helper
     /// rather than inventing a second shape.
@@ -160,6 +160,7 @@ mod tests {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    environments: None,
                     is_built_in: false,
                 },
             )

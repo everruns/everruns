@@ -15,9 +15,9 @@
 
 mod llm_test_matrix;
 
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::provider::DriverId;
-use everruns_provider::reasoning::ReasoningContentPart;
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::reasoning::ReasoningContentPart;
 use llm_test_matrix::*;
 use rstest::rstest;
 
@@ -234,7 +234,6 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 // Include GPT-6 Astra in the reasoning-plus-tool-call scenario; its
 // reasoning artifacts can carry opaque replay state without summary text.
 #[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
-#[case::openai_gpt6_sol(OPENAI_GPT6_SOL)]
 #[case::openai_gpt61_sol(OPENAI_GPT61_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
@@ -318,7 +317,7 @@ fn reasoning_artifact_has_content(part: &ReasoningContentPart) -> bool {
 #[cfg(test)]
 mod reasoning_artifact_tests {
     use super::*;
-    use everruns_provider::reasoning::ReasoningText;
+    use everruns_contracts::reasoning::ReasoningText;
 
     #[test]
     fn opaque_openai_reasoning_requires_nonempty_replay_payload_and_id() {

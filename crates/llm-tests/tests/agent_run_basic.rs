@@ -19,13 +19,13 @@
 
 mod llm_test_matrix;
 
-use everruns_provider::provider::DriverId;
+use everruns_contracts::provider::DriverId;
 use llm_test_matrix::*;
 use rstest::rstest;
 
 use everruns_builtins::CurrentTimeCapability;
+use everruns_contracts::model_spec::ModelSpec;
 use everruns_integrations_filesystem::FileSystemCapability;
-use everruns_provider::model_spec::ModelSpec;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 
 // ============================================================================
@@ -41,7 +41,6 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
-#[case::openai_gpt6_sol(OPENAI_GPT6_SOL)]
 #[case::openai_gpt61_sol(OPENAI_GPT61_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::gemini_flash(GEMINI_FLASH)]
@@ -98,7 +97,6 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
-#[case::openai_gpt6_sol(OPENAI_GPT6_SOL)]
 #[case::openai_gpt61_sol(OPENAI_GPT61_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::gemini_flash(GEMINI_FLASH)]
@@ -162,7 +160,6 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
-#[case::openai_gpt6_sol(OPENAI_GPT6_SOL)]
 #[case::openai_gpt61_sol(OPENAI_GPT61_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
@@ -226,7 +223,7 @@ async fn test_model_not_available_returns_user_friendly_error(
     };
 
     let model = ModelSpec::on(provider_type.as_str(), model_name);
-    let provider_config = everruns_provider::driver_registry::ProviderConfig::new(provider_type)
+    let provider_config = everruns_contracts::driver_registry::ProviderConfig::new(provider_type)
         .with_api_key(api_key);
 
     let runner = InMemoryAgenticLoop::builder()

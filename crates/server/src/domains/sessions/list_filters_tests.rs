@@ -10,10 +10,10 @@ use super::{
 };
 use crate::domains::common::{Command, Ctx};
 use crate::storage::{CreateAgentRow, CreateEventRow, CreateSessionRow, StorageBackend};
+use everruns_contracts::typed_id::AgentId;
+use everruns_contracts::typed_id::{HarnessId, PrincipalId, SessionId};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole};
 use everruns_platform::SessionSource;
-use everruns_provider::typed_id::AgentId;
-use everruns_provider::typed_id::{HarnessId, PrincipalId, SessionId};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -92,6 +92,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
     };
     let row = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: spec.source,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -356,6 +357,7 @@ async fn agent_facets_return_public_ids_that_can_be_used_as_filters() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -432,6 +434,7 @@ async fn facets_never_count_across_organizations() {
 
     let other_org = DEFAULT_ORG_ID + 1;
     db.create_session(CreateSessionRow {
+        playground_user_id: None,
         source: SessionSource::Chat,
         org_id: other_org,
         app_id: None,

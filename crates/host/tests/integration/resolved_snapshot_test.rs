@@ -3,6 +3,8 @@
 // `load_resolved_turn`, and no credential or platform-only metadata reaches
 // snapshot serialization, Debug output, or emitted event metadata.
 
+use everruns_contracts::runtime_provider::BearerAuth;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::mcp_server::ScopedMcpServer;
 use everruns_core::{DEFAULT_ORG_ID, ResolvedExecutionSnapshot};
 use everruns_host::{
@@ -10,8 +12,6 @@ use everruns_host::{
 };
 use everruns_llmsim::LlmSimConfig;
 use everruns_llmsim::{LlmSimRuntimeExt, llm_sim_provider};
-use everruns_provider::runtime_provider::BearerAuth;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 const HEADER_SECRET: &str = "SECRET-MCP-HEADER-MARKER";
 const PROVIDER_SECRET: &str = "SECRET-PROVIDER-KEY-MARKER";
@@ -185,8 +185,8 @@ impl everruns_core::execution_loading::AgentStore for ArchivedAtSeamAgentStore {
     async fn get_agent(
         &self,
         agent_id: AgentId,
-    ) -> everruns_provider::error::Result<Option<everruns_core::AgentDefinition>> {
-        Err(everruns_provider::error::AgentLoopError::config(format!(
+    ) -> everruns_contracts::error::Result<Option<everruns_core::AgentDefinition>> {
+        Err(everruns_contracts::error::AgentLoopError::config(format!(
             "agent {agent_id} is archived and cannot execute turns"
         )))
     }
@@ -197,7 +197,7 @@ impl everruns_host::RuntimeAgentStore for ArchivedAtSeamAgentStore {
     async fn add_agent(
         &self,
         _agent: everruns_core::AgentDefinition,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         Ok(())
     }
 }

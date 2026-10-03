@@ -28,13 +28,13 @@
 pub mod connection;
 pub mod payments;
 
+use everruns_contracts::connector::ConnectorPlugin;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
 };
 use everruns_core::{
     CapabilityMcpServer, CapabilityMcpServers, McpServerActsAs, McpServerAuthMode, ScopedMcpServer,
 };
-use everruns_platform::connector::ConnectorPlugin;
 use serde_json::{Value, json};
 
 use connection::ParallelConnector;
@@ -324,7 +324,7 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::capabilities::{Capability, collect_capability_mcp_servers};
     use serde_json::json;
 

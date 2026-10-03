@@ -42,7 +42,7 @@ typography:
     letterSpacing: -0.02em
   headline-md:
     fontFamily: Geist Sans
-    fontSize: 1.5rem
+    fontSize: 1.75rem
     fontWeight: 600
     lineHeight: 1.25
     letterSpacing: -0.015em
@@ -209,7 +209,7 @@ Experimental features use the Lucide flask marker in navigation rather than a pa
 
 Layouts use a 4px base spacing scale (`xs`–`2xl`) consistent with the Tailwind
 defaults already in use. Content sits on a near-white page textured by a branded
-**dot grid**: navy dots at 8% opacity in light mode, gold dots at 10% in dark
+**dot grid**: navy dots at 3.5% opacity in light mode, gold dots at 4.5% in dark
 mode, repeating on a 24px cell (`spacing.dot-grid`). Group related items into
 white cards with generous internal padding to separate them from the textured
 background.
@@ -246,11 +246,47 @@ status dots, circular Lucide glyphs, and the rings in the Everruns logo.
   collapse secondary or destructive actions into an ellipsis menu when the
   card is too narrow for the full action row.
 
+### Overview density
+
+Overview screens keep enough context to compare entities: name and lifecycle first,
+a readable description second, then configuration, relationships, channels, and usage.
+Use the existing neutral palette in both themes. Reduce repeated framing and metadata
+rather than removing useful configuration.
+
+- Descriptions use foreground with reduced opacity for more contrast than muted metadata.
+- Lifecycle status is a small semantic dot and a text label, without a filled badge.
+  Informational labels and diagnostics can still use badges where they convey extra meaning.
+- Entity icons are plain glyphs; only masthead icons use a lightly tinted tile.
+- Slugs, exact-ID copy actions, and creation dates belong in details, unless the identifier
+  itself is needed to distinguish technical resources. Keep operational recency and errors.
+- Capabilities are icon-and-name details; four show initially. Tags have a quiet neutral fill;
+  three show initially. Keyboard-accessible overflow controls reveal each complete set.
+- Card footers align usage and actions. Body content can grow naturally; never clip channels
+  or enforce a fixed card height to match a visual reference.
+
+Agent channels are core configuration, placed above tags in the card body. Preserve transport
+names, lifecycle indicators, empty/unloaded states, management permissions, and links to
+Integrations. Container width controls the visible channel count and accurate overflow.
+Agent suspension and lifecycle override a channel's live indicator. Harnesses have no channels
+because endpoints belong to agents. The production behavior lives in
+`src/components/agents/agent-card-channels.tsx`.
+
+List screens give the main content the available width. Put status filtering and counts in
+one control strip; omit duplicate masthead counts and summary rails. Preserve genuine filters
+such as category and provider as toolbar controls. Contextual rails remain useful on detail,
+editing, and operational screens with richer filtering. Footers are optional and explain
+partial results or pagination rather than repeating the tabs.
+
+Example discovery shows one compact row of previews with descriptions and import/setup actions;
+the full example gallery keeps its configuration details. Navigation selection uses a narrow
+primary marker and a faint primary tint, with section spacing instead of repeated separator rules.
+
 ### Composition invariants
 
 - Top-level entity screens compose the five-zone primitives in
   `src/components/layout/page-layout.tsx`: breadcrumb, masthead, control strip,
-  body columns, and footer. List, detail, and edit pages supply content without
+  body, and optional footer. Lists use the main column; contextual screens can add a rail.
+  List, detail, and edit pages supply content without
   inventing a parallel shell.
 - Domain cards compose shared primitives. For example, `AgentCard` composes
   `EntityCard`, which composes `Card`; previews must render `AgentCard` when they

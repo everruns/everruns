@@ -38,11 +38,10 @@ tracing.workspace = true
 uuid.workspace = true
 
 everruns-core.workspace = true
-everruns-capability.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 everruns-builtins = { workspace = true, optional = true }
 everruns-engine.workspace = true
 everruns-mcp = { workspace = true, optional = true }
-everruns-provider.workspace = true
 everruns-drivers = { workspace = true, optional = true }
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
@@ -98,12 +97,12 @@ native-containment = [
     "dep:seccompiler",
 ]
 # Deployment-owned utility LLM (OpenAI or the OpenRouter gateway).
-utility-llm = ["everruns-provider/http", "dep:everruns-drivers", "everruns-drivers/openrouter"]
+utility-llm = ["everruns-contracts/http", "dep:everruns-drivers", "everruns-drivers/openrouter"]
 # Kept as the pre-OpenRouter name of the same wiring.
 utility-openai = ["utility-llm"]
 otel = [
     "tokio/time",
-    "everruns-provider/tls-aws-lc-rs",
+    "everruns-contracts/tls-aws-lc-rs",
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",

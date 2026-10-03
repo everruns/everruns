@@ -65,11 +65,18 @@ pub(super) async fn authorize_ag_ui_request(
         tracing::error!(app_id = %context.public_id, "AG-UI channel config did not deserialize");
         return Err(not_found());
     };
+    // THREAT[TM-AUTHZ-005]: `auth.mode = anonymous` is not a credential
+    // policy, so it must take the anonymous branch below (the `anonymous`
+    // lock and shared token) rather than bypass it. Matches Public Chat.
+    let real_auth = channel
+        .auth
+        .as_deref()
+        .filter(|auth| auth.mode != everruns_platform::EndpointAuthMode::Anonymous);
     let runtime_user = if let Some((account, _)) =
         runtime_endpoint_account(state, &channel.public_id.to_string(), headers).await?
     {
         Some(account.id)
-    } else if let Some(auth) = channel.auth.as_ref() {
+    } else if let Some(auth) = real_auth {
         let principal = state
             .auth_verifier
             .verify_principal(
@@ -88,7 +95,7 @@ pub(super) async fn authorize_ag_ui_request(
                     state,
                     context.org_id,
                     "oidc",
-                    &principal.issuer,
+                    &principal.identity_realm,
                     &principal.subject,
                 )
                 .await?,
@@ -151,7 +158,7 @@ pub(crate) async fn resolve_ingress_identity(
     provider: &str,
     realm: &str,
     subject: &str,
-) -> Result<everruns_provider::typed_id::VirtualUserId, Response> {
+) -> Result<everruns_contracts::typed_id::VirtualUserId, Response> {
     let user = state
         .db
         .resolve_runtime_identity(crate::storage::runtime_identity::VerifiedRuntimeIdentity {

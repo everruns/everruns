@@ -80,6 +80,46 @@ done < <(grep -l 'cargo tree' scripts/lib/check-*.sh)
 
 check "no guard discards cargo's stderr" "$([ "$unguarded" -eq 0 ] && echo ok)"
 
+# Vendor dependencies are optional in the consolidated driver crate. These
+# fixtures model a forbidden subtree visible only when vendor features are on.
+mkdir "$WORK/bin"
+cat >"$WORK/bin/cargo" <<'CARGO'
+#!/usr/bin/env bash
+package=""
+all_features=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -p) package="$2"; shift ;;
+    --all-features) all_features=1 ;;
+  esac
+  shift
+done
+printf '%s 0.35.0\n' "$package"
+if [ "$package" = everruns-drivers ] && [ "$all_features" -eq 1 ]; then
+  printf '%s 1.0.0\n' "$GUARD_FAKE_DEPENDENCY"
+fi
+case "$package" in
+  everruns-server|everruns-worker|everruns) printf 'everruns-llmsim 0.35.0\n' ;;
+esac
+CARGO
+chmod +x "$WORK/bin/cargo"
+
+while read -r guard dependency; do
+  set +e
+  output="$(PATH="$WORK/bin:$PATH" GUARD_FAKE_DEPENDENCY="$dependency" \
+    bash "scripts/lib/$guard" 2>"$WORK/err")"
+  status=$?
+  set -e
+  check "$guard rejects vendor-only $dependency" "$([ "$status" -eq 1 ] && echo ok)"
+  check "$guard reports the forbidden subtree" \
+    "$(grep -q "^$dependency " <<<"$output" && echo ok)"
+done <<'GUARDS'
+check-provider-isolation.sh everruns-core
+check-test-support-isolation.sh llmsim
+check-agent-record-isolation.sh everruns-platform
+check-observability-isolation.sh opentelemetry
+GUARDS
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures check(s) failed"
   exit 1

@@ -1098,11 +1098,39 @@
       "tools": [
         "delete_file",
         "edit_file",
+        "glob",
+        "grep",
         "grep_files",
         "list_directory",
         "read_file",
         "read_many_files",
         "stat_file",
+        "write_file"
+      ]
+    },
+    {
+      "category": "Sandboxes",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [
+        "managed_sandbox"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "session_sandbox",
+      "name": "Managed Environment",
+      "status": "available",
+      "tools": [
+        "bash",
+        "edit_file",
+        "glob",
+        "grep",
+        "read_file",
         "write_file"
       ]
     },

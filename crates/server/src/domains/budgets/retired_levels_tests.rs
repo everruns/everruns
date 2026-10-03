@@ -16,7 +16,7 @@
 use crate::domains::budgets::BudgetService;
 use crate::storage::StorageBackend;
 use crate::storage::models::*;
-use everruns_provider::typed_id::{PrincipalId, TriggerId};
+use everruns_contracts::typed_id::{PrincipalId, TriggerId};
 use std::sync::Arc;
 
 fn make_service() -> (BudgetService, Arc<StorageBackend>) {
@@ -32,6 +32,7 @@ async fn create_session(
     trigger_id: Option<uuid::Uuid>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id,

@@ -43,6 +43,7 @@ export function hasPermission(currentRole: OrgRole, requiredRole: OrgRole): bool
 // org switch redirects to the list page to avoid a 404. MUST stay in sync
 // with the dynamic [id] routes under apps/ui/src/app/(main)/.
 const ENTITY_PREFIXES = [
+  "/playground/",
   "/virtual-users/",
   "/agents/",
   "/capabilities/",

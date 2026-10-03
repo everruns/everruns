@@ -16,8 +16,8 @@ pub const LLMSIM_MODEL_ID: &str = "llmsim-model";
 ///
 /// Useful with builders that expose a raw provider seam (e.g.
 /// `LocalRuntimeBuilder::provider_with_default_model`).
-pub fn llm_sim_provider(config: LlmSimConfig) -> everruns_provider::runtime_provider::Provider {
-    everruns_provider::runtime_provider::Provider::new(LLMSIM_PROVIDER, LlmSimDriver::new(config))
+pub fn llm_sim_provider(config: LlmSimConfig) -> everruns_contracts::runtime_provider::Provider {
+    everruns_contracts::runtime_provider::Provider::new(LLMSIM_PROVIDER, LlmSimDriver::new(config))
 }
 
 /// Deterministic-simulation sugar for runtime builders.

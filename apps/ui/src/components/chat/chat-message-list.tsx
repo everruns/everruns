@@ -69,7 +69,9 @@ import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
 import { ModelChangeDivider } from "@/components/chat/model-change-divider";
-import type { ToolCallContent } from "@/components/chat/tool-call-utils";
+import { getFullText, type ToolCallContent } from "@/components/chat/tool-call-utils";
+import type { ApprovalToolContext } from "@/components/chat/approval-tool-activity";
+import { useMembers } from "@/hooks/use-members";
 import { useLocale } from "@/providers/locale-provider";
 import {
   getRuntimeErrorFromOutputMessage,
@@ -205,6 +207,69 @@ export const ChatMessageList = memo(function ChatMessageList({
   const { locale, t } = useLocale();
   const { data: providers } = useProviders();
   const { data: agents } = useAgents();
+  const approvalCalls = useMemo(() => {
+    const calls: ToolCallContent[] = [];
+    for (const event of chatEvents) {
+      const output = getEventData(event, "output.message.completed");
+      if (!output) continue;
+      calls.push(...getToolCalls(output).filter((call) => call.name === "record_approval"));
+    }
+    return calls;
+  }, [chatEvents, getToolCalls]);
+  const { data: members } = useMembers(approvalCalls.length > 0);
+  const memberNames = useMemo(
+    () => new Map((members ?? []).map((member) => [member.user_id, member.name || member.email])),
+    [members],
+  );
+  const approvalContexts = useMemo(() => {
+    const inputEventsByMessageId = new Map<string, Event>();
+    for (const event of chatEvents) {
+      const input = getEventData(event, "input.message");
+      if (input?.message.id) inputEventsByMessageId.set(input.message.id, event);
+    }
+
+    const contexts = new Map<string, ApprovalToolContext>();
+    for (const call of approvalCalls) {
+      const resultText = getFullText(toolResultsMap.get(call.id)?.result);
+      let approvedMessageId: string | undefined;
+      try {
+        const payload: unknown = JSON.parse(resultText);
+        if (payload && typeof payload === "object" && "approved_in_message" in payload) {
+          const value = payload.approved_in_message;
+          if (typeof value === "string") approvedMessageId = value;
+        }
+      } catch {
+        // Missing correlation leaves the consent link unavailable.
+      }
+
+      const inputEvent = approvedMessageId
+        ? inputEventsByMessageId.get(approvedMessageId)
+        : undefined;
+      const input = inputEvent ? getEventData(inputEvent, "input.message") : undefined;
+      const metadata = inputEvent?.metadata ?? input?.message.metadata;
+      const initiator = metadata?.initiator;
+      const actorId =
+        initiator &&
+        typeof initiator === "object" &&
+        "type" in initiator &&
+        initiator.type === "user" &&
+        "user_id" in initiator &&
+        typeof initiator.user_id === "string"
+          ? initiator.user_id
+          : undefined;
+      contexts.set(call.id, {
+        approvedBy: actorId
+          ? memberNames.get(actorId) || `user ${actorId}`
+          : inputEvent
+            ? "an unattributed initiator"
+            : "an unknown actor",
+        consentMessageHref: approvedMessageId
+          ? `/sessions/${sessionId}/chat#message-${approvedMessageId}`
+          : undefined,
+      });
+    }
+    return contexts;
+  }, [approvalCalls, chatEvents, memberNames, sessionId, toolResultsMap]);
   const traceConfigByDriver = useMemo(() => buildTraceConfigByDriver(providers), [providers]);
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
@@ -711,6 +776,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     toolResultsMap={toolResultsMap}
                     toolProgressMap={toolProgressMap}
                     toolOutputMap={toolOutputMap}
+                    approvalContexts={approvalContexts}
                   />
                 </div>
               ),
@@ -723,6 +789,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               key={event.id}
               className={`chat-transcript-row space-y-2 ${isUser ? "scroll-mt-4" : ""}`}
               data-message-anchor={isUser ? event.id : undefined}
+              id={isUser ? `message-${data.message?.id}` : undefined}
             >
               {(textContent || images.length > 0) && (
                 <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -791,6 +858,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                     toolResultsMap={toolResultsMap}
                     toolProgressMap={toolProgressMap}
                     toolOutputMap={toolOutputMap}
+                    approvalContexts={approvalContexts}
                   />
                 </div>
               )}

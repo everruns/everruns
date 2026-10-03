@@ -19,16 +19,16 @@
 use std::sync::Arc;
 
 use crate::kernel_imports::{
-    Caller, RuntimeMessage, TURN_STARTED, everruns_provider::user_facing_error::UserFacingError,
+    Caller, RuntimeMessage, TURN_STARTED, contracts::user_facing_error::UserFacingError,
 };
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, OutputMessageCompletedData, SessionIdledData,
     TurnSealedData,
 };
 use everruns_durable::SealedTaskInfo;
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
-use everruns_provider::user_facing_error::codes as user_facing_error_codes;
 
 use crate::domains::sessions::SessionService;
 use crate::services::EventService;

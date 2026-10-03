@@ -15,9 +15,9 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
+use everruns_contracts::session_sqldb::{DatabaseInfo, SessionSqlDbStore};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
-use everruns_platform::session_sqldb::{DatabaseInfo, SessionSqlDbStore};
-use everruns_provider::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

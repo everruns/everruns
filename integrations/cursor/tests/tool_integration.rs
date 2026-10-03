@@ -2,11 +2,11 @@
 //! Integration tests: tool execute_with_context against wiremock Cursor API.
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::capabilities::Capability;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{connection_services::UserConnectionResolver, tool_context::ToolContext};
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;

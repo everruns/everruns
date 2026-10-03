@@ -25,13 +25,13 @@ use crate::storage::{
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
 use anyhow::{Context, Result, bail};
+use everruns_contracts::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
 use everruns_core::events::{EventData, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use everruns_core::{
     Event, EventListener, EventRequest, McpServerActsAs, ScopedMcpServers,
     merge_scoped_mcp_servers, parse_mcp_tool_name, sanitize_mcp_server_name,
 };
 use everruns_platform::{FeatureFlags, SessionParticipantKind};
-use everruns_provider::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -422,7 +422,7 @@ impl EventService {
         &self,
         session_id: SessionId,
         matches_participant: F,
-    ) -> Option<everruns_provider::typed_id::SessionParticipantId>
+    ) -> Option<everruns_contracts::typed_id::SessionParticipantId>
     where
         F: Fn(&crate::storage::models::SessionParticipantRow) -> bool,
     {
@@ -673,10 +673,10 @@ impl everruns_core::event_emitter::EventEmitter for EventService {
     async fn emit(
         &self,
         request: EventRequest,
-    ) -> everruns_provider::error::Result<everruns_core::Event> {
+    ) -> everruns_contracts::error::Result<everruns_core::Event> {
         EventService::emit(self, request)
             .await
-            .map_err(|e| everruns_provider::error::AgentLoopError::event(e.to_string()))
+            .map_err(|e| everruns_contracts::error::AgentLoopError::event(e.to_string()))
     }
 }
 
@@ -688,12 +688,12 @@ mod tests {
     use crate::storage::models::{
         CreatePrincipalRow, CreateSessionParticipantRow, CreateSessionRow,
     };
+    use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, VirtualUserId};
     use everruns_core::events::{
         EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     };
     use everruns_core::{DEFAULT_ORG_ID, RuntimeMessage};
     use everruns_platform::SessionParticipantRole;
-    use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId, VirtualUserId};
     use std::sync::Arc;
 
     fn sample_metadata() -> AgentVersionEventMetadata {
@@ -738,6 +738,7 @@ mod tests {
 
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,

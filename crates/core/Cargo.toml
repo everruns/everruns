@@ -27,12 +27,11 @@ exclude = ["testdata/"]
 # Provider/LLM abstraction foundation (typed IDs, credential schema, user-facing
 # error taxonomy, compact contracts, URL validation). Core enables no concrete
 # provider transport and does not re-export provider-owned modules.
-everruns-provider = { workspace = true, default-features = false }
+everruns-contracts = { workspace = true, default-features = false }
 
 # Neutral capability contract (EVE-873): capability identity, references, and
 # registry index. Only the identity surface — the code-defined authoring
 # surface (`definition` feature) is consumed by `everruns`, not core.
-everruns-capability = { workspace = true }
 
 # Core dependencies
 anyhow.workspace = true
@@ -109,7 +108,7 @@ inventory.workspace = true
 # Note: OTLP telemetry lives behind `everruns-host/observability`; no core
 # build — default or otherwise — carries exporter dependencies.
 default = []
-openapi = ["dep:utoipa", "everruns-provider/openapi"]
+openapi = ["dep:utoipa", "everruns-contracts/openapi"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 
 [dev-dependencies]

@@ -18,7 +18,7 @@ mod json_wire;
 mod rolling_upgrade_tests;
 mod slack_action_wire;
 use chrono::{DateTime, TimeZone, Utc};
-use everruns_provider::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
+use everruns_contracts::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 
 pub mod proto {
     tonic::include_proto!("everruns.internal");
@@ -152,7 +152,6 @@ fn event_data_serialize_fallback(err: serde_json::Error) -> serde_json::Value {
 /// Serialize EventData to JSON Value
 ///
 /// Converts the typed EventData variant to its JSON representation.
-/// Note: Unsupported events should not reach serialization - they are filtered earlier.
 fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
     use everruns_core::EventData;
     fn to_json(d: &impl serde::Serialize) -> serde_json::Value {
@@ -192,6 +191,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::SessionIdled(d) => to_json(d),
         EventData::SessionTitleUpdated(d) => to_json(d),
         EventData::SessionModelChanged(d) => to_json(d),
+        EventData::EnvironmentInstanceLost(d) | EventData::EnvironmentRecovered(d) => to_json(d),
         EventData::TaskCreated(d) => to_json(d),
         EventData::TaskUpdated(d) => to_json(d),
         EventData::TaskMessageSent(d) => to_json(d),
@@ -200,16 +200,16 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ContextCompacted(d) => to_json(d),
         EventData::ContextCompactionSkipped(d) => to_json(d),
         EventData::ContextCompactionFailed(d) => to_json(d),
-        EventData::BudgetWarning(d) => to_json(d),
-        EventData::BudgetPaused(d) => to_json(d),
-        EventData::BudgetExhausted(d) => to_json(d),
-        EventData::BudgetResumed(d) => to_json(d),
+        EventData::BudgetWarning(d)
+        | EventData::BudgetPaused(d)
+        | EventData::BudgetExhausted(d)
+        | EventData::BudgetResumed(d) => to_json(d),
         EventData::FileWritten(d) => to_json(d),
         EventData::VoiceSessionStarted(d) => to_json(d),
-        EventData::VoiceInputTranscriptDelta(d) => to_json(d),
-        EventData::VoiceInputTranscriptCompleted(d) => to_json(d),
-        EventData::VoiceOutputTranscriptDelta(d) => to_json(d),
-        EventData::VoiceOutputTranscriptCompleted(d) => to_json(d),
+        EventData::VoiceInputTranscriptDelta(d)
+        | EventData::VoiceInputTranscriptCompleted(d)
+        | EventData::VoiceOutputTranscriptDelta(d)
+        | EventData::VoiceOutputTranscriptCompleted(d) => to_json(d),
         EventData::VoiceSessionEnded(d) => to_json(d),
         EventData::VoiceSessionFailed(d) => to_json(d),
         EventData::TranscriptRepaired(d) => to_json(d),
@@ -653,11 +653,11 @@ pub fn proto_message_to_schema(
         phase: value
             .phase
             .as_deref()
-            .and_then(everruns_provider::ExecutionPhase::from_provider_str),
+            .and_then(everruns_contracts::ExecutionPhase::from_provider_str),
         phase_source: value
             .phase_source
             .as_deref()
-            .and_then(everruns_provider::PhaseSource::from_str_opt),
+            .and_then(everruns_contracts::PhaseSource::from_str_opt),
         controls,
         metadata,
         external_actor,

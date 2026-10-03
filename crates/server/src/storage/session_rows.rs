@@ -29,17 +29,17 @@
 //! means nothing to an API caller reading the OpenAPI spec.
 
 use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::HarnessId,
-    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::VirtualUserId,
+    contracts::typed_id::AgentId, contracts::typed_id::HarnessId, contracts::typed_id::ModelId,
+    contracts::typed_id::PrincipalId, contracts::typed_id::VirtualUserId,
 };
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct CreateSessionRow {
     pub org_id: i64,
     /// How this session was started. Set by the creating ingress path, never
-    /// taken from untrusted client input except for the two client-declarable
+    /// taken from untrusted client input except for client-declarable
     /// variants (see `SessionSource::is_client_declarable`).
     pub source: everruns_platform::SessionSource,
     pub app_id: Option<Uuid>,
@@ -50,9 +50,10 @@ pub struct CreateSessionRow {
     pub trigger_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
+    pub agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
     pub agent_config_hash: Option<String>,
     pub virtual_user_id: Option<VirtualUserId>,
+    pub playground_user_id: Option<VirtualUserId>,
     pub owner_principal_id: PrincipalId,
     pub resolved_owner_user_id: Option<Uuid>,
     pub title: Option<String>,
@@ -82,9 +83,9 @@ pub struct CreateSessionRow {
     /// Validated blueprint config (JSONB in DB).
     pub blueprint_config: Option<serde_json::Value>,
     /// Parent session ID for governed subagent depth tracking.
-    pub parent_session_id: Option<everruns_provider::typed_id::SessionId>,
+    pub parent_session_id: Option<everruns_contracts::typed_id::SessionId>,
     /// Explicit internal-only budget/delegation root for detached peers.
-    pub budget_root_session_id: Option<everruns_provider::typed_id::SessionId>,
+    pub budget_root_session_id: Option<everruns_contracts::typed_id::SessionId>,
     /// Internal id of an existing workspace to attach this session to. When
     /// `None`, `create_session` auto-creates a default 1:1 workspace whose id
     /// equals the new session id (the equality invariant). When `Some`, the
@@ -105,6 +106,7 @@ impl Default for CreateSessionRow {
             agent_version_id: None,
             agent_config_hash: None,
             virtual_user_id: None,
+            playground_user_id: None,
             owner_principal_id: PrincipalId::new(),
             resolved_owner_user_id: None,
             title: None,
@@ -127,4 +129,36 @@ impl Default for CreateSessionRow {
             workspace_id: None,
         }
     }
+}
+
+/// Ordering for the sessions list. The chat thread list wants last activity;
+/// the operational list wants creation order.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SessionListOrder {
+    #[default]
+    CreatedAt,
+    LastActivity,
+}
+
+/// Filter predicate shared by the sessions list and its facet aggregates
+/// (EVE-852). Both read the same struct so a count can never describe a
+/// different population than the page it annotates.
+#[derive(Debug, Clone, Default)]
+pub struct SessionListFilters {
+    pub playground_user_id: Option<VirtualUserId>,
+    pub archived_only: bool,
+    pub agent_id: Option<AgentId>,
+    pub search: Option<String>,
+    /// Empty means "any source".
+    pub sources: Vec<everruns_platform::SessionSource>,
+    /// Empty means "any activity".
+    pub activities: Vec<everruns_platform::SessionActivity>,
+    /// Restrict to sessions whose resolved human owner is this user (`mine`).
+    pub owner_user_id: Option<Uuid>,
+    pub created_after: Option<DateTime<Utc>>,
+    pub created_before: Option<DateTime<Utc>>,
+    /// Widen the result set to archived sessions too. Default `false`: archive
+    /// is a "put it away" bit, so hiding it is the point.
+    pub include_archived: bool,
+    pub order: SessionListOrder,
 }

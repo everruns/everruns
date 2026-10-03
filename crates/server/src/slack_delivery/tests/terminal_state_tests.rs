@@ -1,8 +1,8 @@
 use super::*;
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateEventRow, CreateSessionRow};
-use everruns_provider::typed_id::PrincipalId;
-use everruns_provider::typed_id::{AgentId, HarnessId};
+use everruns_contracts::typed_id::PrincipalId;
+use everruns_contracts::typed_id::{AgentId, HarnessId};
 use tokio::sync::broadcast;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -13,8 +13,9 @@ const FRONTEND: &str = "https://app.example.com";
 const CHANNEL: &str = "C_TERMINAL";
 const THREAD_TS: &str = "1700000000.000100";
 
-pub(super) async fn seed_session(db: &StorageBackend) -> everruns_provider::typed_id::SessionId {
+pub(super) async fn seed_session(db: &StorageBackend) -> everruns_contracts::typed_id::SessionId {
     db.create_session(CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: ORG,
@@ -53,7 +54,7 @@ pub(super) async fn seed_session(db: &StorageBackend) -> everruns_provider::type
 
 pub(super) async fn emit(
     db: &StorageBackend,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     event_type: &str,
     input_message_id: &str,
     data: serde_json::Value,

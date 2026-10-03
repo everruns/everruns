@@ -10,6 +10,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use everruns_contracts::typed_id::{ExecId, TurnId};
 use everruns_core::ExecutionContext;
 use everruns_durable::{
     ActivityOptions, ClaimedTask, EventLog, HeartbeatResponse, SignalStore, StoreError,
@@ -24,7 +25,6 @@ use everruns_host::{
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
 };
-use everruns_provider::typed_id::{ExecId, TurnId};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -1530,8 +1530,8 @@ mod tests {
 
     #[test]
     fn act_wire_input_uses_the_engine_checkpoint_as_its_only_resume_state() {
+        use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId};
         use everruns_engine::{ActSchedulingFacts, TurnState, plan_after_reason};
-        use everruns_provider::typed_id::{HarnessId, MessageId, SessionId};
 
         let state = TurnState {
             org_id: 7,
@@ -1555,7 +1555,7 @@ mod tests {
             native_counts: None,
             success: true,
             text: String::new(),
-            tool_calls: vec![everruns_provider::tool_types::ToolCall {
+            tool_calls: vec![everruns_contracts::tool_types::ToolCall {
                 id: "call-1".into(),
                 name: "noop".into(),
                 arguments: serde_json::json!({}),

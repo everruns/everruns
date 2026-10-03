@@ -219,7 +219,7 @@ boundary: a shared workspace can never route into a private Memory.
 * Shared surface memory: `/memory/shared`, read-write, one org-scoped Memory per
   harness that declares one, keyed by a reserved `memories.name`. Every session
   of that harness reads and writes the same files. See
-  `knowledge/harnesses/platform-chat-v2.md`.
+  `knowledge/harnesses/platform-chat.md`.
 
 Mounts configured through the `memory` capability's `mounts[]` still copy the
 Memory's files into the session at creation, because an arbitrary `mem_` id is

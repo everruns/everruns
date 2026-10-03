@@ -1,5 +1,6 @@
 "use client";
 
+import { EntityStatus } from "@/components/ui/entity-status";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardActions, CardContent, CardHeader } from "@/components/ui/card";
@@ -16,7 +17,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { IconTile } from "@/components/layout/page-layout";
 import { Key, Trash2, RefreshCw, Boxes, Ellipsis, ExternalLink, Link2 } from "lucide-react";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
-import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { managedProviderCopy } from "@/lib/managed-provider-copy";
 import type { Provider } from "@/lib/api/types";
 
@@ -92,7 +92,6 @@ export function ProviderCard({
       }
       title={provider.name}
       href={`/settings/providers/${provider.id}`}
-      copyValue={provider.id}
       subtitle={
         <span className="text-xs text-muted-foreground">
           {getProviderLabel(provider.provider_type)}
@@ -105,7 +104,7 @@ export function ProviderCard({
               {managedProviderCopy.badge}
             </Badge>
           )}
-          <Badge variant={getEntityStatusBadgeVariant(provider.status)}>{provider.status}</Badge>
+          <EntityStatus status={provider.status} />
         </>
       }
       footer={

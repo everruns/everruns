@@ -7,12 +7,12 @@
 
 #![allow(dead_code)] // Not all test binaries use every constant.
 
-use everruns_provider::credential_schema::assemble_credential_document;
-use everruns_provider::driver_registry::DriverDescriptor;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::driver_registry::ProviderConfig;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
+use everruns_contracts::credential_schema::assemble_credential_document;
+use everruns_contracts::driver_registry::DriverDescriptor;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::driver_registry::ProviderConfig;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
 use everruns_test_support::in_memory_loop::{InMemoryModelConfig, TurnResult};
 
 // ============================================================================
@@ -309,20 +309,19 @@ pub const OPENAI_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
 )
 .reasoning_as_text();
 
+/// Balanced GPT-5.6 tier used by production hosted-search sessions (EVE-1164).
+pub const OPENAI_GPT56_TERRA: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-5.6-terra",
+    everruns_drivers::openai::descriptor,
+)
+.reasoning_as_text();
+
 // GPT-6 Astra is covered by the basic and reasoning-plus-tool-call scenarios.
 // Its reasoning can carry opaque encrypted replay state without readable text.
 pub const OPENAI_GPT6_ASTRA: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenAI,
     "gpt-6-astra",
-    everruns_drivers::openai::descriptor,
-);
-
-// GPT-6 Luna is the platform default model; Sol is the balanced GPT-6 tier.
-// Both run the basic, tool, schema, and reasoning-plus-tool-call scenarios,
-// which accept readable reasoning or opaque replay state alike.
-pub const OPENAI_GPT6_SOL: ProviderModelConfig = ProviderModelConfig::new(
-    DriverId::OpenAI,
-    "gpt-6-sol",
     everruns_drivers::openai::descriptor,
 );
 
@@ -945,8 +944,8 @@ mod quota_detector_tests {
         LiveToolCallOutcome, assert_live_tool_call_contract, classify_live_tool_call,
         is_model_unavailable, is_quota_exhausted, is_transient_transport_error, live_retry_backoff,
     };
+    use everruns_contracts::typed_id::TurnId;
     use everruns_core::turn::TurnStopReason;
-    use everruns_provider::typed_id::TurnId;
     use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 
     /// Label for the synthetic retry/skip tests below. Deliberately not a real
@@ -955,10 +954,10 @@ mod quota_detector_tests {
     /// genuine quota skip of that model.
     /// Declares no environment variable, so the synthetic cell can never
     /// resolve a real credential however the environment is configured.
-    fn synthetic_descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
-        everruns_provider::driver_registry::DriverDescriptor {
-            credential_schema: everruns_provider::credential_schema::CredentialFormSchema::empty(),
-            ..everruns_provider::driver_registry::DriverDescriptor::chat_only(
+    fn synthetic_descriptor() -> everruns_contracts::driver_registry::DriverDescriptor {
+        everruns_contracts::driver_registry::DriverDescriptor {
+            credential_schema: everruns_contracts::credential_schema::CredentialFormSchema::empty(),
+            ..everruns_contracts::driver_registry::DriverDescriptor::chat_only(
                 super::DriverId::Anthropic,
                 |_| unreachable!("the synthetic cell never builds a driver"),
             )

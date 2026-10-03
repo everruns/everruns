@@ -4,6 +4,7 @@ import EditAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/[endp
 import NewAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/new/page";
 import { ChannelForm, getDefaultChannelFormState } from "@/components/apps/channel-form";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import { ApiError } from "@/lib/api/client";
 import type { SlackInstallCapability, SlackWorkspace } from "@/lib/api/agent-endpoints";
 import { classifySlackConfigToken } from "@/components/slack/slack-workspaces";
 import type { Agent, AgentEndpoint } from "@/lib/api/types";
@@ -152,6 +153,42 @@ describe("Slack endpoint first run", () => {
     );
   });
 
+  it("keeps install failures compact, reveals diagnostics on demand, and allows retry", async () => {
+    (beginSlackInstall as jest.Mock).mockRejectedValue(
+      new ApiError(
+        502,
+        "Bad Gateway",
+        "<!DOCTYPE html><html>gateway page</html>",
+        undefined,
+        "request-123",
+        "ray-456",
+      ),
+    );
+    render(
+      <ChannelForm
+        state={{ ...getDefaultChannelFormState("slack"), slackInstallTeamId: "T1" }}
+        onChange={jest.fn()}
+        mode="edit"
+        endpointId="appchan_123"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add to Slack" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn’t connect to Slack");
+    expect(alert).not.toHaveTextContent("DOCTYPE");
+    expect(screen.queryByText(/Request ID: request-123/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
+    expect(await screen.findByText(/Request ID: request-123/)).toBeVisible();
+    expect(screen.getByText(/HTTP 502/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Copy technical details" })).toBeVisible();
+
+    (beginSlackInstall as jest.Mock).mockImplementation(() => new Promise(() => undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Opening Slack…" })).toBeDisabled();
+  });
+
   it("starts with manual Slack credentials collapsed", () => {
     render(
       <ChannelForm state={getDefaultChannelFormState("slack")} onChange={jest.fn()} mode="new" />,
@@ -159,9 +196,11 @@ describe("Slack endpoint first run", () => {
 
     expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Bot token")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Session strategy")).toBeVisible();
+    expect(screen.getByLabelText("Reply mode")).toBeVisible();
   });
 
-  it("opens manual fields for saved credentials and deployments without a provisioner", () => {
+  it("keeps saved credentials and manual-only setup collapsed until requested", () => {
     const { unmount } = render(
       <ChannelForm
         state={getDefaultChannelFormState("slack", {
@@ -174,7 +213,9 @@ describe("Slack endpoint first run", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Bot token")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Bot token")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Configure manually" }));
+    expect(screen.getByLabelText("Bot token")).toBeVisible();
     unmount();
 
     render(
@@ -190,7 +231,9 @@ describe("Slack endpoint first run", () => {
         }}
       />,
     );
-    expect(screen.getByLabelText("Signing secret")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Configure manually" }));
+    expect(screen.getByLabelText("Signing secret")).toBeVisible();
   });
 
   it("guides an administrator through connecting a workspace when none is connected", () => {
@@ -320,7 +363,7 @@ describe("Slack endpoint first run", () => {
         slackInstallCapability={mockSlackCapability}
       />,
     );
-    expect(screen.getByText("Live in Slack")).toBeInTheDocument();
+    expect(screen.getByText("Installed in Slack")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open in Slack/ })).toHaveAttribute(
       "href",
       "https://slack.com/app_redirect?app=A0123&team=T1",
@@ -377,7 +420,7 @@ describe("Slack endpoint first run", () => {
     };
     await renderNewEndpointPage();
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
-    expect(screen.getByLabelText("Signing secret")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save endpoint" }));

@@ -1,19 +1,19 @@
-version: 0.34.2
-date: 2026-10-02
+version: 0.36.0
+date: 2026-10-03
 headline:
-  - The kernel runs
-  - in an isolate.
+  - Your agent.
+  - Your choice.
 summary:
-  - The execution kernel runs in a JavaScript
-  - isolate, serve apps run durably on celld,
-  - and every 0.34 crate ships from one commit.
+  - Choose Bashkit or Daytona for each new session.
+  - Slack setup gets repaired, and session storage
+  - reads enforce the caller’s view permission.
 highlights:
-  - title: Kernel in an isolate
-    description: The engine's execution kernel runs inside a JavaScript isolate.
-    source: "#4024"
-  - title: Durable serve on celld
-    description: Serve apps snapshot and restore across process and node loss.
-    source: "#4019"
-  - title: Workers AI discovery
-    description: The Cloudflare driver lists Workers AI models.
-    source: "#4021"
+  - title: Choose an environment
+    description: Author agent profiles and select one for Chat or Playground.
+    source: "#4098"
+  - title: Slack setup repaired
+    description: Install draft endpoints with declared bot scopes and compact errors.
+    source: "#4075"
+  - title: Private storage protected
+    description: Session view is required to list stored values and secret names.
+    source: "#4099"

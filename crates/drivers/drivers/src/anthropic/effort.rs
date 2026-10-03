@@ -1,8 +1,8 @@
 //! Effort and output-cap rules for Claude's thinking models, split out of
 //! `driver.rs` to keep that file under its size ratchet.
 
-use everruns_provider::LlmCallConfig;
-use everruns_provider::model::{ModelProfile, ReasoningEffort};
+use everruns_contracts::LlmCallConfig;
+use everruns_contracts::model::{ModelProfile, ReasoningEffort};
 
 use crate::anthropic::driver::normalize_anthropic_id;
 
@@ -121,10 +121,10 @@ fn thinking_always_on(wire_model: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::DriverId;
+    use everruns_contracts::DriverId;
 
     fn effort_for(model: &str) -> Option<ReasoningEffort> {
-        let profile = everruns_provider::get_model_profile(&DriverId::Anthropic, model);
+        let profile = everruns_contracts::get_model_profile(&DriverId::Anthropic, model);
         default_effort(model, profile.as_ref())
     }
 
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn explicit_none_becomes_low_where_thinking_cannot_be_off() {
-        let profile = |m| everruns_provider::get_model_profile(&DriverId::Anthropic, m);
+        let profile = |m| everruns_contracts::get_model_profile(&DriverId::Anthropic, m);
         let mut config = LlmCallConfig::new("claude-opus-5-5");
         config.reasoning_effort = Some(ReasoningEffort::None);
         let opus55 = resolve(&config, "claude-opus-5-5", &profile("claude-opus-5-5"));
@@ -166,7 +166,8 @@ mod tests {
 
     #[test]
     fn an_explicit_caller_cap_is_never_expanded() {
-        let profile = everruns_provider::get_model_profile(&DriverId::Anthropic, "claude-opus-5-5");
+        let profile =
+            everruns_contracts::get_model_profile(&DriverId::Anthropic, "claude-opus-5-5");
         let p = profile.as_ref();
         // Adaptive and budget-based thinking both stay within the caller's
         // resource limit, even when the model supports a larger output.

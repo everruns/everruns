@@ -3,12 +3,12 @@
 use super::support::seed_archival_app;
 use crate::test_harness;
 use axum::http::StatusCode;
+use everruns_contracts::typed_id::AgentId;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_durable::UpdateField;
 use everruns_platform::Agent;
 use everruns_platform::Harness;
 use everruns_platform::Session;
-use everruns_provider::typed_id::AgentId;
 use everruns_server::storage::models::UpdateOrganizationSettings;
 use serde_json::{Value, json};
 use test_harness::TestServer;
@@ -569,7 +569,7 @@ async fn test_chat_harness_exists_in_seed() {
 }
 
 #[tokio::test]
-async fn test_chat_harness_includes_platform_capability() {
+async fn test_chat_harness_exposes_shell_platform_surface() {
     let server = TestServer::new().await;
 
     let harness: Harness = server
@@ -595,6 +595,8 @@ async fn test_chat_harness_includes_platform_capability() {
         cap_ids,
         vec![
             "platform",
+            "session_file_system",
+            "bashkit_shell",
             "btw",
             "human_intent",
             "current_time",
@@ -606,11 +608,20 @@ async fn test_chat_harness_includes_platform_capability() {
             "loop_detection",
             "error_disclosure",
             "compaction",
+            "tool_output_persistence",
+            "tool_output_distillation",
             "ask_user",
             "soft_approval"
         ],
-        "Platform Chat should keep platform operations, commands, and runtime safeguards locally"
+        "Platform Chat should keep shell operations, files, and runtime safeguards locally"
     );
+
+    let platform = harness
+        .capabilities
+        .iter()
+        .find(|cap| cap.capability_id() == "platform")
+        .expect("platform capability must be configured");
+    assert_eq!(platform.config_value(), &json!({"surface": "shell"}));
 
     let preview: Value = server
         .post(
@@ -633,9 +644,9 @@ async fn test_chat_harness_includes_platform_capability() {
         .collect();
 
     for expected in [
-        "discover",
-        "query",
-        "execute",
+        "bash",
+        "read_file",
+        "write_file",
         "ask_user",
         "request_approval",
     ] {
@@ -648,10 +659,17 @@ async fn test_chat_harness_includes_platform_capability() {
         !tool_names.contains(&"manage_harnesses"),
         "Platform Chat should use the catalog surface, not legacy management tools"
     );
-    for excluded in ["bash", "web_fetch", "secret_store", "schedule_create"] {
+    for excluded in [
+        "discover",
+        "query",
+        "execute",
+        "web_fetch",
+        "secret_store",
+        "schedule_create",
+    ] {
         assert!(
             !tool_names.contains(&excluded),
-            "Platform Chat should not expose unrelated {excluded}"
+            "Platform Chat should not expose additional {excluded} tools"
         );
     }
 }

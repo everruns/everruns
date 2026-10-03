@@ -207,7 +207,7 @@ impl WorkerServiceImpl {
 #[allow(clippy::result_large_err)]
 async fn resolve_mcp_connection_token(
     resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
-    session_id: everruns_provider::typed_id::SessionId,
+    session_id: everruns_contracts::typed_id::SessionId,
     provider: &str,
     acts_as: &str,
 ) -> Result<Option<String>, Status> {
@@ -227,9 +227,9 @@ async fn resolve_mcp_connection_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::error::Result;
     use everruns_core::McpServerActsAs;
     use everruns_core::connection_services::UserConnectionResolver;
-    use everruns_provider::error::Result;
     use std::sync::Mutex;
 
     struct RecordingResolver {
@@ -240,7 +240,7 @@ mod tests {
     impl UserConnectionResolver for RecordingResolver {
         async fn get_connection_token(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             _provider: &str,
         ) -> Result<Option<String>> {
             self.calls.lock().unwrap().push(None);
@@ -249,7 +249,7 @@ mod tests {
 
         async fn get_mcp_connection_token(
             &self,
-            _session_id: everruns_provider::typed_id::SessionId,
+            _session_id: everruns_contracts::typed_id::SessionId,
             _provider: &str,
             acts_as: McpServerActsAs,
         ) -> Result<Option<String>> {
@@ -264,7 +264,7 @@ mod tests {
         let resolver: Arc<dyn UserConnectionResolver> = Arc::new(RecordingResolver {
             calls: calls.clone(),
         });
-        let session_id = everruns_provider::typed_id::SessionId::new();
+        let session_id = everruns_contracts::typed_id::SessionId::new();
 
         for (wire_value, expected_token) in
             [("none", "none"), ("service", "service"), ("user", "user")]

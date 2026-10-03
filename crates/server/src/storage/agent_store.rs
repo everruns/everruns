@@ -10,9 +10,9 @@
 // the correct org_id when creating the store.
 
 use crate::kernel_imports::{
-    AgentCapabilityConfig, AgentDefinition, DependencyBlocker, everruns_provider::error::Result,
-    everruns_provider::error::StoreResultExt, everruns_provider::error::from_json,
-    everruns_provider::typed_id::AgentId, execution_loading::AgentStore,
+    AgentCapabilityConfig, AgentDefinition, DependencyBlocker, contracts::error::Result,
+    contracts::error::StoreResultExt, contracts::error::from_json, contracts::typed_id::AgentId,
+    execution_loading::AgentStore,
 };
 use crate::max_iterations;
 use async_trait::async_trait;
@@ -80,6 +80,9 @@ impl DbAgentStore {
                     root_agent_id: row.root_agent_id,
                     tags: row.tags,
                     capabilities,
+                    environments: row
+                        .environments
+                        .and_then(|value| serde_json::from_value(value).ok()),
                     initial_files: from_json(row.initial_files),
                     mcp_servers: from_json(row.mcp_servers),
                     network_access: row

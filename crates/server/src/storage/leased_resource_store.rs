@@ -7,9 +7,8 @@
 // they are server/worker control-plane concerns, not tool concerns.
 
 use crate::kernel_imports::{
-    LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
-    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
-    everruns_provider::typed_id::SessionId,
+    LeasedResource, LeasedResourceStatus, UpsertLeasedResource, contracts::error::AgentLoopError,
+    contracts::error::Result, contracts::typed_id::SessionId,
 };
 use crate::kernel_imports::{
     session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
@@ -275,6 +274,7 @@ mod tests {
 
     async fn create_test_session(db: &StorageBackend) -> SessionId {
         db.create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
@@ -286,7 +286,7 @@ mod tests {
             agent_version_id: None,
             agent_config_hash: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Lease test session".to_string()),
             locale: None,

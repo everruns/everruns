@@ -1,8 +1,8 @@
 //! Hosted budget persistence/API records.
 
 use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::{BudgetId, SessionId};
 use everruns_core::budget::{BudgetPeriod, BudgetStatus, BudgetSubjectType};
-use everruns_provider::typed_id::{BudgetId, SessionId};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "openapi")]

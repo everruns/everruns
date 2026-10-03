@@ -1,8 +1,8 @@
 //! Turns a process exit cut off while their tool calls ran: reading one back
 //! from the log, and finishing it by running its unfinished calls again.
 
+use everruns_contracts::typed_id::TurnId;
 use everruns_host::TurnSteering;
-use everruns_provider::typed_id::TurnId;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use super::{Command, RunError, Session, SessionActor, TurnCompletion, TurnEntry, TurnHandle};

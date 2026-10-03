@@ -22,6 +22,8 @@ use llm_test_matrix::*;
 
 use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
 use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
@@ -31,8 +33,6 @@ use everruns_host::{
 };
 use everruns_platform::capabilities::SubagentCapability;
 use everruns_platform::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -50,7 +50,7 @@ struct RuntimeRunner {
 impl RuntimeRunner {
     fn runtime(&self) -> Result<&InProcessRuntime> {
         self.runtime.get().ok_or_else(|| {
-            everruns_provider::error::AgentLoopError::config("runtime not initialized yet")
+            everruns_contracts::error::AgentLoopError::config("runtime not initialized yet")
         })
     }
 }
@@ -80,7 +80,7 @@ impl LocalSessionRunner for RuntimeRunner {
         if result.success {
             Ok(())
         } else {
-            Err(everruns_provider::error::AgentLoopError::tool(format!(
+            Err(everruns_contracts::error::AgentLoopError::tool(format!(
                 "child turn failed: {}",
                 result.error.unwrap_or_default()
             )))

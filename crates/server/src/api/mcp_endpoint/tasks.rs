@@ -202,7 +202,7 @@ async fn handle_get(
                 .unwrap_or("");
             let task_status = task_status_from_session_status(session_status);
 
-            if let Ok(session_id) = task_id.parse::<everruns_provider::typed_id::SessionId>()
+            if let Ok(session_id) = task_id.parse::<everruns_contracts::typed_id::SessionId>()
                 && let Ok(Some(structured)) =
                     crate::domains::session_tasks::read_structured_task_result(
                         &state.db, org.org_id, session_id,
@@ -215,7 +215,7 @@ async fn handle_get(
 
             let mut task = task_handle(task_id, task_status);
             if task_status == TaskStatus::InputRequired
-                && let Ok(session_id) = task_id.parse::<everruns_provider::typed_id::SessionId>()
+                && let Ok(session_id) = task_id.parse::<everruns_contracts::typed_id::SessionId>()
                 && let Ok(Some(pending)) = form_elicitation::pending_questions_for_session(
                     &Caller::from(org),
                     session_id,
@@ -324,7 +324,7 @@ async fn handle_question_update(
     org: &ResolvedOrg,
     state: &AppState,
 ) -> JsonRpcResponse {
-    let session_id = match task_id.parse::<everruns_provider::typed_id::SessionId>() {
+    let session_id = match task_id.parse::<everruns_contracts::typed_id::SessionId>() {
         Ok(session_id) => session_id,
         Err(error) => {
             return JsonRpcResponse::invalid_params(id, format!("Invalid taskId: {error}"));

@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { EntityStatus } from "@/components/ui/entity-status";
 import { LinkButton } from "@/components/ui/button";
-import { EntityCard, EntityCardDetail, EntityCardFooter } from "@/components/ui/entity-card";
+import {
+  EntityCard,
+  EntityCardDetail,
+  EntityCardFooter,
+  EntityCardTags,
+  EntityCardDescription,
+  EntityCardCapabilities,
+} from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Pencil, Boxes, Shield } from "lucide-react";
 import { IconTile } from "@/components/layout/page-layout";
@@ -15,13 +22,10 @@ import {
 } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import {
-  getDisplayName,
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-} from "@/lib/entity-lifecycle";
+import { getDisplayName, getEntityNameClassName } from "@/lib/entity-lifecycle";
 import { formatCountLabel } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
+import { AgentCardChannels } from "./agent-card-channels";
 
 interface AgentCardProps {
   agent: Agent;
@@ -45,7 +49,6 @@ export function AgentCard({
   const agentCapabilities = agent.capabilities ?? [];
   const tags = normalizeTags(agent.tags);
   const sessionCount = agent.session_count ?? 0;
-  const appCount = agent.app_count ?? 0;
   const harness = agent.effective_harness;
   const harnessName = harness?.display_name || harness?.name;
   const harnessSourceLabel =
@@ -63,43 +66,37 @@ export function AgentCard({
       title={getDisplayName(agent)}
       href={`/agents/${agent.id}`}
       titleClassName={getEntityNameClassName(agent.status)}
-      copyValue={agent.id}
-      subtitle={<span className="text-xs text-muted-foreground font-mono">{agent.name}</span>}
-      headerActions={
-        <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
-      }
+      headerActions={<EntityStatus status={agent.status} />}
       footer={
-        <EntityCardFooter
-          meta={
-            <>
-              <span>Created {new Date(agent.created_at).toLocaleDateString()}</span>
-              <span className="mx-2">·</span>
-              <span>
-                {formatCountLabel(sessionCount, "session")} · {formatCountLabel(appCount, "app")}
-              </span>
-            </>
-          }
-          actions={
-            showEditButton &&
-            agent.status === "active" && (
-              <LinkButton
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                aria-label={`Edit ${getDisplayName(agent)}`}
-                href={`/agents/${agent.id}?mode=edit`}
-              >
-                <Pencil className="icon-sharp h-4 w-4" />
-              </LinkButton>
-            )
-          }
-        />
+        <>
+          <EntityCardFooter
+            meta={
+              <>
+                <span>{formatCountLabel(sessionCount, "session")}</span>
+              </>
+            }
+            actions={
+              showEditButton &&
+              agent.status === "active" && (
+                <LinkButton
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label={`Edit ${getDisplayName(agent)}`}
+                  href={`/agents/${agent.id}?mode=edit`}
+                >
+                  <Pencil className="icon-sharp h-4 w-4" />
+                </LinkButton>
+              )
+            }
+          />
+        </>
       }
     >
       {agent.description ? (
-        <div className="text-sm text-muted-foreground mb-3 line-clamp-2">
+        <EntityCardDescription>
           <InlineStreamdownMessage>{agent.description}</InlineStreamdownMessage>
-        </div>
+        </EntityCardDescription>
       ) : (
         <p className="text-sm text-muted-foreground mb-3 italic">No description provided</p>
       )}
@@ -138,47 +135,41 @@ export function AgentCard({
             {harnessName ? `${harnessName} (${harnessStatusLabel})` : "unavailable harness"}
           </span>
         )}
-        <Badge variant="outline" className="shrink-0 text-[10px]">
+        <span className="shrink-0 text-muted-foreground">
           {harness?.source === "organization_default" ? "Org default" : "Explicit"}
-        </Badge>
+        </span>
       </EntityCardDetail>
 
-      {/* Capabilities display */}
-      {agentCapabilities.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
+      <div className="space-y-3">
+        {/* Capabilities display */}
+        {agentCapabilities.length > 0 && (
           <TooltipProvider>
-            {agentCapabilities.map((capConfig) => {
-              const cap = getCapabilityInfo(capConfig.ref);
-              if (!cap) return null;
-              return (
-                <Tooltip key={capConfig.ref}>
-                  <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
-                    <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
-                    {!compact && <span>{localizedCapabilityName(cap, locale)}</span>}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {localizedCapabilityDescription(cap, locale)}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
+            <EntityCardCapabilities>
+              {agentCapabilities.map((capConfig) => {
+                const cap = getCapabilityInfo(capConfig.ref);
+                if (!cap) return null;
+                return (
+                  <Tooltip key={capConfig.ref}>
+                    <TooltipTrigger className="inline-flex cursor-default items-center gap-1.5 text-xs text-muted-foreground">
+                      <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
+                      {!compact && <span>{localizedCapabilityName(cap, locale)}</span>}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {localizedCapabilityDescription(cap, locale)}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </EntityCardCapabilities>
           </TooltipProvider>
-        </div>
-      )}
+        )}
 
-      {/* Tags */}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-        </div>
-      )}
+        <AgentCardChannels agent={agent} canManage={showEditButton} />
+        <EntityCardTags tags={tags} />
+      </div>
     </EntityCard>
   );
 }

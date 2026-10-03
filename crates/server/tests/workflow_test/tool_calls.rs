@@ -1,9 +1,9 @@
 use crate::support::*;
+use everruns_contracts::model::Model;
+use everruns_contracts::provider::Provider;
 use everruns_core::SessionFile;
 use everruns_platform::Agent;
 use everruns_platform::Session;
-use everruns_provider::model::Model;
-use everruns_provider::provider::Provider;
 use serde_json::{Value, json};
 
 /// Test the stable edit_file integration boundary with LlmSim.
@@ -497,6 +497,12 @@ async fn test_no_duplicate_tool_calls() {
     println!("No duplicate tool calls test completed!");
 }
 
+/// The current_time capability injects the UTC time as a fact every turn, so a
+/// bare "what time is it" prompt lets the model answer without the tool. Ask
+/// for an odd-offset timezone in a specific tool format so the tool call is the
+/// natural path rather than a coin flip.
+const DAD_JOKE_TIME_PROMPT: &str = "Tell me a dad joke about the current time in Asia/Kathmandu. Call get_current_time with timezone \"Asia/Kathmandu\" and format \"human\" first.";
+
 /// Test agent execution with tool calls using LlmSim driver (deterministic).
 ///
 /// This test verifies the full agent workflow with tool calls using a simulated LLM:
@@ -615,7 +621,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
         ))
         .json(&json!({
             "message": {
-                "content": [{"type": "text", "text": "Tell me a dad joke about the current time!"}]
+                "content": [{"type": "text", "text": DAD_JOKE_TIME_PROMPT}]
             }
         }))
         .send()
@@ -914,7 +920,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
         ))
         .json(&json!({
             "message": {
-                "content": [{"type": "text", "text": "Tell me a dad joke about the current time!"}]
+                "content": [{"type": "text", "text": DAD_JOKE_TIME_PROMPT}]
             }
         }))
         .send()
@@ -1176,7 +1182,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
         ))
         .json(&json!({
             "message": {
-                "content": [{"type": "text", "text": "Tell me a dad joke about the current time!"}]
+                "content": [{"type": "text", "text": DAD_JOKE_TIME_PROMPT}]
             }
         }))
         .send()

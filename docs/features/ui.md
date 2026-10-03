@@ -66,7 +66,8 @@ a narrow column on the right holds the settings:
 - **Harness**, **Capabilities** (in precedence order), **Default model**, and **Tags**
 - **Updated**, read-only
 - **More**: one row each for Branding, MCP servers, Credentials, Starter files, Network access,
-  Token usage, and Health check. Each row shows its current value and opens a side sheet.
+  Environments, Token usage, and Health check. Each row shows its current value and opens a side
+  sheet.
 
 Tabs: **Agent**, **Preview**, **Integrations** (endpoints and triggers), **Stats**, and
 **Sessions**.
@@ -76,7 +77,11 @@ Header actions:
   input; **Save changes** sends everything at once and **Discard** drops the draft. Changes apply
   to new sessions only.
 - **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
-- **New session**: start a conversation with this agent
+- **Test chat**: start an interactive chat thread with this agent
+
+Use **More > Environments** to add named Bashkit or Daytona execution profiles. On **Chats > New
+chat**, choose the Agent and then the Environment profile before starting the thread. See
+[Environments](/features/environments/) for recovery and lifecycle behavior.
 
 ## Sessions
 

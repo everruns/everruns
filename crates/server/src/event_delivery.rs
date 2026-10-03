@@ -299,8 +299,8 @@ impl NatsEventDelivery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::typed_id::{EventId, MessageId, SessionId, TurnId};
     use everruns_core::events::{EventData, OutputMessageDeltaData};
-    use everruns_provider::typed_id::{EventId, MessageId, SessionId, TurnId};
 
     fn make_test_event(session_id: Uuid) -> Event {
         Event {

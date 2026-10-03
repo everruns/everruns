@@ -2,8 +2,8 @@ use super::*;
 use crate::domains::harnesses::CreateHarness;
 use crate::domains::harnesses::types::CreateHarnessRequest;
 use crate::storage::StorageBackend;
+use everruns_contracts::typed_id::{HarnessId, SessionId};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole};
-use everruns_provider::typed_id::{HarnessId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -60,6 +60,7 @@ fn external_test_ctx(db: Arc<StorageBackend>, user_id: Uuid) -> Ctx {
 
 fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
     CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: Some(harness_id),
@@ -73,6 +74,7 @@ fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
         tags: vec![],
         model_id: None,
         capabilities: vec![],
+        environment: None,
         tools: vec![],
         mcp_servers: Default::default(),
         system_prompt: None,
@@ -369,6 +371,7 @@ async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -470,6 +473,7 @@ async fn participant_commands_list_add_and_leave_history() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -497,6 +501,7 @@ async fn participant_commands_list_add_and_leave_history() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

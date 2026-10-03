@@ -14,21 +14,13 @@ members = [
     "crates/test-support",
     "crates/platform",
     "crates/provider",
+    "crates/contracts",
     "crates/model-profiles",
     "crates/mcp",
     "crates/llm-tests",
     # LLM drivers. Every vendor driver is a module of crates/drivers/drivers
-    # (everruns-drivers). The per-vendor packages below are deprecated shims
-    # that re-export those modules for one release, then leave.
-    "crates/drivers/anthropic",
-    "crates/drivers/bedrock",
-    "crates/drivers/fireworks",
-    "crates/drivers/gemini",
+    # (everruns-drivers); the eight vendor shim packages retired after 0.35.
     "crates/drivers/llmsim",
-    "crates/drivers/mai",
-    "crates/drivers/meta",
-    "crates/drivers/openai",
-    "crates/drivers/openrouter",
     "crates/drivers/drivers",
     "crates/turbopuffer",
     "crates/internal-protocol",
@@ -107,7 +99,7 @@ exclude = [
 # `[workspace.dependencies]` pins below spell it out literally and move with it
 # (`scripts/sync-publish-pin-versions.py --write`). Rationale and the failure
 # modes this removes: knowledge/project/release-process.md.
-version = "0.34.2"
+version = "0.36.0"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -256,39 +248,40 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-capability = { path = "crates/capability", version = "0.34.2", default-features = false }
-everruns-builtins = { path = "crates/builtins", version = "0.34.2" }
-everruns-core = { path = "crates/core", version = "0.34.2" }
-everruns-engine = { path = "crates/engine", version = "0.34.2" }
-everruns-host = { path = "crates/host", version = "0.34.2" }
-everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.34.2", default-features = false }
-everruns-test-support = { path = "crates/test-support", version = "0.34.2", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.34.2" }
-everruns-provider = { path = "crates/provider", version = "0.34.2", default-features = false }
-everruns-model-profiles = { path = "crates/model-profiles", version = "0.34.2" }
-everruns-mcp = { path = "crates/mcp", version = "0.34.2" }
-everruns-ard = { path = "crates/ard", version = "0.34.2" }
-everruns-drivers = { path = "crates/drivers/drivers", version = "0.34.2", default-features = false }
-everruns = { path = "crates/everruns", version = "0.34.2" }
-everruns-macros = { path = "crates/macros", version = "0.34.2" }
-everruns-serve = { path = "crates/serve", version = "0.34.2" }
-everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.34.2" }
-everruns-serve-celld = { path = "crates/serve-celld", version = "0.34.2" }
-everruns-serve-build = { path = "crates/serve-build", version = "0.34.2" }
-everruns-ag-ui = { path = "crates/ag-ui", version = "0.34.2" }
-everruns-serve-macros = { path = "crates/serve-macros", version = "0.34.2" }
-everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.34.2" }
-everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.34.2" }
-everruns-cli-contract = { path = "crates/cli-contract", version = "0.34.2" }
-everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.34.2" }
-everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.34.2" }
-everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.34.2" }
-everruns-integrations-lua = { path = "integrations/lua", version = "0.34.2" }
-everruns-integrations-openrouter = { path = "integrations/openrouter", version = "0.34.2" }
+everruns-capability = { path = "crates/capability", version = "0.36.0", default-features = false }
+everruns-builtins = { path = "crates/builtins", version = "0.36.0" }
+everruns-core = { path = "crates/core", version = "0.36.0" }
+everruns-engine = { path = "crates/engine", version = "0.36.0" }
+everruns-host = { path = "crates/host", version = "0.36.0" }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.36.0", default-features = false }
+everruns-test-support = { path = "crates/test-support", version = "0.36.0", default-features = false }
+everruns-platform = { path = "crates/platform", version = "0.36.0" }
+everruns-contracts = { path = "crates/contracts", version = "0.36.0", default-features = false }
+everruns-provider = { path = "crates/provider", version = "0.36.0", default-features = false }
+everruns-model-profiles = { path = "crates/model-profiles", version = "0.36.0" }
+everruns-mcp = { path = "crates/mcp", version = "0.36.0" }
+everruns-ard = { path = "crates/ard", version = "0.36.0" }
+everruns-drivers = { path = "crates/drivers/drivers", version = "0.36.0", default-features = false }
+everruns = { path = "crates/everruns", version = "0.36.0" }
+everruns-macros = { path = "crates/macros", version = "0.36.0" }
+everruns-serve = { path = "crates/serve", version = "0.36.0" }
+everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.36.0" }
+everruns-serve-celld = { path = "crates/serve-celld", version = "0.36.0" }
+everruns-serve-build = { path = "crates/serve-build", version = "0.36.0" }
+everruns-ag-ui = { path = "crates/ag-ui", version = "0.36.0" }
+everruns-serve-macros = { path = "crates/serve-macros", version = "0.36.0" }
+everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.36.0" }
+everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.36.0" }
+everruns-cli-contract = { path = "crates/cli-contract", version = "0.36.0" }
+everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.36.0" }
+everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.36.0" }
+everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.36.0" }
+everruns-integrations-lua = { path = "integrations/lua", version = "0.36.0" }
+everruns-integrations-openrouter = { path = "integrations/openrouter", version = "0.36.0" }
 # `hosted` is opt-in (everruns-integrations-catalog turns it on). It registers the
 # connector into the hosted plugin system and so depends on everruns-platform,
 # which an embedder wanting only the client and framework surface must not carry.
-everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.34.2", default-features = false }
+everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.36.0", default-features = false }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.4" }

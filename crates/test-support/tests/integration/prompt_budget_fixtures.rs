@@ -3,8 +3,8 @@
 // test-support (EVE-875). Ratcheting policy is the same: bump a cap only
 // deliberately, in the same PR, with the reason in the commit message.
 
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::capabilities::{Capability, SystemPromptContext};
-use everruns_provider::typed_id::SessionId;
 use everruns_test_support::SampleDataCapability;
 
 async fn assert_contribution_under(cap: &dyn Capability, max_bytes: usize) {

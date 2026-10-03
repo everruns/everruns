@@ -215,11 +215,11 @@ mod tests {
     fn llm_reduction_prunes_only_the_unmatched_parallel_call() {
         let mut batch = assistant_batch();
         batch.content = MessageContent::Text("Keep this text".into());
-        batch.configuration_update = Some(everruns_provider::model::ReasoningEffort::High);
-        batch.phase = Some(everruns_provider::execution_phase::ExecutionPhase::Commentary);
+        batch.configuration_update = Some(everruns_contracts::model::ReasoningEffort::High);
+        batch.phase = Some(everruns_contracts::execution_phase::ExecutionPhase::Commentary);
         batch
             .reasoning
-            .push(everruns_provider::reasoning::ReasoningContentPart::opaque(
+            .push(everruns_contracts::reasoning::ReasoningContentPart::opaque(
                 "test-provider",
             ));
         batch.tool_calls.as_mut().unwrap()[0].arguments = json!({"name":"ops"});
@@ -258,7 +258,7 @@ mod tests {
     fn removing_all_llm_calls_preserves_independent_visible_text() {
         let mut batch = assistant_batch();
         batch.content = MessageContent::Text("Keep α".into());
-        batch.configuration_update = Some(everruns_provider::model::ReasoningEffort::Low);
+        batch.configuration_update = Some(everruns_contracts::model::ReasoningEffort::Low);
         let mut expected = batch.clone();
         expected.tool_calls = None;
         assert_text_messages(

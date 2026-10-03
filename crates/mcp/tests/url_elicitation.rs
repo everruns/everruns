@@ -301,7 +301,7 @@ async fn the_relay_host_hands_the_user_the_url_as_an_actionable_result() {
 
     let result = everruns_core::McpToolInvoker::invoke(
         &executor,
-        &everruns_provider::tool_types::ToolCall {
+        &everruns_contracts::tool_types::ToolCall {
             id: "call_1".to_string(),
             name: "mcp_docs__search".to_string(),
             arguments: json!({}),
@@ -369,7 +369,7 @@ async fn a_consenting_host_pauses_once_and_then_answers_accept() {
             McpConnection::http("docs", URL),
         ])),
     );
-    let tool_call = everruns_provider::tool_types::ToolCall {
+    let tool_call = everruns_contracts::tool_types::ToolCall {
         id: "call_1".to_string(),
         name: "mcp_docs__search".to_string(),
         arguments: json!({}),
@@ -399,7 +399,7 @@ async fn a_consenting_host_pauses_once_and_then_answers_accept() {
         .expect("the retry runs the tool");
     assert!(completed.error.is_none());
     assert!(
-        everruns_provider::tool_types::UrlElicitationRequired::from_tool_result(&completed)
+        everruns_contracts::tool_types::UrlElicitationRequired::from_tool_result(&completed)
             .is_none(),
         "the second call must not stand down again"
     );

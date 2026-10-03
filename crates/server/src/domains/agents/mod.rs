@@ -9,6 +9,7 @@ pub mod check_rules;
 pub mod checks;
 pub mod commands;
 pub mod credentials;
+pub(crate) mod environment;
 pub mod health_check;
 pub mod preview;
 pub mod queries;
@@ -24,10 +25,10 @@ pub use preview::*;
 /// credential-adjacent details and must never reach agent-check API responses.
 pub(crate) fn safe_agent_check_error(
     error: &str,
-) -> everruns_provider::user_facing_error::UserFacingError {
-    everruns_provider::user_facing_error::classify_runtime_error_message(
+) -> everruns_contracts::user_facing_error::UserFacingError {
+    everruns_contracts::user_facing_error::classify_runtime_error_message(
         error,
-        &everruns_provider::user_facing_error::UserFacingErrorContext::default(),
+        &everruns_contracts::user_facing_error::UserFacingErrorContext::default(),
     )
 }
 

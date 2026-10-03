@@ -19,18 +19,18 @@
 #![cfg(feature = "daytona-live-tests")]
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::session_sandbox::{
+    SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxState, SessionSandboxStatus,
+    create_session_sandbox_provider,
+};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_services::SessionStorageStore;
 use everruns_core::{
     connection_services::UserConnectionResolver, session_services::KeyInfo,
     session_services::SecretInfo, tool_context::ToolContext,
 };
 use everruns_integrations_daytona::client::DaytonaClient;
-use everruns_platform::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxState, SessionSandboxStatus,
-    create_session_sandbox_provider,
-};
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::SessionId;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -369,6 +369,7 @@ async fn test_live_session_sandbox_provider_flow() {
         provider: "daytona".to_string(),
         auto_start: true,
         idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
         provider_config: json!({
             "snapshot": "daytona-small",
             "workspace_path": "/home/daytona/workspace",
@@ -406,7 +407,7 @@ async fn test_live_session_sandbox_provider_flow() {
             &config,
             &instance,
             "/home/daytona/live-session-sandbox.txt",
-            "provider-flow\n",
+            b"provider-flow\n",
         )
         .await
         .expect("managed session sandbox write failed");
@@ -436,6 +437,7 @@ async fn test_live_session_sandbox_provider_flow() {
             &context,
             &config,
             &SessionSandboxState {
+                sandbox: None,
                 provider: "daytona".to_string(),
                 status: SessionSandboxStatus::Running,
                 instance: resumed.clone(),
@@ -467,6 +469,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
         provider: "daytona".to_string(),
         auto_start: true,
         idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
         provider_config: json!({
             "snapshot": "daytona-small",
             "workspace_path": "/home/daytona/workspace",
@@ -491,7 +494,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
             &config,
             &instance,
             "/home/daytona/workspace/recovery-marker.txt",
-            "survived\n",
+            b"survived\n",
         )
         .await
         .expect("recovery marker write failed");
@@ -517,6 +520,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
     }
     assert!(sandbox_is_absent, "physical sandbox deletion timed out");
     let state = SessionSandboxState {
+        sandbox: None,
         provider: "daytona".to_string(),
         status: SessionSandboxStatus::Running,
         instance: checkpointed.clone(),

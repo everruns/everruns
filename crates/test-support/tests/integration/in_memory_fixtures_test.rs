@@ -1,10 +1,10 @@
+use everruns_contracts::ToolResultImage;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::{
     MessageRetriever, RuntimeMessage, RuntimeMessageRole, event_emitter::EventEmitter,
 };
-use everruns_provider::ToolResultImage;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::SessionId;
 use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::json;
 

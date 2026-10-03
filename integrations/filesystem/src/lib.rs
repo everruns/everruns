@@ -17,6 +17,12 @@
 //! assert_eq!(FileSystemCapability.id(), "session_file_system");
 //! ```
 
+mod stable_tools;
+
+use stable_tools::{GlobTool, GrepTool, glob_parameters_schema, grep_parameters_schema};
+#[cfg(test)]
+use stable_tools::{filesystem_tool_schemas_with_presentation, schema_contains_workspace};
+
 use crate::error::{FileSystemErrorClass, classify_fs_error};
 use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
@@ -24,17 +30,17 @@ use crate::tool_types::{ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
+#[cfg(test)]
+use everruns_contracts::error::AgentLoopError;
+#[cfg(test)]
+use everruns_contracts::typed_id;
+use everruns_contracts::{ToolResultImage, error, tool_types};
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
 };
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::tool_context::{ToolContext, ToolContextService};
 use everruns_core::*;
-#[cfg(test)]
-use everruns_provider::error::AgentLoopError;
-#[cfg(test)]
-use everruns_provider::typed_id;
-use everruns_provider::{ToolResultImage, error, tool_types};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use similar::TextDiff;
@@ -84,6 +90,8 @@ const SESSION_FILE_SYSTEM_TOOL_NAMES: &[&str] = &[
     "read_many_files",
     "write_file",
     "edit_file",
+    "glob",
+    "grep",
     "list_directory",
     "grep_files",
     "delete_file",
@@ -209,6 +217,8 @@ impl FilePathPresentation {
             "read_many_files" => Some(read_many_files_parameters_schema(self)),
             "write_file" => Some(write_file_parameters_schema(self)),
             "edit_file" => Some(edit_file_parameters_schema(self)),
+            "glob" => Some(glob_parameters_schema(self)),
+            "grep" => Some(grep_parameters_schema(self)),
             "list_directory" => Some(list_directory_parameters_schema(self)),
             "grep_files" => Some(grep_files_parameters_schema()),
             "delete_file" => Some(delete_file_parameters_schema(self)),
@@ -480,33 +490,6 @@ fn stat_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
         "required": ["path"],
         "additionalProperties": false
     })
-}
-
-#[cfg(test)]
-fn schema_contains_workspace(value: &Value) -> bool {
-    fn walk(value: &Value) -> bool {
-        match value {
-            Value::String(text) => text.contains(WORKSPACE_PREFIX),
-            Value::Array(items) => items.iter().any(walk),
-            Value::Object(fields) => fields.values().any(walk),
-            _ => false,
-        }
-    }
-    walk(value)
-}
-
-#[cfg(test)]
-fn filesystem_tool_schemas_with_presentation(
-    presentation: &FilePathPresentation,
-) -> Vec<(String, Value)> {
-    SESSION_FILE_SYSTEM_TOOL_NAMES
-        .iter()
-        .filter_map(|name| {
-            presentation
-                .parameters_schema_for_tool(name)
-                .map(|schema| ((*name).to_string(), schema))
-        })
-        .collect()
 }
 
 // ============================================================================
@@ -884,9 +867,9 @@ pub const SESSION_FILE_SYSTEM_CAPABILITY_ID: &str = "session_file_system";
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FileSystem;
 
-impl everruns_capability::IntoCapability for FileSystem {
-    fn into_capability(self) -> everruns_capability::CapabilitySpec {
-        everruns_capability::CapabilityRef::new(SESSION_FILE_SYSTEM_CAPABILITY_ID).into()
+impl everruns_contracts::IntoCapability for FileSystem {
+    fn into_capability(self) -> everruns_contracts::CapabilitySpec {
+        everruns_contracts::CapabilityRef::new(SESSION_FILE_SYSTEM_CAPABILITY_ID).into()
     }
 }
 
@@ -970,6 +953,8 @@ impl Capability for FileSystemCapability {
             Box::new(ReadManyFilesTool),
             Box::new(WriteFileTool),
             Box::new(EditFileTool),
+            Box::new(GlobTool),
+            Box::new(GrepTool),
             Box::new(ListDirectoryTool),
             Box::new(GrepFilesTool),
             Box::new(DeleteFileTool),
@@ -4436,7 +4421,7 @@ mod tests {
     #[tokio::test]
     async fn assembled_prompt_uses_host_root_without_workspace_guidance() {
         use crate::capabilities::{CapabilityRegistry, collect_capabilities_with_configs};
-        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+        use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
         let store = Arc::new(MockFileStore::with_display_root("/repo"));
         let ctx = SystemPromptContext {

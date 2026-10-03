@@ -38,7 +38,7 @@ pub struct OutputMessageStartedData {
     /// Prepared Astra effort state, persisted before the provider call so an
     /// interrupted worker can resume without changing the request baseline.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning_state: Option<everruns_provider::reasoning_updates::ReasoningState>,
+    pub reasoning_state: Option<everruns_contracts::reasoning_updates::ReasoningState>,
     /// Turn ID this output belongs to
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,

@@ -1,6 +1,6 @@
 use crate::domains::common::{CommandError, Ctx};
 use crate::domains::session_files::WorkspaceFileService;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -76,30 +76,65 @@ pub async fn verify_session(
     // Two callers reach it: that owner, and the agent runtime executing that
     // owner's session on their behalf.
     //
-    // The runtime arm used to read `ctx.caller.is_internal`, which was far
-    // wider than the relationship it stood for. `Caller::internal` carries
-    // Owner role and bypasses policy evaluation (TM-AUTHZ-002), so this
-    // predicate was the one check it did not already pass — making it the only
-    // thing between *any* internal path and a person's private files. Internal
-    // callers include ones driven by inbound traffic: `api/slack_events`,
-    // `api/fcp`, the capability service, the durable seal. TM-TENANT-013 has
-    // always described this mitigation as the owner check alone, so the code
-    // was looser than the model it was documented under.
+    // The runtime arm used to read `caller.is_internal`, which was far wider
+    // than the relationship it stood for. `Caller::internal` carries Owner
+    // role and bypasses policy evaluation (TM-AUTHZ-002), so this was the one
+    // check it did not already pass — the only thing between *any* internal
+    // path and a person's private files, including paths driven by inbound
+    // traffic (`api/slack_events`, `api/fcp`, the capability service, the
+    // durable seal). None of them read the file surface at all.
     //
-    // `acting_for_session` names the actual relationship instead. The worker
-    // declares which session's turn it is running, and only that session's
-    // memory opens. An internal caller that declares nothing gets nothing,
-    // which is what every one of those paths does — none of them read the file
-    // surface at all.
-    let user_memory_allowed = row
-        .resolved_owner_user_id
-        .zip(ctx.caller.user_id)
-        .is_some_and(|(owner, caller)| owner == caller)
+    // `acting_for_session` names the relationship instead: the worker declares
+    // which session's turn it is running, and only that session's memory
+    // opens. An internal caller that declares nothing gets nothing.
+    let user_memory_allowed = caller_is_memory_owner(row.resolved_owner_user_id, &ctx.caller)
         || ctx.acting_for_session == Some(session_id);
     Ok(SessionFileAccess {
         workspace_key: row.workspace_id,
         user_memory_allowed,
     })
+}
+
+/// Whether `caller` *is* the owner of the `/memory/user` subtree owned by
+/// `owner`. Org role is deliberately irrelevant: an admin with
+/// `WORKSPACE_MANAGE` is still not the owner of another member's private
+/// memory.
+///
+/// Owner identity only. The internal-path arm this used to carry is not an
+/// ownership fact, and conflating the two is what let every internal caller
+/// into the subtree; each surface now states its own trust rule beside its own
+/// call — the session surface through `Ctx::acting_for_session`, the workspace
+/// surface through its explicit early return.
+pub fn caller_is_memory_owner(owner: Option<Uuid>, caller: &everruns_core::Caller) -> bool {
+    owner
+        .zip(caller.user_id)
+        .is_some_and(|(owner, caller)| owner == caller)
+}
+
+/// `/memory/user` access for the canonical `/v1/workspaces/{id}/fs/*` surface,
+/// which is keyed by workspace rather than by session.
+///
+// THREAT[TM-TENANT-013]: `MemoryMountRouter::resolve` mounts `/memory/user`
+// from the session whose id equals the workspace key (the default 1:1
+// session), so that session's `resolved_owner_user_id` is the owner here too.
+// A workspace with no such session (a shared workspace) has no private owner
+// and only internal callers may touch the subtree. The caller has already
+// passed the workspace org/policy check; this adds the owner check the
+// workspace policy cannot express.
+pub async fn user_memory_allowed_for_workspace(
+    db: &crate::storage::StorageBackend,
+    org_id: i64,
+    workspace_key: Uuid,
+    caller: &everruns_core::Caller,
+) -> anyhow::Result<bool> {
+    if caller.is_internal {
+        return Ok(true);
+    }
+    let owner = db
+        .get_session(org_id, SessionId::from_uuid(workspace_key))
+        .await?
+        .and_then(|row| row.resolved_owner_user_id);
+    Ok(caller_is_memory_owner(owner, caller))
 }
 
 /// Resolve the session's workspace for a *write* and enforce the workspace

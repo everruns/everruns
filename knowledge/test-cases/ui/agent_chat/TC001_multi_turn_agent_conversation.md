@@ -32,7 +32,7 @@ Verify that a user can open a direct chat session with an agent, send a message,
 
 1. Navigate to the Agents page (`/agents`)
 2. Click on the "Dad Jokes" agent card (display name shown prominently, slug `dad-jokes` in monospace underneath) to open its detail page
-3. Start a new session / open the chat interface for this agent
+3. Press **Test chat** on the agent page to open an interactive chat thread for this agent
 4. Send turn 1 message
 5. Wait for the full streamed response to complete (spinner/typing indicator disappears, message fully rendered)
 6. Verify the response is a dad joke related to time of day

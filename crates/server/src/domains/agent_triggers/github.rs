@@ -28,10 +28,10 @@ use crate::domains::sessions::SessionService;
 use crate::storage::StorageBackend;
 use crate::storage::github_app_rows::GitHubAppRow;
 use crate::storage::models::AgentRow;
+use everruns_contracts::typed_id::{AgentId, TriggerId};
 use everruns_platform::{
     AgentTrigger, AgentTriggerType, GitHubTriggerConfig, TriggerEventFilter, TriggerFilterCondition,
 };
-use everruns_provider::typed_id::{AgentId, TriggerId};
 use serde_json::{Value, json};
 use std::sync::Arc;
 

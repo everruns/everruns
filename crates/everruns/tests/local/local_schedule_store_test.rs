@@ -1,8 +1,8 @@
 // Schedule store: metadata round-trip, list, cancel, count_active.
 
 use everruns::local::{LocalScheduleStore, SqliteDb};
+use everruns_contracts::typed_id::{PrincipalId, SessionId};
 use everruns_core::session_services::SessionScheduleStore;
-use everruns_provider::typed_id::{PrincipalId, SessionId};
 
 fn store() -> LocalScheduleStore {
     LocalScheduleStore::new(

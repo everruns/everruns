@@ -1,16 +1,13 @@
-// Budget system tests
-//
-// Tests for BudgetService (rules engine, metering, cost computation),
-// storage layer (CRUD, ledger, hierarchy), and end-to-end integration.
+// BudgetService, storage, ledger, hierarchy, and end-to-end integration tests.
 
 use crate::domains::budgets::BudgetService;
 use crate::storage::StorageBackend;
 use crate::storage::models::*;
+use everruns_contracts::typed_id::{AgentId, PrincipalId};
 use everruns_core::EventListener;
 use everruns_core::budget::BudgetAction;
 use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};
 use everruns_core::org_public_id_from_internal;
-use everruns_provider::typed_id::{AgentId, PrincipalId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -117,7 +114,7 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
 
 async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
     let (svc, db) = make_service();
-    let harness_id = everruns_provider::typed_id::HarnessId::new();
+    let harness_id = everruns_contracts::typed_id::HarnessId::new();
     let agent = db
         .create_agent(
             1,
@@ -139,6 +136,7 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -239,7 +237,7 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
     assert!(result.should_stop());
     assert_eq!(
         result.budget_id,
-        Some(everruns_provider::typed_id::BudgetId::from_uuid(budget.id))
+        Some(everruns_contracts::typed_id::BudgetId::from_uuid(budget.id))
     );
 }
 
@@ -1330,7 +1328,7 @@ async fn test_check_budgets_for_child_respects_exhausted_root_budget() {
     assert!(result.should_stop());
     assert_eq!(
         result.budget_id,
-        Some(everruns_provider::typed_id::BudgetId::from_uuid(budget.id))
+        Some(everruns_contracts::typed_id::BudgetId::from_uuid(budget.id))
     );
     assert_eq!(result.error_code.as_deref(), Some("budget_exhausted"));
 }

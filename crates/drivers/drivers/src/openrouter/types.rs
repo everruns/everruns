@@ -110,10 +110,10 @@ impl OpenRouterModelInfo {
         }
     }
 
-    /// Build a [`ModelProfile`](everruns_provider::model::ModelProfile) from
+    /// Build a [`ModelProfile`](everruns_contracts::model::ModelProfile) from
     /// OpenRouter's advertised metadata.
-    pub fn to_discovered_profile(&self) -> everruns_provider::model::ModelProfile {
-        use everruns_provider::model::*;
+    pub fn to_discovered_profile(&self) -> everruns_contracts::model::ModelProfile {
+        use everruns_contracts::model::*;
 
         // Reasoning is advertised via the `reasoning` parameter (modern unified
         // control) or the legacy `reasoning_effort` alias.
@@ -204,7 +204,7 @@ impl OpenRouterModelInfo {
 }
 
 impl OpenRouterPricing {
-    fn to_cost(&self) -> Option<everruns_provider::model::ModelCost> {
+    fn to_cost(&self) -> Option<everruns_contracts::model::ModelCost> {
         let input = openrouter_price_per_million(self.prompt.as_deref()?)?;
         let output = openrouter_price_per_million(self.completion.as_deref()?)?;
         let cache_read = self
@@ -213,7 +213,7 @@ impl OpenRouterPricing {
             .or(self.cache_read.as_deref())
             .and_then(openrouter_price_per_million);
 
-        let mut cost = everruns_provider::model::ModelCost::new(input, output);
+        let mut cost = everruns_contracts::model::ModelCost::new(input, output);
         cost.cache_read = cache_read;
         Some(cost)
     }
@@ -242,8 +242,8 @@ fn openrouter_price_per_million(value: &str) -> Option<f64> {
 /// The gateway forwards `reasoning.effort` through to the upstream provider,
 /// which accepts `xhigh` on reasoning-capable models, so we expose
 /// low/medium/high/xhigh with `medium` as the default.
-fn openrouter_effort_config() -> everruns_provider::model::ReasoningEffortConfig {
-    use everruns_provider::model::*;
+fn openrouter_effort_config() -> everruns_contracts::model::ReasoningEffortConfig {
+    use everruns_contracts::model::*;
     ReasoningEffortConfig {
         values: vec![
             ReasoningEffortValue {
@@ -270,7 +270,7 @@ fn openrouter_effort_config() -> everruns_provider::model::ReasoningEffortConfig
 #[cfg(test)]
 mod openrouter_tests {
     use super::*;
-    use everruns_provider::model::ReasoningEffort;
+    use everruns_contracts::model::ReasoningEffort;
 
     // Trimmed copy of the live `nvidia/nemotron-3-super-120b-a12b` entry from
     // OpenRouter's /api/v1/models response.

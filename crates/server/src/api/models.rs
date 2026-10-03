@@ -12,8 +12,8 @@ use crate::domains::models::{
     ListProviderModels, ModelService, UpdateModel,
 };
 use crate::kernel_imports::{
-    Caller, ResourceConfigResponse, evaluate_policies_with, everruns_provider::model::Model,
-    everruns_provider::model::ModelSource, everruns_provider::model::ModelWithProvider,
+    Caller, ResourceConfigResponse, contracts::model::Model, contracts::model::ModelSource,
+    contracts::model::ModelWithProvider, evaluate_policies_with,
 };
 use crate::storage::StorageBackend;
 use axum::{

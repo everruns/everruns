@@ -29,6 +29,7 @@ import {
   Telescope,
   UserRound,
   Workflow,
+  ShieldCheck,
 } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
 import { registryNavigationItems } from "@/lib/registry-navigation";
@@ -45,6 +46,8 @@ export type NavigationItem = {
   exact?: boolean;
   experimental?: boolean;
   warningTooltip?: string;
+  /** Minimum organization role required to see this destination. */
+  minimumRole?: "admin" | "owner";
 };
 
 export type NavigationSection = {
@@ -62,6 +65,7 @@ export const defaultChatsNavigation: NavigationItem[] = [
 
 export const defaultOperationalNavigation: NavigationItem[] = [
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
+  { name: "Approvals", href: "/approvals", icon: ShieldCheck, minimumRole: "admin" },
   // "What in this org is reachable from outside right now" is a question
   // security and ops ask, and no agent page can answer it — it shows one agent
   // (EVE-1010). It sits here rather than under Building because reading it is
@@ -77,6 +81,13 @@ export const defaultOperationalNavigation: NavigationItem[] = [
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [
+  {
+    name: "Playground",
+    href: "/playground",
+    icon: FlaskConical,
+    flag: "playground",
+    experimental: true,
+  },
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Harnesses", href: "/harnesses", icon: Shield },
   { name: "Virtual Users", href: "/virtual-users", icon: UserRound },

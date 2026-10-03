@@ -57,7 +57,7 @@ impl WorkerServiceImpl {
         let schedule = store
             .cancel_schedule(
                 session_id.into(),
-                everruns_provider::typed_id::ScheduleId::from_uuid(schedule_id),
+                everruns_contracts::typed_id::ScheduleId::from_uuid(schedule_id),
             )
             .await
             .map_err(|e| {

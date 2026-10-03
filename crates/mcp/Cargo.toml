@@ -23,8 +23,7 @@ stdio = []
 [dependencies]
 # Versioned workspace dep (not a bare path) so the crate is publishable.
 everruns-core.workspace = true
-everruns-capability.workspace = true
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

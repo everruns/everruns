@@ -24,6 +24,7 @@ use crate::execution_metadata;
 use crate::services::EventService;
 use crate::storage::{DbSessionTaskRegistry, StorageBackend};
 use chrono::Utc;
+use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate,
@@ -32,7 +33,6 @@ use everruns_core::session_task::{
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolRegistry;
 use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole, TextContentPart};
-use everruns_provider::typed_id::{MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -338,7 +338,7 @@ async fn poll_and_trigger(
 async fn fire_monitor_tasks(
     registry: &DbSessionTaskRegistry,
     session_id: SessionId,
-    schedule_id: everruns_provider::typed_id::ScheduleId,
+    schedule_id: everruns_contracts::typed_id::ScheduleId,
     is_one_shot: bool,
     tool_registry: Option<&ToolRegistry>,
 ) -> bool {
@@ -613,11 +613,11 @@ pub(crate) async fn reconcile_orphaned_monitors(
 mod tests {
     use super::*;
     use crate::storage::models::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
+    use everruns_contracts::typed_id::{PrincipalId, ScheduleId, SessionId};
     use everruns_core::DEFAULT_ORG_ID;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, TaskLinks, TaskMessagePart, TaskWakePolicy,
     };
-    use everruns_provider::typed_id::{PrincipalId, ScheduleId, SessionId};
 
     fn make_db() -> Arc<StorageBackend> {
         Arc::new(StorageBackend::in_memory())

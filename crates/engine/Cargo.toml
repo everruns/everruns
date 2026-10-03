@@ -27,8 +27,7 @@ categories = ["development-tools", "asynchronous"]
 # Neutral contracts and domain value types used by the portable execution
 # algorithms and planner. Direction is engine -> core/provider/capability.
 everruns-core = { workspace = true }
-everruns-capability = { workspace = true }
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 
 async-trait.workspace = true
 chrono.workspace = true

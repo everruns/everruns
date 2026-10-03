@@ -24,13 +24,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::message::{Message, MessageRole};
 use everruns_core::{
     DecisionAnswer, DecisionDriver, DecisionDriverCapabilities, DecisionOutcome, DecisionQuestion,
     DecisionRequest, DecisionUsage, NativePrimitives, UtilityLlmReasoningEffort, UtilityLlmRequest,
     UtilityLlmService,
 };
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::message::{Message, MessageRole};
 use serde_json::Value;
 
 /// Driver id for `DECISIONS_DRIVER` and `llm/...` routing.
@@ -282,10 +282,10 @@ fn offered_option<'a>(text: &str, options: &'a [(String, Option<String>)]) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::DisabledUtilityLlmService;
-    use everruns_provider::driver_registry::{
+    use everruns_contracts::driver_registry::{
         LlmCompletionMetadata, LlmResponse, LlmResponseStream,
     };
+    use everruns_core::DisabledUtilityLlmService;
     use std::sync::Mutex;
 
     /// Replies with a fixed text and records the prompt it was sent.

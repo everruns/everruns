@@ -23,10 +23,10 @@ documentation = "https://docs.rs/everruns-integrations-openai-image"
 # Capability/tool/session runtime lives in core with default features on, the
 # same as the other integration crates.
 everruns-core.workspace = true
-everruns-provider = { workspace = true, features = ["http"] }
+everruns-contracts = { workspace = true, default-features = false, features = ["http"] }
 
-# HTTP client for the OpenAI Image API (multipart uploads for edits)
-reqwest = { workspace = true, features = ["multipart"] }
+# URL type only: requests go through the host EgressService (EVE-1174).
+reqwest.workspace = true
 eventsource-stream.workspace = true
 
 # Serialization
@@ -48,6 +48,9 @@ tracing.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
+# Real host egress transport (no redirects, ACL, DNS pinning with a controlled
+# resolver) so tests prove image requests cannot reach internal addresses.
+everruns-host = { workspace = true, features = ["direct-egress"] }
 
 [lints]
 workspace = true

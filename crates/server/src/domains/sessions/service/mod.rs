@@ -16,7 +16,7 @@ use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
 use crate::kernel_imports::{
-    AgentCapabilityConfig, Caller, CapabilityRegistry, everruns_provider::typed_id::AgentId,
+    AgentCapabilityConfig, Caller, CapabilityRegistry, contracts::typed_id::AgentId,
 };
 use crate::kernel_imports::{
     DeclarativeCapabilityDefinition, InitialFile, MountAccess, MountEntry, MountPoint, MountSource,
@@ -25,11 +25,11 @@ use crate::kernel_imports::{
         RiskLevel, SystemPromptContext, collect_capabilities_with_configs, compute_features,
         resolve_capability_configs,
     },
-    everruns_provider::typed_id::HarnessId,
-    everruns_provider::typed_id::ModelId,
-    everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::SessionId,
-    everruns_provider::typed_id::WorkspaceId,
+    contracts::typed_id::HarnessId,
+    contracts::typed_id::ModelId,
+    contracts::typed_id::PrincipalId,
+    contracts::typed_id::SessionId,
+    contracts::typed_id::WorkspaceId,
     is_declarative_capability, is_plugin_capability, is_skill_capability, merge_capabilities,
     merge_initial_files, normalize_initial_file_path, parse_declarative_capability_id,
     parse_skill_capability_id,
@@ -47,15 +47,16 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_builtins::AttachSkillCapability;
+use everruns_contracts::typed_id::MemoryId;
 use everruns_durable::UpdateField;
 use everruns_mcp::is_mcp_capability;
 use everruns_platform::FeatureFlags;
 use everruns_platform::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_platform::{
-    AgentVersionPolicy, MemoryConfig, MemoryMountAccess, capabilities::MEMORY_CAPABILITY_ID,
+    AgentVersionPolicy, EnvironmentSet, MemoryConfig, MemoryMountAccess,
+    capabilities::MEMORY_CAPABILITY_ID,
 };
 use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
-use everruns_provider::typed_id::MemoryId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;

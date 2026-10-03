@@ -2,10 +2,10 @@
 
 use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner};
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::session::{ExecutionSession, SessionSeedMode};
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use std::sync::Arc;
 use std::sync::Mutex;
 

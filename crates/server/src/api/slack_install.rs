@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::common::ErrorResponse;
-use super::slack_events::{SlackState, SlackTarget};
+use super::slack_events::SlackState;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::slack_provisioning::{SlackApiProvisioner, SlackProvisioningSetup};
 use crate::storage::OrgSlackConnectionRow;
@@ -329,6 +329,33 @@ pub struct BeginInstallRequest {
     team_id: Option<String>,
 }
 
+async fn resolve_install_endpoint(
+    state: &SlackState,
+    channel_id: &str,
+) -> Result<
+    (
+        super::endpoint_ingress::IngressContext,
+        super::endpoint_ingress::IngressEndpoint,
+    ),
+    (StatusCode, Json<ErrorResponse>),
+> {
+    // Setup precedes publication. Ingress keeps its liveness gate; setup is
+    // protected by the caller's organization or the callback's install nonce.
+    let endpoint =
+        super::endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(channel_id, %error, "Failed to lookup Slack install endpoint");
+                ErrorResponse::new("Internal server error")
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .filter(|(_, endpoint)| endpoint.channel_type == EndpointTransport::Slack)
+            .ok_or_else(|| {
+                ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND)
+            })?;
+    Ok(endpoint)
+}
+
 /// POST /v1/e/{channel_id}/slack/install
 async fn begin_install(
     org: ResolvedOrg,
@@ -345,11 +372,7 @@ async fn begin_install(
             ErrorResponse::new("Invalid install request").into_response(StatusCode::BAD_REQUEST)
         })?
     };
-    let (app, endpoint) = super::slack_events::resolve_slack_channel(
-        &state.slack,
-        SlackTarget::Endpoint(channel_id.clone()),
-    )
-    .await?;
+    let (app, endpoint) = resolve_install_endpoint(&state.slack, &channel_id).await?;
 
     // The webhook routes resolve an endpoint by public id alone because Slack
     // is the caller and there is no org to check against. Here there is one,
@@ -358,11 +381,6 @@ async fn begin_install(
     if app.org_id != org.org_id {
         return Err(ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND));
     }
-    if endpoint.channel_type != EndpointTransport::Slack {
-        return Err(ErrorResponse::new("Endpoint is not a Slack endpoint")
-            .into_response(StatusCode::BAD_REQUEST));
-    }
-
     // THREAT[TM-DOS-042]: app creation spends a deployment-wide Slack
     // credential and cannot be rolled back atomically with our database write.
     // Serialize it in PostgreSQL across server instances, then re-read under
@@ -378,9 +396,7 @@ async fn begin_install(
             ErrorResponse::new("Internal server error")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
-    let (app, endpoint) =
-        super::slack_events::resolve_slack_channel(&state.slack, SlackTarget::Endpoint(channel_id))
-            .await?;
+    let (app, endpoint) = resolve_install_endpoint(&state.slack, &channel_id).await?;
 
     let mut config = parse_config(&endpoint.channel_config);
 
@@ -461,19 +477,38 @@ async fn begin_install(
         &state.slack.api_base_url,
         &endpoint.public_id.to_string(),
     );
+    let authorize_url = authorize_url(
+        &client_id,
+        &install_state,
+        &redirect_uri,
+        team_id_for_consent.as_deref(),
+        config.agent_surface_enabled,
+    );
+    Ok(Json(BeginInstallResponse { authorize_url }))
+}
+
+fn authorize_url(
+    client_id: &str,
+    install_state: &str,
+    redirect_uri: &str,
+    team_id: Option<&str>,
+    agent_surface_enabled: bool,
+) -> String {
+    let scopes = super::slack_events::slack_bot_scopes(agent_surface_enabled).join(",");
     let mut authorize_url = format!(
-        "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}",
-        urlencoding_encode(&client_id),
-        urlencoding_encode(&install_state),
-        urlencoding_encode(&redirect_uri),
+        "{SLACK_OAUTH_AUTHORIZE_URL}?client_id={}&state={}&redirect_uri={}&scope={}",
+        urlencoding_encode(client_id),
+        urlencoding_encode(install_state),
+        urlencoding_encode(redirect_uri),
+        urlencoding_encode(&scopes),
     );
     // Pre-select the workspace on Slack's consent screen. Without it Slack
     // offers every workspace the operator belongs to, and picking any other
     // fails, since the app exists only in this one.
-    if let Some(team_id) = &team_id_for_consent {
+    if let Some(team_id) = team_id {
         authorize_url.push_str(&format!("&team={}", urlencoding_encode(team_id)));
     }
-    Ok(Json(BeginInstallResponse { authorize_url }))
+    authorize_url
 }
 
 #[derive(Deserialize)]
@@ -485,7 +520,7 @@ pub struct CallbackQuery {
 
 /// GET /v1/e/{channel_id}/slack/oauth/callback
 ///
-/// THREAT[TM-API-018]: Slack echoes `state` back here without verifying it, and
+/// THREAT[TM-SLACK-009]: Slack echoes `state` back here without verifying it, and
 /// this route cannot be authenticated because it is reached by a browser
 /// redirect. Without a stored single-use nonce an attacker could drive it with
 /// an authorization code from their own workspace and bind that workspace to
@@ -497,28 +532,53 @@ async fn finish_install(
     Path(channel_id): Path<String>,
     Query(query): Query<CallbackQuery>,
 ) -> Response {
-    match finish_install_inner(&state, &channel_id, query).await {
-        Ok(()) => Redirect::to(&format!(
-            "{}/endpoints/{channel_id}?slack_install=ok",
-            state.ui_base_url.trim_end_matches('/')
-        ))
-        .into_response(),
+    let ui_base = state.ui_base_url.trim_end_matches('/');
+    let rejected = |reason: &str| {
+        tracing::warn!(%channel_id, reason, "Slack install callback rejected");
+        Redirect::to(&format!("{ui_base}/agents?slack_install=failed")).into_response()
+    };
+    let (context, endpoint) = match resolve_install_endpoint(&state.slack, &channel_id).await {
+        Ok(endpoint) => endpoint,
+        Err(_) => return rejected("endpoint not found"),
+    };
+    let mut config = parse_config(&endpoint.channel_config);
+    let Some(mut provisioned) = config.provisioned_app.take() else {
+        return rejected("no provisioned app");
+    };
+    if let Err(reason) = spend_install_state(
+        &mut provisioned,
+        query.state.as_deref().unwrap_or_default(),
+        chrono::Utc::now(),
+    ) {
+        return rejected(reason);
+    }
+
+    // Endpoint editors are agent-scoped. Only a valid install nonce may expose
+    // the owning agent in this unauthenticated callback's return URL.
+    let editor_url = match context.agent_id {
+        Some(agent_id) => format!(
+            "{ui_base}/agents/{agent_id}/endpoints/{}",
+            endpoint.public_id
+        ),
+        None => format!("{ui_base}/agents"),
+    };
+    let outcome = match finish_install_inner(&state, &endpoint, config, provisioned, query).await {
+        Ok(()) => "ok",
         Err(reason) => {
             // The operator sees a generic marker; the detail stays in the log.
             // This page is reached by a redirect an attacker can also trigger.
             tracing::warn!(%channel_id, reason, "Slack install callback rejected");
-            Redirect::to(&format!(
-                "{}/endpoints/{channel_id}?slack_install=failed",
-                state.ui_base_url.trim_end_matches('/')
-            ))
-            .into_response()
+            "failed"
         }
-    }
+    };
+    Redirect::to(&format!("{editor_url}?slack_install={outcome}")).into_response()
 }
 
 async fn finish_install_inner(
     state: &SlackInstallState,
-    channel_id: &str,
+    endpoint: &super::endpoint_ingress::IngressEndpoint,
+    mut config: SlackChannelConfig,
+    provisioned: ProvisionedSlackApp,
     query: CallbackQuery,
 ) -> Result<(), &'static str> {
     if query.error.is_some() {
@@ -526,18 +586,6 @@ async fn finish_install_inner(
         return Err("slack reported an error");
     }
     let code = query.code.filter(|c| !c.is_empty()).ok_or("missing code")?;
-    let presented = query.state.unwrap_or_default();
-
-    let (_, endpoint) = super::slack_events::resolve_slack_channel(
-        &state.slack,
-        SlackTarget::Endpoint(channel_id.to_string()),
-    )
-    .await
-    .map_err(|_| "endpoint not found")?;
-
-    let mut config = parse_config(&endpoint.channel_config);
-    let mut provisioned = config.provisioned_app.take().ok_or("no provisioned app")?;
-    spend_install_state(&mut provisioned, &presented, chrono::Utc::now())?;
     let client_id = provisioned.client_id.clone();
     if provisioned.client_secret.is_empty() {
         return Err("no client secret");
@@ -707,7 +755,9 @@ fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Js
                 .into_response(StatusCode::NOT_FOUND)
         }
         SlackProvisioningError::Rejected(code) => {
+            tracing::warn!(slack_error = %code, "Slack app provisioning rejected");
             ErrorResponse::new(format!("Slack rejected the app creation: {code}"))
+                .with_code(code)
                 .into_response(StatusCode::BAD_GATEWAY)
         }
         SlackProvisioningError::Unreachable(detail) => {
@@ -1035,12 +1085,55 @@ mod tests {
     }
 
     #[test]
+    fn consent_requests_manifest_scopes_for_both_slack_surfaces() {
+        for agent_surface_enabled in [false, true] {
+            let redirect = "https://example.com/api/v1/e/test/slack/oauth/callback";
+            let url = url::Url::parse(&authorize_url(
+                "client-id",
+                "nonce",
+                redirect,
+                Some("T1"),
+                agent_surface_enabled,
+            ))
+            .unwrap();
+            let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
+            assert_eq!(params["client_id"], "client-id");
+            assert_eq!(params["state"], "nonce");
+            assert_eq!(params["redirect_uri"], redirect);
+            assert_eq!(params["team"], "T1");
+            let scopes: Vec<_> = params["scope"].split(',').collect();
+            assert!(scopes.contains(&"chat:write"));
+            assert_eq!(scopes.contains(&"assistant:write"), agent_surface_enabled);
+
+            let yaml = super::super::slack_events::build_manifest_yaml(
+                "Agent",
+                "Agent",
+                None,
+                "https://example.com/events",
+                "https://example.com/actions",
+                redirect,
+                agent_surface_enabled,
+                &[],
+            );
+            let manifest: serde_json::Value = serde_yaml::from_str(&yaml).unwrap();
+            let declared: Vec<_> = manifest["oauth_config"]["scopes"]["bot"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|scope| scope.as_str().unwrap())
+                .collect();
+            assert_eq!(scopes, declared);
+        }
+    }
+
+    #[test]
     fn an_absent_provisioner_answers_not_implemented_rather_than_error() {
         let (status, _) = provisioning_error_response(SlackProvisioningError::Unavailable);
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-        let (status, _) =
+        let (status, Json(problem)) =
             provisioning_error_response(SlackProvisioningError::Rejected("ratelimited".into()));
         assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(problem.code.as_deref(), Some("ratelimited"));
     }
 
     #[tokio::test]

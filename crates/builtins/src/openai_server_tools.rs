@@ -20,11 +20,11 @@
 //
 // A server that needs credentials is named by `mcp_server`, a registered
 // Everruns MCP server; the host resolves its URL, API key or OAuth token per
-// call (`everruns_provider::hosted_mcp`). Config never holds a credential:
+// call (`everruns_contracts::hosted_mcp`). Config never holds a credential:
 // headers are not an accepted field and URLs with userinfo are rejected.
 
 use async_trait::async_trait;
-use everruns_provider::openai_hosted_tools::{
+use everruns_contracts::openai_hosted_tools::{
     ContainerMemory, ContainerTool, FileSearchTool, McpApproval, McpServerTool, OpenAiHostedTools,
     SearchContextSize, WebSearchTool, WebSearchUserLocation,
 };
@@ -628,7 +628,7 @@ impl Capability for OpenAiServerToolsCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::openai_hosted_tools::OPENAI_HOSTED_TOOLS_OPTION;
+    use everruns_contracts::openai_hosted_tools::OPENAI_HOSTED_TOOLS_OPTION;
 
     #[test]
     fn no_selected_tool_contributes_nothing() {

@@ -120,6 +120,12 @@ package cache for example. It is ignored at `read-only`.
 | `on-request` | when the model sets `sandbox_permissions: require_escalated` with a justification |
 | `untrusted` | for anything outside a small read-only command set |
 
+That set is one literal command whose options cannot start another program.
+`rg --pre`, `rg -z`, and `rg --hostname-bin` ask for approval. `git status`
+asks unless the same command disables repository fsmonitor and hooks
+(`-c core.fsmonitor=` and `-c core.hooksPath=/dev/null`), because those
+settings run code during status.
+
 Every policy except `never` needs the host to supply an approval gate. Without
 one, a policy that would ask refuses instead: an unattended worker has nobody to
 ask, and a refusal is more honest than a silent escalation.

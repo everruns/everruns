@@ -4,6 +4,9 @@
 #![cfg(feature = "filesystem")]
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::ExecutionContext;
 use everruns_core::MessageRetriever;
 use everruns_core::capabilities::{
@@ -29,9 +32,6 @@ use everruns_host::{
     multi_root_file_system,
 };
 use everruns_integrations_filesystem::FileSystemCapability;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -67,7 +67,7 @@ impl SessionStore for TestSessionStore {
     async fn get_session(
         &self,
         session_id: SessionId,
-    ) -> everruns_provider::error::Result<Option<ExecutionSession>> {
+    ) -> everruns_contracts::error::Result<Option<ExecutionSession>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }
@@ -78,7 +78,7 @@ impl SessionMutator for TestSessionStore {
         &self,
         session_id: SessionId,
         title: String,
-    ) -> everruns_provider::error::Result<ExecutionSession> {
+    ) -> everruns_contracts::error::Result<ExecutionSession> {
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(&session_id).expect("session exists");
         session.title = Some(title);
@@ -104,7 +104,7 @@ impl RuntimeHostAdapter for NarrationTestHost {
         _org_id: i64,
         session_id: SessionId,
         status: SessionExecutionState,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.session_store.set_status(session_id, status).await;
         Ok(())
     }
@@ -113,7 +113,7 @@ impl RuntimeHostAdapter for NarrationTestHost {
         &self,
         _org_id: i64,
         session_id: SessionId,
-    ) -> everruns_provider::error::Result<ResolvedTurnInputs> {
+    ) -> everruns_contracts::error::Result<ResolvedTurnInputs> {
         let session = self
             .session_store
             .get_session(session_id)
@@ -175,7 +175,7 @@ impl RuntimeHostAdapter for NarrationTestHost {
 
 fn harness() -> HarnessDefinition {
     HarnessDefinition {
-        capabilities: vec![everruns_capability::CapabilityRef::new(
+        capabilities: vec![everruns_contracts::CapabilityRef::new(
             "session_file_system",
         )],
         ..HarnessDefinition::new("files", "")
@@ -185,7 +185,7 @@ fn harness() -> HarnessDefinition {
 fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
     ExecutionSession {
         id: session_id,
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: None,
@@ -215,10 +215,10 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
 async fn build_tool_definitions(
     host: &NarrationTestHost,
     session_id: SessionId,
-) -> Vec<everruns_provider::tool_types::ToolDefinition> {
+) -> Vec<everruns_contracts::tool_types::ToolDefinition> {
     let ctx = SystemPromptContext::without_file_store(session_id);
     let collected = collect_capabilities_with_configs(
-        &[everruns_capability::CapabilityRef::new(
+        &[everruns_contracts::CapabilityRef::new(
             "session_file_system",
         )],
         &host.capability_registry,

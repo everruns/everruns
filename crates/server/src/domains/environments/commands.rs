@@ -4,7 +4,7 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 use super::queries::effective_session_capabilities;
-use super::resolve::{environment_from_capabilities, environment_targets};
+use super::resolve::{environment_from_capabilities, environment_from_record, environment_targets};
 use crate::api::environments::{EnvironmentTargetsResponse, SessionEnvironmentResponse};
 use crate::domains::common::*;
 
@@ -45,7 +45,15 @@ impl Command for GetSessionEnvironment {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session not found"))?;
 
-        Ok(environment_from_capabilities(&capabilities))
+        let environment = ctx
+            .db
+            .get_environment(session_id)
+            .await
+            .map_err(classify_anyhow)?;
+        Ok(match environment {
+            Some(record) => environment_from_record(&record, &capabilities),
+            None => environment_from_capabilities(&capabilities),
+        })
     }
 }
 
@@ -81,16 +89,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn both_commands_are_gated_on_the_environments_flag() {
-        // Route mounting gates the deployment; this gates the org opt-in, and
-        // covers the Platform and MCP surfaces that never touch the router.
-        assert_eq!(
-            GetSessionEnvironment::meta().required_feature(),
-            Some("environments")
-        );
-        assert_eq!(
-            ListEnvironmentTargets::meta().required_feature(),
-            Some("environments")
-        );
+    fn both_commands_are_part_of_the_core_surface() {
+        assert_eq!(GetSessionEnvironment::meta().required_feature(), None);
+        assert_eq!(ListEnvironmentTargets::meta().required_feature(), None);
     }
 }

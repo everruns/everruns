@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 use crate::capabilities::RiskLevel;
 use crate::capability_types::CapabilityStatus;
 use crate::tool_types::ToolDefinition;
-use everruns_capability::CapabilityId;
+use everruns_contracts::CapabilityId;
 
 /// Public capability information (without internal details)
 /// This is what gets returned from the API

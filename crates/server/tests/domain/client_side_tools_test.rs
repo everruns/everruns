@@ -19,8 +19,8 @@ use async_trait::async_trait;
 
 use axum::http::StatusCode;
 use everruns_builtins::normalize_ask_user_arguments;
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_platform::{Agent, Session};
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use everruns_worker::AgentRunner;
 use serde_json::json;
@@ -61,7 +61,7 @@ fn test_agent_with_client_side_tools_serialization() {
     assert_eq!(agent.tools[0].name(), "browser_click");
     assert!(matches!(
         &agent.tools[0],
-        everruns_provider::tool_types::ToolDefinition::ClientSide(_)
+        everruns_contracts::tool_types::ToolDefinition::ClientSide(_)
     ));
 }
 
@@ -102,11 +102,11 @@ fn test_agent_with_mixed_tools_serialization() {
 
     assert!(matches!(
         &agent.tools[0],
-        everruns_provider::tool_types::ToolDefinition::Builtin(_)
+        everruns_contracts::tool_types::ToolDefinition::Builtin(_)
     ));
     assert!(matches!(
         &agent.tools[1],
-        everruns_provider::tool_types::ToolDefinition::ClientSide(_)
+        everruns_contracts::tool_types::ToolDefinition::ClientSide(_)
     ));
 
     // Roundtrip
@@ -229,8 +229,8 @@ fn test_submit_tool_results_request_empty_results() {
 
 #[test]
 fn test_tool_call_requested_data_serialization() {
+    use everruns_contracts::tool_types::ToolCall;
     use everruns_core::events::ToolCallRequestedData;
-    use everruns_provider::tool_types::ToolCall;
 
     let data = ToolCallRequestedData {
         tool_calls: vec![
@@ -262,8 +262,8 @@ fn test_tool_call_requested_data_serialization() {
 
 #[test]
 fn test_tool_call_requested_data_roundtrip() {
+    use everruns_contracts::tool_types::ToolCall;
     use everruns_core::events::ToolCallRequestedData;
-    use everruns_provider::tool_types::ToolCall;
 
     let original = ToolCallRequestedData {
         tool_calls: vec![ToolCall {
@@ -326,18 +326,18 @@ fn test_client_side_tool_in_session_tools_json() {
         }
     ]);
 
-    let tools: Vec<everruns_provider::tool_types::ToolDefinition> =
+    let tools: Vec<everruns_contracts::tool_types::ToolDefinition> =
         serde_json::from_value(tools_json.clone()).unwrap();
     assert_eq!(tools.len(), 2);
 
     for tool in &tools {
         assert!(matches!(
             tool,
-            everruns_provider::tool_types::ToolDefinition::ClientSide(_)
+            everruns_contracts::tool_types::ToolDefinition::ClientSide(_)
         ));
         assert_eq!(
             tool.policy(),
-            &everruns_provider::tool_types::ToolPolicy::ClientSide
+            &everruns_contracts::tool_types::ToolPolicy::ClientSide
         );
     }
 

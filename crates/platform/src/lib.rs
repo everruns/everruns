@@ -30,6 +30,7 @@ pub mod audit;
 pub mod budget;
 #[cfg(feature = "openapi")]
 pub mod capability_schema;
+pub mod environment_profile;
 pub mod exposure;
 pub mod organization;
 pub mod payment;
@@ -114,6 +115,7 @@ pub mod session_sandbox;
 // core boundary is frozen (EVE-906) and the kernel need not name the store.
 // Hosted presets install it as a typed extension.
 pub mod sandbox_checkpoint;
+pub mod sandbox_state;
 
 // Management/reporting aggregates carved out of `everruns-core` (EVE-878):
 // persisted eval definitions/runs/results/datasets, observer records with
@@ -188,6 +190,9 @@ pub use sandbox_checkpoint::{
     SandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointKind, SandboxCheckpointStore,
     SandboxCheckpointStoreExt, SandboxRef,
 };
+pub use sandbox_state::{
+    SandboxPersistenceStore, SandboxStateError, SandboxStateStore, SandboxStateStoreExt,
+};
 
 // Managed per-session sandbox (EVE-880).
 pub use session_sandbox::{
@@ -203,6 +208,13 @@ pub use session_sandbox::{
 };
 
 // Management/reporting aggregates (EVE-878).
+pub use environment_profile::{
+    EnvironmentBootstrap, EnvironmentContainmentLevel, EnvironmentContainmentProfile,
+    EnvironmentDurability, EnvironmentEscalation, EnvironmentFilesystemPolicy,
+    EnvironmentIdleAction, EnvironmentLifecycle, EnvironmentNetworkPolicy, EnvironmentProfile,
+    EnvironmentSelection, EnvironmentSet, EnvironmentTargetKind, EnvironmentTargetProfile,
+    ResolvedEnvironmentProfile,
+};
 pub use eval::{
     ArtifactSpec, CaseResultStatus, Eval, EvalCase, EvalCaseResult, EvalDatasetStatus,
     EvalInputMessage, EvalRun, EvalRunDataset, EvalRunSource, EvalRunStatus, EvalRunSummaryView,
@@ -240,7 +252,7 @@ pub use app::{
 };
 /// Endpoint ID. Lives in `everruns-provider` and keeps its `appchan_` wire
 /// prefix, which is stored in rows, tags, and third-party registrations.
-pub use everruns_provider::typed_id::AgentEndpointId;
+pub use everruns_contracts::typed_id::AgentEndpointId;
 // EVE-1131 dropped the App-era Rust aliases (`AppChannel`, `ChannelType`,
 // `AppEndpointAuth*`). Their OpenAPI component names stay via `schema(as = ...)`.
 // `App`/`AppStatus` are the frozen `apps` row and keep their names.

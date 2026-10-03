@@ -246,12 +246,12 @@ pub async fn import_harness(
         None
     };
 
-    let capabilities: Vec<everruns_capability::CapabilityRef> = example
+    let capabilities: Vec<everruns_contracts::CapabilityRef> = example
         .definition
         .capabilities
         .iter()
         .map(|cap| {
-            everruns_capability::CapabilityRef::with_config(
+            everruns_contracts::CapabilityRef::with_config(
                 cap.typed_id().clone(),
                 cap.config_value().clone(),
             )

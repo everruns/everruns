@@ -31,8 +31,8 @@ fn bare_generation_metadata(model: &str) -> LlmGenerationMetadata {
         cost_components: Vec::new(),
     }
 }
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use serde_json::json;
 use tokio::time::sleep;
 use uuid::Uuid;

@@ -243,7 +243,7 @@ separate usage meanings (`configured`, `resolved`, `exposed`, `invoked`,
 
 ### LLM Provider
 
-Configuration for LLM API providers. See `crates/provider/src/provider.rs` for full type definitions.
+Configuration for LLM API providers. See `crates/contracts/src/provider.rs` for full type definitions.
 
 Key design points:
 - `provider_type` stored as plain string without CHECK constraint (forward compatibility)
@@ -258,7 +258,7 @@ Default providers and models seeded on startup. See `crates/server/src/seed.rs` 
 
 ### LLM Model
 
-Configuration for a specific model within a provider. See `crates/provider/src/model.rs`.
+Configuration for a specific model within a provider. See `crates/contracts/src/model.rs`.
 
 Key design points:
 - `source` enum: `manual` (user-added), `discovered` (from provider API), `predefined` (seeded)
@@ -266,7 +266,7 @@ Key design points:
 - Model/provider assignment is editable so an existing model config can be moved to a different configured provider without deleting and recreating it.
 - Organization default model: stored in `organization_settings.default_model_id` (not on the model itself). Auto-elects a new default from enabled models if the current default is disabled or deleted.
 - Stale model detection: `last_seen_at < provider.last_synced_at` means model no longer returned by provider API. Stale models kept (not deleted) to preserve customizations.
-- First-run intelligence bootstrap: a provider gaining a credential (create, update, or a manual model sync) discovers its models and then, when the org has no enabled chat model, switches on a shortlist of the provider's catalog-known tool-calling models, stars the strongest few, and elects `organization_settings.default_model_id` when none resolves. Discovery alone creates models disabled and elects nothing, which left a freshly onboarded org with a keyed provider and a chat that could not resolve a model. The bootstrap only ever adds, so an org that deliberately disabled everything is never overridden. Ranking is curated-family first, then newest release, then fewest missing agent traits: the newest flagship must not become the default the day it ships, so OpenAI orgs land on GPT-6 Luna (the platform fallback) rather than the pricier GPT-6 Sol or Astra. See `ModelService::bootstrap_intelligence` in `crates/server/src/domains/models/service.rs` and `provision_provider_models` in `crates/server/src/domains/providers/commands.rs`.
+- First-run intelligence bootstrap: a provider gaining a credential (create, update, or a manual model sync) discovers its models and then, when the org has no enabled chat model, switches on a shortlist of the provider's catalog-known tool-calling models, stars the strongest few, and elects `organization_settings.default_model_id` when none resolves. Discovery alone creates models disabled and elects nothing, which left a freshly onboarded org with a keyed provider and a chat that could not resolve a model. The bootstrap only ever adds, so an org that deliberately disabled everything is never overridden. Ranking is curated-family first, then newest release, then fewest missing agent traits: the newest flagship must not become the default the day it ships, so OpenAI orgs land on GPT-6 Luna (the platform fallback) rather than the pricier GPT-6.1 Sol or Astra. See `ModelService::bootstrap_intelligence` in `crates/server/src/domains/models/service.rs` and `provision_provider_models` in `crates/server/src/domains/providers/commands.rs`.
 
 ### Execution Model Specification
 
@@ -292,7 +292,7 @@ Read-only metadata describing model capabilities, costs, and limits. Computed at
 
 **IMPORTANT:** Never guess or extrapolate profile data (pricing, limits, capabilities). Prefer models.dev when a model is listed there; otherwise source directly from the provider's official documentation (e.g. `developers.openai.com/api/docs/models/<id>`, Anthropic model cards). When a profile is added ahead of the models.dev entry, note the provider-doc source in a comment on the profile block and revisit once models.dev catches up. Never guess values.
 
-See `crates/provider/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimits`, and `ReasoningEffortConfig` types.
+See `crates/contracts/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimits`, and `ReasoningEffortConfig` types.
 
 Profiles matched by provider_type + model_id with version normalization (e.g., "gpt-5.2-2025-12-11" → "gpt-5.2").
 

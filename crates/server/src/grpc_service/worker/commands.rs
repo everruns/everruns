@@ -46,7 +46,7 @@ impl WorkerServiceImpl {
         // Caller::internal for user-owned sessions.
         let caller = if let Some(session) = req.platform_session_id.as_ref() {
             let session =
-                everruns_provider::typed_id::SessionId::from_uuid(parse_uuid(Some(session))?);
+                everruns_contracts::typed_id::SessionId::from_uuid(parse_uuid(Some(session))?);
             let message = parse_uuid(req.input_message_id.as_ref())?;
             self.db
                 .get_session(req.org_id, session)

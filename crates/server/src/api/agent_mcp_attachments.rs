@@ -7,11 +7,11 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+use everruns_contracts::typed_id::AgentId;
 use everruns_core::{
     Caller, CapabilityRegistry, McpServerActsAs, ScopedMcpServer, ScopedMcpServers,
 };
-use everruns_provider::typed_id::AgentId;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use utoipa::ToSchema;

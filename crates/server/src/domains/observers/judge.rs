@@ -14,13 +14,12 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::kernel_imports::{
-    everruns_provider::driver_registry::DriverRegistry,
-    everruns_provider::driver_registry::LlmCallConfig, everruns_provider::driver_registry::Message,
-    everruns_provider::driver_registry::MessageRole,
-    everruns_provider::driver_registry::ProviderConfig,
+    contracts::driver_registry::DriverRegistry, contracts::driver_registry::LlmCallConfig,
+    contracts::driver_registry::Message, contracts::driver_registry::MessageRole,
+    contracts::driver_registry::ProviderConfig,
 };
-use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::ModelId;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::typed_id::ModelId;
 
 use crate::services::ProviderResolverService;
 use crate::storage::StorageBackend;
@@ -204,7 +203,7 @@ impl JudgeClient for LlmJudgeClient {
             return Ok(None);
         };
         let mut provider_config = ProviderConfig::for_provider(
-            everruns_provider::runtime_provider::ProviderKey::new(&resolved.provider_id),
+            everruns_contracts::runtime_provider::ProviderKey::new(&resolved.provider_id),
             driver_id,
         );
         provider_config.api_key = Some(runtime_provider.credentials.api_key);
@@ -227,7 +226,7 @@ impl JudgeClient for LlmJudgeClient {
 
         let response = driver
             .chat_completion(
-                &everruns_provider::runtime_provider::ProviderEndpoint::default(),
+                &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
                 messages,
                 &config,
             )

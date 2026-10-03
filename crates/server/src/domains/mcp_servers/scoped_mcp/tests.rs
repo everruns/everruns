@@ -16,7 +16,7 @@ impl UserConnectionResolver for MutableConnectionResolver {
         &self,
         _session_id: SessionId,
         _provider: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         Ok(self.token.read().await.clone())
     }
 
@@ -25,7 +25,7 @@ impl UserConnectionResolver for MutableConnectionResolver {
         _session_id: SessionId,
         _provider: &str,
         _acts_as: McpServerActsAs,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         Ok(self.token.read().await.clone())
     }
 }
@@ -41,7 +41,7 @@ impl UserConnectionResolver for CountingConnectionResolver {
         &self,
         _session_id: SessionId,
         _provider: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(Some("legacy-token".to_string()))
     }
@@ -58,7 +58,7 @@ impl UserConnectionResolver for ActingIdentityResolver {
         &self,
         _session_id: SessionId,
         _provider: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         Ok(Some("legacy-token".to_string()))
     }
 
@@ -67,7 +67,7 @@ impl UserConnectionResolver for ActingIdentityResolver {
         _session_id: SessionId,
         _provider: &str,
         acts_as: McpServerActsAs,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         self.calls.lock().unwrap().push(acts_as);
         Ok(Some(format!("{acts_as}-token")))
     }
@@ -170,7 +170,7 @@ async fn seed_catalog_server(
     db: &StorageBackend,
     name: &str,
     oauth: bool,
-) -> everruns_provider::typed_id::McpServerId {
+) -> everruns_contracts::typed_id::McpServerId {
     let settings = crate::domains::mcp_servers::service::McpServerSettings {
         auth_mode: if oauth {
             McpServerAuthMode::OAuth
@@ -352,13 +352,14 @@ fn test_agent() -> Agent {
         starters: Vec::new(),
         system_prompt: "agent".to_string(),
         default_model_id: None,
-        harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+        harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
         root_agent_id: None,
         tags: vec![],
         capabilities: vec![],
+        environments: None,
         initial_files: vec![],
         network_access: None,
         max_iterations: None,
@@ -376,21 +377,22 @@ fn test_agent() -> Agent {
     }
 }
 
-fn test_session(harness_id: HarnessId, agent_id: everruns_provider::typed_id::AgentId) -> Session {
+fn test_session(harness_id: HarnessId, agent_id: everruns_contracts::typed_id::AgentId) -> Session {
     let session_id = SessionId::new();
     Session {
+        playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
         run_summary: None,
         id: session_id,
         // Default 1:1 session<->workspace: workspace.id mirrors the session id.
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: Some(agent_id),
         agent_version_id: None,
         virtual_user_id: None,
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
         owner: None,
         effective_owner: None,
@@ -476,7 +478,7 @@ fn merge_effective_scoped_mcp_servers_strips_explicit_only_when_oauth() {
 
 #[test]
 fn explicit_entries_replace_capability_entries_including_acts_as() {
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::capabilities::{Capability, CapabilityRegistry, RiskLevel};
 
     struct OAuthMcpCapability {

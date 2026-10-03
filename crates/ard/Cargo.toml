@@ -23,10 +23,9 @@ documentation = "https://docs.rs/everruns-ard"
 
 [dependencies]
 everruns-core.workspace = true
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 # Connector catalog (EVE-879): the ARD connector registers into the hosted
 # connector plugin system, which lives in the platform crate.
-everruns-platform.workspace = true
 
 # HTTP client for ARD registry REST API
 reqwest.workspace = true
@@ -48,7 +47,7 @@ url = "2"
 ard-live-tests = []
 
 [dev-dependencies]
-everruns-host = { version = "0.34.2", path = "../host", features = ["direct-egress"] }
+everruns-host = { version = "0.36.0", path = "../host", features = ["direct-egress"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
 

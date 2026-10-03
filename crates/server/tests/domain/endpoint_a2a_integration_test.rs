@@ -13,6 +13,7 @@ use axum::{
     http::{Method, StatusCode},
     routing::get,
 };
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::capabilities::Capability;
 use everruns_core::tools::ToolExecutionResult;
@@ -21,7 +22,6 @@ use everruns_core::{
     tool_context::ToolContext,
 };
 use everruns_platform::capabilities::A2aAgentDelegationCapability;
-use everruns_provider::typed_id::SessionId;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
@@ -214,7 +214,7 @@ impl SessionStorageStore for TestStorageStore {
         _session_id: SessionId,
         key: &str,
         value: &str,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         self.values
             .lock()
             .unwrap()
@@ -226,7 +226,7 @@ impl SessionStorageStore for TestStorageStore {
         &self,
         _session_id: SessionId,
         key: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         Ok(self.values.lock().unwrap().get(key).cloned())
     }
 
@@ -234,14 +234,14 @@ impl SessionStorageStore for TestStorageStore {
         &self,
         _session_id: SessionId,
         key: &str,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         Ok(self.values.lock().unwrap().remove(key).is_some())
     }
 
     async fn list_keys(
         &self,
         _session_id: SessionId,
-    ) -> everruns_provider::error::Result<Vec<KeyInfo>> {
+    ) -> everruns_contracts::error::Result<Vec<KeyInfo>> {
         let now = chrono::Utc::now();
         Ok(self
             .values
@@ -261,7 +261,7 @@ impl SessionStorageStore for TestStorageStore {
         _session_id: SessionId,
         _name: &str,
         _value: &str,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         Ok(())
     }
 
@@ -269,7 +269,7 @@ impl SessionStorageStore for TestStorageStore {
         &self,
         _session_id: SessionId,
         _name: &str,
-    ) -> everruns_provider::error::Result<Option<String>> {
+    ) -> everruns_contracts::error::Result<Option<String>> {
         Ok(None)
     }
 
@@ -277,14 +277,14 @@ impl SessionStorageStore for TestStorageStore {
         &self,
         _session_id: SessionId,
         _name: &str,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         Ok(false)
     }
 
     async fn list_secrets(
         &self,
         _session_id: SessionId,
-    ) -> everruns_provider::error::Result<Vec<SecretInfo>> {
+    ) -> everruns_contracts::error::Result<Vec<SecretInfo>> {
         Ok(Vec::new())
     }
 }
@@ -1456,7 +1456,7 @@ async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
         create_published_served_a2a_app().await;
     let discovery_base_url = spawn_agent_card_server(a2a_agent_card(&endpoint)).await;
     let config = outbound_delegation_config(&endpoint, &api_key, Some(&discovery_base_url));
-
+    let _dev_grade = crate::dev_grade::DevGradeGuard::set();
     let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
 
     assert_ne!(
@@ -1494,7 +1494,7 @@ async fn outbound_a2a_delegation_reaches_local_app_with_inline_card() {
     let (_server, endpoint, api_key, _app_id, _channel_id) =
         create_published_served_a2a_app().await;
     let config = outbound_delegation_config(&endpoint, &api_key, None);
-
+    let _dev_grade = crate::dev_grade::DevGradeGuard::set();
     let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
 
     assert_ne!(

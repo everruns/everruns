@@ -19,13 +19,13 @@ use crate::storage::models::{
 use anyhow::Result;
 use chrono::Utc;
 use everruns_builtins::ask_user::{ASK_USER_TOOL_NAME, AskUserStatus};
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, PrincipalId, SessionId};
 use everruns_core::Event;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
     ToolCompletedData, deserialize_event_data,
 };
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, PrincipalId, SessionId};
 use everruns_worker::AgentRunner;
 use serde_json::json;
 use std::sync::Arc;
@@ -148,7 +148,7 @@ impl MessageService {
                 anyhow::bail!("Invalid runtime principal");
             }
             p.subject_id
-                .map(everruns_provider::typed_id::VirtualUserId::from_uuid)
+                .map(everruns_contracts::typed_id::VirtualUserId::from_uuid)
         } else if ctx.event_metadata.is_none() {
             match ctx.user_id {
                 Some(id) => Some(self.db.default_virtual_user(ctx.org_id, id).await?.id),
@@ -157,8 +157,22 @@ impl MessageService {
         } else {
             None
         };
+        // Other ingress adapters cannot retarget a shared Playground session or
+        // bypass the source-specific command policy and feature gate.
+        if let Some(session) = self.db.get_session(ctx.org_id, session_id).await?
+            && let Some(subject) = session.playground_user_id
+            && (runtime_subject != Some(subject)
+                || ctx
+                    .event_metadata
+                    .as_ref()
+                    .and_then(|m| m.get("type"))
+                    .and_then(|v| v.as_str())
+                    != Some("playground"))
+        {
+            anyhow::bail!("Playground messages must use the authorised Playground command path");
+        }
         let responder = if let Some(id) = ctx.agent_id {
-            let public = everruns_provider::typed_id::AgentId::from_uuid(id).to_string();
+            let public = everruns_contracts::typed_id::AgentId::from_uuid(id).to_string();
             let row = match self.db.get_agent_by_public_id(ctx.org_id, &public).await? {
                 Some(row) => Some(row),
                 None => self.db.get_agent(ctx.org_id, id.into()).await?,
@@ -198,6 +212,14 @@ impl MessageService {
             created_at: now,
         };
         let event_metadata = if let Some(principal_id) = ctx.runtime_subject_principal_id {
+            let display_name = match runtime_subject {
+                Some(id) => self
+                    .db
+                    .get_virtual_user(ctx.org_id, id)
+                    .await?
+                    .map(|v| v.name),
+                None => None,
+            };
             self.db
                 .ensure_active_user_session_participant(CreateSessionParticipantRow {
                     org_id: ctx.org_id,
@@ -206,7 +228,7 @@ impl MessageService {
                     agent_id: None,
                     agent_version_id: None,
                     principal_id,
-                    display_name: None,
+                    display_name,
                     role: SessionParticipantRole::Member,
                     joined_at: None,
                 })
@@ -410,7 +432,7 @@ impl MessageService {
         else {
             return Ok(Vec::new());
         };
-        let turn_id = everruns_provider::typed_id::TurnId::from_uuid(session_id.uuid());
+        let turn_id = everruns_contracts::typed_id::TurnId::from_uuid(session_id.uuid());
         let event_message_id = MessageId::from_uuid(session_id.uuid());
 
         Ok(requested
@@ -537,7 +559,7 @@ impl MessageService {
                     everruns_core::EventData::OutputMessageCompleted(data) => &data.message,
                     everruns_core::EventData::ToolCompleted(data) => {
                         // Separate text and image parts from the result content
-                        let mut images: Vec<everruns_provider::tool_types::ToolResultImage> =
+                        let mut images: Vec<everruns_contracts::tool_types::ToolResultImage> =
                             Vec::new();
                         let result: Option<serde_json::Value> =
                             data.result
@@ -549,7 +571,7 @@ impl MessageService {
                                                 (&img.base64, &img.media_type)
                                         {
                                             images.push(
-                                                everruns_provider::tool_types::ToolResultImage {
+                                                everruns_contracts::tool_types::ToolResultImage {
                                                     base64: b64.clone(),
                                                     media_type: mt.clone(),
                                                 },
@@ -656,7 +678,7 @@ mod tests {
         models::{CreateUserRow, UpdateSession},
     };
     use async_trait::async_trait;
-    use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+    use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct NoopRunner;
@@ -743,6 +765,7 @@ mod tests {
         org_id: i64,
     ) -> crate::storage::models::SessionRow {
         db.create_session(crate::storage::models::CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id,
@@ -754,7 +777,9 @@ mod tests {
             agent_version_id: None,
             agent_config_hash: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(org_id as u128),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(
+                org_id as u128,
+            ),
             resolved_owner_user_id: None,
             title: None,
             locale: None,

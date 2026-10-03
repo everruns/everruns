@@ -494,6 +494,8 @@ See `crates/server/migrations/001_base_schema.sql` for `users`, `personal_access
 
 For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/seed.rs`. Constants in `crates/platform/src/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
 
+When the same database later starts in an authenticated mode (`admin` / `full` / `external`), startup seed revokes every personal access token owned by that anonymous identity, and PAT validation rejects the anonymous user id even if a row remains. Local `none` mode still allows minting anonymous PATs for disposable development databases. See TM-AUTH-032 and EVE-1153.
+
 #### Default-Org Membership (single-tenant only)
 
 `register` and `oauth_callback` add a brand-new user to `DEFAULT_ORG_ID` **only when `AuthConfig.auto_join_default_org` is set** (`AUTH_AUTO_JOIN_DEFAULT_ORG=true`). It is **off by default**, because auto-joining the shared default org is a single-tenant convenience (single-binary / small self-host where everyone shares one org). In any multi-tenant deployment it MUST stay off: a fresh signup must own **no** org so the zero-org onboarding flow creates the user's *own* org, otherwise every tenant lands in `DEFAULT_ORG_ID` together (a tenant-isolation failure). The admin-mode bootstrap owner is unaffected: `login` always seeds the admin into the default org regardless of this flag.

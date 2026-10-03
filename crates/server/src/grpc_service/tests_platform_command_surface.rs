@@ -34,6 +34,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     let session = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -45,7 +46,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
             virtual_user_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(2),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(2),
             resolved_owner_user_id: Some(user.id),
             title: Some("platform surface".to_string()),
             locale: None,
@@ -114,6 +115,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     let session_without_platform = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -125,7 +127,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
             virtual_user_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(2),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(2),
             resolved_owner_user_id: Some(user.id),
             title: Some("no platform surface".to_string()),
             locale: None,
@@ -173,6 +175,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
     let session_via_dependency = service
         .db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -184,7 +187,7 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
             virtual_user_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(3),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(3),
             resolved_owner_user_id: Some(user.id),
             title: Some("platform via dependency".to_string()),
             locale: None,

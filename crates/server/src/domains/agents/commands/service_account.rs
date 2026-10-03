@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) async fn validate_service_account(
     ctx: &Ctx,
-    id: Option<everruns_provider::typed_id::VirtualUserId>,
+    id: Option<everruns_contracts::typed_id::VirtualUserId>,
 ) -> Result<(), CommandError> {
     if let Some(id) = id {
         crate::domains::virtual_users::VIRTUAL_USER_MANAGE

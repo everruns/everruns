@@ -10,6 +10,9 @@ use crate::in_memory::{
     InMemoryProviderStore, InMemorySessionStorageStore, InMemorySessionStore,
 };
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::typed_id::HarnessId;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::session::ExecutionSession;
@@ -20,9 +23,6 @@ use everruns_core::{
     provider_resolution::ProviderStore, session_services::SessionScheduleStore,
     session_services::SessionStorageStore,
 };
-use everruns_provider::error::Result;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::typed_id::HarnessId;
 use std::sync::Arc;
 
 /// Factory producing a per-org [`SessionScheduleStore`]. Embedders that have a

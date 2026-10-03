@@ -377,8 +377,6 @@ everruns_core::computer_use::ScrollDirection::Down	variant
 everruns_core::computer_use::ScrollDirection::Left	variant
 everruns_core::computer_use::ScrollDirection::Right	variant
 everruns_core::computer_use::ScrollDirection::Up	variant
-everruns_core::computer_use::action_requires_approval	function
-everruns_core::computer_use::computer_call_requires_approval	function
 everruns_core::computer_use::parse_key_combo	function
 everruns_core::computer_use::parse_modifiers	function
 everruns_core::config	module
@@ -537,6 +535,8 @@ everruns_core::events::CONTEXT_COMPACTED	constant
 everruns_core::events::CONTEXT_COMPACTING	constant
 everruns_core::events::CONTEXT_COMPACTION_FAILED	constant
 everruns_core::events::CONTEXT_COMPACTION_SKIPPED	constant
+everruns_core::events::ENVIRONMENT_INSTANCE_LOST	constant
+everruns_core::events::ENVIRONMENT_RECOVERED	constant
 everruns_core::events::Event	struct
 everruns_core::events::EventBuilder	struct
 everruns_core::events::EventContext	struct
@@ -552,6 +552,8 @@ everruns_core::events::EventData::ContextCompacted	variant
 everruns_core::events::EventData::ContextCompacting	variant
 everruns_core::events::EventData::ContextCompactionFailed	variant
 everruns_core::events::EventData::ContextCompactionSkipped	variant
+everruns_core::events::EventData::EnvironmentInstanceLost	variant
+everruns_core::events::EventData::EnvironmentRecovered	variant
 everruns_core::events::EventData::FileWritten	variant
 everruns_core::events::EventData::InputMessage	variant
 everruns_core::events::EventData::LlmGeneration	variant
@@ -679,6 +681,7 @@ everruns_core::events::correlation::PROVIDER_TURN_ID	constant
 everruns_core::events::correlation::RUNTIME_BACKEND	constant
 everruns_core::events::correlation::provider_correlation	function
 everruns_core::events::deserialize_event_data	function
+everruns_core::events::environment_data::EnvironmentLifecycleData	struct
 everruns_core::events::file_voice_data::BudgetEventData	struct
 everruns_core::events::file_voice_data::FILE_OP_UPDATE	constant
 everruns_core::events::file_voice_data::FileWrittenData	struct
@@ -1180,6 +1183,7 @@ everruns_core::permissions::Permission::OrgMcpServersManage	variant
 everruns_core::permissions::Permission::OrgMcpServersView	variant
 everruns_core::permissions::Permission::OrgMembersManage	variant
 everruns_core::permissions::Permission::OrgMembersView	variant
+everruns_core::permissions::Permission::OrgPlaygroundImpersonate	variant
 everruns_core::permissions::Permission::OrgPluginsManage	variant
 everruns_core::permissions::Permission::OrgPluginsView	variant
 everruns_core::permissions::Permission::OrgProvidersManage	variant
@@ -1727,13 +1731,6 @@ everruns_core::tools::Tool	trait
 everruns_core::tools::Tool::cli_spelling	function
 everruns_core::tools::Tool::narrate	function
 everruns_core::tools::Tool::required_context_services	function
-everruns_core::tools::ToolExecutionResult	enum
-everruns_core::tools::ToolExecutionResult::ConnectionRequired	variant
-everruns_core::tools::ToolExecutionResult::InternalError	variant
-everruns_core::tools::ToolExecutionResult::Success	variant
-everruns_core::tools::ToolExecutionResult::SuccessWithImages	variant
-everruns_core::tools::ToolExecutionResult::ToolError	variant
-everruns_core::tools::ToolInternalError	struct
 everruns_core::tools::ToolRegistry	struct
 everruns_core::tools::ToolRegistryBuilder	struct
 everruns_core::truncation_info	module

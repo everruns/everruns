@@ -10,12 +10,12 @@ use crate::domains::common::CommandError;
 use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
+use everruns_contracts::typed_id::AppId;
+use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, VirtualUserId};
 use everruns_platform::{
     AgentEndpoint, AgentEndpointId, AgentVersionPolicy, App, AppStatus, EndpointStatus,
     EndpointTransport,
 };
-use everruns_provider::typed_id::AppId;
-use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, VirtualUserId};
 use std::sync::Arc;
 use uuid::Uuid;
 

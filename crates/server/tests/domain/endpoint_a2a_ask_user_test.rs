@@ -14,8 +14,8 @@ use crate::test_harness;
 
 use async_trait::async_trait;
 use axum::http::{Method, StatusCode};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -135,9 +135,9 @@ impl everruns_worker::AgentRunner for ResumeRecordingRunner {
         &self,
         _org_id: i64,
         _session_id: SessionId,
-        _harness_id: everruns_provider::typed_id::HarnessId,
-        _agent_id: Option<everruns_provider::typed_id::AgentId>,
-        _input_message_id: everruns_provider::typed_id::MessageId,
+        _harness_id: everruns_contracts::typed_id::HarnessId,
+        _agent_id: Option<everruns_contracts::typed_id::AgentId>,
+        _input_message_id: everruns_contracts::typed_id::MessageId,
         _request_id: Option<String>,
     ) -> anyhow::Result<()> {
         Ok(())

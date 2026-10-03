@@ -7,7 +7,7 @@ This check compares each against its source of truth without compiling Rust:
 
 - Capabilities: ``docs/api/capability-catalog.json``, the registry snapshot that
   ``crates/integrations-catalog/src/docs_catalog.rs`` writes and keeps fresh.
-- Harnesses: the capability lists in ``crates/capability/src/presets.rs``
+- Harnesses: the capability lists in ``crates/contracts/src/capability/presets.rs``
   (generic) and ``crates/server/src/harnesses/platform_chat.rs``.
 - Events: the event-type constants in ``crates/core/src/events/mod.rs``.
 - Environment variables: string literals the Rust sources read.
@@ -30,7 +30,7 @@ EVENT_REFERENCE = "docs/event-reference.md"
 EVENT_SOURCE = "crates/core/src/events/mod.rs"
 ENV_PAGE = "docs/sre/environment-variables.md"
 GENERIC_PAGE = "docs/built-ins/harnesses/generic.md"
-GENERIC_SOURCE = "crates/capability/src/presets.rs"
+GENERIC_SOURCE = "crates/contracts/src/capability/presets.rs"
 PLATFORM_CHAT_PAGE = "docs/built-ins/harnesses/platform-chat.md"
 PLATFORM_CHAT_SOURCE = "crates/server/src/harnesses/platform_chat.rs"
 SERVER_MANIFEST = "crates/server/Cargo.toml"

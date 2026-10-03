@@ -3,6 +3,14 @@
 use super::*;
 
 impl StorageBackend {
+    pub async fn list_agent_channel_summaries(
+        &self,
+        org_id: i64,
+        agent_ids: &[Uuid],
+    ) -> Result<Vec<crate::storage::AgentChannelSummaryRow>> {
+        dispatch!(self, list_agent_channel_summaries, org_id, agent_ids)
+    }
+
     pub async fn get_user_id_by_installation_id(
         &self,
         provider: &str,
@@ -775,6 +783,15 @@ impl StorageBackend {
         endpoint_id: Uuid,
     ) -> Result<Option<String>> {
         dispatch!(self, get_agent_endpoint_public_id, org_id, endpoint_id)
+    }
+
+    pub async fn update_endpoint_config_by_id(
+        &self,
+        id: Uuid,
+        config: serde_json::Value,
+        encrypted: Option<Vec<u8>>,
+    ) -> Result<bool> {
+        dispatch!(self, update_endpoint_config_by_id, id, config, encrypted)
     }
 
     pub async fn update_endpoint_by_id(

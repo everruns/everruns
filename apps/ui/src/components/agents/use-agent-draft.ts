@@ -24,6 +24,7 @@ import { joinTags } from "@/lib/tags";
 import type {
   Agent,
   AgentCapabilityConfig,
+  EnvironmentSet,
   InitialFile,
   NetworkAccessList,
   UpdateAgentRequest,
@@ -93,6 +94,7 @@ export function useAgentDraft(agent: Agent | undefined) {
   );
   const initialStarters = useMemo(() => agent?.starters ?? [], [agent?.starters]);
   const initialFiles = useMemo(() => agent?.initial_files ?? [], [agent?.initial_files]);
+  const initialEnvironments = useMemo(() => agent?.environments ?? null, [agent?.environments]);
   const initialNetworkAccess = agent?.network_access ?? null;
 
   const [fieldChanges, setFieldChanges] = useState<Partial<AgentDraftFields>>({});
@@ -100,6 +102,8 @@ export function useAgentDraft(agent: Agent | undefined) {
   const [starters, setStarters] = useState<ConversationStarter[] | null>(null);
   const [files, setFiles] = useState<InitialFile[] | null>(null);
   const [networkAccess, setNetworkAccess] = useState<NetworkAccessList | null>(null);
+  // undefined means untouched; null is an intentional clear sent to the API.
+  const [environments, setEnvironments] = useState<EnvironmentSet | null | undefined>(undefined);
   const [errors, setErrors] = useState<FieldErrors>({});
 
   const fields = useMemo(
@@ -118,6 +122,7 @@ export function useAgentDraft(agent: Agent | undefined) {
     starters: starters ?? initialStarters,
     files: files ?? initialFiles,
     networkAccess: networkAccess ?? initialNetworkAccess,
+    environments: environments === undefined ? initialEnvironments : environments,
   };
 
   const capabilitiesChanged = !same(values.capabilities, initialCapabilities);
@@ -127,6 +132,8 @@ export function useAgentDraft(agent: Agent | undefined) {
   const networkAccessChanged =
     networkAccess !== null &&
     !same(normalizeNetworkAccess(networkAccess), normalizeNetworkAccess(initialNetworkAccess));
+  const environmentsChanged =
+    environments !== undefined && !same(environments, initialEnvironments);
   const harnessChanged =
     fieldChanges.harness_id !== undefined && fieldChanges.harness_id !== initialFields.harness_id;
 
@@ -137,7 +144,8 @@ export function useAgentDraft(agent: Agent | undefined) {
     capabilitiesChanged ||
     startersChanged ||
     filesChanged ||
-    networkAccessChanged;
+    networkAccessChanged ||
+    environmentsChanged;
 
   const reset = useCallback(() => {
     setFieldChanges({});
@@ -145,6 +153,7 @@ export function useAgentDraft(agent: Agent | undefined) {
     setStarters(null);
     setFiles(null);
     setNetworkAccess(null);
+    setEnvironments(undefined);
     setErrors({});
   }, []);
 
@@ -173,6 +182,7 @@ export function useAgentDraft(agent: Agent | undefined) {
         ...(capabilitiesChanged && { capabilities: values.capabilities }),
         ...(filesChanged && { initial_files: values.files }),
         ...(networkAccessChanged && { network_access: networkAccess }),
+        ...(environmentsChanged && { environments: values.environments }),
       },
     };
   };
@@ -188,6 +198,7 @@ export function useAgentDraft(agent: Agent | undefined) {
     setStarters,
     setFiles,
     setNetworkAccess,
+    setEnvironments,
     reset,
     buildRequest,
   };

@@ -4,9 +4,9 @@
 //! implementation is unchanged by the move.
 
 use async_trait::async_trait;
+use everruns_contracts::error::Result;
 use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
 use everruns_internal_protocol::proto;
-use everruns_provider::error::Result;
 
 use super::{GrpcAdapter, grpc_status_to_error, proto_timestamp_or_now, uuid_to_proto};
 
@@ -14,7 +14,7 @@ use super::{GrpcAdapter, grpc_status_to_error, proto_timestamp_or_now, uuid_to_p
 impl SessionStorageStore for GrpcAdapter {
     async fn set_value(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         key: &str,
         value: &str,
     ) -> Result<()> {
@@ -33,7 +33,7 @@ impl SessionStorageStore for GrpcAdapter {
 
     async fn get_value(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         key: &str,
     ) -> Result<Option<String>> {
         let mut client = self.client.inner.lock().await;
@@ -50,7 +50,7 @@ impl SessionStorageStore for GrpcAdapter {
 
     async fn delete_value(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         key: &str,
     ) -> Result<bool> {
         let mut client = self.client.inner.lock().await;
@@ -67,7 +67,7 @@ impl SessionStorageStore for GrpcAdapter {
 
     async fn take_value(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         key: &str,
     ) -> Result<Option<String>> {
         let mut client = self.client.inner.lock().await;
@@ -84,7 +84,7 @@ impl SessionStorageStore for GrpcAdapter {
 
     async fn list_keys(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
     ) -> Result<Vec<KeyInfo>> {
         let mut client = self.client.inner.lock().await;
         let request = proto::SessionStorageListKeysRequest {
@@ -108,7 +108,7 @@ impl SessionStorageStore for GrpcAdapter {
 
     async fn set_secret(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         name: &str,
         value: &str,
     ) -> Result<()> {
@@ -127,7 +127,7 @@ impl SessionStorageStore for GrpcAdapter {
 
     async fn get_secret(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         name: &str,
     ) -> Result<Option<String>> {
         let mut client = self.client.inner.lock().await;
@@ -144,7 +144,7 @@ impl SessionStorageStore for GrpcAdapter {
 
     async fn delete_secret(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         name: &str,
     ) -> Result<bool> {
         let mut client = self.client.inner.lock().await;
@@ -161,7 +161,7 @@ impl SessionStorageStore for GrpcAdapter {
 
     async fn list_secrets(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
     ) -> Result<Vec<SecretInfo>> {
         let mut client = self.client.inner.lock().await;
         let request = proto::SessionStorageListSecretsRequest {

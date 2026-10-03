@@ -527,9 +527,9 @@ fn approval_result(
 
 /// Records that the user gave spoken approval for a critical action.
 ///
-/// The tool only echoes the record back; the durable audit entry is the
-/// `tool.completed` event this call produces on the session, which captures the
-/// arguments, the output, and the timestamp. No separate audit store.
+/// The durable record is the `tool.completed` session event. The server also
+/// projects successful completions into the organization audit log, resolving
+/// the actor from the authenticated input message rather than tool arguments.
 struct RecordApprovalTool {
     pending: PendingApprovalStore,
 }

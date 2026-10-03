@@ -3,7 +3,7 @@
 use crate::test_harness::{self, TestServer};
 
 use axum::http::StatusCode;
-use everruns_provider::typed_id::PrincipalId;
+use everruns_contracts::typed_id::PrincipalId;
 use everruns_server::org_init;
 use everruns_server::storage::{CreatePrincipalRow, CreateSessionRow, Database, StorageBackend};
 use serde_json::json;
@@ -53,6 +53,8 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
         .expect("load Platform Chat harness")
         .expect("Platform Chat harness is seeded");
     let starter = CreateSessionRow {
+        playground_user_id: None,
+
         source: everruns_platform::SessionSource::Chat,
         workspace_id: None,
         org_id: TEST_ORG_ID,

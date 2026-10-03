@@ -1,6 +1,6 @@
 //! Explicit native async configuration for hosts with a durable call coordinator.
 
-use everruns_provider::{
+use everruns_contracts::{
     LlmCallConfig,
     error::{AgentLoopError, Result},
     native_async::Delivery,
@@ -116,7 +116,7 @@ impl OpenResponsesRequestExtension for NativeAsyncTools {
             let mut input = delivery.input.clone();
             // Replacing transcript input must retain the current effort transition.
             // Historical transitions already belong to previous_response_id.
-            if everruns_provider::reasoning_updates::supports_configuration_updates(&config.model)
+            if everruns_contracts::reasoning_updates::supports_configuration_updates(&config.model)
                 && let Some(effort) = config
                     .reasoning_state
                     .as_ref()
@@ -136,7 +136,9 @@ impl OpenResponsesRequestExtension for NativeAsyncTools {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints};
+    use everruns_contracts::tool_types::{
+        BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints,
+    };
     fn config(model: &str) -> LlmCallConfig {
         LlmCallConfig::new(model)
     }
@@ -182,7 +184,7 @@ mod tests {
     }
     #[test]
     fn continuation_keeps_pending_effort_before_original_call_outputs() {
-        use everruns_provider::{ReasoningEffort, reasoning_updates::ReasoningState};
+        use everruns_contracts::{ReasoningEffort, reasoning_updates::ReasoningState};
         let mut config = config("gpt-6-astra");
         config.tools = vec![tool("web_fetch")];
         config.previous_response_id = Some("latest".into());

@@ -7,9 +7,9 @@ use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::storage::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
+use everruns_contracts::typed_id::AgentId;
 use everruns_durable::UpdateField;
 use everruns_platform::{AgentEndpoint, AgentEndpointId, EndpointTransport};
-use everruns_provider::typed_id::AgentId;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -46,7 +46,7 @@ fn stored_version_selection(row: &IngressEndpointRow) -> VersionSelection {
         policy: everruns_platform::AgentVersionPolicy::from(row.agent_version_policy.as_str()),
         version_id: row
             .agent_version_id
-            .map(everruns_provider::typed_id::AgentVersionId::from_uuid),
+            .map(everruns_contracts::typed_id::AgentVersionId::from_uuid),
     }
 }
 
@@ -273,11 +273,16 @@ impl Command for UpdateAgentEndpointCmd {
             self.req.agent_version_id,
         )
         .await?;
+        let mut config_changed = false;
         let (channel_config, channel_config_encrypted, auth, auth_encrypted) =
             if let Some(mut config) = self.req.channel_config {
                 let current = decrypted_config(ctx, existing.clone())?;
                 merge_preserved_secret_fields(channel_type.clone(), &mut config, &current);
                 let config = normalize_and_validate_channel_config(channel_type.clone(), config)?;
+                config_changed = super::exposure::config_changed(
+                    &config,
+                    normalize_and_validate_channel_config(channel_type.clone(), current).ok(),
+                );
                 let prepared =
                     super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)
                         .map_err(classify_anyhow)?;
@@ -295,6 +300,12 @@ impl Command for UpdateAgentEndpointCmd {
                     UpdateField::Unchanged,
                 )
             };
+        super::exposure::require_live_change_permission(
+            ctx,
+            &existing.endpoint_status,
+            config_changed,
+            self.req.enabled == Some(false),
+        )?;
         let status = self.req.enabled.map(|enabled| {
             if enabled {
                 if existing.endpoint_status == "disabled" {
@@ -470,7 +481,7 @@ pub struct TriggerAgentEndpoint {
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct TriggerAgentEndpointOutput {
     /// Session started or reused by the invocation.
-    pub session_id: everruns_provider::typed_id::SessionId,
+    pub session_id: everruns_contracts::typed_id::SessionId,
     /// Whether the invocation created a new session.
     pub created_session: bool,
 }

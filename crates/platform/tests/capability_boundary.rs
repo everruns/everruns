@@ -1,4 +1,7 @@
-use everruns_capability::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
+#[cfg(feature = "environment-capabilities")]
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_contracts::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 use everruns_core::capabilities::{
     Capability, CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
@@ -8,9 +11,6 @@ use everruns_platform::capabilities::{
     AgentHandoffCapability, SessionScheduleCapability, SubagentCapability,
     register_hosted_capabilities,
 };
-#[cfg(feature = "environment-capabilities")]
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 const HOSTED_IDS: &[&str] = &[
     "research",

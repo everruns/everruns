@@ -409,7 +409,7 @@ impl Engine {
             {
                 if existing.workspace_root != workspace_root {
                     return Err(BackendInitError::Host(
-                        everruns_provider::error::AgentLoopError::config(format!(
+                        everruns_contracts::error::AgentLoopError::config(format!(
                             "local profile {} is already open with workspace {}; requested {}",
                             key.display(),
                             existing.workspace_root.display(),
@@ -542,7 +542,7 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
     if let Some(config) = agent.local_config() {
         let profile = config.profile();
         profile.ensure_dirs().map_err(|error| {
-            BackendInitError::Host(everruns_provider::error::AgentLoopError::config(
+            BackendInitError::Host(everruns_contracts::error::AgentLoopError::config(
                 error.to_string(),
             ))
         })?;

@@ -3,10 +3,9 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Cpu, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { SearchInput } from "@/components/ui/search-input";
@@ -24,10 +23,7 @@ import {
   PageBreadcrumb,
   PageMasthead,
   PageControlStrip,
-  PageColumns,
   PageMain,
-  PageRail,
-  RailSection,
   PageFooter,
 } from "@/components/layout";
 import { AddModelDialog } from "@/components/models/add-model-dialog";
@@ -40,7 +36,6 @@ import { updateModel } from "@/lib/api/providers";
 import { ApiError } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import { pluralize } from "@/lib/formatting";
-import { cn } from "@/lib/utils";
 import type { ModelWithProvider } from "@/lib/api/types";
 import { isChatModel } from "@/lib/model-capabilities";
 
@@ -68,6 +63,7 @@ export default function ModelsPage() {
   usePageTitle("Models");
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { data: providers = [] } = useProviders();
   const { data: models = [], isLoading: modelsLoading, error: modelsError } = useModels();
   const { data: org } = useOrganization();
@@ -121,7 +117,7 @@ export default function ModelsPage() {
       "Unknown model")
     : "Platform default · GPT-6 Luna";
 
-  // Provider usage counts across all models, for the rail facet.
+  // Offer configured providers ordered by model usage.
   const providerFacets = useMemo(() => {
     const tally = new Map<string, number>();
     for (const model of models) {
@@ -193,21 +189,10 @@ export default function ModelsPage() {
       <PageMasthead
         icon={<Cpu />}
         title="Models"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {providerFilteredModels.length}
-          </Badge>
-        }
         description={
           selectedProvider
             ? `Manage the models available from ${selectedProvider.name}.`
             : "Manage the models available from your configured providers."
-        }
-        meta={
-          <>
-            <span>{enabledModels.length} enabled</span>
-            <span>{availableModels.length} available</span>
-          </>
         }
         actions={
           <>
@@ -242,184 +227,183 @@ export default function ModelsPage() {
           onChange={(e) => setSearch(e.target.value)}
           containerClassName="w-64"
         />
+        <Select
+          value={selectedProviderId ?? "all"}
+          onValueChange={(value) => {
+            const params = new URLSearchParams(searchParams.toString());
+            if (value === "all") params.delete("provider");
+            else params.set("provider", value);
+            router.push(`/models${params.size ? `?${params}` : ""}`);
+          }}
+        >
+          <SelectTrigger aria-label="Provider" className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All providers</SelectItem>
+            {providerFacets.map((provider) => (
+              <SelectItem key={provider.id} value={provider.id}>
+                {provider.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          {modelsLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, index) => (
-                <Skeleton key={index} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : filteredModels.length === 0 ? (
-            <Card className="p-8 text-center">
-              <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">
-                {search
-                  ? "No models match your search"
-                  : selectedProvider
-                    ? "No models for this provider"
-                    : "No models configured"}
-              </h3>
-              <p className="text-muted-foreground mb-4">
-                {search
-                  ? "Try a different search term."
-                  : selectedProvider
-                    ? "Sync or add models for this provider to use them with agents."
-                    : providers.length === 0
-                      ? "Add a provider first, then add models to it."
-                      : "Add models to your providers to use them with agents."}
-              </p>
-              {!search && providers.length > 0 && (
-                <Button onClick={() => setAddModelOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Model
-                </Button>
-              )}
-            </Card>
-          ) : (
-            <div className="space-y-8">
-              {enabledModels.length > 0 && (
-                <div>
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-xl font-semibold">Enabled models</h2>
-                    <span className="text-sm text-muted-foreground">
-                      {enabledModels.length} enabled
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {enabledModels.map((model) => (
-                      <ModelRow
-                        key={model.id}
-                        model={model}
-                        providers={providers}
-                        onDelete={handleDeleteModel}
-                        onUpdate={handleUpdateModel}
-                        onToggleEnabled={handleToggleEnabled}
-                        isTogglingEnabled={togglingModelId === model.id}
-                      />
-                    ))}
-                  </div>
+      <PageMain>
+        {modelsLoading ? (
+          <div className="space-y-2">
+            {[...Array(3)].map((_, index) => (
+              <Skeleton key={index} className="h-16 w-full" />
+            ))}
+          </div>
+        ) : filteredModels.length === 0 ? (
+          <Card className="p-8 text-center">
+            <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">
+              {search
+                ? "No models match your search"
+                : selectedProvider
+                  ? "No models for this provider"
+                  : "No models configured"}
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              {search
+                ? "Try a different search term."
+                : selectedProvider
+                  ? "Sync or add models for this provider to use them with agents."
+                  : providers.length === 0
+                    ? "Add a provider first, then add models to it."
+                    : "Add models to your providers to use them with agents."}
+            </p>
+            {!search && providers.length > 0 && (
+              <Button onClick={() => setAddModelOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Model
+              </Button>
+            )}
+          </Card>
+        ) : (
+          <div className="space-y-8">
+            {enabledModels.length > 0 && (
+              <div>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-xl font-semibold">Enabled models</h2>
+                  <span className="text-sm text-muted-foreground">
+                    {enabledModels.length} enabled
+                  </span>
                 </div>
-              )}
-
-              {enabledModels.length > 0 && availableModels.length > 0 && (
-                <hr className="border-border" />
-              )}
-
-              {availableModels.length > 0 && (
-                <div>
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-xl font-semibold">Available models</h2>
-                    <span className="text-sm text-muted-foreground">
-                      Enable a model to use it with agents
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {availableModels.map((model) => (
-                      <ModelRow
-                        key={model.id}
-                        model={model}
-                        providers={providers}
-                        onDelete={handleDeleteModel}
-                        onUpdate={handleUpdateModel}
-                        onToggleEnabled={handleToggleEnabled}
-                        isTogglingEnabled={togglingModelId === model.id}
-                      />
-                    ))}
-                  </div>
+                <div className="space-y-2">
+                  {enabledModels.map((model) => (
+                    <ModelRow
+                      key={model.id}
+                      model={model}
+                      providers={providers}
+                      onDelete={handleDeleteModel}
+                      onUpdate={handleUpdateModel}
+                      onToggleEnabled={handleToggleEnabled}
+                      isTogglingEnabled={togglingModelId === model.id}
+                    />
+                  ))}
                 </div>
-              )}
-            </div>
-          )}
-
-          {allEnabledModels.length > 0 && (
-            <section className="mt-4">
-              <div className="mb-4">
-                <h2 className="text-xl font-semibold">Organization Settings</h2>
-                <p className="text-sm text-muted-foreground">
-                  Override the platform default for your organization. This is used when no model is
-                  specified at the agent or session level.
-                </p>
               </div>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4">
-                    <Label htmlFor="default-model" className="whitespace-nowrap font-medium">
-                      Default Model
-                    </Label>
-                    <Select
-                      value={org?.default_model_id ?? "none"}
-                      onValueChange={(value) =>
-                        handleSetDefaultModel(value === "none" ? null : value)
-                      }
-                      disabled={updateOrg.isPending}
-                    >
-                      <SelectTrigger className="w-full max-w-md" id="default-model">
-                        <SelectValue placeholder="Platform default · GPT-6 Luna">
-                          {selectedDefaultModelName}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Platform default · GPT-6 Luna</SelectItem>
-                        {allEnabledModels.map((model) => (
-                          <SelectItem key={model.id} value={model.id}>
-                            <div className="flex items-center gap-2">
-                              <ProviderIcon
-                                providerType={model.provider_type}
-                                size="sm"
-                                showBackground={false}
-                              />
-                              <span>
-                                {model.display_name} ({model.provider_name})
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
-          )}
-        </PageMain>
+            )}
 
-        <PageRail>
-          {providerFacets.length > 0 && (
-            <RailSection label="Provider">
-              <div className="flex flex-col gap-1.5 text-[13px]">
-                {providerFacets.map((facet) => (
-                  <Link
-                    key={facet.id}
-                    href={`/models?provider=${facet.id}`}
-                    className={cn(
-                      "flex items-center justify-between transition-colors hover:text-foreground",
-                      selectedProviderId === facet.id ? "text-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    <span>{facet.name}</span>
-                    <span className="text-muted-foreground">{facet.count}</span>
-                  </Link>
-                ))}
+            {enabledModels.length > 0 && availableModels.length > 0 && (
+              <hr className="border-border" />
+            )}
+
+            {availableModels.length > 0 && (
+              <div>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-xl font-semibold">Available models</h2>
+                  <span className="text-sm text-muted-foreground">
+                    Enable a model to use it with agents
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {availableModels.map((model) => (
+                    <ModelRow
+                      key={model.id}
+                      model={model}
+                      providers={providers}
+                      onDelete={handleDeleteModel}
+                      onUpdate={handleUpdateModel}
+                      onToggleEnabled={handleToggleEnabled}
+                      isTogglingEnabled={togglingModelId === model.id}
+                    />
+                  ))}
+                </div>
               </div>
-            </RailSection>
-          )}
-        </PageRail>
-      </PageColumns>
-
-      <PageFooter>
-        <span>
-          Showing {filteredModels.length} of {providerFilteredModels.length}{" "}
-          {pluralize(providerFilteredModels.length, "model")}
-        </span>
-        {selectedProviderId && (
-          <Link href="/models" className="text-primary transition-colors hover:underline">
-            Clear filter →
-          </Link>
+            )}
+          </div>
         )}
-      </PageFooter>
+
+        {allEnabledModels.length > 0 && (
+          <section className="mt-4">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold">Organization Settings</h2>
+              <p className="text-sm text-muted-foreground">
+                Override the platform default for your organization. This is used when no model is
+                specified at the agent or session level.
+              </p>
+            </div>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4">
+                  <Label htmlFor="default-model" className="whitespace-nowrap font-medium">
+                    Default Model
+                  </Label>
+                  <Select
+                    value={org?.default_model_id ?? "none"}
+                    onValueChange={(value) =>
+                      handleSetDefaultModel(value === "none" ? null : value)
+                    }
+                    disabled={updateOrg.isPending}
+                  >
+                    <SelectTrigger className="w-full max-w-md" id="default-model">
+                      <SelectValue placeholder="Platform default · GPT-6 Luna">
+                        {selectedDefaultModelName}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Platform default · GPT-6 Luna</SelectItem>
+                      {allEnabledModels.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          <div className="flex items-center gap-2">
+                            <ProviderIcon
+                              providerType={model.provider_type}
+                              size="sm"
+                              showBackground={false}
+                            />
+                            <span>
+                              {model.display_name} ({model.provider_name})
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+      </PageMain>
+
+      {(search || selectedProviderId) && (
+        <PageFooter>
+          <span>
+            Showing {filteredModels.length} of {providerFilteredModels.length}{" "}
+            {pluralize(providerFilteredModels.length, "model")}
+          </span>
+          {selectedProviderId && (
+            <Link href="/models" className="text-primary transition-colors hover:underline">
+              Clear filter →
+            </Link>
+          )}
+        </PageFooter>
+      )}
 
       <AddModelDialog providers={providers} open={addModelOpen} onOpenChange={setAddModelOpen} />
     </PageContainer>

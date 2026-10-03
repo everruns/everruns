@@ -22,6 +22,9 @@
 //!
 //! Run with: cargo run -p everruns-llm-tests --example turn_based_execution
 
+use everruns_contracts::credential_provider::EnvCredentialProvider;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::typed_id::{AgentId, HarnessId, TurnId};
 use everruns_core::{
     AgentDefinition, ExecutionContext, HarnessDefinition, InputMessage, MessageRetriever,
     capabilities::CapabilityRegistry,
@@ -32,9 +35,6 @@ use everruns_engine::{ActAtom, ActInput, InputAtom, InputAtomInput, ReasonInput}
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
-use everruns_provider::credential_provider::EnvCredentialProvider;
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::typed_id::{AgentId, HarnessId, TurnId};
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, reason_atom_with_stores,
 };
@@ -140,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
     // Create a session in the store
     let session = ExecutionSession {
         id: session_id.into(),
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id),
         organization_id: "default".to_string(),
         harness_id,
         agent_id: Some(AgentId::from_uuid(agent_id)),

@@ -250,6 +250,12 @@
         "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
       },
       {
+        "field": "environments",
+        "long": "environments",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "harness_name",
         "long": "harness",
         "short": "H",
@@ -959,6 +965,12 @@
         "kind": "string",
         "required": false,
         "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
+      },
+      {
+        "field": "environments",
+        "long": "environments",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "harness_id",
@@ -1693,6 +1705,12 @@
         "help": "Human-readable display name shown in UI."
       },
       {
+        "field": "environments",
+        "long": "environments",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "harness_name",
         "long": "harness",
         "short": "H",
@@ -1854,6 +1872,12 @@
         "kind": "string",
         "required": false,
         "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
+      },
+      {
+        "field": "environments",
+        "long": "environments",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "harness_name",
@@ -7379,6 +7403,12 @@
         "help": "Session-level capabilities (additive to agent capabilities). Applied after agent capabilities..."
       },
       {
+        "field": "environment",
+        "long": "environment",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "goal",
         "long": "goal",
         "kind": "string",
@@ -7453,6 +7483,13 @@
         "kind": "boolean",
         "required": false,
         "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "playground_user_id",
+        "long": "playground-user-id",
+        "kind": "string",
+        "required": false,
+        "help": "Fixed Playground end user."
       },
       {
         "field": "source",
@@ -7888,6 +7925,13 @@
         "required": false
       },
       {
+        "field": "archived_only",
+        "long": "archived-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return only archived sessions."
+      },
+      {
         "field": "created_after",
         "long": "created-after",
         "kind": "string",
@@ -7921,6 +7965,12 @@
         "kind": "string",
         "required": false,
         "help": "`created_at` (default) or `last_activity`."
+      },
+      {
+        "field": "playground_user_id",
+        "long": "playground-user-id",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "search",
@@ -8435,6 +8485,13 @@
         "required": false
       },
       {
+        "field": "archived_only",
+        "long": "archived-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return only archived sessions."
+      },
+      {
         "field": "created_after",
         "long": "created-after",
         "kind": "string",
@@ -8482,6 +8539,12 @@
         "kind": "string",
         "required": false,
         "help": "`created_at` (default) or `last_activity`."
+      },
+      {
+        "field": "playground_user_id",
+        "long": "playground-user-id",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "search",

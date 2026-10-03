@@ -1,5 +1,5 @@
 use anyhow::Result;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 
 use super::Database;
 use crate::storage::{A2aPushConfigRow, UpsertA2aPushConfig};

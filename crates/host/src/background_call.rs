@@ -11,12 +11,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_core::native_async_store::{NativeAsyncLease, NativeAsyncStore};
-use everruns_provider::background_call::{
+use everruns_contracts::background_call::{
     BackgroundCallContext, BackgroundResponseJournal, BackgroundResponseRecord,
 };
-use everruns_provider::error::Result;
-use everruns_provider::typed_id::{SessionId, TurnId};
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::{SessionId, TurnId};
+use everruns_core::native_async_store::{NativeAsyncLease, NativeAsyncStore};
 
 pub(crate) struct CheckpointBackgroundJournal {
     store: Arc<dyn NativeAsyncStore>,
@@ -81,8 +81,8 @@ pub(crate) fn context<A: crate::RuntimeHostAdapter>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::error::AgentLoopError;
-    use everruns_provider::native_async::NativeAsyncCheckpoint;
+    use everruns_contracts::error::AgentLoopError;
+    use everruns_contracts::native_async::NativeAsyncCheckpoint;
     use std::sync::Mutex;
 
     /// One turn's row with the same fencing rule as the database store: a live

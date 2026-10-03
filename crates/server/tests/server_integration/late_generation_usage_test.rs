@@ -7,7 +7,7 @@
 use crate::session_row_fixture::base_session_row;
 use crate::test_harness::get_database_url;
 
-use everruns_provider::typed_id::PrincipalId;
+use everruns_contracts::typed_id::PrincipalId;
 use everruns_server::storage::models::{
     CreatePrincipalRow, CreateSessionRow, CreateUsageJournalRow,
 };

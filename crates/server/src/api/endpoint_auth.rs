@@ -9,8 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::kernel_imports::{
-    everruns_provider::url_validation::is_blocked_ip,
-    everruns_provider::url_validation::validate_safe_url,
+    contracts::url_validation::is_blocked_ip, contracts::url_validation::validate_safe_url,
 };
 use axum::http::{HeaderMap, header::AUTHORIZATION};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
@@ -21,6 +20,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jw
 use moka::future::Cache;
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tokio::net::lookup_host;
 use tokio::time::timeout;
 use url::Host;
@@ -144,7 +144,11 @@ impl EndpointAuthVerifier {
         headers: &HeaderMap,
     ) -> Result<EndpointAuthPrincipal, EndpointAuthError> {
         let token = extract_bearer(headers).ok_or(EndpointAuthError::Unauthorized)?;
-        let (issuer, jwks_url, requirements) = match auth.provider.as_ref() {
+        // `verifier_authority` names the key source that proves the claims. A
+        // configured JWKS URL is endpoint-owner input, so it is the authority;
+        // discovered keys are vouched for by the issuer itself, so the issuer is,
+        // which keeps identities stable if the IdP rotates its jwks_uri.
+        let (issuer, jwks_url, verifier_authority, requirements) = match auth.provider.as_ref() {
             Some(EndpointAuthProviderConfig::GoogleOidc {
                 client_id,
                 allowed_domains,
@@ -159,16 +163,24 @@ impl EndpointAuthVerifier {
                 (
                     "https://accounts.google.com".to_string(),
                     "https://www.googleapis.com/oauth2/v3/certs".to_string(),
+                    "oidc-discovery:https://accounts.google.com".to_string(),
                     requirements,
                 )
             }
             Some(EndpointAuthProviderConfig::Oidc { issuer, jwks_url }) => {
                 let discovery = self.discovery(issuer).await?;
+                let issuer = normalize_issuer(issuer);
+                let (jwks_url, verifier_authority) = match jwks_url {
+                    Some(url) => (url.clone(), format!("oidc-jwks:{url}")),
+                    None => (
+                        discovery.jwks_uri.to_string(),
+                        format!("oidc-discovery:{issuer}"),
+                    ),
+                };
                 (
-                    normalize_issuer(issuer),
-                    jwks_url
-                        .clone()
-                        .unwrap_or_else(|| discovery.jwks_uri.to_string()),
+                    issuer,
+                    jwks_url,
+                    verifier_authority,
                     auth.requirements.clone(),
                 )
             }
@@ -200,7 +212,7 @@ impl EndpointAuthVerifier {
             .map_err(|_| EndpointAuthError::Unauthorized)?
             .claims;
         validate_claim_requirements(&claims, &requirements)?;
-        principal_from_claims(&claims)
+        principal_from_claims(&claims, &verifier_authority)
     }
 
     async fn verify_oauth2_introspection(
@@ -248,7 +260,10 @@ impl EndpointAuthVerifier {
         }
         let requirements = auth.requirements.clone();
         validate_claim_requirements(&claims, &requirements)?;
-        principal_from_claims(&claims)
+        principal_from_claims(
+            &claims,
+            &format!("oauth2_introspection:{introspection_url}"),
+        )
     }
 
     fn verify_mtls(
@@ -357,6 +372,8 @@ impl EndpointAuthVerifier {
 pub struct EndpointAuthPrincipal {
     pub issuer: String,
     pub subject: String,
+    /// Identity namespace proven by the configured verifier, not by token claims.
+    pub identity_realm: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -377,7 +394,10 @@ struct OidcDiscovery {
     jwks_uri: String,
 }
 
-fn principal_from_claims(claims: &Value) -> Result<EndpointAuthPrincipal, EndpointAuthError> {
+fn principal_from_claims(
+    claims: &Value,
+    verifier_authority: &str,
+) -> Result<EndpointAuthPrincipal, EndpointAuthError> {
     let issuer = claims
         .get("iss")
         .and_then(Value::as_str)
@@ -388,8 +408,15 @@ fn principal_from_claims(claims: &Value) -> Result<EndpointAuthPrincipal, Endpoi
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .ok_or(EndpointAuthError::Unauthorized)?;
+    let issuer = normalize_issuer(issuer);
+    // THREAT[TM-AUTH-031]: Endpoint owners control their verifier configuration.
+    // Scope runtime identities to the verifier that proved the claims so a
+    // different JWKS or introspection service cannot assert another authority's
+    // issuer/subject pair and inherit its private grants.
+    let authority_hash = Sha256::digest(verifier_authority.as_bytes());
     Ok(EndpointAuthPrincipal {
-        issuer: normalize_issuer(issuer),
+        identity_realm: format!("{issuer}#{}", hex::encode(authority_hash)),
+        issuer,
         subject: subject.to_string(),
     })
 }
@@ -692,6 +719,28 @@ mod tests {
             "tier": "prod"
         });
         assert!(validate_claim_requirements(&claims, &requirements).is_ok());
+    }
+
+    #[test]
+    fn principal_identity_realm_is_bound_to_verifier_authority() {
+        let claims = serde_json::json!({
+            "iss": "https://victim.example/",
+            "sub": "user-1"
+        });
+        let trusted =
+            principal_from_claims(&claims, "oidc:https://victim.example/.well-known/jwks.json")
+                .unwrap();
+        let spoofed = principal_from_claims(
+            &claims,
+            "oauth2_introspection:https://attacker.example/introspect",
+        )
+        .unwrap();
+
+        assert_eq!(trusted.issuer, spoofed.issuer);
+        assert_eq!(trusted.subject, spoofed.subject);
+        assert_ne!(trusted.identity_realm, spoofed.identity_realm);
+        assert!(!trusted.identity_realm.contains(".well-known"));
+        assert!(!spoofed.identity_realm.contains("attacker.example"));
     }
 
     fn mtls_auth() -> EndpointAuthConfig {

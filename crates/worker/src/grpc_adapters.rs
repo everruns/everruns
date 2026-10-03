@@ -10,6 +10,9 @@
 // with the control-plane service (the API server's gRPC endpoint).
 
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::connection_services::ProviderCredentials;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
@@ -26,9 +29,6 @@ use everruns_core::{
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
     provider_resolution::ProviderStore, session_services::LeasedResourceStore,
 };
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 // EVE-882: the stored Session record and its lifecycle enums moved to
 // `everruns-platform`; the worker's PlatformStore surface still transports
 // them, while execution paths carry only the portable `ExecutionSession`.
@@ -273,7 +273,7 @@ impl GrpcClient {
     pub async fn get_image_artifact(
         &self,
         org_id: i64,
-        image_id: everruns_provider::typed_id::ImageId,
+        image_id: everruns_contracts::typed_id::ImageId,
     ) -> Result<Option<StoredImage>> {
         let request = proto::GetImageArtifactRequest {
             org_id,
@@ -296,7 +296,7 @@ impl GrpcClient {
     pub async fn get_image_artifact_info(
         &self,
         org_id: i64,
-        image_id: everruns_provider::typed_id::ImageId,
+        image_id: everruns_contracts::typed_id::ImageId,
     ) -> Result<Option<StoredImageInfo>> {
         let request = proto::GetImageArtifactInfoRequest {
             org_id,
@@ -348,7 +348,7 @@ impl GrpcClient {
         &self,
         org_id: i64,
         provider_id: &str,
-    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         let request = proto::GetDefaultProviderCredentialsRequest {
             org_id,
             provider_type: String::new(),
@@ -372,8 +372,8 @@ impl GrpcClient {
         let request_options = non_empty_string(response.request_options_json)
             .and_then(|json| serde_json::from_str(&json).ok())
             .unwrap_or_default();
-        let mut config = everruns_provider::driver_registry::ProviderConfig::for_provider(
-            everruns_provider::runtime_provider::ProviderKey::new(provider_id),
+        let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
+            everruns_contracts::runtime_provider::ProviderKey::new(provider_id),
             provider_type,
         );
         config.api_key = non_empty_string(response.api_key);
@@ -514,7 +514,7 @@ impl GrpcClient {
         &self,
         stale_after_seconds: i64,
         limit: i64,
-    ) -> Result<Vec<(everruns_provider::typed_id::SessionId, String)>> {
+    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
         let mut client = self.inner.lock().await;
         let response = client
             .list_orphaned_session_tasks(proto::ListOrphanedSessionTasksRequest {
@@ -532,7 +532,7 @@ impl GrpcClient {
                     AgentLoopError::store(format!("Invalid session_id in orphan entry: {err}"))
                 })?;
                 Ok((
-                    everruns_provider::typed_id::SessionId::from_uuid(uuid),
+                    everruns_contracts::typed_id::SessionId::from_uuid(uuid),
                     e.task_id,
                 ))
             })
@@ -1309,11 +1309,11 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<RuntimeMessage>
         phase: proto_msg
             .phase
             .as_deref()
-            .and_then(everruns_provider::ExecutionPhase::from_provider_str),
+            .and_then(everruns_contracts::ExecutionPhase::from_provider_str),
         phase_source: proto_msg
             .phase_source
             .as_deref()
-            .and_then(everruns_provider::PhaseSource::from_str_opt),
+            .and_then(everruns_contracts::PhaseSource::from_str_opt),
         controls,
         metadata,
         external_actor: {
@@ -1406,7 +1406,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         proto_agent
             .capability_ids
             .into_iter()
-            .map(everruns_capability::CapabilityRef::new)
+            .map(everruns_contracts::CapabilityRef::new)
             .collect()
     } else {
         proto_agent
@@ -1429,7 +1429,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
             .map(|id| proto_uuid_to_uuid(Some(id)))
             .transpose()?
             .map(Into::into),
-        public_id: everruns_provider::typed_id::AgentId::from_uuid(id),
+        public_id: everruns_contracts::typed_id::AgentId::from_uuid(id),
         internal_id: id,
         name: proto_agent.name.clone(),
         display_name: proto_agent.display_name,
@@ -1447,6 +1447,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         root_agent_id: None,
         tags: vec![],
         capabilities,
+        environments: None,
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
@@ -1474,7 +1475,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
 impl HarnessStore for GrpcOrgAdapter {
     async fn get_harness(
         &self,
-        harness_id: everruns_provider::typed_id::HarnessId,
+        harness_id: everruns_contracts::typed_id::HarnessId,
     ) -> Result<Option<HarnessDefinition>> {
         // Loading seam (EVE-881): the server pre-merges the inheritance chain;
         // project the transported record into the portable execution
@@ -1487,7 +1488,7 @@ impl HarnessStore for GrpcOrgAdapter {
 
     async fn get_harness_blocker(
         &self,
-        harness_id: everruns_provider::typed_id::HarnessId,
+        harness_id: everruns_contracts::typed_id::HarnessId,
     ) -> Result<Option<everruns_core::DependencyBlocker>> {
         Ok(match self.fetch_harness_record(harness_id).await? {
             Some(harness) => harness.dependency_blocker(),
@@ -1502,7 +1503,7 @@ impl GrpcOrgAdapter {
     /// reaches host execution).
     pub(crate) async fn fetch_harness_record(
         &self,
-        harness_id: everruns_provider::typed_id::HarnessId,
+        harness_id: everruns_contracts::typed_id::HarnessId,
     ) -> Result<Option<Harness>> {
         let mut client = self.client.inner.lock().await;
 
@@ -1547,7 +1548,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         proto_harness
             .capability_ids
             .into_iter()
-            .map(everruns_capability::CapabilityRef::new)
+            .map(everruns_contracts::CapabilityRef::new)
             .collect()
     } else {
         proto_harness
@@ -1661,12 +1662,12 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<ExecutionSe
     let capabilities = proto_session
         .capabilities
         .iter()
-        .filter_map(|c| serde_json::from_str::<everruns_capability::CapabilityRef>(c).ok())
+        .filter_map(|c| serde_json::from_str::<everruns_contracts::CapabilityRef>(c).ok())
         .collect();
 
     Ok(ExecutionSession {
         id: id.into(),
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(id),
+        workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(id),
         organization_id: proto_session.organization_id,
         agent_id: agent_id.map(|u| u.into()),
         harness_id: harness_id.into(),
@@ -1754,8 +1755,8 @@ impl ProviderStore for GrpcOrgAdapter {
 
     async fn get_provider_config(
         &self,
-        provider: &everruns_provider::runtime_provider::ProviderKey,
-    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
+        provider: &everruns_contracts::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         self.client
             .get_provider_config(self.org_id, provider.as_str())
             .await
@@ -1770,14 +1771,14 @@ impl ImageArtifactStore for GrpcOrgAdapter {
 
     async fn get_image(
         &self,
-        image_id: everruns_provider::typed_id::ImageId,
+        image_id: everruns_contracts::typed_id::ImageId,
     ) -> Result<Option<StoredImage>> {
         self.client.get_image_artifact(self.org_id, image_id).await
     }
 
     async fn get_image_info(
         &self,
-        image_id: everruns_provider::typed_id::ImageId,
+        image_id: everruns_contracts::typed_id::ImageId,
     ) -> Result<Option<StoredImageInfo>> {
         self.client
             .get_image_artifact_info(self.org_id, image_id)
@@ -1864,7 +1865,7 @@ impl GrpcAdapter {
     /// Returns a synthetic Event immediately; the gRPC call runs in background.
     /// Only used when the server has NATS (ephemeral events skip PG).
     async fn emit_ephemeral(&self, request: EventRequest) -> Result<Event> {
-        use everruns_provider::typed_id::EventId;
+        use everruns_contracts::typed_id::EventId;
 
         // Convert to proto while we still have &request
         let proto_event_request = core_event_request_to_proto(&request)?;
@@ -1942,7 +1943,7 @@ pub struct TurnContext {
     pub messages: Vec<RuntimeMessage>,
     pub model: Option<ModelSpec>,
     /// MCP tool definitions pre-resolved from agent's MCP capabilities
-    pub mcp_tool_definitions: Vec<everruns_provider::tool_types::ToolDefinition>,
+    pub mcp_tool_definitions: Vec<everruns_contracts::tool_types::ToolDefinition>,
 }
 
 /// Load turn context in one batched call (optimization)
@@ -2011,8 +2012,8 @@ pub async fn load_turn_context_for_execution(
 /// Convert proto McpToolDef to core ToolDefinition
 fn proto_mcp_tool_def_to_tool_definition(
     proto_tool: proto::McpToolDef,
-) -> everruns_provider::tool_types::ToolDefinition {
-    use everruns_provider::tool_types::{
+) -> everruns_contracts::tool_types::ToolDefinition {
+    use everruns_contracts::tool_types::{
         BuiltinTool, DeferrablePolicy, ToolDefinition, ToolPolicy,
     };
 
@@ -2022,7 +2023,7 @@ fn proto_mcp_tool_def_to_tool_definition(
         .map(|s| proto_struct_to_json(&s))
         .unwrap_or_else(|| serde_json::json!({"type": "object"}));
 
-    let mut hints = everruns_provider::tool_types::ToolHints::default().with_open_world(true);
+    let mut hints = everruns_contracts::tool_types::ToolHints::default().with_open_world(true);
     if !proto_tool.capability_id.is_empty() {
         hints = hints.with_capability_attribution(
             proto_tool.capability_id.clone(),
@@ -2188,7 +2189,7 @@ impl FileResolver for GrpcOrgAdapter {
 impl everruns_platform::SessionMutator for GrpcOrgAdapter {
     async fn update_session_title(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         title: String,
     ) -> Result<ExecutionSession> {
         self.client
@@ -2450,8 +2451,8 @@ fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<Leas
 fn proto_schedule_to_schema(
     s: proto::SessionScheduleProto,
 ) -> Result<everruns_core::session_schedule::SessionSchedule> {
+    use everruns_contracts::typed_id::{ScheduleId, SessionId};
     use everruns_core::session_schedule::{ScheduleType, SessionSchedule};
-    use everruns_provider::typed_id::{ScheduleId, SessionId};
 
     let id_uuid = proto_uuid_to_uuid(s.id.as_ref())?;
     let session_uuid = proto_uuid_to_uuid(s.session_id.as_ref())?;
@@ -2470,7 +2471,7 @@ fn proto_schedule_to_schema(
     Ok(SessionSchedule {
         id: ScheduleId::from_uuid(id_uuid),
         session_id: SessionId::from_uuid(session_uuid),
-        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_uuid(
+        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_uuid(
             owner_principal_uuid,
         ),
         resolved_owner_user_id,
@@ -2497,7 +2498,7 @@ fn proto_schedule_to_schema(
 impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
     async fn create_schedule(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         description: String,
         cron_expression: Option<String>,
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -2525,7 +2526,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
 
     async fn create_schedule_enforcing_limits(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
         description: String,
         cron_expression: Option<String>,
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -2571,8 +2572,8 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
 
     async fn cancel_schedule(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
-        schedule_id: everruns_provider::typed_id::ScheduleId,
+        session_id: everruns_contracts::typed_id::SessionId,
+        schedule_id: everruns_contracts::typed_id::ScheduleId,
     ) -> Result<everruns_core::session_schedule::SessionSchedule> {
         let mut client = self.client.inner.lock().await;
         let request = proto::CancelSessionScheduleRequest {
@@ -2593,7 +2594,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
 
     async fn list_schedules(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
     ) -> Result<Vec<everruns_core::session_schedule::SessionSchedule>> {
         let mut client = self.client.inner.lock().await;
         let request = proto::ListSessionSchedulesRequest {
@@ -2614,7 +2615,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
 
     async fn count_active_schedules(
         &self,
-        session_id: everruns_provider::typed_id::SessionId,
+        session_id: everruns_contracts::typed_id::SessionId,
     ) -> Result<u32> {
         let mut client = self.client.inner.lock().await;
         let request = proto::CountActiveSessionSchedulesRequest {
@@ -2683,7 +2684,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
 
     async fn get_harness(
         &self,
-        id: everruns_provider::typed_id::HarnessId,
+        id: everruns_contracts::typed_id::HarnessId,
     ) -> Result<Option<Harness>> {
         self.execute_platform_lookup("get_harness", serde_json::json!({ "id": id.to_string() }))
             .await
@@ -2920,7 +2921,7 @@ impl GrpcOutboundToolRateLimiter {
 
 #[async_trait]
 impl everruns_core::tool_execution::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
-    async fn check_org(&self, org_id: &everruns_provider::typed_id::OrgId) -> bool {
+    async fn check_org(&self, org_id: &everruns_contracts::typed_id::OrgId) -> bool {
         let mut client = self.client.inner.lock().await;
         let request = proto::CheckOutboundToolRateLimitRequest {
             org_key: org_id.to_string(),
@@ -2949,7 +2950,7 @@ impl everruns_core::tool_execution::BudgetChecker for GrpcBudgetChecker {
     async fn check_budgets(
         &self,
         session_id: &str,
-    ) -> everruns_provider::error::Result<everruns_core::budget::BudgetToolResponse> {
+    ) -> everruns_contracts::error::Result<everruns_core::budget::BudgetToolResponse> {
         let mut client = self.client.inner.lock().await;
         let request = proto::CheckBudgetsForSessionRequest {
             org_id: self.org_id,
@@ -2986,7 +2987,7 @@ impl everruns_core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
         &self,
         session_id: SessionId,
         request: everruns_core::payment::MachinePaymentRequest,
-    ) -> everruns_provider::error::Result<everruns_core::payment::MachinePaymentResponse> {
+    ) -> everruns_contracts::error::Result<everruns_core::payment::MachinePaymentResponse> {
         let mut client = self.client.inner.lock().await;
         let proto_request = proto::ExecuteMachinePaymentRequest {
             org_id: self.org_id,
@@ -3019,7 +3020,7 @@ impl everruns_core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
         let attempt_id = response
             .attempt_id
             .as_deref()
-            .map(everruns_provider::typed_id::PaymentAttemptId::parse)
+            .map(everruns_contracts::typed_id::PaymentAttemptId::parse)
             .transpose()
             .map_err(|error| {
                 AgentLoopError::store(format!("Invalid payment attempt id: {error}"))
@@ -3065,7 +3066,7 @@ impl everruns_core::delegation_services::SessionCreationAuthority for GrpcSessio
     async fn authorize_session_creation(
         &self,
         session_id: SessionId,
-    ) -> everruns_provider::error::Result<SessionId> {
+    ) -> everruns_contracts::error::Result<SessionId> {
         if session_id != self.session_id {
             return Err(AgentLoopError::tool(
                 "session-creation authority is scoped to the current session",
@@ -3101,7 +3102,6 @@ fn decode_task(proto: proto::SessionTaskProto) -> Result<everruns_core::SessionT
     everruns_internal_protocol::proto_to_session_task(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid session task payload: {e}")))
 }
-
 fn decode_task_message(proto: proto::TaskMessageProto) -> Result<everruns_core::TaskMessage> {
     everruns_internal_protocol::proto_to_task_message(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid task message payload: {e}")))

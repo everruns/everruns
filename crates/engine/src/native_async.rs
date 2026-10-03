@@ -2,7 +2,7 @@
 //! keep synchronous execution unless they install this coordinator explicitly.
 
 use async_trait::async_trait;
-use everruns_provider::{
+use everruns_contracts::{
     LlmResponseStream, LlmStreamEvent,
     error::{AgentLoopError, Result},
     native_async::{Delivery, NativeAsyncCheckpoint, NativeToolCall, PendingCallState},
@@ -543,7 +543,7 @@ impl NativeAsyncCoordinator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::LlmCompletionMetadata;
+    use everruns_contracts::LlmCompletionMetadata;
     use std::{
         sync::{
             Mutex as StdMutex,

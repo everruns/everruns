@@ -10,14 +10,13 @@
 // Legacy OAuth connections: decrypts the stored token.
 
 use crate::kernel_imports::{
-    EgressService, McpServerAuthMode, everruns_provider::error::AgentLoopError,
-    everruns_provider::error::Result,
+    EgressService, McpServerAuthMode, contracts::error::AgentLoopError, contracts::error::Result,
 };
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Duration, Utc};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::connection_services::UserConnectionResolver;
-use everruns_provider::typed_id::SessionId;
 use moka::sync::Cache;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
@@ -164,7 +163,17 @@ impl DbConnectionResolver {
     async fn runtime_subject(
         &self,
         session: SessionId,
-    ) -> Result<Option<everruns_provider::typed_id::VirtualUserId>> {
+    ) -> Result<Option<everruns_contracts::typed_id::VirtualUserId>> {
+        // THREAT[TM-AUTHZ-021]: Shared transcripts and workspaces cannot receive private grants,
+        // even when the operator selected their own identity. Service grants remain explicit.
+        if self
+            .db
+            .is_playground_session(session)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        {
+            return Ok(None);
+        }
         match self.input_message_id {
             Some(id) => self
                 .db
@@ -202,7 +211,7 @@ impl DbConnectionResolver {
                 .runtime_invocation_responder(session, id)
                 .await
                 .map_err(|e| AgentLoopError::store(e.to_string()))?
-                .map(everruns_provider::typed_id::AgentId::from_uuid),
+                .map(everruns_contracts::typed_id::AgentId::from_uuid),
             None => s.agent_id,
         };
         let Some(agent_id) = responder else {
@@ -269,7 +278,7 @@ impl DbConnectionResolver {
     pub async fn agent_service_mcp_token(
         &self,
         org_id: i64,
-        agent_id: everruns_provider::typed_id::AgentId,
+        agent_id: everruns_contracts::typed_id::AgentId,
         provider: &str,
     ) -> Result<Option<String>> {
         let Some(server) = Self::parse_mcp_oauth_provider(provider) else {
@@ -787,7 +796,7 @@ impl UserConnectionResolver for DbConnectionResolver {
                 .runtime_invocation_responder(session_id, message)
                 .await
                 .map_err(|e| AgentLoopError::store(e.to_string()))?
-                .map(everruns_provider::typed_id::AgentId::from_uuid),
+                .map(everruns_contracts::typed_id::AgentId::from_uuid),
             None => session.agent_id,
         };
         let Some(agent_id) = agent_id else {

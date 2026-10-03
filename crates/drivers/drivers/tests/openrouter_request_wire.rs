@@ -7,6 +7,14 @@
 // fields onto the outgoing body. A wiremock server captures the request so we can
 // assert the exact JSON sent.
 
+// Every mock answers with `Connection: close`. The drivers share one process-wide
+// HTTP client, and wiremock recycles a dropped server's port to the next test, so a
+// pooled keep-alive connection driven by another test's runtime could otherwise
+// serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
+
+use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::{BearerAuth, Provider};
 use everruns_drivers::openrouter::OpenRouterChatDriver;
 use everruns_drivers::openrouter::options::{
     OpenRouterDataCollection, OpenRouterMaxPrice, OpenRouterPluginConfig,
@@ -15,9 +23,6 @@ use everruns_drivers::openrouter::options::{
     OpenRouterServerToolKind, OpenRouterSortPartition, OpenRouterWebSearchPlugin,
     insert_routing_option,
 };
-use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
-use everruns_provider::model::ReasoningEffort;
-use everruns_provider::{BearerAuth, Provider};
 use serde_json::json;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -35,7 +40,11 @@ fn provider(api_url: String) -> Provider {
 async fn capture_request_body(config: &LlmCallConfig) -> serde_json::Value {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_string(""),
+        )
         .mount(&server)
         .await;
 
@@ -57,7 +66,11 @@ async fn capture_request_body(config: &LlmCallConfig) -> serde_json::Value {
 async fn sends_routing_controls_and_session_id() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_string(""),
+        )
         .mount(&server)
         .await;
 
@@ -134,7 +147,11 @@ async fn sends_routing_controls_and_session_id() {
 async fn sends_openrouter_attribution_headers_from_metadata() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_string(""),
+        )
         .mount(&server)
         .await;
 
@@ -191,7 +208,11 @@ async fn sends_openrouter_attribution_headers_from_metadata() {
 async fn skips_blank_openrouter_attribution_metadata() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_string(""),
+        )
         .mount(&server)
         .await;
 
@@ -311,7 +332,11 @@ async fn retries_after_openrouter_rate_limit_reset() {
 
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(429).set_body_json(rate_limit_body))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("connection", "close")
+                .set_body_json(rate_limit_body),
+        )
         .up_to_n_times(1)
         .expect(1)
         .named("OpenRouter first rate-limit response")
@@ -320,6 +345,7 @@ async fn retries_after_openrouter_rate_limit_reset() {
     Mock::given(method("POST"))
         .respond_with(
             ResponseTemplate::new(200)
+                .insert_header("connection", "close")
                 .insert_header("content-type", "text/event-stream")
                 .set_body_string(success_body),
         )
@@ -339,10 +365,10 @@ async fn retries_after_openrouter_rate_limit_reset() {
     let mut text = String::new();
     while let Some(event) = stream.next().await {
         match event.expect("stream item") {
-            everruns_provider::driver_registry::LlmStreamEvent::TextDelta(delta) => {
+            everruns_contracts::driver_registry::LlmStreamEvent::TextDelta(delta) => {
                 text.push_str(&delta)
             }
-            everruns_provider::driver_registry::LlmStreamEvent::Error(error) => {
+            everruns_contracts::driver_registry::LlmStreamEvent::Error(error) => {
                 panic!("retry success stream should not emit an error: {error}")
             }
             _ => {}
@@ -361,7 +387,11 @@ async fn retries_after_openrouter_rate_limit_reset() {
 async fn rejects_invalid_routing_before_dispatch() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_string(""),
+        )
         .mount(&server)
         .await;
 
@@ -423,7 +453,11 @@ async fn rejects_invalid_routing_before_dispatch() {
 async fn includes_plugins_in_request() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_string(""),
+        )
         .mount(&server)
         .await;
 

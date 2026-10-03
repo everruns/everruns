@@ -1,5 +1,5 @@
+use everruns_contracts::typed_id::AgentVersionId;
 use everruns_platform::{AgentVersionPolicy, EndpointTransport};
-use everruns_provider::typed_id::AgentVersionId;
 use serde::Deserialize;
 use serde_json::Value;
 use utoipa::ToSchema;
@@ -27,7 +27,7 @@ pub struct CreateAgentEndpointRequest {
 }
 
 /// Request to update an ingress endpoint owned by an Agent.
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct UpdateAgentEndpointRequest {
     /// Replacement transport-specific endpoint configuration.
     pub channel_config: Option<Value>,

@@ -51,6 +51,73 @@ describe("ToolActivityGroup", () => {
     expect(screen.queryByLabelText("Tool activity info")).not.toBeInTheDocument();
   });
 
+  it("renders recorded approval with the approver and consent link", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "approval-1",
+        name: "record_approval",
+        arguments: { action: "Delete the staging database", detail: "After the migration." },
+      },
+    ];
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "approval-1",
+        {
+          tool_call_id: "approval-1",
+          tool_name: "record_approval",
+          success: true,
+          status: "success",
+        },
+      ],
+    ]);
+
+    render(
+      <ToolActivityGroup
+        toolCalls={toolCalls}
+        toolResultsMap={toolResultsMap}
+        approvalContexts={
+          new Map([
+            [
+              "approval-1",
+              {
+                approvedBy: "Avery Admin",
+                consentMessageHref: "/sessions/session-1/chat#message-message-42",
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(screen.getByText("Approval recorded")).toBeInTheDocument();
+    expect(screen.getByText("Delete the staging database")).toBeInTheDocument();
+    expect(screen.getByText("Approved by Avery Admin")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /view consent/i })).toHaveAttribute(
+      "href",
+      "/sessions/session-1/chat#message-message-42",
+    );
+    expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
+  });
+
+  it("renders an approval request as its own chat entry", () => {
+    render(
+      <ToolActivityGroup
+        toolCalls={[
+          {
+            id: "request-1",
+            name: "request_approval",
+            arguments: { action: "Send the report", question: "May I email the report?" },
+          },
+        ]}
+        toolResultsMap={new Map()}
+      />,
+    );
+
+    expect(screen.getByText("Approval requested")).toBeInTheDocument();
+    expect(screen.getByText("Send the report")).toBeInTheDocument();
+    expect(screen.getByText("May I email the report?")).toBeInTheDocument();
+  });
+
   it("renders structured bash details with separate stdout and stderr", () => {
     const toolCalls: ToolCallContent[] = [
       {

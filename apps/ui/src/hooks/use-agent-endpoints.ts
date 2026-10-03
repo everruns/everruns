@@ -58,6 +58,7 @@ function useEndpointMutation<TVariables, TResult>(
       queryClient.invalidateQueries({
         queryKey: queryKeys.agents.detail(agentId),
       });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
   });
 }
@@ -67,10 +68,11 @@ export function useCreateAgentEndpoint(agentId: string) {
     createAgentEndpoint(agentId, request),
   );
 }
-export function useSlackInstallCapability() {
+export function useSlackInstallCapability(enabled = true) {
   return useQuery({
     queryKey: ["slack-install-capability"],
     queryFn: getSlackInstallCapability,
+    enabled,
   });
 }
 

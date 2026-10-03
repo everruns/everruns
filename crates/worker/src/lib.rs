@@ -10,6 +10,7 @@ pub mod grpc_adapters;
 pub mod grpc_command_transport;
 pub mod grpc_durable_store;
 pub mod grpc_files_adapter;
+mod grpc_sandbox_persistence;
 pub mod grpc_slack_actions;
 pub mod grpc_sqldb_adapter;
 mod grpc_task_store;

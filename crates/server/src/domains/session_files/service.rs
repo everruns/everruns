@@ -13,8 +13,8 @@ use crate::domains::session_files::limits::{QuotaLimits, check_write_quota as qu
 use crate::domains::session_files::memory_mounts::{MemoryMount, MemoryMountRouter};
 use crate::kernel_imports::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepResult, GrepSearchResult, MountAccess,
-    MountEntry, MountPoint, MountSource, SessionFile, everruns_provider::error::AgentLoopError,
-    everruns_provider::typed_id::SessionId, session_files::SessionFileSystem,
+    MountEntry, MountPoint, MountSource, SessionFile, contracts::error::AgentLoopError,
+    contracts::typed_id::SessionId, session_files::SessionFileSystem,
 };
 use crate::storage::{
     StorageBackend,
@@ -25,6 +25,9 @@ use async_trait::async_trait;
 use everruns_host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use std::sync::Arc;
 use uuid::Uuid;
+
+#[path = "service_mounts.rs"]
+mod mounts;
 
 /// Input for creating a file
 pub struct CreateFileInput {
@@ -83,7 +86,7 @@ impl SessionFileSystemFactory for StorageSessionFileSystemFactory {
     async fn create_session_file_system(
         &self,
         context: SessionFileSystemFactoryContext,
-    ) -> everruns_provider::error::Result<Arc<dyn SessionFileSystem>> {
+    ) -> everruns_contracts::error::Result<Arc<dyn SessionFileSystem>> {
         let db = context.get::<StorageBackend>().ok_or_else(|| {
             AgentLoopError::config("StorageSessionFileSystemFactory requires StorageBackend")
         })?;
@@ -109,29 +112,11 @@ pub struct WorkspaceFileService {
     /// Not optional, because a service that silently skipped it would write a
     /// shared note into one session's private files and lose it.
     memory_mounts: Arc<MemoryMountRouter>,
+    restored_virtual_mounts: parking_lot::RwLock<std::collections::HashSet<Uuid>>,
     quota: QuotaLimits,
 }
 
 impl WorkspaceFileService {
-    pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self {
-            memory_mounts: Arc::new(MemoryMountRouter::new(db.clone())),
-            db,
-            virtual_registry: None,
-            quota: QuotaLimits::from_env(),
-        }
-    }
-
-    /// Resolve a path to the Memory that serves it, if any.
-    async fn route_memory(&self, session_id: Uuid, path: &str) -> Option<(MemoryMount, String)> {
-        self.memory_mounts.route(session_id, path).await
-    }
-
-    /// Drop a workspace's cached memory mounts (session deleted).
-    pub fn evict_memory_mounts(&self, workspace_id: Uuid) {
-        self.memory_mounts.evict(&workspace_id);
-    }
-
     fn memory_session_path(mount: &MemoryMount, inner: &str) -> String {
         if inner == "/" {
             mount.mount_path.clone()
@@ -174,14 +159,6 @@ impl WorkspaceFileService {
             created_at: now,
             updated_at: now,
         }
-    }
-
-    pub fn with_virtual_registry(
-        mut self,
-        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
-    ) -> Self {
-        self.virtual_registry = Some(registry);
-        self
     }
 
     pub fn with_quota_limits(mut self, quota: QuotaLimits) -> Self {
@@ -241,6 +218,7 @@ impl WorkspaceFileService {
 
     /// Create a new file
     pub async fn create_file(&self, session_id: Uuid, req: CreateFileInput) -> Result<SessionFile> {
+        self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
         self.ensure_path_not_virtual(session_id, &path)?;
@@ -317,6 +295,7 @@ impl WorkspaceFileService {
         session_id: Uuid,
         req: CreateDirectoryInput,
     ) -> Result<FileInfo> {
+        self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
         self.ensure_path_not_virtual(session_id, &path)?;
@@ -447,6 +426,7 @@ impl WorkspaceFileService {
 
     /// Read a file
     pub async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
+        self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
@@ -513,6 +493,7 @@ impl WorkspaceFileService {
 
     /// Get file stat (metadata)
     pub async fn stat(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
+        self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
 
         // Handle root directory specially
@@ -586,6 +567,7 @@ impl WorkspaceFileService {
 
     /// List directory contents
     pub async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
+        self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
@@ -671,6 +653,7 @@ impl WorkspaceFileService {
 
     /// List all files recursively
     pub async fn list_all(&self, session_id: Uuid) -> Result<Vec<FileInfo>> {
+        self.restore_virtual_mounts(session_id).await?;
         let rows = self.db.list_all_session_files(session_id).await?;
         let mut entries: Vec<FileInfo> = rows
             .into_iter()
@@ -700,6 +683,7 @@ impl WorkspaceFileService {
         path: &str,
         req: UpdateFileInput,
     ) -> Result<Option<SessionFile>> {
+        self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
 
         // Virtual files cannot be modified
@@ -774,6 +758,7 @@ impl WorkspaceFileService {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
+        self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
         Self::validate_path(&path)?;
         self.ensure_path_not_virtual(session_id, &path)?;
@@ -786,7 +771,7 @@ impl WorkspaceFileService {
             // session store uses: `memory_files` has no conditional update yet,
             // so two writers racing on the *same* file can still interleave.
             // The convention that keeps that rare is one file per writer; see
-            // `knowledge/harnesses/platform-chat-v2.md`.
+            // `knowledge/harnesses/platform-chat.md`.
             let Some(current) = self.memory_mounts.read_file(&mount, &inner).await? else {
                 return Ok(None);
             };
@@ -830,6 +815,7 @@ impl WorkspaceFileService {
 
     /// Delete a file or directory
     pub async fn delete(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
+        self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
@@ -909,6 +895,7 @@ impl WorkspaceFileService {
         session_id: Uuid,
         req: MoveFileInput,
     ) -> Result<Option<SessionFile>> {
+        self.restore_virtual_mounts(session_id).await?;
         let src_path = Self::normalize_path(&req.src_path);
         let dst_path = Self::normalize_path(&req.dst_path);
 
@@ -956,6 +943,7 @@ impl WorkspaceFileService {
         session_id: Uuid,
         req: CopyFileInput,
     ) -> Result<Option<SessionFile>> {
+        self.restore_virtual_mounts(session_id).await?;
         let src_path = Self::normalize_path(&req.src_path);
         let dst_path = Self::normalize_path(&req.dst_path);
 
@@ -1006,6 +994,7 @@ impl WorkspaceFileService {
 
     /// Search files using grep-like pattern matching (delegates to shared helper).
     pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
+        self.restore_virtual_mounts(session_id).await?;
         let mut results = grep_session_files_excluding(
             &self.db,
             session_id,
@@ -1223,21 +1212,6 @@ impl WorkspaceFileService {
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
-    }
-
-    /// Evict virtual mount entries for a session (call on session delete).
-    pub fn evict_virtual_mounts(&self, session_id: Uuid) {
-        if let Some(registry) = &self.virtual_registry {
-            registry.evict(&session_id);
-        }
-    }
-
-    /// Get a reference to the virtual mount registry (if configured).
-    pub fn virtual_registry(
-        &self,
-    ) -> Option<&Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>
-    {
-        self.virtual_registry.as_ref()
     }
 
     // =========================================================================
@@ -1476,7 +1450,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         file: &everruns_core::InitialFile,
-    ) -> everruns_provider::error::Result<()> {
+    ) -> everruns_contracts::error::Result<()> {
         let session_id_uuid = session_id.uuid();
         let path = Self::normalize_path(&file.path);
         Self::validate_path(&path).map_err(file_system_error)?;
@@ -1533,7 +1507,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         path: &str,
-    ) -> everruns_provider::error::Result<Option<SessionFile>> {
+    ) -> everruns_contracts::error::Result<Option<SessionFile>> {
         WorkspaceFileService::read_file(self, session_id.uuid(), path)
             .await
             .map_err(file_system_error)
@@ -1545,7 +1519,7 @@ impl SessionFileSystem for WorkspaceFileService {
         path: &str,
         content: &str,
         encoding: &str,
-    ) -> everruns_provider::error::Result<SessionFile> {
+    ) -> everruns_contracts::error::Result<SessionFile> {
         let session_id_uuid = session_id.uuid();
         if WorkspaceFileService::read_file(self, session_id_uuid, path)
             .await
@@ -1605,7 +1579,7 @@ impl SessionFileSystem for WorkspaceFileService {
         expected_encoding: &str,
         content: &str,
         encoding: &str,
-    ) -> everruns_provider::error::Result<Option<SessionFile>> {
+    ) -> everruns_contracts::error::Result<Option<SessionFile>> {
         self.update_file_if_content_matches(
             session_id.uuid(),
             path,
@@ -1623,7 +1597,7 @@ impl SessionFileSystem for WorkspaceFileService {
         session_id: SessionId,
         path: &str,
         recursive: bool,
-    ) -> everruns_provider::error::Result<bool> {
+    ) -> everruns_contracts::error::Result<bool> {
         self.delete(session_id.uuid(), path, recursive)
             .await
             .map_err(file_system_error)
@@ -1633,7 +1607,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         path: &str,
-    ) -> everruns_provider::error::Result<Vec<FileInfo>> {
+    ) -> everruns_contracts::error::Result<Vec<FileInfo>> {
         WorkspaceFileService::list_directory(self, session_id.uuid(), path)
             .await
             .map_err(file_system_error)
@@ -1643,7 +1617,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         path: &str,
-    ) -> everruns_provider::error::Result<Option<FileStat>> {
+    ) -> everruns_contracts::error::Result<Option<FileStat>> {
         self.stat(session_id.uuid(), path)
             .await
             .map_err(file_system_error)
@@ -1654,7 +1628,7 @@ impl SessionFileSystem for WorkspaceFileService {
         session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
-    ) -> everruns_provider::error::Result<Vec<GrepMatch>> {
+    ) -> everruns_contracts::error::Result<Vec<GrepMatch>> {
         let results = self
             .grep(
                 session_id.uuid(),
@@ -1677,7 +1651,10 @@ impl SessionFileSystem for WorkspaceFileService {
         session_id: SessionId,
         pattern: &str,
         options: &GrepOptions,
-    ) -> everruns_provider::error::Result<GrepSearchResult> {
+    ) -> everruns_contracts::error::Result<GrepSearchResult> {
+        self.restore_virtual_mounts(session_id.uuid())
+            .await
+            .map_err(file_system_error)?;
         grep_session_files_with_options(
             &self.db,
             self.virtual_registry.as_deref(),
@@ -1694,7 +1671,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         path: &str,
-    ) -> everruns_provider::error::Result<FileInfo> {
+    ) -> everruns_contracts::error::Result<FileInfo> {
         WorkspaceFileService::create_directory(
             self,
             session_id.uuid(),

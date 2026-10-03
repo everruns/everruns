@@ -9,11 +9,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::kernel_imports::{
-    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::Message,
-    everruns_provider::driver_registry::MessageRole,
+    UtilityLlmRequest, UtilityLlmService, contracts::driver_registry::Message,
+    contracts::driver_registry::MessageRole,
 };
+use everruns_contracts::typed_id::{AgentId, SessionId};
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
-use everruns_provider::typed_id::{AgentId, SessionId};
 use serde::Deserialize;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
@@ -176,6 +176,7 @@ async fn run_case(
             // A health check is an internal API-shaped run, not a user session.
             everruns_platform::SessionSource::Api,
             CreateSessionRequest {
+                playground_user_id: None,
                 source: None,
                 harness_id: None,
                 harness_name: None,
@@ -188,6 +189,7 @@ async fn run_case(
                 tags: vec!["health_check".to_string()],
                 model_id: model_id.as_ref().and_then(|m| m.parse().ok()),
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

@@ -186,7 +186,7 @@ mod tests {
                 starters: serde_json::json!([]),
                 system_prompt: String::new(),
                 default_model_id: None,
-                harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+                harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -194,6 +194,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -234,7 +235,7 @@ mod tests {
                 starters: serde_json::json!([]),
                 system_prompt: String::new(),
                 default_model_id: None,
-                harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+                harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -242,6 +243,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

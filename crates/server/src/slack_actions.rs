@@ -25,11 +25,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_contracts::typed_id::SessionId;
 use everruns_platform::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
 };
 use everruns_platform::{AgentEndpoint, App, EndpointTransport};
-use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
@@ -602,8 +602,8 @@ mod tests {
         CreateAppRow, CreateHarnessRow, CreateLegacyAliasEndpointRow, CreateSessionRow,
         UpdateEndpointByIdRow,
     };
+    use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
     use everruns_platform::slack_action::SlackActionInvoker;
-    use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
     use uuid::Uuid;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -647,6 +647,7 @@ mod tests {
                         max_iterations: None,
                         network_access: None,
                         parallel_tool_calls: None,
+                        environments: None,
                         is_built_in: false,
                     },
                 )
@@ -764,6 +765,7 @@ mod tests {
             let session = self
                 .db
                 .create_session(CreateSessionRow {
+                    playground_user_id: None,
                     source: everruns_platform::SessionSource::Api,
                     workspace_id: None,
                     org_id,

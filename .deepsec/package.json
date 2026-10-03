@@ -10,7 +10,7 @@
     "node": ">=20.18.1"
   },
   "dependencies": {
-    "deepsec": "^2.2.6"
+    "deepsec": "^2.3.10"
   },
   "pnpm": {
     "overrides": {

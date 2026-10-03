@@ -212,10 +212,10 @@ use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use everruns_ag_ui::{Tool as WireTool, ToolCall as WireToolCall};
+use everruns_contracts::tool_types::ClientSideTool;
 use everruns_core::events::{ToolCallRequestedData, ToolCompletedData};
 use everruns_core::message::ContentPart;
 use everruns_host::ParkedToolCalls;
-use everruns_provider::tool_types::ClientSideTool;
 use futures::{Stream, StreamExt};
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot, watch};

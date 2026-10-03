@@ -64,17 +64,16 @@ mod workspaces;
 mod tests;
 
 use crate::kernel_imports::{
-    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, everruns_provider::typed_id::AgentId,
-    everruns_provider::typed_id::AgentVersionId, everruns_provider::typed_id::EventId,
-    everruns_provider::typed_id::FileId, everruns_provider::typed_id::HarnessId,
-    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
-    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
-    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
-    everruns_provider::typed_id::PluginMarketplaceId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::ProviderId, everruns_provider::typed_id::ScheduleId,
-    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
-    everruns_provider::typed_id::SkillId, everruns_provider::typed_id::TriggerId,
-    everruns_provider::typed_id::VirtualUserId,
+    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, contracts::typed_id::AgentId,
+    contracts::typed_id::AgentVersionId, contracts::typed_id::EventId, contracts::typed_id::FileId,
+    contracts::typed_id::HarnessId, contracts::typed_id::ImageId,
+    contracts::typed_id::LeasedResourceId, contracts::typed_id::McpServerId,
+    contracts::typed_id::MessageId, contracts::typed_id::ModelId,
+    contracts::typed_id::NotificationId, contracts::typed_id::PluginMarketplaceId,
+    contracts::typed_id::PrincipalId, contracts::typed_id::ProviderId,
+    contracts::typed_id::ScheduleId, contracts::typed_id::SessionId,
+    contracts::typed_id::SessionParticipantId, contracts::typed_id::SkillId,
+    contracts::typed_id::TriggerId, contracts::typed_id::VirtualUserId,
 };
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
@@ -156,6 +155,7 @@ pub struct InMemoryDatabase {
     agent_mcp_secret_bindings: RwLock<HashMap<Uuid, AgentMcpSecretBindingRow>>,
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     pub(super) sessions: RwLock<HashMap<SessionId, SessionRow>>,
+    pub(super) environments: RwLock<HashMap<SessionId, super::EnvironmentRecord>>,
     waiting_turn_resolutions: RwLock<HashMap<SessionId, WaitingTurnResolutionState>>,
     pub(super) session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
@@ -350,6 +350,7 @@ impl Default for InMemoryDatabase {
             agent_mcp_secret_bindings: RwLock::new(HashMap::new()),
             agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
+            environments: RwLock::new(HashMap::new()),
             waiting_turn_resolutions: RwLock::new(HashMap::new()),
             session_participants: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),

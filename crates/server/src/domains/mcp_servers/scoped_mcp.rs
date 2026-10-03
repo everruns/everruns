@@ -8,8 +8,8 @@
 use crate::kernel_imports::{
     Capability, EgressService, McpProtocolMode, McpServerActsAs, McpServerAuthMode,
     McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
-    everruns_provider::tool_types::ToolDefinition, everruns_provider::typed_id::SessionId,
-    everruns_provider::url_validation::validate_safe_url, merge_scoped_mcp_servers,
+    contracts::tool_types::ToolDefinition, contracts::typed_id::SessionId,
+    contracts::url_validation::validate_safe_url, merge_scoped_mcp_servers,
     resolve_runtime_capabilities,
 };
 use anyhow::{Result, anyhow};

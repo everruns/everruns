@@ -562,7 +562,7 @@ impl McpEventsService {
                 "callback URL must use https".to_string(),
             ));
         }
-        let (parsed, pinned) = everruns_provider::url_validation::validate_url_dns_pinned(url)
+        let (parsed, pinned) = everruns_contracts::url_validation::validate_url_dns_pinned(url)
             .await
             .map_err(|e| PostError::Blocked(format!("callback URL is not allowed: {e}")))?;
         let timestamp = Utc::now().timestamp().to_string();

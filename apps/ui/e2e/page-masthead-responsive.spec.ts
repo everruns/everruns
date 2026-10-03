@@ -29,6 +29,7 @@ async function mockAgentDetailApi(page: Page) {
       json = {
         notifications: false,
         evals: true,
+        plugins: true,
         app_budgets: false,
         agent_versions: true,
         voice: false,
@@ -38,6 +39,27 @@ async function mockAgentDetailApi(page: Page) {
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
+    } else if (pathname === "/api/v1/plugins") {
+      json = {
+        data: [
+          {
+            id: "plugin-test",
+            name: "resend",
+            display_name: "Resend",
+            description: "Send transactional email",
+            version: "1.0.0",
+            capability_ref: "plugin:plugin-test",
+            status: "active",
+            warnings: [],
+            identity_required: [],
+            update_available: false,
+            created_at: "2026-08-01T00:00:00Z",
+            updated_at: "2026-08-01T00:00:00Z",
+          },
+        ],
+        total: 1,
+        has_more: false,
+      };
     } else if (pathname === `/api/v1/agents/${AGENT_ID}`) {
       json = {
         id: AGENT_ID,
@@ -122,7 +144,7 @@ test.describe("Page masthead responsive layout", () => {
   });
 
   // The agent page keeps a three-action header at every width (Edit, the
-  // overflow menu, New session); secondary actions live in the overflow.
+  // overflow menu, Test chat); secondary actions live in the overflow.
   test("keeps the agent actions contained with secondary actions in the overflow at mobile width", async ({
     page,
   }) => {
@@ -135,7 +157,7 @@ test.describe("Page masthead responsive layout", () => {
     const moreActions = page.getByRole("button", { name: "More actions" });
     await expect(title).toBeVisible();
     await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "New session" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Test chat" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
     await expect(moreActions).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy", exact: true })).toHaveCount(0);
@@ -185,7 +207,7 @@ test.describe("Page masthead responsive layout", () => {
       const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
       const actions = masthead.locator('[data-slot="page-masthead-actions"]');
 
-      await expect(page.getByRole("button", { name: "New session" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Test chat" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "More actions" })).toBeVisible();
 
@@ -208,7 +230,7 @@ test.describe("Page masthead responsive layout", () => {
 
     const title = page.getByRole("heading", { name: "Jokes Agent" });
     const actions = page
-      .getByRole("button", { name: "New session" })
+      .getByRole("button", { name: "Test chat" })
       .locator("xpath=ancestor::div[@data-slot='page-masthead-actions'][1]");
     const titleBox = await title.boundingBox();
     const actionsBox = await actions.boundingBox();
@@ -245,4 +267,31 @@ test.describe("Page masthead responsive layout", () => {
       await page.evaluate(() => document.documentElement.clientWidth),
     );
   });
+
+  for (const width of [390, 1440]) {
+    test(`keeps plugin overview counts and cards contained at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/plugins");
+      await expect(page.getByText("Send transactional email")).toBeVisible();
+      const installed = page.getByRole("tab", { name: "Installed Plugins", exact: true });
+      await expect(installed).toHaveAttribute("aria-selected", "true");
+      await expect(installed).toContainText("1");
+      await expect(
+        page.locator('[data-slot="page-masthead"]').getByText("1", { exact: true }),
+      ).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Copy ID: plugin:plugin-test" })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      );
+      await page.getByRole("tab", { name: "Marketplaces", exact: true }).click();
+      await expect(
+        page
+          .locator('[data-slot="page-masthead"]')
+          .getByRole("button", { name: "Add Marketplace" }),
+      ).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      );
+    });
+  }
 });

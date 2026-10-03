@@ -50,9 +50,9 @@ pub const DUCKDUCKGO_CAPABILITY_ID: &str = "duckduckgo";
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DuckDuckGo;
 
-impl everruns_capability::IntoCapability for DuckDuckGo {
-    fn into_capability(self) -> everruns_capability::CapabilitySpec {
-        everruns_capability::CapabilityRef::new(DUCKDUCKGO_CAPABILITY_ID).into()
+impl everruns_contracts::IntoCapability for DuckDuckGo {
+    fn into_capability(self) -> everruns_contracts::CapabilitySpec {
+        everruns_contracts::CapabilityRef::new(DUCKDUCKGO_CAPABILITY_ID).into()
     }
 }
 

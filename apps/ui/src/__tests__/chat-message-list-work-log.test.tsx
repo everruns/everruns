@@ -16,6 +16,7 @@ jest.mock("@/hooks", () => ({
   useAgents: () => ({ data: [] }),
   useProviders: () => ({ data: [] }),
 }));
+jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
 
 jest.mock("@/providers/locale-provider", () => ({
   useLocale: () => ({

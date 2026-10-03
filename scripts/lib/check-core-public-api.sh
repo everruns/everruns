@@ -19,8 +19,8 @@ fail() {
 }
 
 if grep -R -n -E --include='*.rs' \
-  '^pub use (everruns_provider|everruns_capability|crate::(compact|driver_registry|error|execution_phase|llm_retry|model|model_profiles|model_spec|provider|runtime_provider|tool_types|typed_id))' \
-  crates/core/src; then
+  '^pub use (everruns_provider|everruns_capability|everruns_contracts|crate::(compact|driver_registry|error|execution_phase|llm_retry|model|model_profiles|model_spec|provider|runtime_provider|tool_types|typed_id))' \
+  crates/core/src | grep -v -F 'pub use everruns_contracts::tools::{ToolExecutionResult, ToolInternalError};'; then
   fail "everruns-core publicly re-exports a provider/capability compatibility owner"
 fi
 

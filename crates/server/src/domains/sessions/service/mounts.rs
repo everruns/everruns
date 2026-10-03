@@ -363,35 +363,7 @@ impl SessionService {
         let Some(name) = shared_memory_name_for_harness(&harness.name) else {
             return Ok(());
         };
-        let existing = self
-            .db
-            .list_memories(org_id, None, false)
-            .await?
-            .into_iter()
-            .any(|memory| memory.name == name && memory.status == "active");
-        if existing {
-            return Ok(());
-        }
-        self.db
-            .create_memory(
-                org_id,
-                CreateMemoryRow {
-                    public_id: MemoryId::new().to_string(),
-                    name,
-                    description: Some(
-                        "Shared memory for every session of this chat surface.".to_string(),
-                    ),
-                    scope: "org".to_string(),
-                    owner_agent_id: None,
-                    owner_user_id: None,
-                    source_type: "manual".to_string(),
-                    source_config: serde_json::json!({}),
-                    is_readonly: false,
-                    sync_status: "idle".to_string(),
-                    owner_principal_id: None,
-                    resolved_owner_user_id: None,
-                },
-            )
+        crate::domains::session_files::memory_mounts::ensure_shared_memory(&self.db, org_id, &name)
             .await?;
         Ok(())
     }

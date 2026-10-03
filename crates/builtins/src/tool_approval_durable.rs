@@ -43,7 +43,7 @@ const CONSUMED_ONE_OFF_CAPACITY: usize = 512;
 /// One-off approvals this process consumed, by (session, call id, fingerprint).
 ///
 /// Decision: one call can pass two durable gates (the agent's `tool_approval`
-/// and a capability's own hard gate, such as computer use's). Each takes the
+/// and a capability's own hard gate). Each takes the
 /// one-off answer with a destructive read, so without this the second gate
 /// would find nothing, defer, and every answer would be spent by whichever
 /// gate ran first: the call could never run. The gates for one call run back
@@ -357,8 +357,8 @@ mod tests {
 
     mod durable {
         use super::*;
+        use everruns_contracts::error::Result as StoreResult;
         use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
-        use everruns_provider::error::Result as StoreResult;
 
         /// Session storage shared by every "process" in a test, the way the
         /// database is shared by every worker.
@@ -386,7 +386,7 @@ mod tests {
             }
             fn check(&self) -> StoreResult<()> {
                 if self.fail {
-                    Err(everruns_provider::error::AgentLoopError::Internal(
+                    Err(everruns_contracts::error::AgentLoopError::Internal(
                         anyhow::anyhow!("storage down"),
                     ))
                 } else {
@@ -535,8 +535,8 @@ mod tests {
 
         #[tokio::test]
         async fn one_answer_lets_a_call_through_two_durable_gates() {
-            // The agent's `tool_approval` and a capability's own hard gate
-            // (computer use) both gate the call. One one-off answer must
+            // Two `tool_approval` gates (agent-level and capability-level) can
+            // both gate one call. One one-off answer must
             // carry it through both, in either order, or it could never run.
             let store = Arc::new(MemoryStore::default());
             let session = SessionId::new_random();

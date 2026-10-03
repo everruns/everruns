@@ -15,7 +15,7 @@
 //! # Registering the Driver
 //!
 //! ```
-//! use everruns_provider::DriverRegistry;
+//! use everruns_contracts::DriverRegistry;
 //! use everruns_drivers::openai::register_driver;
 //!
 //! let mut registry = DriverRegistry::new();
@@ -44,6 +44,6 @@ pub use types::{
 };
 
 // Re-export core types for convenience
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
 
 pub mod async_tools;

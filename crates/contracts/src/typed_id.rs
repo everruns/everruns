@@ -1,0 +1,957 @@
+// Typed ID module - provides type-safe, prefixed identifiers
+// See knowledge/foundations/id-schema.md for the full specification
+//
+// Design decisions:
+// - Uses marker traits to differentiate ID types at compile time
+// - Stores IDs as prefixed strings (e.g., "agent_01933b5a...")
+// - Uses UUIDv7 for DB-backed ids (time-ordering) and UUIDv4 for random-public
+//   ids (e.g. MessageId) — dispatched per class via IdMarker::generate_uuid()
+// - Supports serde, sqlx, and utoipa for full integration
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
+use std::hash::Hash;
+use std::marker::PhantomData;
+use std::str::FromStr;
+use uuid::Uuid;
+
+/// Error type for ID parsing failures
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdParseError {
+    /// ID doesn't start with the expected prefix
+    InvalidPrefix { expected: &'static str, got: String },
+    /// Suffix is not valid hex
+    InvalidHex(String),
+    /// Suffix has wrong length
+    InvalidLength { expected: usize, got: usize },
+}
+
+impl std::fmt::Display for IdParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdParseError::InvalidPrefix { expected, got } => {
+                write!(f, "invalid prefix: expected '{}', got '{}'", expected, got)
+            }
+            IdParseError::InvalidHex(s) => write!(f, "invalid hex in ID: {}", s),
+            IdParseError::InvalidLength { expected, got } => {
+                write!(f, "invalid length: expected {}, got {}", expected, got)
+            }
+        }
+    }
+}
+
+impl std::error::Error for IdParseError {}
+
+/// Marker trait for typed ID types
+pub trait IdMarker: Clone + Copy + Send + Sync + 'static {
+    /// The prefix for this ID type (e.g., "agt" for agents)
+    const PREFIX: &'static str;
+
+    /// Generate a fresh UUID for a new id of this class.
+    ///
+    /// Defaults to UUIDv7, whose time-ordering gives DB-backed keys B-tree
+    /// locality and sortability (events, sessions, agents, …). Id classes that
+    /// are purely *public/correlation* identifiers with no DB sort/index
+    /// dependency override this to a random UUIDv4 so no creation timestamp
+    /// leaks into a client-visible id. See `knowledge/foundations/id-schema.md`.
+    fn generate_uuid() -> Uuid {
+        Uuid::now_v7()
+    }
+}
+
+/// A type-safe identifier with a specific prefix
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypedId<T: IdMarker> {
+    uuid: Uuid,
+    _marker: PhantomData<T>,
+}
+
+impl<T: IdMarker> TypedId<T> {
+    /// Create a new ID using this id class's generation strategy
+    /// ([`IdMarker::generate_uuid`] — UUIDv7 by default, UUIDv4 for
+    /// random-public id classes such as [`MessageId`]).
+    pub fn new() -> Self {
+        Self {
+            uuid: T::generate_uuid(),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Create a new ID with a random (non-time-ordered) UUIDv4.
+    ///
+    /// Use for public/correlation ids that must not embed a creation
+    /// timestamp. The wire format is unchanged (`prefix_{32-hex}`), so parsing,
+    /// validation, and persistence are identical to a UUIDv7-backed id.
+    pub fn new_random() -> Self {
+        Self {
+            uuid: Uuid::new_v4(),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Create an ID from an existing UUID
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self {
+            uuid,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Get the underlying UUID
+    pub fn uuid(&self) -> Uuid {
+        self.uuid
+    }
+
+    /// Get the prefix for this ID type
+    pub fn prefix() -> &'static str {
+        T::PREFIX
+    }
+
+    /// Parse an ID from a prefixed string
+    pub fn parse(s: &str) -> Result<Self, IdParseError> {
+        let expected_prefix = format!("{}_", T::PREFIX);
+
+        if !s.starts_with(&expected_prefix) {
+            let got_prefix = s.split('_').next().unwrap_or("").to_string();
+            return Err(IdParseError::InvalidPrefix {
+                expected: T::PREFIX,
+                got: got_prefix,
+            });
+        }
+
+        let suffix = &s[expected_prefix.len()..];
+
+        if suffix.len() != 32 {
+            return Err(IdParseError::InvalidLength {
+                expected: 32,
+                got: suffix.len(),
+            });
+        }
+
+        // Validate hex characters (lowercase only)
+        if !suffix
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        {
+            return Err(IdParseError::InvalidHex(suffix.to_string()));
+        }
+
+        // Parse the UUID
+        let uuid =
+            Uuid::parse_str(suffix).map_err(|_| IdParseError::InvalidHex(suffix.to_string()))?;
+
+        Ok(Self {
+            uuid,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Create an ID from a well-known integer value (for seeding)
+    /// Produces IDs like "agent_00000000000000000000000000000001"
+    pub fn from_seed(value: u128) -> Self {
+        let uuid = Uuid::from_u128(value);
+        Self {
+            uuid,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T: IdMarker> Default for TypedId<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Conversion from TypedId to Uuid
+impl<T: IdMarker> From<TypedId<T>> for Uuid {
+    fn from(id: TypedId<T>) -> Self {
+        id.uuid
+    }
+}
+
+// Conversion from Uuid to TypedId
+impl<T: IdMarker> From<Uuid> for TypedId<T> {
+    fn from(uuid: Uuid) -> Self {
+        Self::from_uuid(uuid)
+    }
+}
+
+// Allow using TypedId as a key in HashMap/HashSet that expects Uuid
+impl<T: IdMarker> std::borrow::Borrow<Uuid> for TypedId<T> {
+    fn borrow(&self) -> &Uuid {
+        &self.uuid
+    }
+}
+
+// AsRef<Uuid> for TypedId
+impl<T: IdMarker> AsRef<Uuid> for TypedId<T> {
+    fn as_ref(&self) -> &Uuid {
+        &self.uuid
+    }
+}
+
+// PartialEq<Uuid> for TypedId (allows comparing TypedId == Uuid)
+impl<T: IdMarker> PartialEq<Uuid> for TypedId<T> {
+    fn eq(&self, other: &Uuid) -> bool {
+        self.uuid == *other
+    }
+}
+
+// PartialEq<TypedId> for Uuid (allows comparing Uuid == TypedId)
+impl<T: IdMarker> PartialEq<TypedId<T>> for Uuid {
+    fn eq(&self, other: &TypedId<T>) -> bool {
+        *self == other.uuid
+    }
+}
+
+impl<T: IdMarker> fmt::Display for TypedId<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}_{}", T::PREFIX, self.uuid.simple())
+    }
+}
+
+impl<T: IdMarker> fmt::Debug for TypedId<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}({})",
+            std::any::type_name::<T>()
+                .split("::")
+                .last()
+                .unwrap_or("Id"),
+            self
+        )
+    }
+}
+
+impl<T: IdMarker> FromStr for TypedId<T> {
+    type Err = IdParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl<T: IdMarker> Serialize for TypedId<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de, T: IdMarker> Deserialize<'de> for TypedId<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+// OpenAPI schema support
+#[cfg(feature = "openapi")]
+impl<T: IdMarker> utoipa::ToSchema for TypedId<T> {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Owned(format!("{}Id", T::PREFIX))
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl<T: IdMarker> utoipa::PartialSchema for TypedId<T> {
+    #[allow(deprecated)]
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        let example_value = format!("{}_{}", T::PREFIX, "01933b5a000070008000000000000001");
+        utoipa::openapi::ObjectBuilder::new()
+            .schema_type(utoipa::openapi::schema::Type::String)
+            .description(Some(format!(
+                "Prefixed identifier with '{}' prefix",
+                T::PREFIX
+            )))
+            .example(Some(serde_json::json!(example_value)))
+            .pattern(Some(format!("^{}_[0-9a-f]{{32}}$", T::PREFIX)))
+            .into()
+    }
+}
+
+// sqlx support - maps TypedId to/from UUID in database
+#[cfg(feature = "sqlx")]
+impl<T: IdMarker> sqlx::Type<sqlx::Postgres> for TypedId<T> {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+
+    fn compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
+        <Uuid as sqlx::Type<sqlx::Postgres>>::compatible(ty)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl<T: IdMarker> sqlx::Encode<'_, sqlx::Postgres> for TypedId<T> {
+    fn encode_by_ref(
+        &self,
+        buf: &mut sqlx::postgres::PgArgumentBuffer,
+    ) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+        <Uuid as sqlx::Encode<sqlx::Postgres>>::encode_by_ref(&self.uuid, buf)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl<T: IdMarker> sqlx::Decode<'_, sqlx::Postgres> for TypedId<T> {
+    fn decode(
+        value: sqlx::postgres::PgValueRef<'_>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let uuid = <Uuid as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(Self::from_uuid(uuid))
+    }
+}
+
+// ============================================================================
+// Marker types for each entity
+// ============================================================================
+
+/// Marker for Organization IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct OrgIdMarker;
+impl IdMarker for OrgIdMarker {
+    const PREFIX: &'static str = "org";
+}
+
+/// Marker for Agent IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AgentIdMarker;
+impl IdMarker for AgentIdMarker {
+    const PREFIX: &'static str = "agent";
+}
+
+/// Marker for immutable Agent Version IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AgentVersionIdMarker;
+impl IdMarker for AgentVersionIdMarker {
+    const PREFIX: &'static str = "agentver";
+}
+
+/// Marker for Harness IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HarnessIdMarker;
+impl IdMarker for HarnessIdMarker {
+    const PREFIX: &'static str = "harness";
+}
+
+/// Marker for virtual user IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct VirtualUserIdMarker;
+impl IdMarker for VirtualUserIdMarker {
+    const PREFIX: &'static str = "identity";
+}
+
+/// Marker for agent trigger IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TriggerIdMarker;
+impl IdMarker for TriggerIdMarker {
+    const PREFIX: &'static str = "trg";
+}
+
+/// Marker for principal IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PrincipalIdMarker;
+impl IdMarker for PrincipalIdMarker {
+    const PREFIX: &'static str = "principal";
+}
+
+/// Marker for Session IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SessionIdMarker;
+impl IdMarker for SessionIdMarker {
+    const PREFIX: &'static str = "session";
+}
+
+/// Marker for logical execution Environment IDs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EnvironmentIdMarker;
+impl IdMarker for EnvironmentIdMarker {
+    const PREFIX: &'static str = "env";
+}
+
+/// Marker for Session Participant IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SessionParticipantIdMarker;
+impl IdMarker for SessionParticipantIdMarker {
+    const PREFIX: &'static str = "part";
+}
+
+/// Marker for Message IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MessageIdMarker;
+impl IdMarker for MessageIdMarker {
+    const PREFIX: &'static str = "message";
+
+    // Messages are not DB entities — they live embedded in `events.data` JSONB
+    // with no table, FK, index, or sort dependency on their id, and the id is
+    // the *public* identifier serialized to clients (`output.message.completed`,
+    // `EventContext.input_message_id`). UUIDv7's time-ordering does no work here
+    // and would leak a creation timestamp into a client-visible id, so message
+    // ids are random UUIDv4. See EVE-771 and `knowledge/foundations/id-schema.md`.
+    fn generate_uuid() -> Uuid {
+        Uuid::new_v4()
+    }
+}
+
+/// Marker for Event IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EventIdMarker;
+impl IdMarker for EventIdMarker {
+    const PREFIX: &'static str = "event";
+}
+
+/// Marker for LLM Provider IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ProviderIdMarker;
+impl IdMarker for ProviderIdMarker {
+    const PREFIX: &'static str = "provider";
+}
+
+/// Marker for LLM Model IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModelIdMarker;
+impl IdMarker for ModelIdMarker {
+    const PREFIX: &'static str = "model";
+}
+
+/// Marker for Image IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ImageIdMarker;
+impl IdMarker for ImageIdMarker {
+    const PREFIX: &'static str = "img";
+}
+/// Marker for File (e.g. PDF attachment) IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FileIdMarker;
+impl IdMarker for FileIdMarker {
+    const PREFIX: &'static str = "file";
+}
+
+/// Marker for MCP Server IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct McpServerIdMarker;
+impl IdMarker for McpServerIdMarker {
+    const PREFIX: &'static str = "mcp";
+}
+
+/// Marker for Skill IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SkillIdMarker;
+impl IdMarker for SkillIdMarker {
+    const PREFIX: &'static str = "skill";
+}
+
+/// Marker for Declarative Capability IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DeclarativeCapabilityIdMarker;
+impl IdMarker for DeclarativeCapabilityIdMarker {
+    const PREFIX: &'static str = "cap";
+}
+
+/// Marker for Turn IDs (used in workflow execution)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TurnIdMarker;
+impl IdMarker for TurnIdMarker {
+    const PREFIX: &'static str = "turn";
+}
+
+/// Marker for Execution IDs (workflow execution instance)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ExecIdMarker;
+impl IdMarker for ExecIdMarker {
+    const PREFIX: &'static str = "exec";
+}
+
+/// Marker for Session Schedule IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ScheduleIdMarker;
+impl IdMarker for ScheduleIdMarker {
+    const PREFIX: &'static str = "sched";
+}
+
+/// Marker for leased resource IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LeasedResourceIdMarker;
+impl IdMarker for LeasedResourceIdMarker {
+    const PREFIX: &'static str = "resource";
+}
+
+/// Marker for App IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AppIdMarker;
+impl IdMarker for AppIdMarker {
+    const PREFIX: &'static str = "app";
+}
+
+/// Marker for agent endpoint IDs. The `appchan` prefix predates the App
+/// retirement and stays: it is persisted in rows, session tags, and URLs
+/// registered with third parties.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AgentEndpointIdMarker;
+impl IdMarker for AgentEndpointIdMarker {
+    const PREFIX: &'static str = "appchan";
+}
+
+/// Marker for Notification IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NotificationIdMarker;
+impl IdMarker for NotificationIdMarker {
+    const PREFIX: &'static str = "notification";
+}
+
+/// Marker for Memory IDs (org-scoped named Memories — see `knowledge/runtime-resources/memory.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MemoryIdMarker;
+impl IdMarker for MemoryIdMarker {
+    const PREFIX: &'static str = "mem";
+}
+
+/// Marker for Workspace IDs (org-scoped named working areas — see `knowledge/runtime-resources/workspace.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WorkspaceIdMarker;
+impl IdMarker for WorkspaceIdMarker {
+    const PREFIX: &'static str = "wsp";
+}
+
+/// Marker for Eval IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalIdMarker;
+impl IdMarker for EvalIdMarker {
+    const PREFIX: &'static str = "eval";
+}
+
+/// Marker for Eval Case IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalCaseIdMarker;
+impl IdMarker for EvalCaseIdMarker {
+    const PREFIX: &'static str = "evalcase";
+}
+
+/// Marker for Eval Run IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalRunIdMarker;
+impl IdMarker for EvalRunIdMarker {
+    const PREFIX: &'static str = "evalrun";
+}
+
+/// Marker for Eval Run Dataset IDs (async dataset export handles — see
+/// `knowledge/evaluation/dataset-export.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalDatasetIdMarker;
+impl IdMarker for EvalDatasetIdMarker {
+    const PREFIX: &'static str = "evaldataset";
+}
+
+/// Marker for Agent Health Check Run IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HealthCheckRunIdMarker;
+impl IdMarker for HealthCheckRunIdMarker {
+    const PREFIX: &'static str = "healthcheck";
+}
+
+/// Marker for Eval Case Result IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalResultIdMarker;
+impl IdMarker for EvalResultIdMarker {
+    const PREFIX: &'static str = "evalresult";
+}
+
+/// Marker for Observer IDs (online scoring of production sessions — see `knowledge/evaluation/online-evals.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ObserverIdMarker;
+impl IdMarker for ObserverIdMarker {
+    const PREFIX: &'static str = "observer";
+}
+
+/// Marker for Trace Score IDs (observer scoring output)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TraceScoreIdMarker;
+impl IdMarker for TraceScoreIdMarker {
+    const PREFIX: &'static str = "score";
+}
+
+/// Marker for Budget IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BudgetIdMarker;
+impl IdMarker for BudgetIdMarker {
+    const PREFIX: &'static str = "bdgt";
+}
+
+/// Marker for payment account IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PaymentAccountIdMarker;
+impl IdMarker for PaymentAccountIdMarker {
+    const PREFIX: &'static str = "payacct";
+}
+
+/// Marker for payment policy IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PaymentPolicyIdMarker;
+impl IdMarker for PaymentPolicyIdMarker {
+    const PREFIX: &'static str = "paypol";
+}
+
+/// Marker for payment attempt IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PaymentAttemptIdMarker;
+impl IdMarker for PaymentAttemptIdMarker {
+    const PREFIX: &'static str = "payatt";
+}
+
+/// Marker for Budget Ledger Entry IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LedgerEntryIdMarker;
+impl IdMarker for LedgerEntryIdMarker {
+    const PREFIX: &'static str = "ledger";
+}
+
+/// Marker for Knowledge Base IDs (curated org knowledge — see `knowledge/runtime-resources/knowledge-bases.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeBaseIdMarker;
+impl IdMarker for KnowledgeBaseIdMarker {
+    const PREFIX: &'static str = "kb";
+}
+
+/// Marker for Knowledge Entry IDs (entries inside a Knowledge Base)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeEntryIdMarker;
+impl IdMarker for KnowledgeEntryIdMarker {
+    const PREFIX: &'static str = "kbe";
+}
+
+/// Marker for Knowledge Index IDs (source-backed embedded collections — see `knowledge/runtime-resources/knowledge-indexes.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeIndexIdMarker;
+impl IdMarker for KnowledgeIndexIdMarker {
+    const PREFIX: &'static str = "kidx";
+}
+
+/// Marker for Knowledge Index Document IDs (an ingested source document)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeIndexDocumentIdMarker;
+impl IdMarker for KnowledgeIndexDocumentIdMarker {
+    const PREFIX: &'static str = "kidoc";
+}
+
+/// Marker for Knowledge Index Chunk IDs (the citable retrieval unit)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeIndexChunkIdMarker;
+impl IdMarker for KnowledgeIndexChunkIdMarker {
+    const PREFIX: &'static str = "kchk";
+}
+
+/// Marker for Model Router IDs (semantic LLM selection — see `knowledge/integrations/model-router.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModelRouterIdMarker;
+impl IdMarker for ModelRouterIdMarker {
+    const PREFIX: &'static str = "mrtr";
+}
+
+/// Marker for Plugin Marketplace IDs (see `knowledge/integrations/plugins.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PluginMarketplaceIdMarker;
+impl IdMarker for PluginMarketplaceIdMarker {
+    const PREFIX: &'static str = "plgmkt";
+}
+
+/// Marker for Plugin Install IDs (see `knowledge/integrations/plugins.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PluginInstallIdMarker;
+impl IdMarker for PluginInstallIdMarker {
+    const PREFIX: &'static str = "plugin";
+}
+
+// ============================================================================
+// Type aliases for convenience
+// ============================================================================
+
+/// Organization ID
+pub type OrgId = TypedId<OrgIdMarker>;
+/// Agent ID
+pub type AgentId = TypedId<AgentIdMarker>;
+/// Immutable Agent Version ID
+pub type AgentVersionId = TypedId<AgentVersionIdMarker>;
+/// Harness ID
+pub type HarnessId = TypedId<HarnessIdMarker>;
+/// Agent identity ID
+pub type VirtualUserId = TypedId<VirtualUserIdMarker>;
+/// Agent trigger ID
+pub type TriggerId = TypedId<TriggerIdMarker>;
+/// Principal ID
+pub type PrincipalId = TypedId<PrincipalIdMarker>;
+/// Session ID
+pub type SessionId = TypedId<SessionIdMarker>;
+/// Session Participant ID
+pub type SessionParticipantId = TypedId<SessionParticipantIdMarker>;
+/// Message ID
+pub type MessageId = TypedId<MessageIdMarker>;
+/// Event ID
+pub type EventId = TypedId<EventIdMarker>;
+/// LLM Provider ID
+pub type ProviderId = TypedId<ProviderIdMarker>;
+/// LLM Model ID
+pub type ModelId = TypedId<ModelIdMarker>;
+/// Image ID
+pub type ImageId = TypedId<ImageIdMarker>;
+/// File (e.g. PDF attachment) ID
+pub type FileId = TypedId<FileIdMarker>;
+/// MCP Server ID
+pub type McpServerId = TypedId<McpServerIdMarker>;
+/// Skill ID
+pub type SkillId = TypedId<SkillIdMarker>;
+/// Declarative Capability ID
+pub type DeclarativeCapabilityId = TypedId<DeclarativeCapabilityIdMarker>;
+/// Turn ID
+pub type TurnId = TypedId<TurnIdMarker>;
+/// Execution ID
+pub type ExecId = TypedId<ExecIdMarker>;
+/// Session Schedule ID
+pub type ScheduleId = TypedId<ScheduleIdMarker>;
+/// Leased resource ID
+pub type LeasedResourceId = TypedId<LeasedResourceIdMarker>;
+/// App ID
+pub type AppId = TypedId<AppIdMarker>;
+/// Agent endpoint ID (`appchan_` prefix)
+pub type AgentEndpointId = TypedId<AgentEndpointIdMarker>;
+/// Notification ID
+pub type NotificationId = TypedId<NotificationIdMarker>;
+/// Memory ID (org-scoped named Memory — see `knowledge/runtime-resources/memory.md`)
+pub type MemoryId = TypedId<MemoryIdMarker>;
+/// Workspace ID (org-scoped named Workspace — see `knowledge/runtime-resources/workspace.md`)
+pub type WorkspaceId = TypedId<WorkspaceIdMarker>;
+/// Logical execution Environment ID.
+pub type EnvironmentId = TypedId<EnvironmentIdMarker>;
+/// Eval ID
+pub type EvalId = TypedId<EvalIdMarker>;
+/// Eval Case ID
+pub type EvalCaseId = TypedId<EvalCaseIdMarker>;
+/// Eval Run ID
+pub type EvalRunId = TypedId<EvalRunIdMarker>;
+/// Eval Run Dataset ID (async dataset export handle — see `knowledge/evaluation/dataset-export.md`)
+pub type EvalDatasetId = TypedId<EvalDatasetIdMarker>;
+/// Agent Health Check Run ID
+pub type HealthCheckRunId = TypedId<HealthCheckRunIdMarker>;
+/// Eval Case Result ID
+pub type EvalResultId = TypedId<EvalResultIdMarker>;
+/// Observer ID (online scoring — see `knowledge/evaluation/online-evals.md`)
+pub type ObserverId = TypedId<ObserverIdMarker>;
+/// Trace Score ID (observer scoring output)
+pub type TraceScoreId = TypedId<TraceScoreIdMarker>;
+/// Budget ID
+pub type BudgetId = TypedId<BudgetIdMarker>;
+/// Payment account ID
+pub type PaymentAccountId = TypedId<PaymentAccountIdMarker>;
+/// Payment policy ID
+pub type PaymentPolicyId = TypedId<PaymentPolicyIdMarker>;
+/// Payment attempt ID
+pub type PaymentAttemptId = TypedId<PaymentAttemptIdMarker>;
+/// Budget Ledger Entry ID
+pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
+/// Knowledge Base ID (curated org knowledge — see `knowledge/runtime-resources/knowledge-bases.md`)
+pub type KnowledgeBaseId = TypedId<KnowledgeBaseIdMarker>;
+/// Knowledge Entry ID (entry inside a Knowledge Base)
+pub type KnowledgeEntryId = TypedId<KnowledgeEntryIdMarker>;
+/// Knowledge Index ID (source-backed embedded collection — see `knowledge/runtime-resources/knowledge-indexes.md`)
+pub type KnowledgeIndexId = TypedId<KnowledgeIndexIdMarker>;
+/// Knowledge Index Document ID (an ingested source document)
+pub type KnowledgeIndexDocumentId = TypedId<KnowledgeIndexDocumentIdMarker>;
+/// Knowledge Index Chunk ID (the citable retrieval unit)
+pub type KnowledgeIndexChunkId = TypedId<KnowledgeIndexChunkIdMarker>;
+/// Model Router ID (semantic LLM selection — see `knowledge/integrations/model-router.md`)
+pub type ModelRouterId = TypedId<ModelRouterIdMarker>;
+/// Plugin Marketplace ID (see `knowledge/integrations/plugins.md`)
+pub type PluginMarketplaceId = TypedId<PluginMarketplaceIdMarker>;
+/// Plugin Install ID (see `knowledge/integrations/plugins.md`)
+pub type PluginInstallId = TypedId<PluginInstallIdMarker>;
+
+// ============================================================================
+// Well-known IDs (for seeding and defaults)
+// ============================================================================
+
+/// Default organization ID
+pub const DEFAULT_ORG_ID: OrgId = TypedId {
+    uuid: Uuid::from_u128(1),
+    _marker: PhantomData,
+};
+
+/// Well-known provider IDs
+pub mod well_known {
+    use super::*;
+
+    /// OpenAI provider ID
+    pub const OPENAI_PROVIDER_ID: ProviderId = TypedId {
+        uuid: Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000001),
+        _marker: PhantomData,
+    };
+
+    /// Anthropic provider ID
+    pub const ANTHROPIC_PROVIDER_ID: ProviderId = TypedId {
+        uuid: Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000002),
+        _marker: PhantomData,
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn literal_ids_preserve_seed_uuid_and_wire_identity() {
+        for (seed, wire) in [
+            (0, "agent_00000000000000000000000000000000"),
+            (1, "agent_00000000000000000000000000000001"),
+            (u128::MAX, "agent_ffffffffffffffffffffffffffffffff"),
+        ] {
+            let id = AgentId::from_seed(seed);
+            assert_eq!(id.to_string(), wire);
+            assert_eq!(AgentId::parse(wire).unwrap(), id);
+            assert_eq!(wire.parse::<AgentId>().unwrap(), id);
+            assert_eq!(id.uuid().as_u128(), seed);
+            assert_eq!(serde_json::to_value(id).unwrap(), serde_json::json!(wire));
+            assert_eq!(
+                serde_json::from_value::<AgentId>(serde_json::json!(wire)).unwrap(),
+                id
+            );
+        }
+    }
+
+    #[test]
+    fn parsing_rejects_wrong_namespace_length_and_noncanonical_hex() {
+        for (input, prefix) in [
+            ("session_00000000000000000000000000000001", "session"),
+            ("agentx_00000000000000000000000000000001", "agentx"),
+            ("", ""),
+        ] {
+            assert_eq!(
+                AgentId::parse(input),
+                Err(IdParseError::InvalidPrefix {
+                    expected: "agent",
+                    got: prefix.into()
+                })
+            );
+        }
+        for size in [0, 31, 33] {
+            assert_eq!(
+                AgentId::parse(&format!("agent_{}", "0".repeat(size))),
+                Err(IdParseError::InvalidLength {
+                    expected: 32,
+                    got: size
+                })
+            );
+        }
+        for suffix in [
+            "A".repeat(32),
+            "g".repeat(32),
+            "é".repeat(16),
+            "0".repeat(31) + " ",
+        ] {
+            assert_eq!(
+                AgentId::parse(&format!("agent_{suffix}")),
+                Err(IdParseError::InvalidHex(suffix))
+            );
+        }
+        for value in [
+            serde_json::json!(42),
+            serde_json::json!(null),
+            serde_json::json!("session_00000000000000000000000000000001"),
+            serde_json::json!("agent_123"),
+        ] {
+            assert!(serde_json::from_value::<AgentId>(value).is_err());
+        }
+        assert_eq!(
+            AgentId::parse("agent_123").unwrap_err().to_string(),
+            "invalid length: expected 32, got 3"
+        );
+        assert_eq!(
+            AgentId::parse("session_123").unwrap_err().to_string(),
+            "invalid prefix: expected 'agent', got 'session'"
+        );
+    }
+
+    #[test]
+    fn uuid_conversions_support_borrowed_map_lookup() {
+        let first = Uuid::from_u128(17);
+        let second = Uuid::from_u128(23);
+        let first_id = AgentId::from_uuid(first);
+        let second_id: AgentId = second.into();
+        let map = std::collections::HashMap::from([(first_id, "first"), (second_id, "second")]);
+        assert_eq!(map.get(&first), Some(&"first"));
+        assert_eq!(map.get(&second), Some(&"second"));
+        assert_eq!(map.get(&Uuid::from_u128(99)), None);
+        assert_eq!(first_id.as_ref(), &first);
+        assert_eq!(Uuid::from(second_id), second);
+        assert_eq!(first_id, first);
+        assert_eq!(first, first_id);
+        assert_ne!(first_id, second);
+        assert_ne!(second, first_id);
+    }
+
+    #[test]
+    fn generation_respects_storage_policy_and_explicit_random_override() {
+        for uuid in [
+            AgentId::new().uuid(),
+            AgentId::default().uuid(),
+            SessionId::new().uuid(),
+            EventId::new().uuid(),
+            TurnId::new().uuid(),
+        ] {
+            assert_eq!(uuid.get_version_num(), 7);
+        }
+        for uuid in [
+            MessageId::new().uuid(),
+            MessageId::default().uuid(),
+            MessageId::new_random().uuid(),
+            AgentId::new_random().uuid(),
+        ] {
+            assert_eq!(uuid.get_version_num(), 4);
+        }
+    }
+
+    #[test]
+    fn message_ids_accept_literal_legacy_and_random_versions() {
+        for (wire, version) in [
+            ("message_01933b5a000070008000000000000001", 7),
+            ("message_01933b5a000040008000000000000001", 4),
+        ] {
+            let id = MessageId::parse(wire).unwrap();
+            assert_eq!(id.uuid().get_version_num(), version);
+            assert_eq!(id.to_string(), wire);
+        }
+    }
+
+    #[test]
+    fn seeded_database_identities_remain_stable() {
+        assert_eq!(
+            DEFAULT_ORG_ID.to_string(),
+            "org_00000000000000000000000000000001"
+        );
+        assert_eq!(
+            well_known::OPENAI_PROVIDER_ID.to_string(),
+            "provider_01933b5a000070008000000000000001"
+        );
+        assert_eq!(
+            well_known::ANTHROPIC_PROVIDER_ID.to_string(),
+            "provider_01933b5a000070008000000000000002"
+        );
+    }
+
+    #[cfg(feature = "openapi")]
+    #[test]
+    fn openapi_examples_match_the_identifier_contract() {
+        let schema = serde_json::to_value(<AgentId as utoipa::PartialSchema>::schema()).unwrap();
+        assert_eq!(schema["type"], "string");
+        assert_eq!(schema["pattern"], "^agent_[0-9a-f]{32}$");
+        let example = schema["example"].as_str().unwrap();
+        assert!(
+            AgentId::parse(example).is_ok(),
+            "invalid schema example: {example}"
+        );
+    }
+}

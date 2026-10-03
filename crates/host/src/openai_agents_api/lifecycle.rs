@@ -5,14 +5,14 @@
 //! A provider failure that no retry fixes (rejected credentials, a preview
 //! the key's project lost, a retired model, an exhausted account, a provider
 //! session that no longer exists) fails the turn with a code from
-//! [`everruns_provider::user_facing_error::codes`] instead of surfacing as a
+//! [`everruns_contracts::user_facing_error::codes`] instead of surfacing as a
 //! retried activity error. Transient failures (rate limits, 5xx, network)
 //! stay errors so the durable engine retries them. Messages are written here,
 //! never copied from a provider response body, which can echo part of a key.
 //!
 //! Design: `knowledge/execution/openai-agents-api-runtime.md#session-lifecycle`.
 
-use everruns_provider::user_facing_error::{codes, is_provider_quota_message};
+use everruns_contracts::user_facing_error::{codes, is_provider_quota_message};
 
 use super::{AgentsApiClient, AgentsApiError};
 

@@ -707,10 +707,10 @@ mod tests {
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
     use crate::storage::models::{CreateSessionRow, CreateWorkspaceRow};
+    use everruns_contracts::typed_id::PrincipalId;
     use everruns_core::{
         Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, Permission, PermissionResolver,
     };
-    use everruns_provider::typed_id::PrincipalId;
     use serde_json::json;
     use std::sync::Arc;
     use uuid::Uuid;
@@ -730,6 +730,7 @@ mod tests {
 
     fn session_row(workspace_id: Option<Uuid>) -> CreateSessionRow {
         CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

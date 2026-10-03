@@ -12,13 +12,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use axum::http::StatusCode;
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_mcp::{StoredConsent, consent_storage_key};
 use everruns_platform::{Agent, Session};
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicBool, Ordering};
 use test_harness::TestServer;
+use uuid::Uuid;
 
 const TEST_ORG_ID: i64 = 1;
 
@@ -432,4 +435,151 @@ async fn a_session_that_is_not_paused_rejects_a_decision() {
     )
     .await
     .assert_status(StatusCode::CONFLICT);
+}
+
+/// Withholds `org:sessions:manage` once armed (after the fixture is built,
+/// since creating the session needs the same permission).
+#[derive(Default)]
+struct DenySessionManagement {
+    armed: AtomicBool,
+}
+
+impl PermissionResolver for DenySessionManagement {
+    fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+        !(self.armed.load(Ordering::SeqCst) && permission == &Permission::OrgSessionsManage)
+    }
+
+    fn caller_permissions(&self, caller: &Caller) -> Vec<Permission> {
+        Permission::ALL
+            .iter()
+            .copied()
+            .filter(|permission| self.has_permission(caller, permission))
+            .collect()
+    }
+}
+
+/// Turn the waiting session into a Platform Chat session owned by `owner`.
+async fn make_platform_chat(server: &TestServer, session_id: SessionId, owner: Uuid) {
+    server
+        .db
+        .update_session(
+            TEST_ORG_ID,
+            session_id,
+            everruns_server::storage::models::UpdateSession {
+                harness_id: Some(
+                    server
+                        .seed_chat_harness_id
+                        .parse()
+                        .expect("platform-chat harness id"),
+                ),
+                resolved_owner_user_id: everruns_durable::UpdateField::Set(owner),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update Platform Chat owner")
+        .expect("session exists");
+}
+
+/// Nothing the decision writes may exist after a refused request.
+async fn assert_untouched(server: &TestServer, session_id: SessionId) {
+    assert!(stored_consent(server, session_id).await.is_none());
+    let written = server
+        .db
+        .list_events(
+            session_id,
+            None,
+            None,
+            &["input.message".to_string(), "tool.completed".to_string()],
+            &[],
+            None,
+            Some(10),
+        )
+        .await
+        .expect("list events");
+    assert!(written.is_empty(), "unexpected events: {written:?}");
+    assert_eq!(
+        server
+            .db
+            .get_session(TEST_ORG_ID, session_id)
+            .await
+            .expect("read session")
+            .expect("session exists")
+            .status,
+        "waiting_for_tool_results"
+    );
+}
+
+#[tokio::test]
+async fn platform_chat_owner_can_answer_a_url_elicitation() {
+    let server = test_server().await;
+    let session_id = waiting_session(&server).await;
+    make_platform_chat(&server, session_id, everruns_platform::ANONYMOUS_USER_ID).await;
+    emit_elicitation_card(&server, session_id, "url_elicitation_owner").await;
+
+    post_consent(
+        &server,
+        session_id,
+        json!({ "tool_call_id": "url_elicitation_owner", "action": "accept" }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    assert!(stored_consent(&server, session_id).await.is_some());
+}
+
+/// THREAT[TM-AGENT-017]: organization membership is not enough to answer a
+/// Platform Chat elicitation, because the resumed turn runs with the persisted
+/// owner's authority. The refusal must not reveal the pending call either.
+#[tokio::test]
+async fn platform_chat_non_owner_cannot_accept_or_decline() {
+    for action in ["accept", "decline"] {
+        let server = test_server().await;
+        let session_id = waiting_session(&server).await;
+        make_platform_chat(&server, session_id, Uuid::now_v7()).await;
+        emit_elicitation_card(&server, session_id, "url_elicitation_victim").await;
+
+        let response = post_consent(
+            &server,
+            session_id,
+            json!({ "tool_call_id": "url_elicitation_victim", "action": action }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+        let body = response.text();
+        for leaked in [
+            "pay.example.com",
+            "billing",
+            "charge",
+            "url_elicitation_victim",
+        ] {
+            assert!(!body.contains(leaked), "{action}: leaked {leaked}: {body}");
+        }
+
+        assert_untouched(&server, session_id).await;
+    }
+}
+
+#[tokio::test]
+async fn a_caller_who_cannot_manage_the_session_cannot_answer() {
+    let policy = std::sync::Arc::new(DenySessionManagement::default());
+    let server = TestServer::in_memory_with_runner_and_permission_resolver(
+        Arc::new(ConsentRunner),
+        policy.clone(),
+    )
+    .await;
+    let session_id = waiting_session(&server).await;
+    emit_elicitation_card(&server, session_id, "url_elicitation_denied").await;
+    policy.armed.store(true, Ordering::SeqCst);
+
+    let response = post_consent(
+        &server,
+        session_id,
+        json!({ "tool_call_id": "url_elicitation_denied", "action": "accept" }),
+    )
+    .await
+    .assert_status(StatusCode::FORBIDDEN);
+    assert!(!response.text().contains("pay.example.com"));
+
+    assert_untouched(&server, session_id).await;
 }

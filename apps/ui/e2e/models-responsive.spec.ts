@@ -105,6 +105,8 @@ test.describe("Models responsive layout", () => {
   });
 
   for (const viewport of [
+    { name: "mobile", width: 390, height: 844 },
+    { name: "desktop", width: 1440, height: 900 },
     { name: "compact desktop", width: 1024, height: 900 },
     { name: "tablet", width: 768, height: 900 },
   ]) {
@@ -118,22 +120,34 @@ test.describe("Models responsive layout", () => {
       const row = disableButton.locator(
         "xpath=ancestor::div[contains(@class, 'overflow-hidden')][1]",
       );
-      const providerRail = page
-        .getByRole("link", { name: "OpenAI 1" })
-        .locator("xpath=ancestor::div[contains(@class, 'bg-card')][1]");
+      const providerFilter = page.getByRole("combobox", { name: "Provider" });
+      await expect(providerFilter).toBeVisible();
       const rowBox = await row.boundingBox();
       const buttonBox = await disableButton.boundingBox();
-      const providerRailBox = await providerRail.boundingBox();
+      const providerFilterBox = await providerFilter.boundingBox();
 
       expect(rowBox).not.toBeNull();
       expect(buttonBox).not.toBeNull();
-      expect(providerRailBox).not.toBeNull();
+      expect(providerFilterBox).not.toBeNull();
       expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
-      expect(providerRailBox!.x).toBe(rowBox!.x);
-      expect(providerRailBox!.y).toBeGreaterThan(rowBox!.y + rowBox!.height);
+      expect(providerFilterBox!.x + providerFilterBox!.width).toBeLessThanOrEqual(viewport.width);
+      expect(providerFilterBox!.y + providerFilterBox!.height).toBeLessThanOrEqual(rowBox!.y);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         await page.evaluate(() => document.documentElement.clientWidth),
       );
     });
   }
+
+  test("filters providers in the toolbar without discarding other URL state", async ({ page }) => {
+    await page.goto("/models?mode=grid");
+    const providerFilter = page.getByRole("combobox", { name: "Provider" });
+    await providerFilter.click();
+    await page.getByRole("option", { name: "OpenAI", exact: true }).click();
+    await expect(page).toHaveURL(/mode=grid&provider=provider-openai$/);
+    await expect(providerFilter).toContainText("OpenAI");
+    await expect(page.getByRole("button", { name: "Disable" })).toBeVisible();
+    await providerFilter.click();
+    await page.getByRole("option", { name: "All providers", exact: true }).click();
+    await expect(page).toHaveURL(/models\?mode=grid$/);
+  });
 });

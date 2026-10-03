@@ -6,11 +6,10 @@
 use std::collections::HashMap;
 
 use crate::kernel_imports::{
-    AgentCapabilityConfig, InitialFile, ScopedMcpServers,
-    everruns_provider::tool_types::ToolDefinition,
+    AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
+use everruns_contracts::typed_id::{HarnessId, ModelId};
 use everruns_platform::HarnessStatus;
-use everruns_provider::typed_id::{HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 

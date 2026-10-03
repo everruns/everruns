@@ -4,9 +4,8 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::EventId,
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::SessionId,
+    contracts::typed_id::AgentId, contracts::typed_id::EventId, contracts::typed_id::HarnessId,
+    contracts::typed_id::PrincipalId, contracts::typed_id::SessionId,
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -113,6 +112,7 @@ impl InMemoryDatabase {
             agent_version_id: input.agent_version_id,
             agent_config_hash: input.agent_config_hash,
             virtual_user_id: input.virtual_user_id,
+            playground_user_id: input.playground_user_id,
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             title: input.title,
@@ -278,7 +278,18 @@ impl InMemoryDatabase {
                         })
                 })
             })
-            .filter(|s| filters.include_archived || s.archived_at.is_none())
+            .filter(|s| {
+                if filters.archived_only {
+                    s.archived_at.is_some()
+                } else {
+                    filters.include_archived || s.archived_at.is_none()
+                }
+            })
+            .filter(|s| {
+                filters
+                    .playground_user_id
+                    .is_none_or(|id| s.playground_user_id == Some(id))
+            })
             .filter(|s| filters.created_after.is_none_or(|t| s.created_at >= t))
             .filter(|s| filters.created_before.is_none_or(|t| s.created_at < t))
             .filter(|s| {

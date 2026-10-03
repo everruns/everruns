@@ -17,36 +17,36 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use everruns_provider::credential_schema::CredentialFormSchema;
-use everruns_provider::driver_helpers::{
+use everruns_contracts::credential_schema::CredentialFormSchema;
+use everruns_contracts::driver_helpers::{
     self, AUDIO_CONTENT_PLACEHOLDER, GEMINI_NOT_FOUND_PATTERNS, GEMINI_TOO_LARGE_PATTERNS,
     parse_data_url,
 };
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmContentPart, LlmResponseStream, LlmStreamEvent, Message,
     MessageContent, MessageRole, disjoint_prompt_tokens, fold_system_messages,
 };
-use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_provider::is_provider_quota_message;
-use everruns_provider::llm_retry::{
+use everruns_contracts::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_contracts::is_provider_quota_message;
+use everruns_contracts::llm_retry::{
     LlmRetryConfig, RetryDecision, RetryMetadata, SendOutcome, retry_request, send_error_message,
 };
-use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
-use everruns_provider::stream_accumulator::StreamToolCallAccumulator;
-use everruns_provider::stream_reconnect::{ByteStream, connect_bytes_with_reconnect};
-use everruns_provider::tool_types::ToolDefinition;
+use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
+use everruns_contracts::stream_accumulator::StreamToolCallAccumulator;
+use everruns_contracts::stream_reconnect::{ByteStream, connect_bytes_with_reconnect};
+use everruns_contracts::tool_types::ToolDefinition;
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
 /// Ready-to-use Gemini provider assembly.
 pub fn provider(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
-) -> everruns_provider::Provider {
-    everruns_provider::Provider::new(id, GeminiChatDriver::new())
+) -> everruns_contracts::Provider {
+    everruns_contracts::Provider::new(id, GeminiChatDriver::new())
         .base_url(DEFAULT_BASE_URL)
-        .auth(everruns_provider::StaticHeaderAuth::new(
+        .auth(everruns_contracts::StaticHeaderAuth::new(
             "x-goog-api-key",
             api_key,
         ))
@@ -68,7 +68,7 @@ impl GeminiChatDriver {
         // client installs it as well, but that now happens on the first
         // request, and products expect the process-wide choice to be settled
         // while providers are being constructed.
-        everruns_provider::install_default_crypto_provider();
+        everruns_contracts::install_default_crypto_provider();
         Self {
             retry_config: LlmRetryConfig::default(),
         }
@@ -80,7 +80,7 @@ impl GeminiChatDriver {
     /// pass [`LlmRetryConfig::no_retry`] to own retries in the host.
     ///
     /// ```
-    /// use everruns_provider::LlmRetryConfig;
+    /// use everruns_contracts::LlmRetryConfig;
     /// use everruns_drivers::gemini::GeminiChatDriver;
     ///
     /// let driver = GeminiChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
@@ -96,7 +96,7 @@ impl GeminiChatDriver {
     /// which would otherwise land on the agent startup path; after the first
     /// request this is a `OnceLock` read and an `Arc` clone.
     fn client(&self) -> Client {
-        everruns_provider::driver_helpers::shared_streaming_http_client()
+        everruns_contracts::driver_helpers::shared_streaming_http_client()
     }
 
     fn convert_role(role: &MessageRole) -> &'static str {
@@ -390,7 +390,7 @@ impl GeminiChatDriver {
     /// exactly.
     async fn send_generate_content_request(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         request: &GeminiRequest,
         url: &str,
         model: &str,
@@ -414,9 +414,10 @@ impl GeminiChatDriver {
                 let mut builder = self.client().post(&resolved.url);
                 let mut headers = resolved.headers;
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
-                for (name, value) in
-                    everruns_provider::driver_helpers::merge_request_headers(headers, extra_headers)
-                {
+                for (name, value) in everruns_contracts::driver_helpers::merge_request_headers(
+                    headers,
+                    extra_headers,
+                ) {
                     builder = builder.header(name, value);
                 }
                 builder.body(body).send().await.map_err(SendOutcome::Send)
@@ -498,7 +499,7 @@ impl GeminiChatDriver {
 impl ChatDriver for GeminiChatDriver {
     async fn chat_completion_stream(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -512,7 +513,7 @@ impl ChatDriver for GeminiChatDriver {
         // multi-turn tool use loses its thought continuity.
         let thinking_config = config
             .reasoning_effort
-            .filter(everruns_provider::ReasoningEffort::requests_reasoning)
+            .filter(everruns_contracts::ReasoningEffort::requests_reasoning)
             .map(|effort| GeminiThinkingConfig {
                 thinking_budget: driver_helpers::thinking_budget::from_effort(effort),
                 include_thoughts: true,
@@ -527,8 +528,8 @@ impl ChatDriver for GeminiChatDriver {
         // If no max_tokens specified, use model's max output from profile, or 8192 fallback
         if generation_config.max_output_tokens.is_none() {
             generation_config.max_output_tokens = Some(
-                everruns_provider::get_model_profile(
-                    &everruns_provider::DriverId::Gemini,
+                everruns_contracts::get_model_profile(
+                    &everruns_contracts::DriverId::Gemini,
                     &config.model,
                 )
                 .and_then(|p| {
@@ -584,7 +585,7 @@ impl ChatDriver for GeminiChatDriver {
 
     async fn list_models(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
     ) -> Result<Option<Vec<DiscoveredModel>>> {
         if endpoint.base_url() != Some(DEFAULT_BASE_URL) {
             return Ok(None);
@@ -678,9 +679,9 @@ pub fn descriptor() -> DriverDescriptor {
         base_url_env: Some("GEMINI_BASE_URL".into()),
         ..DriverDescriptor::chat_only(DriverId::Gemini, |config| {
             let provider =
-                everruns_provider::Provider::new(config.provider.clone(), GeminiChatDriver::new())
+                everruns_contracts::Provider::new(config.provider.clone(), GeminiChatDriver::new())
                     .base_url(config.base_url.as_deref().unwrap_or(DEFAULT_BASE_URL))
-                    .auth(everruns_provider::StaticHeaderAuth::new(
+                    .auth(everruns_contracts::StaticHeaderAuth::new(
                         "x-goog-api-key",
                         config.api_key.as_deref().unwrap_or(""),
                     ));
@@ -699,12 +700,12 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// Standalone/CLI/dev only: server paths resolve credentials from storage and
 /// must never read the environment.
 pub fn from_env(
-    id: impl Into<everruns_provider::ProviderKey>,
+    id: impl Into<everruns_contracts::ProviderKey>,
 ) -> std::result::Result<
-    everruns_provider::Provider,
-    everruns_provider::credential_provider::EnvCredentialError,
+    everruns_contracts::Provider,
+    everruns_contracts::credential_provider::EnvCredentialError,
 > {
-    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
+    everruns_contracts::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for GeminiChatDriver {
@@ -1138,8 +1139,8 @@ struct GeminiModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::ChatDriver;
-    use everruns_provider::tool_types::ToolCall;
+    use everruns_contracts::driver_registry::ChatDriver;
+    use everruns_contracts::tool_types::ToolCall;
 
     // ========================================================================
     // Model-not-found detection tests
@@ -1315,7 +1316,9 @@ mod tests {
 
     #[test]
     fn tool_schema_cleanup_preserves_complete_contract_and_literal_payloads() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+        use everruns_contracts::tool_types::{
+            BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy,
+        };
         let parameters = json!({
             "type":"object","additionalProperties":false,"required":["items"],
             "properties":{
@@ -1436,7 +1439,7 @@ mod tests {
             config.temperature = Some(0.25);
             config.max_tokens = limit;
             config.prompt_cache = cache.map(|(enabled, handle)| {
-                everruns_provider::driver_registry::PromptCacheConfig {
+                everruns_contracts::driver_registry::PromptCacheConfig {
                     enabled,
                     strategy: Default::default(),
                     gemini_cached_content: handle.map(str::to_string),

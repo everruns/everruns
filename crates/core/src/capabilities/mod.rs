@@ -83,7 +83,7 @@ pub struct IntegrationPlugin {
 pub use crate::capability_types::{
     CapabilityStatus, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
 };
-use everruns_capability::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
+use everruns_contracts::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 
 // ============================================================================
 // Capability contract modules
@@ -561,6 +561,15 @@ pub trait Capability: Send + Sync {
     /// By default, converts tools() to definitions
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools().iter().map(|t| t.to_definition()).collect()
+    }
+
+    /// Returns model-facing definitions configured by this attachment.
+    ///
+    /// Configurable tool surfaces override this alongside `tools_with_config`
+    /// so previews and model requests advertise the tools execution provides.
+    /// The default preserves custom definitions, including client-side tools.
+    fn tool_definitions_with_config(&self, _config: &serde_json::Value) -> Vec<ToolDefinition> {
+        self.tool_definitions()
     }
 
     /// Returns mount points to populate in the session filesystem

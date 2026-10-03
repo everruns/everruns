@@ -10,7 +10,6 @@ crates/durable
 crates/everruns
 crates/host
 crates/platform
-crates/provider
 crates/server
 crates/test-support
 integrations/browserless

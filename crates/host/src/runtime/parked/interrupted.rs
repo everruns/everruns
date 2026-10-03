@@ -14,9 +14,9 @@
 
 use std::collections::HashSet;
 
+use everruns_contracts::tool_types::ToolCall;
 use everruns_core::events::{EventData, TokenUsage};
 use everruns_engine::{ActInput, ActPlan};
-use everruns_provider::tool_types::ToolCall;
 
 use super::*;
 

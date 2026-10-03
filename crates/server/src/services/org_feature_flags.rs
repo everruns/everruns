@@ -152,8 +152,8 @@ mod tests {
 
     fn system_with_everything() -> FeatureFlags {
         FeatureFlags {
-            environments: true,
             skills: true,
+            openai_agents_api: true,
             ..FeatureFlags::default()
         }
     }
@@ -165,7 +165,7 @@ mod tests {
         for wanted in [true, false] {
             let error = validate_org_feature_flag_updates(
                 &system,
-                &HashMap::from([("environments".to_string(), wanted)]),
+                &HashMap::from([("openai_agents_api".to_string(), wanted)]),
             )
             .expect_err("the org does not own this flag");
             assert!(error.contains("managed by the platform"), "{error}");
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn a_platform_user_enrols_an_org_only_where_the_deployment_allows_it() {
-        let updates = HashMap::from([("environments".to_string(), true)]);
+        let updates = HashMap::from([("openai_agents_api".to_string(), true)]);
 
         validate_platform_feature_flag_updates(&system_with_everything(), &updates)
             .expect("enabled on this deployment");
@@ -214,14 +214,14 @@ mod tests {
 
         let tenant = build_org_feature_flag_settings(&system, &org_enabled);
         assert!(
-            !tenant.iter().any(|row| row.name == "environments"),
+            !tenant.iter().any(|row| row.name == "openai_agents_api"),
             "a toggle nobody in the org can move is an invitation to file a bug"
         );
 
         let platform = build_all_feature_flag_settings(&system, &org_enabled);
         let row = platform
             .iter()
-            .find(|row| row.name == "environments")
+            .find(|row| row.name == "openai_agents_api")
             .expect("the operator console sees it");
         assert!(row.platform_managed);
         assert!(!row.effective, "enrolment is still off until someone acts");

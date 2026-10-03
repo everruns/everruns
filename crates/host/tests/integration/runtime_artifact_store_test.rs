@@ -5,6 +5,8 @@
 //! policy keeps applying to the model-facing store while those writes go
 //! through the runtime's confined artifact store.
 
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::typed_id::{HarnessId, SessionId};
 use everruns_core::session_files::RuntimeArtifactFileSystem;
 use everruns_core::{CapabilityRegistry, ExecutionSession, ToolContext, WorkspacePolicy};
 use everruns_host::{
@@ -12,8 +14,6 @@ use everruns_host::{
     ToolContextRequest,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::typed_id::{HarnessId, SessionId};
 use std::sync::Arc;
 
 fn platform() -> HostComposition {

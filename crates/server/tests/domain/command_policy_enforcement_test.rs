@@ -19,13 +19,13 @@
 
 use std::sync::Arc;
 
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::typed_id::AgentId;
 use everruns_core::{
     Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole, Permission,
     PermissionResolver, SessionSeedMode,
 };
 use everruns_platform::FeatureFlags;
-use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::AgentId;
 use everruns_server::api::evals::CreateEvalRunRequest;
 use everruns_server::api::sessions::CreateSessionRequest;
 use everruns_server::domains::agents::health_check::commands::TriggerAgentHealthCheck;
@@ -106,7 +106,7 @@ async fn agent_preview_requires_harness_view_before_resolving_inheritance() {
         .run(&ctx)
         .await
         .expect("agent-only preview is allowed");
-    let error = preview(Some(everruns_provider::typed_id::HarnessId::new()))
+    let error = preview(Some(everruns_contracts::typed_id::HarnessId::new()))
         .run(&ctx)
         .await
         .expect_err("harness contents require harness.view, even for agent viewers");
@@ -508,6 +508,7 @@ impl PermissionResolver for SessionsOnlyResolver {
 
 fn create_session_request() -> CreateSessionRequest {
     CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: None,
@@ -520,6 +521,7 @@ fn create_session_request() -> CreateSessionRequest {
         locale: None,
         tags: vec![],
         model_id: None,
+        environment: None,
         capabilities: vec![],
         tools: vec![],
         mcp_servers: Default::default(),
@@ -584,6 +586,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

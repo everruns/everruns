@@ -2,10 +2,10 @@
 //! code-defined capability against the neutral `everruns-capability` contract
 //! only — no `everruns`, `everruns-core`, `everruns-host`, or Tokio imports.
 
-use everruns_capability::definition::{
+use everruns_contracts::capability::definition::{
     self as capability, Context, Definition, Error, Handler, Hints,
 };
-use everruns_capability::{CapabilityRef, CapabilitySpec, IntoCapability};
+use everruns_contracts::{CapabilityRef, CapabilitySpec, IntoCapability};
 
 /// A dynamic, database-driven style capability reference. The referenced
 /// implementation owns the inner config schema; only the id grammar and JSON
@@ -23,16 +23,16 @@ impl IntoCapability for VendorSearch {
 }
 
 #[derive(capability::Deserialize, capability::JsonSchema)]
-#[serde(crate = "everruns_capability::serde")]
-#[schemars(crate = "everruns_capability::schemars")]
+#[serde(crate = "everruns_contracts::capability::serde")]
+#[schemars(crate = "everruns_contracts::capability::schemars")]
 pub struct AddInput {
     pub a: i64,
     pub b: i64,
 }
 
 #[derive(capability::Serialize, capability::JsonSchema)]
-#[serde(crate = "everruns_capability::serde")]
-#[schemars(crate = "everruns_capability::schemars")]
+#[serde(crate = "everruns_contracts::capability::serde")]
+#[schemars(crate = "everruns_contracts::capability::schemars")]
 pub struct AddOutput {
     pub sum: i64,
 }

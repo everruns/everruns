@@ -4,7 +4,7 @@
 // Decision: Adoption is handled by `POST /v1/harnesses/import?from-example={name}`
 // Decision: Examples are identified by their `name` (slug).
 // Decision: Examples are filtered at request time by capability registration so
-//   that capability-gated harnesses (e.g. `coding-container`) only appear when
+//   that capability-gated harnesses only appear when
 //   the corresponding capability plugin is registered for the deployment.
 
 use crate::auth::{AuthState, ResolvedOrg};
@@ -39,7 +39,7 @@ pub struct HarnessExample {
     pub parent_name: Option<String>,
     /// Capabilities the example will assign with their per-harness config.
     #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
-    pub capabilities: Vec<everruns_capability::CapabilityRef>,
+    pub capabilities: Vec<everruns_contracts::CapabilityRef>,
     /// Whether this example is only available when experimental features are on.
     pub dev_only: bool,
 }
@@ -57,7 +57,7 @@ fn example_to_dto(ex: &HarnessExampleDef) -> HarnessExample {
             .capabilities
             .iter()
             .map(|cap| {
-                everruns_capability::CapabilityRef::with_config(
+                everruns_contracts::CapabilityRef::with_config(
                     cap.typed_id().clone(),
                     cap.config_value().clone(),
                 )
@@ -136,7 +136,7 @@ mod tests {
             .iter()
             .map(|e| e.definition.name.clone())
             .collect();
-        for expected in ["coding-daytona", "coding-container", "data-analyst"] {
+        for expected in ["coding", "data-analyst"] {
             assert!(
                 names.iter().any(|n| n == expected),
                 "expected {expected} in harness examples catalogue"

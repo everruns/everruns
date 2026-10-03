@@ -1,6 +1,6 @@
 //! Daytona API types and session state management.
 
-use everruns_core::UpsertLeasedResource;
+use everruns_contracts::session_sandbox::{SessionSandboxContext, SessionSandboxLease};
 use everruns_core::resource_ownership::verify_owned_external_resource_if_available;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
@@ -117,18 +117,13 @@ pub const DAYTONA_SANDBOX_LEASE_DURATION_SECONDS: u32 = 20 * 60;
 // ============================================================================
 
 /// Resolve Daytona API key via user connection (Settings > Connections > Daytona).
-pub async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResult> {
-    if let Some(resolver) = context.connection_resolver.as_ref() {
-        match resolver
-            .get_connection_token(context.session_id, "daytona")
-            .await
-        {
-            Ok(Some(key)) => return Ok(key),
-            Ok(None) => {} // fall through to error
-            Err(e) => {
-                error!("Failed to resolve Daytona user connection: {e}");
-            }
-        }
+pub async fn get_api_key(
+    context: &dyn SessionSandboxContext,
+) -> Result<String, ToolExecutionResult> {
+    match context.connection_token("daytona").await {
+        Ok(Some(key)) => return Ok(key),
+        Ok(None) => {}
+        Err(err) => error!(error = ?err, "Failed to resolve Daytona user connection"),
     }
 
     // THREAT[TM-AGENT-016]: Asking secrets in chat stores them plaintext in events.
@@ -244,72 +239,32 @@ pub async fn list_sandbox_states(
 
 /// Register or refresh the Daytona sandbox lease for generic cleanup.
 pub async fn touch_sandbox_lease(
-    context: &ToolContext,
+    context: &dyn SessionSandboxContext,
     state: &SandboxState,
     display_name: Option<String>,
 ) -> Result<(), ToolExecutionResult> {
-    let Some(store) = context.leased_resource_store.as_ref() else {
-        return Ok(());
-    };
-
-    let owner_user_id = if let Some(resolver) = context.connection_resolver.as_ref() {
-        resolver
-            .get_connection_user(context.session_id, "daytona")
-            .await
-            .ok()
-            .flatten()
-    } else {
-        None
-    };
-
-    store
-        .upsert_resource(UpsertLeasedResource {
-            session_id: context.session_id,
+    context
+        .refresh_lease(SessionSandboxLease {
             provider: "daytona".to_string(),
-            resource_type: "sandbox".to_string(),
             external_id: state.sandbox_id.clone(),
             display_name,
-            owner_user_id,
-            lease_duration_seconds: DAYTONA_SANDBOX_LEASE_DURATION_SECONDS,
-            // THREAT[TM-API-015]: leased-resource metadata is API-visible.
-            // Keep only non-secret workspace/debug fields here and continue to
-            // resolve Daytona credentials from the user connection for cleanup.
+            duration_seconds: DAYTONA_SANDBOX_LEASE_DURATION_SECONDS,
+            // THREAT[TM-API-015]: cleanup metadata is API-visible; credentials stay
+            // behind the context's bound connection resolver.
             metadata: json!({
                 "workspace_path": state.workspace_path,
                 "started_at": state.started_at,
             }),
         })
         .await
-        .map_err(|e| {
-            error!("Failed to upsert Daytona sandbox lease: {e}");
-            ToolExecutionResult::internal_error_msg(format!(
-                "Failed to update Daytona sandbox lease: {e}"
-            ))
-        })?;
-
-    Ok(())
 }
 
 /// Release the Daytona sandbox lease after explicit deletion.
 pub async fn release_sandbox_lease(
-    context: &ToolContext,
+    context: &dyn SessionSandboxContext,
     sandbox_id: &str,
 ) -> Result<(), ToolExecutionResult> {
-    let Some(store) = context.leased_resource_store.as_ref() else {
-        return Ok(());
-    };
-
-    store
-        .release_resource(context.session_id, "daytona", "sandbox", sandbox_id)
-        .await
-        .map_err(|e| {
-            error!("Failed to release Daytona sandbox lease: {e}");
-            ToolExecutionResult::internal_error_msg(format!(
-                "Failed to release Daytona sandbox lease: {e}"
-            ))
-        })?;
-
-    Ok(())
+    context.release_lease("daytona", sandbox_id).await
 }
 
 /// Extract a required string parameter from tool arguments.

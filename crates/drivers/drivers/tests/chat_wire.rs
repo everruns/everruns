@@ -9,8 +9,12 @@
 // Each vendor's block is behind its own feature, so the suite tells the truth
 // about whatever feature set it was compiled with.
 
+// Every mock answers with `Connection: close`. The drivers share one process-wide
+// HTTP client, and wiremock recycles a dropped server's port to the next test, so a
+// pooled keep-alive connection driven by another test's runtime could otherwise
+// serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 #[cfg(any(feature = "cloudflare", feature = "vercel"))]
-use everruns_provider::driver_registry::{
+use everruns_contracts::driver_registry::{
     ChatDriver, DriverRegistry, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
     ProviderConfig, ServiceKind,
 };
@@ -18,7 +22,7 @@ use everruns_provider::driver_registry::{
 use futures::StreamExt;
 
 #[cfg(any(feature = "cloudflare", feature = "vercel"))]
-async fn drain_text(mut stream: everruns_provider::driver_registry::LlmResponseStream) -> String {
+async fn drain_text(mut stream: everruns_contracts::driver_registry::LlmResponseStream) -> String {
     let mut text = String::new();
     while let Some(event) = stream.next().await {
         match event.expect("stream item should not be a transport error") {
@@ -33,11 +37,11 @@ async fn drain_text(mut stream: everruns_provider::driver_registry::LlmResponseS
 #[cfg(feature = "cloudflare")]
 mod cloudflare {
     use super::*;
+    use everruns_contracts::DriverId;
     use everruns_drivers::cloudflare::{
         CLOUDFLARE_API_HOST, CloudflareAuth, CloudflareChatDriver, account_base_url, descriptor,
         provider, register_driver,
     };
-    use everruns_provider::DriverId;
     use wiremock::matchers::{header, header_exists, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -112,7 +116,9 @@ mod cloudflare {
             .and(path("/client/v4/accounts/acct123/ai/v1/chat/completions"))
             .and(header("authorization", "Bearer cf-token"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -140,7 +146,9 @@ mod cloudflare {
             .and(header("authorization", "Bearer cf-token"))
             .and(header("cf-aig-gateway-id", "my-gateway"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -164,14 +172,16 @@ mod cloudflare {
     async fn no_gateway_sends_no_gateway_header() {
         let server = MockServer::start().await;
         Mock::given(header_exists("cf-aig-gateway-id"))
-            .respond_with(ResponseTemplate::new(500))
+            .respond_with(ResponseTemplate::new(500).insert_header("connection", "close"))
             .expect(0)
             .mount(&server)
             .await;
         Mock::given(method("POST"))
             .and(path("/client/v4/accounts/acct123/ai/v1/chat/completions"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -199,7 +209,9 @@ mod cloudflare {
             .and(header("authorization", "Bearer cf-token"))
             .and(header("cf-aig-gateway-id", "my-gateway"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -211,7 +223,7 @@ mod cloudflare {
             .create_chat_driver(
                 &ProviderConfig::new(DriverId::Cloudflare)
                     .with_api_key(
-                        everruns_provider::credential_schema::assemble_credential_document(
+                        everruns_contracts::credential_schema::assemble_credential_document(
                             &[
                                 ("api_key".to_string(), "cf-token".to_string()),
                                 ("account_id".to_string(), "acct123".to_string()),
@@ -230,7 +242,7 @@ mod cloudflare {
 
         let stream = driver
             .chat_completion_stream(
-                &everruns_provider::ProviderEndpoint::default(),
+                &everruns_contracts::ProviderEndpoint::default(),
                 vec![Message::text(MessageRole::User, "ping")],
                 &LlmCallConfig::new("openai/gpt-6-luna"),
             )
@@ -247,7 +259,7 @@ mod cloudflare {
         let server = MockServer::start().await;
         // Any request at all would be wrong: assert none is made.
         Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(500))
+            .respond_with(ResponseTemplate::new(500).insert_header("connection", "close"))
             .expect(0)
             .mount(&server)
             .await;
@@ -286,10 +298,10 @@ mod cloudflare {
 #[cfg(feature = "vercel")]
 mod vercel {
     use super::*;
+    use everruns_contracts::DriverId;
     use everruns_drivers::vercel::{
         VERCEL_AI_GATEWAY_DEFAULT_API_URL, VercelChatDriver, descriptor, provider, register_driver,
     };
-    use everruns_provider::DriverId;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -336,7 +348,9 @@ mod vercel {
             .and(path("/v1/responses"))
             .and(header("authorization", "Bearer synthetic-key"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -361,7 +375,9 @@ mod vercel {
             .and(path("/v1/responses"))
             .and(header("authorization", "Bearer synthetic-key"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse_responses(), "text/event-stream"),
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(sse_responses(), "text/event-stream"),
             )
             .expect(1)
             .mount(&server)
@@ -379,7 +395,7 @@ mod vercel {
 
         let stream = driver
             .chat_completion_stream(
-                &everruns_provider::ProviderEndpoint::default(),
+                &everruns_contracts::ProviderEndpoint::default(),
                 vec![Message::text(MessageRole::User, "ping")],
                 &LlmCallConfig::new("anthropic/claude-opus-5"),
             )
@@ -396,10 +412,14 @@ mod vercel {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v1/models"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "object": "list",
-                "data": [{"id": "anthropic/claude-opus-5", "object": "model"}],
-            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_json(serde_json::json!({
+                        "object": "list",
+                        "data": [{"id": "anthropic/claude-opus-5", "object": "model"}],
+                    })),
+            )
             .expect(0)
             .mount(&server)
             .await;

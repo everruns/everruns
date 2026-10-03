@@ -108,7 +108,7 @@ def matches(pattern: str, path: str) -> bool:
 # Crates whose source decides what goes on the wire to a provider. `provider`
 # owns the shared protocols; each `drivers/*` owns one provider's binding.
 # `llm-tests` owns the matrix itself.
-required = [Path("crates/provider"), Path("crates/llm-tests")]
+required = [Path("crates/contracts"), Path("crates/provider"), Path("crates/llm-tests")]
 required += sorted(p for p in Path("crates/drivers").iterdir() if p.is_dir())
 
 uncovered = []

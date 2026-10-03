@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use everruns_contracts::typed_id::{SessionId, WorkspaceId};
 use everruns_core::session_task::{
     NewTaskMessage, SessionTask, SessionTaskUpdate, TaskMessageDirection, TaskMessagePart,
     task_result_path,
@@ -7,7 +8,6 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
     execution_loading::SessionStore, session_files::SessionFileSystem, tool_context::ToolContext,
 };
-use everruns_provider::typed_id::{SessionId, WorkspaceId};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -92,7 +92,7 @@ pub(crate) async fn task_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
     task_registry: &dyn everruns_core::session_task::SessionTaskRegistry,
-) -> everruns_provider::error::Result<Option<(SessionTask, WorkspaceId)>> {
+) -> everruns_contracts::error::Result<Option<(SessionTask, WorkspaceId)>> {
     let Some(child) = session_store.get_session(child_session_id).await? else {
         return Ok(None);
     };
@@ -147,7 +147,7 @@ impl ReportResultTool {
 impl Tool for ReportResultTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -294,7 +294,7 @@ impl ReportTaskProgressTool {
 impl Tool for ReportTaskProgressTool {
     fn narrate(
         &self,
-        tool_call: &everruns_provider::tool_types::ToolCall,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -375,7 +375,7 @@ pub async fn report_result_tool_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
     task_registry: &dyn everruns_core::session_task::SessionTaskRegistry,
-) -> everruns_provider::error::Result<Option<ReportResultTool>> {
+) -> everruns_contracts::error::Result<Option<ReportResultTool>> {
     let Some((task, parent_workspace_id)) =
         task_for_child_session(child_session_id, session_store, task_registry).await?
     else {
@@ -397,7 +397,7 @@ pub async fn report_task_progress_tool_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
     task_registry: &dyn everruns_core::session_task::SessionTaskRegistry,
-) -> everruns_provider::error::Result<Option<ReportTaskProgressTool>> {
+) -> everruns_contracts::error::Result<Option<ReportTaskProgressTool>> {
     let Some((task, _)) =
         task_for_child_session(child_session_id, session_store, task_registry).await?
     else {
@@ -462,14 +462,14 @@ pub(crate) async fn write_task_result_value(
     context: &ToolContext,
     task_id: &str,
     value: &Value,
-) -> everruns_provider::error::Result<Option<String>> {
+) -> everruns_contracts::error::Result<Option<String>> {
     // Runtime-owned record: see `ToolContext::runtime_artifact_file_store`.
     let Some(file_store) = context.runtime_artifact_file_store() else {
         return Ok(None);
     };
     let path = task_result_path(task_id);
     let content = serde_json::to_string_pretty(value).map_err(|error| {
-        everruns_provider::error::AgentLoopError::store(format!(
+        everruns_contracts::error::AgentLoopError::store(format!(
             "failed to serialize task result: {error}"
         ))
     })?;

@@ -28,6 +28,7 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::Arc;
 
+use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_core::events::{
     OutputMessageCompletedData, OutputMessageDeltaData, ReasonItemData, SessionTaskEventData,
     TaskMessageEventData, TurnFailedData,
@@ -36,7 +37,6 @@ use everruns_core::session_task::{
     SessionTask, SessionTaskState, TASK_KIND_SUBAGENT, TaskMessageDirection, TaskMessagePart,
 };
 use everruns_core::{ContentPart, RuntimeMessage};
-use everruns_provider::execution_phase::ExecutionPhase;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 

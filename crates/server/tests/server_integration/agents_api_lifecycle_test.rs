@@ -3,8 +3,8 @@
 
 use crate::repository_conformance_test::{create_test_principal, session_input};
 use crate::test_harness::get_database_url;
+use everruns_contracts::typed_id::PrincipalId;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_provider::typed_id::PrincipalId;
 use everruns_server::storage::{Database, StorageBackend};
 use serde_json::json;
 use sqlx::PgPool;
@@ -15,11 +15,11 @@ use uuid::Uuid;
 /// delete), and the deletion queue retries, converges, and gives up durably.
 #[tokio::test]
 async fn postgres_agents_api_provider_sessions_are_tombstoned_retained_and_deleted() {
+    use everruns_contracts::typed_id::{MessageId, TurnId};
     use everruns_core::agents_api_store::{
         AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, ParkReason, ToolResultOutbox,
         ToolResultState,
     };
-    use everruns_provider::typed_id::{MessageId, TurnId};
     use everruns_server::agents_api_lifecycle::{
         DeletionAttempt, MAX_DELETE_ATTEMPTS, ProviderDeletionRow, ProviderSessionDeleter,
         drain_deletions,
@@ -63,7 +63,7 @@ async fn postgres_agents_api_provider_sessions_are_tombstoned_retained_and_delet
         backend: &StorageBackend,
         principal: PrincipalId,
         label: &str,
-    ) -> everruns_provider::typed_id::SessionId {
+    ) -> everruns_contracts::typed_id::SessionId {
         backend
             .create_session(session_input(principal, label))
             .await

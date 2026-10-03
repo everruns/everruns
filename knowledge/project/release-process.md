@@ -116,7 +116,7 @@ relaxed; they are failure modes that can no longer be expressed:
 changed". `everruns-drivers` moves with the platform whether or not it was
 touched, and `CHANGELOG.md` is the record of what actually changed. Every release
 is a breaking-slot bump for every consumer — which was already true in practice,
-since recent cycles bumped everything regardless. All 41 packages are republished
+since recent cycles bumped everything regardless. Every package in the active published set is republished
 each release; crates.io rate-limits this to roughly one publish per minute after
 an initial burst, which the dependency-ordered **Crate Release** workflow absorbs.
 
@@ -163,11 +163,11 @@ consumer's `match`. On a `#[non_exhaustive]` enum the compiler has already force
 a `_` arm, so the addition cannot break them when they upgrade.
 
 The types carrying it are the ones with a demonstrated break, not every public
-type: see [`LlmErrorKind`](../../crates/provider/src/error.rs), the two
+type: see [`LlmErrorKind`](../../crates/contracts/src/error.rs), the two
 [`ContentPart`](../../crates/core/src/message.rs) enums,
 [`CapabilityStatus`](../../crates/core/src/capability_types.rs),
-[`ModelCost`/`CostTier`](../../crates/model-profiles/src/types.rs),
-[`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/provider/src/driver_registry.rs), and
+[`ModelCost`/`CostTier`](../../crates/contracts/src/model_profile_data/types.rs),
+[`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/contracts/src/driver_registry.rs), and
 [`AgentAction`](../../crates/platform/src/audit.rs), which grows a variant whenever an
 audited agent action is added, and whose two soft-approval variants were classified breaking
 under the previous scheme for a change no consumer could observe.
@@ -281,6 +281,13 @@ index errors halted the 0.34.2 cascade three times. The publish job is
 idempotent, because an already-published version passes only when its digest
 matches this commit's artifact. Publish Crate also raises cargo's network retry
 count and uses HTTP/1.1.
+
+**Index visibility is evidence, not a fixed delay.** Before releasing the next
+dependent crate, the controller uses
+[`wait-for-crate-index.py`](../../scripts/lib/wait-for-crate-index.py) to confirm
+that Cargo's sparse index resolves the exact non-yanked artifact from the clean
+release commit. Missing versions and transient transport errors are retried
+within a bounded deadline; mismatched artifacts halt the cascade.
 
 **Publish Crate** validates the selected manifest version, derives internal pins
 from Cargo metadata, and publishes only that package. Publishing cannot be

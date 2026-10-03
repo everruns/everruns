@@ -2,9 +2,7 @@
 
 use super::super::models::*;
 use super::InMemoryDatabase;
-use crate::kernel_imports::{
-    everruns_provider::typed_id::MessageId, everruns_provider::typed_id::NotificationId,
-};
+use crate::kernel_imports::{contracts::typed_id::MessageId, contracts::typed_id::NotificationId};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;

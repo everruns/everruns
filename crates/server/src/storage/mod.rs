@@ -67,7 +67,9 @@ pub use encryption::{
     generate_encryption_key,
 };
 pub use harness_store::{DbHarnessStore, create_db_harness_store};
-pub use ingress::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
+pub use ingress::{
+    AgentChannelSummaryRow, CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow,
+};
 pub use late_generation_usage::*;
 pub use leased_resource_store::{
     DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
@@ -84,7 +86,7 @@ pub use partial_stream::PgPartialStreamStore;
 pub use provider_store::{DbProviderStore, create_db_provider_store};
 pub use repositories::*;
 pub use repository::*;
-pub use sandbox_checkpoint_store::PgSandboxCheckpointStore;
+pub use sandbox_checkpoint_store::{EnvironmentRecord, PgSandboxCheckpointStore};
 pub use session_file_store::{DbSessionFileStore, create_db_session_file_store};
 pub use session_resource_store::DbSessionResourceRegistry;
 pub use session_schedule_store::DbSessionScheduleStore;

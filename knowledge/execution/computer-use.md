@@ -63,7 +63,7 @@ vendor's hosted variant.
 
 The capability contributes a provider-neutral driver option,
 `everruns/computer_use` with the display size
-([`crates/provider/src/native_computer.rs`](../../crates/provider/src/native_computer.rs)),
+([`crates/contracts/src/native_computer.rs`](../../crates/contracts/src/native_computer.rs)),
 unless `native_tools: false`. A driver swaps the `computer` function tool for
 its native tool only when the option is set, the call offers `computer`, and
 the model has the native tool; every other driver ignores the option and the
@@ -78,7 +78,7 @@ are the same on every path.
   as one. Provider safety checks travel in the arguments, gate the call, and
   are acknowledged on replay only when the call ran. Wire details the GA docs
   do not pin down are isolated in
-  [`crates/provider/src/openai_computer.rs`](../../crates/provider/src/openai_computer.rs).
+  [`crates/contracts/src/openai_computer.rs`](../../crates/contracts/src/openai_computer.rs).
 - **Anthropic** (`computer_toolset_20260801`, the models in
   `anthropic_has_computer_toolset`): member calls (`left_click`, `type`, ...)
   carry `toolset_name: "computer"` and become `computer` calls with the member
@@ -112,18 +112,13 @@ prompt-injection path. Layers, weakest to strongest:
 2. The tool declares `open_world`, so the interactive
    [`tool_approval`](capabilities.md) gate asks before every call at the
    `normal` level when the agent enables it.
-3. **Hard per-call approval, always on in hosted sessions.** The capability
-   contributes its own durable [tool approval](tool-approval.md) gate
-   (TM-TOOL-008) with a policy: a call that commits input
-   (`action_requires_approval`: typing, Enter, navigation, anywhere in a
-   batch) or carries provider safety checks parks the turn until a person
-   approves that exact call. Clicks, moves, scrolls and screenshots run
-   freely: gating every click makes the capability unusable, and a dangerous
-   click is covered by layer 1. One one-off answer carries a call through both
-   this gate and an agent-level `tool_approval`. An "always allow" answer for
-   `computer` is honored: a person who chose it turned the prompt off for the
-   session knowingly. See
-   [`crates/builtins/src/computer_use_approval.rs`](../../crates/builtins/src/computer_use_approval.rs).
+3. **Soft approval only: no per-call hard gate** (EVE-1133 decision,
+   aligned with EVE-1140, which found hosted sessions have no hard gate at
+   all). Layers 1 and 2 above carry approval: the prompt's stop-and-ask rule
+   plus the `open_world` declaration, with [soft approval](soft-approval.md)
+   for a recorded yes. A former durable per-call gate (TM-TOOL-008) was
+   removed: gating every committing action made the capability unusable, and
+   clicks always ran freely anyway.
 
 Egress follows the session's network access list; see TM-TOOL-048 to
 TM-TOOL-050 in the [threat model](../security/threat-model.md). The session UI
@@ -143,7 +138,7 @@ Chromium, filling and submitting a form end to end.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Contract, `computer` function tool, Browserless browser backend | Done |
-| 2 | Native adapters (OpenAI `computer`, Anthropic `computer_toolset_20260801`), batched calls, hard per-call approval on the hosted [tool approval](tool-approval.md) gate, screenshot thumbnails in the session UI | Done (EVE-1133) |
+| 2 | Native adapters (OpenAI `computer`, Anthropic `computer_toolset_20260801`), batched calls, soft approval only with no per-call hard gate, screenshot thumbnails in the session UI | Done (EVE-1133) |
 | 3 | Desktop backend on a sandbox image (Xvfb plus a screenshot bridge) for non-browser apps | Planned |
 
 Open before the capability leaves experimental mode: verify the native OpenAI

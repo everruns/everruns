@@ -1,8 +1,8 @@
 use super::*;
 use base64::Engine;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::capabilities::Capability;
 use everruns_core::network_access::NetworkAccessList;
-use everruns_provider::typed_id::SessionId;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -105,48 +105,6 @@ fn capability_requests_native_tools_unless_turned_off() {
 }
 
 #[tokio::test]
-async fn capability_gates_committing_actions_behind_hard_approval() {
-    use everruns_core::tool_hooks::PreToolUseDecision;
-    use everruns_provider::tool_types::ToolCall;
-
-    let cap = BrowserlessComputerUseCapability;
-    let hooks = cap.pre_tool_use_hooks_with_config(&json!({}));
-    assert_eq!(hooks.len(), 1);
-    let definition = cap.tools().remove(0).to_definition();
-    // No session storage here, so a gated call cannot be asked about and
-    // fails closed; a free one passes without asking.
-    let context = ToolContext::new(SessionId::new());
-    let call = |arguments: Value| ToolCall {
-        id: "call_1".to_string(),
-        name: "computer".to_string(),
-        arguments,
-    };
-
-    let typing = hooks[0]
-        .before_exec(
-            call(json!({"action": "type", "text": "Ada"})),
-            &definition,
-            &context,
-        )
-        .await;
-    assert!(
-        matches!(typing, PreToolUseDecision::Block { .. }),
-        "{typing:?}"
-    );
-    let click = hooks[0]
-        .before_exec(
-            call(json!({"action": "left_click", "coordinate": [1, 1]})),
-            &definition,
-            &context,
-        )
-        .await;
-    assert!(
-        matches!(click, PreToolUseDecision::Continue(_)),
-        "{click:?}"
-    );
-}
-
-#[tokio::test]
 async fn without_a_browserless_connection_the_tool_says_how_to_connect() {
     let cap = BrowserlessComputerUseCapability;
     let tool = cap.tools().remove(0);
@@ -207,7 +165,7 @@ mod tempdir {
         pub fn new() -> Self {
             let dir = std::env::temp_dir().join(format!(
                 "everruns-computer-use-{}",
-                everruns_provider::typed_id::SessionId::new()
+                everruns_contracts::typed_id::SessionId::new()
             ));
             std::fs::create_dir_all(&dir).expect("create profile dir");
             Self(dir)

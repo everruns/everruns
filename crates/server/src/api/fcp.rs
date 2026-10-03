@@ -34,13 +34,13 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_core::events::{
     OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_FAILED,
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
 use everruns_platform::{EndpointTransport, FcpChannelConfig};
-use everruns_provider::execution_phase::ExecutionPhase;
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
@@ -835,6 +835,7 @@ async fn resolve_session(
             app.resolved_owner_user_id,
             everruns_platform::SessionSource::Fcp,
             CreateSessionRequest {
+                playground_user_id: None,
                 source: None,
                 workspace_id: None,
                 harness_id: Some(app.harness_id),
@@ -848,6 +849,7 @@ async fn resolve_session(
                 tags: vec![app_tag, endpoint_tag],
                 model_id: None,
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

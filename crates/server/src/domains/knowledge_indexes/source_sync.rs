@@ -15,10 +15,10 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 use futures::StreamExt;
 
+use everruns_contracts::driver_registry::{DriverRegistry, EmbedRequest};
+use everruns_contracts::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
+use everruns_contracts::vector_store::{VectorRecord, VectorStore};
 use everruns_core::connection_services::UserConnectionResolver;
-use everruns_platform::vector_store::{VectorRecord, VectorStore};
-use everruns_provider::driver_registry::{DriverRegistry, EmbedRequest};
-use everruns_provider::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
@@ -308,7 +308,7 @@ impl KnowledgeIndexSyncService {
                         let expected = texts.len();
                         let response = driver
                             .embed(
-                                &everruns_provider::runtime_provider::ProviderEndpoint::default(),
+                                &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
                                 EmbedRequest { texts, model },
                             )
                             .await

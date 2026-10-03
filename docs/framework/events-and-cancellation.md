@@ -273,7 +273,7 @@ Three request shapes are distinguished by `EventReadRequest::cursor()`:
 ```rust ignore
 use async_trait::async_trait;
 use everruns_core::events::{Event, EventRequest};
-use everruns_provider::typed_id::EventId;
+use everruns_contracts::typed_id::EventId;
 use everruns_host::{
     EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest,
     EventReader,

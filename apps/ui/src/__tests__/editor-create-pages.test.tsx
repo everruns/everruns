@@ -27,6 +27,29 @@ jest.mock("@/hooks", () => ({
   useCapabilities: () => ({ data: [] }),
   useAgentNameAvailability: () => ({ isChecking: false, available: true }),
   useHarnessNameAvailability: () => ({ isChecking: false, available: true }),
+  useEnvironmentTargets: () => ({
+    data: {
+      items: [
+        {
+          kind: "vfs",
+          provider: "bashkit",
+          available: true,
+          capabilities: {
+            native_processes: false,
+            packages: false,
+            pty: false,
+            ports: false,
+            portable_checkpoint: true,
+            network_enforced: true,
+          },
+          containment_levels: ["isolated"],
+          durability: "checkpointed",
+        },
+      ],
+    },
+    isLoading: false,
+    error: null,
+  }),
   usePageTitle: () => undefined,
 }));
 
@@ -83,6 +106,10 @@ describe("create editor layouts", () => {
 
     expect(screen.getByRole("navigation", { name: "Jump to section" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Identity" })).toHaveAttribute("href", "#identity");
+    expect(screen.getByRole("link", { name: "Environments" })).toHaveAttribute(
+      "href",
+      "#environments",
+    );
     expect(screen.getByRole("link", { name: "Network" })).toHaveAttribute("href", "#network");
 
     fireEvent.change(screen.getByLabelText("Display Name"), {
@@ -95,6 +122,7 @@ describe("create editor layouts", () => {
     fireEvent.change(screen.getByLabelText("Allowed hosts"), {
       target: { value: "api.example.com" },
     });
+    fireEvent.click(screen.getByRole("button", { name: /Bashkit/ }));
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Create Agent" }));
@@ -105,6 +133,7 @@ describe("create editor layouts", () => {
         name: "support-agent",
         harness_id: "harness_123",
         network_access: { allowed: ["api.example.com"] },
+        environments: expect.objectContaining({ default: "bashkit" }),
       }),
     );
     expect(push).toHaveBeenCalledWith("/agents/agent_123");

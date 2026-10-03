@@ -17,6 +17,8 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use everruns_contracts::tool_types::ToolHints;
+use everruns_contracts::url_validation::{validate_safe_url, validate_url_dns_pinned};
 use everruns_core::ard_attachment::{
     ARD_ATTACHMENT_KV_PREFIX, ARD_ATTACHMENT_RESOURCE_KIND, ARD_DISCOVERY_KV_PREFIX, ArdAttachment,
     ArdAttachmentTarget, attachment_kv_key, urn_slug,
@@ -25,8 +27,6 @@ use everruns_core::mcp_server::{McpServerTransportType, ScopedMcpServer};
 use everruns_core::session_resource::{RegisterSessionResource, SessionResourceStatus};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_provider::tool_types::ToolHints;
-use everruns_provider::url_validation::{validate_safe_url, validate_url_dns_pinned};
 
 use crate::client::{
     ArdRegistryClient, CatalogEntry, MEDIA_TYPE_A2A_AGENT_CARD, MEDIA_TYPE_MCP_SERVER, SearchQuery,

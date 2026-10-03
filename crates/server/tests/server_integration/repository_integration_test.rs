@@ -10,7 +10,6 @@
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
 use crate::test_harness;
-
 use chrono::Utc;
 use serde_json::json;
 use sqlx::{Connection, PgConnection, PgPool};
@@ -52,7 +51,7 @@ const TEST_ORG_ID: i64 = 1;
 
 async fn ensure_test_harness_id(
     backend: &StorageBackend,
-) -> everruns_provider::typed_id::HarnessId {
+) -> everruns_contracts::typed_id::HarnessId {
     org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
         .await
         .expect("initialize built-in harnesses");
@@ -112,10 +111,10 @@ async fn test_eval_crud_matches_postgres_schema() {
 async fn create_test_principal(
     backend: &StorageBackend,
     org_id: i64,
-) -> everruns_provider::typed_id::PrincipalId {
+) -> everruns_contracts::typed_id::PrincipalId {
     backend
         .create_principal(CreatePrincipalRow {
-            id: everruns_provider::typed_id::PrincipalId::new(),
+            id: everruns_contracts::typed_id::PrincipalId::new(),
             org_id,
             kind: "system".to_string(),
             subject_id: Some(Uuid::now_v7()),
@@ -152,10 +151,10 @@ async fn create_test_user_principal(
     backend: &StorageBackend,
     org_id: i64,
     user_id: Uuid,
-) -> everruns_provider::typed_id::PrincipalId {
+) -> everruns_contracts::typed_id::PrincipalId {
     backend
         .create_principal(CreatePrincipalRow {
-            id: everruns_provider::typed_id::PrincipalId::new(),
+            id: everruns_contracts::typed_id::PrincipalId::new(),
             org_id,
             kind: "user".to_string(),
             subject_id: Some(user_id),
@@ -255,7 +254,7 @@ async fn test_agent_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("repo-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Repo Test Agent".to_string()),
                 description: Some("Test description".to_string()),
@@ -273,6 +272,7 @@ async fn test_agent_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -333,7 +333,7 @@ async fn test_agent_crud() {
 #[tokio::test]
 async fn test_agent_upsert_initial_files() {
     let backend = create_test_backend().await;
-    let public_id = everruns_provider::typed_id::AgentId::new().to_string();
+    let public_id = everruns_contracts::typed_id::AgentId::new().to_string();
 
     // First upsert — creates agent with initial_files
     let (agent, was_created) = backend
@@ -360,6 +360,7 @@ async fn test_agent_upsert_initial_files() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -394,6 +395,7 @@ async fn test_agent_upsert_initial_files() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -422,7 +424,7 @@ async fn test_declarative_capability_crud_and_search_postgres() {
         .create_declarative_capability(
             TEST_ORG_ID,
             CreateDeclarativeCapabilityRow {
-                public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new().to_string(),
+                public_id: everruns_contracts::typed_id::DeclarativeCapabilityId::new().to_string(),
                 name: name.clone(),
                 display_name: Some("Repository Capability".to_string()),
                 description: "Searchable declarative capability".to_string(),
@@ -530,7 +532,7 @@ async fn test_agent_get_by_name() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: unique_name.clone(),
                 display_name: Some(unique_name.clone()),
                 description: None,
@@ -548,6 +550,7 @@ async fn test_agent_get_by_name() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -566,6 +569,7 @@ async fn test_agent_get_by_name() {
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
+mod playground;
 #[path = "repository_integration_test/runtime_connections.rs"]
 mod runtime_connections;
 
@@ -620,7 +624,7 @@ async fn test_session_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("session-test-agent-{}", Uuid::now_v7()),
                 display_name: Some("Session Test Agent".to_string()),
                 description: None,
@@ -638,6 +642,7 @@ async fn test_session_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -674,7 +679,7 @@ async fn test_session_crud() {
         .create_app(
             TEST_ORG_ID,
             CreateAppRow {
-                public_id: everruns_provider::typed_id::AppId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AppId::new().to_string(),
                 name: "Repository Test App".to_string(),
                 description: None,
                 harness_id: app_harness.id.uuid(),
@@ -800,7 +805,7 @@ async fn test_session_crud() {
 
     async fn list_for(
         backend: &StorageBackend,
-        agent_id: everruns_provider::typed_id::AgentId,
+        agent_id: everruns_contracts::typed_id::AgentId,
         include_archived: bool,
     ) -> Vec<everruns_server::storage::SessionRow> {
         backend
@@ -899,7 +904,7 @@ async fn test_event_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Test Agent".to_string()),
                 description: None,
@@ -917,6 +922,7 @@ async fn test_event_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -979,7 +985,7 @@ async fn test_event_exclude_types() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-excl-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Exclude Test Agent".to_string()),
                 description: None,
@@ -997,6 +1003,7 @@ async fn test_event_exclude_types() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1067,7 +1074,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-window-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Window Test Agent".to_string()),
                 description: None,
@@ -1085,6 +1092,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1149,7 +1157,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-anchor-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Anchor Test Agent".to_string()),
                 description: None,
@@ -1167,6 +1175,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1247,7 +1256,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("long-history-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Long History Test Agent".to_string()),
                 description: None,
@@ -1265,6 +1274,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1454,7 +1464,7 @@ async fn test_event_filter_types() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("event-filter-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Filter Types Agent".to_string()),
                 description: None,
@@ -1472,6 +1482,7 @@ async fn test_event_filter_types() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1745,7 +1756,7 @@ async fn test_session_file_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("file-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("File Test Agent".to_string()),
                 description: None,
@@ -1763,6 +1774,7 @@ async fn test_session_file_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2088,7 +2100,7 @@ async fn test_agent_capabilities() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("cap-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Capability Test Agent".to_string()),
                 description: None,
@@ -2106,6 +2118,7 @@ async fn test_agent_capabilities() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2372,7 +2385,7 @@ async fn test_session_usage_tracking() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("usage-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Usage Test Agent".to_string()),
                 description: None,
@@ -2390,6 +2403,7 @@ async fn test_session_usage_tracking() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2461,7 +2475,7 @@ async fn test_session_previews() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
+                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: format!("preview-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Preview Test Agent".to_string()),
                 description: None,
@@ -2479,6 +2493,7 @@ async fn test_session_previews() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -3082,17 +3097,15 @@ async fn test_image_org_isolation_postgres() {
 /// rows (from parallel test runs or seeded data) do not cause false failures.
 #[tokio::test]
 async fn list_monitor_tasks_with_inactive_schedules_pg() {
+    use everruns_contracts::typed_id::ScheduleId;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, TASK_KIND_MONITOR, TaskLinks, TaskWakePolicy,
         new_session_task,
     };
-    use everruns_provider::typed_id::ScheduleId;
 
     let backend = create_test_backend().await;
 
-    // ------------------------------------------------------------------
-    // Fixtures: principal + session (minimal, no agent required)
-    // ------------------------------------------------------------------
+    // Fixtures: principal and session (minimal; no agent required).
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
@@ -3105,9 +3118,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let session_id = session.id;
 
-    // ------------------------------------------------------------------
-    // Fixture: a recurring session schedule (enabled = true by default)
-    // ------------------------------------------------------------------
+    // Fixture: a recurring session schedule, enabled by default.
     let schedule = backend
         .create_session_schedule(CreateSessionScheduleRow {
             org_id: TEST_ORG_ID,
@@ -3163,9 +3174,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let fired_one_shot_schedule_id: ScheduleId = fired_one_shot_schedule.id;
 
-    // ------------------------------------------------------------------
-    // Fixture: running monitor task with a valid prefixed schedule_id
-    // ------------------------------------------------------------------
+    // Fixture: running monitor task with a valid prefixed schedule_id.
     let monitor_task = new_session_task(
         CreateSessionTask {
             session_id,
@@ -3226,11 +3235,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let fired_one_shot_task_id = fired_one_shot_monitor_task.id.clone();
 
-    // ------------------------------------------------------------------
-    // Fixture: a second monitor task with a *malformed* schedule_id.
-    // The regex '^sched_[0-9a-f]{32}$' must reject this, so it should
-    // never appear in results.
-    // ------------------------------------------------------------------
+    // A malformed schedule_id must never appear in results.
     let malformed_task = new_session_task(
         CreateSessionTask {
             session_id,
@@ -3251,7 +3256,6 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let malformed_task_id = malformed_task.id.clone();
 
-    // Helper: filter the global result list to rows belonging to this test.
     let our_ids: std::collections::HashSet<String> = [
         task_id.clone(),
         one_shot_task_id.clone(),
@@ -3260,9 +3264,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     ]
     .into();
 
-    // ------------------------------------------------------------------
-    // Step 4: schedule is still enabled → our task must NOT appear.
-    // ------------------------------------------------------------------
+    // The enabled schedule's task must not appear.
     let results_before = backend
         .list_monitor_tasks_with_inactive_schedules(500)
         .await
@@ -3279,10 +3281,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         our_results_before
     );
 
-    // ------------------------------------------------------------------
-    // Step 5: disable the recurring and one-shot schedules. The recurring and
-    // directly canceled one-shot tasks must appear; the fired one-shot must not.
-    // ------------------------------------------------------------------
+    // Disabled recurring/canceled tasks appear; the fired one-shot does not.
     backend
         .update_session_schedule(
             TEST_ORG_ID,
@@ -3355,9 +3354,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         "session_id mismatch in results"
     );
 
-    // ------------------------------------------------------------------
-    // Step 6: malformed-spec task must NEVER appear (regex filter).
-    // ------------------------------------------------------------------
+    // The malformed-spec task remains excluded by the regex filter.
     assert!(
         results_after
             .iter()
@@ -3460,7 +3457,7 @@ async fn list_org_session_tasks_pg() {
     let org_b = create_test_org(&backend, "EVE-583 Isolation Org").await;
 
     // A session in each org.
-    let mk_session = |org_id: i64, owner: everruns_provider::typed_id::PrincipalId| {
+    let mk_session = |org_id: i64, owner: everruns_contracts::typed_id::PrincipalId| {
         let backend = &backend;
         async move {
             backend
@@ -3933,7 +3930,7 @@ async fn seed_overdue_schedules(
     backend: &StorageBackend,
     label: &str,
     count: usize,
-) -> Vec<everruns_provider::typed_id::ScheduleId> {
+) -> Vec<everruns_contracts::typed_id::ScheduleId> {
     let owner_principal_id = create_test_principal(backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {

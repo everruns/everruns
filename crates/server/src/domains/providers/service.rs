@@ -5,8 +5,8 @@
 
 use crate::errors::BadRequestError;
 use crate::kernel_imports::{
-    Caller, Permission, Policy, Rule, everruns_provider::provider::DriverId,
-    everruns_provider::provider::ProviderStatus,
+    Caller, Permission, Policy, Rule, contracts::provider::DriverId,
+    contracts::provider::ProviderStatus,
 };
 use crate::services::ProviderResolverService;
 use crate::storage::{
@@ -14,10 +14,10 @@ use crate::storage::{
     models::{CreateProviderRow, ProviderRow, UpdateProvider},
 };
 use anyhow::{Result, anyhow};
-use everruns_provider::provider::{
+use everruns_contracts::provider::{
     Provider, ProviderRequestHeader, ProviderRequestOptions, ProviderTraceConfig,
 };
-use everruns_provider::url_validation::validate_safe_url;
+use everruns_contracts::url_validation::validate_safe_url;
 use reqwest::Url;
 use std::sync::Arc;
 use tracing::error;
@@ -427,7 +427,7 @@ const MAX_PROVIDER_REQUEST_HEADERS: usize = 16;
 const MAX_PROVIDER_REQUEST_HEADER_VALUE_LEN: usize = 2048;
 
 /// Connection-level headers the transport owns. Mirrors the driver-side list in
-/// `everruns_provider::driver_helpers::merge_request_headers`.
+/// `everruns_contracts::driver_helpers::merge_request_headers`.
 const PROTECTED_PROVIDER_HEADERS: &[&str] = &[
     "host",
     "content-length",
@@ -587,7 +587,7 @@ mod tests {
     };
     use crate::errors::BadRequestError;
     use crate::kernel_imports::{DriverId, ProviderTraceConfig};
-    use everruns_provider::url_validation::validate_safe_url;
+    use everruns_contracts::url_validation::validate_safe_url;
 
     // ---- Trace config resolution (provider trace links) ----
 
@@ -692,8 +692,8 @@ mod tests {
 
     // ---- Request options (custom headers, diagnostics) ----
 
-    fn header(name: &str, value: &str) -> everruns_provider::provider::ProviderRequestHeader {
-        everruns_provider::provider::ProviderRequestHeader {
+    fn header(name: &str, value: &str) -> everruns_contracts::provider::ProviderRequestHeader {
+        everruns_contracts::provider::ProviderRequestHeader {
             name: name.to_string(),
             value: value.to_string(),
         }

@@ -1,6 +1,6 @@
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::runtime_provider::Provider;
 use everruns_host::InProcessRuntimeBuilder;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::runtime_provider::Provider;
 use everruns_test_support::llmsim_driver::SimTurn;
 use everruns_test_support::{LlmSimConfig, LlmSimDriver, LlmSimRuntimeExt};
 

@@ -23,11 +23,11 @@ use axum::{
     http::StatusCode,
     routing::post,
 };
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
 use everruns_mcp::{StoredConsent, consent_storage_key};
 use everruns_platform::SessionStatus;
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -37,8 +37,8 @@ use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{
     ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
 };
+use everruns_contracts::tool_types::CONFIRM_URL_ELICITATION_TOOL;
 use everruns_core::Caller;
-use everruns_provider::tool_types::CONFIRM_URL_ELICITATION_TOOL;
 
 /// How far back to look for the elicitation being answered. The card is emitted
 /// by the act that just paused, so it is within the last handful of events; the
@@ -107,6 +107,7 @@ struct PendingElicitation {
     responses(
         (status = 200, description = "Decision recorded and workflow resumed", body = ElicitationConsentResponse),
         (status = 400, description = "Invalid session ID or request"),
+        (status = 403, description = "Caller may not manage this session"),
         (status = 404, description = "Session or pending elicitation not found"),
         (status = 409, description = "Session is not waiting for tool results"),
         (status = 500, description = "Internal server error")
@@ -124,13 +125,30 @@ pub async fn submit_elicitation_consent(
             .into_response(StatusCode::BAD_REQUEST)
     })?;
 
+    // Consenting resumes the turn and stores a consent the retry acts on, so it
+    // takes the same authority as any other session write. Both checks run
+    // before the pending elicitation is read, so a refusal reveals nothing
+    // about it.
     let caller = Caller::from(&org);
+    crate::domains::sessions::SESSION_MANAGE
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(|error| {
+            ErrorResponse::new(error.to_string()).into_response(StatusCode::FORBIDDEN)
+        })?;
     let session = state
         .session_service
         .get(&caller, session_id.uuid(), None)
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;
+    if !crate::domains::sessions::platform_chat_owner_matches_session(&state.db, &caller, &session)
+        .await
+        .log_internal_error_json("authorize session owner")?
+    {
+        // THREAT[TM-AGENT-017]: a URL consent resumes Platform Chat like any
+        // other answer and must bind to its persisted owner too.
+        return Err(ErrorResponse::not_found("Session"));
+    }
 
     if session.status != SessionStatus::WaitingForToolResults {
         return Err(ErrorResponse::new(format!(

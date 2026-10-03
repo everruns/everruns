@@ -19,10 +19,9 @@ documentation = "https://docs.rs/everruns-integrations-sprites"
 
 [dependencies]
 everruns-core.workspace = true
-everruns-provider.workspace = true
+everruns-contracts = { workspace = true, default-features = false }
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
-everruns-platform.workspace = true
 
 # HTTP client for Sprites API
 reqwest.workspace = true
@@ -41,6 +40,7 @@ tracing.workspace = true
 sprites-live-tests = []
 
 [dev-dependencies]
+everruns-host.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
 

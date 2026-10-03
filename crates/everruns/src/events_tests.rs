@@ -4,14 +4,14 @@
 
 use std::sync::Arc;
 
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
     ActStartedData, OutputMessageDeltaData, OutputMessageReplacedData, ReasonThinkingDeltaData,
     ToolStartedData, TurnCancelledData, TurnStartedData,
 };
 use everruns_host::{HostEventEmitter, InMemoryEventLog};
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use serde_json::json;
 
 use super::{EventStreamError, FacadeEventBus, SessionEvent, SessionEventKind};

@@ -1,7 +1,7 @@
 use super::*;
 use crate::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
-use everruns_provider::error::Result as StoreResult;
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::error::Result as StoreResult;
+use everruns_contracts::typed_id::SessionId;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -255,30 +255,6 @@ fn key_combos_split_modifiers_from_the_key() {
 }
 
 #[test]
-fn approval_gates_committing_actions_only() {
-    let gated = [
-        json!({"action": "type", "text": "hello"}),
-        json!({"action": "key", "text": "Return"}),
-        json!({"action": "key", "text": "ctrl+Enter"}),
-        json!({"action": "navigate", "url": "https://example.com"}),
-    ];
-    for args in gated {
-        let action = ComputerAction::from_arguments(&args).unwrap();
-        assert!(action_requires_approval(&action), "{args}");
-    }
-    let free = [
-        json!({"action": "screenshot"}),
-        json!({"action": "left_click", "coordinate": [1, 1]}),
-        json!({"action": "key", "text": "Tab"}),
-        json!({"action": "scroll", "scroll_direction": "down", "scroll_amount": 1}),
-    ];
-    for args in free {
-        let action = ComputerAction::from_arguments(&args).unwrap();
-        assert!(!action_requires_approval(&action), "{args}");
-    }
-}
-
-#[test]
 fn calls_parse_single_or_batched() {
     let single = ComputerCall::from_arguments(&json!({"action": "screenshot"})).unwrap();
     assert_eq!(single, ComputerCall::Single(ComputerAction::Screenshot));
@@ -302,33 +278,6 @@ fn calls_parse_single_or_batched() {
         json!({}),
     ] {
         assert!(ComputerCall::from_arguments(&bad).is_err(), "{bad}");
-    }
-}
-
-#[test]
-fn hard_gate_covers_batches_and_provider_safety_checks() {
-    // Gated: a committing action alone or anywhere in a batch, and any
-    // provider safety check, even on an otherwise free call.
-    for args in [
-        json!({"action": "type", "text": "x"}),
-        json!({"actions": [
-            {"action": "left_click", "coordinate": [1, 1]},
-            {"action": "key", "text": "Return"}
-        ]}),
-        json!({"actions": [{"action": "screenshot"}],
-               "pending_safety_checks": [{"id": "sc_1", "code": "malicious_instructions"}]}),
-    ] {
-        assert!(computer_call_requires_approval(&args), "{args}");
-    }
-    // Free: pointer-only calls, an empty check list, and arguments that do
-    // not parse (the tool rejects those without touching the display).
-    for args in [
-        json!({"action": "left_click", "coordinate": [1, 1]}),
-        json!({"actions": [{"action": "scroll", "scroll_direction": "down", "scroll_amount": 2}],
-               "pending_safety_checks": []}),
-        json!({"action": "fly"}),
-    ] {
-        assert!(!computer_call_requires_approval(&args), "{args}");
     }
 }
 
@@ -546,7 +495,7 @@ fn native_tools_request_a_native_adapter_unless_turned_off() {
     assert_eq!(options.len(), 1);
     let options: std::collections::HashMap<_, _> = options.into_iter().collect();
     let native =
-        everruns_provider::native_computer::NativeComputerUse::from_driver_options(&options)
+        everruns_contracts::native_computer::NativeComputerUse::from_driver_options(&options)
             .expect("option parses");
     assert_eq!(native.display_width, 1024);
     assert_eq!(native.display_height, DEFAULT_DISPLAY_HEIGHT);

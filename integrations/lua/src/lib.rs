@@ -31,11 +31,11 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 pub use code_mode::{LUA_CODE_MODE_CAPABILITY_ID, LuaCodeModeCapability};
+#[cfg(test)]
+use everruns_contracts::error;
+use everruns_contracts::{tool_types, typed_id};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::tool_context::ToolContext;
-#[cfg(test)]
-use everruns_provider::error;
-use everruns_provider::{tool_types, typed_id};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
@@ -1260,7 +1260,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> everruns_provider::error::Result<Option<SessionFile>> {
+        ) -> everruns_contracts::error::Result<Option<SessionFile>> {
             Ok(None)
         }
 
@@ -1270,7 +1270,7 @@ mod tests {
             path: &str,
             content: &str,
             encoding: &str,
-        ) -> everruns_provider::error::Result<SessionFile> {
+        ) -> everruns_contracts::error::Result<SessionFile> {
             Ok(SessionFile {
                 id: uuid::Uuid::new_v4(),
                 session_id: session_id.into(),
@@ -1291,7 +1291,7 @@ mod tests {
             _session_id: SessionId,
             _path: &str,
             _recursive: bool,
-        ) -> everruns_provider::error::Result<bool> {
+        ) -> everruns_contracts::error::Result<bool> {
             Ok(false)
         }
 
@@ -1299,7 +1299,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> everruns_provider::error::Result<Vec<crate::session_file::FileInfo>> {
+        ) -> everruns_contracts::error::Result<Vec<crate::session_file::FileInfo>> {
             Ok(vec![])
         }
 
@@ -1307,7 +1307,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> everruns_provider::error::Result<Option<crate::FileStat>> {
+        ) -> everruns_contracts::error::Result<Option<crate::FileStat>> {
             Ok(None)
         }
 
@@ -1316,7 +1316,7 @@ mod tests {
             _session_id: SessionId,
             _pattern: &str,
             _path_pattern: Option<&str>,
-        ) -> everruns_provider::error::Result<Vec<crate::GrepMatch>> {
+        ) -> everruns_contracts::error::Result<Vec<crate::GrepMatch>> {
             Ok(vec![])
         }
 
@@ -1324,7 +1324,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_provider::error::Result<crate::session_file::FileInfo> {
+        ) -> everruns_contracts::error::Result<crate::session_file::FileInfo> {
             Ok(crate::session_file::FileInfo {
                 id: uuid::Uuid::new_v4(),
                 session_id: session_id.into(),
@@ -1672,7 +1672,7 @@ mod tests {
                 &self,
                 session_id: SessionId,
                 path: &str,
-            ) -> everruns_provider::error::Result<Option<SessionFile>> {
+            ) -> everruns_contracts::error::Result<Option<SessionFile>> {
                 let files = self.files.lock().unwrap();
                 Ok(files.get(path).map(|content| SessionFile {
                     id: uuid::Uuid::new_v4(),
@@ -1695,7 +1695,7 @@ mod tests {
                 path: &str,
                 content: &str,
                 encoding: &str,
-            ) -> everruns_provider::error::Result<SessionFile> {
+            ) -> everruns_contracts::error::Result<SessionFile> {
                 self.files
                     .lock()
                     .unwrap()
@@ -1720,7 +1720,7 @@ mod tests {
                 _session_id: SessionId,
                 path: &str,
                 _recursive: bool,
-            ) -> everruns_provider::error::Result<bool> {
+            ) -> everruns_contracts::error::Result<bool> {
                 Ok(self.files.lock().unwrap().remove(path).is_some())
             }
 
@@ -1728,7 +1728,7 @@ mod tests {
                 &self,
                 session_id: SessionId,
                 path: &str,
-            ) -> everruns_provider::error::Result<Vec<crate::session_file::FileInfo>> {
+            ) -> everruns_contracts::error::Result<Vec<crate::session_file::FileInfo>> {
                 let prefix = if path == "/" {
                     "/".to_string()
                 } else {
@@ -1756,7 +1756,7 @@ mod tests {
                 &self,
                 _session_id: SessionId,
                 path: &str,
-            ) -> everruns_provider::error::Result<Option<crate::FileStat>> {
+            ) -> everruns_contracts::error::Result<Option<crate::FileStat>> {
                 let files = self.files.lock().unwrap();
                 Ok(files.get(path).map(|c| crate::FileStat {
                     path: path.to_string(),
@@ -1774,7 +1774,7 @@ mod tests {
                 _session_id: SessionId,
                 pattern: &str,
                 path_pattern: Option<&str>,
-            ) -> everruns_provider::error::Result<Vec<crate::GrepMatch>> {
+            ) -> everruns_contracts::error::Result<Vec<crate::GrepMatch>> {
                 let re = regex::Regex::new(pattern)
                     .map_err(|e| crate::error::AgentLoopError::store(e.to_string()))?;
                 let files = self.files.lock().unwrap();
@@ -1802,7 +1802,7 @@ mod tests {
                 &self,
                 session_id: SessionId,
                 path: &str,
-            ) -> everruns_provider::error::Result<crate::session_file::FileInfo> {
+            ) -> everruns_contracts::error::Result<crate::session_file::FileInfo> {
                 Ok(crate::session_file::FileInfo {
                     id: uuid::Uuid::new_v4(),
                     session_id: session_id.into(),

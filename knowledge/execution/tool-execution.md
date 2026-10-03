@@ -53,7 +53,7 @@ Note: OpenAI Responses API (`function_call_output`) does not support images in t
 
 ### Tool Hints
 
-`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/provider/src/tool_types.rs` for the struct definition. The behavioral hints are all `Option<bool>`, `None` means unspecified.
+`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/contracts/src/tool_types.rs` for the struct definition. The behavioral hints are all `Option<bool>`, `None` means unspecified.
 
 Alongside them, `metadata: Option<Value>` is an opaque hatch for annotations **core does not interpret**: risk tiers for an approval UI, presentation hints, an embedder's routing keys. The typed hints are the vocabulary core reasons about; the hatch is how a host carries its own without a core patch per field. No driver sends it to a provider, and it must never carry credentials or other sensitive payload, it is persisted and surfaced to clients like the rest of the definition. `Capability::metadata()` is the same hatch one level up.
 
@@ -107,7 +107,7 @@ Capability hooks involved:
 
 ### Reading-tool output contract
 
-Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive, existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat. File-reading tools, including session-sandbox-backed reads such as `sandbox_read_file`, accept `offset` and `limit` and return only that line window for text files. Non-image binary file reads return metadata by default instead of raw base64 or lossy UTF-8.
+Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive, existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat. File-reading tools, including the managed-Environment `read_file`, accept `offset` and `limit` and return only that line window for text files. Non-image binary file reads return metadata by default instead of raw base64 or lossy UTF-8.
 
 See [`crates/core/src/truncation_info.rs`](../../crates/core/src/truncation_info.rs) for the source of truth: `TruncationInfo`, `TruncationReason`, and the `assert_conforms` conformance helper.
 

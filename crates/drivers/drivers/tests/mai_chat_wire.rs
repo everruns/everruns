@@ -12,12 +12,17 @@
 //   2. Microsoft Entra ID OAuth  -> a token is minted from the (mocked) token
 //      endpoint and applied as `Authorization: Bearer <token>`.
 
-use everruns_drivers::mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
-use everruns_provider::DriverRegistry;
-use everruns_provider::ProviderEndpoint;
-use everruns_provider::driver_registry::{
+// Every mock answers with `Connection: close`. The drivers share one process-wide
+// HTTP client, and wiremock recycles a dropped server's port to the next test, so a
+// pooled keep-alive connection driven by another test's runtime could otherwise
+// serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
+
+use everruns_contracts::DriverRegistry;
+use everruns_contracts::ProviderEndpoint;
+use everruns_contracts::driver_registry::{
     ChatDriver, DriverId, LlmCallConfig, LlmStreamEvent, Message, MessageRole, ProviderConfig,
 };
+use everruns_drivers::mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
 use futures::StreamExt;
 use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -40,7 +45,7 @@ fn sse_chat_response() -> String {
     .join("\n")
 }
 
-async fn drain_text(mut stream: everruns_provider::driver_registry::LlmResponseStream) -> String {
+async fn drain_text(mut stream: everruns_contracts::driver_registry::LlmResponseStream) -> String {
     let mut text = String::new();
     while let Some(event) = stream.next().await {
         match event.expect("stream item should not be a transport error") {
@@ -59,7 +64,9 @@ async fn api_key_auth_sends_api_key_header_and_streams() {
         .and(path("/openai/v1/chat/completions"))
         .and(header("api-key", "foundry-secret"))
         .respond_with(
-            ResponseTemplate::new(200).set_body_raw(sse_chat_response(), "text/event-stream"),
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_raw(sse_chat_response(), "text/event-stream"),
         )
         .mount(&server)
         .await;
@@ -87,11 +94,15 @@ async fn entra_oauth_mints_token_and_sends_bearer() {
         .and(path("/tenant-1/oauth2/v2.0/token"))
         .and(body_string_contains("grant_type=client_credentials"))
         .and(body_string_contains("client_id=client-1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "token_type": "Bearer",
-            "access_token": "minted-token-xyz",
-            "expires_in": 3600,
-        })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_json(serde_json::json!({
+                    "token_type": "Bearer",
+                    "access_token": "minted-token-xyz",
+                    "expires_in": 3600,
+                })),
+        )
         .mount(&server)
         .await;
 
@@ -100,7 +111,9 @@ async fn entra_oauth_mints_token_and_sends_bearer() {
         .and(path("/openai/v1/chat/completions"))
         .and(header("authorization", "Bearer minted-token-xyz"))
         .respond_with(
-            ResponseTemplate::new(200).set_body_raw(sse_chat_response(), "text/event-stream"),
+            ResponseTemplate::new(200)
+                .insert_header("connection", "close")
+                .set_body_raw(sse_chat_response(), "text/event-stream"),
         )
         .mount(&server)
         .await;

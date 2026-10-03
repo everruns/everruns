@@ -9,10 +9,10 @@ use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use everruns_contracts::typed_id::TriggerId;
+use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::MessageQuery;
-use everruns_provider::typed_id::TriggerId;
-use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
 use everruns_server::org_init;
 use everruns_server::storage::{
     AcceptOrgInvitationOutcome, AddOrganizationMemberOutcome, CreateAgentRow,
@@ -47,6 +47,7 @@ pub(crate) async fn create_test_principal(repo: &dyn Repository, label: &str) ->
 
 pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionRow {
     CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
@@ -99,6 +100,7 @@ fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        environments: None,
         is_built_in: false,
     }
 }
@@ -1220,11 +1222,11 @@ async fn postgres_run_summary_fence() {
 
 #[tokio::test]
 async fn postgres_native_async_lease_recovery_and_tenant_fencing() {
-    use everruns_core::native_async_store::{NativeAsyncLease, NativeAsyncStore};
-    use everruns_provider::{
+    use everruns_contracts::{
         native_async::{NativeAsyncCheckpoint, NativeToolCall, PendingCallState},
         typed_id::TurnId,
     };
+    use everruns_core::native_async_store::{NativeAsyncLease, NativeAsyncStore};
     use everruns_server::storage::{EncryptionService, PgNativeAsyncStore};
     use std::sync::Arc;
     let pool = PgPool::connect(&get_database_url())
@@ -1357,10 +1359,10 @@ async fn postgres_native_async_lease_recovery_and_tenant_fencing() {
 
 #[tokio::test]
 async fn postgres_agents_api_lease_recovery_and_tenant_fencing() {
+    use everruns_contracts::typed_id::{MessageId, TurnId};
     use everruns_core::agents_api_store::{
         AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, ToolResultOutbox, ToolResultState,
     };
-    use everruns_provider::typed_id::{MessageId, TurnId};
     use everruns_server::storage::{EncryptionService, PgAgentsApiStore};
     use std::sync::Arc;
     let pool = PgPool::connect(&get_database_url())

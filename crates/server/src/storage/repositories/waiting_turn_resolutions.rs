@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_provider::typed_id::SessionId;
+use everruns_contracts::typed_id::SessionId;
 use uuid::Uuid;
 
 type WaitingTurnResolutionRow = (

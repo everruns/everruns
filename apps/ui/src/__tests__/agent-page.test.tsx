@@ -7,7 +7,10 @@ let mockSearchParams = new URLSearchParams();
 const push = jest.fn();
 const replace = jest.fn();
 
-jest.mock("@/hooks/use-virtual-users", () => ({ useVirtualUsers: () => ({ data: [] }) }));
+jest.mock("@/hooks/use-virtual-users", () => ({
+  useVirtualUsers: () => ({ data: [] }),
+  useVirtualUser: () => ({ data: undefined }),
+}));
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent-1",
@@ -48,6 +51,30 @@ jest.mock("@/components/agents/agent-version-history", () => ({
 }));
 jest.mock("@/components/agents/agent-health-check", () => ({
   AgentHealthCheck: () => <div data-testid="agent-health-check" />,
+}));
+jest.mock("@/components/agents/environment-profiles-editor", () => ({
+  EnvironmentProfilesEditor: ({
+    onChange,
+  }: {
+    onChange: (value: Record<string, unknown>) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onChange({
+          default: "build",
+          profiles: {
+            build: {
+              target: { kind: "managed", provider: "daytona" },
+              durability: "checkpointed",
+            },
+          },
+        })
+      }
+    >
+      Add Daytona environment
+    </button>
+  ),
 }));
 jest.mock("@/components/stats/resource-stats-panel", () => ({
   ResourceStatsPanel: () => <div>agent stats</div>,
@@ -137,6 +164,7 @@ const mockUseSessions = jest.fn();
 const mockUseHarnesses = jest.fn();
 const mockUpdate = jest.fn();
 const mockArchive = jest.fn();
+const mockCreateSession = jest.fn();
 const mutation = (mutateAsync = jest.fn()) => ({
   mutateAsync,
   isPending: false,
@@ -147,7 +175,7 @@ const mutation = (mutateAsync = jest.fn()) => ({
 jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
   useSessions: (...args: unknown[]) => mockUseSessions(...args),
-  useCreateSession: () => mutation(),
+  useCreateSession: () => mutation(mockCreateSession),
   useCapabilities: () => ({ data: [] }),
   useModels: () => ({ data: [] }),
   useExportAgent: () => mutation(),
@@ -203,6 +231,7 @@ beforeEach(() => {
     isLoading: false,
   });
   mockUpdate.mockResolvedValue({});
+  mockCreateSession.mockResolvedValue({ id: "session-chat-1" });
 });
 
 describe("AgentPage layout", () => {
@@ -229,11 +258,29 @@ describe("AgentPage layout", () => {
     expect(more.getByRole("button", { name: /MCP servers\s*2 attached/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Credentials\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Environments\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
-    // Status badge in view mode, New session is the primary action.
+    // Status badge in view mode, Test chat is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /New session/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Test chat/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
+  });
+
+  it("starts a chat thread from Test chat instead of a read-only session recording", async () => {
+    await renderPage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Test chat/ }));
+    });
+
+    expect(mockCreateSession).toHaveBeenCalledWith({
+      request: {
+        agent_id: "agent-1",
+        source: "chat",
+        tags: ["chat"],
+      },
+    });
+    expect(push).toHaveBeenCalledWith("/chats/session-chat-1");
   });
 
   it("toggles the prompt between rendered markdown and source", async () => {
@@ -272,6 +319,41 @@ describe("AgentPage layout", () => {
     expect(mockUseSessions).toHaveBeenCalledWith("agent-1", { offset: 0, limit: 20 });
   });
 
+  it("writes the selected tab into the URL so a refresh keeps it", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Integrations" }));
+
+    expect(screen.getByText("agent integrations")).toBeInTheDocument();
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
+  });
+
+  it("restores the tab from the URL on load", async () => {
+    mockSearchParams = new URLSearchParams("tab=stats");
+    await renderPage();
+
+    expect(screen.getByText("agent stats")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Stats" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("returns to the bare agent path from another tab and keeps other query params", async () => {
+    mockSearchParams = new URLSearchParams("tab=preview&mode=edit");
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
+
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?mode=edit", { scroll: false });
+  });
+
+  it("keeps the open tab when leaving edit mode", async () => {
+    mockSearchParams = new URLSearchParams("mode=edit&tab=integrations");
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /Discard/ }));
+
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
+  });
+
   it("keeps an archived agent read-only", async () => {
     mockUseAgent.mockReturnValue({ data: { ...mockAgent, status: "archived" }, isLoading: false });
     await renderPage();
@@ -284,7 +366,7 @@ describe("AgentPage layout", () => {
 });
 
 describe("AgentPage edit mode", () => {
-  it("edits in place: same layout, Save and Discard replace New session", async () => {
+  it("edits in place: same layout, Save and Discard replace Test chat", async () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
@@ -297,7 +379,7 @@ describe("AgentPage edit mode", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "System prompt" })).toHaveValue("You are helpful");
     expect(screen.getByRole("button", { name: /Discard/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /New session/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Test chat/ })).not.toBeInTheDocument();
     expect(screen.getByTestId("capability-selector")).toBeInTheDocument();
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
   });
@@ -413,6 +495,26 @@ describe("AgentPage edit mode", () => {
     expect(mockUpdate.mock.calls[0][0].request.network_access).toEqual({
       allowed: ["api.example.com", "*.github.com"],
       blocked: ["internal.corp"],
+    });
+  });
+
+  it("includes environment profiles edited in their sheet", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /Environments/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add Daytona environment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await save();
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate.mock.calls[0][0].request.environments).toEqual({
+      default: "build",
+      profiles: {
+        build: {
+          target: { kind: "managed", provider: "daytona" },
+          durability: "checkpointed",
+        },
+      },
     });
   });
 

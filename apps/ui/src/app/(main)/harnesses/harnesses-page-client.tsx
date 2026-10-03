@@ -10,7 +10,6 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LinkButton } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/search-input";
 import { ArrowRight, Plus, Shield, LayoutGrid, List as ListIcon } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
@@ -22,22 +21,14 @@ import {
   PageControlStrip,
   SectionTabs,
   EmptyState,
-  PageColumns,
   PageMain,
-  PageRail,
-  RailSection,
-  PageFooter,
 } from "@/components/layout";
-import { CapabilityIcon } from "@/lib/capability-icons";
-import { localizedCapabilityName } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { isArchivedStatus } from "@/lib/entity-lifecycle";
-import { normalizeTags } from "@/lib/tags";
-import { pluralize } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
 import { resolveHarnessInheritance } from "@/lib/harness-inheritance";
 
-const EXAMPLE_PREVIEW_LIMIT = 6;
+const EXAMPLE_PREVIEW_LIMIT = 3;
 type StatusTab = "all" | "active" | "archived";
 
 export default function HarnessesPageClient() {
@@ -79,38 +70,6 @@ export default function HarnessesPageClient() {
     [harnesses],
   );
 
-  const capabilityFacets = useMemo(() => {
-    const tally = new Map<string, number>();
-    for (const harness of harnesses ?? []) {
-      for (const cap of harness.capabilities ?? []) {
-        tally.set(cap.ref, (tally.get(cap.ref) ?? 0) + 1);
-      }
-    }
-    return [...tally.entries()]
-      .map(([ref, count]) => {
-        const cap = allCapabilities?.find((c) => c.id === ref);
-        const icon = cap?.icon;
-        return {
-          ref,
-          count,
-          name: cap ? localizedCapabilityName(cap, locale) : ref,
-          icon: ({ className }: { className?: string }) => (
-            <CapabilityIcon icon={icon} className={className} />
-          ),
-        };
-      })
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6);
-  }, [harnesses, allCapabilities, locale]);
-
-  const tagFacets = useMemo(() => {
-    const tags = new Set<string>();
-    for (const harness of harnesses ?? []) {
-      for (const tag of normalizeTags(harness.tags)) tags.add(tag);
-    }
-    return [...tags].slice(0, 12);
-  }, [harnesses]);
-
   const filteredHarnesses = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (harnesses ?? []).filter((harness) => {
@@ -141,18 +100,7 @@ export default function HarnessesPageClient() {
       <PageMasthead
         icon={<Shield />}
         title="Harnesses"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {counts.all}
-          </Badge>
-        }
         description="Shared runtime configuration — base prompt, capabilities, and policies sessions inherit."
-        meta={
-          <>
-            <span>{counts.active} active</span>
-            <span>{counts.archived} archived</span>
-          </>
-        }
         actions={
           <LinkButton variant="accent" href="/harnesses/new">
             <Plus className="size-4" />
@@ -172,7 +120,7 @@ export default function HarnessesPageClient() {
         <SectionTabs
           value={statusTab}
           onValueChange={(v) => setStatusTab(v as StatusTab)}
-          items={statusItems}
+          items={statusItems.map((item) => ({ ...item, count: counts[item.value] }))}
         />
         <div className="flex border">
           <button
@@ -206,120 +154,50 @@ export default function HarnessesPageClient() {
         </div>
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          <QueryStateWrapper
-            isLoading={isLoading}
-            error={error}
-            data={filteredHarnesses}
-            errorMessagePrefix="Failed to load harnesses"
-            emptyState={
-              <EmptyState
-                icon={<Shield />}
-                title={
-                  search || statusTab !== "active"
-                    ? "No harnesses match your filters."
-                    : "No harnesses yet"
-                }
-                action={
-                  !search &&
-                  statusTab === "active" && (
-                    <LinkButton variant="accent" href="/harnesses/new">
-                      <Plus className="size-4" />
-                      Create your first harness
-                    </LinkButton>
-                  )
-                }
-              />
-            }
-          >
-            {(items) => (
-              <div className={cn("grid gap-4", view === "grid" ? "md:grid-cols-2" : "grid-cols-1")}>
-                {items.map((harness) => (
-                  <HarnessCard
-                    key={harness.id}
-                    harness={harness}
-                    allCapabilities={allCapabilities}
-                    showEditButton
-                    inheritance={resolveHarnessInheritance(harness, harnessesById)}
-                  />
-                ))}
-              </div>
-            )}
-          </QueryStateWrapper>
-        </PageMain>
-
-        <PageRail>
-          <RailSection label="Status">
-            <div className="flex flex-col gap-1.5 text-[13px]">
-              {statusItems.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setStatusTab(item.value)}
-                  className={cn(
-                    "flex items-center justify-between transition-colors hover:text-foreground",
-                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-muted-foreground">{counts[item.value]}</span>
-                </button>
+      <PageMain>
+        <QueryStateWrapper
+          isLoading={isLoading}
+          error={error}
+          data={filteredHarnesses}
+          errorMessagePrefix="Failed to load harnesses"
+          emptyState={
+            <EmptyState
+              icon={<Shield />}
+              title={
+                search || statusTab !== "active"
+                  ? "No harnesses match your filters."
+                  : "No harnesses yet"
+              }
+              action={
+                !search &&
+                statusTab === "active" && (
+                  <LinkButton variant="accent" href="/harnesses/new">
+                    <Plus className="size-4" />
+                    Create your first harness
+                  </LinkButton>
+                )
+              }
+            />
+          }
+        >
+          {(items) => (
+            <div className={cn("grid gap-4", view === "grid" ? "md:grid-cols-2" : "grid-cols-1")}>
+              {items.map((harness) => (
+                <HarnessCard
+                  key={harness.id}
+                  harness={harness}
+                  allCapabilities={allCapabilities}
+                  showEditButton
+                  inheritance={resolveHarnessInheritance(harness, harnessesById)}
+                />
               ))}
             </div>
-          </RailSection>
-
-          {capabilityFacets.length > 0 && (
-            <RailSection label="Capability">
-              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
-                {capabilityFacets.map((facet) => {
-                  const Icon = facet.icon;
-                  return (
-                    <div key={facet.ref} className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Icon className="size-3.5" />
-                        {facet.name}
-                      </span>
-                      <span>{facet.count}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </RailSection>
           )}
-
-          {tagFacets.length > 0 && (
-            <RailSection label="Tags">
-              <div className="flex flex-wrap gap-1.5">
-                {tagFacets.map((tag) => (
-                  <span key={tag} className="border bg-muted px-2 py-0.5 text-xs">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </RailSection>
-          )}
-        </PageRail>
-      </PageColumns>
-
-      <PageFooter>
-        <span>
-          Showing {filteredHarnesses.length} of {counts.all}{" "}
-          {pluralize(counts.all, "harness", "harnesses")}
-        </span>
-        {counts.archived > 0 && statusTab !== "archived" && (
-          <button
-            type="button"
-            onClick={() => setStatusTab("archived")}
-            className="text-primary transition-colors hover:underline"
-          >
-            View archived →
-          </button>
-        )}
-      </PageFooter>
+        </QueryStateWrapper>
+      </PageMain>
 
       {/* Example harnesses — a secondary discovery section below the primary frame. */}
-      <section className="mt-4">
+      <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">Example harnesses</h2>
           {hasMoreExamples && (
@@ -352,6 +230,7 @@ export default function HarnessesPageClient() {
                   allCapabilities={allCapabilities}
                   onImport={handleImport}
                   adopting={importingName === example.name}
+                  preview
                 />
               ))}
             </div>

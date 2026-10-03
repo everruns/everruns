@@ -6,12 +6,12 @@
 //! the model for whichever backend was selected.
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::{LlmResponse, LlmResponseStream};
+use everruns_contracts::error::Result;
+use everruns_contracts::{BearerAuth, OpenResponsesProtocolChatDriver, Provider};
 use everruns_core::{
     DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmRequest, UtilityLlmService,
 };
-use everruns_provider::driver_registry::{LlmResponse, LlmResponseStream};
-use everruns_provider::error::Result;
-use everruns_provider::{BearerAuth, OpenResponsesProtocolChatDriver, Provider};
 use std::sync::Arc;
 
 /// Environment variable used by the deployment-owned utility OpenAI client.

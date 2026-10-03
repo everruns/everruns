@@ -21,7 +21,7 @@ status-code tables.
 
 ## Sources of truth
 
-- [`crates/provider/src/tool_types.rs`](../../crates/provider/src/tool_types.rs)
+- [`crates/contracts/src/tool_types.rs`](../../crates/contracts/src/tool_types.rs)
   owns the tagged tool-definition model and exact client-side tool fields.
 - [`crates/server/src/domains/agents/types.rs`](../../crates/server/src/domains/agents/types.rs)
   owns agent create/update request validation and deprecation behavior.

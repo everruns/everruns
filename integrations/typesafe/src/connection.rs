@@ -5,7 +5,7 @@
 //   evaluation — because the API has no dedicated auth probe. 401 means invalid.
 
 use async_trait::async_trait;
-use everruns_platform::connector::{
+use everruns_contracts::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 

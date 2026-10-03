@@ -108,7 +108,7 @@ pub(crate) const LIVE_ANTHROPIC_THINKING_MODEL: &str = "claude-sonnet-4-6";
 /// fail loudly — see `EVERRUNS_REQUIRE_LIVE_TESTS` in the CI workflow, which
 /// exists so a silently absent key cannot report a vacuous pass.
 pub(crate) fn provider_account_block(message: &Value) -> Option<&str> {
-    use everruns_provider::user_facing_error::codes;
+    use everruns_contracts::user_facing_error::codes;
 
     let code = message["metadata"]["error_code"].as_str()?;
     (code == codes::PROVIDER_QUOTA_EXHAUSTED || code == codes::PROVIDER_USAGE_LIMIT_REACHED)
@@ -117,7 +117,7 @@ pub(crate) fn provider_account_block(message: &Value) -> Option<&str> {
 
 #[test]
 pub(crate) fn provider_account_block_matches_only_billing_codes() {
-    use everruns_provider::user_facing_error::codes;
+    use everruns_contracts::user_facing_error::codes;
 
     let with_code = |code: &str| json!({"metadata": {"error_code": code}});
 

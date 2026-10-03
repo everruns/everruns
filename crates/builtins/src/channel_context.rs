@@ -70,11 +70,11 @@ impl Capability for ChannelContextCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::error::Result;
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::ExternalActor;
     use everruns_core::channel::{ChannelViewContext, ThreadContext, encode_thread_context};
     use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
-    use everruns_provider::error::Result;
-    use everruns_provider::typed_id::SessionId;
     use std::sync::Arc;
 
     /// Serves one record, so the capability is tested against the real codec

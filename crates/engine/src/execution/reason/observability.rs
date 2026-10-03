@@ -24,12 +24,12 @@ pub(super) fn build_request_options(
             strategy: cfg.strategy,
             provider_mode: match provider {
                 "openai" => Some(
-                    if everruns_provider::openai_compat::supports_cache_options(&config.model) {
+                    if everruns_contracts::openai_compat::supports_cache_options(&config.model) {
                         match cfg.strategy {
-                            everruns_provider::driver_registry::PromptCacheStrategy::Auto => {
+                            everruns_contracts::driver_registry::PromptCacheStrategy::Auto => {
                                 "implicit"
                             }
-                            everruns_provider::driver_registry::PromptCacheStrategy::Explicit => {
+                            everruns_contracts::driver_registry::PromptCacheStrategy::Explicit => {
                                 "explicit"
                             }
                         }
@@ -62,11 +62,11 @@ pub(super) fn build_request_options(
 
     let mut provider_options = HashMap::new();
     let explicit_openai_cache = provider == "openai"
-        && everruns_provider::openai_compat::supports_cache_options(&config.model)
+        && everruns_contracts::openai_compat::supports_cache_options(&config.model)
         && config.prompt_cache.as_ref().is_some_and(|cache| {
             cache.enabled
                 && cache.strategy
-                    == everruns_provider::driver_registry::PromptCacheStrategy::Explicit
+                    == everruns_contracts::driver_registry::PromptCacheStrategy::Explicit
         });
     if provider == "openai" && config.previous_response_id.is_some() && !explicit_openai_cache {
         provider_options.insert(
@@ -251,8 +251,8 @@ pub(super) async fn emit_capability_usage_snapshot(
 mod tests {
     use super::*;
     use crate::llm_conversions::llm_call_config_builder_from_agent;
+    use everruns_contracts::model::ReasoningEffort;
     use everruns_core::runtime_agent::RuntimeAgent;
-    use everruns_provider::model::ReasoningEffort;
 
     #[test]
     fn request_options_capture_sampling_and_streaming_intent() {

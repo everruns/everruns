@@ -6,8 +6,8 @@
 
 use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::typed_id::MessageId;
-use everruns_provider::ReasoningEffort;
-use everruns_provider::reasoning_updates::{
+use everruns_contracts::ReasoningEffort;
+use everruns_contracts::reasoning_updates::{
     ReasoningState, supported_update_effort, supports_configuration_updates,
 };
 use std::collections::HashMap;

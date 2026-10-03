@@ -252,7 +252,7 @@ mod tests {
 
         async fn create(
             &self,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxInstance {
@@ -266,7 +266,7 @@ mod tests {
 
         async fn resume(
             &self,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
@@ -275,7 +275,7 @@ mod tests {
 
         async fn pause(
             &self,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
@@ -284,7 +284,7 @@ mod tests {
 
         async fn delete(
             &self,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<(), everruns_core::ToolExecutionResult> {
@@ -293,7 +293,7 @@ mod tests {
 
         async fn exec(
             &self,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _request: &SessionSandboxExecRequest,
@@ -312,7 +312,7 @@ mod tests {
 
         async fn read_file(
             &self,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -326,11 +326,11 @@ mod tests {
 
         async fn write_file(
             &self,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
-            content: &str,
+            content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxWriteFileResponse {
                 path: path.to_string(),
@@ -340,7 +340,7 @@ mod tests {
 
         async fn status(
             &self,
-            _context: &everruns_core::tool_context::ToolContext,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
             state: &everruns_platform::session_sandbox::SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, everruns_core::ToolExecutionResult> {
@@ -362,7 +362,7 @@ mod tests {
         }
     }
 
-    async fn create_test_harness(db: &StorageBackend) -> everruns_provider::typed_id::HarnessId {
+    async fn create_test_harness(db: &StorageBackend) -> everruns_contracts::typed_id::HarnessId {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
@@ -391,7 +391,7 @@ mod tests {
 
     async fn create_test_session(
         db: &Arc<StorageBackend>,
-    ) -> everruns_provider::typed_id::SessionId {
+    ) -> everruns_contracts::typed_id::SessionId {
         let harness_id = create_test_harness(db.as_ref()).await;
         db.set_harness_capabilities(
             harness_id.uuid(),
@@ -409,6 +409,7 @@ mod tests {
         .unwrap();
 
         db.create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
@@ -420,7 +421,7 @@ mod tests {
             agent_version_id: None,
             agent_config_hash: None,
             virtual_user_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("test".to_string()),
             locale: None,

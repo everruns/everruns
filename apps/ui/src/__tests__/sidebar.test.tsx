@@ -408,6 +408,18 @@ describe("Sidebar", () => {
     expect(icon("MCP")).toHaveAttribute("viewBox", "0 0 186 186");
   });
 
+  it("snaps the active item instead of transitioning it after the page commits", () => {
+    mockPathname.mockReturnValue("/harnesses");
+    render(<Sidebar />);
+
+    const harnesses = screen.getByRole("link", { name: "Harnesses" });
+    const sessions = screen.getByRole("link", { name: "Sessions" });
+    expect(harnesses.className).not.toMatch(/transition/);
+    expect(sessions.className).not.toMatch(/transition/);
+    expect(harnesses.className).toContain("border-l-primary");
+    expect(sessions.className).not.toContain("border-l-primary");
+  });
+
   it("disables automatic viewport prefetch for every sidebar navigation link", () => {
     render(<Sidebar />);
 
@@ -456,7 +468,7 @@ describe("Sidebar", () => {
 
     const agentsLink = screen.getByRole("link", { name: /agents/i });
     expect(agentsLink).toHaveClass("border-l-primary");
-    expect(agentsLink).toHaveClass("bg-card");
+    expect(agentsLink).toHaveClass("bg-primary/5");
   });
 
   it("highlights navigation for nested routes", () => {
@@ -465,7 +477,7 @@ describe("Sidebar", () => {
 
     const agentsLink = screen.getByRole("link", { name: /agents/i });
     expect(agentsLink).toHaveClass("border-l-primary");
-    expect(agentsLink).toHaveClass("bg-card");
+    expect(agentsLink).toHaveClass("bg-primary/5");
   });
 
   it.each([
@@ -563,7 +575,7 @@ describe("Sidebar", () => {
 
     const workersLink = screen.getByRole("link", { name: /workers/i });
     expect(workersLink).toHaveClass("border-l-primary");
-    expect(workersLink).toHaveClass("bg-card");
+    expect(workersLink).toHaveClass("bg-primary/5");
   });
 
   it("hides Durable Execution when durable policy is denied", () => {
@@ -715,7 +727,7 @@ describe("Sidebar with config", () => {
 
     const exactLink = screen.getByRole("link", { name: /exact match/i });
     expect(exactLink).toHaveClass("border-l-primary");
-    expect(exactLink).toHaveClass("bg-card");
+    expect(exactLink).toHaveClass("bg-primary/5");
   });
 
   it("does not highlight exact-match item on child route", () => {

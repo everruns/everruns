@@ -2,7 +2,7 @@
 
 use super::types::*;
 use crate::kernel_imports::{
-    everruns_provider::typed_id::PluginInstallId, everruns_provider::typed_id::PluginMarketplaceId,
+    contracts::typed_id::PluginInstallId, contracts::typed_id::PluginMarketplaceId,
     plugin_capability_id,
 };
 

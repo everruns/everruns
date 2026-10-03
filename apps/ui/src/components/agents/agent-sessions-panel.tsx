@@ -41,7 +41,7 @@ export function AgentSessionsPanel({ agentId }: { agentId: string }) {
   if (sessions.length === 0) {
     return (
       <p className="border bg-background py-10 text-center text-sm text-muted-foreground">
-        No sessions yet. Start a new session to begin chatting.
+        No sessions yet. Start a test chat from the agent page to begin.
       </p>
     );
   }

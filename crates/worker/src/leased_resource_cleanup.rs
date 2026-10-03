@@ -10,11 +10,11 @@
 // lease refresh.
 
 use anyhow::{Result, anyhow};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::LeasedResource;
 use everruns_core::{
     connection_services::UserConnectionResolver, session_services::SessionStorageStore,
 };
-use everruns_provider::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -493,23 +493,23 @@ mod tests {
     impl UserConnectionResolver for WrongAccountResolver {
         async fn get_connection_token(
             &self,
-            _: everruns_provider::typed_id::SessionId,
+            _: everruns_contracts::typed_id::SessionId,
             _: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             panic!("cleanup must never fall back to another account's session grant")
         }
         async fn get_connection_token_for_user(
             &self,
             _: uuid::Uuid,
             _: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
+        ) -> everruns_contracts::error::Result<Option<String>> {
             Ok(None)
         }
     }
     #[tokio::test]
     async fn cleanup_requires_the_resource_owner_and_blocks_pending_migrations() {
         let mut resource: LeasedResource = serde_json::from_value(serde_json::json!({
-            "id": everruns_provider::typed_id::LeasedResourceId::new(), "session_id": everruns_provider::typed_id::SessionId::new(),
+            "id": everruns_contracts::typed_id::LeasedResourceId::new(), "session_id": everruns_contracts::typed_id::SessionId::new(),
             "provider":"daytona", "resource_type":"sandbox", "external_id":"fixture",
             "status":"active", "owner_user_id":uuid::Uuid::new_v4(), "lease_duration_seconds":60,
             "last_touched_at":chrono::Utc::now(),"lease_expires_at":chrono::Utc::now(),

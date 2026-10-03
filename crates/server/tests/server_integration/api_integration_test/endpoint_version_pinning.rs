@@ -133,7 +133,7 @@ async fn fcp_session_version(server: &TestServer, endpoint_id: &str) -> Option<S
     .fetch_one(&server.pool)
     .await
     .expect("FCP ingress created a session");
-    version.map(|id| everruns_provider::typed_id::AgentVersionId::from_uuid(id).to_string())
+    version.map(|id| everruns_contracts::typed_id::AgentVersionId::from_uuid(id).to_string())
 }
 
 #[tokio::test]
@@ -311,7 +311,7 @@ async fn test_app_era_endpoint_pin_is_visible_and_honoured() {
         .await;
     let endpoint_id = app["channels"][0]["id"].as_str().unwrap().to_string();
     let v1_uuid = v1
-        .parse::<everruns_provider::typed_id::AgentVersionId>()
+        .parse::<everruns_contracts::typed_id::AgentVersionId>()
         .expect("version id")
         .uuid();
     sqlx::query(

@@ -48,6 +48,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use everruns_contracts::execution_phase::ExecutionPhase;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::RuntimeMessage;
 use everruns_core::agents_api_store::{
     AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, AgentsApiTurnCheckpoint, InputOutbox,
@@ -62,9 +65,6 @@ use everruns_core::events::{
     OutputMessageStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use everruns_core::output_guardrail::TrippedGuardrail;
-use everruns_provider::execution_phase::ExecutionPhase;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -72,6 +72,7 @@ use uuid::Uuid;
 
 mod observe;
 mod policy;
+mod runtime_policy;
 mod settle;
 
 use super::{
@@ -225,6 +226,7 @@ pub struct AgentsApiTurnDriver {
     ledger: Arc<dyn AgentsApiLedger>,
     executor: Arc<dyn AgentsApiFunctionExecutor>,
     output_policy: Option<Arc<dyn AgentsApiOutputPolicy>>,
+    runtime_policy: bool,
     cancellation: Option<tokio::sync::watch::Receiver<bool>>,
     /// Consecutive stream reconnects without progress before giving up.
     max_idle_reconnects: u32,
@@ -249,6 +251,7 @@ impl AgentsApiTurnDriver {
             ledger,
             executor,
             output_policy: None,
+            runtime_policy: false,
             cancellation: None,
             max_idle_reconnects: 5,
             reconnect_backoff: Duration::from_millis(250),
@@ -256,6 +259,13 @@ impl AgentsApiTurnDriver {
             usage_reads: 4,
             usage_backoff: Duration::from_millis(500),
         }
+    }
+
+    /// Enforce the production boundary on provider work. Custom hosts and
+    /// conformance tests use the permissive default intentionally.
+    pub fn with_runtime_policy(mut self) -> Self {
+        self.runtime_policy = true;
+        self
     }
 
     /// Stop the turn when the durable task is cancelled or loses ownership.
@@ -291,6 +301,9 @@ impl AgentsApiTurnDriver {
         &self,
         request: &AgentsApiTurnRequest,
     ) -> Result<AgentsApiTurnOutcome, AgentsApiError> {
+        if self.runtime_policy {
+            request.config.ensure_enforceable()?;
+        }
         let lease = AgentsApiLease {
             org_id: request.org_id,
             session_id: request.session_id,
@@ -667,12 +680,17 @@ impl Run<'_> {
             }
             return Ok(());
         };
-        for item in self
+        let items = self
             .driver
             .client
             .list_turn_items(&session_id, &turn_id)
-            .await?
+            .await?;
+        if !self.check_provider_snapshot(&items, false).await?
+            || !self.check_required_actions(&session).await?
         {
+            return Ok(());
+        }
+        for item in items {
             if self.turn().policy_stop.is_some() {
                 return Ok(());
             }
@@ -712,6 +730,9 @@ impl Run<'_> {
             self.checkpoint.provider_session_id = Some(id.to_string());
             self.input_delivered();
             self.save().await?;
+        }
+        if !self.check_provider_event(event).await? {
+            return Ok(());
         }
         if is_subagent_event(event) {
             // A subagent's own events never end, or write into, the root
@@ -767,6 +788,9 @@ impl Run<'_> {
                 }
             }
             "agent.session.requires_action" => {
+                if !self.check_action_boundary(event).await? {
+                    return Ok(());
+                }
                 self.handle_actions(FunctionCallAction::from_required_actions(event))
                     .await?;
             }
@@ -978,6 +1002,9 @@ impl Run<'_> {
     }
 
     async fn apply_item(&mut self, item: &Value) -> Result<(), AgentsApiError> {
+        if !self.check_provider_item(item, false).await? {
+            return Ok(());
+        }
         let Some(item_id) = item.get("id").and_then(Value::as_str) else {
             return Ok(());
         };
@@ -1188,8 +1215,14 @@ impl Run<'_> {
                     .client
                     .list_turn_items(&session_id, &turn_id)
                     .await?;
+                if !self.check_provider_snapshot(&items, true).await? {
+                    return self.finish_policy_stop().await;
+                }
                 for item in &items {
                     self.apply_item(item).await?;
+                    if self.turn().policy_stop.is_some() {
+                        return self.finish_policy_stop().await;
+                    }
                 }
                 let turn = self
                     .driver
@@ -1202,6 +1235,16 @@ impl Run<'_> {
                     _ => None,
                 };
                 let usage = self.account(Some(turn), final_text, true).await?;
+                if self.driver.runtime_policy {
+                    let final_items = self
+                        .driver
+                        .client
+                        .list_turn_items(&session_id, &turn_id)
+                        .await?;
+                    if !self.check_provider_snapshot(&final_items, true).await? {
+                        return self.finish_policy_stop().await;
+                    }
+                }
                 if let AgentsApiTurnOutcome::Completed {
                     usage: reported, ..
                 } = &mut outcome

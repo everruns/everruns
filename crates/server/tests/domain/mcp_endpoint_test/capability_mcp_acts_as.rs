@@ -1,12 +1,12 @@
 use async_trait::async_trait;
+use everruns_contracts::error::Result as ProviderResult;
+use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, SessionId};
 use everruns_core::capabilities::{Capability, CapabilityRegistry, RiskLevel};
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::{
     CapabilityMcpServer, CapabilityMcpServers, EgressRequest, EgressResponse, EgressService,
     McpProtocolMode, McpServerActsAs, McpServerAuthMode, ScopedMcpServer,
 };
-use everruns_provider::error::Result as ProviderResult;
-use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId, SessionId};
 use everruns_server::domains::mcp_servers::McpServerService;
 use everruns_server::services::{EventService, ProviderResolverService};
 use everruns_server::storage::{
@@ -153,7 +153,7 @@ fn adapters(
         egress.clone(),
     ));
     let sqldb_backend = Arc::new(everruns_server::session_sqldb::InMemorySqlDbBackend::new());
-    let sqldb_store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> = Arc::new(
+    let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> = Arc::new(
         everruns_server::session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
     );
 
@@ -236,6 +236,7 @@ async fn create_agent_and_session(
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -249,6 +250,7 @@ async fn create_agent_and_session(
     .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             source: everruns_platform::SessionSource::Api,
@@ -434,7 +436,7 @@ async fn persisted_legacy_unauthenticated_contribution_remains_active() {
     db.create_declarative_capability(
         everruns_core::DEFAULT_ORG_ID,
         CreateDeclarativeCapabilityRow {
-            public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new().to_string(),
+            public_id: everruns_contracts::typed_id::DeclarativeCapabilityId::new().to_string(),
             name: capability_name.clone(),
             display_name: None,
             description: "Legacy MCP contribution".to_string(),

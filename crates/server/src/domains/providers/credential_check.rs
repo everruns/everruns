@@ -8,16 +8,16 @@
 //
 // The outcome is classified from the driver's `LlmErrorKind`, which is assigned
 // at the provider boundary where the HTTP status and body are still available
-// (see `everruns_provider::error`). Only `Rejected` is a hard stop for callers:
+// (see `everruns_contracts::error`). Only `Rejected` is a hard stop for callers:
 // `Unsupported` (driver exposes no discovery endpoint) and `Unreachable`
 // (network failure, provider outage) say nothing about the key and must not
 // block setup.
 
 use crate::kernel_imports::{
-    everruns_provider::driver_registry::DriverRegistry,
-    everruns_provider::driver_registry::ProviderConfig, everruns_provider::provider::DriverId,
+    contracts::driver_registry::DriverRegistry, contracts::driver_registry::ProviderConfig,
+    contracts::provider::DriverId,
 };
-use everruns_provider::error::{AgentLoopError, LlmErrorKind};
+use everruns_contracts::error::{AgentLoopError, LlmErrorKind};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -66,7 +66,7 @@ pub async fn check_credentials(
     }
 
     let mut config = ProviderConfig::for_provider(
-        everruns_provider::runtime_provider::ProviderKey::new("credential-check"),
+        everruns_contracts::runtime_provider::ProviderKey::new("credential-check"),
         provider_type,
     );
     config.api_key = Some(api_key);
@@ -81,7 +81,7 @@ pub async fn check_credentials(
     };
 
     match driver
-        .list_models(&everruns_provider::runtime_provider::ProviderEndpoint::default())
+        .list_models(&everruns_contracts::runtime_provider::ProviderEndpoint::default())
         .await
     {
         Ok(Some(models)) => CredentialCheckResult::Valid {

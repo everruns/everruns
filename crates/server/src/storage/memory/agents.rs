@@ -3,9 +3,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
-use crate::kernel_imports::{
-    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::VirtualUserId,
-};
+use crate::kernel_imports::{contracts::typed_id::AgentId, contracts::typed_id::VirtualUserId};
 use anyhow::Result;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -44,6 +42,7 @@ impl InMemoryDatabase {
             network_access: input.network_access,
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
+            environments: input.environments,
             status: "active".to_string(),
             exposures_suspended: false,
             is_built_in: input.is_built_in,
@@ -136,6 +135,7 @@ impl InMemoryDatabase {
             network_access: input.network_access,
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
+            environments: input.environments,
             status: "active".to_string(),
             exposures_suspended: false,
             is_built_in: input.is_built_in,
@@ -353,6 +353,9 @@ impl InMemoryDatabase {
             if let Some(parallel_tool_calls) = input.parallel_tool_calls {
                 agent.parallel_tool_calls = parallel_tool_calls;
             }
+            if let Some(environments) = input.environments {
+                agent.environments = environments;
+            }
             agent.updated_at = Self::now();
             return Ok(Some(agent.clone()));
         }
@@ -449,6 +452,7 @@ impl InMemoryDatabase {
             agent.mcp_servers = input.mcp_servers;
             agent.max_iterations = input.max_iterations;
             agent.parallel_tool_calls = input.parallel_tool_calls;
+            agent.environments = input.environments;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();
             Ok((agent.clone(), false))
@@ -481,6 +485,7 @@ impl InMemoryDatabase {
                 network_access: input.network_access,
                 max_iterations: input.max_iterations,
                 parallel_tool_calls: input.parallel_tool_calls,
+                environments: input.environments,
                 status: "active".to_string(),
                 exposures_suspended: false,
                 is_built_in: input.is_built_in,
@@ -530,6 +535,7 @@ impl InMemoryDatabase {
             agent.network_access = input.network_access;
             agent.max_iterations = input.max_iterations;
             agent.parallel_tool_calls = input.parallel_tool_calls;
+            agent.environments = input.environments;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();
             Ok((agent.clone(), false))
@@ -562,6 +568,7 @@ impl InMemoryDatabase {
                 network_access: input.network_access,
                 max_iterations: input.max_iterations,
                 parallel_tool_calls: input.parallel_tool_calls,
+                environments: input.environments,
                 status: "active".to_string(),
                 exposures_suspended: false,
                 is_built_in: input.is_built_in,
@@ -640,7 +647,7 @@ impl InMemoryDatabase {
     pub async fn get_agent_version(
         &self,
         org_id: i64,
-        id: everruns_provider::typed_id::AgentVersionId,
+        id: everruns_contracts::typed_id::AgentVersionId,
     ) -> Result<Option<AgentVersionRow>> {
         Ok(self
             .agent_versions

@@ -5,7 +5,7 @@
 
 use crate::kernel_imports::{
     Caller, EgressService, PermissionResolver, Policy, PolicyError,
-    everruns_provider::driver_registry::DriverRegistry,
+    contracts::driver_registry::DriverRegistry,
 };
 use crate::storage::StorageBackend;
 use axum::Json;
@@ -344,7 +344,6 @@ impl CommandMeta {
             "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
-            "environments" => Some("environments"),
             "notifications" => Some("notifications"),
             "payments" => Some("machine_payments"),
             _ => match self.name {
@@ -398,7 +397,7 @@ pub struct Ctx {
     pub driver_registry: Arc<DriverRegistry>,
     /// Connection providers available to the deployment. Optional because most
     /// command contexts do not inspect connector discovery.
-    pub connector_registry: Option<everruns_platform::connector::ConnectorRegistry>,
+    pub connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
     pub feature_flags: FeatureFlags,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -428,7 +427,7 @@ pub struct Ctx {
     pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
-    pub sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>>,
+    pub sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     pub fallback_harness_name: Option<String>,
@@ -554,7 +553,7 @@ impl Ctx {
 
     pub fn with_connector_registry(
         mut self,
-        connector_registry: everruns_platform::connector::ConnectorRegistry,
+        connector_registry: everruns_contracts::connector::ConnectorRegistry,
     ) -> Self {
         self.connector_registry = Some(connector_registry);
         self
@@ -667,7 +666,7 @@ impl Ctx {
 
     pub fn with_sqldb_store(
         mut self,
-        store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
+        store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
     ) -> Self {
         self.sqldb_store = Some(store);
         self

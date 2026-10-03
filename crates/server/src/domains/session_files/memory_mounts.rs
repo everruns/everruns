@@ -35,7 +35,7 @@ use uuid::Uuid;
 
 use crate::domains::memory::files::{MemoryFileService, MemoryFsError, NewFileInput};
 use crate::storage::StorageBackend;
-use crate::storage::models::{MemoryFileInfoRow, MemoryRow};
+use crate::storage::models::{CreateMemoryRow, MemoryFileInfoRow, MemoryRow};
 
 /// Mount point of the memory owned by the session's host agent.
 pub const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
@@ -137,7 +137,7 @@ impl MemoryMountRouter {
     async fn resolve(&self, workspace_id: Uuid) -> Result<Vec<MemoryMount>> {
         let Some(session) = self
             .db
-            .get_session_unscoped(everruns_provider::typed_id::SessionId::from_uuid(
+            .get_session_unscoped(everruns_contracts::typed_id::SessionId::from_uuid(
                 workspace_id,
             ))
             .await?
@@ -159,7 +159,9 @@ impl MemoryMountRouter {
             )
             .await?;
         }
-        if let Some(user_id) = session.resolved_owner_user_id {
+        if !self.db.is_playground_session(session.id).await?
+            && let Some(user_id) = session.resolved_owner_user_id
+        {
             self.push_scoped(
                 &mut mounts,
                 session.org_id,
@@ -205,7 +207,7 @@ impl MemoryMountRouter {
         mounts: &mut Vec<MemoryMount>,
         org_id: i64,
         scope: &str,
-        owner_agent_id: Option<everruns_provider::typed_id::AgentId>,
+        owner_agent_id: Option<everruns_contracts::typed_id::AgentId>,
         owner_user_id: Option<Uuid>,
         mount_path: &str,
     ) -> Result<()> {
@@ -227,15 +229,8 @@ impl MemoryMountRouter {
         name: &str,
         mount_path: &str,
     ) -> Result<()> {
-        let memory = self
-            .db
-            .list_memories(org_id, None, false)
-            .await?
-            .into_iter()
-            .find(|memory| memory.name == name && memory.status == "active");
-        if let Some(memory) = memory {
-            mounts.push(mount_from_row(&memory, mount_path));
-        }
+        let memory = ensure_shared_memory(&self.db, org_id, name).await?;
+        mounts.push(mount_from_row(&memory, mount_path));
         Ok(())
     }
 
@@ -420,19 +415,60 @@ impl MemoryMountRouter {
 // configuration, and sharing is not reversible once written.
 pub fn shared_memory_name_for_harness(harness_name: &str) -> Option<String> {
     match harness_name {
-        crate::harnesses::platform_chat_v2::PLATFORM_CHAT_V2_HARNESS_NAME => {
+        crate::harnesses::platform_chat::PLATFORM_CHAT_HARNESS_NAME => {
             Some(PLATFORM_CHAT_SHARED_MEMORY_NAME.to_string())
         }
         _ => None,
     }
 }
 
-/// Reserved `memories.name` of the Platform Chat v2 shared memory.
+/// Reserved `memories.name` of the Platform Chat shared memory.
 ///
 /// `UNIQUE(org_id, name)` on live rows is what makes a reserved name a
 /// sufficient key: no scope, no migration, and no id a built-in harness
 /// definition would have to know.
 pub const PLATFORM_CHAT_SHARED_MEMORY_NAME: &str = "platform-chat-shared";
+
+/// Creation and resumed-session routing use the same reserved name. A second
+/// chat may win creation; adopt its row instead of falling back to private files.
+pub(crate) async fn ensure_shared_memory(
+    db: &StorageBackend,
+    org_id: i64,
+    name: &str,
+) -> Result<MemoryRow> {
+    let find = |rows: Vec<MemoryRow>| {
+        rows.into_iter()
+            .find(|row| row.name == name && row.status == "active")
+    };
+    if let Some(memory) = find(db.list_memories(org_id, None, false).await?) {
+        return Ok(memory);
+    }
+    let created = db
+        .create_memory(
+            org_id,
+            CreateMemoryRow {
+                public_id: everruns_contracts::typed_id::MemoryId::new().to_string(),
+                name: name.to_string(),
+                description: Some(
+                    "Shared memory for every session of this chat surface.".to_string(),
+                ),
+                scope: "org".to_string(),
+                owner_agent_id: None,
+                owner_user_id: None,
+                source_type: "manual".to_string(),
+                source_config: serde_json::json!({}),
+                is_readonly: false,
+                sync_status: "idle".to_string(),
+                owner_principal_id: None,
+                resolved_owner_user_id: None,
+            },
+        )
+        .await;
+    match created {
+        Ok(memory) => Ok(memory),
+        Err(error) => find(db.list_memories(org_id, None, false).await?).ok_or(error),
+    }
+}
 
 fn mount_from_row(memory: &MemoryRow, mount_path: &str) -> MemoryMount {
     MemoryMount {
@@ -505,10 +541,9 @@ mod tests {
     #[test]
     fn only_declared_harnesses_get_shared_memory() {
         assert_eq!(
-            shared_memory_name_for_harness("platform-chat-v2").as_deref(),
+            shared_memory_name_for_harness("platform-chat").as_deref(),
             Some(PLATFORM_CHAT_SHARED_MEMORY_NAME)
         );
-        assert!(shared_memory_name_for_harness("platform-chat").is_none());
         assert!(shared_memory_name_for_harness("generic").is_none());
     }
 }

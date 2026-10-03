@@ -12,25 +12,25 @@ use crate::kernel_imports::{
     EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, McpServer,
     McpServerStatus, McpServerTransportType, SessionContextReport, SessionFile, Skill,
     SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillValidationResult,
+    contracts::model::Model,
+    contracts::model::ModelWithProvider,
+    contracts::provider::DriverId,
+    contracts::provider::ProviderStatus,
+    contracts::tool_types::ToolCall,
     events::{
-        ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
-        LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
-        OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
-        SessionModelChangedData, SessionStartedData, TokenUsage, ToolCallSummary,
-        ToolCompletedData, ToolStartedData, TurnCompletedData, TurnFailedData, TurnSealedData,
-        TurnStartedData,
+        ActCompletedData, ActStartedData, EnvironmentLifecycleData, InputMessageData,
+        LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata,
+        OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData,
+        ReasonCompletedData, ReasonStartedData, SessionModelChangedData, SessionStartedData,
+        TokenUsage, ToolCallSummary, ToolCompletedData, ToolStartedData, TurnCompletedData,
+        TurnFailedData, TurnSealedData, TurnStartedData,
     },
-    everruns_provider::model::Model,
-    everruns_provider::model::ModelWithProvider,
-    everruns_provider::provider::DriverId,
-    everruns_provider::provider::ProviderStatus,
-    everruns_provider::tool_types::ToolCall,
+};
+use everruns_contracts::provider::{
+    Provider, ProviderRequestHeader, ProviderRequestOptions, ProviderTraceConfig,
 };
 use everruns_platform::{Agent, AgentStatus};
 use everruns_platform::{Session, SessionStatus};
-use everruns_provider::provider::{
-    Provider, ProviderRequestHeader, ProviderRequestOptions, ProviderTraceConfig,
-};
 use serde_json::json;
 use utoipa::openapi::extensions::Extensions;
 use utoipa::openapi::{Deprecated, RefOr, Schema};
@@ -513,7 +513,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         schemas(
             Agent, AgentStatus, everruns_platform::AgentVersion, everruns_platform::AgentVersionChangeKind,
             Session, SessionStatus, Event, EventContext, EventData,
-            everruns_provider::typed_id::EventId,
+            everruns_contracts::typed_id::EventId,
             // Event data types
             InputMessageData, OutputMessageStartedData, OutputMessageDeltaData, OutputMessageCompletedData,
             ModelMetadata, TokenUsage,
@@ -523,7 +523,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             ActStartedData, ActCompletedData, ToolCallSummary,
             ToolStartedData, ToolCompletedData,
             LlmGenerationData, LlmGenerationOutput, LlmGenerationMetadata,
-            SessionStartedData, SessionModelChangedData,
+            SessionStartedData, SessionModelChangedData, EnvironmentLifecycleData,
             // Agent/Session types
             domains::agents::types::CreateAgentRequest, domains::agents::types::UpdateAgentRequest,
             domains::agents::types::CreateAgentVersionRequest,
@@ -531,6 +531,21 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             domains::agents::types::RollbackAgentVersionRequest,
             domains::agents::types::ForkAgentVersionRequest,
             domains::agents::types::AgentVersionDiffResponse,
+            everruns_platform::EnvironmentSet,
+            everruns_platform::EnvironmentProfile,
+            everruns_platform::ResolvedEnvironmentProfile,
+            everruns_platform::EnvironmentTargetProfile,
+            everruns_platform::EnvironmentTargetKind,
+            everruns_platform::EnvironmentContainmentProfile,
+            everruns_platform::EnvironmentContainmentLevel,
+            everruns_platform::EnvironmentFilesystemPolicy,
+            everruns_platform::EnvironmentNetworkPolicy,
+            everruns_platform::EnvironmentEscalation,
+            everruns_platform::EnvironmentDurability,
+            everruns_platform::EnvironmentLifecycle,
+            everruns_platform::EnvironmentIdleAction,
+            everruns_platform::EnvironmentBootstrap,
+            everruns_platform::EnvironmentSelection,
             domains::agents::credentials::AgentCredentialBinding,
             domains::agents::credentials::CreateAgentCredentialBinding,
             api::agent_credentials::SetAgentCredentialValueRequest,
@@ -580,9 +595,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::providers::UpdateProviderRequest,
             api::providers::ProvidersConfigResponse,
             api::providers::DriverCredentialInfo,
-            everruns_provider::credential_schema::CredentialFormSchema,
-            everruns_provider::credential_schema::FormField,
-            everruns_provider::credential_schema::FieldType,
+            everruns_contracts::credential_schema::CredentialFormSchema,
+            everruns_contracts::credential_schema::FormField,
+            everruns_contracts::credential_schema::FieldType,
             api::models::CreateModelRequest,
             api::models::UpdateModelRequest,
             CapabilityInfo,
@@ -633,8 +648,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             domains::session_git::GitDiffStats, domains::session_git::GitRefInfo,
             // Tool types
             ToolCall,
-            everruns_provider::tool_types::ToolDefinition, everruns_provider::tool_types::BuiltinTool, everruns_provider::tool_types::ClientSideTool,
-            everruns_provider::tool_types::ToolPolicy, everruns_provider::tool_types::ToolHints,
+            everruns_contracts::tool_types::ToolDefinition, everruns_contracts::tool_types::BuiltinTool, everruns_contracts::tool_types::ClientSideTool,
+            everruns_contracts::tool_types::ToolPolicy, everruns_contracts::tool_types::ToolHints,
             everruns_core::events::ToolCallRequestedData,
             api::tool_results::SubmitToolResultsRequest,
             api::tool_results::ClientToolResult,

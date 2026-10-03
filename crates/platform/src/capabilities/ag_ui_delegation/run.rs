@@ -8,14 +8,14 @@ use async_trait::async_trait;
 use everruns_ag_ui::client::AgUiClient;
 use everruns_ag_ui::consumer::{RunOutcome, RunResult, merge_usage};
 use everruns_ag_ui::{Interrupt, Message, ResumeBuilder, ResumeEntry, RunAgentInput, TokenUsage};
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::url_validation::validate_url_dns_pinned;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::session_task::{
     SessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_EXTERNAL_AG_UI, TaskError,
     TaskExecutor, TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage, task_message_text,
 };
 use everruns_core::tool_context::ToolContext;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::url_validation::validate_url_dns_pinned;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

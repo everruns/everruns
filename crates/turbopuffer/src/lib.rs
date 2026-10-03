@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Turbopuffer vector-store backend for Knowledge Indexes.
 //!
-//! Implements [`everruns_platform::vector_store::VectorStore`] against Turbopuffer's
+//! Implements [`everruns_contracts::vector_store::VectorStore`] against Turbopuffer's
 //! v2 HTTP API (<https://turbopuffer.com/docs>). This is the reference
 //! production backend; the in-memory store stays the default and Turbopuffer is
 //! opt-in via `TURBOPUFFER_API_KEY` (see `crates/server/src/platform.rs`).
@@ -15,7 +15,7 @@
 //!
 //! Multitenancy and multi-index isolation are handled by the caller: each
 //! Knowledge Index gets one org-prefixed namespace (see
-//! [`everruns_platform::vector_store::index_namespace`]), and this backend simply
+//! [`everruns_contracts::vector_store::index_namespace`]), and this backend simply
 //! maps each namespace string onto a Turbopuffer namespace path segment.
 //!
 //! ## Error handling
@@ -26,7 +26,7 @@
 
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
-use everruns_platform::vector_store::{VectorMatch, VectorQuery, VectorRecord, VectorStore};
+use everruns_contracts::vector_store::{VectorMatch, VectorQuery, VectorRecord, VectorStore};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -53,7 +53,7 @@ impl TurbopufferVectorStore {
         // client installs it as well, but that now happens on the first
         // request, and products expect the process-wide choice to be settled
         // while providers are being constructed.
-        everruns_provider::install_default_crypto_provider();
+        everruns_contracts::install_default_crypto_provider();
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             api_key: api_key.into(),
@@ -68,7 +68,7 @@ impl TurbopufferVectorStore {
     /// EVE-635: the shared client carries connect + overall request timeouts so
     /// a hung vector-store read cannot block indefinitely.
     fn http(&self) -> reqwest::Client {
-        everruns_provider::driver_helpers::shared_request_http_client()
+        everruns_contracts::driver_helpers::shared_request_http_client()
     }
 
     fn namespace_url(&self, namespace: &str) -> String {

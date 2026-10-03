@@ -8,7 +8,7 @@ use super::*;
 impl ChatDriver for AnthropicChatDriver {
     async fn chat_completion_stream(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -18,8 +18,8 @@ impl ChatDriver for AnthropicChatDriver {
         let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
         let (wire_model, wants_million_context) = split_million_context(&config.model);
         crate::anthropic::prefill::reject_trailing_assistant(wire_model, &messages)?;
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Anthropic,
+        let profile = everruns_contracts::get_model_profile(
+            &everruns_contracts::DriverId::Anthropic,
             wire_model,
         );
         let requested_server_compaction = config
@@ -105,7 +105,7 @@ impl ChatDriver for AnthropicChatDriver {
             // its prompt-cache breakpoint when it carried one.
             let position = entries.iter().position(|entry| {
                 matches!(entry, AnthropicToolEntry::Function(tool)
-                    if tool.name == everruns_provider::native_computer::COMPUTER_TOOL_NAME)
+                    if tool.name == everruns_contracts::native_computer::COMPUTER_TOOL_NAME)
             });
             if let Some(position) = position {
                 let cached = matches!(&entries[position],
@@ -768,7 +768,7 @@ impl ChatDriver for AnthropicChatDriver {
 
     fn provider_managed_reduction_option(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         model: &str,
         budget_tokens: usize,
     ) -> Option<(String, Value)> {
@@ -779,8 +779,8 @@ impl ChatDriver for AnthropicChatDriver {
             return None;
         }
         let (wire_model, _) = split_million_context(model);
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Anthropic,
+        let profile = everruns_contracts::get_model_profile(
+            &everruns_contracts::DriverId::Anthropic,
             wire_model,
         )?;
         if !profile.supports_server_compaction {
@@ -803,7 +803,7 @@ impl ChatDriver for AnthropicChatDriver {
 
     fn provider_managed_reduction_fallback_reason(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
         config: &LlmCallConfig,
     ) -> Option<&'static str> {
         if endpoint.base_url() != Some(DEFAULT_BASE_URL)
@@ -812,8 +812,8 @@ impl ChatDriver for AnthropicChatDriver {
             return None;
         }
         let (wire_model, _) = split_million_context(&config.model);
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Anthropic,
+        let profile = everruns_contracts::get_model_profile(
+            &everruns_contracts::DriverId::Anthropic,
             wire_model,
         )?;
         if !profile.supports_server_compaction {
@@ -854,7 +854,7 @@ impl ChatDriver for AnthropicChatDriver {
 
     async fn list_models(
         &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
+        endpoint: &everruns_contracts::ProviderEndpoint,
     ) -> Result<Option<Vec<DiscoveredModel>>> {
         // Skip discovery for custom URLs (proxies, self-hosted)
         if endpoint.base_url() != Some(DEFAULT_BASE_URL) {

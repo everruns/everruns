@@ -1,14 +1,18 @@
 // Capabilities -> environment view.
 //
-// Environments are not stored configuration yet, so the view is derived from
-// the capability that supplies a session's compute. The mapping lives here, in
-// one place, so the API, the UI, and later the profile validator cannot drift
-// into three different opinions about what Bashkit can do.
+// New sessions pin a resolved Environment profile. Older sessions have no
+// snapshot, so their compatibility view is derived from the capability that
+// supplies compute. The mapping lives here so the stored and legacy views do
+// not drift into different opinions about what Bashkit can do.
 //
 // Every entry is deliberately pessimistic: a capability nobody has taught this
 // table about contributes no compute rather than a plausible-looking guess.
 
-use everruns_capability::CapabilityRef;
+use everruns_contracts::capability::CapabilityRef;
+use everruns_contracts::typed_id::EnvironmentId;
+use everruns_platform::{
+    EnvironmentContainmentLevel, EnvironmentDurability, EnvironmentNetworkPolicy,
+};
 
 use crate::api::environments::{
     EnvironmentCapabilities, EnvironmentContainment, EnvironmentTarget,
@@ -101,6 +105,8 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         // writes files needs none, and saying "isolated" here would invent a
         // boundary around something that never runs.
         return SessionEnvironmentResponse {
+            id: None,
+            name: None,
             target: None,
             containment: EnvironmentContainment {
                 level: "none".to_string(),
@@ -110,6 +116,12 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
             capabilities: EnvironmentCapabilities::default(),
             resolved_from: "capabilities".to_string(),
             source_capability: None,
+            profile: None,
+            desired_state: None,
+            observed_state: None,
+            generation: None,
+            current_checkpoint_id: None,
+            last_activity_at: None,
         };
     };
 
@@ -167,6 +179,7 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         target: Some(EnvironmentTarget {
             kind: kind.to_string(),
             provider,
+            connection_id: None,
         }),
         containment: EnvironmentContainment {
             level: "isolated".to_string(),
@@ -176,7 +189,61 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         capabilities: caps,
         resolved_from: "capabilities".to_string(),
         source_capability: Some(capability.id().to_string()),
+        id: None,
+        name: None,
+        profile: None,
+        desired_state: None,
+        observed_state: None,
+        generation: None,
+        current_checkpoint_id: None,
+        last_activity_at: None,
     }
+}
+
+/// Render a stored logical Environment. Capability-derived feature flags stay
+/// grounded in the actual adapter, while policy and lifecycle come from the
+/// immutable profile snapshot rather than being guessed from tool names.
+pub fn environment_from_record(
+    record: &crate::storage::EnvironmentRecord,
+    capabilities: &[CapabilityRef],
+) -> SessionEnvironmentResponse {
+    let mut response = environment_from_capabilities(capabilities);
+    let profile = &record.profile;
+    response.id = Some(EnvironmentId::from_uuid(record.id).to_string());
+    response.name = Some(record.profile_name.clone());
+    response.target = Some(EnvironmentTarget {
+        kind: profile.target.kind.as_str().to_string(),
+        provider: profile.target.provider.clone(),
+        connection_id: profile.target.connection_id.clone(),
+    });
+    response.containment = EnvironmentContainment {
+        level: match profile.containment.level {
+            EnvironmentContainmentLevel::None => "none",
+            EnvironmentContainmentLevel::Native => "native",
+            EnvironmentContainmentLevel::Isolated => "isolated",
+        }
+        .to_string(),
+        network: match profile.containment.network {
+            EnvironmentNetworkPolicy::Deny => "deny",
+            EnvironmentNetworkPolicy::Allowlist { .. } => "allowlist",
+            EnvironmentNetworkPolicy::Allow => "allow",
+        }
+        .to_string(),
+    };
+    response.durability = match profile.durability {
+        EnvironmentDurability::Checkpointed => "checkpointed",
+        EnvironmentDurability::ProviderSnapshot => "provider_snapshot",
+        EnvironmentDurability::None => "none",
+    }
+    .to_string();
+    response.resolved_from = "profile".to_string();
+    response.profile = Some(profile.clone());
+    response.desired_state = Some(record.desired_state.clone());
+    response.observed_state = Some(record.observed_state.clone());
+    response.generation = Some(record.generation);
+    response.current_checkpoint_id = record.current_checkpoint_id.map(|id| id.to_string());
+    response.last_activity_at = record.last_activity_at;
+    response
 }
 
 /// The targets this deployment can offer.

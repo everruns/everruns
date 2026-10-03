@@ -1,14 +1,16 @@
 ---
 type: Specification
-title: "Session Sandbox"
-description: "Managed session-owned sandbox capability and lifecycle."
+title: "Managed Environment Runtime"
+description: "Provider-neutral managed Environment capability, workspace durability, and recovery lifecycle."
 tags:
   - everruns
   - runtime-resources
 ---
-# Session Sandbox
+# Managed Environment Runtime
 
-Managed, session-owned sandbox capability and lifecycle orchestration.
+`session_sandbox` is the internal runtime capability for a managed, session-owned
+Environment. Environment profiles are the product configuration surface; the
+capability id and legacy `sandbox_*` types remain internal compatibility names.
 
 ## Goal
 
@@ -22,14 +24,18 @@ server-managed lifecycle:
 - optional one-time init commands
 - provider pluggability (Daytona first)
 
-This feature is experimental and gated by the backend-only
-`FEATURE_SESSION_SANDBOX` flag.
+Managed Environment profiles are available without a separate feature flag.
+PostgreSQL deployments must configure `SECRETS_ENCRYPTION_KEY` so lifecycle
+state and provider connections can be resolved; the canonical local startup
+supplies its stable development key. Daytona execution also requires an
+organization or user Daytona connection.
 
 ## Capability
 
 Capability id: `session_sandbox`
 
-Configured through normal capability config on harness, agent, or session:
+New sessions receive this configuration from their resolved Agent Environment
+profile. Direct capability configuration remains supported for existing data:
 
 ```json
 {
@@ -71,33 +77,42 @@ the configured shared volume by name.
 
 ## Tool surface
 
-Provider-neutral tools exposed by the capability:
+Stable model-facing tools exposed by every Environment target:
 
-- `sandbox_exec`
-- `sandbox_read_file`
-- `sandbox_write_file`
-- `sandbox_status`
-- `sandbox_manage`
+- `bash`
+- `read_file`
+- `write_file`
+- `edit_file`
+- `glob`
+- `grep`
 
-`session_sandbox` intentionally does not expose `sandbox_create`/`sandbox_list`.
-The session owns exactly one sandbox, and provider selection comes from config.
+The session owns exactly one logical Environment, and provider selection comes
+from the pinned profile. Lifecycle is automatic and available through the
+control-plane Environment API rather than model-facing create/list/status tools.
 
 ## Architecture
 
 ### Platform
 
-`crates/platform/src/session_sandbox.rs` defines:
+`crates/platform/src/session_sandbox.rs` defines the compatibility and provider
+surface:
 
 - config, state, and response types
 - `SessionSandboxProvider` trait
 - provider plugin registration via `inventory`
-- state persistence helpers using session secret storage
+- state persistence helpers backed by first-class logical and physical rows on
+  hosted PostgreSQL deployments
 - generic create/resume/pause/delete/init/checkpoint helpers
 
-`crates/platform/src/capabilities/session_sandbox.rs` exposes the capability and
-generic tools. Tool execution resolves the configured provider and delegates
-through the trait. After a completed shell or file mutation, the provider
-checkpoint is persisted before the tool result is returned to the runtime.
+`crates/platform/src/capabilities/session_sandbox.rs` exposes the capability;
+`environment_tools.rs` implements the stable tool vocabulary. Tool execution
+resolves the configured provider and delegates through the trait. After a
+completed shell or file mutation, the provider checkpoint is persisted before
+the tool result is returned to the runtime.
+
+Initial session files are copied into a newly created managed workspace exactly
+once before the first tool call. The managed target removes the inherited VFS
+file and Bashkit shell capabilities, so every tool sees the same `/workspace`.
 
 ### Integrations
 
@@ -135,6 +150,11 @@ volume id and subpath, verifies and restores the persisted revision into the
 local worktree, updates the disposable provider id, and continues the same
 session. Processes, memory, and interrupted commands are not restored.
 
+The runtime emits `environment.instance_lost` before replacement and
+`environment.recovered` after the new generation is persisted. Their payloads
+contain only non-secret logical/provider/incarnation identifiers and explicitly
+report `process_state_lost: true`.
+
 Explicit logical deletion clears the isolated recovery subpath before deleting
 the physical sandbox. If the physical sandbox was already lost, Everruns mounts
 the subpath on a temporary replacement, clears it, and then deletes that
@@ -152,12 +172,19 @@ authoritative pointer to a revision no committed turn produced. Attaching is
 fenced on the sandbox generation, so a replaced sandbox cannot have its pointer
 advanced by an in-flight upload.
 
-Recovery still reads the revision from the encrypted `session_sandbox` secret,
-so the checkpoint records are observational for now and state persistence is
-still not in the same database transaction as the durable tool-result/event
-commit. Closing that window is the remaining EVE-870 work: reconcile the head
-checkpoint against `durable_tool_results` at resume, and move recovery onto
-`sandboxes.current_checkpoint_id`.
+Recovery reconciles `sandboxes.current_checkpoint_id` against
+`durable_tool_results` before resume. A checkpoint produced by a tool call that
+never settled is detached and the provider recovery pointer is rewound to the
+previous committed revision. This closes the crash window without reopening the
+frozen core transaction boundary.
+
+Hosted PostgreSQL deployments persist the current physical incarnation in
+`sandbox_instances` and point to it from the durable logical `sandboxes` row.
+Replacing a missing provider resource increments the logical generation and
+retires the former incarnation. Every subsequent state write and delete carries
+that generation; a late response from the retired provider resource is rejected
+instead of becoming current again. Existing encrypted `session_sandbox` records
+are adopted lazily and removed after the first successful database write.
 
 ### Server lifecycle
 
@@ -178,9 +205,15 @@ the feature graduates.
 
 ## State and cleanup
 
-Managed sandbox state is stored in encrypted session secret storage under the
-secret name `session_sandbox`. The logical recovery binding lives there; the
-Daytona sandbox id is an incarnation that may change after recovery.
+Hosted managed-environment state is queryable product state in `sandboxes`,
+`sandbox_instances`, and `sandbox_checkpoints`. These internal table names
+predate the public Environment vocabulary introduced by the execution
+environment surface; they do not create a second product resource. The Daytona
+sandbox id belongs to a disposable incarnation and may change after recovery.
+
+Framework, remote, and in-memory hosts that do not install the hosted state
+store continue to use the encrypted `session_sandbox` secret as a compatibility
+fallback. That fallback is not the hosted control-plane authority.
 
 Provider-owned remote resources should also register leased resources so the
 session resource registry and cleanup infrastructure can see them. Daytona does

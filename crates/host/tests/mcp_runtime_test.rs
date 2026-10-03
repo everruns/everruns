@@ -8,6 +8,10 @@
 //! without resolving (and the fake egress never actually connects).
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::tool_types::{ToolCall, ToolResult};
 use everruns_core::command::{CommandDescriptor, CommandSource};
 use everruns_core::{
     Capability, CapabilityMcpServer, CapabilityMcpServers, CapabilityRegistry, CapabilityStatus,
@@ -19,10 +23,6 @@ use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::provider::DriverId;
-use everruns_provider::tool_types::{ToolCall, ToolResult};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -152,7 +152,7 @@ impl everruns_core::tool_hooks::PreToolUseHook for CountingPreHook {
     async fn before_exec(
         &self,
         tool_call: ToolCall,
-        _tool_def: &everruns_provider::tool_types::ToolDefinition,
+        _tool_def: &everruns_contracts::tool_types::ToolDefinition,
         _context: &ToolContext,
     ) -> everruns_core::tool_hooks::PreToolUseDecision {
         self.0.pre.fetch_add(1, Ordering::SeqCst);
@@ -167,7 +167,7 @@ impl everruns_core::tool_hooks::PostToolExecHook for CountingPostHook {
     async fn after_exec(
         &self,
         _tool_call: &ToolCall,
-        _tool_def: &everruns_provider::tool_types::ToolDefinition,
+        _tool_def: &everruns_contracts::tool_types::ToolDefinition,
         _result: &mut ToolResult,
         _context: &ToolContext,
     ) {
@@ -246,9 +246,9 @@ impl Capability for LiveCapability {
 async fn runtime_discovers_and_executes_scoped_mcp_tool() {
     let traffic = Arc::new(Mutex::new(McpTraffic::default()));
     let seed = 808u128;
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(seed);
-    let agent_id = everruns_provider::typed_id::AgentId::from_seed(seed);
-    let session_id = everruns_provider::typed_id::SessionId::from_seed(seed);
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(seed);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(seed);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(seed);
 
     let mcp_tool_call = ToolCall {
         id: "call_1".to_string(),
@@ -393,7 +393,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let invalid = runtime
         .activate_capability(
             session_id,
-            everruns_capability::CapabilityRef::new("live_test"),
+            everruns_contracts::CapabilityRef::new("live_test"),
         )
         .await
         .expect_err("invalid config must fail before mutation");
@@ -402,10 +402,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let delta = runtime
         .activate_capability(
             session_id,
-            everruns_capability::CapabilityRef::with_config(
-                "live_test",
-                json!({ "enabled": true }),
-            ),
+            everruns_contracts::CapabilityRef::with_config("live_test", json!({ "enabled": true })),
         )
         .await
         .expect("activation succeeds");
@@ -413,10 +410,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let duplicate = runtime
         .activate_capability(
             session_id,
-            everruns_capability::CapabilityRef::with_config(
-                "live_test",
-                json!({ "enabled": true }),
-            ),
+            everruns_contracts::CapabilityRef::with_config("live_test", json!({ "enabled": true })),
         )
         .await
         .expect("activation is idempotent");
@@ -572,10 +566,10 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
         }))
         .build();
 
-    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(917);
-    let agent_id = everruns_provider::typed_id::AgentId::from_seed(917);
-    let active_session_id = everruns_provider::typed_id::SessionId::from_seed(917);
-    let bystander_session_id = everruns_provider::typed_id::SessionId::from_seed(918);
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(917);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(917);
+    let active_session_id = everruns_contracts::typed_id::SessionId::from_seed(917);
+    let bystander_session_id = everruns_contracts::typed_id::SessionId::from_seed(918);
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
@@ -626,10 +620,7 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
     let unknown = runtime
         .activate_capability(
             active_session_id,
-            everruns_capability::CapabilityRef::with_config(
-                "live_test",
-                json!({ "enabled": true }),
-            ),
+            everruns_contracts::CapabilityRef::with_config("live_test", json!({ "enabled": true })),
         )
         .await
         .expect_err("an unregistered capability cannot be activated");
@@ -664,7 +655,7 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
     let invalid = runtime
         .activate_capability(
             active_session_id,
-            everruns_capability::CapabilityRef::new("live_test"),
+            everruns_contracts::CapabilityRef::new("live_test"),
         )
         .await
         .expect_err("invalid config must fail before mutation");
@@ -673,10 +664,7 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
     let delta = runtime
         .activate_capability(
             active_session_id,
-            everruns_capability::CapabilityRef::with_config(
-                "live_test",
-                json!({ "enabled": true }),
-            ),
+            everruns_contracts::CapabilityRef::with_config("live_test", json!({ "enabled": true })),
         )
         .await
         .expect("activation succeeds for a late-registered capability");
@@ -757,10 +745,7 @@ async fn capability_registered_after_startup_behaves_like_one_composed_at_startu
     let back_on = runtime
         .activate_capability(
             active_session_id,
-            everruns_capability::CapabilityRef::with_config(
-                "live_test",
-                json!({ "enabled": true }),
-            ),
+            everruns_contracts::CapabilityRef::with_config("live_test", json!({ "enabled": true })),
         )
         .await
         .expect("re-activation succeeds");
@@ -827,10 +812,7 @@ async fn live_registration_rejects_duplicate_ids_and_alias_collisions() {
     runtime
         .activate_capability(
             session_id,
-            everruns_capability::CapabilityRef::with_config(
-                "live_test",
-                json!({ "enabled": true }),
-            ),
+            everruns_contracts::CapabilityRef::with_config("live_test", json!({ "enabled": true })),
         )
         .await
         .expect("the originally registered capability still activates");

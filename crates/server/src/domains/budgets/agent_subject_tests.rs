@@ -10,9 +10,9 @@
 use crate::domains::budgets::BudgetService;
 use crate::storage::StorageBackend;
 use crate::storage::models::*;
+use everruns_contracts::typed_id::{AgentId, PrincipalId};
 use everruns_core::EventListener;
 use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};
-use everruns_provider::typed_id::{AgentId, PrincipalId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -29,6 +29,7 @@ async fn create_session_with_owner(
     resolved_owner_user_id: Option<Uuid>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
+        playground_user_id: None,
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id,
@@ -81,7 +82,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> AgentRow
             starters: serde_json::json!([]),
             system_prompt: String::new(),
             default_model_id: None,
-            harness_id: everruns_provider::typed_id::HarnessId::new(),
+            harness_id: everruns_contracts::typed_id::HarnessId::new(),
             tags: vec![],
             initial_files: serde_json::json!([]),
             tools: serde_json::json!([]),
@@ -89,6 +90,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> AgentRow
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            environments: None,
             is_built_in: false,
         },
     )
@@ -178,7 +180,7 @@ async fn agent_budget_keyed_by_public_id_exhausts_and_stops_the_session() {
     assert!(result.should_stop(), "an exhausted agent budget must stop");
     assert_eq!(
         result.budget_id,
-        Some(everruns_provider::typed_id::BudgetId::from_uuid(budget.id))
+        Some(everruns_contracts::typed_id::BudgetId::from_uuid(budget.id))
     );
 }
 
