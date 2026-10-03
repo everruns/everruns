@@ -1,5 +1,9 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
+#[path = "agents/preview.rs"]
+pub mod preview;
+use preview::preview_agent;
+
 use crate::auth::rate_limit::OrgRateLimiter;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
@@ -31,10 +35,10 @@ use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
 };
 use crate::domains::agents::types::{
-    AgentAnalysisResponse, AgentPreviewResponse, CheckAgentNameQuery, CheckAgentNameResponse,
-    CreateAgentRequest, CreateAgentVersionRequest, ForkAgentVersionRequest, ImportAgentQuery,
-    ListAgentsQuery, PreviewAgentRequest, RollbackAgentVersionRequest,
-    SetDefaultAgentVersionRequest, UpdateAgentRequest,
+    AgentAnalysisResponse, CheckAgentNameQuery, CheckAgentNameResponse, CreateAgentRequest,
+    CreateAgentVersionRequest, ForkAgentVersionRequest, ImportAgentQuery, ListAgentsQuery,
+    PreviewAgentRequest, RollbackAgentVersionRequest, SetDefaultAgentVersionRequest,
+    UpdateAgentRequest,
 };
 use crate::domains::common::Command;
 use crate::domains::harnesses::HARNESS_VIEW;
@@ -1602,41 +1606,6 @@ fn slugify(s: &str) -> String {
         .join("-")
 }
 
-/// POST /v1/agents/preview - Preview the final agent shape with capabilities applied
-///
-/// Returns the merged system prompt and all tools that would be available to the agent.
-/// This is useful for previewing what the agent will look like before saving.
-#[utoipa::path(
-    post,
-    path = "/v1/agents/preview",
-    request_body = PreviewAgentRequest,
-    responses(
-        (status = 200, description = "Agent preview generated", body = AgentPreviewResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "agents"
-)]
-pub async fn preview_agent(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Json(req): Json<PreviewAgentRequest>,
-) -> ApiResult<AgentPreviewResponse> {
-    let result = crate::domains::agents::PreviewAgent {
-        system_prompt: Some(req.system_prompt),
-        capabilities: req.capabilities,
-        tools: req.tools,
-        mcp_servers: req.mcp_servers,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    Ok(Json(AgentPreviewResponse {
-        system_prompt: result.system_prompt,
-        tools: result.tools,
-        findings: result.findings,
-    }))
-}
-
 /// POST /v1/agents/analyze - Run advisory checks against an agent shape
 ///
 /// Runs built-in rules plus on-demand LLM analysis (knowledge/evaluation/agent-checks.md)
@@ -1660,6 +1629,8 @@ pub async fn analyze_agent(
     Json(req): Json<PreviewAgentRequest>,
 ) -> ApiResult<AgentAnalysisResponse> {
     let result = crate::domains::agents::AnalyzeAgent {
+        harness_id: req.harness_id,
+        initial_files: req.initial_files,
         system_prompt: Some(req.system_prompt),
         capabilities: req.capabilities,
         tools: req.tools,

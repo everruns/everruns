@@ -5099,8 +5099,12 @@ export interface components {
     };
     /** @description Response showing the final agent shape after applying capabilities */
     AgentPreviewResponse: {
+      /** @description Session features from effective capabilities and their dependencies. */
+      features: string[];
       /** @description Advisory findings from built-in checks (knowledge/evaluation/agent-checks.md) */
       findings: components["schemas"]["Finding"][];
+      /** @description Effective starter files after merging the harness and agent. */
+      initial_files: components["schemas"]["InitialFile"][];
       /** @description The full system prompt with capability additions prepended */
       system_prompt: string;
       /** @description All tool definitions from capabilities */
@@ -9602,6 +9606,8 @@ export interface components {
     };
     /** @description Preview response showing merged prompt and tools */
     HarnessPreviewResponse: {
+      /** @description Session features from effective capabilities and their dependencies. */
+      features: string[];
       system_prompt: string;
       tools: Record<string, unknown>[];
     };
@@ -15007,6 +15013,9 @@ export interface components {
        *     ]
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
+      harness_id?: components["schemas"]["harnessId"] | null;
+      /** @description Draft starter files; agent paths override inherited harness files. */
+      initial_files?: components["schemas"]["InitialFile"][];
       /** @description Remote MCP servers scoped to the previewed agent. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -21638,6 +21647,24 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["AgentPreviewResponse"];
+        };
+      };
+      /** @description Harness view permission required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Harness not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
       /** @description Internal server error */

@@ -282,6 +282,12 @@ pub struct AgentVersionDiffResponse {
 /// Request to preview the final agent shape with capabilities applied
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct PreviewAgentRequest {
+    /// Harness to layer beneath this draft. Omit to preview the agent layer alone.
+    #[serde(default)]
+    pub harness_id: Option<HarnessId>,
+    /// Draft starter files; agent paths override inherited harness files.
+    #[serde(default)]
+    pub initial_files: Vec<InitialFile>,
     /// The base system prompt (before capability additions)
     #[schema(example = "You are a helpful customer support agent.")]
     pub system_prompt: String,
@@ -302,6 +308,10 @@ pub struct PreviewAgentRequest {
 /// Response showing the final agent shape after applying capabilities
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentPreviewResponse {
+    /// Session features from effective capabilities and their dependencies.
+    pub features: Vec<String>,
+    /// Effective starter files after merging the harness and agent.
+    pub initial_files: Vec<InitialFile>,
     /// The full system prompt with capability additions prepended
     pub system_prompt: String,
     /// All tool definitions from capabilities

@@ -89,6 +89,8 @@ async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
         ctx_with_role(db, OrgRole::Owner).with_utility_llm_service(Arc::new(ExhaustedUtilityLlm));
 
     let error = AnalyzeAgent {
+        harness_id: None,
+        initial_files: vec![],
         system_prompt: Some("Be helpful.".to_string()),
         capabilities: Vec::new(),
         tools: Vec::new(),

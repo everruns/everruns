@@ -578,6 +578,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                 <AgentPreview
                   systemPrompt={draft.fields.system_prompt}
                   capabilities={draft.capabilities}
+                  harnessId={draft.fields.harness_id || undefined}
+                  mcpServers={agent.mcpServers}
                   initialFiles={draft.files}
                   tools={agent.tools ?? []}
                 />
