@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NewChatForm } from "@/components/chat/new-chat-form";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
+import type { EnvironmentSet } from "@/lib/api/types";
 
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -51,6 +52,20 @@ jest.mock("@/components/ui/select", () => {
     return options;
   }
 
+  function selectLabel(node: mockReact.ReactNode): string {
+    let label = "Select";
+    mockReact.Children.forEach(node, (child: mockReact.ReactNode) => {
+      if (!mockReact.isValidElement(child)) return;
+      if ((child.type as { isSelectTrigger?: boolean }).isSelectTrigger) {
+        label = (child.props as { "aria-label"?: string })["aria-label"] ?? label;
+        return;
+      }
+      const nested = selectLabel((child.props as { children?: mockReact.ReactNode }).children);
+      if (nested !== "Select") label = nested;
+    });
+    return label;
+  }
+
   function Select({
     value,
     onValueChange,
@@ -62,7 +77,7 @@ jest.mock("@/components/ui/select", () => {
   }) {
     return (
       <select
-        aria-label="Chat counterpart"
+        aria-label={selectLabel(children)}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
       >
@@ -72,10 +87,15 @@ jest.mock("@/components/ui/select", () => {
     );
   }
 
-  function SelectItem(_: { value: string; children: mockReact.ReactNode }) {
+  function SelectItem(props: { value: string; children: mockReact.ReactNode }) {
+    void props;
     return null;
   }
   SelectItem.isSelectItem = true;
+  function SelectTrigger({ children }: { children: mockReact.ReactNode }) {
+    return <>{children}</>;
+  }
+  SelectTrigger.isSelectTrigger = true;
 
   return {
     Select,
@@ -83,7 +103,7 @@ jest.mock("@/components/ui/select", () => {
     SelectGroup: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
     SelectItem,
     SelectLabel: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
-    SelectTrigger: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
+    SelectTrigger,
     SelectValue: () => null,
   };
 });
@@ -97,6 +117,14 @@ const mutateAsync = jest.fn();
 function setup({
   agents = [{ id: "agent_1", name: "scout", display_name: "Scout" }],
   harnesses = [{ id: "harness_1", name: "platform-chat", display_name: "Platform Chat" }],
+}: {
+  agents?: Array<{
+    id: string;
+    name: string;
+    display_name: string;
+    environments?: EnvironmentSet;
+  }>;
+  harnesses?: Array<{ id: string; name: string; display_name: string }>;
 } = {}) {
   mockUseAgents.mockReturnValue({ data: agents, isLoading: false });
   mockUseHarnesses.mockReturnValue({ data: harnesses, isLoading: false });
@@ -124,6 +152,46 @@ describe("NewChatForm", () => {
       }),
     );
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/chats/sess_new"));
+  });
+
+  it("shows an agent's environments and pins the selected profile", async () => {
+    setup({
+      agents: [
+        {
+          id: "agent_1",
+          name: "scout",
+          display_name: "Scout",
+          environments: {
+            default: "scratch",
+            profiles: {
+              scratch: { target: { kind: "vfs", provider: "bashkit" } },
+              build: { target: { kind: "managed", provider: "daytona" } },
+            },
+          },
+        },
+      ],
+    });
+    render(<NewChatForm />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
+      target: { value: "agent:agent_1" },
+    });
+    expect(screen.getByRole("combobox", { name: "Environment" })).toHaveValue("scratch");
+    fireEvent.change(screen.getByRole("combobox", { name: "Environment" }), {
+      target: { value: "build" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Start chat/ }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        request: {
+          agent_id: "agent_1",
+          environment: { use: "build" },
+          source: "chat",
+          tags: ["chat"],
+        },
+      }),
+    );
   });
 
   it("creates a harness-bound thread without an agent", async () => {

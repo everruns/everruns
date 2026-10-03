@@ -1,10 +1,14 @@
 ---
 title: Harnesses
-description: A harness is what an agent runs on, the execution environment, default model, and bundled capabilities that agents and sessions extend.
+description: A harness defines reusable behavior, defaults, and capabilities that agents and sessions extend.
 appliesTo: [platform, cloud]
 ---
 
-A **harness** is what an agent *runs on*. It answers "what environment am I working in, and what is available to me?", the execution environment, the default model, and a bundle of capabilities. Every session is assigned exactly one harness. Agents and sessions then layer their own configuration on top.
+A **harness** is reusable runtime configuration: base instructions, a default model, starter files,
+network policy, and a bundle of capabilities. Every session is assigned exactly one harness. Agents
+and sessions then layer their own configuration on top. An Agent's
+[Environment profiles](/features/environments/) select where commands run without changing that
+behavior.
 
 :::note[Harness here does not mean the agent loop]
 Elsewhere in the industry, "agent harness" usually names the loop that drives the model, the thing that assembles context, calls the LLM, and dispatches tools. Everruns describes itself as a *durable agentic harness engine* in that sense.
@@ -12,12 +16,13 @@ Elsewhere in the industry, "agent harness" usually names the loop that drives th
 A **Harness** (the entity on this page) is not that loop. The loop is the runtime, and you never configure it directly. A Harness is the reusable configuration a session runs on top of.
 :::
 
-The split that matters is **world versus behavior**:
+The split that matters is **environment versus behavior**:
 
 | | Answers | Owns |
 |---|---|---|
-| **Harness** | "What am I running in?" | Execution environment, network access, capability bundle, default model, starter files |
-| **Agent** | "What role am I playing?" | Instructions, domain capabilities, the agent's voice |
+| **Environment** | "Where do commands run?" | Filesystem, compute target, containment, recovery, lifecycle |
+| **Harness** | "How does this runtime behave?" | Base instructions, network access, capability bundle, default model, starter files |
+| **Agent** | "What role am I playing?" | Instructions, domain capabilities, the agent's voice, named Environment profiles |
 | **Session** | "What is true for this one conversation?" | Per-conversation extras, overrides, a tighter network policy |
 
 A harness exists before any agent uses it, and many agents share one.
@@ -84,4 +89,5 @@ A harness bundles more than a prompt, capabilities, MCP servers, a default model
 ## See also
 
 - [Built-in harnesses](/built-ins/harnesses/base/), reference for the shipped harnesses.
+- [Environments](/features/environments/), configure Bashkit or managed Daytona compute independently of the harness.
 - [Concepts](/getting-started/concepts/), entity model.

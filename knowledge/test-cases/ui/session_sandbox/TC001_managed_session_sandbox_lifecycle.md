@@ -22,24 +22,26 @@ sandbox is deleted.
 - Valid Daytona connection in **Settings > Connections**
 - LLM provider configured
 - Coding harness imported as `coding`
-- Agent version has a default managed Daytona Environment profile with
-  `durability: checkpointed`
+- Active Agent using the Coding harness
 
 ## Steps
 
-1. Create a session for the Coding Agent.
-2. Ask it to create `/workspace/recovery-proof.txt` with a unique sentence and
+1. Open the Agent, select **More > Environments**, add a Daytona profile named
+   `build`, make it the default, and save the Agent.
+2. Open **Chats > New chat**, select the Agent, verify `build · daytona` is
+   selected under **Environment**, and start the chat.
+3. Ask it to create `/workspace/recovery-proof.txt` with a unique sentence and
    read the file back.
-3. Verify the transcript uses `write_file`, `read_file`, and/or `bash`, with no
+4. Verify the transcript uses `write_file`, `read_file`, and/or `bash`, with no
    `daytona_*` or `sandbox_*` model tool calls.
-4. Open the Workspace Environment panel and record the logical Environment id,
+5. Open the Workspace Environment panel and record the logical Environment id,
    physical instance id, and generation.
-5. Delete only the physical Daytona sandbox outside Everruns. Do not delete the
+6. Delete only the physical Daytona sandbox outside Everruns. Do not delete the
    logical Environment.
-6. Ask the same session to read `/workspace/recovery-proof.txt` and run `pwd`.
-7. Verify the tool call succeeds without manual create/resume, the file content
+7. Ask the same session to read `/workspace/recovery-proof.txt` and run `pwd`.
+8. Verify the tool call succeeds without manual create/resume, the file content
    is unchanged, the physical instance id changed, and the generation advanced.
-8. Verify the event stream contains `environment.instance_lost` followed by
+9. Verify the event stream contains `environment.instance_lost` followed by
    `environment.recovered`, with `process_state_lost: true`.
 
 ## Expected Result
