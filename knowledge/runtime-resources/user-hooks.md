@@ -432,7 +432,7 @@ No breaking changes to existing user configs.
 | `HookAdapterBuilder` (spec → adapter) | `crates/core/src/hook_adapter.rs` |
 | `Capability::user_hooks()` default + collection extension | `crates/core/src/capabilities/mod.rs` |
 | `user_hooks` capability | `crates/capabilities/src/capabilities/user_hooks.rs` |
-| `pre_tool_use` wire-in | `crates/engine/src/execution/act.rs::execute_single_tool` |
+| `pre_tool_use` wire-in | `crates/core/src/engine/execution/act.rs::execute_single_tool` |
 | `post_tool_use` wire-in | existing `PostToolExecHook` chain |
 
 ## Open questions (deferred, tracked)

@@ -19,9 +19,9 @@ use crate::storage::models::{
 };
 use anyhow::Result;
 use chrono::Utc;
-use everruns_builtins::ask_user::{ASK_USER_TOOL_NAME, AskUserStatus};
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, PrincipalId, SessionId};
 use everruns_core::Event;
+use everruns_core::builtins::ask_user::{ASK_USER_TOOL_NAME, AskUserStatus};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
     ToolCompletedData, deserialize_event_data,

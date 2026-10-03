@@ -21,7 +21,7 @@ use crate::records::email::{EmailMessage, EmailResult, EmailSender, SentEmail};
 use crate::storage::StorageBackend;
 use crate::storage::models::CreateUserRow;
 use async_trait::async_trait;
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use std::sync::Arc;
 use std::sync::Mutex;
 

@@ -29,12 +29,12 @@ use axum::{
     routing::post,
 };
 use chrono::{DateTime, Utc};
-use everruns_builtins::{
-    StoredToolApproval, always_decision_storage_key, one_off_decision_storage_key,
-};
 use everruns_contracts::tool_types::{APPROVE_TOOL_CALL_TOOL, ToolApprovalRequired};
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::Caller;
+use everruns_core::builtins::{
+    StoredToolApproval, always_decision_storage_key, one_off_decision_storage_key,
+};
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, ToolCompletedData};
 use everruns_core::message::{ContentPart, RuntimeMessage};
 use serde::{Deserialize, Serialize};

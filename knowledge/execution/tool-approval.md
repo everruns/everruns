@@ -26,14 +26,14 @@ blocks until it answers) is unchanged and lives with the capability.
 
 ## Sources of truth
 
-- [`crates/builtins/src/tool_approval.rs`](../../crates/builtins/src/tool_approval.rs)
+- [`crates/core/src/builtins/tool_approval.rs`](../../crates/core/src/builtins/tool_approval.rs)
   owns classification, the decision vocabulary, the hook, the durable approver,
   the stored record, the fingerprint, and the config schema.
 - [`crates/contracts/src/tool_approval_types.rs`](../../crates/contracts/src/tool_approval_types.rs)
   owns the parked-call payload and the synthetic request call the engine emits.
-- [`crates/engine/src/execution/act_hooks.rs`](../../crates/engine/src/execution/act_hooks.rs)
+- [`crates/core/src/engine/execution/act_hooks.rs`](../../crates/core/src/engine/execution/act_hooks.rs)
   (`ToolApprovalPauseHook`) and `plan_after_act` in
-  [`crates/engine/src/turn.rs`](../../crates/engine/src/turn.rs) own the pause.
+  [`crates/core/src/engine/turn.rs`](../../crates/core/src/engine/turn.rs) own the pause.
 - [`crates/server/src/api/tool_approvals.rs`](../../crates/server/src/api/tool_approvals.rs)
   owns the answer endpoint and the shared resolution; the deadline pass lives in
   [`crates/server/src/tool_result_timeout.rs`](../../crates/server/src/tool_result_timeout.rs).

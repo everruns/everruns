@@ -92,7 +92,7 @@ No `everruns-core`, registry, store, or host dependency is needed.
 
 ## Choose the standard policy bundle
 
-The Framework's default `builtins` feature links `everruns-builtins`, the
+The Framework's default `builtins` feature links `everruns-core` (`builtins` feature), the
 backend-neutral implementation bundle for compaction, tool search, budgeting,
 loop/progress safeguards, prompt caching, tool-call repair, output handling,
 and guardrails. Linking the package has no registration side effect: each host
@@ -105,7 +105,7 @@ client, process runner, interpreter, database, or hosted service. Output
 persistence and distillation declare `session_file_system` as a host-provided
 dependency; enable them only in a composition that supplies that capability.
 The optional `ui-capabilities` feature also owns the namespaced
-`everruns_builtins::{openui,a2ui}` component catalogs and prompt generators;
+`everruns_core::builtins::{openui,a2ui}` component catalogs and prompt generators;
 applications do not need separate UI-protocol crates.
 
 ## Choose an authoring level

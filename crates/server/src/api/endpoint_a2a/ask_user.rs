@@ -119,7 +119,7 @@ pub(crate) fn pending_ask_user_from_request(
     let call = requested
         .tool_calls
         .iter()
-        .find(|call| call.name == everruns_builtins::ask_user::ASK_USER_TOOL_NAME)?;
+        .find(|call| call.name == everruns_core::builtins::ask_user::ASK_USER_TOOL_NAME)?;
     let questions = serde_json::from_value(call.arguments.get("questions")?.clone()).ok()?;
     let expires_at = call
         .arguments
@@ -150,7 +150,7 @@ pub(super) fn project_ask_user(
     task_id: &str,
     frontend_url: &str,
 ) -> AskUserProjection {
-    use everruns_builtins::ask_user::AskUserQuestionKind;
+    use everruns_core::builtins::ask_user::AskUserQuestionKind;
 
     // THREAT[TM-AGENT-016]: a remote agent is never prompted for a human's
     // credential. A `secret` question projects as `auth-required` carrying a
@@ -242,7 +242,7 @@ pub(crate) fn ask_user_answer_schema(
         .questions
         .iter()
         .map(|question| {
-            use everruns_builtins::ask_user::AskUserQuestionKind;
+            use everruns_core::builtins::ask_user::AskUserQuestionKind;
             let labels: Vec<&str> = question
                 .options
                 .iter()
@@ -330,12 +330,13 @@ fn render_questions_prose(
     let mut out =
         String::from("This task is waiting on an answer before the agent can continue.\n");
     if let Some(expires_at) = pending.expires_at {
-        let resolution =
-            if everruns_builtins::ask_user::questions_have_no_default_answer(&pending.questions) {
-                "it skips the unanswered question set"
-            } else {
-                "it continues with the defaults marked below"
-            };
+        let resolution = if everruns_core::builtins::ask_user::questions_have_no_default_answer(
+            &pending.questions,
+        ) {
+            "it skips the unanswered question set"
+        } else {
+            "it continues with the defaults marked below"
+        };
         out.push_str(&format!(
             "Unanswered by {}, {resolution}.\n",
             expires_at.to_rfc3339(),
@@ -363,7 +364,7 @@ fn render_questions_prose(
                 ));
             }
         }
-        if question.kind == everruns_builtins::ask_user::AskUserQuestionKind::Text {
+        if question.kind == everruns_core::builtins::ask_user::AskUserQuestionKind::Text {
             out.push_str("   Answer in your own words with `other_text`.\n");
         } else if question.allow_other {
             out.push_str("   Or answer in your own words with `other_text`.\n");
@@ -381,10 +382,10 @@ fn render_questions_prose(
 /// A credential request in prose. It says what is wanted and who provides it,
 /// and never invites the reader to supply the value.
 fn render_secret_prose(
-    questions: &[everruns_builtins::ask_user::AskUserQuestion],
+    questions: &[everruns_core::builtins::ask_user::AskUserQuestion],
     url: Option<&str>,
 ) -> String {
-    use everruns_builtins::ask_user::AskUserQuestionKind;
+    use everruns_core::builtins::ask_user::AskUserQuestionKind;
 
     let mut out = String::from(
         "This task needs a credential, which is never requested from a calling agent and never \
@@ -438,7 +439,7 @@ pub(super) async fn handle_ask_user_answer(
     version: WireVersion,
 ) -> Response {
     use crate::api::question_answers::{QuestionResolver, ResolveError, SubmittedStatus};
-    use everruns_builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
+    use everruns_core::builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
 
     let invalid = |rpc_id: Value, detail: &str| -> Response {
         (
@@ -570,21 +571,21 @@ mod tests {
     use super::*;
     use everruns_core::events::EventData;
 
-    fn choice_question() -> everruns_builtins::ask_user::AskUserQuestion {
-        everruns_builtins::ask_user::AskUserQuestion {
-            kind: everruns_builtins::ask_user::AskUserQuestionKind::Choice,
+    fn choice_question() -> everruns_core::builtins::ask_user::AskUserQuestion {
+        everruns_core::builtins::ask_user::AskUserQuestion {
+            kind: everruns_core::builtins::ask_user::AskUserQuestionKind::Choice,
             id: Some("target".to_string()),
             header: "Target".to_string(),
             question: "Which environment should I deploy to?".to_string(),
             multi_select: false,
             allow_other: true,
             options: vec![
-                everruns_builtins::ask_user::AskUserOption {
+                everruns_core::builtins::ask_user::AskUserOption {
                     label: "Staging".to_string(),
                     description: "Safe, reversible.".to_string(),
                     is_default: true,
                 },
-                everruns_builtins::ask_user::AskUserOption {
+                everruns_core::builtins::ask_user::AskUserOption {
                     label: "Production".to_string(),
                     description: "Live traffic.".to_string(),
                     is_default: false,
@@ -595,9 +596,9 @@ mod tests {
         }
     }
 
-    fn secret_question() -> everruns_builtins::ask_user::AskUserQuestion {
-        everruns_builtins::ask_user::AskUserQuestion {
-            kind: everruns_builtins::ask_user::AskUserQuestionKind::Secret,
+    fn secret_question() -> everruns_core::builtins::ask_user::AskUserQuestion {
+        everruns_core::builtins::ask_user::AskUserQuestion {
+            kind: everruns_core::builtins::ask_user::AskUserQuestionKind::Secret,
             id: Some("stripe_key".to_string()),
             header: "Stripe key".to_string(),
             question: "Which Stripe restricted key should I use?".to_string(),
@@ -609,9 +610,9 @@ mod tests {
         }
     }
 
-    fn text_question() -> everruns_builtins::ask_user::AskUserQuestion {
-        everruns_builtins::ask_user::AskUserQuestion {
-            kind: everruns_builtins::ask_user::AskUserQuestionKind::Text,
+    fn text_question() -> everruns_core::builtins::ask_user::AskUserQuestion {
+        everruns_core::builtins::ask_user::AskUserQuestion {
+            kind: everruns_core::builtins::ask_user::AskUserQuestionKind::Text,
             id: Some("branch_name".to_string()),
             header: "Branch".to_string(),
             question: "What should I call this branch?".to_string(),
@@ -624,7 +625,7 @@ mod tests {
     }
 
     fn pending(
-        questions: Vec<everruns_builtins::ask_user::AskUserQuestion>,
+        questions: Vec<everruns_core::builtins::ask_user::AskUserQuestion>,
     ) -> crate::api::question_answers::PendingQuestions {
         crate::api::question_answers::PendingQuestions {
             tool_call_id: "call_1".to_string(),
@@ -806,7 +807,7 @@ mod tests {
         let data = EventData::ToolCallRequested(ToolCallRequestedData {
             tool_calls: vec![everruns_contracts::tool_types::ToolCall {
                 id: "call_1".to_string(),
-                name: everruns_builtins::ask_user::ASK_USER_TOOL_NAME.to_string(),
+                name: everruns_core::builtins::ask_user::ASK_USER_TOOL_NAME.to_string(),
                 arguments: json!({ "questions": [choice_question()] }),
             }],
             tool_summaries: Vec::new(),

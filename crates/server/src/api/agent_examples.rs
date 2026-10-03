@@ -11,7 +11,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::seed::SeedAgent;
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::DeploymentGrade;
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;

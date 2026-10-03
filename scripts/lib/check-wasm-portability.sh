@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Portability guard: the execution kernel (everruns-contracts, -core, -engine
-# with default features off) builds for wasm32-unknown-unknown, so it can run
+# Portability guard: the execution kernel (everruns-contracts and default everruns-core,
+# followed by the core `engine` feature) builds for wasm32-unknown-unknown, so it can run
 # inside a JavaScript isolate such as a celld or Cloudflare Durable Object.
 #
-# 1. `cargo check` the three crates for wasm32-unknown-unknown.
+# 1. `cargo check` the kernel, then its pure engine module for wasm32.
 # 2. The engine-in-a-cell example (examples/celld-engine, its own workspace):
 #    native tests of its step machine, and a wasm32 check of the Durable
 #    Object itself.
 #
 # What breaks it: a dependency that needs threads, sockets or an OS clock
 # (Tokio's `full` feature, mio, aws-lc), or `std::time::Instant::now`, which
-# panics in the isolate. Use `everruns_provider::rt` and `web_time` instead.
+# panics in the isolate. Use `everruns_contracts::rt` and `web_time` instead.
 
 set -euo pipefail
 
@@ -25,7 +25,9 @@ fi
 
 echo "1. kernel crates for $TARGET"
 cargo check --locked --target "$TARGET" --no-default-features \
-  -p everruns-contracts -p everruns-core -p everruns-engine
+  -p everruns-contracts -p everruns-core
+cargo check --locked --target "$TARGET" --no-default-features \
+  -p everruns-core --features engine
 
 EXAMPLE=examples/celld-engine/Cargo.toml
 echo "2. $EXAMPLE: native tests, then $TARGET"

@@ -64,8 +64,8 @@ explicitly choose local summarization or observation masking keep request-level
 effort controls and their selected compaction strategy. No default model changes.
 
 Implementation and regression contracts live in
-[`reasoning_updates.rs`](../../crates/engine/src/execution/reason/reasoning_updates.rs),
-[`compaction.rs`](../../crates/engine/src/execution/reason/compaction.rs), and the
+[`reasoning_updates.rs`](../../crates/core/src/engine/execution/reason/reasoning_updates.rs),
+[`compaction.rs`](../../crates/core/src/engine/execution/reason/compaction.rs), and the
 [`Responses wire tests`](../../crates/contracts/tests/openresponses_protocol_wire.rs).
 Provider contracts: [changing reasoning](https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation)
 and [compaction output handling](https://developers.openai.com/api/docs/guides/compaction).
@@ -175,13 +175,13 @@ emit a successful durable `context.compacted` event.
 
 ### What Exists
 
-**Compaction capability** (`crates/builtins/src/compaction.rs`):
+**Compaction capability** (`crates/core/src/builtins/compaction.rs`):
 - Configured explicitly through the `compaction` capability.
 - Contributes the prompt-facing model-view provider that masks stale bulky tool results before provider serialization.
 - Supports proactive budget checks, reactive `RequestTooLarge` recovery, observation masking, native provider compaction when available, summarization, and last-resort trimming.
 - Emits `context.compacting` / `context.compacted` events and records `LlmCompactionInfo` on `llm.generation` when native provider compaction runs.
 
-**Infinity Context** (`crates/builtins/src/infinity_context.rs`):
+**Infinity Context** (`crates/core/src/builtins/infinity_context.rs`):
 - Separate, optional capability, not part of compaction. Keeps a recent window + provides the `query_history` tool.
 - **Not freely composable with compaction.** Infinity context evicts during message loading, before compaction runs, so enabling both naively means compaction only sees the recent window. Compaction is the stronger primary strategy (always-present summary); infinity context is a pull-based backstop. When both are enabled, infinity context defers token-budget eviction to compaction. See `knowledge/runtime-resources/infinity-context.md`.
 
@@ -337,7 +337,7 @@ summaries when repeated full-history prompts would otherwise keep paying for
 stale `read_file`, exec, listing, or search output. It is enabled by default
 when compaction is enabled, keeps the most recent tool results verbatim, and can
 also trigger from prior usage signals when cache reuse is poor. See
-[`crates/builtins/src/compaction.rs`](../../crates/builtins/src/compaction.rs)
+[`crates/core/src/builtins/compaction.rs`](../../crates/core/src/builtins/compaction.rs)
 for the exact configuration fields and defaults.
 
 ### Config Examples
@@ -520,7 +520,7 @@ The existing `llm-history-viewer.tsx` component should display compaction info w
 
 ## Observation Masking
 
-Replaces old tool outputs with one-line summaries, keeping the N most recent verbatim. See `crates/builtins/src/compaction.rs` for the masking algorithm.
+Replaces old tool outputs with one-line summaries, keeping the N most recent verbatim. See `crates/core/src/builtins/compaction.rs` for the masking algorithm.
 
 ### Tool-Aware Masking (Tier 3)
 
@@ -552,7 +552,7 @@ dropped. Like infinity context's head anchor, losing the opening task leaves the
 model unable to tell what it is doing once the window slides; the system prompt
 is assembled separately and is already exempt.
 
-See `crates/builtins/src/compaction.rs` for implementation (`PROTECTED_TOOL_NAMES`, `is_protected_tool_result`).
+See `crates/core/src/builtins/compaction.rs` for implementation (`PROTECTED_TOOL_NAMES`, `is_protected_tool_result`).
 
 ## Summarization
 
@@ -638,12 +638,12 @@ Displayed in session detail view and session list (as a subtle indicator when co
 
 Implemented pieces live in the capability and runtime assembly paths:
 
-- `crates/builtins/src/compaction.rs` owns config parsing,
+- `crates/core/src/builtins/compaction.rs` owns config parsing,
   cost-control model-view masking, observation masking, summarization helpers,
   and compaction metrics types.
 - `crates/core/src/capabilities/mod.rs` exposes the generic
   `ModelViewProvider` hook so compaction remains capability-owned.
-- `crates/engine/src/execution/reason.rs` invokes compaction only when the resolved
+- `crates/core/src/engine/execution/reason.rs` invokes compaction only when the resolved
   capability config includes `compaction`; without it, context-limit errors are
   returned to the caller.
 - `crates/core/src/events.rs` defines compaction events and generation metadata.

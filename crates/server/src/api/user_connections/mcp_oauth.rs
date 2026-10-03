@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use axum::http::StatusCode;
 use everruns_core::EgressService;
-use everruns_mcp::validate_oauth_resource;
+use everruns_core::mcp::validate_oauth_resource;
 use serde::{Deserialize, Serialize};
 
 use super::{AppState, mcp_oauth_redirect_uri, parse_and_validate_url, resource_origin};

@@ -22,22 +22,22 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, Tur
 use everruns_core::ExecutionContext;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
+use everruns_core::engine::{
+    ActAtom, ActOutcome, ActivityOutcome, Execution, HostFacts, InputAtom, InputAtomInput,
+    ReasonAtom, ReasonInput, TurnPlan, TurnState,
+};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventContext, EventData, EventRequest, InputMessageData};
+use everruns_core::host::{
+    EventHistory, EventReadLimit, EventReadRequest, EventReader, HostEventEmitter,
+    InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
+    InMemorySessionStore, InProcessExecution, NoopEventSink, StoreTurnContextResolver,
+};
 use everruns_core::message::RuntimeMessage;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use everruns_core::turn::TurnStopReason;
-use everruns_engine::{
-    ActAtom, ActOutcome, ActivityOutcome, Execution, HostFacts, InputAtom, InputAtomInput,
-    ReasonAtom, ReasonInput, TurnPlan, TurnState,
-};
-use everruns_host::{
-    EventHistory, EventReadLimit, EventReadRequest, EventReader, HostEventEmitter,
-    InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
-    InMemorySessionStore, InProcessExecution, NoopEventSink, StoreTurnContextResolver,
-};
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 
 // ============================================================================
@@ -270,7 +270,7 @@ impl InMemoryAgenticLoopBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_builtins::CurrentTimeCapability;
+    /// use everruns_core::builtins::CurrentTimeCapability;
     ///
     /// let runner = InMemoryAgenticLoop::builder()
     ///     .capability(CurrentTimeCapability)
@@ -663,7 +663,7 @@ impl InMemoryAgenticLoop {
                                     |call| call.name == everruns_contracts::ASK_USER_TOOL_NAME,
                                 ),
                                 waiting_for_tool_approval:
-                                    everruns_engine::has_pending_tool_approval(
+                                    everruns_core::engine::has_pending_tool_approval(
                                         &act_result.client_tool_calls,
                                     ),
                             }),
@@ -944,7 +944,7 @@ mod tests {
 
     #[tokio::test]
     async fn turn_result_summarizes_llm_generation_contract() {
-        use everruns_builtins::CurrentTimeCapability;
+        use everruns_core::builtins::CurrentTimeCapability;
 
         let runner = InMemoryAgenticLoop::builder()
             .with_simulated_response("It is noon.")

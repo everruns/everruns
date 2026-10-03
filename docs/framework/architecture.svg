@@ -33,7 +33,7 @@
   <text x="70" y="219" class="header-text" fill="#1B7F4B">IMMEDIATE</text>
   <rect x="70" y="230" width="240" height="90" fill="#F5F5F5" stroke="#0A0A0A"/>
   <rect x="70" y="230" width="5" height="90" fill="#1B7F4B"/>
-  <text x="190" y="266" text-anchor="middle" class="label">everruns-host</text>
+  <text x="190" y="266" text-anchor="middle" class="label">core::host</text>
   <text x="190" y="290" text-anchor="middle" class="mono">InProcessExecution</text>
   <text x="190" y="307" text-anchor="middle" class="sublabel">immediate adapter</text>
 
@@ -54,7 +54,7 @@
   <text x="400" y="384" text-anchor="middle" class="header-text">SHARED EXECUTION KERNEL</text>
   <rect x="130" y="395" width="540" height="80" fill="#F5F5F5" stroke="#0A0A0A"/>
   <rect x="130" y="395" width="540" height="4" fill="#0A1636"/>
-  <text x="400" y="426" text-anchor="middle" class="label">everruns-engine</text>
+  <text x="400" y="426" text-anchor="middle" class="label">core::engine</text>
   <text x="400" y="449" text-anchor="middle" class="sublabel">Execution • TurnExecution • Input / Reason / Act</text>
   <text x="400" y="466" text-anchor="middle" class="mono">one turn state machine and event order</text>
 </svg>

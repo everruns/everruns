@@ -13,10 +13,10 @@ use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
-use everruns_core::turn::TurnStopReason;
-use everruns_host::{
+use everruns_core::host::{
     AcceptedTurnInput, InProcessRuntime, TurnResult, TurnSteering, TurnSteeringPushError,
 };
+use everruns_core::turn::TurnStopReason;
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
 
 use crate::engine::SessionExecution;
@@ -72,13 +72,13 @@ pub(crate) struct SessionInner {
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
     pub(crate) harness: OnceLock<Harness>,
-    environment: OnceLock<everruns_host::Environment>,
+    environment: OnceLock<everruns_core::host::Environment>,
     environment_gate: tokio::sync::Mutex<()>,
     commands: OnceCell<mpsc::Sender<Command>>,
     /// The client-side tool calls the last turn parked on. Updated before
     /// the turn's completion is published, so a waiter that saw the turn
     /// end reads its parked calls.
-    parked_calls: watch::Sender<Option<everruns_host::ParkedToolCalls>>,
+    parked_calls: watch::Sender<Option<everruns_core::host::ParkedToolCalls>>,
     /// Whether a run gave the session client-side tools that no later run
     /// has cleared.
     #[cfg(feature = "ag-ui")]
@@ -110,7 +110,7 @@ impl Session {
 
     pub(crate) fn new(
         execution: Arc<dyn SessionExecution>,
-        environment: Option<everruns_host::Environment>,
+        environment: Option<everruns_core::host::Environment>,
         observers: Arc<ObserverDispatcher>,
     ) -> Self {
         let session_id = execution.session_id();
@@ -201,7 +201,7 @@ impl Session {
 
     pub(crate) fn negotiate_environment(
         &self,
-        environment: &everruns_host::Environment,
+        environment: &everruns_core::host::Environment,
     ) -> Result<(), SessionEnvironmentError> {
         match self.inner.harness.get() {
             Some(harness) => harness.negotiate(environment),
@@ -211,11 +211,11 @@ impl Session {
 
     /// The permanently selected workspace head after explicit or automatic
     /// Environment start.
-    pub fn workspace_head(&self) -> Option<&everruns_host::WorkspaceHead> {
+    pub fn workspace_head(&self) -> Option<&everruns_core::host::WorkspaceHead> {
         self.inner
             .environment
             .get()
-            .map(everruns_host::Environment::workspace_head)
+            .map(everruns_core::host::Environment::workspace_head)
     }
 
     /// Resolve a typed resource attached to this session's Environment.
@@ -462,7 +462,7 @@ impl Session {
     /// The client-side tool calls the session's last turn parked on, if it
     /// parked and has not been resumed or superseded since.
     #[cfg(feature = "ag-ui")]
-    pub(crate) fn parked_tool_calls(&self) -> Option<everruns_host::ParkedToolCalls> {
+    pub(crate) fn parked_tool_calls(&self) -> Option<everruns_core::host::ParkedToolCalls> {
         self.inner.parked_calls.borrow().clone()
     }
 
@@ -471,7 +471,7 @@ impl Session {
     #[cfg(feature = "ag-ui")]
     pub(crate) fn watch_parked_tool_calls(
         &self,
-    ) -> watch::Receiver<Option<everruns_host::ParkedToolCalls>> {
+    ) -> watch::Receiver<Option<everruns_core::host::ParkedToolCalls>> {
         self.inner.parked_calls.subscribe()
     }
 
@@ -646,11 +646,11 @@ struct SessionActor {
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
     harness: Option<Harness>,
-    environment: Option<everruns_host::Environment>,
+    environment: Option<everruns_core::host::Environment>,
     runtime: Option<InProcessRuntime>,
     agent_started: bool,
     deferred: VecDeque<Command>,
-    parked_calls: watch::Sender<Option<everruns_host::ParkedToolCalls>>,
+    parked_calls: watch::Sender<Option<everruns_core::host::ParkedToolCalls>>,
 }
 
 impl SessionActor {
@@ -782,10 +782,10 @@ impl SessionActor {
             .backends()
             .await
             .map_err(crate::agent::BackendInitError::into_agent_loop)?;
-        let page = everruns_host::EventHistory::new(backends.host.event_log.clone())
-            .read_page(everruns_host::EventHistoryReadRequest::new(
+        let page = everruns_core::host::EventHistory::new(backends.host.event_log.clone())
+            .read_page(everruns_core::host::EventHistoryReadRequest::new(
                 self.session_id,
-                everruns_host::EventHistoryReadLimit::new(1)
+                everruns_core::host::EventHistoryReadLimit::new(1)
                     .map_err(|error| AgentLoopError::store(error.to_string()))?,
             ))
             .await
@@ -835,7 +835,7 @@ impl SessionActor {
             // A plain client-side call parks the turn only when the session
             // declares its client can answer a pause, which the runtime
             // reads from the `setup_connection` hint (see
-            // `everruns_engine::act_pauses_turn`). Declare it while the
+            // `everruns_core::engine::act_pauses_turn`). Declare it while the
             // session has client-side tools; without them nothing would
             // answer the pause.
             let hints = record.hints.get_or_insert_with(Default::default);
@@ -954,7 +954,9 @@ impl SessionActor {
             let mut run: std::pin::Pin<
                 Box<
                     dyn Future<
-                            Output = everruns_contracts::error::Result<everruns_host::TurnResult>,
+                            Output = everruns_contracts::error::Result<
+                                everruns_core::host::TurnResult,
+                            >,
                         > + Send
                         + '_,
                 >,
@@ -1141,7 +1143,7 @@ impl SessionActor {
 /// A not-yet-running Session with its Environment selected.
 pub struct EnvironmentSessionBuilder {
     pub(crate) session: Session,
-    pub(crate) environment: everruns_host::Environment,
+    pub(crate) environment: everruns_core::host::Environment,
 }
 
 impl EnvironmentSessionBuilder {

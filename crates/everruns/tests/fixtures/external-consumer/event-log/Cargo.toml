@@ -6,10 +6,9 @@ publish = false
 
 [dependencies]
 async-trait = "0.1"
-everruns-core = { path = "../../../../../../crates/core" }
 everruns-contracts = { path = "../../../../../../crates/contracts", default-features = false, features = ["definition"] }
-everruns-host = { path = "../../../../../../crates/host" }
 
+everruns-core = { path = "../../../../../../crates/core", default-features = false, features = ["host"] }
 [dev-dependencies]
 everruns-llmsim = { path = "../../../../../../crates/drivers/llmsim", features = ["host"] }
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

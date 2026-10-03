@@ -116,7 +116,7 @@ relaxed; they are failure modes that can no longer be expressed:
 changed". `everruns-drivers` moves with the platform whether or not it was
 touched, and `CHANGELOG.md` is the record of what actually changed. Every release
 is a breaking-slot bump for every consumer — which was already true in practice,
-since recent cycles bumped everything regardless. All 41 packages are republished
+since recent cycles bumped everything regardless. Every package in the active published set is republished
 each release; crates.io rate-limits this to roughly one publish per minute after
 an initial burst, which the dependency-ordered **Crate Release** workflow absorbs.
 
@@ -191,7 +191,7 @@ with a default body unless breaking implementors is the point.
 **`#[doc(hidden)]` is not a private boundary.** If a published crate calls an
 item, that item is public contract whatever it is annotated with. The published
 `everruns` facade drove a hidden steering surface on `everruns-host`
-([`crates/host/src/runtime.rs`](../../crates/host/src/runtime.rs)) across a
+([`crates/core/src/host/runtime.rs`](../../crates/core/src/host/runtime.rs)) across a
 crates.io boundary, which is the whole of
 [#665](https://github.com/everruns/yolop/issues/665). That surface is documented
 public contract now. Document such an item rather than hiding it.

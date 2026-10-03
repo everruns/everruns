@@ -27,6 +27,7 @@ cargo metadata --no-deps --format-version 1 \
       | select(.manifest_path == $manifest)
       | .targets[]
       | select(.kind | index("example"))
+      | select(.src_path | contains("/examples/advanced/") | not)
       | .name
     ' \
   | LC_ALL=C sort > "$TARGETS"
@@ -47,6 +48,15 @@ if grep -En \
   'everruns[_-](core|host)|everruns::core(::|[^[:alnum:]_]|$)' \
   "$EXAMPLES_DIR"/*.rs; then
   echo "Public examples must not import internal crates or facade escape hatches." >&2
+  exit 1
+fi
+
+# Advanced host examples intentionally compose the public core/contracts SPIs.
+# They still compile in the complete Cargo target set and never import records.
+if [ -d "$EXAMPLES_DIR/advanced" ] && grep -En \
+  'everruns[_-](platform|capabilities|server|worker)|everruns_server::records' \
+  "$EXAMPLES_DIR/advanced"/*.rs; then
+  echo "Advanced host examples must remain independent of control-plane records." >&2
   exit 1
 fi
 

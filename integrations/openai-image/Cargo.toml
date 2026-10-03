@@ -50,7 +50,7 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
 # Real host egress transport (no redirects, ACL, DNS pinning with a controlled
 # resolver) so tests prove image requests cannot reach internal addresses.
-everruns-host = { workspace = true, features = ["direct-egress"] }
+everruns-core = { workspace = true, default-features = false, features = ["direct-egress"] }
 
 [lints]
 workspace = true

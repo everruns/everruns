@@ -5,6 +5,5 @@ edition = "2024"
 publish = false
 
 [dependencies]
-everruns-builtins = { path = "../../../../../../crates/builtins" }
-everruns-core = { path = "../../../../../../crates/core", default-features = false }
 everruns-contracts = { path = "../../../../../../crates/contracts", default-features = false }
+everruns-core = { path = "../../../../../../crates/core", default-features = false, features = ["builtins"] }

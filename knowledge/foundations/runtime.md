@@ -66,7 +66,7 @@ Framework adaptation or any host application.
 ## Public Contract
 
 The public entrypoint is `InProcessRuntimeBuilder` in
-`crates/host/src/runtime.rs`.
+`crates/core/src/host/runtime.rs`.
 
 ### Builder responsibilities
 
@@ -132,7 +132,7 @@ returns that snapshot plus the turn's message and MCP tool inputs; adapters
 perform the platform projection (`ResolvedExecutionSnapshot::project`) so
 missing, mismatched, or inactive records fail before host execution begins.
 Session status mutation stays a separate host effect that exposes no session
-record. A source guard (`crates/host/tests/integration/execution_contract_guard.rs`)
+record. A source guard (`crates/everruns/tests/host/integration/execution_contract_guard.rs`)
 prevents the contract module from naming the record types again; the
 `InProcessRuntimeBuilder` seeding APIs still accept records as host
 configuration until they are separately replaced.
@@ -331,7 +331,7 @@ runtime host contract.
 Conversation persistence is the one backend with a single write path: the
 canonical event log is the durable truth and message history is a rebuildable
 projection of it. Embedders replace it by implementing the `EventReader` and
-`EventLog` traits in `crates/host/src/events.rs` and supplying the result
+`EventLog` traits in `crates/core/src/host/events.rs` and supplying the result
 through the event-log backend slot.
 
 That pair is a supported public SPI, not an in-crate detail. A detached crate
@@ -353,7 +353,7 @@ externally implementable.
 
 `HostBackends` carries a uniform set of optional, additive backend slots that
 the host forwards into `ActAtom` when present (see
-`crates/host/src/runtime.rs` and `crates/host/src/host.rs`):
+`crates/core/src/host/runtime.rs` and `crates/core/src/host/host.rs`):
 
 - `session_task_registry`, persists background-tool / subagent / monitor task
   lifecycle (`everruns_core::session_task::SessionTaskRegistry`).
@@ -482,31 +482,31 @@ Those remain separate concerns outside the runtime host orchestration contract.
 ## Validation
 
 The in-process runtime contract is regression-tested in CI with the pure Rust
-test binaries in `crates/host/tests/`.
+test binaries in `crates/everruns/tests/host/`.
 
-- `crates/host/tests/integration/in_process_runtime_test.rs` proves embedded runtimes
+- `crates/everruns/tests/host/integration/in_process_runtime_test.rs` proves embedded runtimes
   can execute turns, persist message history, seed files, and emit the shared
   event shapes without PostgreSQL or worker infrastructure.
-- `crates/host/tests/integration/runtime_host_test.rs` proves the reusable host adapter
+- `crates/everruns/tests/host/integration/runtime_host_test.rs` proves the reusable host adapter
   contract drives `input -> reason -> act` planning and lifecycle state changes
   for server-backed or durable hosts.
 
 ## Source Index
 
-- `crates/host/src/lib.rs`
-- `crates/host/src/builders.rs`
-- `crates/host/src/runtime.rs`
-- `crates/host/src/host.rs`
-- `crates/host/src/in_memory.rs`
-- `crates/host/src/backends.rs`
+- `crates/core/src/host/mod.rs`
+- `crates/core/src/host/builders.rs`
+- `crates/core/src/host/runtime.rs`
+- `crates/core/src/host/host.rs`
+- `crates/core/src/host/in_memory.rs`
+- `crates/core/src/host/backends.rs`
 - `crates/everruns/src/local/` (Framework-local SQLite-backed host backends)
-- `crates/host/examples/in_process_runtime.rs`
-- `crates/host/examples/inspect_context.rs`
+- `crates/everruns/examples/advanced/in_process_runtime.rs`
+- `crates/everruns/examples/advanced/inspect_context.rs`
 - `examples/weekend-concierge-host/src/lib.rs`
 - `examples/weekend-concierge-host/src/main.rs`
-- `crates/host/tests/integration/in_process_runtime_test.rs`
-- `crates/host/tests/integration/runtime_host_test.rs`
+- `crates/everruns/tests/host/integration/in_process_runtime_test.rs`
+- `crates/everruns/tests/host/integration/runtime_host_test.rs`
 - `crates/worker/src/runtime_host.rs`
 - `crates/core/src/runtime_context.rs`
 - `crates/core/src/turn.rs`
-- `crates/host/src/composition.rs`
+- `crates/core/src/host/composition.rs`

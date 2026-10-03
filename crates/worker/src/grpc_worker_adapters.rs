@@ -12,6 +12,7 @@ use everruns_contracts::typed_id::{
 };
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::host::HostComposition;
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
@@ -25,7 +26,6 @@ use everruns_core::{
     connection_services::ProviderCredentialStore, image_services::ImageArtifactStore,
     image_services::ResolvedImage,
 };
-use everruns_host::HostComposition;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;

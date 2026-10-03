@@ -1,66 +1,36 @@
 # everruns-builtins
 
-> Portable policy capabilities for the Everruns Framework.
+> Deprecated compatibility shim for `everruns-core::builtins`.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-builtins.svg)](https://crates.io/crates/everruns-builtins)
 [![Documentation](https://docs.rs/everruns-builtins/badge.svg)](https://docs.rs/everruns-builtins)
-[![License](https://img.shields.io/crates/l/everruns-builtins.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-This crate owns the backend-neutral implementations that shape agent behavior,
-including human-intent signaling, infinity context, skills, context compaction,
-tool search, budgeting, loop and progress guards, prompt caching, tool-call
-repair, output handling, and guardrails. Linking the crate does not register
-anything: applications choose a registry and call a registration function
-explicitly.
-Registration rejects ID or alias collisions atomically, leaving the caller's
-registry unchanged on error.
+This final shim release forwards the existing API to `everruns-core`. The next
+platform release removes this package. No capability is removed; enable the
+`builtins` feature and import `everruns_core::builtins` instead.
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents.
+Part of the [Everruns](https://everruns.com) ecosystem.
 
 ## Quick Example
 
 ```rust
-use everruns_builtins::register_portable_capabilities;
-use everruns_core::CapabilityRegistry;
-
-let mut registry = CapabilityRegistry::new();
-register_portable_capabilities(&mut registry)?;
-
-# Ok::<(), everruns_contracts::capability::CapabilityError>(())
+use everruns_core::builtins::portable_capability_registry;
+let registry = portable_capability_registry().expect("curated catalog");
+assert!(registry.has("current_time"));
 ```
 
-The bundle contains policy, not environment integrations. It does not own a
-network client, process runner, interpreter, database, server, or hosted
-service. Capabilities that persist or distill tool output declare a dependency
-on `session_file_system`; the embedding application must compose a compatible
-filesystem implementation when enabling those capabilities.
-`usage_limit_auto_continue` similarly requires the host's session-schedule
-service; `register_runtime_capabilities` omits it for embedded runtimes that do
-not provide that service.
+## Features
 
-Use the `everruns` facade for the normal Framework API. Depend on this crate
-directly when building a custom capability registry or a minimal host.
-
-## What It Provides
-
-- Explicit runtime-safe and full-product registration functions
-- Human intent, infinity context, skills, compaction, tool search, and guard policies
-- Tool-call repair and output persistence/distillation policy hooks
-- Registry-skill attachment and optional OpenUI/A2UI prompt capabilities
-- Public typed configuration values re-exported by the `everruns` facade
-- Atomic capability-ID and alias collision rejection
-
-The `ui-capabilities` feature enables the OpenUI and A2UI implementations and
-their catalog/prompt modules at `everruns_builtins::{openui,a2ui}`. It is selected by the hosted product catalog;
-the embedded runtime bundle remains UI-protocol neutral.
+Forwards the existing public API and feature names to `everruns-core::builtins`
+for this final deprecated release. New consumers use the canonical core module.
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-builtins)
-- [Framework advanced capabilities](https://docs.everruns.com/framework/advanced-capabilities/)
-- [Everruns documentation](https://docs.everruns.com)
+See the [public documentation](https://docs.everruns.com/framework/), the
+[core API reference](https://docs.rs/everruns-core), and the
+[compatibility API reference](https://docs.rs/everruns-builtins).
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+[MIT](https://github.com/everruns/everruns/blob/main/LICENSE).

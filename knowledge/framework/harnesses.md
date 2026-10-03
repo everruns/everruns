@@ -41,7 +41,7 @@ harness; the Framework reproduces it with no stored records to blame.
 **Environment mismatch is discovered by the model.** An agent that needs native
 processes, attached to a target that cannot run them, fails at the first tool
 call rather than at configuration time. `ComputeCapabilities`
-(`crates/host/src/compute.rs`) already records what a target can do and is
+(`crates/core/src/host/compute.rs`) already records what a target can do and is
 explicit that an unsupported operation must be absent rather than emulated, but
 nothing compares it against what an agent requires.
 
@@ -62,7 +62,7 @@ inventing a second one: an Agent carries a harness reference
 Environment is not a new name. It is the resource name already decided for both
 surfaces by [Execution environments](../harnesses/execution-environments.md),
 and it already exists as a value with `compute`, `containment`, `capabilities`,
-and `durability` members (`crates/host/src/workspace.rs`).
+and `durability` members (`crates/core/src/host/workspace.rs`).
 
 ### The harness is narrower than the hosted record
 
@@ -98,7 +98,7 @@ shell" is a comment; with it, the mismatch surfaces at configuration time and
 names the specific gap.
 
 `Environment` already rejects a containment profile weaker or stronger than its
-target enforces (`crates/host/src/workspace.rs`). Harness requirements extend
+target enforces (`crates/core/src/host/workspace.rs`). Harness requirements extend
 the same idea one layer up.
 
 ### Harness is optional
@@ -221,9 +221,9 @@ provider-named aliases remain available during migration.
 - Agent composition and the synthesized harness: `crates/everruns/src/agent.rs`
 - Session and environment binding: `crates/everruns/src/session.rs`,
   `crates/everruns/src/engine.rs`
-- Environment, containment validation: `crates/host/src/workspace.rs`
-- Compute targets and capabilities: `crates/host/src/compute.rs`
-- Portable harness definition: `crates/host/src/builders.rs`
+- Environment, containment validation: `crates/core/src/host/workspace.rs`
+- Compute targets and capabilities: `crates/core/src/host/compute.rs`
+- Portable harness definition: `crates/core/src/host/builders.rs`
 - Hosted harness record and agent binding: `crates/server/src/records/harness.rs`,
   `crates/server/src/records/agent.rs`
 - Built-in harness definitions: `crates/server/src/harnesses/`

@@ -22,7 +22,7 @@ use crate::storage::{
 };
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use everruns_host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
+use everruns_core::host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use std::sync::Arc;
 use uuid::Uuid;
 

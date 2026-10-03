@@ -33,9 +33,10 @@ impl AgentBuilder {
     /// # Ok::<(), everruns::BuildError>(())
     /// ```
     pub fn ask_user(mut self, responder: impl crate::ask_user::AskUser + 'static) -> Self {
-        self.capabilities
-            .push(crate::CapabilityRef::new(everruns_builtins::ASK_USER_CAPABILITY_ID).into());
-        self.ask_user = Some(everruns_builtins::AskUserCapability::new(responder));
+        self.capabilities.push(
+            crate::CapabilityRef::new(everruns_core::builtins::ASK_USER_CAPABILITY_ID).into(),
+        );
+        self.ask_user = Some(everruns_core::builtins::AskUserCapability::new(responder));
         self
     }
 }

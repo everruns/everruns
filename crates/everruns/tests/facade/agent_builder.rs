@@ -87,7 +87,7 @@ fn reserved_mcp_name_delimiter_is_a_typed_error() {
 // --- backends(): caller-provided host backends replace the in-memory defaults ---------------------
 mod custom_backends {
     use everruns::{Agent, Engine, HostBackends, Model};
-    use everruns_host::{
+    use everruns_core::host::{
         EventLog, EventReadLimit, EventReadRequest, EventReader, InMemoryEventLog,
     };
     use std::sync::Arc;
@@ -122,7 +122,10 @@ mod custom_backends {
                 .map(|e| e.event_type.as_str())
                 .collect::<Vec<_>>()
         );
-        assert_eq!(log.durability(), everruns_host::EventDurability::Volatile);
+        assert_eq!(
+            log.durability(),
+            everruns_core::host::EventDurability::Volatile
+        );
     }
 
     #[tokio::test]

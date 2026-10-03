@@ -10,10 +10,10 @@
 //!
 //! Run with: cargo run -p everruns-llm-tests --example dad_jokes_agent
 
-use everruns_builtins::CurrentTimeCapability;
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::provider::DriverId;
+use everruns_core::builtins::CurrentTimeCapability;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 
 const DAD_JOKES_SYSTEM_PROMPT: &str = r#"You are a Dad Jokes Bot - the world's greatest purveyor of groan-worthy humor!

@@ -1,13 +1,13 @@
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::runtime_provider::Provider;
-use everruns_host::InProcessRuntimeBuilder;
+use everruns_core::host::InProcessRuntimeBuilder;
 use everruns_test_support::llmsim_driver::SimTurn;
 use everruns_test_support::{LlmSimConfig, LlmSimDriver, LlmSimRuntimeExt};
 
 // Guards the 0.18 migration bridge documented on the crate root: code written
 // against the 0.17 simulator paths (`everruns_test_support::{LlmSimConfig,
 // LlmSimDriver}` and the `llmsim_driver` module) must keep compiling *and*
-// keep working against the current `everruns_llmsim`/`everruns_host` types,
+// keep working against the current `everruns_llmsim`/`everruns_core::host` types,
 // not just type-check as a no-op construction.
 #[tokio::test]
 async fn zero_eighteen_bridge_preserves_zero_seventeen_simulator_paths() {

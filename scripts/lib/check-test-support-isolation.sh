@@ -35,7 +35,7 @@ GUARDED_TREES=(
   crates/server/src
   crates/worker/src
   crates/core/src
-  crates/host/src
+  crates/core/src/host
   crates/capabilities/src
   crates/everruns/src/local
   crates/cli/src
@@ -99,7 +99,7 @@ if matches=$(grep -rnE 'everruns_core::in_memory|everruns-core::in_memory' crate
 fi
 
 for symbol in InMemoryAgentStore InMemoryHarnessStore InMemorySessionStore InMemoryProviderStore; do
-  if ! grep -q "pub struct $symbol" crates/host/src/in_memory.rs; then
+  if ! grep -q "pub struct $symbol" crates/core/src/host/in_memory.rs; then
     echo "$symbol must be owned by everruns-host."
     FAILED=1
   fi
@@ -112,7 +112,7 @@ for symbol in InMemoryMessageRetriever InMemoryEventEmitter; do
   fi
 done
 
-if matches=$(grep -rnE 'RuntimeMessageStore|PersistingEventEmitter|BridgingEventEmitter' crates/host/src crates/test-support/src --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE 'RuntimeMessageStore|PersistingEventEmitter|BridgingEventEmitter' crates/core/src/host crates/test-support/src --include='*.rs' 2>/dev/null); then
   echo "Writable message-store facades and conversation dual-write bridges are forbidden:"
   echo "$matches"
   FAILED=1

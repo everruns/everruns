@@ -19,7 +19,7 @@ harness becomes once the environment is separable, is proposed in
 
 What exists in code today:
 
-- the Framework contract, `crates/host/src/compute.rs`: `Compute`,
+- the Framework contract, `crates/core/src/host/compute.rs`: `Compute`,
   `ComputeSession`, `ComputeCapabilities`, `Containment`, `Durability`, and
   `Environment`'s named `compute` and `containment` members with the validation
   rule below;
@@ -175,7 +175,7 @@ whole environment everywhere else. Worth settling before the field ships.
 ### Naming
 
 The Framework already named this. `Environment` in
-`crates/host/src/workspace.rs` is "session execution resources", a workspace
+`crates/core/src/host/workspace.rs` is "session execution resources", a workspace
 head plus a type-keyed extension seam, and `EnvironmentBuilder::workspace_extension`
 documents that seam for "process, container, or remote mount" providers that
 must address the same head as the file tools. Compute was left as a future
@@ -418,7 +418,7 @@ operator opts into an rsync-style portable export. Native processes, packages,
 PTY, and ports are all available, which is exactly why people want it.
 
 `host` is the degenerate case of `machine`: same contract, in-process transport,
-already half-built. `RealDiskFileStore` in `crates/host/src/real_disk.rs` is the
+already half-built. `RealDiskFileStore` in `crates/core/src/host/real_disk.rs` is the
 working filesystem, and the missing half is a compute implementation plus the
 containment providers below.
 

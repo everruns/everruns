@@ -662,7 +662,7 @@ mod tests {
     use everruns_core::events::EventData;
     use everruns_core::events::OutputMessageDeltaData;
     use everruns_core::events::{EventContext, EventRequest, TurnStartedData};
-    use everruns_host::{HostBackends, HostEventEmitter, InMemoryEventLog};
+    use everruns_core::host::{HostBackends, HostEventEmitter, InMemoryEventLog};
     use serde_json::json;
     use tokio::sync::Notify;
 

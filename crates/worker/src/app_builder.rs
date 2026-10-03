@@ -9,8 +9,8 @@
 //   "Not goals" section.
 
 use anyhow::{Context, Result};
+use everruns_core::host::HostComposition;
 use everruns_core::{ErrorReport, ErrorReporter, ErrorScope};
-use everruns_host::HostComposition;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_contracts::typed_id::WorkspaceId;
-use everruns_host::{
+use everruns_core::host::{
     RealDiskFileStore, WorkspaceBackend, WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint,
     WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHeadAccess,
     WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
@@ -24,7 +24,7 @@ const PAYLOAD: &[u8] = b"local-git-worktree-v1";
 /// A Git backend whose writable heads are explicit local worktrees.
 ///
 /// Dropping this value, a Workspace, a head, a Session, or an Agent performs no
-/// cleanup. [`WorkspaceHead::destroy`](everruns_host::WorkspaceHead::destroy)
+/// cleanup. [`WorkspaceHead::destroy`](everruns_core::host::WorkspaceHead::destroy)
 /// explicitly removes only the worktree; its Git branch remains durable.
 /// Archive prevents subsequent reopen but does not revoke filesystem handles
 /// already held by a running session.
@@ -460,8 +460,8 @@ mod tests {
     use std::process::Command as StdCommand;
 
     use everruns_contracts::typed_id::SessionId;
+    use everruns_core::host::{Workspace, WorkspaceError, WorkspaceHeadAccess};
     use everruns_core::session_files::SessionFileSystem;
-    use everruns_host::{Workspace, WorkspaceError, WorkspaceHeadAccess};
 
     use super::*;
 

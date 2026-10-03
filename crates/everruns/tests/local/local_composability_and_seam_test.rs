@@ -7,7 +7,7 @@
 // LocalBackends with an llmsim + a test math capability, proving the local
 // stores compose into a working in-process runtime.
 
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -18,17 +18,17 @@ use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::provider::DriverId;
 use everruns_contracts::tool_types::ToolCall;
 use everruns_core::events::Event;
+use everruns_core::host::{
+    AgentBuilder, EventSink, EventSinkError, HarnessBuilder, HostBackends, InProcessRuntimeBuilder,
+    RealDiskFileStore, RuntimeHostAdapter, SessionBuilder, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext,
+};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TaskLinks,
     TaskWakePolicy,
 };
 use everruns_core::{CapabilityRegistry, InputMessage};
-use everruns_host::{
-    AgentBuilder, EventSink, EventSinkError, HarnessBuilder, HostBackends, InProcessRuntimeBuilder,
-    RealDiskFileStore, RuntimeHostAdapter, SessionBuilder, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext,
-};
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 use everruns_test_support::TestMathCapability;
 

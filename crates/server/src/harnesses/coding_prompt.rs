@@ -8,7 +8,7 @@
 //!   what survives a restart, how long it lives. Written prose can disagree with
 //!   the environment; it did, and it drifted further with every provider change.
 //!   That half is now derived from the bound target by
-//!   [`everruns_host::environment_preamble`], so it cannot.
+//!   [`everruns_core::host::environment_preamble`], so it cannot.
 //! - **Provider tool names.** Naming a tool in prompt
 //!   text duplicates what the tool schemas already say and goes stale the moment
 //!   a harness is bound to another target. The tool list is the tool list.

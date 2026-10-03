@@ -7,7 +7,7 @@ use std::time::SystemTime;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use everruns_core::RuntimeMessage;
-use everruns_host::{
+use everruns_core::host::{
     EventCursor, EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventLogError,
     EventReadLimit, EventReadRequest, MAX_EVENT_HISTORY_PAGE_SIZE, MAX_EVENT_HISTORY_REPLAY,
     MAX_EVENT_PAGE_SIZE,
@@ -532,7 +532,7 @@ fn map_event_error(error: EventLogError) -> HistoryError {
 mod tests {
     use std::str::FromStr;
 
-    use everruns_host::EventLogError;
+    use everruns_core::host::EventLogError;
 
     use super::{HistoryCursor, HistoryError, ResumeError, map_event_error};
 

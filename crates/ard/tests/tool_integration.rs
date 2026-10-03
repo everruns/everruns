@@ -95,7 +95,7 @@ impl SessionStorageStore for MockStorage {
 
 fn ctx(session_id: SessionId, store: Arc<MockStorage>) -> ToolContext {
     let mut context = ToolContext::with_storage_store(session_id, store);
-    context.egress_service = Some(Arc::new(everruns_host::DirectEgressService::new()));
+    context.egress_service = Some(Arc::new(everruns_core::host::DirectEgressService::new()));
     context
 }
 

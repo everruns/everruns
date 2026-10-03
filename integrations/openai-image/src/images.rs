@@ -865,7 +865,7 @@ mod tests {
             "http://10.1.2.3/v1",
         ] {
             let client = OpenAiImageClient::new(
-                Arc::new(everruns_host::DirectEgressService::new()),
+                Arc::new(everruns_core::host::DirectEgressService::new()),
                 None,
                 "sk-secret",
                 Some(base_url.to_string()),

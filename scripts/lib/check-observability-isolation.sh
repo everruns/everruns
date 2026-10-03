@@ -24,10 +24,11 @@ cd "$PROJECT_ROOT"
 # Keeps cargo's stderr, so "the guard could not run" never looks like
 # "the guard found a violation". See guard-cargo.sh.
 source "$SCRIPT_DIR/guard-cargo.sh"
+source "$SCRIPT_DIR/core-feature-modules.sh"
 
 FAILED=0
 
-if [ -e crates/observability/Cargo.toml ] || [ ! -e crates/host/src/observability/mod.rs ]; then
+if [ -e crates/observability/Cargo.toml ] || [ ! -e crates/core/src/host/observability/mod.rs ]; then
   echo "Observability must remain an opt-in everruns-host module, not a standalone crate"
   FAILED=1
 fi
@@ -36,7 +37,7 @@ EXPORTER_CRATES_TREE='^(opentelemetry|opentelemetry_sdk|opentelemetry-otlp|opent
 
 # 1. Core sources: no exporter/subscriber references (contracts only).
 SOURCE_PATTERN='(opentelemetry|opentelemetry_sdk|opentelemetry_otlp|tracing_opentelemetry|tracing_subscriber)::'
-if matches=$(grep -rnE "$SOURCE_PATTERN" crates/core/src --include='*.rs' 2>/dev/null); then
+if matches=$(core_kernel_source_files | xargs grep -nE "$SOURCE_PATTERN" 2>/dev/null); then
   echo "everruns-core sources must not reference exporter/subscriber crates (EVE-876):"
   echo "$matches"
   FAILED=1
@@ -78,7 +79,7 @@ done
 # 4. Exporter dependency declarations live in everruns-host only
 #    (binaries get them transitively; app/bin crates may not re-declare them).
 if matches=$(grep -rnE '^(opentelemetry|opentelemetry_sdk|opentelemetry-otlp|tracing-opentelemetry)[[:space:]]*[.=]' \
-  crates/*/Cargo.toml integrations/*/Cargo.toml 2>/dev/null | grep -v '^crates/host/Cargo.toml'); then
+  crates/*/Cargo.toml integrations/*/Cargo.toml 2>/dev/null | grep -v '^crates/core/Cargo.toml'); then
   echo "Exporter dependencies are owned by everruns-host's observability feature:"
   echo "$matches"
   FAILED=1

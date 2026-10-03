@@ -102,17 +102,17 @@ Production event routing therefore prefers:
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, and portable projections. Depends privately on the contract-only provider surface and does not re-export it.
-   - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
-   - `engine/` → `everruns-engine` - Pure turn state machine plus shared Input/Reason/Act execution
+   - `contracts/` → `everruns-contracts` - Portable provider and capability contracts: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
+   - `core/src/engine/` - Pure turn state machine plus shared Input/Reason/Act execution, enabled by `engine`
    - `capabilities/` → `everruns-capabilities` - Hosted capability implementations and orchestration
    - `server/src/records/` - Control-plane persistence/API records
-   - `platform/` → `everruns-platform` - Deprecated capability shim for one release
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
-   - `host/` → `everruns-host` - Low-level in-process execution host, reusable host-phase execution, and session mutation/storage services shared by the facade, worker, and advanced hosts
+   - `core/src/host/` - Opt-in neutral host implementation and session services; concrete integrations are composed by `everruns::batteries`
+   - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`)
-   - `drivers/*` - separately published official LLM driver packages over `everruns-provider`
+   - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
    - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
    - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
    - `integrations/e2b/` → `everruns-integrations-e2b` - E2B cloud sandbox integration (auto-registered via `inventory` plugin system)
@@ -134,11 +134,10 @@ everruns/
 │   ├── worker/           # Durable worker with gRPC client
 │   ├── core/             # Neutral execution contracts and portable projections
 │   ├── contracts/        # Provider/capability SPIs, model profiles, neutral host services
-│   ├── engine/           # Shared turn planning and execution coordination
+│   ├── engine/           # Deprecated one-release engine shim
 │   ├── capabilities/     # Hosted capabilities and orchestration
-│   ├── platform/         # Deprecated one-release capabilities shim
 │   ├── everruns/         # Application-facing Framework crate
-│   ├── host/             # Low-level in-process host and reusable host phases
+│   ├── host/             # Deprecated one-release host shim
 │   ├── macros/           # everruns-macros implementation crate
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── durable/          # Durable execution engine
@@ -199,7 +198,7 @@ graph TD
 
 ### Platform Composition
 
-Everruns runtime composition is centered on `HostComposition` in `crates/host/src/composition.rs`.
+Everruns runtime composition is centered on `HostComposition` in `crates/core/src/host/composition.rs`.
 
 `HostComposition` is the shared bundle for:
 
@@ -625,7 +624,7 @@ Observability is decoupled from business logic through the `EventListener` trait
 
 **Key components**:
 - `EventListener` trait, Interface for observability backends
-- `OtelEventListener` (`crates/host/src/observability/otel.rs`), generates OTel spans from events
+- `OtelEventListener` (`crates/core/src/host/observability/otel.rs`), generates OTel spans from events
 - `EventService` (`server/src/services/event.rs`), Notifies listeners after event persistence
 
 **Event-to-span mapping** (following gen-ai semantic conventions):

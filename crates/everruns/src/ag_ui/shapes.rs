@@ -387,8 +387,8 @@ fn as_object(value: Value) -> Option<serde_json::Map<String, Value>> {
 }
 
 /// Our keys go under `everruns`; `ag-ui` is reserved for the protocol.
-fn everruns_metadata(value: Value) -> everruns_ag_ui::Metadata {
-    let mut metadata = everruns_ag_ui::Metadata::new();
+fn everruns_metadata(value: Value) -> everruns_core::ag_ui::Metadata {
+    let mut metadata = everruns_core::ag_ui::Metadata::new();
     metadata.insert("everruns".to_string(), value);
     metadata
 }

@@ -9,6 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
+source "$SCRIPT_DIR/core-feature-modules.sh"
 
 FAILED=0
 fail() {
@@ -60,12 +61,12 @@ for module in "${FORBIDDEN_CORE_MODULES[@]}"; do
 done
 
 IMPLEMENTATION_PATTERN='pub struct (AgentInstructionsCapability|AutoToolSearchCapability|CompactionCapability|CurrentTimeCapability|ErrorDisclosureCapability|GuardrailsCapability|MessageMetadataCapability|PromptCachingCapability|ToolCallRepairCapability|ToolSearchCapability|UsageLimitAutoContinueCapability|HumanIntentCapability|InfinityContextCapability|SkillsCapability|ScopedSkillsCapability|AttachSkillCapability|ToolApprovalCapability|OpenUiCapability|A2UiCapability|OpenRouterServerToolsCapability)'
-if matches=$(rg -n "$IMPLEMENTATION_PATTERN" crates/core/src --glob '*.rs'); then
+if matches=$(core_kernel_source_files | grep -v '^crates/core/src/builtins/' | xargs grep -nE "$IMPLEMENTATION_PATTERN"); then
   fail "portable policy implementation types remain in core source:"
   printf '%s\n' "$matches"
 fi
 
-if matches=$(rg -n '(with_builtins|runtime_builtins|with_builtins_for_grade)' crates/core/src --glob '*.rs'); then
+if matches=$(core_kernel_source_files | grep -v '^crates/core/src/builtins/' | xargs grep -nE '(with_builtins|runtime_builtins|with_builtins_for_grade)'); then
   fail "runtime/product capability preset selection remains in core source:"
   printf '%s\n' "$matches"
 fi
@@ -80,7 +81,7 @@ if matches=$(rg -n 'everruns-(openui|a2ui)' Cargo.toml crates/{core,builtins}/Ca
 fi
 
 BUILTINS_EFFECT_PATTERN='(reqwest::|sqlx::|mlua::|everruns_(host|platform|server|worker|mcp|http|integrations_)::|(^|[^[:alnum:]_])bashkit::|fetchkit::|std::(fs|net|process)::|tokio::(fs|net|process)::)'
-if matches=$(rg -n "$BUILTINS_EFFECT_PATTERN" crates/builtins/src --glob '*.rs'); then
+if matches=$(rg -n "$BUILTINS_EFFECT_PATTERN" crates/core/src/builtins --glob '*.rs'); then
   fail "effectful host/platform/transport implementation leaked into everruns-builtins:"
   printf '%s\n' "$matches"
 fi
@@ -97,9 +98,9 @@ assert_tree_excludes() {
   done
 }
 
-BUILTINS_TREE=$(cargo tree -p everruns-builtins -e normal --depth 1 --prefix none)
+BUILTINS_TREE=$(cargo tree -p everruns-core --features builtins -e normal --prefix none)
 assert_tree_excludes \
-  "everruns-builtins direct normal dependency tree" \
+  "everruns-core builtins normal dependency tree" \
   "$BUILTINS_TREE" \
   everruns-host everruns-capabilities everruns-server everruns-worker everruns-mcp \
   everruns-integrations-filesystem everruns-integrations-bashkit \
@@ -129,9 +130,9 @@ assert_tree_excludes \
   "$FRAMEWORK_TYPESAFE_TREE" \
   everruns-builtins everruns-capabilities
 
-HOST_MINIMAL_TREE=$(cargo tree -p everruns-host --no-default-features -e normal --prefix none)
+HOST_MINIMAL_TREE=$(cargo tree -p everruns-core --no-default-features --features host -e normal --prefix none)
 assert_tree_excludes \
-  "everruns-host --no-default-features normal dependency tree" \
+  "everruns-core --no-default-features --features host normal dependency tree" \
   "$HOST_MINIMAL_TREE" \
   everruns-capabilities reqwest rustls hyper
 
@@ -140,7 +141,7 @@ if [ -e crates/session-services/Cargo.toml ]; then
 fi
 
 for module in session_mutator.rs capabilities/session.rs capabilities/session_storage.rs; do
-  if [ ! -e "crates/host/src/session_services/$module" ]; then
+  if [ ! -e "crates/core/src/host/session_services/$module" ]; then
     fail "everruns-host is missing session service module: $module"
   fi
 done

@@ -348,7 +348,7 @@ Choose and protect the local data directory accordingly.
 
 Durable conversation truth belongs to canonical events; history and context
 are projections of that record. Advanced hosts use `EventLog` and
-`EventHistory` from `everruns-host`, including `JsonlEventLog` when a local
+`EventHistory` from `everruns-core` (`host` feature), including `JsonlEventLog` when a local
 append-only event log is appropriate. Framework applications continue sessions
 with `Engine::resume` and traverse bounded event-derived pages from
 `Session::history`.
@@ -366,7 +366,7 @@ representation.
 
 ### Platform: distributed durable execution
 
-The Everruns Platform uses the same `everruns-engine` turn state machine as the
+The Everruns Platform uses the same `everruns-core` (`engine` feature) turn state machine as the
 Framework, but adapts it through `everruns-durable`. The server schedules work,
 workers execute phases and apply effects, and PostgreSQL stores workflow
 checkpoints and canonical events. A worker can disappear between phases and a

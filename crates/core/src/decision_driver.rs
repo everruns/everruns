@@ -4,7 +4,7 @@
 //! model provider: one vendor's transport, answering the provider-neutral
 //! [`DecisionRequest`]. Callers keep talking to a [`DecisionsService`]; the
 //! host puts a router in front of a registry of drivers (see
-//! `everruns_host::DecisionDriverRegistry`), so a deployment switches vendors
+//! `everruns_core::host::DecisionDriverRegistry`), so a deployment switches vendors
 //! without touching a call site.
 //!
 //! Decisions recorded here:

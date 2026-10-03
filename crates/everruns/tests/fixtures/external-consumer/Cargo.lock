@@ -421,10 +421,8 @@ version = "0.34.2"
 dependencies = [
  "async-trait",
  "base64",
- "everruns-builtins",
  "everruns-contracts",
  "everruns-core",
- "everruns-host",
  "everruns-integrations-filesystem",
  "everruns-llmsim",
  "everruns-macros",
@@ -438,17 +436,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-builtins"
+name = "everruns-capabilities"
 version = "0.34.2"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
- "chrono-tz",
  "everruns-contracts",
  "everruns-core",
+ "inventory",
+ "jsonschema",
  "serde",
  "serde_json",
- "sha2",
+ "thiserror",
  "tokio",
  "tracing",
  "uuid",
@@ -496,12 +496,16 @@ dependencies = [
  "async-trait",
  "base64",
  "chrono",
+ "chrono-tz",
  "cron",
  "everruns-contracts",
+ "fs2",
  "futures",
  "globset",
+ "ignore",
  "inventory",
  "jsonschema",
+ "libc",
  "rand 0.10.3",
  "regex",
  "serde",
@@ -516,50 +520,6 @@ dependencies = [
  "url",
  "uuid",
  "web-time",
-]
-
-[[package]]
-name = "everruns-engine"
-version = "0.34.2"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "futures",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
- "web-time",
-]
-
-[[package]]
-name = "everruns-host"
-version = "0.34.2"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-builtins",
- "everruns-contracts",
- "everruns-core",
- "everruns-engine",
- "everruns-integrations-filesystem",
- "fs2",
- "futures",
- "ignore",
- "libc",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -585,7 +545,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "everruns-contracts",
- "everruns-host",
+ "everruns-core",
  "futures",
  "llmsim",
  "serde_json",
@@ -602,30 +562,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-platform"
-version = "0.34.2"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "everruns-host",
- "inventory",
- "jsonschema",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "external-builtin-pack"
 version = "0.0.0"
 dependencies = [
- "everruns-builtins",
  "everruns-contracts",
  "everruns-core",
 ]
@@ -656,7 +595,6 @@ dependencies = [
  "async-trait",
  "everruns-contracts",
  "everruns-core",
- "everruns-host",
  "everruns-llmsim",
  "tokio",
 ]
@@ -668,8 +606,6 @@ dependencies = [
  "async-trait",
  "everruns-contracts",
  "everruns-core",
- "everruns-engine",
- "everruns-host",
 ]
 
 [[package]]
@@ -679,9 +615,9 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns",
+ "everruns-capabilities",
  "everruns-contracts",
  "everruns-core",
- "everruns-platform",
  "serde_json",
  "tokio",
 ]
@@ -701,7 +637,7 @@ name = "external-workspace-backend"
 version = "0.0.0"
 dependencies = [
  "async-trait",
- "everruns-host",
+ "everruns-core",
 ]
 
 [[package]]
@@ -1304,9 +1240,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.58.4"
+version = "0.58.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5761b0ca0a31464030d7c2a98087fde3124ebb5e09b5a112cdb815f03b8ee150"
+checksum = "ea18b8d5e1469b1bdd6b349169305141316a7c26da27f239773b65c830c0f5d6"
 dependencies = [
  "ahash",
  "bytecount",
@@ -1332,18 +1268,18 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.58.4"
+version = "0.58.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1ffba4378a3d6ee7f1ab65a8ed95c711ccfe4a3870932bdce89d8260abed38a"
+checksum = "854e9e22c420535035e95eed240cbfb4a5f4b7da74d122d63144e0c31926dbfd"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.58.4"
+version = "0.58.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "386121f898b560ff6aaa7974952720e9d9276a201eca31296387c2ed8707855e"
+checksum = "4e3bfac11ac357ec620880025757d38c67da8fd5b9ef5024d19f0f360002b4ca"
 dependencies = [
  "ahash",
  "bytecount",
@@ -1810,9 +1746,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.58.4"
+version = "0.58.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cfa1c91745dbca76a406b926918d7c63e15a4525ebab939fec3e015a1fb82b1"
+checksum = "590efadb0a669f1712c1e3ab810a55d4c3d20d0127c455f7236dd0710aba0346"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -2597,9 +2533,9 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "uuid"
-version = "1.26.1"
+version = "1.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
+checksum = "97277d36b9c3ace13e58fa6e753f8b0bbbf302a18dd193240d70f9e29681059a"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",

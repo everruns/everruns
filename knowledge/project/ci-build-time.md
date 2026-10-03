@@ -56,7 +56,11 @@ durable 9.1m to 2-3m.
   when it installs process-global state (a metrics recorder, env vars), since those leak
   across tests sharing a process. New server integration tests go into `domain/` by default. The same shape
   holds for the server shard (`contracts`, `server_integration`), `everruns` (`facade`,
-  `local`), `everruns-host` and `everruns-test-support` (`integration`).
+  `local`, `host`), `everruns-core` (`consolidated`) and `everruns-test-support` (`integration`).
+  Core consolidation replaces the former engine/builtins/MCP/AG-UI host binaries.
+  Two narrow host-shim feature runs intentionally verify MCP and host-shell without
+  feature union hiding their transport or integration dependencies; the legacy host
+  fixtures retain serial execution.
 - **A `--no-run` prebuild does not help.** It was tried and removed: the targets it
   builds are not reused by the run steps, so it only adds a wave.
 - **One producer per `rust-cache` `shared-key`.** Cache entries are immutable, so the

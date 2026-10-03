@@ -11,12 +11,12 @@
 // same PR and explain why in the commit message. Lowering a cap is
 // always fine.
 
-use everruns_builtins::{InfinityContextCapability, SkillsCapability};
 use everruns_capabilities::capabilities::SessionSandboxCapability;
 use everruns_capabilities::capabilities::{
     DataKnowledgeCapability, MemoryCapability, SubagentCapability,
 };
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::builtins::{InfinityContextCapability, SkillsCapability};
 use everruns_core::capabilities::{Capability, SystemPromptContext};
 
 async fn assert_contribution_under(cap: &dyn Capability, max_bytes: usize) {
@@ -71,7 +71,7 @@ async fn subagents_prompt_within_budget() {
 async fn session_sandbox_prompt_within_budget() {
     // Bumped 300 -> 850 (EVE-1042): the environment half of this prompt is no
     // longer hand-written, it is derived from the sandbox's own facts by
-    // `everruns_host::environment_preamble`. That costs ~500 bytes here and
+    // `everruns_core::host::environment_preamble`. That costs ~500 bytes here and
     // removes roughly a hundred lines of near-identical prose from each
     // `coding-*` harness, so the assembled prompt for a coding session gets
     // smaller while this capability's standalone contribution gets larger.

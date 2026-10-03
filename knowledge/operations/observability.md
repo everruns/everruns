@@ -68,7 +68,7 @@ phase span that owns the event's `exec_id`, else the turn.
 
 ## OpenTelemetry
 
-`OtelEventListener` (`crates/host/src/observability/otel.rs`) turns the agentic
+`OtelEventListener` (`crates/core/src/host/observability/otel.rs`) turns the agentic
 event stream into spans that follow the OpenTelemetry Gen-AI agent and
 inference conventions and, on the same spans, the OpenInference conventions
 that Arize Phoenix reads. One OTLP stream therefore renders in Gen-AI-aware
@@ -130,7 +130,7 @@ installs; without an OTLP endpoint it runs on the no-op tracer.
 The exact attribute set per span lives in `otel.rs`
 (`chat_detail_attributes`, `tool_attributes`, `turn_usage_attributes`), the
 vocabulary in `crates/core/src/telemetry.rs` (`gen_ai`) and
-`crates/host/src/observability/openinference.rs`. What each span carries:
+`crates/core/src/host/observability/openinference.rs`. What each span carries:
 
 - **invoke_agent**: `gen_ai.agent.id/name/description` (from the agent
   identity on `turn.started`), `gen_ai.conversation.id`, cumulative
@@ -222,9 +222,9 @@ message. Image bytes are never copied into telemetry (base64 images become a
 
 | File | Purpose |
 |------|---------|
-| `crates/host/src/observability/otel.rs` | `OtelEventListener`, span lifecycle, attribute assembly, `TraceConventions` |
-| `crates/host/src/observability/openinference.rs` | OpenInference vocabulary and flattened message builders |
-| `crates/host/src/observability/telemetry.rs` | OTLP exporter wiring, global tracer provider, tracing-subscriber layers, config, init |
+| `crates/core/src/host/observability/otel.rs` | `OtelEventListener`, span lifecycle, attribute assembly, `TraceConventions` |
+| `crates/core/src/host/observability/openinference.rs` | OpenInference vocabulary and flattened message builders |
+| `crates/core/src/host/observability/telemetry.rs` | OTLP exporter wiring, global tracer provider, tracing-subscriber layers, config, init |
 | `crates/core/src/telemetry.rs` | Gen-AI attribute names, provider mapping, `content` JSON builders, `error_type` |
 | `crates/server/src/app_builder.rs` | Listener registration |
 
@@ -277,7 +277,7 @@ Integration with [Braintrust](https://www.braintrust.dev/) for LLM observability
 
 ### Data Mapping
 
-For the complete field-by-field mapping (LLM generation, tool events, thinking events), see `crates/host/src/observability/braintrust.rs`. Key mappings:
+For the complete field-by-field mapping (LLM generation, tool events, thinking events), see `crates/core/src/host/observability/braintrust.rs`. Key mappings:
 
 - **Token usage**: `metadata.usage.*` → `metrics.prompt_tokens`, `metrics.completion_tokens`, `metrics.tokens`
 - **Cache tokens**: `metadata.usage.cache_read_tokens` → `metrics.cache_read_tokens`
@@ -311,7 +311,7 @@ Consumers should group by `metadata.session_id` and use Braintrust timeline/thre
 
 ### Implementation
 
-- **File**: `crates/host/src/observability/braintrust.rs`
+- **File**: `crates/core/src/host/observability/braintrust.rs`
 - **Registration**: `crates/server/src/main.rs` (event listener setup)
 - **Configuration**: `docs/sre/environment-variables.md`
 - **Format conversion**: `crates/core/src/message.rs` (`Message::to_openai_format()`)
@@ -331,7 +331,7 @@ Authorization: Bearer {api_key}
 Content-Type: application/json
 ```
 
-See `crates/host/src/observability/braintrust.rs` for the full request/response format.
+See `crates/core/src/host/observability/braintrust.rs` for the full request/response format.
 
 ---
 

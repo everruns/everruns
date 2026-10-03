@@ -33,7 +33,7 @@ stale-tool-result sweep, while an `ask_user` call carries its own `expires_at`,
 which the sweep honours from the moment the session parks. Changing the
 environment variable therefore does not move this deadline.
 
-The server stamps both deadlines (`deadlines_for`, `crates/builtins/src/ask_user.rs`).
+The server stamps both deadlines (`deadlines_for`, `crates/core/src/builtins/ask_user.rs`).
 The nudge lead scales with the window rather than sitting at a fixed 60s, so a
 short timeout still nudges after the question was asked:
 

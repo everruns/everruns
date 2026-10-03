@@ -62,12 +62,12 @@ pub use delegation_result::{
     ReportResultTool, ReportTaskProgressTool, report_result_tool_for_child_session,
     report_task_progress_tool_for_child_session,
 };
-pub use everruns_host::session_services::capabilities::session::{
+pub use everruns_core::host::session_services::capabilities::session::{
     GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
     SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
     update_session_title_with_event,
 };
-pub use everruns_host::session_services::capabilities::session_storage::{
+pub use everruns_core::host::session_services::capabilities::session_storage::{
     KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
     is_internal_session_kv_key, is_internal_session_secret_name,
 };
@@ -127,7 +127,7 @@ pub fn register_environment_capabilities(
     registry.register(everruns_integrations_bashkit::BashkitShellCapability);
     registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
     registry.register(everruns_integrations_openrouter::OpenRouterServerToolsCapability);
-    registry.register(everruns_builtins::OpenAiServerToolsCapability);
+    registry.register(everruns_core::builtins::OpenAiServerToolsCapability);
     registry.register(everruns_integrations_openrouter::ModelScoutCapability);
     registry.register(everruns_integrations_openrouter::OpenRouterWorkspaceCapability);
 
@@ -199,8 +199,8 @@ pub fn register_hosted_capabilities(
     // decisions live in session storage, so a parked turn resumes on whichever
     // worker picks it up after a person answers.
     #[cfg(feature = "portable-builtins")]
-    registry.register(everruns_builtins::ToolApprovalCapability::new(
-        std::sync::Arc::new(everruns_builtins::DurableToolApprover),
+    registry.register(everruns_core::builtins::ToolApprovalCapability::new(
+        std::sync::Arc::new(everruns_core::builtins::DurableToolApprover),
     ));
     registry.register(UserHooksCapability);
     registry.register(DataKnowledgeCapability);
@@ -236,7 +236,7 @@ pub fn portable_capability_registry() -> everruns_core::capabilities::Capability
     #[allow(unused_mut)]
     let mut registry = everruns_core::capabilities::CapabilityRegistry::new();
     #[cfg(feature = "portable-builtins")]
-    everruns_builtins::register_portable_capabilities(&mut registry)
+    everruns_core::builtins::register_portable_capabilities(&mut registry)
         .expect("portable built-in catalog must have unique capability IDs");
     registry
 }
@@ -276,7 +276,7 @@ mod tests {
     fn hosted_registry_has_the_hard_tool_approval_gate() {
         let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
         let capability = registry
-            .get(everruns_builtins::TOOL_APPROVAL_CAPABILITY_ID)
+            .get(everruns_core::builtins::TOOL_APPROVAL_CAPABILITY_ID)
             .expect("hosted registry registers tool_approval");
         assert!(!capability.pre_tool_use_hooks().is_empty());
     }

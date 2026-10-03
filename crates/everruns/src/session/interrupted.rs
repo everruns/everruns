@@ -2,7 +2,7 @@
 //! from the log, and finishing it by running its unfinished calls again.
 
 use everruns_contracts::typed_id::TurnId;
-use everruns_host::TurnSteering;
+use everruns_core::host::TurnSteering;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use super::{Command, RunError, Session, SessionActor, TurnCompletion, TurnEntry, TurnHandle};
@@ -92,7 +92,7 @@ impl SessionActor {
     /// The unfinished tool calls of a turn a process exit cut off.
     async fn interrupted(
         &mut self,
-    ) -> Result<Option<everruns_host::InterruptedToolCalls>, RunError> {
+    ) -> Result<Option<everruns_core::host::InterruptedToolCalls>, RunError> {
         self.ensure_runtime().await?;
         Ok(self
             .runtime

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use everruns_host::{HostBackends, WorkspaceBackend, WorkspaceBackendId};
+use everruns_core::host::{HostBackends, WorkspaceBackend, WorkspaceBackendId};
 use tokio::sync::OnceCell;
 
 use crate::agent::{Agent, AgentBuilder};

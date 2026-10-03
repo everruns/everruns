@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn the_e2b_sandbox_secret_prefix_is_reserved_from_session_storage() {
         assert!(
-            everruns_host::session_services::capabilities::is_internal_session_secret_name(
+            everruns_core::host::session_services::capabilities::is_internal_session_secret_name(
                 &format!("{E2B_SANDBOX_SECRET_PREFIX}i-example")
             )
         );

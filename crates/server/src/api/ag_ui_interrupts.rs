@@ -29,10 +29,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::records::{AgUiChannelConfig, SessionStatus};
-use everruns_ag_ui::{Interrupt, ResumeEntry, ResumeStatus};
-use everruns_builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
 use everruns_contracts::tool_types::ToolApprovalRequired;
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::ag_ui::{Interrupt, ResumeEntry, ResumeStatus};
+use everruns_core::builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
 use everruns_core::events::ToolCallRequestedData;
 use serde_json::{Value, json};
 
@@ -189,8 +189,8 @@ fn as_object(value: Value) -> Option<serde_json::Map<String, Value>> {
 }
 
 /// Our keys go under `everruns`; `ag-ui` is reserved for the protocol.
-fn everruns_metadata(value: Value) -> everruns_ag_ui::Metadata {
-    let mut metadata = everruns_ag_ui::Metadata::new();
+fn everruns_metadata(value: Value) -> everruns_core::ag_ui::Metadata {
+    let mut metadata = everruns_core::ag_ui::Metadata::new();
     metadata.insert("everruns".to_string(), value);
     metadata
 }
@@ -202,7 +202,7 @@ pub(crate) enum ResumeOutcome {
     /// Some interrupt or frontend tool call has no answer: nothing was
     /// resolved, and the run ends asking for all of them again.
     StillOpen {
-        tool_calls: Vec<everruns_ag_ui::ToolCall>,
+        tool_calls: Vec<everruns_core::ag_ui::ToolCall>,
         interrupts: Vec<Interrupt>,
     },
     /// Every interrupt was resolved and the turn resumed. Its events carry

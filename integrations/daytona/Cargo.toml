@@ -43,7 +43,6 @@ test-util = []
 
 [dev-dependencies]
 # Verify the host reserves provider state from agent-visible secret storage.
-everruns-host.workspace = true
 # Enables `test-util` for this crate's own integration tests.
 everruns-integrations-daytona = { path = ".", features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
@@ -51,5 +50,6 @@ wiremock = "0.6"
 urlencoding = "2"
 tempfile.workspace = true
 
+everruns-core = { workspace = true, default-features = false, features = ["host"] }
 [lints]
 workspace = true

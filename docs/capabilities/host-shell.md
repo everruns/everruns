@@ -136,7 +136,7 @@ refused before it is spawned.
 ## Deployment
 
 This is an embedder capability, not a hosted-product one. It ships in
-`everruns-host` behind the `host-shell` feature (also reachable as `host-shell`
+`everruns-core` (`host` feature) behind the `host-shell` feature (also reachable as `host-shell`
 on the `everruns` facade) and is deliberately absent from the hosted catalog:
 handing agents arbitrary host processes is something a CLI host, a CI runner, or
 an operator's own box opts into, not something a shared multi-tenant worker
@@ -151,10 +151,10 @@ On Linux the kernel policy is applied by a helper process, selected with the
 | `{"helper": "<path>"}` | run that binary |
 | `{"reexec_self": ["<arg>"]}` | re-exec this binary with those leading arguments |
 
-`everruns-host` ships `everruns-sandbox-exec` under the same feature, but cargo
+`everruns-core` (`host` feature) ships `everruns-sandbox-exec` under the same feature, but cargo
 does not build a dependency's binaries, so a single-binary host will not find
 one beside it. Such a host routes the arguments into
-`everruns_host::containment::worker::run_from_args` from its own `main` and
+`everruns_core::host::containment::worker::run_from_args` from its own `main` and
 selects `reexec_self`. See `examples/host-shell-agent`.
 
 ## See Also

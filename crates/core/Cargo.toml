@@ -21,7 +21,7 @@ keywords = ["agent", "agentic", "llm", "ai", "framework"]
 categories = ["development-tools", "asynchronous"]
 # Plugin marketplace fixtures are test-only and must never inflate the
 # published package.
-exclude = ["testdata/"]
+exclude = ["testdata/", "src/ag_ui/spec/1.0/fixtures", "src/ag_ui/spec/1.0/conformance"]
 
 [dependencies]
 # Provider/LLM abstraction foundation (typed IDs, credential schema, user-facing
@@ -63,7 +63,7 @@ cron = "0.17"
 
 # Tracing. Plain `tracing` instrumentation is unconditional. OpenTelemetry
 # initialization (SDK, OTLP exporter, tracing-subscriber layers) lives in
-# `everruns-host/observability`; core carries no exporter dependencies.
+# `host::observability` behind explicit exporter features. Default core carries no exporter dependencies.
 # Guard: scripts/lib/check-observability-isolation.sh.
 tracing.workspace = true
 # std time on native, the host clock on wasm32-unknown-unknown.
@@ -102,16 +102,72 @@ inventory.workspace = true
 # dependency or feature; the architecture
 # guard in scripts/lib/check-test-support-isolation.sh enforces it.
 
+# Runtime modules are selectable; default core retains the portable kernel only.
+chrono-tz = { version = "0.10", optional = true }
+fs2 = { workspace = true, optional = true }
+ignore = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls"] }
+eventsource-stream = { workspace = true, optional = true }
+serde_urlencoded = { version = "0.7", optional = true }
+futures-util = { workspace = true, optional = true }
+tree-sitter-bash = { version = "0.25", optional = true }
+a2a-wire = { package = "a2a-lf", version = "0.4", optional = true }
+a2a-client = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true, features = ["testing"] }
+opentelemetry-otlp = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+
 [features]
 # Core's default feature set is intentionally empty. Portable structural
 # outlines and OpenAPI derives are explicit opt-ins.
-# Note: OTLP telemetry lives behind `everruns-host/observability`; no core
-# build — default or otherwise — carries exporter dependencies.
+# OTLP telemetry lives behind the explicit `otel` host feature.
 default = []
+engine = []
+builtins = ["dep:chrono-tz"]
+ui-capabilities = ["builtins"]
+host = ["engine", "dep:fs2", "dep:ignore", "dep:libc", "tokio/fs", "tokio/io-util"]
+direct-egress = ["host", "dep:reqwest", "reqwest/blocking"]
+openai-agents-api = ["direct-egress", "dep:eventsource-stream"]
+process = ["host", "tokio/process", "tokio/time"]
+native-containment = ["process", "dep:tree-sitter", "dep:tree-sitter-bash", "dep:landlock", "dep:libc", "dep:seccompiler"]
+host-shell = ["native-containment"]
+mcp = ["dep:serde_urlencoded"]
+mcp-stdio = ["mcp", "process"]
+ag-ui = []
+ag-ui-projection = ["ag-ui"]
+ag-ui-client = ["ag-ui", "dep:reqwest", "dep:futures-util"]
+a2a = ["dep:a2a-wire", "dep:a2a-client", "dep:reqwest"]
+otel = ["host", "tokio/time", "everruns-contracts/tls-aws-lc-rs", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
+braintrust = ["direct-egress", "tokio/time"]
+observability = ["otel", "braintrust"]
 openapi = ["dep:utoipa", "everruns-contracts/openapi"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 
 [dev-dependencies]
+wiremock = "0.6"
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile.workspace = true
 insta = { version = "1.40", features = ["json", "redactions"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = { version = "0.4.4", optional = true }
+seccompiler = { version = "0.5.0", optional = true }
+
+[[bin]]
+name = "everruns-sandbox-exec"
+path = "src/host/bin/sandbox_exec.rs"
+required-features = ["native-containment"]
+
+[[bin]]
+name = "mcp_stdio_echo"
+path = "src/mcp/bin/mcp_stdio_echo.rs"
+required-features = ["mcp-stdio"]
+
+[[test]]
+name = "consolidated"
+path = "tests/consolidated/main.rs"

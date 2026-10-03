@@ -8,7 +8,6 @@
 crates/core
 crates/durable
 crates/everruns
-crates/host
 crates/capabilities
 crates/server
 crates/test-support

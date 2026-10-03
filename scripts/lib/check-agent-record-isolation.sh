@@ -35,6 +35,8 @@ if matches=$(grep -rnE 'everruns_(platform|capabilities|server)(::|;)' "${KERNEL
   FAILED=1
 fi
 
+# Exact declaration exemptions preserve the backend-owned Workspace execution
+# handle and stateless MCP OAuth protocol client; persisted rows stay forbidden.
 # 1b. Kernel sources: the moved stored-record, provisioning, management, and
 #     connector/OAuth/email infrastructure types must not be re-declared
 #     inside the kernel (EVE-877 agents, EVE-881 harnesses, EVE-882 sessions,
@@ -54,7 +56,9 @@ RECORD_TYPES="${RECORD_TYPES}|SessionSandboxConfig|SessionSandboxInitConfig|Sess
 # kernel: integration crates register providers against platform, and a turn
 # reaches a sandbox only through the capability.
 if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum|trait) (${RECORD_TYPES})[[:space:]{<(]" \
-  crates/core crates/engine --include='*.rs' 2>/dev/null); then
+  crates/core crates/engine --include='*.rs' 2>/dev/null \
+  | grep -v -E '^crates/core/src/host/workspace.rs:[0-9]+:pub struct Workspace \{' \
+  | grep -v -E '^crates/core/src/mcp/oauth/protocol.rs:[0-9]+:pub (struct|enum) (OAuthClient|OAuthError|TokenSet|PkcePair|ProtectedResourceMetadata|AuthorizationServerMetadata|RegisteredClient|ClientRegistration)[[:space:]<{]'); then
   echo "Kernel crates must not declare stored platform record types or moved connector/OAuth/email infrastructure (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880):"
   echo "$matches"
   FAILED=1
@@ -100,7 +104,7 @@ if echo "$host_tree" | grep -qE '^everruns-(platform|capabilities|server) '; the
   echo "$host_tree" | grep -E '^everruns-(platform|capabilities|server) '
   FAILED=1
 fi
-if matches=$(grep -rnE 'everruns_(platform|capabilities)::|use[[:space:]]+everruns_(platform|capabilities)' crates/host/src --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE 'everruns_(platform|capabilities)::|use[[:space:]]+everruns_(platform|capabilities)' crates/core/src/host --include='*.rs' 2>/dev/null); then
   echo "everruns-host source must use neutral extension ports rather than platform types:"
   echo "$matches"
   FAILED=1
@@ -150,7 +154,7 @@ if matches=$(grep -nE "$COMMAND_EFFECT_PATTERN" crates/core/src/command_host.rs 
 fi
 
 for host_owner in command_host execution_snapshot runtime_context; do
-  if [ ! -f "crates/host/src/${host_owner}.rs" ]; then
+  if [ ! -f "crates/core/src/host/${host_owner}.rs" ]; then
     echo "everruns-host must own ${host_owner}.rs orchestration (EVE-905)."
     FAILED=1
   fi

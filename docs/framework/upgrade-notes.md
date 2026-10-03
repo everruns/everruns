@@ -9,9 +9,36 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## Consolidated execution modules
+
+`everruns-core` now owns the execution, host, built-in, MCP, AG-UI, and A2A
+modules. Its default features remain portable; opt into the modules your host
+uses. The five former packages ship one final deprecated shim release before
+removal. Existing behavior and protocol formats are preserved. The earlier
+`everruns-platform` shim has completed that window; hosted capability hosts now
+depend on `everruns-capabilities` and library hosts use portable definitions.
+
+| Deprecated crate prefix | Canonical import | Core feature |
+|---|---|---|
+| `everruns_engine::` | `everruns_core::engine::` | `engine` |
+| `everruns_host::` | `everruns_core::host::` | `host` |
+| `everruns_builtins::` | `everruns_core::builtins::` | `builtins` |
+| `everruns_mcp::` | `everruns_core::mcp::` | `mcp` |
+| `everruns_ag_ui::` | `everruns_core::ag_ui::` | `ag-ui` |
+
+Select concrete integrations on `everruns`, and use
+`everruns::batteries::runtime_capability_registry()` and
+`everruns::batteries::runtime_egress_service()` for the matching composition.
+The core host module accepts explicitly injected services. A custom shell hook
+host supplies a `BashHookDispatcherFactory` through `HostBackends`; the facade
+injects the Bashkit factory when its `bashkit` feature is enabled.
+Utility-model bootstrap configuration now lives in `everruns::utility_llm`
+behind `utility-llm`. A2A protocol and outbound client APIs are available from
+`everruns_core::a2a` with the `a2a` feature.
+
 ## Runtime store migration
 
-Custom hosts implementing `everruns_platform::PlatformStore` now return
+Custom hosts implementing `everruns_capabilities::PlatformStore` now return
 `everruns_core::AgentDefinition`, an inheritance-resolved
 `everruns_core::HarnessDefinition`, `everruns_core::ExecutionSession`, and
 `everruns_contracts::typed_id::SessionParticipantId`. Resolve authorization,

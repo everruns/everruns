@@ -17,11 +17,10 @@ categories = ["development-tools", "asynchronous"]
 default = []
 # `.llm_sim(...)` registration and `.llm_sim_as_default(...)` selection
 # conveniences for `everruns_host::InProcessRuntimeBuilder`.
-host = ["dep:everruns-host"]
+host = ["everruns-core/host"]
 
 [dependencies]
 everruns-contracts = { workspace = true, default-features = false }
-everruns-host = { workspace = true, optional = true }
 
 async-trait.workspace = true
 anyhow.workspace = true
@@ -33,6 +32,7 @@ tokio = { workspace = true, features = ["time"] }
 # llmsim's server, CLI, TUI, tokenization, and tracing-subscriber subtrees.
 llmsim = { version = "0.5.1", default-features = false }
 
+everruns-core = { workspace = true, optional = true, default-features = false }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 

@@ -6,7 +6,7 @@
 //! belongs to the host that knows about turns.
 
 use chrono::{DateTime, Utc};
-use everruns_engine::{
+use everruns_core::engine::{
     ActivityOutcome, Execution, ExecutionTransition, HostFacts, TurnExecution, TurnState,
 };
 
@@ -59,7 +59,7 @@ impl Execution for DurableExecution {
 #[cfg(test)]
 mod tests {
     use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId};
-    use everruns_engine::Execution;
+    use everruns_core::engine::Execution;
 
     use super::*;
 

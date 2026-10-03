@@ -256,7 +256,8 @@ fi
 # 19. Core kernel dependency guard (EVE-903)
 echo "19/28 Core kernel dependency guard"
 if CORE_KERNEL_OUTPUT="$(
-  bash "$PROJECT_ROOT/scripts/lib/check-core-kernel-dependencies.sh" 2>&1
+  bash "$PROJECT_ROOT/scripts/lib/check-core-kernel-dependencies.sh" 2>&1 &&
+    bash "$PROJECT_ROOT/scripts/test-core-feature-modules.sh" 2>&1
 )"; then
   pass "$CORE_KERNEL_OUTPUT"
 else

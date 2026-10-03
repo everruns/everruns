@@ -2390,7 +2390,7 @@ mod tests {
 
     #[test]
     fn message_fold_reflects_model_view_masking() {
-        use everruns_builtins::{RuntimeCompactionConfig, build_model_view_messages};
+        use everruns_core::builtins::{RuntimeCompactionConfig, build_model_view_messages};
 
         let session = SessionId::new();
         let (run, result) = sample_run_and_result(session);
