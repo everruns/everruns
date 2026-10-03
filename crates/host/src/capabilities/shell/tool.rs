@@ -756,6 +756,37 @@ mod tests {
 
         let command = "rg --pre ./payload hello .";
 
+        // A login shell does not see a test-only PATH change made with
+        // `set_var`, and GitHub-hosted runners do not install ripgrep. The
+        // denial proof uses the real command. The execution proof prepends a
+        // stand-in that implements `--pre`, which is the behavior the gate
+        // has to release.
+        fn install_rg_stand_in(dir: &std::path::Path) {
+            let bin = dir.join("bin");
+            std::fs::create_dir(&bin).expect("bin");
+            let shim = bin.join("rg");
+            std::fs::write(
+                &shim,
+                "#!/bin/sh\n\
+                 [ \"$1\" = \"--pre\" ] || exit 2\n\
+                 cmd=$2\n\
+                 shift 3\n\
+                 for path in \"$@\"; do\n\
+                   if [ -f \"$path\" ]; then\n\
+                     \"$cmd\" \"$path\"\n\
+                   elif [ -d \"$path\" ]; then\n\
+                     for file in \"$path\"/*; do\n\
+                       [ -f \"$file\" ] || continue\n\
+                       \"$cmd\" \"$file\"\n\
+                     done\n\
+                   fi\n\
+                 done | grep -q hello\n",
+            )
+            .expect("rg stand-in");
+            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
+                .expect("rg stand-in mode");
+        }
+
         let denied_dir = workspace();
         let denying = Arc::new(RecordingGate {
             allow: false,
@@ -798,25 +829,30 @@ mod tests {
         assert!(!unattended.path().join("ran").exists());
 
         let allowed_dir = workspace();
+        install_rg_stand_in(allowed_dir.path());
         let allowing = Arc::new(RecordingGate {
             allow: true,
             requests: Mutex::new(Vec::new()),
         });
+        // The assignment keeps the command outside the trusted shape, and it
+        // is what makes the stand-in win over a system `rg` that may be absent.
+        let released = "PATH=\"./bin:/usr/bin:/bin\" rg --pre ./payload hello .";
         let allowed = tool()
             .execute_with_context(
-                json!({"command": command}),
+                json!({"command": released}),
                 &context(allowed_dir.path(), Some(allowing.clone())),
             )
             .await;
         assert!(
-            allowed.is_success(),
-            "an approved preprocessor should run, got {allowed:?}"
-        );
-        assert!(
             allowed_dir.path().join("ran").exists(),
-            "approval must be what lets the preprocessor execute"
+            "approval must be what lets the preprocessor execute, got {allowed:?}"
         );
-        assert_eq!(allowing.requests.lock().expect("approval log").len(), 1);
+        {
+            let requests = allowing.requests.lock().expect("approval log");
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].command, released);
+            assert!(!requests[0].full_access);
+        }
 
         let read_only = workspace();
         let quiet = Arc::new(RecordingGate {
@@ -829,7 +865,14 @@ mod tests {
                 &context(read_only.path(), Some(quiet.clone())),
             )
             .await;
-        assert!(listed.is_success(), "pwd stays usable, got {listed:?}");
+        assert!(
+            matches!(
+                &listed,
+                ToolExecutionResult::Success(value)
+                    if value.get("success").and_then(Value::as_bool) == Some(true)
+            ),
+            "pwd stays usable, got {listed:?}"
+        );
         assert!(
             quiet.requests.lock().expect("approval log").is_empty(),
             "a safe command must not ask"
@@ -842,8 +885,8 @@ mod tests {
             )
             .await;
         assert!(
-            searched.is_success(),
-            "ordinary rg stays usable, got {searched:?}"
+            matches!(searched, ToolExecutionResult::Success(_)),
+            "a trusted rg invocation must not be refused, got {searched:?}"
         );
         assert!(quiet.requests.lock().expect("approval log").is_empty());
         assert!(!read_only.path().join("ran").exists());
