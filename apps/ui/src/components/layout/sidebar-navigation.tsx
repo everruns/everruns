@@ -41,7 +41,10 @@ function NavLink({
       onMouseEnter={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
       onFocus={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
       className={cn(
-        "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] font-semibold leading-5 transition-colors",
+        // The active item tracks the route commit. A color transition keeps
+        // painting after the page is already on screen, which reads as the
+        // sidebar redrawing once the page has loaded.
+        "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] font-semibold leading-5",
         isActive
           ? "border-l-primary bg-card text-foreground"
           : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card/80 hover:text-foreground",
