@@ -2748,6 +2748,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "Job results: $RESULTS"
+          if echo "$RESULTS" | grep -qE '"failure"|"cancelled"'; then
+            echo "One or more CI jobs failed or were cancelled"
+            exit 1
+          fi
+
           # A run gated off by the label event (run_ci=false) skips every job,
           # so it has no verdict of its own. Both unconditional answers are
           # wrong, and each has an incident behind it:
@@ -2765,7 +2771,7 @@ jobs:
           # which is precisely the EVE-939 case, where the gated-off run is the
           # only run on the SHA. Only a pass is inherited, so a real failure
           # stays red until a real run supersedes it.
-          if [ "$RUN_CI" != "true" ]; then
+          if [ "$RUN_CI" = "false" ]; then
             if [ -z "${HEAD_SHA:-}" ]; then
               echo "run_ci=false and no pull request head to consult, so there is nothing to attest"
               exit 1
@@ -2786,9 +2792,8 @@ jobs:
             exit 1
           fi
 
-          echo "Job results: $RESULTS"
-          if echo "$RESULTS" | grep -qE '"failure"|"cancelled"'; then
-            echo "One or more CI jobs failed or were cancelled"
+          if [ "$RUN_CI" != "true" ]; then
+            echo "run_ci was not produced, so this run cannot attest to the commit"
             exit 1
           fi
           echo "All CI jobs passed (or were skipped due to path filtering)"
