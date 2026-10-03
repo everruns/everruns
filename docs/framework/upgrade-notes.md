@@ -16,7 +16,9 @@ that need no code changes are not listed. For every release, see the
 The planned release moves the execution, host, built-in, MCP, AG-UI, and A2A
 modules into `everruns-core`. Its default features remain portable; opt into the modules your host
 uses. The five former packages ship one final deprecated shim release before
-removal. Existing behavior and protocol formats are preserved.
+removal. Existing behavior and protocol formats are preserved. The earlier
+`everruns-platform` shim has completed that window; hosted capability hosts now
+depend on `everruns-capabilities` and library hosts use portable definitions.
 
 | Deprecated crate prefix | Canonical import | Core feature |
 |---|---|---|
@@ -63,7 +65,7 @@ HTTP clients need no migration.
 ### Runtime store migration
 
 
-Custom hosts implementing `everruns_platform::PlatformStore` now return
+Custom hosts implementing `everruns_capabilities::PlatformStore` now return
 `everruns_core::AgentDefinition`, an inheritance-resolved
 `everruns_core::HarnessDefinition`, `everruns_core::ExecutionSession`, and
 `everruns_contracts::typed_id::SessionParticipantId`. Resolve authorization,

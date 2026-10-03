@@ -625,7 +625,7 @@ jobs:
 
   # Architecture guard (EVE-877, EVE-881): stored Agent/AgentVersion and
   # Harness persistence records plus the built-in harness provisioning
-  # templates live in crates/platform. Kernel crates (core, engine, provider,
+  # templates live in crates/server/records. Kernel crates (core, engine, provider,
   # capability) consume only the portable AgentDefinition/HarnessDefinition and
   # the resolved execution snapshot, and carry no everruns-capabilities edge.
   agent-record-isolation:
@@ -754,7 +754,7 @@ jobs:
         run: bash scripts/lib/check-core-public-api.sh
 
   # Architecture guard (EVE-885): hosted knowledge, delegation, task, hook,
-  # and management capability implementations live in crates/platform. Core
+  # and management capability implementations live in crates/capabilities. Core
   # carries portable implementations and neutral contracts only.
   hosted-capability-isolation:
     name: Hosted Capability Isolation Guard

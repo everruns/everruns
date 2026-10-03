@@ -55,7 +55,7 @@ default = ["macros", "capabilities", "builtins", "filesystem"]
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
 macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # Curated service-provider interface for code-defined capabilities. The
-# authoring types live in the neutral `everruns-contracts` contract crate
+# authoring types live in the neutral `everruns-contracts` crate
 # (EVE-873); this feature turns on its `definition` surface plus the runtime
 # adapters here. It shares serde/schemars with `macros` but remains
 # independently gateable so the bare facade still compiles with
@@ -79,7 +79,7 @@ bashkit = ["filesystem", "everruns-core/direct-egress", "dep:everruns-integratio
 # The `bash` tool over real host processes, bounded by a kernel policy. Implies
 # `host-compute`: both are ways of running commands on this machine, and this
 # one is the model-facing half.
-host-shell = ["host-compute", "everruns-core/host-shell"]
+host-shell = ["host-compute", "filesystem", "everruns-core/host-shell"]
 web-fetch = ["everruns-core/direct-egress", "dep:everruns-integrations-web-fetch"]
 duckduckgo = ["everruns-core/direct-egress", "dep:everruns-integrations-duckduckgo"]
 lua = ["everruns-core/direct-egress", "dep:everruns-integrations-lua"]
