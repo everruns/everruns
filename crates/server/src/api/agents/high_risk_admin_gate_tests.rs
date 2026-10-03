@@ -2,6 +2,7 @@ use super::*;
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use everruns_core::{DefaultPermissionResolver, Permission};
+use everruns_platform::{EndpointStatus, EndpointTransport};
 use std::sync::Arc;
 
 struct AgentsOnlyResolver;
