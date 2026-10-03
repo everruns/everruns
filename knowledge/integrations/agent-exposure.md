@@ -17,7 +17,7 @@ tags:
 > contract.
 >
 > One decision beyond the original proposal: **App data is frozen rather than deleted.**
-> Historical rows, foreign keys, budget subject values, and route aliases stay stable
+> Historical rows, foreign keys, budget bindings, and route aliases stay stable
 > while all management and traffic-serving ownership moves to the Agent domain.
 
 ## Abstract
@@ -324,7 +324,7 @@ Sessions and Reports, because reading it is an operational act and the editing i
 lives on the agent.
 
 The view **resolves** state rather than reading `channel.status`: it folds in the
-agent-level terms the same way `channel_ingress::endpoint_liveness` does, so a live channel on
+agent-level terms the same way `channel_ingress::channel_liveness` does, so a live channel on
 a suspended or archived agent never reads as Live. Anonymous *configuration* and *live*
 reachability are reported separately — an anonymous channel says so while it is still
 draft or suspended, because resuming its agent opens it and the row has to warn before
@@ -374,13 +374,13 @@ rest proceeds.
    (EVE-1006).
 6. **Per-channel publish**, `agent.exposures_suspended`, stop reading `App.status`
    (EVE-1007, landed). Every ingress gate resolves liveness through one helper,
-   `channel_ingress::endpoint_liveness`. The App publish switch remains, and now drives the
+   `channel_ingress::channel_liveness`. The App publish switch remains, and now drives the
    channels it owns, until App management is retired. The Slack manifest and bot identity
    move to the channel separately (EVE-1008).
 7. **UI**: Integrations tab with channel and trigger editors (EVE-1009), cross-agent
    Exposures view (EVE-1010).
 8. **Freeze** the `apps` table and retire App management (EVE-1011). Historical records,
-   attribution, budget subject values, and permanent route aliases stay. Ingress and
+   attribution, budget bindings, and permanent route aliases stay. Ingress and
    Agent channel management no longer read or write Apps.
 
 ## What this costs
