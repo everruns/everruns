@@ -68,7 +68,7 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
 
 Playground belongs under Building: it is the team's place to try the agents they are authoring.
 Chats remains the personal conversation surface and the unconditional landing route. Playground
-conversations are ordinary organisation-scoped sessions, listed independently of personal Chats.
+chats are ordinary organisation-scoped sessions, listed independently of personal Chats.
 They use the same header, transcript, composer, streaming context, and workspace viewer.
 
 A conversation fixes its counterpart and end-user virtual user at creation. The default subject is
@@ -82,13 +82,13 @@ connections retain their existing access rules. The personal Platform Chat harne
 The initial experience starts with a fresh workspace. Workspace is a secondary inspection view,
 not a prerequisite for starting a conversation. Realtime voice remains on the personal Chat surface
 until its direct transcript path supports fixed test-subject attribution. A persistent Open session action leads to the same
-recording; Trace opens its timeline. Archiving is shared; pinning is personal. The library offers
+recording and its timeline. Archiving is shared. Pinning stays on personal Chats. The library offers
 server-paginated search, agent and virtual-user filters, and active/archived views.
 
-Playground is disabled by default on every deployment grade and requires deployment enablement
-plus organisation opt-in. The flag hides the navigation and all Playground routes and gates creation
-and new messages on the server. Existing recordings remain inspectable through the ordinary Sessions
-API and UI if the flag is later disabled; disabling a surface does not erase its history.
+Playground is a standard surface, available without deployment or organisation feature flags.
+Its list, setup, and detail pages use the shared page layout: breadcrumbs, masthead, control strip,
+and context rail. The list exposes an explicit Open chat action; linked agent and virtual-user
+facts lead to their detail pages. The UI consistently calls these Playground chats.
 See [source and binding policy](../../crates/server/src/domains/sessions/playground.rs) and
 [shared creation flow](../../apps/ui/src/components/chat/new-chat-form.tsx).
 

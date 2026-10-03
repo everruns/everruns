@@ -187,6 +187,7 @@ export function NewChatForm({
         ) : null}
         {children}
         <Button
+          variant={surface === "playground" ? "accent" : "default"}
           onClick={start}
           disabled={
             !selection || createSession.isPending || (surface === "playground" && !endUserId)
@@ -197,7 +198,7 @@ export function NewChatForm({
           ) : (
             <MessageCircle className="size-4" />
           )}
-          {surface === "playground" ? "Start conversation" : "Start chat"}
+          {surface === "playground" ? "Start Playground chat" : "Start chat"}
         </Button>
       </div>
       {error && <ChatErrorAlert message={error} />}

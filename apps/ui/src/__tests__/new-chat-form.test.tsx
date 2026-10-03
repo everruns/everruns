@@ -242,7 +242,7 @@ describe("Playground creation through the shared chat form", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
       target: { value: "agent:agent_1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Start conversation/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
         request: {
@@ -260,6 +260,6 @@ describe("Playground creation through the shared chat form", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
       target: { value: "agent:agent_1" },
     });
-    expect(screen.getByRole("button", { name: /Start conversation/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Start Playground chat/ })).toBeDisabled();
   });
 });

@@ -3,7 +3,7 @@ use super::*;
 /// Request to create a session
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
-    /// How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`
+    /// How this session was started. Clients may declare `chat`, `playground`, or `api`
     /// (the default); every other source is
     /// server-owned so the sessions facet rail stays trustworthy.
     #[serde(default)]

@@ -33,9 +33,6 @@ use everruns_core::execution_features::{experimental_flag, standard_flag};
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
-    /// Organisation-shared agent testing. Off by default on every deployment grade.
-    #[serde(default)]
-    pub playground: bool,
     /// In-app notifications (bell, toasts, notification SSE). Experimental.
     pub notifications: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
@@ -137,13 +134,6 @@ pub struct FeatureFlagDefinition {
 /// Entries marked `platform_managed` are in it, because they are org-scoped; what they withhold
 /// is the tenant's ability to turn them on for themselves.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
-    FeatureFlagDefinition {
-        name: "playground",
-        label: "Playground",
-        description: "Test agents in organisation-shared conversations with a selected virtual user.",
-        experimental: true,
-        platform_managed: false,
-    },
     FeatureFlagDefinition {
         name: "notifications",
         label: "Notifications",
@@ -312,7 +302,6 @@ impl FeatureFlags {
             public_chat: opt_in("public_chat", system.public_chat),
             webmcp: opt_in("webmcp", system.webmcp),
             mcp_events: opt_in("mcp_events", system.mcp_events),
-            playground: opt_in("playground", system.playground),
             reports: opt_in("reports", system.reports),
             machine_payments: system.machine_payments,
             openai_agents_api: opt_in("openai_agents_api", system.openai_agents_api),
@@ -336,7 +325,6 @@ impl FeatureFlags {
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
             webmcp: experimental_flag("FEATURE_WEBMCP", grade),
             mcp_events: experimental_flag("FEATURE_MCP_EVENTS", grade),
-            playground: standard_flag("FEATURE_PLAYGROUND", false),
             reports: experimental_flag("FEATURE_REPORTS", grade),
             machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
             openai_agents_api: standard_flag("FEATURE_OPENAI_AGENTS_API", false),
@@ -372,7 +360,6 @@ impl FeatureFlags {
             ("webmcp".to_string(), self.webmcp),
             ("mcp_events".to_string(), self.mcp_events),
             ("reports".to_string(), self.reports),
-            ("playground".to_string(), self.playground),
             ("machine_payments".to_string(), self.machine_payments),
             ("openai_agents_api".to_string(), self.openai_agents_api),
         ]))
@@ -396,7 +383,6 @@ impl FeatureFlags {
             "webmcp" => self.webmcp,
             "mcp_events" => self.mcp_events,
             "reports" => self.reports,
-            "playground" => self.playground,
             "machine_payments" => self.machine_payments,
             "openai_agents_api" => self.openai_agents_api,
             _ => false,
@@ -443,7 +429,6 @@ impl FeatureFlags {
             webmcp: true,
             mcp_events: true,
             reports: true,
-            playground: true,
             machine_payments: true,
             openai_agents_api: true,
         }
@@ -470,21 +455,18 @@ mod tests {
     }
 
     #[test]
-    fn playground_requires_deployment_and_org_enablement() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::remove_var("FEATURE_PLAYGROUND");
-        }
-        assert!(!FeatureFlags::from_env(&DeploymentGrade::Dev).playground);
-        assert!(!FeatureFlags::from_env(&DeploymentGrade::Prod).playground);
-        let system = FeatureFlags {
-            playground: true,
-            ..Default::default()
-        };
-        assert!(!FeatureFlags::for_org(&system, &Default::default()).playground);
-        let opt_in = std::collections::HashMap::from([("playground".into(), true)]);
-        assert!(FeatureFlags::for_org(&system, &opt_in).playground);
-        assert!(!FeatureFlags::for_org(&FeatureFlags::default(), &opt_in).playground);
+    fn playground_is_not_a_feature_flag() {
+        assert!(
+            API_FEATURE_FLAG_DEFINITIONS
+                .iter()
+                .all(|flag| flag.name != "playground")
+        );
+        assert!(
+            !FeatureFlags::default()
+                .to_map()
+                .0
+                .contains_key("playground")
+        );
     }
 
     #[test]
@@ -548,7 +530,6 @@ mod tests {
             webmcp: true,
             mcp_events: true,
             reports: true,
-            playground: true,
             machine_payments: true,
             openai_agents_api: true,
         };
@@ -626,7 +607,6 @@ mod tests {
             webmcp: true,
             mcp_events: true,
             reports: true,
-            playground: true,
             machine_payments: true,
             openai_agents_api: true,
         };

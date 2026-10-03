@@ -1437,7 +1437,7 @@ async fn test_agents_api_session_fork_is_refused_and_delete_queues_the_provider_
 }
 
 #[tokio::test]
-async fn test_playground_input_uses_org_effective_feature_gate() {
+async fn test_playground_input_is_available_without_org_opt_in() {
     let server = TestServer::in_memory().await;
     let org = everruns_core::DEFAULT_ORG_ID;
     server
@@ -1481,12 +1481,12 @@ async fn test_playground_input_uses_org_effective_feature_gate() {
     let result: Value = server
         .post(
             &format!("/v1/sessions/{}/messages", session.id),
-            json!({"message":{"role":"user","content":[{"type":"text","text":"Blocked input"}]}}),
+            json!({"message":{"role":"user","content":[{"type":"text","text":"Playground input"}]}}),
         )
         .await
-        .assert_status(StatusCode::NOT_FOUND)
+        .assert_status(StatusCode::CREATED)
         .json();
-    assert_eq!(result["code"], "feature_not_enabled");
+    assert!(result["id"].is_string(), "{result}");
     server
         .get(&format!("/v1/sessions/{}", session.id))
         .await

@@ -23980,7 +23980,7 @@
               "string",
               "null"
             ],
-            "description": "How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`\n(the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
+            "description": "How this session was started. Clients may declare `chat`, `playground`, or `api`\n(the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
             "example": "chat"
           },
           "system_prompt": {
