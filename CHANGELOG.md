@@ -66,6 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - chore(deps): bump @astrojs/starlight from 0.41.7 to 0.42.4 in /apps/docs ([#4051](https://github.com/everruns/everruns/pull/4051)) by [@dependabot](https://github.com/dependabot)
 - feat(playground): add shared agent testing conversations ([#4076](https://github.com/everruns/everruns/pull/4076)) by [@chaliy](https://github.com/chaliy)
 
+- feat(environments): persist physical sandbox incarnations ([#4079](https://github.com/everruns/everruns/pull/4079)) by [@chaliy](https://github.com/chaliy)
+
 ### Crate Releases
 
 All 52 published crates ship at the platform version 0.35.0.
