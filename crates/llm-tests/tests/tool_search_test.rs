@@ -10,8 +10,11 @@
 // Run all:
 //   cargo test -p everruns-llm-tests --test tool_search_test --features llm-tests
 //
+// CI: Live Provider Matrix (`live-provider-matrix` in ci.yml) runs this target
+// under `doppler run` on push when provider_live paths change.
+//
 // Required env vars (tests skip gracefully if missing):
-//   OPENAI_API_KEY
+//   OPENAI_API_KEY / ANTHROPIC_API_KEY (per case)
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
