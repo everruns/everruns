@@ -1689,7 +1689,7 @@ jobs:
         # a turn that never called the advertised tool proves nothing about the
         # provider's wire serialization, which is what this matrix exists to
         # check. `--nocapture` exposes the generations behind the failure.
-        run: doppler run -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --all-features -- --nocapture
+        run: doppler run -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --test tool_search_test --all-features -- --nocapture
 
       - name: Report provider coverage
         # `always()`: the coverage picture is most valuable when the step above

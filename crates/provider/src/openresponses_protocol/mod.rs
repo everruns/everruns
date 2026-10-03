@@ -642,16 +642,20 @@ impl OpenResponsesProtocolChatDriver {
 
     /// Convert tools with tool_search support: groups tools into namespaces,
     /// marks them as deferred, and appends a `tool_search` entry.
+    ///
+    /// Namespace **wire names** are provider-safe identifiers derived from each
+    /// tool's human-readable category (EVE-1164). Descriptions keep the original
+    /// category label for model/UI readability.
     fn convert_tools_with_search(tools: &[ToolDefinition], threshold: usize) -> Vec<ResponsesTool> {
         use crate::tool_types::DeferrablePolicy;
-        use std::collections::BTreeMap;
+        use std::collections::{BTreeMap, HashSet};
 
         // Below threshold: fall back to standard conversion
         if tools.len() < threshold {
             return Self::convert_tools(tools);
         }
 
-        // Stable namespace order also keeps the serialized prompt-cache fingerprint stable.
+        // Stable category order also keeps the serialized prompt-cache fingerprint stable.
         let mut namespaces: BTreeMap<String, Vec<ResponsesTool>> = BTreeMap::new();
         let mut ungrouped = vec![];
         let mut never_defer = vec![];
@@ -681,9 +685,11 @@ impl OpenResponsesProtocolChatDriver {
         // Non-deferred tools first (always visible to model)
         result.extend(never_defer);
 
-        // Namespaced tools
-        for (name, tools) in namespaces {
-            let description = format!("Tools for {name}");
+        // Assign unique provider-safe wire names; keep category labels in descriptions.
+        let mut used_names = HashSet::new();
+        for (category, tools) in namespaces {
+            let name = allocate_tool_search_namespace_name(&category, &mut used_names);
+            let description = format!("Tools for {category}");
             result.push(ResponsesTool::Namespace {
                 r#type: "namespace".to_string(),
                 name,
@@ -702,7 +708,54 @@ impl OpenResponsesProtocolChatDriver {
 
         result
     }
+}
 
+/// Derive a provider-safe OpenAI tool-search namespace identifier from a
+/// human-readable capability category.
+///
+/// OpenAI hosted tool search fails with `server_error` when a namespace name
+/// contains whitespace (EVE-1164: `File Operations`). Keep the category label
+/// for descriptions; emit this identifier as `ResponsesTool::Namespace.name`.
+fn normalize_tool_search_namespace_name(category: &str) -> String {
+    let mut out = String::with_capacity(category.len());
+    let mut prev_underscore = false;
+    for ch in category.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            prev_underscore = false;
+        } else if !prev_underscore {
+            // Collapse whitespace/punctuation runs into a single underscore.
+            out.push('_');
+            prev_underscore = true;
+        }
+    }
+    let trimmed = out.trim_matches('_');
+    if trimmed.is_empty() {
+        "namespace".to_string()
+    } else if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        format!("n_{trimmed}")
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Assign a unique wire name for `category`, disambiguating normalization
+/// collisions with a stable `_2`, `_3`, … suffix.
+fn allocate_tool_search_namespace_name(
+    category: &str,
+    used: &mut std::collections::HashSet<String>,
+) -> String {
+    let base = normalize_tool_search_namespace_name(category);
+    let mut candidate = base.clone();
+    let mut n = 2u32;
+    while !used.insert(candidate.clone()) {
+        candidate = format!("{base}_{n}");
+        n += 1;
+    }
+    candidate
+}
+
+impl OpenResponsesProtocolChatDriver {
     fn build_prompt_cache_key(
         config: &LlmCallConfig,
         _input_items: &[ResponsesInputItem],
