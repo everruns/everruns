@@ -280,6 +280,34 @@ async fn seed_anonymous_user(
     Ok(result)
 }
 
+/// Revoke outstanding anonymous-user PATs when authentication is enabled.
+///
+/// The anonymous admin identity is always seeded so none-mode code paths stay
+/// uniform, but a PAT minted under `AUTH_MODE=none` must not remain valid after
+/// the same database is restarted in admin/full/external mode (EVE-1153).
+///
+/// THREAT[TM-AUTH-032]: mode transition must invalidate persisted anonymous
+/// credentials, not only change the live request middleware.
+async fn revoke_anonymous_personal_access_tokens(
+    db: &StorageBackend,
+) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+    let revoked = db
+        .delete_personal_access_tokens_for_user(ANONYMOUS_USER_ID)
+        .await?;
+    if revoked > 0 {
+        tracing::warn!(
+            revoked,
+            user_id = %ANONYMOUS_USER_ID,
+            "Revoked anonymous-user personal access tokens after leaving AUTH_MODE=none"
+        );
+        result.updated += revoked as usize;
+    } else {
+        result.unchanged += 1;
+    }
+    Ok(result)
+}
+
 // ============================================
 // Admin User Seeder
 // ============================================
@@ -1986,7 +2014,10 @@ pub async fn seed_all_with_host_composition(
     );
     result.merge(org_result);
 
-    // Seed anonymous user (for auth=none mode, depends on default org)
+    // Seed anonymous user (for auth=none mode, depends on default org).
+    // The row stays present in authenticated modes for identity continuity, but
+    // any PATs it minted under none are revoked below so they cannot survive a
+    // deliberate AUTH_MODE transition (EVE-1153 / TM-AUTH-032).
     let anon_result = seed_anonymous_user(db, built_in_harnesses).await?;
     tracing::debug!(
         created = anon_result.created,
@@ -1995,6 +2026,17 @@ pub async fn seed_all_with_host_composition(
         "Anonymous user seeded"
     );
     result.merge(anon_result);
+
+    if auth_ctx.mode != AuthMode::None {
+        let revoke_result = revoke_anonymous_personal_access_tokens(db).await?;
+        tracing::debug!(
+            created = revoke_result.created,
+            updated = revoke_result.updated,
+            unchanged = revoke_result.unchanged,
+            "Anonymous personal access tokens checked for authenticated mode"
+        );
+        result.merge(revoke_result);
+    }
 
     // Seed admin user when in admin mode (depends on default org)
     if auth_ctx.mode == AuthMode::Admin
@@ -2721,6 +2763,107 @@ mod tests {
             .await
             .unwrap();
         assert!(!second.has_changes());
+    }
+
+    #[tokio::test]
+    async fn test_anonymous_pats_revoked_when_leaving_auth_mode_none() {
+        use crate::auth::backend::AuthBackend;
+        use crate::auth::builtin::BuiltinAuthBackend;
+        use crate::storage::models::CreatePersonalAccessTokenRow;
+
+        let db = Arc::new(make_db());
+
+        // Mint under AUTH_MODE=none against a persisted database.
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        let generated = crate::auth::personal_access_token::generate_personal_access_token();
+        db.create_personal_access_token(CreatePersonalAccessTokenRow {
+            user_id: ANONYMOUS_USER_ID,
+            name: "dev-token".to_string(),
+            token_hash: generated.token_hash.clone(),
+            token_prefix: generated.token_prefix.clone(),
+            scopes: vec!["*".to_string()],
+            expires_at: None,
+            metadata: serde_json::json!({"source": "test"}),
+        })
+        .await
+        .unwrap();
+
+        let before = db
+            .list_personal_access_tokens_for_user(ANONYMOUS_USER_ID)
+            .await
+            .unwrap();
+        assert_eq!(
+            before.len(),
+            1,
+            "none-mode PAT should persist before transition"
+        );
+
+        // Restart the same database in an authenticated mode.
+        seed_all(
+            &db,
+            DeploymentGrade::Dev,
+            &SeedAuthContext {
+                mode: AuthMode::Full,
+                admin: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let after = db
+            .list_personal_access_tokens_for_user(ANONYMOUS_USER_ID)
+            .await
+            .unwrap();
+        assert!(
+            after.is_empty(),
+            "anonymous PATs must be revoked when leaving AUTH_MODE=none"
+        );
+
+        let full_backend = BuiltinAuthBackend::new(
+            AuthConfig {
+                mode: AuthMode::Full,
+                ..AuthConfig::default()
+            },
+            db.clone(),
+            Arc::new(crate::platform::oss_host_composition()),
+        );
+        let rejected = full_backend
+            .validate_personal_access_token(&generated.token)
+            .await;
+        assert!(
+            rejected.is_err(),
+            "old anonymous PAT must not authenticate after enabling auth"
+        );
+
+        // Intentional none-mode behavior remains: re-entering none keeps the
+        // anonymous identity and allows minting a fresh PAT for local use.
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+        let fresh = crate::auth::personal_access_token::generate_personal_access_token();
+        db.create_personal_access_token(CreatePersonalAccessTokenRow {
+            user_id: ANONYMOUS_USER_ID,
+            name: "fresh-none-token".to_string(),
+            token_hash: fresh.token_hash,
+            token_prefix: fresh.token_prefix,
+            scopes: vec!["*".to_string()],
+            expires_at: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+        let none_tokens = db
+            .list_personal_access_tokens_for_user(ANONYMOUS_USER_ID)
+            .await
+            .unwrap();
+        assert_eq!(
+            none_tokens.len(),
+            1,
+            "none mode must still allow anonymous PAT minting"
+        );
     }
 
     #[tokio::test]

@@ -195,6 +195,13 @@ impl BuiltinAuthBackend {
             })?
             .ok_or_else(|| AuthError::unauthorized("Invalid personal access token"))?;
 
+        // THREAT[TM-AUTH-032]: anonymous-admin PATs minted under AUTH_MODE=none
+        // must never authenticate after the deployment enables auth, even if a
+        // seed pass has not yet deleted the row.
+        if token_row.user_id == everruns_platform::ANONYMOUS_USER_ID {
+            return Err(AuthError::unauthorized("Invalid personal access token"));
+        }
+
         // Check if expired
         let validated_token = ValidatedPersonalAccessToken {
             token_id: token_row.id,
@@ -592,6 +599,60 @@ mod tests {
                 .validate_personal_access_token("not-an-api-key")
                 .await;
             assert!(result.is_err(), "malformed key must be rejected");
+        }
+
+        #[tokio::test]
+        async fn validate_personal_access_token_rejects_anonymous_user_tokens() {
+            use crate::auth::config::AuthMode;
+            use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
+
+            let db = Arc::new(StorageBackend::in_memory());
+            db.create_user_with_id(
+                ANONYMOUS_USER_ID,
+                CreateUserRow {
+                    email: ANONYMOUS_USER_EMAIL.to_string(),
+                    name: ANONYMOUS_USER_NAME.to_string(),
+                    avatar_url: None,
+                    roles: vec!["admin".to_string()],
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: Some("none".to_string()),
+                    auth_provider_id: None,
+                    external_id: None,
+                },
+            )
+            .await
+            .expect("create anonymous user");
+
+            let generated = crate::auth::personal_access_token::generate_personal_access_token();
+            db.create_personal_access_token(CreatePersonalAccessTokenRow {
+                user_id: ANONYMOUS_USER_ID,
+                name: "stale-none-pat".to_string(),
+                token_hash: generated.token_hash,
+                token_prefix: generated.token_prefix,
+                scopes: vec!["*".to_string()],
+                expires_at: None,
+                metadata: serde_json::json!({}),
+            })
+            .await
+            .expect("create anonymous PAT");
+
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig {
+                    mode: AuthMode::Full,
+                    ..AuthConfig::default()
+                },
+                db.clone(),
+                Arc::new(crate::platform::oss_host_composition()),
+            );
+
+            let result = backend
+                .validate_personal_access_token(&generated.token)
+                .await;
+            assert!(
+                result.is_err(),
+                "anonymous-user PATs must never authenticate in authenticated modes"
+            );
         }
     }
 

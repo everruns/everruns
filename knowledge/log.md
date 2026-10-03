@@ -12,6 +12,12 @@
   (EVE-1173). See [A2A Capability](integrations/a2a-capability.md) and
   TM-AGENT-024.
 
+* **Anonymous PAT mode transition closed.** Leaving `AUTH_MODE=none` revokes
+  PATs owned by the seeded anonymous admin, and PAT validation rejects that
+  identity even if a stale row remains (EVE-1153). See
+  [Authentication](security/authentication.md) and TM-AUTH-032.
+>>>>>>> 18ea41401 (fix(auth): revoke anonymous PATs when leaving AUTH_MODE=none — Fixes EVE-1153)
+
 * **Sandbox secret forgery closed.** Capability-owned sandbox secret prefixes
   (`container_sandbox:`, `daytona_sandbox:`, `e2b_sandbox:`, `deno_sandbox:`,
   `sprites_sprite:`) are reserved from user-facing `secret_store`, and
