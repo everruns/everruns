@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - test(host): verify Agents API provider tool boundary ([#4074](https://github.com/everruns/everruns/pull/4074)) by [@chaliy](https://github.com/chaliy)
 - fix(provider): describe deferred tool search namespaces ([#4073](https://github.com/everruns/everruns/pull/4073)) by [@chaliy](https://github.com/chaliy)
 
+- chore(deps): bump @astrojs/starlight from 0.41.7 to 0.42.4 in /apps/docs ([#4051](https://github.com/everruns/everruns/pull/4051)) by [@dependabot](https://github.com/dependabot)
+- feat(playground): add shared agent testing conversations ([#4076](https://github.com/everruns/everruns/pull/4076)) by [@chaliy](https://github.com/chaliy)
+
 ### Crate Releases
 
 All 52 published crates ship at the platform version 0.35.0.
