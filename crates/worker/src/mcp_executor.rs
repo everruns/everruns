@@ -8,7 +8,7 @@
 // gRPC adapters; the previous worker-local JSON-RPC executor was removed to
 // avoid duplicating that client (goal: no duplication).
 
-use everruns_core::{McpElicitationPolicy, McpProtocolMode, McpServerActsAs, McpServerAuthMode};
+use crate::core::{McpElicitationPolicy, McpProtocolMode, McpServerActsAs, McpServerAuthMode};
 use everruns_internal_protocol::proto;
 use std::collections::HashMap;
 
@@ -27,7 +27,7 @@ pub struct McpServerInfo {
     pub elicitation_policy: McpElicitationPolicy,
     pub oauth_provider_id: Option<String>,
     pub acts_as: McpServerActsAs,
-    pub secret_bindings: HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>,
+    pub secret_bindings: HashMap<String, Vec<crate::mcp::McpSecretBinding>>,
 }
 
 impl McpServerInfo {
@@ -60,7 +60,7 @@ impl McpServerInfo {
                     bindings
                         .entry(binding.tool_name)
                         .or_insert_with(Vec::new)
-                        .push(everruns_core::mcp::McpSecretBinding {
+                        .push(crate::mcp::McpSecretBinding {
                             parameter_name: binding.parameter_name,
                             value: binding.value,
                             setup_url: binding.setup_url,

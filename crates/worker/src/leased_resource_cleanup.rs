@@ -9,12 +9,12 @@
 // by the claim timestamp so stale cleanup attempts cannot overwrite a newer
 // lease refresh.
 
-use anyhow::{Result, anyhow};
-use everruns_contracts::typed_id::SessionId;
-use everruns_core::LeasedResource;
-use everruns_core::{
+use crate::core::LeasedResource;
+use crate::core::{
     connection_services::UserConnectionResolver, session_services::SessionStorageStore,
 };
+use anyhow::{Result, anyhow};
+use everruns_contracts::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -565,7 +565,7 @@ mod tests {
             resource_type: "sandbox".to_string(),
             external_id: "sb_123".to_string(),
             display_name: None,
-            status: everruns_core::LeasedResourceStatus::Active,
+            status: crate::core::LeasedResourceStatus::Active,
             owner_user_id: None,
             lease_duration_seconds: 60,
             last_touched_at: chrono::Utc::now(),

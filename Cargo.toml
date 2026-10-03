@@ -24,6 +24,7 @@ members = [
     "crates/cli",
     "crates/cli-contract",
     "crates/durable",
+    "crates/durable-engine",
     "crates/ard",
     "crates/ag-ui",
     "crates/integrations-catalog",
@@ -247,6 +248,8 @@ futures-util = "0.3"
 everruns-sdk = "0.2.0"
 everruns-builtins = { path = "crates/builtins", version = "0.40.0" }
 everruns-core = { path = "crates/core", version = "0.40.0", default-features = false }
+everruns-durable = { path = "crates/durable", version = "0.40.0" }
+everruns-durable-engine = { path = "crates/durable-engine" }
 everruns-engine = { path = "crates/engine", version = "0.40.0" }
 everruns-host = { path = "crates/host", version = "0.40.0" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.40.0", default-features = false }

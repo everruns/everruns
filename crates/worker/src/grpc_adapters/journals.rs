@@ -6,7 +6,7 @@ use super::*;
 impl GrpcAdapter {
     async fn native_async_operation(
         &self,
-        lease: everruns_core::native_async_store::NativeAsyncLease,
+        lease: crate::core::native_async_store::NativeAsyncLease,
         operation: proto::native_async_journal_request::Operation,
         checkpoint_json: Vec<u8>,
     ) -> Result<Vec<u8>> {
@@ -30,10 +30,10 @@ impl GrpcAdapter {
 }
 
 #[async_trait]
-impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
+impl crate::core::native_async_store::NativeAsyncStore for GrpcAdapter {
     async fn acquire(
         &self,
-        lease: everruns_core::native_async_store::NativeAsyncLease,
+        lease: crate::core::native_async_store::NativeAsyncLease,
     ) -> Result<everruns_contracts::native_async::NativeAsyncCheckpoint> {
         let bytes = self
             .native_async_operation(
@@ -46,7 +46,7 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
     }
     async fn load(
         &self,
-        lease: everruns_core::native_async_store::NativeAsyncLease,
+        lease: crate::core::native_async_store::NativeAsyncLease,
     ) -> Result<everruns_contracts::native_async::NativeAsyncCheckpoint> {
         let bytes = self
             .native_async_operation(
@@ -57,10 +57,7 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
             .await?;
         serde_json::from_slice(&bytes).map_err(|error| AgentLoopError::store(error.to_string()))
     }
-    async fn renew(
-        &self,
-        lease: everruns_core::native_async_store::NativeAsyncLease,
-    ) -> Result<()> {
+    async fn renew(&self, lease: crate::core::native_async_store::NativeAsyncLease) -> Result<()> {
         self.native_async_operation(
             lease,
             proto::native_async_journal_request::Operation::Renew,
@@ -71,7 +68,7 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
     }
     async fn save(
         &self,
-        lease: everruns_core::native_async_store::NativeAsyncLease,
+        lease: crate::core::native_async_store::NativeAsyncLease,
         checkpoint: &everruns_contracts::native_async::NativeAsyncCheckpoint,
     ) -> Result<()> {
         let bytes = serde_json::to_vec(checkpoint)
@@ -86,7 +83,7 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
     }
     async fn release(
         &self,
-        lease: everruns_core::native_async_store::NativeAsyncLease,
+        lease: crate::core::native_async_store::NativeAsyncLease,
     ) -> Result<()> {
         self.native_async_operation(
             lease,
@@ -101,7 +98,7 @@ impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
 impl GrpcAdapter {
     async fn agents_api_operation(
         &self,
-        lease: everruns_core::agents_api_store::AgentsApiLease,
+        lease: crate::core::agents_api_store::AgentsApiLease,
         operation: proto::agents_api_journal_request::Operation,
         checkpoint_json: Vec<u8>,
     ) -> Result<Vec<u8>> {
@@ -124,11 +121,11 @@ impl GrpcAdapter {
 }
 
 #[async_trait]
-impl everruns_core::agents_api_store::AgentsApiStore for GrpcAdapter {
+impl crate::core::agents_api_store::AgentsApiStore for GrpcAdapter {
     async fn acquire(
         &self,
-        lease: everruns_core::agents_api_store::AgentsApiLease,
-    ) -> Result<everruns_core::agents_api_store::AgentsApiCheckpoint> {
+        lease: crate::core::agents_api_store::AgentsApiLease,
+    ) -> Result<crate::core::agents_api_store::AgentsApiCheckpoint> {
         let bytes = self
             .agents_api_operation(
                 lease,
@@ -138,7 +135,7 @@ impl everruns_core::agents_api_store::AgentsApiStore for GrpcAdapter {
             .await?;
         serde_json::from_slice(&bytes).map_err(|error| AgentLoopError::store(error.to_string()))
     }
-    async fn renew(&self, lease: everruns_core::agents_api_store::AgentsApiLease) -> Result<()> {
+    async fn renew(&self, lease: crate::core::agents_api_store::AgentsApiLease) -> Result<()> {
         self.agents_api_operation(
             lease,
             proto::agents_api_journal_request::Operation::Renew,
@@ -149,8 +146,8 @@ impl everruns_core::agents_api_store::AgentsApiStore for GrpcAdapter {
     }
     async fn save(
         &self,
-        lease: everruns_core::agents_api_store::AgentsApiLease,
-        checkpoint: &everruns_core::agents_api_store::AgentsApiCheckpoint,
+        lease: crate::core::agents_api_store::AgentsApiLease,
+        checkpoint: &crate::core::agents_api_store::AgentsApiCheckpoint,
     ) -> Result<()> {
         let bytes = serde_json::to_vec(checkpoint)
             .map_err(|error| AgentLoopError::store(error.to_string()))?;
@@ -162,7 +159,7 @@ impl everruns_core::agents_api_store::AgentsApiStore for GrpcAdapter {
         .await?;
         Ok(())
     }
-    async fn release(&self, lease: everruns_core::agents_api_store::AgentsApiLease) -> Result<()> {
+    async fn release(&self, lease: crate::core::agents_api_store::AgentsApiLease) -> Result<()> {
         self.agents_api_operation(
             lease,
             proto::agents_api_journal_request::Operation::Release,

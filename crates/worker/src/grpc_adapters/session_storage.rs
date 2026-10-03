@@ -3,9 +3,9 @@
 //! Split out of `grpc_adapters.rs` to keep that file under the size guard. The
 //! implementation is unchanged by the move.
 
+use crate::core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
-use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
 use everruns_internal_protocol::proto;
 
 use super::{GrpcAdapter, grpc_status_to_error, proto_timestamp_or_now, uuid_to_proto};

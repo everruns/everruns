@@ -9,6 +9,18 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## 0.41 (planned)
+
+### Embedded SQLite ownership
+
+`everruns::local::SqliteDb` retains its shared callback API, including callbacks
+typed as `&rusqlite::Connection`, `rusqlite::params!`, and `OptionalExtension`.
+Connections now open through `everruns-durable`'s optional `sqlite` feature.
+Framework applications keep the same local stores and schemas; no data migration
+is needed. Hosts opening independent handles should use
+`everruns_durable::sqlite::open` or `open_in_memory`. To add application tables to
+the Framework database, retain `SqliteDb` and use its `with_conn` callbacks.
+
 ## 0.40 (planned)
 
 ### Consolidated execution modules

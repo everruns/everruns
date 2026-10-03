@@ -22,6 +22,7 @@ use everruns_core::session_task::{
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskMessageDirection, apply_task_update,
     generate_task_message_id, new_session_task,
 };
+use everruns_durable::sqlite as rusqlite;
 use rusqlite::OptionalExtension;
 
 use super::db::SqliteDb;

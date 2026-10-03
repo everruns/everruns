@@ -187,6 +187,9 @@ jobs:
               - 'scripts/lib/core-feature-modules.sh'
               - 'scripts/test-core-feature-modules.sh'
               - 'scripts/lib/check-durable-isolation.sh'
+              - 'scripts/lib/check-database-driver-isolation.sh'
+              - 'scripts/lib/check-database-driver-isolation.py'
+              - 'scripts/test-database-driver-isolation.py'
               - 'scripts/lib/check-hosted-capability-isolation.sh'
               - 'scripts/lib/check-observability-isolation.sh'
               - 'scripts/lib/check-provider-isolation.sh'
@@ -716,7 +719,7 @@ jobs:
 
   # Architecture guard: everruns-durable is a generic durable-execution engine
   # with no everruns-* normal or build dependency; agent/turn semantics live in
-  # the worker and server.
+  # durable-engine and server. Also owns the database-driver boundary check.
   durable-isolation:
     name: Durable Isolation Guard
     runs-on: ubuntu-latest
@@ -732,6 +735,11 @@ jobs:
 
       - name: Check durable isolation
         run: bash scripts/lib/check-durable-isolation.sh
+
+      - name: Check database driver isolation
+        run: |
+          python3 scripts/test-database-driver-isolation.py
+          bash scripts/lib/check-database-driver-isolation.sh
 
   # Public API/semver guard (EVE-906): rustdoc JSON records the complete
   # published core surface while source and documentation ratchets reject
@@ -1149,7 +1157,7 @@ jobs:
       - name: Run worker tests
         # Whole crate (lib + integration), not just --lib: the network_reliability
         # integration test is pure (no network/credentials) and was being skipped.
-        run: cargo test -p everruns-worker --all-features -- --test-threads=1
+        run: cargo test -p everruns-worker -p everruns-durable-engine --all-features -- --test-threads=1
 
   shell-test:
     name: Shell Tests (Repo Scripts)
@@ -2881,6 +2889,7 @@ jobs:
       - log-error-field
       - lint-floor
       - wasm-portability
+      - durable-isolation
       - unit-test
       - worker-test
       - shell-test

@@ -8,9 +8,9 @@
 //   per-workflow scoping are wrapper responsibilities today — see the spec's
 //   "Not goals" section.
 
+use crate::core::{ErrorReport, ErrorReporter, ErrorScope};
+use crate::host::HostComposition;
 use anyhow::{Context, Result};
-use everruns_core::host::HostComposition;
-use everruns_core::{ErrorReport, ErrorReporter, ErrorScope};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;

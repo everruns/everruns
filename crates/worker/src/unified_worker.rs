@@ -10,15 +10,15 @@
 
 use anyhow::Result;
 use everruns_contracts::typed_id::{ExecId, TurnId};
-use everruns_core::ExecutionContext;
-use everruns_core::engine::{ActInput, ActPlan, TurnPlan};
-use everruns_core::host::{
+use crate::core::ExecutionContext;
+use crate::engine::{ActInput, ActPlan, TurnPlan};
+use crate::host::{
     RuntimeSessionLifecycle, advance_host_execution,
     execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
 };
-use everruns_durable::{ClaimedTask, TaskFailureOutcome, WorkerInfo, WorkflowStatus};
+use crate::durable::{ClaimedTask, TaskFailureOutcome, WorkerInfo, WorkflowStatus};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -39,7 +39,7 @@ use crate::{
 };
 
 // Re-export atom types
-pub use everruns_core::engine::{InputAtomInput, ReasonInput, ReasonResult};
+pub use crate::engine::{InputAtomInput, ReasonInput, ReasonResult};
 
 // =============================================================================
 // Configuration
@@ -164,7 +164,7 @@ impl TaskWorkerConfig {
     /// (`WORKER_POLL_INTERVAL_MS` / `WORKER_POLL_BACKOFF_MAX_MS`) are independent.
     /// The claim batch is clamped to the execution concurrency.
     pub fn from_env() -> Self {
-        use everruns_core::config::{env_duration_ms, env_duration_secs, env_or, env_string_any};
+        use crate::core::config::{env_duration_ms, env_duration_secs, env_or, env_string_any};
 
         let worker_id =
             std::env::var("WORKER_ID").unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7()));
@@ -200,7 +200,7 @@ impl TaskWorkerConfig {
 // Unified Worker
 // =============================================================================
 
-pub use crate::task_store::TaskStore;
+pub use everruns_durable_engine::task_store::TaskStore;
 
 /// Unified worker that executes tasks from the durable task queue
 ///
@@ -998,7 +998,7 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
                     workflow_id,
                     turn_output,
                     Some(serde_json::to_value(&checkpoint)?),
-                    error.map(everruns_durable::WorkflowError::new),
+                    error.map(crate::durable::WorkflowError::new),
                 )
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
@@ -1033,7 +1033,7 @@ fn reason_final_answer(completed_activity: &str, output: &serde_json::Value) -> 
 
 fn turn_output_with_stop_reason(
     mut output: serde_json::Value,
-    stop_reason: everruns_core::turn::TurnStopReason,
+    stop_reason: crate::core::turn::TurnStopReason,
 ) -> serde_json::Value {
     if let Some(object) = output.as_object_mut() {
         object.insert("stop_reason".to_string(), serde_json::json!(stop_reason));
@@ -1125,7 +1125,7 @@ mod tests {
     use crate::unified_worker_test_adapters::NoopAdapters;
 
     use super::*;
-    use everruns_durable::{
+    use crate::durable::{
         ActivityOptions, DurableAdmin, EventLog, HeartbeatResponse, StoreError, TaskDefinition,
         TaskQueue, WorkerRegistry, WorkflowError,
     };
@@ -1133,8 +1133,8 @@ mod tests {
 
     // ---- EVE-681: mid-turn task wake drain ----
 
-    fn user_message_signal() -> everruns_durable::WorkflowSignal {
-        everruns_durable::WorkflowSignal::new(
+    fn user_message_signal() -> crate::durable::WorkflowSignal {
+        crate::durable::WorkflowSignal::new(
             crate::durable_turn::USER_MESSAGE,
             serde_json::json!({}),
         )
@@ -1144,7 +1144,7 @@ mod tests {
     /// how many times wake-signal drains are called.
     #[derive(Clone)]
     struct RecordingStore {
-        signals: Vec<everruns_durable::WorkflowSignal>,
+        signals: Vec<crate::durable::WorkflowSignal>,
         consume_calls: Arc<AtomicUsize>,
     }
 
@@ -1236,7 +1236,7 @@ mod tests {
         async fn consume_pending_signals(
             &self,
             _workflow_id: Uuid,
-        ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+        ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
             Ok(self.signals.clone())
         }
 
@@ -1244,7 +1244,7 @@ mod tests {
             &self,
             _workflow_id: Uuid,
             signal_type: &str,
-        ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+        ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
             self.consume_calls.fetch_add(1, Ordering::SeqCst);
             Ok(self
                 .signals
@@ -1312,7 +1312,7 @@ mod tests {
     fn durable_turn_output_surfaces_structured_stop_reason() {
         let output = turn_output_with_stop_reason(
             serde_json::json!({ "success": true, "error": null }),
-            everruns_core::turn::TurnStopReason::MaxTokens,
+            crate::core::turn::TurnStopReason::MaxTokens,
         );
 
         assert_eq!(output["success"], true);
@@ -1323,7 +1323,7 @@ mod tests {
     #[test]
     fn act_wire_input_uses_the_engine_checkpoint_as_its_only_resume_state() {
         use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId};
-        use everruns_core::engine::{ActSchedulingFacts, TurnState, plan_after_reason};
+        use crate::engine::{ActSchedulingFacts, TurnState, plan_after_reason};
 
         let state = TurnState {
             org_id: 7,
@@ -1398,8 +1398,8 @@ mod tests {
         let store = Arc::new(RecordingStore {
             signals: vec![
                 user_message_signal(),
-                everruns_durable::WorkflowSignal::new(
-                    everruns_durable::signal_types::CANCEL,
+                crate::durable::WorkflowSignal::new(
+                    crate::durable::signal_types::CANCEL,
                     serde_json::json!({}),
                 ),
                 user_message_signal(),
@@ -1441,7 +1441,7 @@ mod tests {
 
     #[tokio::test]
     async fn direct_store_elects_one_terminal_failure_owner() {
-        let store = everruns_durable::InMemoryWorkflowEventStore::new();
+        let store = crate::durable::InMemoryWorkflowEventStore::new();
         let workflow_id = Uuid::now_v7();
         store
             .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
@@ -1460,7 +1460,7 @@ mod tests {
             })
             .await
             .unwrap();
-        let worker = everruns_durable::WorkerInfo::new("worker", ["reason"]);
+        let worker = crate::durable::WorkerInfo::new("worker", ["reason"]);
         let registered = WorkerRegistry::register_worker(&store, worker).await;
         registered.unwrap();
         let claimed = TaskQueue::claim_task(&store, "worker", &["reason".into()], 1).await;
@@ -1701,7 +1701,7 @@ mod tests {
             async fn consume_pending_signals(
                 &self,
                 _workflow_id: Uuid,
-            ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+            ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
                 Ok(vec![])
             }
 
@@ -1709,7 +1709,7 @@ mod tests {
                 &self,
                 _workflow_id: Uuid,
                 _signal_type: &str,
-            ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+            ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
                 Ok(vec![])
             }
         }

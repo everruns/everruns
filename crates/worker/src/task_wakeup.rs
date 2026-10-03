@@ -14,17 +14,19 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{Notify, mpsc, watch};
+#[cfg(test)]
+use tokio::sync::mpsc;
+use tokio::sync::{Notify, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
-use everruns_durable::StoreError;
+use crate::durable::StoreError;
 
 use crate::unified_worker::TaskStore;
 
 /// Receiver side of a push channel: each item means "new work may be claimable".
 /// The channel closing means the push stream ended and the caller should resubscribe.
-pub type TaskWakeups = mpsc::Receiver<()>;
+pub use everruns_durable_engine::task_store::TaskWakeups;
 
 /// First resubscribe delay after the stream fails or ends.
 const RESUBSCRIBE_BASE: Duration = Duration::from_secs(1);

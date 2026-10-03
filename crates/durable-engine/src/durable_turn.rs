@@ -2,7 +2,7 @@
 //!
 //! Decision: `everruns-durable` knows workflows, activities, tasks and signals
 //! and nothing about sessions or turns. The names, ids and options that give a
-//! durable task its turn meaning live here, in the worker, and the server's
+//! durable task its turn meaning live here, in durable-engine, and the server's
 //! durable gRPC service applies the same rules to tasks a worker enqueues
 //! remotely. Every string here is persisted or on the wire: keep values stable.
 

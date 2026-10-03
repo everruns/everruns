@@ -46,14 +46,14 @@ fn grpc_worker_adapter_parses_acts_as_and_defaults_old_servers() {
     };
 
     let info = proto_mcp_server_to_info(proto_server).unwrap();
-    assert_eq!(info.acts_as, everruns_core::McpServerActsAs::Service);
+    assert_eq!(info.acts_as, crate::core::McpServerActsAs::Service);
 
     let old_server = proto::McpServerInfo {
         id: Some(uuid_to_proto(id)),
         ..Default::default()
     };
     let info = proto_mcp_server_to_info(old_server).unwrap();
-    assert_eq!(info.acts_as, everruns_core::McpServerActsAs::None);
+    assert_eq!(info.acts_as, crate::core::McpServerActsAs::None);
 }
 
 #[test]

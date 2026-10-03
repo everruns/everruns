@@ -7,13 +7,13 @@
 // Workers call lifecycle methods; this module owns the event emission and
 // session status updates that always move in lockstep.
 
-use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
-use everruns_contracts::user_facing_error::{UserFacingError, codes as user_facing_error_codes};
-use everruns_core::events::{
+use crate::core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
 };
-use everruns_core::{DependencyBlocker, RuntimeMessage, TokenUsage};
+use crate::core::{DependencyBlocker, RuntimeMessage, TokenUsage};
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+use everruns_contracts::user_facing_error::{UserFacingError, codes as user_facing_error_codes};
 use tracing::warn;
 
 use crate::worker_adapters::WorkerAdapters;

@@ -52,6 +52,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+use everruns_durable::sqlite as rusqlite;
 use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -244,16 +245,7 @@ fn sqlite_for_session_storage() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         DOTFILE_LOCKS.store(true, std::sync::atomic::Ordering::Relaxed);
-        // SAFETY: `sqlite3_vfs_find` takes a NUL-terminated name and returns
-        // a pointer to a VFS SQLite owns for the life of the process (or
-        // null); registering it as the default only changes which built-in
-        // VFS later `open` calls use. Both initialize SQLite as needed.
-        unsafe {
-            let vfs = rusqlite::ffi::sqlite3_vfs_find(c"unix-dotfile".as_ptr());
-            if !vfs.is_null() {
-                rusqlite::ffi::sqlite3_vfs_register(vfs, 1);
-            }
-        }
+        rusqlite::use_dotfile_locks();
     });
 }
 
