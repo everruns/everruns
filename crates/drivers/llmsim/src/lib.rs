@@ -5,7 +5,7 @@
 //! [Everruns](https://everruns.com) agents and runtimes.
 //!
 //! `everruns-llmsim` implements the provider contracts from
-//! [`everruns-provider`](https://docs.rs/everruns-provider) with configurable
+//! [`everruns-contracts`](https://docs.rs/everruns-contracts) with configurable
 //! fixed, echo, sequence, and scripted responses. It runs in process without
 //! credentials or network access and supports deterministic tool calls,
 //! injected failures, latency controls, and request capture.

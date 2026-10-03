@@ -77,7 +77,7 @@ mod session_file_system_factory;
 pub mod session_services;
 mod turn_strategy;
 mod turn_tool_context;
-// The utility LLM client needs `everruns-provider/http`, which only the
+// The utility LLM client needs `everruns-contracts/http`, which only the
 // `utility-llm` feature turns on. Leaving the module ungated made the crate
 // fail to compile under any feature selection without it.
 #[cfg(feature = "utility-llm")]

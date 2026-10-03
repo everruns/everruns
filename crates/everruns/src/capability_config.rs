@@ -1,9 +1,9 @@
 //! Open, value-first capability configuration for Framework agents.
 //!
-//! These are the neutral `everruns-capability` contract types re-exported at
+//! These are the neutral `everruns-contracts` contract types re-exported at
 //! their stable Framework paths (EVE-873). Downstream capability authors can
 //! keep depending only on `everruns`, or depend on the dependency-light
-//! `everruns-capability` crate directly — both expose the same
+//! `everruns-contracts` crate directly — both expose the same
 //! [`CapabilityRef`]/[`CapabilitySpec`]/[`IntoCapability`] contract, and the
 //! same reference representation round-trips through hosted product
 //! attachments and worker resolution.

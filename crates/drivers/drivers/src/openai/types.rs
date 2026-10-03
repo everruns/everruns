@@ -1,7 +1,7 @@
 // OpenAI Protocol Types
 //
 // These types are kept for backward compatibility with existing code.
-// The actual implementation is now in everruns-provider/src/openai_protocol.rs.
+// The actual implementation is now in everruns-contracts/src/openai_protocol.rs.
 
 use everruns_contracts::{ToolCall, ToolDefinition};
 use serde::{Deserialize, Serialize};

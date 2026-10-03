@@ -3,7 +3,7 @@
 # Decision: Use async_trait for trait definitions to support async operations
 # Decision: Core owns transport- and persistence-neutral execution contracts.
 # Decision: Provider identity, typed IDs, LLM wire types, and driver contracts
-# are imported privately from everruns-provider, never re-exported by core.
+# are imported privately from everruns-contracts, never re-exported by core.
 
 [package]
 name = "everruns-core"
