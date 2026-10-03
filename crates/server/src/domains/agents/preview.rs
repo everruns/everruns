@@ -3,8 +3,7 @@
 use super::queries as q;
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    AgentCapabilityConfig, InitialFile, ScopedMcpServers,
-    everruns_contracts::tool_types::ToolDefinition,
+    AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
 use everruns_contracts::typed_id::HarnessId;
 use serde::Deserialize;

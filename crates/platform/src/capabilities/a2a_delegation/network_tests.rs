@@ -2,8 +2,8 @@
 
 use super::*;
 use a2a::{AgentCapabilities, AgentInterface};
-use everruns_core::deployment::DeploymentGrade;
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::deployment::DeploymentGrade;
 use std::collections::BTreeMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::OnceLock;

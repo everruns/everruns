@@ -9,10 +9,10 @@
 // table about contributes no compute rather than a plausible-looking guess.
 
 use everruns_contracts::capability::CapabilityRef;
+use everruns_contracts::typed_id::EnvironmentId;
 use everruns_platform::{
     EnvironmentContainmentLevel, EnvironmentDurability, EnvironmentNetworkPolicy,
 };
-use everruns_contracts::typed_id::EnvironmentId;
 
 use crate::api::environments::{
     EnvironmentCapabilities, EnvironmentContainment, EnvironmentTarget,
