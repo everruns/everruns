@@ -1023,7 +1023,11 @@ jobs:
           # suite, not --lib: the point is the integration tests.
           cargo test -p everruns-contracts --all-features
           # Canonical module tests (one integration binary) plus deprecated shim doctests.
-          cargo test -p everruns-core -p everruns-engine -p everruns-host -p everruns-builtins -p everruns-mcp -p everruns-ag-ui --all-features
+          # Preserve the migrated host fixtures' serial execution contract.
+          cargo test -p everruns-core -p everruns-engine -p everruns-host -p everruns-builtins -p everruns-mcp -p everruns-ag-ui --all-features -- --test-threads=1
+          # Feature union can hide a shim losing its implicit transport or catalog.
+          cargo test -p everruns-host --no-default-features --features mcp --test feature_composition
+          cargo test -p everruns-host --no-default-features --features host-shell --test feature_composition
           cargo test -p everruns-integrations-docker --all-features
           # The integration catalog is the one list naming every plugin-publishing
           # crate; check-integration-catalog.sh guards completeness, these tests

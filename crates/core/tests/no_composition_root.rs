@@ -3,12 +3,13 @@
 //! Selecting which capabilities, drivers and host services a deployment runs
 //! with is composition, not kernel execution configuration. The bundle that
 //! makes that selection is `everruns_core::host::HostComposition`; `everruns-core`
-//! owns the registries and service contracts it carries, and nothing more.
+//! exposes it only through its explicitly gated host module; the default kernel
+//! owns the registries and service contracts it carries.
 //!
 //! Core previously owned `PlatformDefinition`, and every layer above it —
 //! host, local, the Framework facade, server and worker — reached into the
 //! kernel for a product-shaped bundle. This test fails the core build if a
-//! composition root reappears here, whatever it gets named.
+//! composition root reappears outside the canonical opt-in host owner.
 
 use std::path::Path;
 
@@ -29,14 +30,21 @@ fn core_declares_no_composition_root() {
         let Some(declared) = declared_type_name(&line) else {
             continue;
         };
-        if COMPOSITION_ROOT_TYPES.contains(&declared.as_str()) {
+        // The ownership move preserves one host-only bundle. The feature gate
+        // is checked by test-core-feature-modules.sh; no other source may own it.
+        let canonical_host_bundle = path == src.join("host/composition.rs")
+            && matches!(
+                declared.as_str(),
+                "HostComposition" | "HostCompositionBuilder"
+            );
+        if COMPOSITION_ROOT_TYPES.contains(&declared.as_str()) && !canonical_host_bundle {
             offenders.push(format!("{}:{line_no}: {}", path.display(), line.trim()));
         }
     }
 
     assert!(
         offenders.is_empty(),
-        "everruns-core must not declare a composition root — that bundle belongs to \
+        "the default core kernel must not declare a composition root — that bundle belongs to \
          the layer that executes a turn (everruns_core::host::HostComposition, EVE-887):\n{}",
         offenders.join("\n")
     );

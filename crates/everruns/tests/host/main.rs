@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 mod dependency_direction;
+mod hook_dispatcher;
 #[path = "integration/main.rs"]
 mod integration;
 #[cfg(feature = "mcp")]
