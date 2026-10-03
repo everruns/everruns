@@ -8,10 +8,10 @@ pub use crate::agent_version_policy::AgentVersionPolicy;
 #[cfg(test)]
 use crate::app::{App, AppStatus};
 use crate::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
-pub use everruns_core::channel::SessionBinding;
 use everruns_contracts::typed_id::{AgentChannelId, AgentVersionId};
 #[cfg(test)]
 use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId};
+pub use everruns_core::channel::SessionBinding;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;

@@ -2,10 +2,10 @@
 use crate::agent_channel::{AgentChannel, ChannelType};
 use crate::agent_version_policy::AgentVersionPolicy;
 use chrono::{DateTime, Utc};
-use everruns_core::principal::PrincipalSummary;
 use everruns_contracts::typed_id::{
     AgentChannelId, AgentId, AgentVersionId, AppId, HarnessId, PrincipalId, VirtualUserId,
 };
+use everruns_core::principal::PrincipalSummary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;

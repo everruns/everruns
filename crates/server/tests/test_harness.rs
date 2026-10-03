@@ -173,8 +173,8 @@ impl TestServer {
         mut channel_config: Value,
     ) -> Value {
         use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
-                use everruns_platform::AgentChannelId;
-                use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
+        use everruns_platform::AgentChannelId;
+        use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::storage::models::{
             CreateAppRow, CreateLegacyAliasChannelRow, CreatePrincipalRow,
         };
@@ -270,7 +270,7 @@ impl TestServer {
     }
 
     pub async fn set_app_channels_live(&self, app_public_id: &str, live: bool) -> Value {
-                use everruns_durable::UpdateField;
+        use everruns_durable::UpdateField;
         use everruns_server::storage::models::UpdateApp;
 
         let app = self
@@ -312,7 +312,7 @@ impl TestServer {
         channel_type: &str,
         channel_config: Value,
     ) -> Value {
-                                use everruns_server::storage::models::CreateLegacyAliasChannelRow;
+        use everruns_server::storage::models::CreateLegacyAliasChannelRow;
 
         let app = self
             .db
@@ -387,10 +387,10 @@ impl TestServer {
         channel_public_id: &str,
         channel_config: Value,
     ) -> Value {
-                use everruns_server::domains::agent_channels::queries::{
+        use everruns_server::domains::agent_channels::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };
-        
+
         let endpoint = self
             .db
             .get_channel_row_by_public_id(channel_public_id)

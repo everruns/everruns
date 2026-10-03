@@ -1,6 +1,6 @@
 // Response redaction for agent channels.
 //
-// Every read surface that returns an channel (agent channel commands and the
+// Every read surface that returns a channel (agent channel commands and the
 // frozen App archival reads) passes it through `redact_channel_for_response`,
 // so write-only secrets never leave the server.
 

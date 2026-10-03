@@ -13,9 +13,9 @@ use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use chrono::{DateTime, Duration, Utc};
+use everruns_contracts::typed_id::SessionId;
 use everruns_platform::agent_channel::SessionBinding;
 use everruns_platform::{AgentAction, AuditEvent, ChannelType};
-use everruns_contracts::typed_id::SessionId;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -172,7 +172,7 @@ pub fn hash_a2a_api_key(plaintext: &str) -> String {
 
 /// Hash a plaintext API channel execution key using SHA-256.
 pub fn hash_channel_api_key(plaintext: &str) -> String {
-        hex::encode(Sha256::digest(plaintext.as_bytes()))
+    hex::encode(Sha256::digest(plaintext.as_bytes()))
 }
 
 pub(crate) fn template_lookup<'a>(context: &'a Value, path: &str) -> Option<&'a Value> {

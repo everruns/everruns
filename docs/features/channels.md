@@ -4,7 +4,7 @@ description: Expose an Agent to Slack, AG-UI clients, A2A agents, FCP callers, a
 appliesTo: [platform, cloud]
 ---
 
-An **channel** is an Agent-owned way for an external caller to reach that Agent and get a reply. Each channel belongs to exactly one Agent and has its own transport configuration, authentication, session routing, version policy, and publish state. One Agent can have several channels, and publishing or unpublishing one does not change the others.
+A **channel** is an Agent-owned way for an external caller to reach that Agent and get a reply. Each channel belongs to exactly one Agent and has its own transport configuration, authentication, session routing, version policy, and publish state. One Agent can have several channels, and publishing or unpublishing one does not change the others.
 
 Use a channel when an external peer sends a request and waits for a reply. Use an [Agent trigger](/features/agent-triggers/) when a schedule or event starts Agent work without a reply channel.
 
@@ -50,7 +50,7 @@ Disabled → Draft
 
 Publishing and unpublishing require the dangerous Agent permission (Owner by default). The same permission is required to change a live channel's configuration, including its authentication and secrets, or to disable it. Members who can manage Agents can still edit Draft and Disabled channels.
 
-An channel serves traffic only when all three hold: the channel is live, the Agent is active, and the Agent's exposures are not suspended. Suspending exposures from the Agent's **Integrations** tab takes every channel of that Agent offline at once without changing each channel's state.
+A channel serves traffic only when all three hold: the channel is live, the Agent is active, and the Agent's exposures are not suspended. Suspending exposures from the Agent's **Integrations** tab takes every channel of that Agent offline at once without changing each channel's state.
 
 Errors from public channels are sanitized so they do not expose internal state, such as whether a channel exists or why it is offline.
 
@@ -119,6 +119,10 @@ The same channel model also carries transports that do not need a reply channel:
 - `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is available under **Add channel**.
 - `schedule` runs the Agent on a cron schedule. Create schedules as [Agent triggers](/features/agent-triggers/), which also cover webhook, GitHub, and MCP event starts.
 - `api_endpoint` gives callers an execution-only API key for the session routes under `/v1/channels/{channel_id}/sessions`.
+
+## Existing integrations
+
+Channels replace the former **Agent Endpoint** name. Existing channel IDs and configuration stay the same. CLI commands now use `everruns agents channels`; the management API uses `/v1/agents/{agent_id}/channels`. The former `/v1/agents/{agent_id}/endpoints` routes remain aliases, and console bookmarks under `/agents/{agent_id}/endpoints` redirect to the channel pages.
 
 ## Retired Apps
 

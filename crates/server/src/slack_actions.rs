@@ -622,7 +622,7 @@ mod tests {
             }
         }
 
-        /// An channel must be owned by an agent, so every app needs one.
+        /// A channel must be owned by an agent, so every app needs one.
         async fn seed_agent(&self, org_id: i64, harness_id: HarnessId) -> AgentId {
             use crate::storage::models::CreateAgentRow;
             let id = AgentId::new();

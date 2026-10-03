@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, AppId, HarnessId, PrincipalId, VirtualUserId};
+use everruns_contracts::typed_id::{
+    AgentId, AgentVersionId, AppId, HarnessId, PrincipalId, VirtualUserId,
+};
 use everruns_platform::agent_channel::{ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_platform::{
     A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentChannelId, AgentVersionPolicy,
@@ -16,7 +18,7 @@ impl IngressContext {
     ///
     /// Which key identifies "the same conversation" depends on what is serving
     /// the request. A historical app owned its sessions outright, so the app is
-    /// the key. A native endpoint is shared between callers, so the endpoint
+    /// the key. A native channel is shared between callers, so the channel
     /// alone would hand one caller another's thread — the owner principal is
     /// what separates them.
     pub async fn find_session_by_tags(
@@ -68,10 +70,10 @@ impl IngressContext {
     pub fn matches_legacy_app_id(&self, legacy_app_id: &str) -> bool {
         match self.legacy_alias_id.as_deref() {
             Some(legacy) => legacy == legacy_app_id,
-            // An endpoint created through `/v1/agents/{id}/channels` never had
+            // A channel created through `/v1/agents/{id}/channels` never had
             // an App. Its canonical `/v1/channels/{channel_id}` routes pass the
-            // synthetic `public_id` derived from the endpoint, which must match
-            // or every such endpoint answers 404.
+            // synthetic `public_id` derived from the channel, which must match
+            // or every such channel answers 404.
             None => self.public_id.to_string() == legacy_app_id,
         }
     }
@@ -116,7 +118,7 @@ pub struct IngressChannel {
 }
 
 impl IngressChannel {
-    /// Render the endpoint for the API. The version selection lives on the
+    /// Render the channel for the API. The version selection lives on the
     /// ingress context, so it is copied from there; surfacing it is what lets an
     /// org see that an exposure is pinned (EVE-1139).
     pub fn into_channel(self, context: &IngressContext) -> AgentChannel {
@@ -194,14 +196,14 @@ pub async fn resolve_legacy_channel(
     let rows = db
         .list_ingress_channels_by_legacy_alias(legacy_app_id, &channel_type.to_string())
         .await?;
-    let mut endpoints = rows.into_iter().map(|row| row_to_ingress(encryption, row));
-    let Some(endpoint) = endpoints.next() else {
+    let mut channels = rows.into_iter().map(|row| row_to_ingress(encryption, row));
+    let Some(channel) = channels.next() else {
         return Ok(LegacyChannelMatch::NotFound);
     };
-    if endpoints.next().is_some() {
+    if channels.next().is_some() {
         return Ok(LegacyChannelMatch::Ambiguous);
     }
-    Ok(LegacyChannelMatch::One(Box::new(endpoint?)))
+    Ok(LegacyChannelMatch::One(Box::new(channel?)))
 }
 
 pub(crate) fn row_to_ingress(
@@ -216,7 +218,7 @@ pub(crate) fn row_to_ingress(
         encryption,
         row.channel_config_encrypted.as_deref(),
         &row.channel_config,
-        "endpoint configuration",
+        "channel configuration",
     );
     let legacy_auth = channel_config
         .as_object_mut()
@@ -226,7 +228,7 @@ pub(crate) fn row_to_ingress(
             encryption,
             row.auth_encrypted.as_deref(),
             &row.auth.clone().unwrap_or(serde_json::Value::Null),
-            "endpoint authentication",
+            "channel authentication",
         )))
     } else {
         legacy_auth.map(channel_auth_fail_closed)
@@ -255,7 +257,7 @@ pub(crate) fn row_to_ingress(
         agent_status: row.agent_status,
         exposures_suspended: row.exposures_suspended,
     };
-    let endpoint = IngressChannel {
+    let channel = IngressChannel {
         public_id: channel_public_id,
         internal_id: row.channel_id,
         channel_type: ChannelType::from_str_opt(&row.channel_type).unwrap_or(ChannelType::Slack),
@@ -266,7 +268,7 @@ pub(crate) fn row_to_ingress(
         created_at: row.created_at,
         updated_at: row.updated_at,
     };
-    Ok((context, endpoint))
+    Ok((context, channel))
 }
 
 fn decrypt_json(
@@ -293,9 +295,9 @@ fn decrypt_json(
 
 fn channel_auth_fail_closed(value: serde_json::Value) -> Box<ChannelAuthConfig> {
     Box::new(serde_json::from_value(value).unwrap_or_else(|error| {
-        tracing::error!(%error, "Failed to parse endpoint authentication");
+        tracing::error!(%error, "Failed to parse channel authentication");
         serde_json::from_value(serde_json::json!({"mode": "http_basic"}))
-            .expect("fail-closed endpoint authentication is valid")
+            .expect("fail-closed channel authentication is valid")
     }))
 }
 
@@ -309,18 +311,15 @@ pub enum NotLive {
 impl NotLive {
     pub fn as_str(self) -> &'static str {
         match self {
-            NotLive::ChannelNotLive => "endpoint not live",
+            NotLive::ChannelNotLive => "channel not live",
             NotLive::AgentNotActive => "agent not active",
             NotLive::ExposuresSuspended => "agent exposures suspended",
         }
     }
 }
 
-pub fn channel_liveness(
-    context: &IngressContext,
-    endpoint: &IngressChannel,
-) -> Result<(), NotLive> {
-    if !endpoint.status.is_live() {
+pub fn channel_liveness(context: &IngressContext, channel: &IngressChannel) -> Result<(), NotLive> {
+    if !channel.status.is_live() {
         return Err(NotLive::ChannelNotLive);
     }
     if context.agent_status != "active" {

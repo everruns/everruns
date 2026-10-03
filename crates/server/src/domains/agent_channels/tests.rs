@@ -304,7 +304,7 @@ async fn endpoint_version_pin_round_trips_and_unpins() {
 
 #[tokio::test]
 async fn endpoint_version_pin_rejects_invalid_selections() {
-        let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let other_agent_id = seed_agent(&db).await;
     let foreign_version = seed_version(&db, &other_agent_id, true).await;
@@ -358,7 +358,7 @@ async fn endpoint_version_pin_rejects_invalid_selections() {
 
 #[tokio::test]
 async fn endpoint_version_pin_requires_agent_versions_feature() {
-        let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let version = seed_version(&db, &agent_id, true).await;
     let mut flags = crate::domains::common::all_feature_flags_for_test();
@@ -600,7 +600,7 @@ async fn live_channel_exposure_changes_require_dangerous_permission() {
 
 #[tokio::test]
 async fn draft_channel_edits_stay_available_to_managers() {
-        let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let member = role_ctxs(db)(OrgRole::Member);
     let channel_id = create_channel(
