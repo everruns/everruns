@@ -50,8 +50,9 @@ jobs:
   live-test:
     name: Container Sandbox Live API Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    timeout-minutes: 10
+    # Run on PRs that touch the sandbox surface too: EVE-1151's forge-rejection
+    # coverage only exists as a live Docker test.
+    timeout-minutes: 15
 
     services:
       docker:

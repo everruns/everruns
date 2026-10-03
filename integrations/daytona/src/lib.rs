@@ -321,6 +321,17 @@ mod tests {
     use everruns_core::capabilities::CapabilityStatus;
     use serde_json::json;
 
+    // Host reserves this prefix from secret_store but cannot import the
+    // constant (crate layering). Pin them so a rename cannot reopen forgery.
+    #[test]
+    fn the_daytona_sandbox_secret_prefix_is_reserved_from_session_storage() {
+        assert!(
+            everruns_platform::capabilities::is_internal_session_secret_name(&format!(
+                "{DAYTONA_SANDBOX_SECRET_PREFIX}sbx-example"
+            ))
+        );
+    }
+
     #[test]
     fn test_capability_metadata() {
         let cap = DaytonaCapability;

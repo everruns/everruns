@@ -133,6 +133,17 @@ mod tests {
     use super::*;
     use everruns_core::capabilities::CapabilityStatus;
 
+    // Host reserves this prefix from secret_store but cannot import the
+    // constant (crate layering). Pin them so a rename cannot reopen forgery.
+    #[test]
+    fn the_deno_sandbox_secret_prefix_is_reserved_from_session_storage() {
+        assert!(
+            everruns_platform::capabilities::is_internal_session_secret_name(&format!(
+                "{DENO_SANDBOX_SECRET_PREFIX}sb_example"
+            ))
+        );
+    }
+
     #[test]
     fn test_capability_metadata() {
         let cap = DenoCapability;

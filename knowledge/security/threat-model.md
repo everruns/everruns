@@ -1448,7 +1448,7 @@ Self-hosted container sandboxes via Docker Engine REST API. Agents create, exec,
 | TM-SANDBOX-001 | Container escape via kernel vulnerability | High | Configurable runtime (`runtime` config field): default empty = plain `runc`; operator chooses a hardened runtime (`sysbox-runc`, `gvisor`, `kata`) for untrusted/multi-tenant workloads | **ACCEPTED** |
 | TM-SANDBOX-002 | Resource exhaustion (memory/CPU/PIDs) | High | cgroup limits enforced via Docker create flags (`memory_limit`, `cpu_limit`, `pids_limit`); defaults: 2 GiB, 1 CPU, 256 PIDs | MITIGATED |
 | TM-SANDBOX-003 | Network attacks / SSRF / metadata access from sandbox | High | Per-sandbox isolated Docker bridge network limits cross-sandbox reachability, but **no egress / private-IP / cloud-metadata (169.254.169.254) filtering is implemented**; default bridge networking can route to RFC1918 and metadata endpoints. Egress restriction is the operator's responsibility at the network/firewall layer | **ACCEPTED** |
-| TM-SANDBOX-004 | Cross-session container access | Critical | Container names include `session_id`; all Docker API queries filtered by `session` + `managed-by` labels; sandbox state stored in session-scoped secrets | MITIGATED |
+| TM-SANDBOX-004 | Cross-session container access | Critical | Container names include `session_id`; list queries filter by `session` + `managed-by` labels; `container_sandbox:` (and sibling sandbox secret prefixes) are reserved from user-facing `secret_store`; every Docker op that uses a stored container/network ID re-inspects labels and refuses objects not owned by the current session (EVE-1151) | MITIGATED |
 | TM-SANDBOX-005 | Image supply chain attack | Medium | Image allowlist in capability config; only pre-approved images can be pulled | MITIGATED |
 | TM-SANDBOX-006 | Docker socket exposure inside sandbox | High | Docker socket never mounted into containers; no `--privileged` flag | MITIGATED |
 | TM-SANDBOX-007 | Stale container not cleaned up | Medium | Leased resource scheduler with 20-minute lease duration; system prompt instructs agent to remove when done | MITIGATED |
@@ -1476,13 +1476,16 @@ Session B creates: sandbox-{org}-{session_b} → container + network
 Session A cannot access Session B's container:
   - Docker API queries include label filter: session={session_a}
   - Container name includes session_a UUID
-  - Sandbox state stored in session-scoped secrets
+  - Sandbox state stored in session-scoped secrets under a reserved
+    `container_sandbox:` prefix (not writable via user-facing secret_store)
+  - Before exec/read/write/stop/start/remove, tools inspect the referenced
+    Docker object and require managed-by=everruns + session=<current>
 ```
 
 **TM-SANDBOX-008, Cross-Tenant Isolation (6 layers):**
 1. Tool scoping: container name derived from `ToolContext.session_id`, never user input
 2. Per-sandbox Docker network: `sandbox-{org}-{session}`, sole member = the sandbox
-3. Label-filtered API calls: all queries include `session` + `managed-by` labels
+3. Label checks: list filters plus per-op inspect of stored IDs for `session` + `managed-by`
 4. Per-org limits: max concurrent sandboxes checked at create time via leased resources
 5. Runtime isolation: configurable (sysbox adds user-ns + procfs virtualization)
 
