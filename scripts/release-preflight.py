@@ -32,6 +32,9 @@ mistakes around them that nothing checked:
     - Every crate in the publish set has the workspace version on crates.io.
       Reports the crates a halted or held-back cascade left behind, which
       otherwise nothing on main surfaces.
+    - Every crate has its crate/<name>/v<version> release tag, and all of them
+      point at one commit. 0.34.1 was on crates.io for most crates but had been
+      published from three commits; a version check alone called that complete.
 
 Registry reads use the public sparse index and API; no token is needed, so the
 check cannot confirm the publish token may create a new name. It prints the
@@ -261,6 +264,50 @@ def audit(version: str, crates: dict[str, str], registry: Registry) -> list[str]
     return missing
 
 
+def release_tags(version: str) -> dict[str, str]:
+    """crate/<name>/v<version> tag -> the commit it names, from the remote."""
+    fixture = os.environ.get("RELEASE_PREFLIGHT_TAGS_FIXTURE")
+    if fixture:
+        return json.loads(Path(fixture).read_text())["tags"]
+    out = subprocess.check_output(
+        ["git", "ls-remote", "--tags", "origin", f"refs/tags/crate/*/v{version}*"],
+        cwd=REPO,
+        text=True,
+    )
+    tags: dict[str, str] = {}
+    peeled: dict[str, str] = {}
+    for line in out.splitlines():
+        sha, ref = line.split("\t", 1)
+        name = ref.removeprefix("refs/tags/")
+        if name.endswith("^{}"):
+            peeled[name[:-3]] = sha
+        else:
+            tags[name] = sha
+    # An annotated tag lists its own object first; the peeled line is the commit.
+    return {name: peeled.get(name, sha) for name, sha in tags.items()}
+
+
+def audit_provenance(version: str, crates: dict[str, str], tags: dict[str, str]) -> list[str]:
+    """A version is one release only if every crate was tagged at the same commit."""
+    problems = []
+    by_commit: dict[str, list[str]] = {}
+    for name in sorted(crates):
+        sha = tags.get(f"crate/{name}/v{version}")
+        if sha is None:
+            problems.append(f"{name} has no crate/{name}/v{version} release tag")
+        else:
+            by_commit.setdefault(sha, []).append(name)
+    if len(by_commit) > 1:
+        # The commit most crates came from is the release; list the others.
+        release = max(by_commit, key=lambda sha: len(by_commit[sha]))
+        for sha, names in sorted(by_commit.items()):
+            if sha != release:
+                problems.append(
+                    f"{', '.join(names)} tagged at {sha[:9]}, not the release commit {release[:9]}"
+                )
+    return problems
+
+
 # ---------------------------------------------------------------- main
 
 
@@ -289,7 +336,21 @@ def main() -> int:
             for line in missing:
                 print(f"  {line}", file=sys.stderr)
             return 1
-        print(f"{version} is on crates.io for all {len(crates)} published crate(s)")
+        mixed = audit_provenance(version, crates, release_tags(version))
+        if mixed:
+            print(
+                f"{version} is on crates.io but was not released from one commit. The "
+                f"published crates cannot be changed: cut the next version, which republishes "
+                f"every crate from one commit.",
+                file=sys.stderr,
+            )
+            for line in mixed:
+                print(f"  {line}", file=sys.stderr)
+            return 1
+        print(
+            f"{version} is on crates.io for all {len(crates)} published crate(s), "
+            f"all tagged at one commit"
+        )
         return 0
 
     if not args.names:

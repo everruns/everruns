@@ -270,8 +270,17 @@ runs at three points:
   `cargo package` invocation, which builds each crate against its packaged
   siblings the way Publish Crate will;
 - after every Crate Release run and daily (`--audit`, or `just release-status`):
-  every crate in the publish set has the workspace version on crates.io. Before
-  this nothing on `main` reported a crate a halted cascade left a version behind.
+  every crate in the publish set has the workspace version on crates.io, and
+  every crate's release tag names the same commit. Before this nothing on
+  `main` reported a crate a halted cascade left a version behind, and a version
+  published from several commits (0.34.1) looked complete.
+
+**A failed publish is retried once before the cascade halts.** Crate Release
+re-runs a failed Publish Crate job once, on the same run. Transient crates.io
+index errors halted the 0.34.2 cascade three times. The publish job is
+idempotent, because an already-published version passes only when its digest
+matches this commit's artifact. Publish Crate also raises cargo's network retry
+count and uses HTTP/1.1.
 
 **Publish Crate** validates the selected manifest version, derives internal pins
 from Cargo metadata, and publishes only that package. Publishing cannot be
