@@ -1,8 +1,22 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { EntityCard } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardTags, EntityCardCapabilities } from "@/components/ui/entity-card";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 
 describe("EntityCard", () => {
+  it("lets users reveal all tags without crowding the initial overview", () => {
+    render(<EntityCardTags tags={["sre", "simulation", "training", "safety"]} />);
+    expect(screen.getByText("training")).toBeInTheDocument();
+    expect(screen.queryByText("safety")).not.toBeInTheDocument();
+    const more = screen.getByRole("button", { name: "Show 1 more tags" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(more);
+    expect(screen.getByText("safety")).toBeInTheDocument();
+    const less = screen.getByRole("button", { name: "Show fewer tags" });
+    expect(less).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(less);
+    expect(screen.queryByText("safety")).not.toBeInTheDocument();
+  });
+
   it("keeps long titles shrinkable beside header actions", () => {
     const { container } = render(
       <EntityCard title="A very long entity name" headerActions={<span>active</span>}>
@@ -68,5 +82,22 @@ describe("EntityIdentity", () => {
 
     expect(screen.getByText(/deliberately long readable/)).toHaveClass("break-words", "min-w-0");
     expect(screen.queryByText(value)).not.toBeInTheDocument();
+  });
+});
+
+describe("EntityCardCapabilities", () => {
+  it("reveals the full configuration on demand", () => {
+    render(
+      <EntityCardCapabilities>
+        {["Files", "Time", "Web", "Shell", "Memory"].map((name) => (
+          <span key={name}>{name}</span>
+        ))}
+      </EntityCardCapabilities>,
+    );
+    expect(screen.queryByText("Memory")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more capabilities" }));
+    expect(screen.getByText("Memory")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer capabilities" }));
+    expect(screen.queryByText("Memory")).not.toBeInTheDocument();
   });
 });

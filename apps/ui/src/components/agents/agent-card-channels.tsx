@@ -55,7 +55,7 @@ export function AgentCardChannels({
   return (
     <div
       aria-label="Channels"
-      className="flex min-w-0 items-center gap-3 border-t bg-muted/30 px-4 py-2 text-xs"
+      className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-xs"
     >
       <span className="shrink-0 text-muted-foreground">Channels</span>
       {channels === undefined ? (
@@ -82,7 +82,7 @@ export function AgentCardChannels({
                       href={integrationsHref}
                       aria-label={`${label}: ${state.description}`}
                       className={cn(
-                        "inline-flex shrink-0 items-center gap-1.5 border bg-background px-2 py-1 hover:bg-muted",
+                        "inline-flex shrink-0 items-center gap-1.5 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
                         visibility[index],
                       )}
                     >
@@ -115,7 +115,7 @@ export function AgentCardChannels({
                     href={integrationsHref}
                     aria-label={`View all ${channels.length} channels`}
                     className={cn(
-                      "inline-flex shrink-0 items-center border bg-background px-2 py-1 hover:bg-muted",
+                      "inline-flex shrink-0 items-center bg-muted/60 px-2 py-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
                       overflowVisibility[visible - 1],
                     )}
                   >

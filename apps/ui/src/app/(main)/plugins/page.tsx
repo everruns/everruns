@@ -23,6 +23,8 @@ import {
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EntityStatus } from "@/components/ui/entity-status";
+import { EntityCardDescription } from "@/components/ui/entity-card";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
   PageContainer,
@@ -31,7 +33,7 @@ import {
   PageControlStrip,
   SectionTabs,
   PageMain,
-  PageFooter,
+  IconTile,
 } from "@/components/layout";
 import {
   Dialog,
@@ -68,7 +70,7 @@ import {
   Ellipsis,
 } from "lucide-react";
 import { registryDomainIcons } from "@/lib/registry-navigation";
-import { pluralize } from "@/lib/formatting";
+
 import type {
   Marketplace,
   MarketplaceCatalogEntry,
@@ -112,9 +114,7 @@ function MarketplaceCard({
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-primary/10">
-            <Store className="h-5 w-5 text-primary" />
-          </div>
+          <IconTile size="md" icon={<Store />} />
           <div className="min-w-0">
             <CardTitle className="text-lg">
               <EntityIdentity
@@ -129,7 +129,7 @@ function MarketplaceCard({
             </CardDescription>
           </div>
         </div>
-        <Badge variant={isDisabled ? "outline" : "default"}>{marketplace.status}</Badge>
+        <EntityStatus status={marketplace.status} />
       </CardHeader>
       <CardContent>
         <div className="space-y-1 text-sm text-muted-foreground mb-4">
@@ -585,9 +585,7 @@ export function InstalledPluginCard({
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-primary/10">
-            <Package className="h-5 w-5 text-primary" />
-          </div>
+          <IconTile size="md" icon={<Package />} />
           <div className="min-w-0">
             <CardTitle className="text-lg">
               <EntityIdentity
@@ -613,12 +611,14 @@ export function InstalledPluginCard({
               Needs identity
             </Badge>
           )}
-          <Badge variant={isEnabled ? "default" : "outline"}>{plugin.status}</Badge>
+          <EntityStatus status={plugin.status} />
         </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-1 text-sm text-muted-foreground mb-3">
-          {plugin.description && <p>{plugin.description}</p>}
+          {plugin.description && (
+            <EntityCardDescription>{plugin.description}</EntityCardDescription>
+          )}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
             {plugin.version && <span>Version: {plugin.version}</span>}
             {plugin.marketplace && <span>Marketplace: {plugin.marketplace}</span>}
@@ -821,8 +821,8 @@ export default function PluginsPage() {
   const marketplaceCount = marketplaces?.length ?? 0;
 
   const sectionItems = [
-    { value: "installed" as const, label: "Installed Plugins" },
-    { value: "marketplaces" as const, label: "Marketplaces" },
+    { value: "installed" as const, label: "Installed Plugins", count: installedCount },
+    { value: "marketplaces" as const, label: "Marketplaces", count: marketplaceCount },
   ];
 
   return (
@@ -832,18 +832,7 @@ export default function PluginsPage() {
       <PageMasthead
         icon={<PluginsIcon />}
         title="Plugins"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {installedCount}
-          </Badge>
-        }
         description="Install plugins from marketplaces to extend agents with skills, commands, and MCP servers packaged in the standard plugin format."
-        meta={
-          <>
-            <span>{installedCount} installed</span>
-            <span>{marketplaceCount} marketplaces</span>
-          </>
-        }
         actions={
           activeTab === "marketplaces" && (
             <Button variant="accent" onClick={() => setAddMarketplaceOpen(true)}>
@@ -948,18 +937,6 @@ export default function PluginsPage() {
           </QueryStateWrapper>
         )}
       </PageMain>
-
-      <PageFooter>
-        {activeTab === "installed" ? (
-          <span>
-            Showing {installedCount} {pluralize(installedCount, "plugin")}
-          </span>
-        ) : (
-          <span>
-            Showing {marketplaceCount} {pluralize(marketplaceCount, "marketplace")}
-          </span>
-        )}
-      </PageFooter>
 
       {/* Marketplace dialogs */}
       <AddMarketplaceDialog open={addMarketplaceOpen} onOpenChange={setAddMarketplaceOpen} />

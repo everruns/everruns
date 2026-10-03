@@ -87,6 +87,26 @@ describe("AgentCard harness metadata", () => {
     expect(screen.getByText("Explicit")).toBeInTheDocument();
   });
 
+  it("keeps channel state and navigation visible alongside configuration and quiet tags", () => {
+    render(
+      <AgentCard
+        agent={agent({
+          channels: [{ id: "aep_slack", channel_type: "slack", enabled: true, status: "live" }],
+          tags: ["sre", "simulation", "training", "safety"],
+        })}
+        showEditButton
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Slack: Live" })).toHaveAttribute(
+      "href",
+      "/agents/agent_019fda100f037c008024046d6b3d74c0?tab=integrations",
+    );
+    expect(screen.getByRole("link", { name: "Harness: Generic (explicit)" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more tags" }));
+    expect(screen.getByText("safety")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Slack: Live" })).toBeInTheDocument();
+  });
+
   it("renders the edit action as one named link", () => {
     render(<AgentCard agent={agent()} showEditButton />);
 
