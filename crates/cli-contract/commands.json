@@ -4090,7 +4090,7 @@
         "long": "intro-markdown",
         "kind": "string",
         "required": false,
-        "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed."
+        "help": "Deprecated: configure conversation presentation on the Agent instead."
       },
       {
         "field": "mcpServers",
@@ -4123,14 +4123,14 @@
         "long": "short-description",
         "kind": "string",
         "required": false,
-        "help": "One-line description in simplified Markdown, shown below the chat title once the intro is hid..."
+        "help": "Deprecated: configure conversation presentation on the Agent instead."
       },
       {
         "field": "starters",
         "long": "starters",
         "kind": "json",
         "required": false,
-        "help": "Conversation starters for a fresh Platform Chat thread."
+        "help": "Deprecated: configure conversation presentation on the Agent instead."
       },
       {
         "field": "system_prompt",
@@ -4330,7 +4330,7 @@
         "long": "intro-markdown",
         "kind": "string",
         "required": false,
-        "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Outer `None` leaves unc..."
+        "help": "Deprecated: configure conversation presentation on the Agent instead."
       },
       {
         "field": "mcpServers",
@@ -4363,14 +4363,14 @@
         "long": "short-description",
         "kind": "string",
         "required": false,
-        "help": "One-line description in simplified Markdown."
+        "help": "Deprecated: configure conversation presentation on the Agent instead."
       },
       {
         "field": "starters",
         "long": "starters",
         "kind": "json",
         "required": false,
-        "help": "Conversation starters; omit to leave unchanged, send empty to clear. `icon` reuses the harnes..."
+        "help": "Deprecated: configure conversation presentation on the Agent instead."
       },
       {
         "field": "status",
