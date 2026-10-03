@@ -23,11 +23,11 @@ use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{
     ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
 };
-use everruns_builtins::ask_user::{
+use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
+use everruns_core::builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
     AskUserResult, AskUserStatus, session_secret_ref,
 };
-use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 
 /// How far back to look for the question set being answered. The card is emitted
 /// by the act that just paused, so it is within the last handful of events.
@@ -461,7 +461,10 @@ pub(crate) async fn resolve_question_answers_with_source(
         let (record, spoken) =
             form_elicitation_resolution(elicitation, &result, chrono::Utc::now());
         session_values.push(WaitingTurnSessionValue {
-            key: everruns_mcp::form_answer_storage_key(&elicitation.server, &elicitation.tool),
+            key: everruns_core::mcp::form_answer_storage_key(
+                &elicitation.server,
+                &elicitation.tool,
+            ),
             value: serde_json::to_string(&record)
                 .map_err(|error| ResolveError::Internal(error.to_string()))?,
         });
@@ -554,7 +557,7 @@ pub(crate) fn form_elicitation_resolution(
     elicitation: &PendingFormElicitation,
     result: &AskUserResult,
     now: chrono::DateTime<chrono::Utc>,
-) -> (everruns_mcp::StoredFormAnswer, String) {
+) -> (everruns_core::mcp::StoredFormAnswer, String) {
     let accepted = result.status == AskUserStatus::Answered;
     let answers = if accepted {
         result
@@ -563,7 +566,7 @@ pub(crate) fn form_elicitation_resolution(
             .map(|answer| {
                 (
                     answer.id.clone(),
-                    everruns_mcp::FormAnswer {
+                    everruns_core::mcp::FormAnswer {
                         selected: answer.selected.clone(),
                         other_text: answer.other_text.clone(),
                     },
@@ -574,11 +577,11 @@ pub(crate) fn form_elicitation_resolution(
         Default::default()
     };
     let action = if accepted {
-        everruns_mcp::FormAnswerAction::Accept
+        everruns_core::mcp::FormAnswerAction::Accept
     } else {
-        everruns_mcp::FormAnswerAction::Decline
+        everruns_core::mcp::FormAnswerAction::Decline
     };
-    let record = everruns_mcp::StoredFormAnswer::new(
+    let record = everruns_core::mcp::StoredFormAnswer::new(
         &elicitation.server,
         &elicitation.tool,
         &elicitation.fingerprint,
@@ -813,7 +816,7 @@ pub async fn submit_question_answers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_builtins::ask_user::{AskUserOption, AskUserQuestionKind};
+    use everruns_core::builtins::ask_user::{AskUserOption, AskUserQuestionKind};
 
     /// A `tool.call_requested` row carrying one `ask_user` call, shaped the way
     /// the event stream stores it.
@@ -841,7 +844,7 @@ mod tests {
         }
     }
 
-    fn elicitation_arguments(schema: &everruns_mcp::FormSchema) -> serde_json::Value {
+    fn elicitation_arguments(schema: &everruns_core::mcp::FormSchema) -> serde_json::Value {
         serde_json::json!({
             "questions": schema.questions("deploys"),
             "mcp_elicitation": {
@@ -854,8 +857,8 @@ mod tests {
         })
     }
 
-    fn release_schema() -> everruns_mcp::FormSchema {
-        everruns_mcp::parse_requested_schema(&serde_json::json!({
+    fn release_schema() -> everruns_core::mcp::FormSchema {
+        everruns_core::mcp::parse_requested_schema(&serde_json::json!({
             "type": "object",
             "properties": {
                 "environment": {"type": "string", "enum": ["staging", "production"]},
@@ -929,7 +932,7 @@ mod tests {
         let (record, spoken) =
             form_elicitation_resolution(&elicitation, &result, chrono::Utc::now());
 
-        assert_eq!(record.action, everruns_mcp::FormAnswerAction::Accept);
+        assert_eq!(record.action, everruns_core::mcp::FormAnswerAction::Accept);
         let content = schema
             .content_from_answers(&record.answers)
             .expect("the answers fit the schema");
@@ -955,7 +958,7 @@ mod tests {
             let result = build_result(status, vec![answer("environment", &["staging"], None)]);
             let (record, _) =
                 form_elicitation_resolution(&elicitation, &result, chrono::Utc::now());
-            assert_eq!(record.action, everruns_mcp::FormAnswerAction::Decline);
+            assert_eq!(record.action, everruns_core::mcp::FormAnswerAction::Decline);
             assert!(
                 record.answers.is_empty(),
                 "{status:?} must not carry answers"

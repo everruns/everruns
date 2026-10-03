@@ -9,11 +9,11 @@ use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{HarnessId, SessionId};
 use everruns_core::execution_loading::SessionStore;
-use everruns_core::session::ExecutionSession;
-use everruns_host::{
+use everruns_core::host::{
     EnvironmentBindingError, EnvironmentBindingStore, RuntimeSessionStore, SessionBuilder,
     WorkspaceBinding,
 };
+use everruns_core::session::ExecutionSession;
 use rusqlite::{OptionalExtension, params};
 
 use super::SqliteDb;
@@ -229,10 +229,10 @@ impl EnvironmentBindingStore for LocalSessionStore {
                     let workspace_id = binding.workspace_id.to_string();
                     let head_id = binding.head_id.to_string();
                     let access = match binding.access {
-                        everruns_host::WorkspaceHeadAccess::Isolated => "isolated",
-                        everruns_host::WorkspaceHeadAccess::Shared => "shared",
+                        everruns_core::host::WorkspaceHeadAccess::Isolated => "isolated",
+                        everruns_core::host::WorkspaceHeadAccess::Shared => "shared",
                     };
-                    let owner = (binding.access == everruns_host::WorkspaceHeadAccess::Isolated)
+                    let owner = (binding.access == everruns_core::host::WorkspaceHeadAccess::Isolated)
                         .then(|| session_id.to_string());
                     let claim = transaction
                         .query_row(
@@ -359,7 +359,7 @@ fn store_error(error: impl std::fmt::Display) -> AgentLoopError {
 mod tests {
     use everruns_contracts::typed_id::WorkspaceId;
     use everruns_core::execution_loading::SessionStore;
-    use everruns_host::{
+    use everruns_core::host::{
         EnvironmentBindingStore, RuntimeSessionStore, WorkspaceBackendId, WorkspaceHeadAccess,
         WorkspaceHeadId,
     };

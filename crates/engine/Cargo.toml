@@ -1,13 +1,3 @@
-# The shared turn engine for the Everruns agentic runtime.
-#
-# Decision (EVE-840, Sans-IO Turn State epic): the authoritative turn-planning
-# brain and portable Input/Reason/Act algorithms live here. Planning remains
-# pure; execution effects cross injected contracts owned by core/provider.
-#
-# Dependency direction is strictly `engine -> core/provider/capability`. The engine never
-# depends on host/server/worker/platform/durable/scale (enforced by
-# crates/engine/tests/dependency_direction.rs).
-
 [package]
 name = "everruns-engine"
 version.workspace = true
@@ -18,31 +8,17 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-engine"
-description = "Shared Input/Reason/Act execution and sans-IO turn planning for Everruns hosts"
+description = "Deprecated shim: use everruns-core engine module"
 readme = "README.md"
 keywords = ["agent", "agentic", "llm", "ai", "state-machine"]
 categories = ["development-tools", "asynchronous"]
 
+
 [dependencies]
-# Neutral contracts and domain value types used by the portable execution
-# algorithms and planner. Direction is engine -> core/provider/capability.
-everruns-core = { workspace = true }
-everruns-contracts = { workspace = true, default-features = false }
+everruns-core = { workspace = true, default-features = false, features = ["engine"] }
 
-async-trait.workspace = true
-chrono.workspace = true
-futures.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-sha2.workspace = true
-tokio = { version = "1.50", default-features = false, features = ["rt", "sync", "time", "macros"] }
-tokio-util = { version = "0.7", default-features = false }
-tracing.workspace = true
-# std time on native, the host clock on wasm32-unknown-unknown.
-web-time = "1"
-uuid.workspace = true
-
-[dev-dependencies]
+[features]
+default = []
 
 [lints]
 workspace = true

@@ -13,8 +13,8 @@
 // Atoms emit events via EventEmitter for observability.
 
 use anyhow::{Context, Result};
-use everruns_host::HostComposition;
-use everruns_host::{
+use everruns_core::host::HostComposition;
+use everruns_core::host::{
     execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
@@ -27,7 +27,7 @@ use crate::grpc_worker_adapters::GrpcWorkerAdapters;
 use crate::runtime_host::WorkerRuntimeHost;
 
 // Re-export atom types for activity callers
-pub use everruns_engine::{
+pub use everruns_core::engine::{
     ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
 };
 
@@ -193,11 +193,11 @@ mod tests {
     fn durable_activity_io_is_the_engine_contract() {
         assert_eq!(
             std::any::type_name::<ActInput>(),
-            std::any::type_name::<everruns_engine::ActInput>(),
+            std::any::type_name::<everruns_core::engine::ActInput>(),
         );
         assert_eq!(
             std::any::type_name::<ReasonResult>(),
-            std::any::type_name::<everruns_engine::ReasonResult>(),
+            std::any::type_name::<everruns_core::engine::ReasonResult>(),
         );
     }
 }

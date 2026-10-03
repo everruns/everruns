@@ -8,7 +8,7 @@
 //! (TM-API-026). The stream stays authoritative, as 1.0 says.
 
 use crate::records::AgUiChannelConfig;
-use everruns_ag_ui::{
+use everruns_core::ag_ui::{
     AgentCapabilities, HumanInTheLoopCapabilities, IdentityCapabilities, MultiAgentCapabilities,
     MultimodalCapabilities, MultimodalInputCapabilities, ReasoningCapabilities, ToolsCapabilities,
     TransportCapabilities,

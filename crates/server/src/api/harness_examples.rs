@@ -11,7 +11,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::harnesses::{HarnessExampleDef, harness_examples};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::DeploymentGrade;
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;

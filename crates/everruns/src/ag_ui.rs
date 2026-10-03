@@ -211,11 +211,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
-use everruns_ag_ui::{Tool as WireTool, ToolCall as WireToolCall};
 use everruns_contracts::tool_types::ClientSideTool;
+use everruns_core::ag_ui::{Tool as WireTool, ToolCall as WireToolCall};
 use everruns_core::events::{ToolCallRequestedData, ToolCompletedData};
+use everruns_core::host::ParkedToolCalls;
 use everruns_core::message::ContentPart;
-use everruns_host::ParkedToolCalls;
 use futures::{Stream, StreamExt};
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot, watch};
@@ -251,8 +251,8 @@ pub use threads::{
     AgUiThreads, InMemoryThreadStore, ThreadError, ThreadSession, ThreadStore, ThreadStoreError,
 };
 
-pub use everruns_ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure};
-pub use everruns_ag_ui::{
+pub use everruns_core::ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure};
+pub use everruns_core::ag_ui::{
     Event, Interrupt, Message, PROTOCOL_VERSION, ResumeEntry, ResumeStatus, RunAgentInput,
     RunErrorEvent, RunStartedEvent,
 };
@@ -266,7 +266,7 @@ pub use everruns_ag_ui::{
 /// assert_eq!(serde_json::to_value(&outcome)?["type"], "cancelled");
 /// # Ok::<(), serde_json::Error>(())
 /// ```
-pub use everruns_ag_ui as wire;
+pub use everruns_core::ag_ui as wire;
 
 /// `Interrupt.reason` for an `ask_user` question set.
 ///

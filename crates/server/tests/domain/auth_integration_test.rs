@@ -5,7 +5,7 @@
 //!
 //! Run with: cargo test -p everruns-server --test domain auth_integration_test::
 
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use std::sync::Arc;
 use std::time::Duration;
 

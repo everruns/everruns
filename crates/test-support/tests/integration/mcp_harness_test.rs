@@ -5,13 +5,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use everruns_core::{
-    EgressRequest, EgressRequestKind, EgressService, McpProtocolMode, McpServerAuthMode,
-};
-use everruns_mcp::oauth::{OAuthClient, OAuthError, RegisteredClient, prepare_login};
-use everruns_mcp::{
+use everruns_core::mcp::oauth::{OAuthClient, OAuthError, RegisteredClient, prepare_login};
+use everruns_core::mcp::{
     ElicitationAction, McpClient, McpConnection, NoAuthProvider, StaticAuthProvider,
     UrlElicitation, UrlElicitationHandler,
+};
+use everruns_core::{
+    EgressRequest, EgressRequestKind, EgressService, McpProtocolMode, McpServerAuthMode,
 };
 use everruns_test_support::{
     MockCallResponse, MockMcpOAuthServer, MockMcpProtocolEra, MockOAuthError,

@@ -17,8 +17,8 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_core::host::HostComposition;
 use everruns_core::{Caller, DeploymentGrade, ResourceConfigResponse, evaluate_policies_with};
-use everruns_host::HostComposition;
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceStatsResponse,

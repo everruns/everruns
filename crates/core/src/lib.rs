@@ -45,7 +45,7 @@
 //!
 //! Composition is not core's job either. The execution surface an embedder
 //! assembles — capability registry, provider registry, egress, utility LLM and
-//! the session filesystem factory — is `everruns_host::HostComposition`
+//! the session filesystem factory — is `everruns_core::host::HostComposition`
 //! (EVE-887); core owns the execution contracts, not the bundle that selects a
 //! deployment's shape. Provider identity, driver registration, typed IDs, and
 //! LLM wire abstractions live in `everruns-contracts` and are imported from
@@ -66,7 +66,8 @@
 
 // Published library code is safe-only. Unit tests use Rust 2024's unsafe
 // environment mutation APIs under process-wide test locks.
-#![cfg_attr(not(test), forbid(unsafe_code))]
+#![cfg_attr(not(any(test, feature = "host")), forbid(unsafe_code))]
+#![cfg_attr(not(test), deny(unsafe_code))]
 #![deny(rustdoc::broken_intra_doc_links)]
 
 // Runtime types (tool definitions, capability types)
@@ -582,3 +583,24 @@ pub use deployment::DeploymentGrade;
 pub use execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
 
 mod sandbox_context;
+
+/// AG-UI wire values, event projection, and optional HTTP client.
+#[cfg(feature = "ag-ui")]
+pub mod ag_ui;
+/// Portable first-party capability implementations.
+#[cfg(feature = "builtins")]
+pub mod builtins;
+/// Portable turn planning and Input/Reason/Act algorithms.
+#[cfg(feature = "engine")]
+pub mod engine;
+/// Effectful host orchestration over injected services and registries.
+#[cfg(feature = "host")]
+// The inherited host module contains audited Unix ownership and containment calls.
+#[allow(unsafe_code)]
+pub mod host;
+/// MCP client, auth, and tool adaptation over injected transports.
+#[cfg(feature = "mcp")]
+pub mod mcp;
+
+#[cfg(feature = "a2a")]
+pub mod a2a;

@@ -21,18 +21,18 @@ use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::supervised_task::{RestartPolicy, TaskSupervisor};
 use crate::{api, org_init, seed, services};
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 
 use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
 use anyhow::{Context, Result};
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
+use everruns_core::host::observability::{BraintrustListener, OtelEventListener};
 use everruns_core::{
     ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter, SharedErrorReporter,
 };
 use everruns_durable::{EventLog, PostgresWorkflowEventStore, TaskQueue, WorkflowEventStore};
-use everruns_host::observability::{BraintrustListener, OtelEventListener};
 use everruns_worker::{AgentRunner, TaskWorker, TaskWorkerConfig};
 use serde::Serialize;
 use sqlx::PgPool;

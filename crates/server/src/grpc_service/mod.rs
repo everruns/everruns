@@ -27,6 +27,7 @@ use crate::services::{CapabilityService, EventService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskBroadcaster;
 use base64::Engine;
+use everruns_core::host::HostComposition;
 use everruns_core::permissions::PermissionResolver;
 use everruns_durable::{
     CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker, PostgresWorkflowEventStore,
@@ -35,7 +36,6 @@ use everruns_durable::{
     record_activity_failed, record_workflow_cancelled, record_workflow_completed,
     record_workflow_failed,
 };
-use everruns_host::HostComposition;
 use everruns_internal_protocol::proto::{
     self,
     AddMessageRequest,
@@ -936,8 +936,8 @@ impl WorkerServiceImpl {
         org_id: i64,
         agent: &crate::records::Agent,
     ) -> Vec<McpToolDef> {
+        use everruns_core::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
-        use everruns_mcp::parse_mcp_capability_id;
 
         // Collect unique MCP server IDs from capabilities
         let server_ids: Vec<uuid::Uuid> = agent

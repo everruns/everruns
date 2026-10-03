@@ -33,7 +33,7 @@ use everruns_core::{
     ResolvedModelExecution, ResolvedTurnContextInput, RuntimeMessage, TurnContextRequest,
     TurnContextResolver, assemble_resolved_turn_context,
 };
-use everruns_engine::{ActAtom, ActInput, ReasonAtom, ReasonInput};
+use everruns_core::engine::{ActAtom, ActInput, ReasonAtom, ReasonInput};
 use everruns_contracts::driver_registry::ChatDriver;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::provider::DriverId;
@@ -278,7 +278,7 @@ impl<S: Store + 'static> Cell<S> {
         turn: &Turn,
         context: ExecutionContext,
         emitter: Emitter<S>,
-    ) -> Result<everruns_engine::ReasonResult> {
+    ) -> Result<everruns_core::engine::ReasonResult> {
         let harness = agent::harness();
         let session = ExecutionSession::new(context.session_id, workspace_id(), harness_id());
         let snapshot = ResolvedExecutionSnapshot::project(&harness, None, &session)?;

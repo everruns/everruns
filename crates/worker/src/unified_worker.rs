@@ -12,18 +12,18 @@ use anyhow::Result;
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{ExecId, TurnId};
 use everruns_core::ExecutionContext;
+use everruns_core::engine::{ActInput, ActPlan, TurnPlan};
+use everruns_core::host::{
+    RuntimeSessionLifecycle, advance_host_execution,
+    execute_act_activity as runtime_execute_act_activity,
+    execute_input_activity as runtime_execute_input_activity,
+    execute_reason_activity as runtime_execute_reason_activity,
+};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, EventLog, HeartbeatResponse, SignalStore, StoreError,
     TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo, WorkerRegistry, WorkflowError,
     WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
     record_activity_failed, record_activity_started, record_workflow_failed,
-};
-use everruns_engine::{ActInput, ActPlan, TurnPlan};
-use everruns_host::{
-    RuntimeSessionLifecycle, advance_host_execution,
-    execute_act_activity as runtime_execute_act_activity,
-    execute_input_activity as runtime_execute_input_activity,
-    execute_reason_activity as runtime_execute_reason_activity,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -45,7 +45,7 @@ use crate::{
 };
 
 // Re-export atom types
-pub use everruns_engine::{InputAtomInput, ReasonInput, ReasonResult};
+pub use everruns_core::engine::{InputAtomInput, ReasonInput, ReasonResult};
 
 // =============================================================================
 // Configuration
@@ -1531,7 +1531,7 @@ mod tests {
     #[test]
     fn act_wire_input_uses_the_engine_checkpoint_as_its_only_resume_state() {
         use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId};
-        use everruns_engine::{ActSchedulingFacts, TurnState, plan_after_reason};
+        use everruns_core::engine::{ActSchedulingFacts, TurnState, plan_after_reason};
 
         let state = TurnState {
             org_id: 7,

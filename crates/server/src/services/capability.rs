@@ -26,12 +26,12 @@ use everruns_contracts::capability::{
     CapabilityId, is_plugin_capability, parse_plugin_capability_id,
 };
 use everruns_core::capabilities::{Capability, CapabilityRegistry, SkillCapabilityIdExt};
+use everruns_core::mcp::{McpCapability, McpCapabilityIdExt, mcp_capability_id};
 use everruns_core::{
     Caller, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition, RiskLevel,
     declarative_capability_info, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, skill_capability_id,
 };
-use everruns_mcp::{McpCapability, McpCapabilityIdExt, mcp_capability_id};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;

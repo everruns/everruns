@@ -25,8 +25,8 @@ pub use everruns_contracts::slack_action;
 pub use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionInvokerExt, SlackActionOutcome,
 };
-pub use everruns_host::session_services::session_mutator;
-pub use everruns_host::{SessionMutator, SessionMutatorExt};
+pub use everruns_core::host::session_services::session_mutator;
+pub use everruns_core::host::{SessionMutator, SessionMutatorExt};
 
 pub use connector::{
     Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorRegistry, ConnectorRegistryBuilder,

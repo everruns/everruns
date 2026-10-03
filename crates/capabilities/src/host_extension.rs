@@ -5,10 +5,10 @@ use everruns_contracts::error::Result;
 use everruns_contracts::tool_types::ToolDefinition;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::execution_loading::SessionStore;
+use everruns_core::host::HostToolAugmentor;
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::tools::{Tool, ToolRegistry};
-use everruns_host::HostToolAugmentor;
 use std::sync::Arc;
 
 use crate::PlatformStore;
@@ -32,9 +32,9 @@ pub trait PlatformHostBackendsExt: Sized {
 }
 
 fn attach_platform_store(
-    backends: everruns_host::HostBackends,
+    backends: everruns_core::host::HostBackends,
     factory: PlatformStoreFactory,
-) -> everruns_host::HostBackends {
+) -> everruns_core::host::HostBackends {
     let context_factory = factory.clone();
     let delegate_factory = factory;
     backends
@@ -53,7 +53,7 @@ fn attach_platform_store(
         .with_tool_augmentor(Arc::new(PlatformToolAugmentor))
 }
 
-impl PlatformHostBackendsExt for everruns_host::HostBackends {
+impl PlatformHostBackendsExt for everruns_core::host::HostBackends {
     fn with_platform_store_factory(self, factory: PlatformStoreFactory) -> Self {
         attach_platform_store(self, factory)
     }

@@ -1,0 +1,151 @@
+// Demonstrates that `AgentInstructionsCapability` reads `AGENTS.md` from
+// whichever `SessionFileSystem` the embedder plugs in — here, a
+// `RealDiskFileStore` rooted at a temp directory.
+//
+// What this proves:
+//   1. Drop AGENTS.md on disk → it appears as the leading user-role message
+//      (conversation context) on the next turn (no rebuild required) — and
+//      never in the system prompt.
+//   2. Edit AGENTS.md on disk → the change appears on the next turn (the
+//      capability re-reads every `load_context`).
+//
+// Run with:
+//   cargo run -p everruns-host --example real_disk_agent_instructions
+
+use everruns_core::host::HostComposition;
+use everruns_llmsim::LlmSimRuntimeExt;
+use std::sync::Arc;
+
+use everruns_contracts::driver_registry::DriverRegistry;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::provider::DriverId;
+use everruns_core::builtins::AgentInstructionsCapability;
+use everruns_core::host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
+use everruns_core::{
+    AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
+};
+use everruns_llmsim::LlmSimConfig;
+use tempfile::TempDir;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Stand up a real workspace directory on disk.
+    let workspace = TempDir::new()?;
+    println!("workspace root: {}", workspace.path().display());
+
+    // 2. Drop an initial AGENTS.md straight onto disk. No FileStore call.
+    std::fs::write(
+        workspace.path().join("AGENTS.md"),
+        "## Project rules\nPrefer snake_case identifiers.",
+    )?;
+
+    // 3. Register AgentInstructionsCapability and configure the platform
+    //    filesystem factory so only the workspace surface is real.
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(AgentInstructionsCapability);
+    let platform = HostComposition::builder()
+        .capability_registry(capabilities)
+        .driver_registry(DriverRegistry::new())
+        .session_file_system_factory(Arc::new(RealDiskSessionFileSystemFactory::new(
+            workspace.path(),
+        )))
+        .build();
+
+    let harness_id = "harness_00000000000000000000000000000091".parse().unwrap();
+    let agent_id = "agent_00000000000000000000000000000091".parse().unwrap();
+    let session_id = "session_00000000000000000000000000000091".parse().unwrap();
+
+    let runtime = everruns::batteries::runtime_builder()
+        .host_composition(platform)
+        .llm_sim_as_default(LlmSimConfig::fixed("ack"))
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
+        .harness(everruns_core::host::SeededHarness {
+            id: harness_id,
+            definition: HarnessDefinition {
+                capabilities: vec![everruns_contracts::CapabilityRef::new("agent_instructions")],
+                ..HarnessDefinition::new("coding", "You are a coding assistant.")
+            },
+        })
+        .agent(AgentDefinition {
+            display_name: Some("Coding Agent".into()),
+            max_iterations: Some(8),
+            ..AgentDefinition::new(agent_id, "coding-agent", "Use tools when needed.")
+        })
+        .session(ExecutionSession {
+            id: session_id,
+            workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
+            organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
+            harness_id,
+            agent_id: Some(agent_id),
+            title: Some("Coding ExecutionSession".into()),
+            goal: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            system_prompt: None,
+            initial_files: vec![],
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            status: SessionExecutionState::Started,
+            usage: None,
+            parent_session_id: None,
+            forked_from_session_id: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .build()
+        .await?;
+
+    // 5. Inspect the assembled context. The AgentInstructionsCapability
+    //    reads AGENTS.md from RealDiskFileStore and resolves it as
+    //    conversation context — model-visible, but never folded into the
+    //    system prompt.
+    let ctx = runtime.load_context(session_id).await?;
+    println!("\n--- conversation context (initial) ---");
+    let context = ctx
+        .runtime_agent
+        .conversation_context
+        .as_deref()
+        .unwrap_or("<none>");
+    println!("{context}");
+    assert!(
+        !ctx.runtime_agent.system_prompt.contains("snake_case"),
+        "AGENTS.md content must not enter the system prompt"
+    );
+    assert!(
+        context.contains("snake_case"),
+        "AGENTS.md content should ride as conversation context"
+    );
+
+    // 6. Mutate the file on disk and reload — the change appears on the
+    //    next turn without rebuilding anything.
+    std::fs::write(
+        workspace.path().join("AGENTS.md"),
+        "## Project rules\nPrefer camelCase identifiers.",
+    )?;
+
+    let ctx = runtime.load_context(session_id).await?;
+    println!("\n--- conversation context (after editing AGENTS.md on disk) ---");
+    let context = ctx
+        .runtime_agent
+        .conversation_context
+        .as_deref()
+        .unwrap_or("<none>");
+    println!("{context}");
+    assert!(
+        !ctx.runtime_agent.system_prompt.contains("camelCase"),
+        "edited AGENTS.md must stay out of the system prompt"
+    );
+    assert!(
+        context.contains("camelCase"),
+        "edited AGENTS.md should appear on the next turn"
+    );
+
+    println!("\nok: AGENTS.md flows from real disk through AgentInstructionsCapability");
+    Ok(())
+}

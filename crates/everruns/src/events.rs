@@ -36,7 +36,7 @@ use everruns_core::events::{
     OutputMessageStartedData, ReasonCompletedData, ToolCompletedData, ToolOutputDeltaData,
     ToolProgressData, ToolStartedData, TurnCancelledData, TurnFailedData,
 };
-use everruns_host::{EventSink, EventSinkError};
+use everruns_core::host::{EventSink, EventSinkError};
 use serde_json::Value;
 use tokio::sync::broadcast;
 

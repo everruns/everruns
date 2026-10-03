@@ -1,186 +1,369 @@
-//! Shared effectful host orchestration for Everruns execution adapters.
+//! Deprecated compatibility shim for the canonical core module.
 //!
-//! `everruns-host` composes the shared `everruns-engine` execution kernel for
-//! application, worker, and local adapters. It resolves deployment services,
-//! credentials, and stores, then applies the engine planner's effects. It is a
-//! transitive implementation boundary, not the ordinary application
-//! entrypoint; applications in the [Everruns](https://everruns.com) ecosystem
-//! should normally depend on `everruns`.
-//!
-//! Advanced hosts — servers, evaluation harnesses, research runtimes, and
-//! specialized embedders — depend on `everruns` plus this crate and the
-//! focused sibling crates they actually need.
-//!
-//! [`runtime_capability_registry`] owns the Framework preset: it starts from an
-//! empty core registry, adds the runtime-safe portable catalog selected by
-//! `builtins`, and then adds only the integrations selected by this crate's
-//! `filesystem`, `bashkit`, `web-fetch`, and `lua` features. MCP transport
-//! wiring is separately enabled by `mcp`;
-//! local-process MCP additionally requires `mcp-stdio`.
-//! [`compose_runtime_capability_registry`] applies the selected integrations to
-//! a caller-supplied registry when a broader preset is required.
-//! [`runtime_egress_service`] supplies the matching direct transport only when
-//! a network-capable integration is selected.
-//! Advanced hosts can select `direct-egress` to construct
-//! `DirectEgressService` without enabling an integration bundle.
-//!
-//! # Example
+//! This is the final forwarding release. Enable the matching `everruns-core`
+//! feature and migrate imports to its module before the next platform release.
 //!
 //! ```
-//! use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
-//!
-//! fn accepts_host<A: RuntimeHostAdapter>() {}
-//! fn accepts_inputs(_: ResolvedTurnInputs) {}
-//! # let _ = accepts_inputs;
+//! use everruns_core::host::HostComposition;
+//! let composition = HostComposition::default();
+//! assert!(composition.driver_registry().registered_providers().is_empty());
 //! ```
 
-mod ask_user_lifecycle;
-pub mod native_async;
+#![allow(deprecated)]
 
-mod backends;
-mod background_call;
-mod builders;
-pub mod capabilities;
-mod command_host;
-mod composition;
-pub mod compute;
-#[cfg(feature = "native-containment")]
-pub mod containment;
-pub mod decisions;
-#[cfg(feature = "direct-egress")]
-mod egress;
-pub mod environment_preamble;
-mod event_cursor;
-pub mod events;
-pub mod execution_snapshot;
-mod extensions;
-mod file_store_decorators;
-mod grep_limits;
-mod host;
-mod in_memory;
-mod in_process_execution;
-#[cfg(feature = "mcp")]
-mod mcp;
-#[cfg(feature = "mcp")]
-mod mcp_cache;
-#[cfg(any(feature = "otel", feature = "braintrust"))]
-pub mod observability;
-#[cfg(feature = "openai-agents-api")]
-pub mod openai_agents_api;
-#[cfg(feature = "process")]
-mod process_command;
-mod real_disk;
-mod reason_backend;
-mod runtime;
-mod runtime_context;
-mod session_file_system_factory;
-pub mod session_services;
-mod turn_strategy;
-mod turn_tool_context;
-// The utility LLM client needs `everruns-contracts/http`, which only the
-// `utility-llm` feature turns on. Leaving the module ungated made the crate
-// fail to compile under any feature selection without it.
+#[deprecated(note = "use everruns::batteries::compose_runtime_capability_registry")]
+pub use everruns::batteries::compose_runtime_capability_registry;
+#[deprecated(note = "use everruns::batteries::runtime_capability_registry")]
+pub use everruns::batteries::runtime_capability_registry;
+#[deprecated(note = "use everruns::batteries::runtime_egress_service")]
+pub use everruns::batteries::runtime_egress_service;
 #[cfg(feature = "utility-llm")]
-mod utility_llm;
-mod workspace;
-
-pub use backends::{
-    HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
-    RuntimeSessionStore, ScheduleStoreFactory,
-};
-pub use builders::{
-    AgentBuilder, HarnessBuilder, SeededHarness, SessionBuilder, SingleSessionBuilder,
-};
-pub use command_host::StoreCommandHost;
-pub use composition::{HostComposition, HostCompositionBuilder};
-pub use compute::{
-    Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
-    ContainmentLevel, Durability, ExecRequest, ExecResult, NetworkPolicy,
-};
-#[cfg(feature = "process")]
-pub use compute::{HostCompute, HostComputeSession};
-#[cfg(feature = "direct-egress")]
-pub use egress::DirectEgressService;
-pub use events::{
-    DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDeliveryStats, EventDurability, EventHistory,
-    EventHistoryPage, EventHistoryReadLimit, EventHistoryReadRequest, EventLog, EventLogError,
-    EventPage, EventReadLimit, EventReadRequest, EventReader, EventSink, EventSinkError,
-    HostEventEmitter, InMemoryEventLog, JsonlEventLog, MAX_EVENT_HISTORY_PAGE_SIZE,
-    MAX_EVENT_HISTORY_REPLAY, MAX_EVENT_PAGE_SIZE, MAX_JSONL_RECOVERY_BYTES,
-    MAX_JSONL_RECOVERY_EVENTS, NoopEventSink,
-};
-pub use everruns_contracts::error::{
-    AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind,
-};
-pub use everruns_contracts::typed_id::WorkspaceId;
-pub use everruns_core::AssembledTurnContext;
-pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
-pub use everruns_core::turn::TurnStopReason;
-pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
-pub use extensions::{HostToolAugmentor, SubagentDelegateFactory, ToolContextExtensionsFactory};
-pub(crate) use file_store_decorators::apply_workspace_policy;
-#[allow(deprecated)]
-pub use file_store_decorators::{
-    ApprovalGatingFileStore, FileApprovalGate, PolicyFileStore, WriteBlocklistFileStore,
-};
-
-pub use capabilities::{
-    compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
-};
-pub use decisions::{
-    DecisionDriverRegistry, DecisionRouter, DecisionRoutingError, LLM_DECISION_DRIVER_ID,
-    LlmDecisionDriver,
-};
-pub use host::{
-    ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, ToolContextRequest,
-    detect_dependency_blocker, execute_act_activity, execute_input_activity,
-    execute_reason_activity, execute_reason_activity_with_prompt_messages,
-};
-pub use in_memory::{
-    InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
-    InMemoryProviderStore, InMemorySessionFileStore, InMemorySessionFileSystemFactory,
-    InMemorySessionStorageStore, InMemorySessionStore,
-};
-pub use in_process_execution::InProcessExecution;
-#[cfg(feature = "process")]
-pub use process_command::ProcessCommandExecutor;
-pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
-pub use runtime::{
-    AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder,
-    InterruptedToolCalls, ParkedToolCalls, TurnResult, TurnSteering, TurnSteeringPushError,
-    in_process_internal_org_id,
-};
-pub use runtime_context::{
-    StoreTurnContextResolver, assemble_turn_context, assemble_turn_context_from_snapshot,
-    inspect_turn_context,
-};
-pub use session_file_system_factory::{
-    DisabledSessionFileSystemFactory, FixedSessionFileSystemFactory, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext,
-};
-pub use session_services::{
-    GetSessionInfoTool, KvStoreTool, SESSION_CAPABILITY_ID, SESSION_STORAGE_CAPABILITY_ID,
-    SecretStoreTool, SessionCapability, SessionCapabilityConfig, SessionMutator, SessionMutatorExt,
-    SessionStorageCapability, SessionTitleMutation, WriteSessionTitleTool,
-    is_internal_session_kv_key, is_internal_session_secret_name, session_title_updated_event,
-    update_session_title_with_event,
-};
-pub use turn_strategy::advance_host_execution;
+#[deprecated(note = "use everruns::utility_llm::ProviderUtilityLlmService")]
+pub use everruns::utility_llm::ProviderUtilityLlmService;
 #[cfg(feature = "utility-llm")]
-pub use utility_llm::{
-    ProviderUtilityLlmService, SystemUtilityLlmConfig, UTILITY_LLM_MODEL_ENV,
-    UTILITY_OPENAI_API_KEY_ENV, UTILITY_OPENROUTER_API_KEY_ENV, UTILITY_OPENROUTER_LLM_MODEL,
-    UtilityLlmBackend,
-};
-#[deprecated(note = "use WorkspaceBackend")]
-pub use workspace::WorkspaceBackend as WorkspaceProvider;
-#[deprecated(note = "use WorkspaceBackendId")]
-pub use workspace::WorkspaceBackendId as WorkspaceProviderId;
-pub use workspace::{
-    Environment, EnvironmentBindingError, EnvironmentBindingStore, EnvironmentBuilder,
-    EnvironmentError, InMemoryEnvironmentBindingStore, Workspace, WorkspaceBackend,
-    WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff,
-    WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadBuilder,
-    WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
-    WorkspaceHeadStatus,
-};
+#[deprecated(note = "use everruns::utility_llm::SystemUtilityLlmConfig")]
+pub use everruns::utility_llm::SystemUtilityLlmConfig;
+#[cfg(feature = "utility-llm")]
+#[deprecated(note = "use everruns::utility_llm::UTILITY_LLM_MODEL_ENV")]
+pub use everruns::utility_llm::UTILITY_LLM_MODEL_ENV;
+#[cfg(feature = "utility-llm")]
+#[deprecated(note = "use everruns::utility_llm::UTILITY_OPENAI_API_KEY_ENV")]
+pub use everruns::utility_llm::UTILITY_OPENAI_API_KEY_ENV;
+#[cfg(feature = "utility-llm")]
+#[deprecated(note = "use everruns::utility_llm::UTILITY_OPENROUTER_API_KEY_ENV")]
+pub use everruns::utility_llm::UTILITY_OPENROUTER_API_KEY_ENV;
+#[cfg(feature = "utility-llm")]
+#[deprecated(note = "use everruns::utility_llm::UTILITY_OPENROUTER_LLM_MODEL")]
+pub use everruns::utility_llm::UTILITY_OPENROUTER_LLM_MODEL;
+#[cfg(feature = "utility-llm")]
+#[deprecated(note = "use everruns::utility_llm::UtilityLlmBackend")]
+pub use everruns::utility_llm::UtilityLlmBackend;
+#[deprecated(note = "use everruns_core::host::AcceptedTurnInput")]
+pub use everruns_core::host::AcceptedTurnInput;
+#[deprecated(note = "use everruns_core::host::AgentBuilder")]
+pub use everruns_core::host::AgentBuilder;
+#[deprecated(note = "use everruns_core::host::AgentLoopError")]
+pub use everruns_core::host::AgentLoopError;
+#[deprecated(note = "use everruns_core::host::ApprovalGatingFileStore")]
+pub use everruns_core::host::ApprovalGatingFileStore;
+#[deprecated(note = "use everruns_core::host::AssembledTurnContext")]
+pub use everruns_core::host::AssembledTurnContext;
+#[deprecated(note = "use everruns_core::host::BillingPressureReason")]
+pub use everruns_core::host::BillingPressureReason;
+#[deprecated(note = "use everruns_core::host::CapabilityDelta")]
+pub use everruns_core::host::CapabilityDelta;
+#[deprecated(note = "use everruns_core::host::Compute")]
+pub use everruns_core::host::Compute;
+#[deprecated(note = "use everruns_core::host::ComputeCapabilities")]
+pub use everruns_core::host::ComputeCapabilities;
+#[deprecated(note = "use everruns_core::host::ComputeError")]
+pub use everruns_core::host::ComputeError;
+#[deprecated(note = "use everruns_core::host::ComputeKind")]
+pub use everruns_core::host::ComputeKind;
+#[deprecated(note = "use everruns_core::host::ComputeSession")]
+pub use everruns_core::host::ComputeSession;
+#[deprecated(note = "use everruns_core::host::Containment")]
+pub use everruns_core::host::Containment;
+#[deprecated(note = "use everruns_core::host::ContainmentLevel")]
+pub use everruns_core::host::ContainmentLevel;
+#[deprecated(note = "use everruns_core::host::DEFAULT_EVENT_READ_LIMIT")]
+pub use everruns_core::host::DEFAULT_EVENT_READ_LIMIT;
+#[deprecated(note = "use everruns_core::host::DecisionDriverRegistry")]
+pub use everruns_core::host::DecisionDriverRegistry;
+#[deprecated(note = "use everruns_core::host::DecisionRouter")]
+pub use everruns_core::host::DecisionRouter;
+#[deprecated(note = "use everruns_core::host::DecisionRoutingError")]
+pub use everruns_core::host::DecisionRoutingError;
+#[cfg(feature = "direct-egress")]
+#[deprecated(note = "use everruns_core::host::DirectEgressService")]
+pub use everruns_core::host::DirectEgressService;
+#[deprecated(note = "use everruns_core::host::DisabledSessionFileSystemFactory")]
+pub use everruns_core::host::DisabledSessionFileSystemFactory;
+#[deprecated(note = "use everruns_core::host::Durability")]
+pub use everruns_core::host::Durability;
+#[deprecated(note = "use everruns_core::host::Environment")]
+pub use everruns_core::host::Environment;
+#[deprecated(note = "use everruns_core::host::EnvironmentBindingError")]
+pub use everruns_core::host::EnvironmentBindingError;
+#[deprecated(note = "use everruns_core::host::EnvironmentBindingStore")]
+pub use everruns_core::host::EnvironmentBindingStore;
+#[deprecated(note = "use everruns_core::host::EnvironmentBuilder")]
+pub use everruns_core::host::EnvironmentBuilder;
+#[deprecated(note = "use everruns_core::host::EnvironmentError")]
+pub use everruns_core::host::EnvironmentError;
+#[deprecated(note = "use everruns_core::host::EventCursor")]
+pub use everruns_core::host::EventCursor;
+#[deprecated(note = "use everruns_core::host::EventDeliveryStats")]
+pub use everruns_core::host::EventDeliveryStats;
+#[deprecated(note = "use everruns_core::host::EventDurability")]
+pub use everruns_core::host::EventDurability;
+#[deprecated(note = "use everruns_core::host::EventHistory")]
+pub use everruns_core::host::EventHistory;
+#[deprecated(note = "use everruns_core::host::EventHistoryPage")]
+pub use everruns_core::host::EventHistoryPage;
+#[deprecated(note = "use everruns_core::host::EventHistoryReadLimit")]
+pub use everruns_core::host::EventHistoryReadLimit;
+#[deprecated(note = "use everruns_core::host::EventHistoryReadRequest")]
+pub use everruns_core::host::EventHistoryReadRequest;
+#[deprecated(note = "use everruns_core::host::EventLog")]
+pub use everruns_core::host::EventLog;
+#[deprecated(note = "use everruns_core::host::EventLogError")]
+pub use everruns_core::host::EventLogError;
+#[deprecated(note = "use everruns_core::host::EventPage")]
+pub use everruns_core::host::EventPage;
+#[deprecated(note = "use everruns_core::host::EventReadLimit")]
+pub use everruns_core::host::EventReadLimit;
+#[deprecated(note = "use everruns_core::host::EventReadRequest")]
+pub use everruns_core::host::EventReadRequest;
+#[deprecated(note = "use everruns_core::host::EventReader")]
+pub use everruns_core::host::EventReader;
+#[deprecated(note = "use everruns_core::host::EventSink")]
+pub use everruns_core::host::EventSink;
+#[deprecated(note = "use everruns_core::host::EventSinkError")]
+pub use everruns_core::host::EventSinkError;
+#[deprecated(note = "use everruns_core::host::ExecRequest")]
+pub use everruns_core::host::ExecRequest;
+#[deprecated(note = "use everruns_core::host::ExecResult")]
+pub use everruns_core::host::ExecResult;
+#[deprecated(note = "use everruns_core::host::FileApprovalGate")]
+pub use everruns_core::host::FileApprovalGate;
+#[deprecated(note = "use everruns_core::host::FixedSessionFileSystemFactory")]
+pub use everruns_core::host::FixedSessionFileSystemFactory;
+#[deprecated(note = "use everruns_core::host::GetSessionInfoTool")]
+pub use everruns_core::host::GetSessionInfoTool;
+#[deprecated(note = "use everruns_core::host::HarnessBuilder")]
+pub use everruns_core::host::HarnessBuilder;
+#[deprecated(note = "use everruns_core::host::HostBackends")]
+pub use everruns_core::host::HostBackends;
+#[deprecated(note = "use everruns_core::host::HostComposition")]
+pub use everruns_core::host::HostComposition;
+#[deprecated(note = "use everruns_core::host::HostCompositionBuilder")]
+pub use everruns_core::host::HostCompositionBuilder;
+#[cfg(feature = "process")]
+#[deprecated(note = "use everruns_core::host::HostCompute")]
+pub use everruns_core::host::HostCompute;
+#[cfg(feature = "process")]
+#[deprecated(note = "use everruns_core::host::HostComputeSession")]
+pub use everruns_core::host::HostComputeSession;
+#[deprecated(note = "use everruns_core::host::HostEventEmitter")]
+pub use everruns_core::host::HostEventEmitter;
+#[deprecated(note = "use everruns_core::host::HostToolAugmentor")]
+pub use everruns_core::host::HostToolAugmentor;
+#[deprecated(note = "use everruns_core::host::InMemoryAgentStore")]
+pub use everruns_core::host::InMemoryAgentStore;
+#[deprecated(note = "use everruns_core::host::InMemoryCompactionCheckpointStore")]
+pub use everruns_core::host::InMemoryCompactionCheckpointStore;
+#[deprecated(note = "use everruns_core::host::InMemoryEnvironmentBindingStore")]
+pub use everruns_core::host::InMemoryEnvironmentBindingStore;
+#[deprecated(note = "use everruns_core::host::InMemoryEventLog")]
+pub use everruns_core::host::InMemoryEventLog;
+#[deprecated(note = "use everruns_core::host::InMemoryHarnessStore")]
+pub use everruns_core::host::InMemoryHarnessStore;
+#[deprecated(note = "use everruns_core::host::InMemoryProviderStore")]
+pub use everruns_core::host::InMemoryProviderStore;
+#[deprecated(note = "use everruns_core::host::InMemorySessionFileStore")]
+pub use everruns_core::host::InMemorySessionFileStore;
+#[deprecated(note = "use everruns_core::host::InMemorySessionFileSystemFactory")]
+pub use everruns_core::host::InMemorySessionFileSystemFactory;
+#[deprecated(note = "use everruns_core::host::InMemorySessionStorageStore")]
+pub use everruns_core::host::InMemorySessionStorageStore;
+#[deprecated(note = "use everruns_core::host::InMemorySessionStore")]
+pub use everruns_core::host::InMemorySessionStore;
+#[deprecated(note = "use everruns_core::host::InProcessExecution")]
+pub use everruns_core::host::InProcessExecution;
+#[deprecated(note = "use everruns_core::host::InProcessRuntime")]
+pub use everruns_core::host::InProcessRuntime;
+#[deprecated(note = "use everruns_core::host::InProcessRuntimeBuilder")]
+pub use everruns_core::host::InProcessRuntimeBuilder;
+#[deprecated(note = "use everruns_core::host::InterruptedToolCalls")]
+pub use everruns_core::host::InterruptedToolCalls;
+#[deprecated(note = "use everruns_core::host::JsonlEventLog")]
+pub use everruns_core::host::JsonlEventLog;
+#[deprecated(note = "use everruns_core::host::KvStoreTool")]
+pub use everruns_core::host::KvStoreTool;
+#[deprecated(note = "use everruns_core::host::LLM_DECISION_DRIVER_ID")]
+pub use everruns_core::host::LLM_DECISION_DRIVER_ID;
+#[deprecated(note = "use everruns_core::host::LlmDecisionDriver")]
+pub use everruns_core::host::LlmDecisionDriver;
+#[deprecated(note = "use everruns_core::host::LlmError")]
+pub use everruns_core::host::LlmError;
+#[deprecated(note = "use everruns_core::host::LlmErrorKind")]
+pub use everruns_core::host::LlmErrorKind;
+#[deprecated(note = "use everruns_core::host::MAX_EVENT_HISTORY_PAGE_SIZE")]
+pub use everruns_core::host::MAX_EVENT_HISTORY_PAGE_SIZE;
+#[deprecated(note = "use everruns_core::host::MAX_EVENT_HISTORY_REPLAY")]
+pub use everruns_core::host::MAX_EVENT_HISTORY_REPLAY;
+#[deprecated(note = "use everruns_core::host::MAX_EVENT_PAGE_SIZE")]
+pub use everruns_core::host::MAX_EVENT_PAGE_SIZE;
+#[deprecated(note = "use everruns_core::host::MAX_JSONL_RECOVERY_BYTES")]
+pub use everruns_core::host::MAX_JSONL_RECOVERY_BYTES;
+#[deprecated(note = "use everruns_core::host::MAX_JSONL_RECOVERY_EVENTS")]
+pub use everruns_core::host::MAX_JSONL_RECOVERY_EVENTS;
+#[deprecated(note = "use everruns_core::host::NetworkPolicy")]
+pub use everruns_core::host::NetworkPolicy;
+#[deprecated(note = "use everruns_core::host::NoopEventSink")]
+pub use everruns_core::host::NoopEventSink;
+#[deprecated(note = "use everruns_core::host::ParkedToolCalls")]
+pub use everruns_core::host::ParkedToolCalls;
+#[deprecated(note = "use everruns_core::host::PolicyFileStore")]
+pub use everruns_core::host::PolicyFileStore;
+#[cfg(feature = "process")]
+#[deprecated(note = "use everruns_core::host::ProcessCommandExecutor")]
+pub use everruns_core::host::ProcessCommandExecutor;
+#[deprecated(note = "use everruns_core::host::RealDiskFileStore")]
+pub use everruns_core::host::RealDiskFileStore;
+#[deprecated(note = "use everruns_core::host::RealDiskSessionFileSystemFactory")]
+pub use everruns_core::host::RealDiskSessionFileSystemFactory;
+#[deprecated(note = "use everruns_core::host::ResolvedTurnInputs")]
+pub use everruns_core::host::ResolvedTurnInputs;
+#[deprecated(note = "use everruns_core::host::RuntimeAgentStore")]
+pub use everruns_core::host::RuntimeAgentStore;
+#[deprecated(note = "use everruns_core::host::RuntimeHarnessStore")]
+pub use everruns_core::host::RuntimeHarnessStore;
+#[deprecated(note = "use everruns_core::host::RuntimeHostAdapter")]
+pub use everruns_core::host::RuntimeHostAdapter;
+#[deprecated(note = "use everruns_core::host::RuntimeProviderStore")]
+pub use everruns_core::host::RuntimeProviderStore;
+#[deprecated(note = "use everruns_core::host::RuntimeSessionLifecycle")]
+pub use everruns_core::host::RuntimeSessionLifecycle;
+#[deprecated(note = "use everruns_core::host::RuntimeSessionStore")]
+pub use everruns_core::host::RuntimeSessionStore;
+#[deprecated(note = "use everruns_core::host::SESSION_CAPABILITY_ID")]
+pub use everruns_core::host::SESSION_CAPABILITY_ID;
+#[deprecated(note = "use everruns_core::host::SESSION_STORAGE_CAPABILITY_ID")]
+pub use everruns_core::host::SESSION_STORAGE_CAPABILITY_ID;
+#[deprecated(note = "use everruns_core::host::ScheduleStoreFactory")]
+pub use everruns_core::host::ScheduleStoreFactory;
+#[deprecated(note = "use everruns_core::host::SecretStoreTool")]
+pub use everruns_core::host::SecretStoreTool;
+#[deprecated(note = "use everruns_core::host::SeededHarness")]
+pub use everruns_core::host::SeededHarness;
+#[deprecated(note = "use everruns_core::host::SessionBuilder")]
+pub use everruns_core::host::SessionBuilder;
+#[deprecated(note = "use everruns_core::host::SessionCapability")]
+pub use everruns_core::host::SessionCapability;
+#[deprecated(note = "use everruns_core::host::SessionCapabilityConfig")]
+pub use everruns_core::host::SessionCapabilityConfig;
+#[deprecated(note = "use everruns_core::host::SessionFileSystemFactory")]
+pub use everruns_core::host::SessionFileSystemFactory;
+#[deprecated(note = "use everruns_core::host::SessionFileSystemFactoryContext")]
+pub use everruns_core::host::SessionFileSystemFactoryContext;
+#[deprecated(note = "use everruns_core::host::SessionMutator")]
+pub use everruns_core::host::SessionMutator;
+#[deprecated(note = "use everruns_core::host::SessionMutatorExt")]
+pub use everruns_core::host::SessionMutatorExt;
+#[deprecated(note = "use everruns_core::host::SessionStorageCapability")]
+pub use everruns_core::host::SessionStorageCapability;
+#[deprecated(note = "use everruns_core::host::SessionTitleMutation")]
+pub use everruns_core::host::SessionTitleMutation;
+#[deprecated(note = "use everruns_core::host::SingleSessionBuilder")]
+pub use everruns_core::host::SingleSessionBuilder;
+#[deprecated(note = "use everruns_core::host::StoreCommandHost")]
+pub use everruns_core::host::StoreCommandHost;
+#[deprecated(note = "use everruns_core::host::StoreTurnContextResolver")]
+pub use everruns_core::host::StoreTurnContextResolver;
+#[deprecated(note = "use everruns_core::host::SubagentDelegateFactory")]
+pub use everruns_core::host::SubagentDelegateFactory;
+#[deprecated(note = "use everruns_core::host::TaskTransition")]
+pub use everruns_core::host::TaskTransition;
+#[deprecated(note = "use everruns_core::host::TaskTransitionObserver")]
+pub use everruns_core::host::TaskTransitionObserver;
+#[deprecated(note = "use everruns_core::host::ToolContextExtensionsFactory")]
+pub use everruns_core::host::ToolContextExtensionsFactory;
+#[deprecated(note = "use everruns_core::host::ToolContextRequest")]
+pub use everruns_core::host::ToolContextRequest;
+#[deprecated(note = "use everruns_core::host::TurnResult")]
+pub use everruns_core::host::TurnResult;
+#[deprecated(note = "use everruns_core::host::TurnSteering")]
+pub use everruns_core::host::TurnSteering;
+#[deprecated(note = "use everruns_core::host::TurnSteeringPushError")]
+pub use everruns_core::host::TurnSteeringPushError;
+#[deprecated(note = "use everruns_core::host::TurnStopReason")]
+pub use everruns_core::host::TurnStopReason;
+#[deprecated(note = "use everruns_core::host::Workspace")]
+pub use everruns_core::host::Workspace;
+#[deprecated(note = "use everruns_core::host::WorkspaceBackend")]
+pub use everruns_core::host::WorkspaceBackend;
+#[deprecated(note = "use everruns_core::host::WorkspaceBackendId")]
+pub use everruns_core::host::WorkspaceBackendId;
+#[deprecated(note = "use everruns_core::host::WorkspaceBinding")]
+pub use everruns_core::host::WorkspaceBinding;
+#[deprecated(note = "use everruns_core::host::WorkspaceCheckpoint")]
+pub use everruns_core::host::WorkspaceCheckpoint;
+#[deprecated(note = "use everruns_core::host::WorkspaceDescriptor")]
+pub use everruns_core::host::WorkspaceDescriptor;
+#[deprecated(note = "use everruns_core::host::WorkspaceDiff")]
+pub use everruns_core::host::WorkspaceDiff;
+#[deprecated(note = "use everruns_core::host::WorkspaceError")]
+pub use everruns_core::host::WorkspaceError;
+#[deprecated(note = "use everruns_core::host::WorkspaceHead")]
+pub use everruns_core::host::WorkspaceHead;
+#[deprecated(note = "use everruns_core::host::WorkspaceHeadAccess")]
+pub use everruns_core::host::WorkspaceHeadAccess;
+#[deprecated(note = "use everruns_core::host::WorkspaceHeadBuilder")]
+pub use everruns_core::host::WorkspaceHeadBuilder;
+#[deprecated(note = "use everruns_core::host::WorkspaceHeadDescriptor")]
+pub use everruns_core::host::WorkspaceHeadDescriptor;
+#[deprecated(note = "use everruns_core::host::WorkspaceHeadId")]
+pub use everruns_core::host::WorkspaceHeadId;
+#[deprecated(note = "use everruns_core::host::WorkspaceHeadRequest")]
+pub use everruns_core::host::WorkspaceHeadRequest;
+#[deprecated(note = "use everruns_core::host::WorkspaceHeadResource")]
+pub use everruns_core::host::WorkspaceHeadResource;
+#[deprecated(note = "use everruns_core::host::WorkspaceHeadStatus")]
+pub use everruns_core::host::WorkspaceHeadStatus;
+#[deprecated(note = "use everruns_core::host::WorkspaceId")]
+pub use everruns_core::host::WorkspaceId;
+#[deprecated(note = "use everruns_core::host::WorkspaceProvider")]
+pub use everruns_core::host::WorkspaceProvider;
+#[deprecated(note = "use everruns_core::host::WorkspaceProviderId")]
+pub use everruns_core::host::WorkspaceProviderId;
+#[deprecated(note = "use everruns_core::host::WriteBlocklistFileStore")]
+pub use everruns_core::host::WriteBlocklistFileStore;
+#[deprecated(note = "use everruns_core::host::WriteSessionTitleTool")]
+pub use everruns_core::host::WriteSessionTitleTool;
+#[deprecated(note = "use everruns_core::host::advance_host_execution")]
+pub use everruns_core::host::advance_host_execution;
+#[deprecated(note = "use everruns_core::host::assemble_turn_context")]
+pub use everruns_core::host::assemble_turn_context;
+#[deprecated(note = "use everruns_core::host::assemble_turn_context_from_snapshot")]
+pub use everruns_core::host::assemble_turn_context_from_snapshot;
+#[deprecated(note = "use everruns_core::host::detect_dependency_blocker")]
+pub use everruns_core::host::detect_dependency_blocker;
+#[deprecated(note = "use everruns_core::host::execute_act_activity")]
+pub use everruns_core::host::execute_act_activity;
+#[deprecated(note = "use everruns_core::host::execute_input_activity")]
+pub use everruns_core::host::execute_input_activity;
+#[deprecated(note = "use everruns_core::host::execute_reason_activity")]
+pub use everruns_core::host::execute_reason_activity;
+#[deprecated(note = "use everruns_core::host::execute_reason_activity_with_prompt_messages")]
+pub use everruns_core::host::execute_reason_activity_with_prompt_messages;
+#[deprecated(note = "use everruns_core::host::in_process_internal_org_id")]
+pub use everruns_core::host::in_process_internal_org_id;
+#[deprecated(note = "use everruns_core::host::inspect_turn_context")]
+pub use everruns_core::host::inspect_turn_context;
+#[deprecated(note = "use everruns_core::host::is_internal_session_kv_key")]
+pub use everruns_core::host::is_internal_session_kv_key;
+#[deprecated(note = "use everruns_core::host::is_internal_session_secret_name")]
+pub use everruns_core::host::is_internal_session_secret_name;
+#[deprecated(note = "use everruns_core::host::load_execution_snapshot")]
+pub use everruns_core::host::load_execution_snapshot;
+#[deprecated(note = "use everruns_core::host::load_execution_snapshot_for_session")]
+pub use everruns_core::host::load_execution_snapshot_for_session;
+#[deprecated(note = "use everruns_core::host::multi_root_file_system")]
+pub use everruns_core::host::multi_root_file_system;
+#[deprecated(note = "use everruns_core::host::session_title_updated_event")]
+pub use everruns_core::host::session_title_updated_event;
+#[deprecated(note = "use everruns_core::host::update_session_title_with_event")]
+pub use everruns_core::host::update_session_title_with_event;
+#[deprecated(note = "use everruns_core::host")]
+pub use everruns_core::host::*;
+
+/// Compatibility composition helpers; new hosts use the facade batteries.
+#[deprecated(note = "use everruns_core::host::capabilities and everruns::batteries")]
+pub mod capabilities {
+    pub use everruns::batteries::{
+        compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
+    };
+    pub use everruns_core::host::capabilities::*;
+}

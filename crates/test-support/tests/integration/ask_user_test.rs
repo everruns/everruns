@@ -1,5 +1,5 @@
-use everruns_builtins::AskUserCapability;
 use everruns_core::EventData;
+use everruns_core::builtins::AskUserCapability;
 use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_test_support::InMemoryAgenticLoop;
 use serde_json::json;

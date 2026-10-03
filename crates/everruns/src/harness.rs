@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use everruns_contracts::capability::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use everruns_contracts::typed_id::HarnessId;
-use everruns_host::{
+use everruns_core::host::{
     ComputeCapabilities, ContainmentLevel, HarnessBuilder as RuntimeHarnessBuilder,
 };
 
@@ -104,7 +104,7 @@ impl Harness {
     }
     pub(crate) fn negotiate(
         &self,
-        environment: &everruns_host::Environment,
+        environment: &everruns_core::host::Environment,
     ) -> Result<(), SessionEnvironmentError> {
         let required = self.required_capabilities();
         let available = environment.capabilities();
@@ -144,7 +144,7 @@ impl Harness {
         Ok(())
     }
 
-    pub(crate) fn seeded(&self) -> everruns_host::SeededHarness {
+    pub(crate) fn seeded(&self) -> everruns_core::host::SeededHarness {
         RuntimeHarnessBuilder::new(self.name(), "")
             .id(self.inner.id)
             .capabilities(self.capabilities().iter().cloned())
@@ -364,7 +364,10 @@ impl Session {
     /// [`EnvironmentSessionBuilder::start`] persists the opaque head binding
     /// before any runtime can execute. The same head is observable through
     /// [`workspace_head`](Self::workspace_head) for the session lifetime.
-    pub fn environment(self, environment: everruns_host::Environment) -> EnvironmentSessionBuilder {
+    pub fn environment(
+        self,
+        environment: everruns_core::host::Environment,
+    ) -> EnvironmentSessionBuilder {
         EnvironmentSessionBuilder {
             session: self,
             environment,
@@ -375,8 +378,8 @@ impl Session {
     ///
     /// This is the common workspace-only form of [`environment`](Self::environment):
     /// `engine.create(agent).workspace(head).start().await?`.
-    pub fn workspace(self, head: everruns_host::WorkspaceHead) -> EnvironmentSessionBuilder {
-        self.environment(everruns_host::Environment::new(head))
+    pub fn workspace(self, head: everruns_core::host::WorkspaceHead) -> EnvironmentSessionBuilder {
+        self.environment(everruns_core::host::Environment::new(head))
     }
 
     /// Bind this new session permanently to a Harness.
@@ -419,7 +422,7 @@ impl HarnessSessionBuilder {
     /// Select an Environment for this Harness-bound Session.
     pub fn environment(
         self,
-        environment: everruns_host::Environment,
+        environment: everruns_core::host::Environment,
     ) -> HarnessEnvironmentSessionBuilder {
         HarnessEnvironmentSessionBuilder {
             session: self.session,
@@ -429,8 +432,11 @@ impl HarnessSessionBuilder {
     }
 
     /// Select a workspace head for this Harness-bound Session.
-    pub fn workspace(self, head: everruns_host::WorkspaceHead) -> HarnessEnvironmentSessionBuilder {
-        self.environment(everruns_host::Environment::new(head))
+    pub fn workspace(
+        self,
+        head: everruns_core::host::WorkspaceHead,
+    ) -> HarnessEnvironmentSessionBuilder {
+        self.environment(everruns_core::host::Environment::new(head))
     }
 
     /// Freeze the Harness binding and select the Agent's default Environment.
@@ -444,7 +450,7 @@ impl HarnessSessionBuilder {
 pub struct HarnessEnvironmentSessionBuilder {
     session: Session,
     harness: Harness,
-    environment: everruns_host::Environment,
+    environment: everruns_core::host::Environment,
 }
 
 impl HarnessEnvironmentSessionBuilder {
@@ -478,7 +484,7 @@ mod tests {
 
     use super::*;
     use async_trait::async_trait;
-    use everruns_host::{
+    use everruns_core::host::{
         Compute, ComputeError, ComputeKind, ComputeSession, Durability, Environment, WorkspaceHead,
     };
     struct TestCompute {

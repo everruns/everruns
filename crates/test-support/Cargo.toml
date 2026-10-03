@@ -41,14 +41,11 @@ sim = ["dep:everruns-llmsim"]
 fixtures = ["dep:everruns-capabilities"]
 # Host-backed in-memory loop, store helpers, and the transitional
 # `.llm_sim(...)` / `.llm_sim_as_default(...)` extension re-export.
-host = ["dep:everruns-host", "sim", "everruns-llmsim/host"]
+host = ["everruns-core/host", "sim", "everruns-llmsim/host"]
 
 [dependencies]
-everruns-core = { path = "../core", version = "0.34.2", default-features = false }
-everruns-engine.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
 everruns-llmsim = { workspace = true, optional = true }
-everruns-host = { workspace = true, optional = true }
 everruns-capabilities = { workspace = true, optional = true }
 
 anyhow.workspace = true
@@ -65,7 +62,7 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt"] }
 uuid.workspace = true
 
+everruns-core = { path = "../core", version = "0.34.2", default-features = false, features = ["engine"] }
 [dev-dependencies]
-everruns-builtins.workspace = true
-everruns-mcp.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
+everruns-core = { workspace = true, default-features = false, features = ["builtins", "mcp"] }

@@ -812,7 +812,7 @@ async fn turn_cancelled_emits_run_finished_not_run_error() {
     match &run.events[0] {
         AgUiEvent::RunFinished(event) => assert!(matches!(
             event.outcome,
-            Some(everruns_ag_ui::RunFinishedOutcome::Cancelled)
+            Some(everruns_core::ag_ui::RunFinishedOutcome::Cancelled)
         )),
         other => panic!("expected RunFinished for cancellation, got {other:?}"),
     }
@@ -942,7 +942,7 @@ fn parked_ask_user_ends_the_run_with_an_interrupt() {
     run.send(everruns_core::events::ToolCallRequestedData {
         tool_calls: vec![ToolCall {
             id: "call_ask_1".into(),
-            name: everruns_builtins::ask_user::ASK_USER_TOOL_NAME.into(),
+            name: everruns_core::builtins::ask_user::ASK_USER_TOOL_NAME.into(),
             arguments: serde_json::json!({
                 "questions": [{
                     "kind": "text", "id": "name", "header": "Name",
@@ -967,7 +967,8 @@ fn parked_ask_user_ends_the_run_with_an_interrupt() {
     let Some(AgUiEvent::RunFinished(finished)) = run.events.last() else {
         panic!("expected RUN_FINISHED");
     };
-    let Some(everruns_ag_ui::RunFinishedOutcome::Interrupt { interrupts }) = &finished.outcome
+    let Some(everruns_core::ag_ui::RunFinishedOutcome::Interrupt { interrupts }) =
+        &finished.outcome
     else {
         panic!("expected an interrupt, got {:?}", finished.outcome);
     };
@@ -984,7 +985,7 @@ fn a_parked_secret_question_is_never_offered_as_a_form() {
     run.send(everruns_core::events::ToolCallRequestedData {
         tool_calls: vec![ToolCall {
             id: "call_ask_2".into(),
-            name: everruns_builtins::ask_user::ASK_USER_TOOL_NAME.into(),
+            name: everruns_core::builtins::ask_user::ASK_USER_TOOL_NAME.into(),
             arguments: serde_json::json!({
                 "questions": [{
                     "kind": "secret", "id": "key", "header": "Key",
@@ -1000,7 +1001,8 @@ fn a_parked_secret_question_is_never_offered_as_a_form() {
     let Some(AgUiEvent::RunFinished(finished)) = run.events.last() else {
         panic!("expected RUN_FINISHED");
     };
-    let Some(everruns_ag_ui::RunFinishedOutcome::Interrupt { interrupts }) = &finished.outcome
+    let Some(everruns_core::ag_ui::RunFinishedOutcome::Interrupt { interrupts }) =
+        &finished.outcome
     else {
         panic!("expected an interrupt");
     };
@@ -1161,7 +1163,7 @@ fn run_metadata_carries_the_turn_and_withholds_model_and_session() {
 
 #[test]
 fn capabilities_follow_the_endpoint_config() {
-    let mut schema: Value = serde_json::from_str(everruns_ag_ui::SCHEMA_JSON).unwrap();
+    let mut schema: Value = serde_json::from_str(everruns_core::ag_ui::SCHEMA_JSON).unwrap();
     schema["$ref"] = serde_json::json!("#/$defs/AgentCapabilities");
     let validator = jsonschema::validator_for(&schema).unwrap();
 

@@ -1,9 +1,3 @@
-# Shared effectful host orchestration below the application-facing facade.
-#
-# This crate is published because published facades and compatibility adapters
-# depend on it. It is not an application entrypoint: ordinary embedders use
-# `everruns`, while worker/local and advanced hosts may use this boundary.
-
 [package]
 name = "everruns-host"
 version.workspace = true
@@ -14,145 +8,36 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-host"
-description = "Shared host orchestration for Everruns execution adapters"
+description = "Deprecated shim: use everruns-core host module"
 readme = "README.md"
 keywords = ["agent", "agentic", "llm", "ai", "runtime"]
 categories = ["development-tools", "asynchronous"]
 
+
 [dependencies]
-async-trait.workspace = true
-chrono.workspace = true
-futures.workspace = true
-fs2.workspace = true
-ignore.workspace = true
-reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls", "blocking"] }
-eventsource-stream = { workspace = true, optional = true }
-regex.workspace = true
-rand = { workspace = true, optional = true }
-serde.workspace = true
-serde_json.workspace = true
-sha2.workspace = true
-thiserror.workspace = true
-tokio = { workspace = true, features = ["fs", "io-util", "rt", "sync"] }
-tracing.workspace = true
-uuid.workspace = true
-
-everruns-core.workspace = true
-everruns-contracts = { workspace = true, default-features = false }
-everruns-builtins = { workspace = true, optional = true }
-everruns-engine.workspace = true
-everruns-mcp = { workspace = true, optional = true }
-everruns-drivers = { workspace = true, optional = true }
-everruns-integrations-filesystem = { workspace = true, optional = true }
-everruns-integrations-bashkit = { workspace = true, optional = true }
-# Kernel containment (`native-containment`). `anyhow` carries the OS-level
-# setup failures, which are diagnostic text rather than a typed API; `policy`
-# parses the script instead of matching substrings, so `echo kill` is an
-# ordinary command.
-anyhow = { workspace = true, optional = true }
-tree-sitter = { version = "0.27", optional = true }
-tree-sitter-bash = { version = "0.25", optional = true }
-everruns-integrations-web-fetch = { workspace = true, optional = true }
-everruns-integrations-duckduckgo = { workspace = true, optional = true }
-everruns-integrations-lua = { workspace = true, optional = true }
-opentelemetry = { workspace = true, optional = true }
-opentelemetry_sdk = { workspace = true, optional = true, features = ["testing"] }
-opentelemetry-otlp = { workspace = true, optional = true }
-tracing-opentelemetry = { workspace = true, optional = true }
-tracing-subscriber = { workspace = true, optional = true }
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
+everruns-core = { workspace = true, default-features = false, features = ["host"] }
+everruns = { workspace = true, default-features = false }
 
 [features]
 default = []
-# Opt-in OpenAI Agents API runtime backend (EVE-1123). Selected per agent by
-# the `openai_agents_api_runtime` capability behind the `openai_agents_api` flag.
-openai-agents-api = ["direct-egress", "dep:eventsource-stream"]
-direct-egress = ["dep:reqwest"]
-builtins = ["dep:everruns-builtins"]
-mcp = ["dep:everruns-mcp", "direct-egress"]
-mcp-stdio = ["mcp", "everruns-mcp/stdio"]
-filesystem = ["dep:everruns-integrations-filesystem"]
-bashkit = ["filesystem", "dep:everruns-integrations-bashkit", "direct-egress"]
-# The `bash` tool over real host processes, contained by the kernel. Separate
-# from `process` because that feature is about spawning at all, while this one
-# is about handing the model a shell.
-host-shell = ["filesystem", "native-containment", "tokio/io-util"]
-web-fetch = ["dep:everruns-integrations-web-fetch", "direct-egress"]
-duckduckgo = ["dep:everruns-integrations-duckduckgo", "direct-egress"]
-lua = ["dep:everruns-integrations-lua", "direct-egress"]
-# `compute::HostCompute` and the skill command executor both spawn and time
-# out real processes; unification from other crates is not a contract.
-process = ["tokio/process", "tokio/time"]
-# Kernel containment for `HostCompute`, which is what makes
-# `Containment::native()` something an Environment can actually be built with.
-native-containment = [
-    "process",
-    "dep:anyhow",
-    "dep:tree-sitter",
-    "dep:tree-sitter-bash",
-    "dep:landlock",
-    "dep:libc",
-    "dep:seccompiler",
-]
-# Deployment-owned utility LLM (OpenAI or the OpenRouter gateway).
-utility-llm = ["everruns-contracts/http", "dep:everruns-drivers", "everruns-drivers/openrouter"]
-# Kept as the pre-OpenRouter name of the same wiring.
-utility-openai = ["utility-llm"]
-otel = [
-    "tokio/time",
-    "everruns-contracts/tls-aws-lc-rs",
-    "dep:opentelemetry",
-    "dep:opentelemetry_sdk",
-    "dep:opentelemetry-otlp",
-    "dep:tracing-opentelemetry",
-    "dep:tracing-subscriber",
-]
-braintrust = ["direct-egress", "tokio/time", "dep:rand"]
-# Compatibility bundle for hosts that enable both exporters.
-observability = ["otel", "braintrust"]
+openai-agents-api = ["everruns-core/openai-agents-api"]
+direct-egress = ["everruns-core/direct-egress"]
+builtins = ["everruns/builtins"]
+mcp = ["everruns-core/mcp"]
+mcp-stdio = ["everruns-core/mcp-stdio"]
+filesystem = ["everruns/filesystem"]
+bashkit = ["everruns/bashkit"]
+host-shell = ["everruns-core/host-shell"]
+web-fetch = ["everruns/web-fetch"]
+duckduckgo = ["everruns/duckduckgo"]
+lua = ["everruns/lua"]
+process = ["everruns-core/process"]
+native-containment = ["everruns-core/native-containment"]
+utility-llm = ["everruns/utility-llm"]
+utility-openai = ["everruns/utility-openai"]
+otel = ["everruns-core/otel"]
+braintrust = ["everruns-core/braintrust"]
+observability = ["everruns-core/observability"]
 
-[[example]]
-name = "real_disk_file_system_tools"
-required-features = ["filesystem"]
-
-[[example]]
-name = "lua_code_mode_agent"
-required-features = ["lua"]
-
-[[test]]
-name = "mcp_runtime_test"
-required-features = ["mcp"]
-
-[[test]]
-name = "native_containment"
-required-features = ["native-containment"]
-
-[target.'cfg(target_os = "linux")'.dependencies]
-landlock = { version = "0.4.4", optional = true }
-libc = { version = "0.2", optional = true }
-seccompiler = { version = "0.5.0", optional = true }
-
-# Landlock and seccomp restrict the calling process and must be installed before
-# the shell is exec'd, which rules out doing it from `pre_exec` after forking a
-# multi-threaded runtime. This helper restricts itself, then execs bash.
-[[bin]]
-name = "everruns-sandbox-exec"
-path = "src/bin/sandbox_exec.rs"
-required-features = ["native-containment"]
-
-[dev-dependencies]
-everruns-drivers = { workspace = true, features = ["openai"] }
-everruns-builtins.workspace = true
-# In-memory span exporter for the observability listener tests.
-opentelemetry_sdk = { workspace = true, features = ["testing"] }
-tempfile.workspace = true
-tokio = { workspace = true, features = ["full", "test-util"] }
-# Deterministic simulator for host tests/examples. Version-less path
-# dependency: stripped on publish, so the optional llmsim -> host edge does
-# not create a published cycle.
-everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
-# Test doubles and demo fixtures.
-everruns-test-support = { path = "../test-support" }
-wiremock = "0.6"
+[lints]
+workspace = true

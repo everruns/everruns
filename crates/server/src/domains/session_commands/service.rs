@@ -22,8 +22,8 @@ use everruns_core::command::{
     CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
 };
 use everruns_core::execution_loading::AgentStore;
+use everruns_core::host::StoreCommandHost;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
-use everruns_host::StoreCommandHost;
 use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter};
 use std::collections::HashSet;
 use std::sync::Arc;

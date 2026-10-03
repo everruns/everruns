@@ -49,7 +49,7 @@ a2a = ["dep:a2a", "dep:a2a-server"]
 bedrock = ["everruns/bedrock"]
 
 [dependencies]
-everruns = { workspace = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }
+everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }
 everruns-serve-macros.workspace = true
 a2a = { workspace = true, optional = true }
 a2a-server = { workspace = true, optional = true }

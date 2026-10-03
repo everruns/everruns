@@ -12,8 +12,8 @@ use std::sync::Arc;
 use everruns_capabilities::{PlatformHostBackendsExt, PlatformStore, PlatformStoreFactory};
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{PrincipalId, SessionId};
+use everruns_core::host::{HostBackends, ScheduleStoreFactory};
 use everruns_core::session_services::SessionScheduleStore;
-use everruns_host::{HostBackends, ScheduleStoreFactory};
 
 use super::db::SqliteDb;
 use super::platform_store::{LocalPlatformStore, LocalSessionRunner};
@@ -68,7 +68,7 @@ impl LocalBackends {
         runtime_backends: HostBackends,
         db: SqliteDb,
     ) -> Result<Self> {
-        let org_id = everruns_host::in_process_internal_org_id(&profile.org_public_id);
+        let org_id = everruns_core::host::in_process_internal_org_id(&profile.org_public_id);
         let task_registry = Arc::new(LocalSessionTaskRegistry::new(db.clone())?);
 
         // Ensure the schedule schema exists once up front (propagating any

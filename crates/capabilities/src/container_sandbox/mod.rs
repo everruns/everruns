@@ -19,11 +19,11 @@ use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::tools::Tool;
-use everruns_host::compute::{
+use everruns_core::host::compute::{
     ComputeCapabilities, ComputeKind, Containment, Durability, NetworkPolicy,
 };
-use everruns_host::environment_preamble::{EnvironmentFacts, environment_preamble};
+use everruns_core::host::environment_preamble::{EnvironmentFacts, environment_preamble};
+use everruns_core::tools::Tool;
 use std::sync::LazyLock;
 
 use tools::{

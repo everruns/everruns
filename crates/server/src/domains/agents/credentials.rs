@@ -1,7 +1,7 @@
 use crate::domains::common::{Command, CommandError, CommandMeta, Ctx, classify_anyhow};
 use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
 use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
-use everruns_mcp::McpCapabilityIdExt;
+use everruns_core::mcp::McpCapabilityIdExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -239,7 +239,7 @@ pub async fn resolve_runtime_secret_bindings(
     agent_id: Option<AgentId>,
     server_name: &str,
     server_url: &str,
-) -> anyhow::Result<HashMap<String, Vec<everruns_mcp::McpSecretBinding>>> {
+) -> anyhow::Result<HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>> {
     let Some(agent_id) = agent_id else {
         return Ok(HashMap::new());
     };
@@ -249,7 +249,7 @@ pub async fn resolve_runtime_secret_bindings(
         .unwrap_or_else(|| agent_id.to_string());
     let setup_url = format!("/agents/{public_id}?tab=credentials");
     let rows = db.list_agent_mcp_secret_bindings(org_id, agent_id).await?;
-    let mut bindings: HashMap<String, Vec<everruns_mcp::McpSecretBinding>> = HashMap::new();
+    let mut bindings: HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>> = HashMap::new();
     for row in rows
         .into_iter()
         .filter(|row| row.mcp_server_name == server_name)
@@ -267,7 +267,7 @@ pub async fn resolve_runtime_secret_bindings(
         bindings
             .entry(row.tool_name)
             .or_default()
-            .push(everruns_mcp::McpSecretBinding {
+            .push(everruns_core::mcp::McpSecretBinding {
                 parameter_name: row.parameter_name,
                 value,
                 setup_url: setup_url.clone(),

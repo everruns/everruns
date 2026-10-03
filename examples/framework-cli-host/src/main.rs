@@ -16,11 +16,11 @@ use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::InputMessage;
-use everruns_framework_cli_host::{Fleet, FleetCommands};
-use everruns_host::{
+use everruns_core::host::{
     AgentBuilder, HarnessBuilder, HostComposition, InMemorySessionFileSystemFactory,
     InProcessRuntimeBuilder, SessionBuilder,
 };
+use everruns_framework_cli_host::{Fleet, FleetCommands};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 

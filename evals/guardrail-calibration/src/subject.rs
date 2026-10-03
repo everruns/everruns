@@ -17,11 +17,11 @@
 
 use std::sync::Arc;
 
-use everruns_builtins::GuardrailsCapability;
+use everruns_core::builtins::GuardrailsCapability;
 use everruns_core::capabilities::Capability;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
-use everruns_host::SystemUtilityLlmConfig;
+use everruns_core::host::SystemUtilityLlmConfig;
 use everruns_integrations_typesafe::TypeSafeAI;
 use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,

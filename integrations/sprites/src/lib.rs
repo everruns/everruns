@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn the_sprites_secret_prefix_is_reserved_from_session_storage() {
         assert!(
-            everruns_host::session_services::capabilities::is_internal_session_secret_name(
+            everruns_core::host::session_services::capabilities::is_internal_session_secret_name(
                 &format!("{SPRITES_SECRET_PREFIX}sprite-example")
             )
         );

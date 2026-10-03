@@ -18,11 +18,11 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
+use everruns_core::host::DirectEgressService;
 use everruns_core::{
     Caller, EgressService, McpElicitationPolicy, McpProtocolMode, McpServerActsAs,
     McpServerAuthMode, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
-use everruns_host::DirectEgressService;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -889,8 +889,8 @@ pub(crate) async fn fetch_mcp_tools(
     api_key: Option<&str>,
     headers: &HashMap<String, String>,
 ) -> Result<Vec<McpToolDefinition>> {
-    let credential = api_key.map(everruns_mcp::McpCredential::bearer);
-    everruns_mcp::http_list_tools(egress_service, url, headers, credential.as_ref()).await
+    let credential = api_key.map(everruns_core::mcp::McpCredential::bearer);
+    everruns_core::mcp::http_list_tools(egress_service, url, headers, credential.as_ref()).await
 }
 
 pub(crate) async fn fetch_mcp_tools_with_cache_hints(
@@ -898,9 +898,9 @@ pub(crate) async fn fetch_mcp_tools_with_cache_hints(
     url: &str,
     api_key: Option<&str>,
     headers: &HashMap<String, String>,
-) -> Result<everruns_mcp::HttpToolsList> {
-    let credential = api_key.map(everruns_mcp::McpCredential::bearer);
-    everruns_mcp::http_list_tools_with_cache_hints(
+) -> Result<everruns_core::mcp::HttpToolsList> {
+    let credential = api_key.map(everruns_core::mcp::McpCredential::bearer);
+    everruns_core::mcp::http_list_tools_with_cache_hints(
         egress_service,
         url,
         headers,

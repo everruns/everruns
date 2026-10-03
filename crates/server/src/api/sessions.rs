@@ -32,7 +32,7 @@ use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::typed_id::{
     AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
 };
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use everruns_worker::AgentRunner;
 
 use super::common::{

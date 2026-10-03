@@ -31,11 +31,11 @@ mod private {
 /// OpenTelemetry SDK tracer provider accepted by
 /// [`OpenTelemetry::with_tracer_provider`].
 #[cfg(feature = "otel")]
-pub use everruns_host::observability::SdkTracerProvider;
+pub use everruns_core::host::observability::SdkTracerProvider;
 /// Guard that flushes and shuts down the provider installed by
 /// [`install_otlp_from_env`].
 #[cfg(feature = "otel")]
-pub use everruns_host::observability::TelemetryGuard;
+pub use everruns_core::host::observability::TelemetryGuard;
 
 #[cfg(feature = "otel")]
 enum OpenTelemetrySource {
@@ -52,7 +52,7 @@ enum OpenTelemetrySource {
 pub struct OpenTelemetry {
     source: OpenTelemetrySource,
     record_content: bool,
-    conventions: everruns_host::observability::TraceConventions,
+    conventions: everruns_core::host::observability::TraceConventions,
 }
 
 #[cfg(feature = "otel")]
@@ -64,7 +64,7 @@ impl OpenTelemetry {
         Self {
             source: OpenTelemetrySource::Global,
             record_content: false,
-            conventions: everruns_host::observability::TraceConventions::ALL,
+            conventions: everruns_core::host::observability::TraceConventions::ALL,
         }
     }
 
@@ -76,14 +76,14 @@ impl OpenTelemetry {
         Self {
             source: OpenTelemetrySource::Provider(provider),
             record_content: false,
-            conventions: everruns_host::observability::TraceConventions::ALL,
+            conventions: everruns_core::host::observability::TraceConventions::ALL,
         }
     }
 
     /// Use the global tracer and read content capture and convention settings
     /// from the OpenTelemetry environment variables.
     pub fn from_env() -> Self {
-        let listener = everruns_host::observability::OtelEventListener::new();
+        let listener = everruns_core::host::observability::OtelEventListener::new();
         Self {
             source: OpenTelemetrySource::Global,
             record_content: listener.record_content(),
@@ -103,13 +103,13 @@ impl private::Sealed for OpenTelemetry {
     fn into_listener(self) -> Arc<dyn CoreEventListener> {
         let listener = match self.source {
             OpenTelemetrySource::Global => {
-                everruns_host::observability::OtelEventListener::with_global(
+                everruns_core::host::observability::OtelEventListener::with_global(
                     self.record_content,
                     self.conventions,
                 )
             }
             OpenTelemetrySource::Provider(provider) => {
-                everruns_host::observability::OtelEventListener::with_tracer_provider(
+                everruns_core::host::observability::OtelEventListener::with_tracer_provider(
                     provider,
                     self.record_content,
                     self.conventions,
@@ -127,15 +127,15 @@ impl private::Sealed for OpenTelemetry {
 /// [`crate::Engine::shutdown`].
 #[cfg(feature = "otel")]
 pub fn install_otlp_from_env() -> TelemetryGuard {
-    everruns_host::observability::init_telemetry(
-        everruns_host::observability::TelemetryConfig::from_env(),
+    everruns_core::host::observability::init_telemetry(
+        everruns_core::host::observability::TelemetryConfig::from_env(),
     )
 }
 
 /// Braintrust event integration for an [`crate::Engine`].
 #[cfg(feature = "braintrust")]
 pub struct Braintrust {
-    listener: everruns_host::observability::BraintrustListener,
+    listener: everruns_core::host::observability::BraintrustListener,
 }
 
 #[cfg(feature = "braintrust")]
@@ -145,7 +145,7 @@ impl Braintrust {
     /// Returns `None` when Braintrust is disabled, credentials are absent, or
     /// the HTTP client cannot be initialized.
     pub fn from_env() -> Option<Self> {
-        everruns_host::observability::BraintrustListener::from_env()
+        everruns_core::host::observability::BraintrustListener::from_env()
             .map(|listener| Self { listener })
     }
 }
@@ -201,7 +201,7 @@ mod tests {
     #[cfg(feature = "otel")]
     #[tokio::test]
     async fn framework_run_exports_agent_chat_and_tool_spans() {
-        use everruns_host::observability::InMemorySpanExporter;
+        use everruns_core::host::observability::InMemorySpanExporter;
 
         let exporter = InMemorySpanExporter::default();
         let provider = SdkTracerProvider::builder()
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn framework_observer_constructed_before_runtime_flushes_final_braintrust_batch() {
         use everruns_core::DeploymentGrade;
-        use everruns_host::observability::braintrust::{
+        use everruns_core::host::observability::braintrust::{
             BraintrustConfig, BraintrustContentConfig, BraintrustDeliveryConfig, BraintrustListener,
         };
         use wiremock::matchers::{method, path};

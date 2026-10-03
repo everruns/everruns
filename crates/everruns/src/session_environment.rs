@@ -12,15 +12,15 @@ pub enum SessionEnvironmentError {
     HarnessAlreadyBound,
     /// The bound Environment does not provide a compute capability required by the Harness.
     MissingHarnessCapability {
-        /// The missing [`ComputeCapabilities`](everruns_host::ComputeCapabilities) field.
+        /// The missing [`ComputeCapabilities`](everruns_core::host::ComputeCapabilities) field.
         capability: &'static str,
     },
     /// The bound Environment provides less containment than the Harness requires.
     InsufficientHarnessContainment {
         /// The minimum containment declared by the Harness.
-        required: everruns_host::ContainmentLevel,
+        required: everruns_core::host::ContainmentLevel,
         /// The containment provided by the Environment.
-        available: everruns_host::ContainmentLevel,
+        available: everruns_core::host::ContainmentLevel,
     },
     /// Canonical workspace-backend conflict error name.
     ///
@@ -34,15 +34,15 @@ pub enum SessionEnvironmentError {
     /// The recorded Environment or workspace head cannot be reopened.
     Unavailable,
     /// The workspace backend rejected the requested operation.
-    Workspace(everruns_host::WorkspaceError),
+    Workspace(everruns_core::host::WorkspaceError),
 }
 
-impl From<everruns_host::EnvironmentBindingError> for SessionEnvironmentError {
-    fn from(error: everruns_host::EnvironmentBindingError) -> Self {
+impl From<everruns_core::host::EnvironmentBindingError> for SessionEnvironmentError {
+    fn from(error: everruns_core::host::EnvironmentBindingError) -> Self {
         match error {
-            everruns_host::EnvironmentBindingError::Conflict => Self::AlreadyBound,
-            everruns_host::EnvironmentBindingError::Unavailable
-            | everruns_host::EnvironmentBindingError::Corrupt => Self::Unavailable,
+            everruns_core::host::EnvironmentBindingError::Conflict => Self::AlreadyBound,
+            everruns_core::host::EnvironmentBindingError::Unavailable
+            | everruns_core::host::EnvironmentBindingError::Corrupt => Self::Unavailable,
             _ => Self::Unavailable,
         }
     }

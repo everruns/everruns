@@ -5,13 +5,13 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{SessionId, WorkspaceId};
-use everruns_core::session_files::SessionFileSystem;
-use everruns_host::{
+use everruns_core::host::{
     Environment, InMemorySessionFileStore, RealDiskFileStore, Workspace, WorkspaceBackend,
     WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff,
     WorkspaceError, WorkspaceHeadAccess, WorkspaceHeadDescriptor, WorkspaceHeadId,
     WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
 };
+use everruns_core::session_files::SessionFileSystem;
 use uuid::Uuid;
 
 pub(crate) struct DefaultWorkspace {

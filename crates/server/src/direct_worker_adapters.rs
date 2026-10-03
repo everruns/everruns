@@ -289,7 +289,8 @@ pub struct DirectWorkerAdapters {
     vector_store: Option<Arc<dyn everruns_contracts::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
-    in_memory_compaction_checkpoint_store: Arc<everruns_host::InMemoryCompactionCheckpointStore>,
+    in_memory_compaction_checkpoint_store:
+        Arc<everruns_core::host::InMemoryCompactionCheckpointStore>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -330,7 +331,7 @@ impl DirectWorkerAdapters {
             runner: None,
             encryption: None,
             in_memory_compaction_checkpoint_store: Arc::new(
-                everruns_host::InMemoryCompactionCheckpointStore::default(),
+                everruns_core::host::InMemoryCompactionCheckpointStore::default(),
             ),
             proactive_compaction_attempts: Arc::new(
                 everruns_core::ProactiveCompactionAttemptTracker::default(),
@@ -1261,7 +1262,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 vec![]
             } else {
                 let egress = self.egress_service.clone().unwrap_or_else(|| {
-                    Arc::new(everruns_host::DirectEgressService::for_runtime_traffic_from_env())
+                    Arc::new(
+                        everruns_core::host::DirectEgressService::for_runtime_traffic_from_env(),
+                    )
                 });
                 match build_materialized_scoped_mcp_tool_definitions(
                     &self.db,
@@ -1925,8 +1928,8 @@ impl DirectWorkerAdapters {
         capability_rows: &[AgentCapabilityRow],
     ) -> Result<Vec<ToolDefinition>> {
         use everruns_contracts::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        use everruns_core::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
-        use everruns_mcp::parse_mcp_capability_id;
 
         let mut mcp_tools = Vec::new();
 
