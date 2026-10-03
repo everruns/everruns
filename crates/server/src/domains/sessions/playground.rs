@@ -77,6 +77,7 @@ pub async fn bind_creation(
     if source == SessionSource::Playground {
         if req.parent_session_id.is_some()
             || req.forked_from_session_id.is_some()
+            || req.budget_root_session_id.is_some()
             || req.workspace_id.is_some()
         {
             return Err(CommandError::bad_request(

@@ -58,6 +58,9 @@ async fn playground_is_flag_gated_and_defaults_to_the_operator() {
     let error = CreateSession(req.clone()).run(&ctx).await.unwrap_err();
     assert!(error.to_string().contains("playground"));
     ctx.feature_flags.playground = true;
+    let mut inherited = req.clone();
+    inherited.budget_root_session_id = Some(everruns_provider::typed_id::SessionId::new());
+    assert!(CreateSession(inherited).run(&ctx).await.is_err());
     let session = CreateSession(req).run(&ctx).await.unwrap();
     assert_eq!(
         session.playground_user_id,
