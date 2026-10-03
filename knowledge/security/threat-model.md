@@ -1789,7 +1789,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate endpoint-owned nativ
 | Bash sandboxing | TM-BASH | Bashkit WASM-like isolation, VFS adapter, resource limits; host-shell Seatbelt/Landlock containment, fail-closed launch, approval gate |
 | Session isolation | TM-FS, TM-SQL | FK constraints, session-scoped storage |
 | Agent loop controls | TM-AGENT | Max iterations, tool registry, session-scoped tools, no self-modification |
-| Error sanitization | TM-API, TM-OBS | Generic error messages, server-side logging only |
+| Error sanitization | TM-API, TM-OBS | Generic error messages, server-side logging only. The browser API client discards HTML and oversized gateway error bodies, retaining bounded safe messages and correlation IDs; see `apps/ui/src/lib/api/client.ts` |
 | Cookie security | TM-WEB | HTTP-only, SameSite=Lax, Secure flag in production |
 | Tool validation | TM-TOOL | Registry-based validation, defensive MCP parsing, skill archive validation |
 | Resource limits | TM-DOS, TM-BASH | Input sizes, iteration limits, query timeouts, bash limits |
@@ -1804,6 +1804,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate endpoint-owned nativ
 | Cross-user session reuse from an unsupported Slack binding | TM-SLACK-006 | Endpoint writes reject invocation-only bindings for Slack, and Slack routing fails closed if an invalid stored binding reaches the runtime |
 | Concurrent Slack token rotation | TM-SLACK-007 | Atomically move an organization connection to an exclusive `rotating` state before exchanging its single-use refresh token; competing callers wait for the claimed rotation instead of reusing the token |
 | Agent app created in, or reaped from, the wrong Slack workspace | TM-SLACK-008 | Each organization connection records its workspace; an install names one, or may omit it only while the organization has exactly one, and the endpoint pins the workspace its app was created in. An app is never reused across workspaces, and one already installed (holding a bot token) is never reaped to satisfy a changed choice. Workspace lookups and deletes are scoped by organization as well as connection id. Members may list connected workspace names; only administrators connect, test, or disconnect them |
+| Forged or replayed Slack install callback | TM-SLACK-009 | Install initiation validates the caller's organization. The unauthenticated OAuth callback requires the endpoint's unpredictable, unexpired nonce and clears it when persisting the bot token. Setup can complete on a draft endpoint, while webhook ingress keeps its liveness gate. `crates/server/tests/domain/slack_install_integration_test.rs` checks successful draft setup, invalid state, replay, and blocked draft events |
 | A2A API key forgery | TM-A2A-001, TM-A2A-002 | SHA-256 hashed at rest, constant-time compare, 128-bit entropy |
 | A2A method abuse | TM-A2A-005 | Allowlist of one (`message/send`); other methods rejected before session creation |
 | A2A Agent Card disclosure | TM-A2A-009 | Card never echoes API key / hash / internal IDs; only published while app is live and channel enabled |

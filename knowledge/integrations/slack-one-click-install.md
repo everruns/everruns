@@ -236,6 +236,16 @@ the manifest does not replace requesting them in the OAuth URL. The manifest
 and install URL now use the same scope source, including the additive agent
 surface permission, so the installed bot receives what the endpoint needs.
 
+Setup must also work before publication. The authenticated install action and
+nonce-protected callback resolve a draft endpoint without applying the webhook's
+liveness check. Incoming Slack events remain blocked until the endpoint is live;
+installation alone never publishes it. The install integration test exercises
+consent, token persistence, invalid state, replay rejection, and blocked draft ingress.
+
+Native endpoint config writes must not decode the archival App-linked row: native endpoints have no `app_id`. The ingress config writer updates the encrypted transport payload directly, preserves first-class endpoint authentication, and requires an existing row. The installation regression exercises both memory and PostgreSQL storage.
+
+See the [installation regression](../../crates/server/tests/domain/slack_install_integration_test.rs).
+
 ## Open questions
 
 All concern partner status, and none block the customer-supplied token path.

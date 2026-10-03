@@ -777,6 +777,15 @@ impl StorageBackend {
         dispatch!(self, get_agent_endpoint_public_id, org_id, endpoint_id)
     }
 
+    pub async fn update_endpoint_config_by_id(
+        &self,
+        id: Uuid,
+        config: serde_json::Value,
+        encrypted: Option<Vec<u8>>,
+    ) -> Result<bool> {
+        dispatch!(self, update_endpoint_config_by_id, id, config, encrypted)
+    }
+
     pub async fn update_endpoint_by_id(
         &self,
         id: Uuid,

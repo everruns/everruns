@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::common::ErrorResponse;
-use super::slack_events::{SlackState, SlackTarget};
+use super::slack_events::SlackState;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::slack_provisioning::{SlackApiProvisioner, SlackProvisioningSetup};
 use crate::storage::OrgSlackConnectionRow;
@@ -329,6 +329,33 @@ pub struct BeginInstallRequest {
     team_id: Option<String>,
 }
 
+async fn resolve_install_endpoint(
+    state: &SlackState,
+    channel_id: &str,
+) -> Result<
+    (
+        super::endpoint_ingress::IngressContext,
+        super::endpoint_ingress::IngressEndpoint,
+    ),
+    (StatusCode, Json<ErrorResponse>),
+> {
+    // Setup precedes publication. Ingress keeps its liveness gate; setup is
+    // protected by the caller's organization or the callback's install nonce.
+    let endpoint =
+        super::endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(channel_id, %error, "Failed to lookup Slack install endpoint");
+                ErrorResponse::new("Internal server error")
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .filter(|(_, endpoint)| endpoint.channel_type == EndpointTransport::Slack)
+            .ok_or_else(|| {
+                ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND)
+            })?;
+    Ok(endpoint)
+}
+
 /// POST /v1/e/{channel_id}/slack/install
 async fn begin_install(
     org: ResolvedOrg,
@@ -345,11 +372,7 @@ async fn begin_install(
             ErrorResponse::new("Invalid install request").into_response(StatusCode::BAD_REQUEST)
         })?
     };
-    let (app, endpoint) = super::slack_events::resolve_slack_channel(
-        &state.slack,
-        SlackTarget::Endpoint(channel_id.clone()),
-    )
-    .await?;
+    let (app, endpoint) = resolve_install_endpoint(&state.slack, &channel_id).await?;
 
     // The webhook routes resolve an endpoint by public id alone because Slack
     // is the caller and there is no org to check against. Here there is one,
@@ -358,11 +381,6 @@ async fn begin_install(
     if app.org_id != org.org_id {
         return Err(ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND));
     }
-    if endpoint.channel_type != EndpointTransport::Slack {
-        return Err(ErrorResponse::new("Endpoint is not a Slack endpoint")
-            .into_response(StatusCode::BAD_REQUEST));
-    }
-
     // THREAT[TM-DOS-042]: app creation spends a deployment-wide Slack
     // credential and cannot be rolled back atomically with our database write.
     // Serialize it in PostgreSQL across server instances, then re-read under
@@ -378,9 +396,7 @@ async fn begin_install(
             ErrorResponse::new("Internal server error")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
-    let (app, endpoint) =
-        super::slack_events::resolve_slack_channel(&state.slack, SlackTarget::Endpoint(channel_id))
-            .await?;
+    let (app, endpoint) = resolve_install_endpoint(&state.slack, &channel_id).await?;
 
     let mut config = parse_config(&endpoint.channel_config);
 
@@ -504,7 +520,7 @@ pub struct CallbackQuery {
 
 /// GET /v1/e/{channel_id}/slack/oauth/callback
 ///
-/// THREAT[TM-API-018]: Slack echoes `state` back here without verifying it, and
+/// THREAT[TM-SLACK-009]: Slack echoes `state` back here without verifying it, and
 /// this route cannot be authenticated because it is reached by a browser
 /// redirect. Without a stored single-use nonce an attacker could drive it with
 /// an authorization code from their own workspace and bind that workspace to
@@ -547,12 +563,9 @@ async fn finish_install_inner(
     let code = query.code.filter(|c| !c.is_empty()).ok_or("missing code")?;
     let presented = query.state.unwrap_or_default();
 
-    let (_, endpoint) = super::slack_events::resolve_slack_channel(
-        &state.slack,
-        SlackTarget::Endpoint(channel_id.to_string()),
-    )
-    .await
-    .map_err(|_| "endpoint not found")?;
+    let (_, endpoint) = resolve_install_endpoint(&state.slack, channel_id)
+        .await
+        .map_err(|_| "endpoint not found")?;
 
     let mut config = parse_config(&endpoint.channel_config);
     let mut provisioned = config.provisioned_app.take().ok_or("no provisioned app")?;
