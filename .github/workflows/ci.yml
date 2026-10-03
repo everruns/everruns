@@ -1462,6 +1462,9 @@ jobs:
       # test file is either run here or explicitly allowlisted.
       - name: Run domain integration tests
         if: ${{ matrix.shard == 'domain' }}
+        env:
+          # The local A2A fixtures opt into localhost URLs, which require dev grade.
+          DEPLOYMENT_GRADE: dev
         run: |
           cargo test -p everruns-server \
             --test domain \
