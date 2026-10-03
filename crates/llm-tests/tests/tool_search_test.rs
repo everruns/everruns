@@ -129,6 +129,76 @@ async fn test_gpt54_tool_search_low_threshold() {
     assert_hosted_tool_search_was_enabled(&runner).await;
 }
 
+/// EVE-1164: hosted search over the filesystem category must complete a
+/// `list_directory` call. Before the fix, OpenAI returned `server_error` when
+/// the wire namespace was the human label `File Operations` (whitespace).
+#[tokio::test]
+async fn test_gpt55_tool_search_file_operations_namespace() {
+    if OPENAI_GPT55.model().is_none() {
+        eprintln!("Skipping: {} not set", OPENAI_GPT55.label());
+        return;
+    }
+
+    const MAX_ATTEMPTS: usize = 3;
+    let mut called_list_directory = false;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let model = OPENAI_GPT55.model().expect("checked above");
+        let runner = InMemoryAgenticLoop::builder()
+            .agent_name("File Operations Namespace Agent")
+            .system_prompt(
+                "You have file tools. When asked to list a directory, call list_directory \
+                 with path \".\". Do not answer without calling the tool.",
+            )
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(FileSystemCapability)
+            // Force hosted search with a single namespace derived from the
+            // filesystem category (`File Operations` → `File_Operations`).
+            .capability(OpenAiToolSearchCapability::with_threshold(1))
+            .max_iterations(5)
+            .build()
+            .await
+            .unwrap();
+
+        let result = runner
+            .run_turn("List the files in the current directory using list_directory.")
+            .await
+            .unwrap();
+        assert!(
+            result.success,
+            "hosted search over File Operations must not fail: {:?}",
+            result.error
+        );
+        assert_hosted_tool_search_was_enabled(&runner).await;
+
+        let generations = runner.events_by_type(LLM_GENERATION).await;
+        for event in &generations {
+            let EventData::LlmGeneration(data) = &event.data else {
+                continue;
+            };
+            if data
+                .output
+                .tool_calls
+                .iter()
+                .any(|call| call.name == "list_directory")
+            {
+                called_list_directory = true;
+            }
+        }
+
+        if called_list_directory {
+            break;
+        }
+        eprintln!("attempt {attempt}/{MAX_ATTEMPTS}: no list_directory call yet; retrying");
+    }
+
+    assert!(
+        called_list_directory,
+        "hosted tool search must load the File Operations namespace and emit list_directory"
+    );
+}
+
 /// Tests hosted tool_search with GPT-5.5 and a lower custom threshold.
 ///
 /// This covers the current default OpenAI model family against the real API and

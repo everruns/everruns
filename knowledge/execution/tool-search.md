@@ -121,13 +121,21 @@ Use hosted tool_search (server-side, single-turn). Client-executed mode adds mul
 
 ### Decision: Capability Categories as Namespaces
 
-Map capability categories to tool_search namespaces. Each capability already has `category` (Data, Management, MCP Servers, etc.) and a description. This maps cleanly:
+Map capability categories to tool_search namespaces. Each capability already has `category` (Data, Management, MCP Servers, etc.) and a description. Grouping uses the category string; the OpenAI wire `name` is a separate provider-safe identifier.
+
+**Identifier vs display label (EVE-1164).** OpenAI hosted tool search fails with `server_error` when a deferred namespace name contains whitespace (isolated on `File Operations`). `convert_tools_with_search` therefore:
+
+1. Groups deferred tools by the original category label.
+2. Emits `ResponsesTool::Namespace.name` as a normalized identifier: non-ASCII-alphanumeric runs become `_`, leading digits get an `n_` prefix, empty/Unicode-only results fall back to `namespace`, and collisions get a stable `_2`, `_3`, … suffix.
+3. Keeps `description` as `Tools for {original category}` so the model still sees the readable label.
 
 ```
-Capability(session_file_system, category="File System")
-  → Namespace("file_system", "File system tools for reading, writing, editing, and managing files")
+Capability(session_file_system, category="File Operations")
+  → Namespace(name="File_Operations", description="Tools for File Operations")
     → Functions: read_file, write_file, edit_file, list_directory, ... (all defer_loading: true)
 ```
+
+Already-safe categories such as `Alpha` pass through unchanged. Function names and tool dispatch are unaffected (calls resolve by function name, not namespace).
 
 For MCP servers, each server is already a natural namespace:
 
