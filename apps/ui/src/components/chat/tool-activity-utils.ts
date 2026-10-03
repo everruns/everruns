@@ -257,6 +257,15 @@ function summarizeStructuredResult(
   }
   if (record.distilled === true) return "Large result available in Details";
 
+  if (toolCall.name === "get_current_time") {
+    if (typeof record.datetime === "string" && record.datetime.trim().length > 0) {
+      return truncatePreview(record.datetime.trim());
+    }
+    if (typeof record.timestamp === "number") {
+      return String(record.timestamp);
+    }
+  }
+
   if (toolCall.name === "secret_store") {
     const operation = record.operation;
     const name = record.name;

@@ -2,6 +2,12 @@
 
 ## 2026-10-03
 
+* **Time-annotation echo cleanup.** `message_metadata` also strips echoed
+  `<facts>` blocks and whole-message degenerate `time <junk>` lines from
+  assistant text, and ReasonAtom applies the same filters to `reason.item`
+  summaries so the work log does not show annotation junk. See
+  [Capabilities](execution/capabilities.md#messagemetadata).
+
 * **Crate layout target.** Published crates go from 52 to about 37 in seven
   release-sized steps: `everruns-contracts` absorbs provider, capability, and
   model profiles plus platform's extension traits; `everruns-platform` splits

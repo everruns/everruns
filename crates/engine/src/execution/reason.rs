@@ -2161,9 +2161,22 @@ impl ReasonAtom {
                             provider: item.provider.clone(),
                             model: Some(llm_config.model.clone()),
                             item_id: item.item_id.clone().unwrap_or_default(),
+                            // Capability-owned response filters (e.g. stripping
+                            // echoed `[time …]` / `<facts>` / degenerate time
+                            // lines) apply to reasoning summaries too — otherwise
+                            // the work log shows annotation junk the assistant
+                            // message already had cleaned.
                             summary: item
                                 .display_text()
                                 .filter(|_| !matches!(item.text, Some(ReasoningText::Plain { .. })))
+                                .map(|text| {
+                                    filter_response_text(
+                                        &self.capability_registry,
+                                        &resolved_capability_configs,
+                                        text,
+                                    )
+                                })
+                                .filter(|text| !text.trim().is_empty())
                                 .into_iter()
                                 .collect(),
                             token_count: item.tokens,

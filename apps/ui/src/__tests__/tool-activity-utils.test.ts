@@ -128,6 +128,34 @@ describe("structured tool result rendering", () => {
     ).toBeNull();
   });
 
+  it("previews the resolved datetime from get_current_time", () => {
+    const toolCall = { id: "tool-1", name: "get_current_time", arguments: {} };
+
+    expect(
+      getResultPreview(
+        toolCall,
+        textResult(
+          "get_current_time",
+          JSON.stringify({
+            datetime: "2026-10-03T03:47:00Z",
+            format: "iso8601",
+            timezone: "UTC",
+          }),
+        ),
+      ),
+    ).toBe("2026-10-03T03:47:00Z");
+
+    expect(
+      getResultPreview(
+        toolCall,
+        textResult(
+          "get_current_time",
+          JSON.stringify({ timestamp: 1759463220, format: "unix", timezone: "UTC" }),
+        ),
+      ),
+    ).toBe("1759463220");
+  });
+
   it("masks secret-like fields recursively in details", () => {
     const plugin = { id: "tool-1", name: "plugin_call", arguments: {} };
     const details = formatResultDetails(
