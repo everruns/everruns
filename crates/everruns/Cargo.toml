@@ -4,7 +4,7 @@
 # records.
 # Default features stay offline — the contained session filesystem is included,
 # while provider, shell, web, Lua, MCP, SQLx, server, and worker integrations
-# remain opt-in. Advanced hosts use `everruns-core::host` with the `host` feature.
+# remain opt-in. Advanced hosts depend on `everruns-core` with its `host` feature.
 
 [package]
 name = "everruns"
