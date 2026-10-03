@@ -236,7 +236,7 @@ async fn playground_input_records_subject_and_operator_without_management_author
         false,
         crate::event_delivery::EventDelivery::in_memory(),
     ));
-    ctx = ctx.with_message_service(service);
+    ctx = ctx.with_message_service(service.clone());
     let command = || {
         serde_json::from_value::<crate::domains::messages::CreateMessage>(serde_json::json!({
         "session_id": session.id, "message": {"role":"user", "content":[{"type":"text","text":"Hello"}]}
@@ -256,6 +256,29 @@ async fn playground_input_records_subject_and_operator_without_management_author
             .await
             .unwrap(),
         None
+    );
+    // An ingress adapter with the same subject still cannot bypass the command policy.
+    let principal = subject_principal(&ctx, other.id).await.unwrap();
+    let input = serde_json::from_value::<crate::api::messages::CreateMessageRequest>(
+        serde_json::json!({"message": {"role":"user", "content":[{"type":"text","text":"Bypass"}]}}),
+    ).unwrap();
+    assert!(
+        service
+            .create(
+                crate::domains::messages::CreateMessageContext {
+                    runtime_subject_principal_id: Some(principal),
+                    org_id: ctx.org_id(),
+                    user_id: ctx.caller.user_id,
+                    harness_id: session.harness_id.uuid(),
+                    agent_id: session.agent_id.map(|id| id.uuid()),
+                    session_id: session.id.uuid(),
+                    event_metadata: None,
+                    request_id: None,
+                },
+                input,
+            )
+            .await
+            .is_err()
     );
     ctx.feature_flags.playground = false;
     assert!(command().run(&ctx).await.is_err());
