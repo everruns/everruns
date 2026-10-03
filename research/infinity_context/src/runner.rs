@@ -13,11 +13,11 @@ use crate::scorer::{JudgeConfig, Score, Scorer, aggregate_scores, evaluate_all};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::Capability;
-use everruns_provider::driver_registry::DriverRegistry;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
-use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
-use everruns_provider::provider::DriverId;
+use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -204,8 +204,8 @@ pub struct RunResult {
 
 fn create_driver_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
-    everruns_anthropic::register_driver(&mut registry);
-    everruns_openai::register_driver(&mut registry);
+    everruns_drivers::anthropic::register_driver(&mut registry);
+    everruns_drivers::openai::register_driver(&mut registry);
     registry
 }
 
@@ -542,7 +542,9 @@ async fn extract_metrics_from_events(
                 metrics.messages_in_context = data
                     .messages
                     .iter()
-                    .filter(|m| !matches!(m.role, everruns_core::message::RuntimeMessageRole::System))
+                    .filter(|m| {
+                        !matches!(m.role, everruns_core::message::RuntimeMessageRole::System)
+                    })
                     .count();
             }
         }

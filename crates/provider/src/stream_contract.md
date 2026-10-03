@@ -167,5 +167,5 @@ let provider = Provider::new(
 # let _ = provider;
 ```
 
-The vendor drivers (`everruns-openai`, `everruns-openrouter`,
-`everruns-gemini`, `everruns-anthropic`) take the same `with_retry_config`.
+The vendor drivers (`everruns_drivers::openai`, `everruns_drivers::openrouter`,
+`everruns_drivers::gemini`, `everruns_drivers::anthropic`) take the same `with_retry_config`.

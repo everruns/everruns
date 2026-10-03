@@ -1,54 +1,44 @@
 # everruns-mai
 
-> Microsoft MAI provider driver for Everruns agents.
+> Moved: Microsoft AI (Foundry) support is now the `mai` module of `everruns-drivers`.
 
-Part of the [Everruns](https://everruns.com) ecosystem.
+Part of the [Everruns](https://everruns.com) ecosystem. `everruns-mai` is a
+deprecated shim that re-exports
+[`everruns_drivers::mai`](https://docs.rs/everruns-drivers/latest/everruns_drivers/mai/)
+and receives no further updates. This is its last release.
 
-Microsoft MAI models (e.g. `MAI-Code-1-Flash`) are served via
-[Azure AI Foundry](https://ai.azure.com) behind an OpenAI-compatible Chat
-Completions API. `everruns-mai` implements the `ChatDriver` contract from
-[`everruns-provider`](https://crates.io/crates/everruns-provider) and registers the
-`mai` driver into a `DriverRegistry`.
+## Migrate
 
-## Authentication
+Replace the dependency with `everruns-drivers` and its `mai` feature, which
+ships it from 0.35:
 
-Two schemes are supported:
+```toml
+# before
+everruns-mai = "0.34"
+# after
+everruns-drivers = { version = "0.35", features = ["mai"] }
+```
 
-- **Azure AI Foundry API key**: the resource key, sent via the `api-key`
-  header.
-- **Microsoft Entra ID (OAuth)**: a client-credentials service principal
-  (`tenant_id`, `client_id`, `client_secret`), supplied through provider
-  metadata. Bearer tokens are minted with the client-credentials grant and
-  cached, refreshed before expiry.
-
-The provider owns authentication through the pluggable `ProviderAuth` contract
-in `everruns-provider`. Additional schemes (managed identity, workload identity
-federation, ...) can be added without changing the Chat Completions wire driver.
-
-## Usage
+Then replace `everruns_mai::` with `everruns_drivers::mai::` in your code:
 
 ```rust
-use everruns_mai::{provider, MaiAuth};
-
-let provider = provider(
-    "mai-prod",
-    "https://my-resource.services.ai.azure.com/openai/v1",
-    MaiAuth::ApiKey("foundry-key".into()),
-);
+let mut registry = everruns_drivers::DriverRegistry::new();
+everruns_drivers::mai::register_driver(&mut registry);
 ```
+
 
 ## What It Provides
 
-- Azure AI Foundry API-key and Microsoft Entra ID authentication
-- An OpenAI-compatible `ChatDriver` for Microsoft MAI models
-- Registration through the open Everruns provider registry
+- A glob re-export of `everruns_drivers::mai`, so existing code keeps building
+- `#[deprecated]` wrappers for the driver type, `register_driver`,
+  `descriptor`, and `from_env`, so the compiler points at every call site to
+  change
 
 ## Documentation
 
-- [Microsoft MAI provider guide](https://docs.everruns.com/providers/mai/)
-- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [`everruns-drivers` API reference (docs.rs)](https://docs.rs/everruns-drivers)
+- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Everruns documentation](https://docs.everruns.com)
-- [API reference](https://docs.rs/everruns-mai)
 
 ## License
 

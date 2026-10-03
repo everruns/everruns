@@ -74,8 +74,7 @@ install-okf-lint:
 
 # Run pure unit tests (no PostgreSQL required) - fast feedback
 test-unit:
-    cargo test -p everruns-anthropic --lib --all-features
-    cargo test -p everruns-openai --lib --all-features
+    cargo test -p everruns-drivers --lib --all-features
     cargo test -p everruns-internal-protocol --lib --all-features
     cargo test -p everruns-core --lib --all-features
     cargo test -p everruns-host --test integration -- --test-threads=1

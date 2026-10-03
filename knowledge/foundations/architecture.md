@@ -508,7 +508,7 @@ deployment composition outside the engine.
    - `everruns-test-support` owns writable deterministic message/event fixtures
    - `everruns-core` exposes traits and values, not concrete public backends
 
-### OpenAI Provider (`everruns-openai`)
+### OpenAI Provider (`everruns_drivers::openai`)
 
 OpenAI-specific LLM provider implementation:
 
@@ -531,7 +531,7 @@ a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
 - **Better caching**: 40-80% better cache utilization vs Chat Completions API
 - **Provider-agnostic**: Events and responses follow a standardized format
 
-**Driver Selection**: `OpenAIChatDriver` (Responses API, recommended) or `OpenAICompletionsChatDriver` (Chat Completions). See `crates/drivers/openai/src/driver.rs` and the protocol implementations in `crates/provider/src/`.
+**Driver Selection**: `OpenAIChatDriver` (Responses API, recommended) or `OpenAICompletionsChatDriver` (Chat Completions). See `crates/drivers/drivers/src/openai/driver.rs` and the protocol implementations in `crates/provider/src/`.
 
 ### LlmSim Driver (Testing)
 

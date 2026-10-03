@@ -54,5 +54,5 @@ a conversation must end with a user or tool message.
 
 - [Anthropic](https://www.anthropic.com/)
 - [Anthropic Console](https://console.anthropic.com/)
-- [`everruns-anthropic` on crates.io](https://crates.io/crates/everruns-anthropic)
+- [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `anthropic`
 - [Migrate between providers](/how-to/migrate-providers/)

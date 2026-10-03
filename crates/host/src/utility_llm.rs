@@ -24,7 +24,7 @@ pub const UTILITY_OPENROUTER_API_KEY_ENV: &str = "UTILITY_OPENROUTER_API_KEY";
 pub const UTILITY_LLM_MODEL_ENV: &str = "UTILITY_LLM_MODEL";
 
 /// Base URL of the OpenAI API. OpenRouter's own default stays owned by
-/// `everruns-openrouter`, so it is not duplicated here.
+/// `everruns_drivers::openrouter`, so it is not duplicated here.
 const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
 /// Default utility model when OpenRouter is the backend. OpenRouter model ids
@@ -113,7 +113,7 @@ impl ProviderUtilityLlmService {
     ) -> Self {
         // THREAT[TM-LLM-021]: same deployment-owned credential contract as the
         // OpenAI backend; only the gateway in front of the model changes.
-        let mut provider = everruns_openrouter::provider("utility-openrouter", api_key);
+        let mut provider = everruns_drivers::openrouter::provider("utility-openrouter", api_key);
         if let Some(base_url) = base_url {
             provider = provider.base_url(base_url);
         }

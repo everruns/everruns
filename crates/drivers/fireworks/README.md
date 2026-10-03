@@ -1,50 +1,43 @@
 # everruns-fireworks
 
-> Fireworks AI LLM provider for Everruns agents.
+> Moved: Fireworks AI support is now the `fireworks` module of `everruns-drivers`.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-fireworks.svg)](https://crates.io/crates/everruns-fireworks)
-[![Documentation](https://docs.rs/everruns-fireworks/badge.svg)](https://docs.rs/everruns-fireworks)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+Part of the [Everruns](https://everruns.com) ecosystem. `everruns-fireworks` is a
+deprecated shim that re-exports
+[`everruns_drivers::fireworks`](https://docs.rs/everruns-drivers/latest/everruns_drivers/fireworks/)
+and receives no further updates. This is its last release.
 
-`everruns-fireworks` registers the Fireworks AI driver into a `DriverRegistry` from
-[`everruns-provider`](https://crates.io/crates/everruns-provider) so the same Everruns
-agent loop can run against [Fireworks AI](https://fireworks.ai/)'s open-model
-catalog (Llama, Qwen, DeepSeek, Kimi, GLM, gpt-oss, ...). Fireworks exposes an
-OpenAI-compatible Chat Completions API, so the driver wraps the core Chat
-Completions protocol driver and parses Fireworks' richer `/models` metadata
-(chat, tools, image input, context window) into capability profiles.
+## Migrate
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. Providers are swappable: see
-[`everruns-openai`](https://crates.io/crates/everruns-openai) for OpenAI models,
-or [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude
-models.
+Replace the dependency with `everruns-drivers` and its `fireworks` feature, which
+ships it from 0.35:
 
-## Driver-Only Example
+```toml
+# before
+everruns-fireworks = "0.34"
+# after
+everruns-drivers = { version = "0.35", features = ["fireworks"] }
+```
+
+Then replace `everruns_fireworks::` with `everruns_drivers::fireworks::` in your code:
 
 ```rust
-use everruns_fireworks::FireworksChatDriver;
-
-let driver = FireworksChatDriver::new("your-api-key");
-assert_eq!(
-    driver.api_url(),
-    "https://api.fireworks.ai/inference/v1/chat/completions",
-);
+let mut registry = everruns_drivers::DriverRegistry::new();
+everruns_drivers::fireworks::register_driver(&mut registry);
 ```
+
 
 ## What It Provides
 
-- A Fireworks AI Chat Completions driver wrapping the Everruns core protocol driver
-- Registration into the Everruns `DriverRegistry` via `register_driver`
-- `base_url` override for Fireworks-compatible / proxy endpoints
-- Capability profiling derived from Fireworks' `/models` metadata, gated to the
-  Fireworks host
+- A glob re-export of `everruns_drivers::fireworks`, so existing code keeps building
+- `#[deprecated]` wrappers for the driver type, `register_driver`,
+  `descriptor`, and `from_env`, so the compiler points at every call site to
+  change
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-fireworks)
-- [Fireworks AI provider guide](https://docs.everruns.com/providers/fireworks/)
-- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [`everruns-drivers` API reference (docs.rs)](https://docs.rs/everruns-drivers)
+- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License

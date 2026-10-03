@@ -9,7 +9,7 @@
 //! Ignored by default (network + credentials); run manually:
 //!
 //! ```text
-//! doppler run -- cargo test -p everruns-drivers --test discovery_live --all-features -- --ignored --nocapture
+//! doppler run -- cargo test -p everruns-drivers --features drivers --test drivers_discovery_live --all-features -- --ignored --nocapture
 //! ```
 
 #[cfg(feature = "vercel")]

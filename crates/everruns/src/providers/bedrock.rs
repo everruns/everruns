@@ -19,15 +19,15 @@
 //! the default chain always "succeeds" at construction time, so it would
 //! shadow every provider tried after it.
 //!
-//! The `everruns-bedrock` driver is re-exported here ([`BedrockChatDriver`],
+//! The `everruns_drivers::bedrock` driver is re-exported here ([`BedrockChatDriver`],
 //! [`register_driver`]) for embedders who need the low-level driver directly.
 
 use std::fmt;
 
 use crate::Provider;
 
-/// Re-exported `everruns-bedrock` driver for direct, low-level use.
-pub use everruns_bedrock::{BedrockChatDriver, register_driver};
+/// Re-exported `everruns_drivers::bedrock` driver for direct, low-level use.
+pub use everruns_drivers::bedrock::{BedrockChatDriver, register_driver};
 
 /// How a [`Bedrock`] configuration authenticates.
 #[derive(Clone)]
@@ -164,7 +164,7 @@ impl From<Bedrock> for Provider {
                 session_token,
             } => {
                 let region = config.region.unwrap_or_else(|| "us-east-1".to_string());
-                let mut credential = everruns_bedrock::BedrockCredential::new(
+                let mut credential = everruns_drivers::bedrock::BedrockCredential::new(
                     access_key_id,
                     secret_access_key,
                     region,
@@ -172,10 +172,10 @@ impl From<Bedrock> for Provider {
                 if let Some(token) = session_token {
                     credential = credential.with_session_token(token);
                 }
-                everruns_bedrock::provider("bedrock", credential)
+                everruns_drivers::bedrock::provider("bedrock", credential)
             }
             Auth::DefaultChain => {
-                everruns_bedrock::provider_from_default_chain("bedrock", config.region)
+                everruns_drivers::bedrock::provider_from_default_chain("bedrock", config.region)
             }
         };
         provider.with_driver_id(crate::DriverId::Bedrock)

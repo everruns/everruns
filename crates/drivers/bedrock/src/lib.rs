@@ -1,41 +1,47 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! AWS Bedrock Runtime provider driver for Everruns.
+//! **Moved.** `everruns-bedrock` is now the [`bedrock`](everruns_drivers::bedrock) module of
+//! [`everruns-drivers`](https://docs.rs/everruns-drivers), part of the
+//! [Everruns](https://everruns.com) ecosystem. This crate is a deprecated shim
+//! that re-exports that module and receives no further updates.
 //!
-//! `everruns-bedrock` implements the [`ChatDriver`] contract from `everruns-provider`
-//! using the AWS Bedrock Runtime `ConverseStream` API.
-//! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with
-//! the application-facing `everruns` crate.
+//! To migrate, depend on `everruns-drivers` with its `bedrock` feature instead,
+//! and replace `everruns_bedrock::` with `everruns_drivers::bedrock::`:
 //!
-//! Credentials are encoded as JSON in the `api_key` field:
-//! ```json
-//! {"access_key_id":"...","secret_access_key":"...","session_token":"...","region":"us-east-1"}
-//! ```
-//! `session_token` is optional. The `base_url` field is unused.
-//!
-//! With the opt-in `default-credentials` feature, [`BedrockAuth::default_chain`]
-//! and [`provider_from_default_chain`] authenticate through the AWS default
-//! credential chain instead (environment, profile/SSO, web identity,
-//! ECS/AgentCore container credentials, instance profile), so a process running
-//! under an IAM role needs no static keys.
-//!
-//! # Example
-//!
-//! ```
-//! use everruns_bedrock::{BedrockChatDriver, register_driver};
-//! use everruns_provider::DriverRegistry;
-//!
-//! let mut registry = DriverRegistry::new();
-//! register_driver(&mut registry);
+//! ```rust
+//! let mut registry = everruns_drivers::DriverRegistry::new();
+//! everruns_drivers::bedrock::register_driver(&mut registry);
 //! ```
 
-mod credential;
-#[cfg(feature = "default-credentials")]
-mod default_chain;
-mod driver;
+pub use everruns_drivers::bedrock::*;
 
-pub use credential::BedrockCredential;
-#[cfg(feature = "default-credentials")]
-pub use driver::provider_from_default_chain;
-pub use driver::{BedrockAuth, BedrockChatDriver, descriptor, from_env, provider, register_driver};
+/// Moved to [`everruns_drivers::bedrock::BedrockChatDriver`].
+#[deprecated(
+    note = "moved to everruns_drivers::bedrock::BedrockChatDriver; everruns-bedrock is no longer updated"
+)]
+pub type BedrockChatDriver = everruns_drivers::bedrock::BedrockChatDriver;
 
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+/// Moved to [`everruns_drivers::bedrock::register_driver`].
+#[deprecated(
+    note = "moved to everruns_drivers::bedrock::register_driver; everruns-bedrock is no longer updated"
+)]
+pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+    everruns_drivers::bedrock::register_driver(registry);
+}
+
+/// Moved to [`everruns_drivers::bedrock::descriptor`].
+#[deprecated(
+    note = "moved to everruns_drivers::bedrock::descriptor; everruns-bedrock is no longer updated"
+)]
+pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+    everruns_drivers::bedrock::descriptor()
+}
+
+/// Moved to [`everruns_drivers::bedrock::from_env`].
+#[deprecated(
+    note = "moved to everruns_drivers::bedrock::from_env; everruns-bedrock is no longer updated"
+)]
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+{
+    everruns_drivers::bedrock::from_env(id)
+}

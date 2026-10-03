@@ -6,7 +6,7 @@
 //! [`Completion::provider`](crate::llm::Completion::provider), and select the
 //! provider-visible model id (`vendor/model`) separately.
 //!
-//! The `everruns-openrouter` driver is re-exported here
+//! The `everruns_drivers::openrouter` driver is re-exported here
 //! ([`OpenRouterChatDriver`], [`register_driver`]) for embedders who need the
 //! low-level driver directly.
 
@@ -16,8 +16,8 @@ use everruns_provider::credential_provider::EnvCredentialProvider;
 
 use crate::Provider;
 
-/// Re-exported `everruns-openrouter` driver for direct, low-level use.
-pub use everruns_openrouter::{OpenRouterChatDriver, register_driver};
+/// Re-exported `everruns_drivers::openrouter` driver for direct, low-level use.
+pub use everruns_drivers::openrouter::{OpenRouterChatDriver, register_driver};
 
 /// Why an [`OpenRouter`] provider configuration could not be produced.
 ///
@@ -115,7 +115,7 @@ impl OpenRouter {
     where
         F: Fn(&str) -> Option<String>,
     {
-        let driver = everruns_openrouter::descriptor();
+        let driver = everruns_drivers::openrouter::descriptor();
         let credentials = EnvCredentialProvider::resolve_with(&driver, lookup)
             .filter(|credentials| credentials.api_key().is_some())
             .ok_or_else(|| OpenRouterError::MissingEnvVar {
@@ -152,7 +152,7 @@ impl fmt::Debug for OpenRouter {
 impl From<OpenRouter> for Provider {
     fn from(config: OpenRouter) -> Self {
         let (api_key, base_url) = config.into_parts();
-        let mut provider = everruns_openrouter::provider("openrouter", api_key)
+        let mut provider = everruns_drivers::openrouter::provider("openrouter", api_key)
             .with_driver_id(crate::DriverId::OpenRouter);
         if let Some(base_url) = base_url {
             provider = provider.base_url(base_url);

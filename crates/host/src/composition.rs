@@ -43,7 +43,7 @@ use std::sync::{Arc, RwLock};
 /// use everruns_host::HostComposition;
 ///
 /// let mut drivers = DriverRegistry::new();
-/// everruns_openai::register_driver(&mut drivers);
+/// everruns_drivers::openai::register_driver(&mut drivers);
 ///
 /// let composition = HostComposition::builder()
 ///     .driver_registry(drivers)

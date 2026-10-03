@@ -39,7 +39,7 @@ This is the actual builder from `src/main.rs`. The prompt is `src/instructions.m
 let agent = Agent::builder()
     .name("coding-review-agent")
     .instructions(include_str!("instructions.md"))
-    .provider(everruns_anthropic::provider("anthropic", api_key))
+    .provider(everruns_drivers::anthropic::provider("anthropic", api_key))
     .model(MODEL)
     .max_iterations(12)
     .tool(tools::inspect_change())

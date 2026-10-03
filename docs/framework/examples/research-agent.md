@@ -46,7 +46,7 @@ let agent = bound_external_calls(
     Agent::builder()
         .name("research-agent")
         .instructions(include_str!("instructions.md"))
-        .provider(everruns_openrouter::from_env("openrouter")?)
+        .provider(everruns_drivers::openrouter::from_env("openrouter")?)
         .model(MODEL),
 )
 .capability(BraveSearch::from_env()?)

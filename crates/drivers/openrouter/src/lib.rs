@@ -1,37 +1,47 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! OpenRouter provider driver for Everruns.
+//! **Moved.** `everruns-openrouter` is now the [`openrouter`](everruns_drivers::openrouter) module of
+//! [`everruns-drivers`](https://docs.rs/everruns-drivers), part of the
+//! [Everruns](https://everruns.com) ecosystem. This crate is a deprecated shim
+//! that re-exports that module and receives no further updates.
 //!
-//! `everruns-openrouter` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-provider`
-//! and registers the OpenRouter provider into a [`DriverRegistry`].
+//! To migrate, depend on `everruns-drivers` with its `openrouter` feature instead,
+//! and replace `everruns_openrouter::` with `everruns_drivers::openrouter::`:
 //!
-//! OpenRouter exposes an OpenAI-compatible Responses API, so [`OpenRouterChatDriver`]
-//! wraps `everruns_provider::OpenResponsesProtocolChatDriver` tagged with
-//! `DriverId::OpenRouter`. Its `/models` endpoint advertises richer metadata
-//! (a `supported_parameters` array) that the crate parses into capability
-//! profiles at discovery time.
-//!
-//! # Registering the Driver
-//!
-//! ```
-//! use everruns_provider::DriverRegistry;
-//! use everruns_openrouter::register_driver;
-//!
-//! let mut registry = DriverRegistry::new();
-//! register_driver(&mut registry);
+//! ```rust
+//! let mut registry = everruns_drivers::DriverRegistry::new();
+//! everruns_drivers::openrouter::register_driver(&mut registry);
 //! ```
 
-mod driver;
-pub mod options;
-mod request_ext;
-mod types;
+pub use everruns_drivers::openrouter::*;
 
-pub use driver::{OpenRouterChatDriver, descriptor, from_env, provider, register_driver};
-pub use request_ext::OpenRouterRequestExtension;
-pub use types::{
-    OpenRouterArchitecture, OpenRouterModelInfo, OpenRouterModelsResponse, OpenRouterPricing,
-    OpenRouterTopProvider,
-};
+/// Moved to [`everruns_drivers::openrouter::OpenRouterChatDriver`].
+#[deprecated(
+    note = "moved to everruns_drivers::openrouter::OpenRouterChatDriver; everruns-openrouter is no longer updated"
+)]
+pub type OpenRouterChatDriver = everruns_drivers::openrouter::OpenRouterChatDriver;
 
-// Re-export core types for convenience
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+/// Moved to [`everruns_drivers::openrouter::register_driver`].
+#[deprecated(
+    note = "moved to everruns_drivers::openrouter::register_driver; everruns-openrouter is no longer updated"
+)]
+pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+    everruns_drivers::openrouter::register_driver(registry);
+}
+
+/// Moved to [`everruns_drivers::openrouter::descriptor`].
+#[deprecated(
+    note = "moved to everruns_drivers::openrouter::descriptor; everruns-openrouter is no longer updated"
+)]
+pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+    everruns_drivers::openrouter::descriptor()
+}
+
+/// Moved to [`everruns_drivers::openrouter::from_env`].
+#[deprecated(
+    note = "moved to everruns_drivers::openrouter::from_env; everruns-openrouter is no longer updated"
+)]
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+{
+    everruns_drivers::openrouter::from_env(id)
+}

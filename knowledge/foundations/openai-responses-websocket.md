@@ -67,7 +67,7 @@ and whether closing a socket cancels a response still generating on it.
 Three conditions, all required:
 
 1. The `everruns-provider` crate is built with `responses-websocket`
-   (`everruns-openai` enables it).
+   (the `openai` feature of `everruns-drivers` enables it).
 2. The driver declares support. The OpenAI driver does so for
    `api.openai.com` only; Azure OpenAI, OpenRouter and custom gateways stay on
    SSE, since only OpenAI documents the mode.

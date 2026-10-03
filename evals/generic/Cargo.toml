@@ -20,9 +20,7 @@ path = "src/main.rs"
 [dependencies]
 mira-eval = "0.4"
 everruns = { path = "../../crates/everruns", features = ["bashkit"] }
-everruns-anthropic = { path = "../../crates/drivers/anthropic" }
-everruns-openai = { path = "../../crates/drivers/openai" }
-everruns-openrouter = { path = "../../crates/drivers/openrouter" }
+everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai", "openrouter"] }
 # Attached through its Framework adapter rather than by capability id: the
 # hosted capability resolves a user connection, which an in-process run has
 # no store for.

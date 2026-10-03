@@ -7,11 +7,13 @@
 //! the MessageRetriever directly for excluded messages.
 
 use super::naive_trim::calculate_message_limit;
-use super::{Capability, CapabilityStatus, ContextStrategyConfig, MessageFilterProvider, MessageQuery};
+use super::{
+    Capability, CapabilityStatus, ContextStrategyConfig, MessageFilterProvider, MessageQuery,
+};
 use async_trait::async_trait;
 use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
-use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::tool_context::ToolContext;
+use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -84,8 +86,7 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         query.limit = Some(limit as i64);
 
         // Add prepend transform to notify model about excluded messages
-        query.prepend_transform =
-            Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
+        query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
     }
 
     fn priority(&self) -> i32 {

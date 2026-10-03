@@ -1,11 +1,11 @@
 //! End-to-end local HTTP fixture: OpenAI driver -> native coordinator -> durable
 //! journal -> original call IDs across out-of-order response continuations.
 use async_trait::async_trait;
+use everruns_drivers::openai::{OpenAIChatDriver, async_tools::NativeAsyncTools};
 use everruns_engine::native_async::{
     NativeAsyncCoordinator, NativeAsyncExecutor, NativeCallPolicy,
 };
 use everruns_host::native_async::FileNativeAsyncJournal;
-use everruns_openai::{OpenAIChatDriver, async_tools::NativeAsyncTools};
 use everruns_provider::{
     BearerAuth, LlmCallConfig, LlmStreamEvent, Message, MessageRole, Provider, Result,
     native_async::NativeToolCall,

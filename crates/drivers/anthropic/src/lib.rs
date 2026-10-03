@@ -1,36 +1,47 @@
-//! Anthropic Claude provider driver for Everruns.
+//! **Moved.** `everruns-anthropic` is now the [`anthropic`](everruns_drivers::anthropic) module of
+//! [`everruns-drivers`](https://docs.rs/everruns-drivers), part of the
+//! [Everruns](https://everruns.com) ecosystem. This crate is a deprecated shim
+//! that re-exports that module and receives no further updates.
 //!
-//! `everruns-anthropic` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-provider` and
-//! registers Anthropic's Messages API driver into a [`DriverRegistry`].
+//! To migrate, depend on `everruns-drivers` with its `anthropic` feature instead,
+//! and replace `everruns_anthropic::` with `everruns_drivers::anthropic::`:
 //!
-//! Provider crates depend on `everruns-provider`; the provider SPI does not depend on
-//! provider implementations. Hosts register whichever drivers they want to make
-//! available.
-//!
-//! # Example
-//!
-//! ```
-//! use everruns_anthropic::{AnthropicChatDriver, provider, register_driver};
-//! use everruns_provider::DriverRegistry;
-//!
-//! let driver = AnthropicChatDriver::new();
-//! let service = provider("anthropic", "your-api-key");
-//!
-//! let mut registry = DriverRegistry::new();
-//! register_driver(&mut registry);
-//!
-//! assert!(format!("{driver:?}").contains("AnthropicChatDriver"));
-//! assert_eq!(service.id().as_str(), "anthropic");
+//! ```rust
+//! let mut registry = everruns_drivers::DriverRegistry::new();
+//! everruns_drivers::anthropic::register_driver(&mut registry);
 //! ```
 
-mod computer_toolset;
-mod driver;
-mod effort;
-mod prefill;
-mod server_compaction;
+pub use everruns_drivers::anthropic::*;
 
-pub use driver::{AnthropicChatDriver, descriptor, from_env, provider, register_driver};
+/// Moved to [`everruns_drivers::anthropic::AnthropicChatDriver`].
+#[deprecated(
+    note = "moved to everruns_drivers::anthropic::AnthropicChatDriver; everruns-anthropic is no longer updated"
+)]
+pub type AnthropicChatDriver = everruns_drivers::anthropic::AnthropicChatDriver;
 
-// Re-export core types for convenience
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+/// Moved to [`everruns_drivers::anthropic::register_driver`].
+#[deprecated(
+    note = "moved to everruns_drivers::anthropic::register_driver; everruns-anthropic is no longer updated"
+)]
+pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+    everruns_drivers::anthropic::register_driver(registry);
+}
+
+/// Moved to [`everruns_drivers::anthropic::descriptor`].
+#[deprecated(
+    note = "moved to everruns_drivers::anthropic::descriptor; everruns-anthropic is no longer updated"
+)]
+pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+    everruns_drivers::anthropic::descriptor()
+}
+
+/// Moved to [`everruns_drivers::anthropic::from_env`].
+#[deprecated(
+    note = "moved to everruns_drivers::anthropic::from_env; everruns-anthropic is no longer updated"
+)]
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+{
+    everruns_drivers::anthropic::from_env(id)
+}

@@ -56,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Set up the Anthropic driver registry
     let mut driver_registry = DriverRegistry::new();
-    everruns_anthropic::register_driver(&mut driver_registry);
+    everruns_drivers::anthropic::register_driver(&mut driver_registry);
 
     // Configure the model
     let model = ModelSpec::on(

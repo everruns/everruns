@@ -8,7 +8,7 @@
 // Retry metadata is included in the response for observability.
 //
 // This is the base protocol implementation used in examples.
-// For production use with OpenAI-specific features, use OpenAIChatDriver from everruns-openai.
+// For production use with OpenAI-specific features, use OpenAIChatDriver from everruns_drivers::openai.
 //
 // Note: OTel instrumentation is handled via the event-listener pattern.
 // llm.generation events are emitted by ReasonAtom, and OtelEventListener
@@ -60,7 +60,7 @@ pub fn is_openai_api_url(api_url: &str) -> bool {
 // Model-discovery helpers (shared by OpenAI-compatible provider crates)
 // ============================================================================
 //
-// These are used by both `everruns-openai` and `everruns-openrouter` to derive
+// These are used by both `everruns_drivers::openai` and `everruns_drivers::openrouter` to derive
 // a `/models` URL, normalize a base URL, authenticate the discovery request, and
 // map a non-success status into an error. They live in core so the provider
 // crates can reuse them without duplicating logic.
@@ -144,7 +144,7 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 /// backoff, respecting `x-ratelimit-reset-*` and `retry-after` headers.
 ///
 /// This is the base protocol driver used in examples and for OpenAI-compatible endpoints.
-/// For production use with OpenAI, consider using `OpenAIChatDriver` from the `everruns-openai` crate.
+/// For production use with OpenAI, consider using `OpenAIChatDriver` from the `everruns_drivers::openai` crate.
 ///
 /// # Example
 ///

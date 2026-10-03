@@ -11,25 +11,25 @@ The primary and advanced-host entrypoints are:
 
 ## LLM provider crates (drivers)
 
-Each provider crate registers a driver keyed by a `DriverId`. Register the
+Each vendor module of `everruns-drivers` registers a driver keyed by a `DriverId`. Register the
 driver, then point `default_model.provider_type` at the matching `DriverId`.
 
 | Crate | `DriverId` | Notes |
 |---|---|---|
-| `everruns-openai` | `DriverId::OpenAI` (Responses API), `DriverId::AzureOpenAI` (Azure OpenAI Responses API), `DriverId::OpenAICompletions` (Chat Completions) | One `register_driver` call registers all three; also reaches OpenAI-compatible endpoints via `base_url` |
-| `everruns-anthropic` | `DriverId::Anthropic` | Supports prompt caching |
-| `everruns-gemini` | `DriverId::Gemini` | Google Gemini |
-| `everruns-openrouter` | `DriverId::OpenRouter` | OpenRouter model gateway |
-| `everruns-fireworks` | `DriverId::Fireworks` | Fireworks AI, open-model inference (Llama, Qwen, DeepSeek, GLM, …) |
-| `everruns-mai` | `DriverId::Mai` | Microsoft MAI |
-| `everruns-bedrock` | `DriverId::Bedrock` | AWS Bedrock |
+| `everruns-drivers` feature `openai` | `DriverId::OpenAI` (Responses API), `DriverId::AzureOpenAI` (Azure OpenAI Responses API), `DriverId::OpenAICompletions` (Chat Completions) | One `register_driver` call registers all three; also reaches OpenAI-compatible endpoints via `base_url` |
+| `everruns-drivers` feature `anthropic` | `DriverId::Anthropic` | Supports prompt caching |
+| `everruns-drivers` feature `gemini` | `DriverId::Gemini` | Google Gemini |
+| `everruns-drivers` feature `openrouter` | `DriverId::OpenRouter` | OpenRouter model gateway |
+| `everruns-drivers` feature `fireworks` | `DriverId::Fireworks` | Fireworks AI, open-model inference (Llama, Qwen, DeepSeek, GLM, …) |
+| `everruns-drivers` feature `mai` | `DriverId::Mai` | Microsoft MAI |
+| `everruns-drivers` feature `bedrock` | `DriverId::Bedrock` | AWS Bedrock |
 | built into `everruns-core` | `DriverId::LlmSim` | Deterministic simulator for tests/examples; no real API key |
 
 Registration pattern:
 
 ```rust,ignore
 let mut drivers = DriverRegistry::new();
-everruns_openai::register_driver(&mut drivers);
+everruns_drivers::openai::register_driver(&mut drivers);
 let platform = HostComposition::new(capabilities, drivers);
 ```
 

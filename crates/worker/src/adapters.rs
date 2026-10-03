@@ -21,15 +21,15 @@ use everruns_provider::provider::DriverId;
 /// - LlmSim (for testing)
 pub fn create_driver_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
-    everruns_openai::register_driver(&mut registry);
-    everruns_openrouter::register_driver(&mut registry);
-    everruns_mai::register_driver(&mut registry);
-    everruns_fireworks::register_driver(&mut registry);
-    everruns_meta::register_driver(&mut registry);
+    everruns_drivers::openai::register_driver(&mut registry);
+    everruns_drivers::openrouter::register_driver(&mut registry);
+    everruns_drivers::mai::register_driver(&mut registry);
+    everruns_drivers::fireworks::register_driver(&mut registry);
+    everruns_drivers::meta::register_driver(&mut registry);
     everruns_drivers::register_drivers(&mut registry);
-    everruns_anthropic::register_driver(&mut registry);
-    everruns_gemini::register_driver(&mut registry);
-    everruns_bedrock::register_driver(&mut registry);
+    everruns_drivers::anthropic::register_driver(&mut registry);
+    everruns_drivers::gemini::register_driver(&mut registry);
+    everruns_drivers::bedrock::register_driver(&mut registry);
 
     // LlmSim comes from the production-safe `everruns-llmsim` crate; the
     // worker never links testing/demo helpers. The `LLMSIM_DEMO` env var

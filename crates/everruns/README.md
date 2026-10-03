@@ -131,12 +131,12 @@ use everruns::{Agent, Model, OpenAI};
 // OPENAI_API_KEY, and OPENAI_BASE_URL when set.
 let openai = OpenAI::from_env()?;
 
-// ANTHROPIC_API_KEY. Every driver crate has the same entry point.
-let anthropic = everruns_anthropic::from_env("anthropic")?;
+// ANTHROPIC_API_KEY. Every driver module has the same entry point.
+let anthropic = everruns::drivers::anthropic::from_env("anthropic")?;
 
 // AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION — a driver is not
 // limited to one key.
-let bedrock = everruns_bedrock::from_env("bedrock")?;
+let bedrock = everruns::drivers::bedrock::from_env("bedrock")?;
 ```
 
 There is no Everruns naming scheme: the names belong to the drivers. A driver

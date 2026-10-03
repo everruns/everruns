@@ -1,14 +1,17 @@
-# Everruns drivers that need no bespoke wire protocol.
+# Everruns model vendor drivers, one module and one feature per vendor.
 #
-# Decision: a vendor whose API is OpenAI-compatible needs a descriptor, a
-# credential schema, auth, and a base URL — not a wire implementation. One
-# crate hosts all of them behind per-vendor features so each new vendor is a
-# module, not a package: a package costs a workspace member, an entry in four
-# isolation guards, a CI `-p` shard, and a publish pin, none of which a module
-# costs. A vendor graduates to its own crate when it needs its own request and
-# response types (anthropic, gemini) or heavy dependencies (bedrock's AWS SDK),
-# because this crate is a single dependency edge and those costs would land on
-# every consumer of it.
+# Decision: every vendor driver lives here. A package costs a workspace member,
+# an entry in four isolation guards, a CI `-p` shard, a publish pin, and a
+# crates.io name; a module costs none of those. Vendors with their own wire
+# types (anthropic, gemini, bedrock) keep them in their module, and heavy
+# dependencies (bedrock's AWS SDK) sit behind that vendor's feature, so a
+# consumer still compiles only the vendors it names. The per-vendor crates
+# (everruns-anthropic, everruns-openai, ...) were folded in here and survive one
+# release as deprecated shims that re-export these modules.
+#
+# everruns-llmsim stays its own crate: its `host` feature depends on
+# everruns-host, which depends on the openrouter driver here, so folding it in
+# would make the two crates depend on each other.
 
 [package]
 name = "everruns-drivers"
@@ -20,14 +23,35 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-drivers"
-description = "OpenAI-compatible model vendor drivers for Everruns"
+description = "Model vendor drivers for Everruns: Anthropic, OpenAI, Gemini, Bedrock, OpenRouter and more"
+keywords = ["agent", "llm", "ai", "anthropic", "openai"]
+categories = ["api-bindings", "asynchronous"]
 readme = "README.md"
 
 [features]
 # No vendor is on by default: a consumer names the ones it serves, so nothing
 # ships a driver it never constructs.
 default = []
+anthropic = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
+bedrock = [
+    "dep:tokio",
+    "dep:futures",
+    "dep:tokio-stream",
+    "dep:tracing",
+    "dep:base64",
+    "dep:aws-sdk-bedrockruntime",
+    "dep:aws-smithy-types",
+]
+# Resolve Bedrock credentials from the AWS default chain (env, profile, SSO,
+# credential process). Off by default because aws-config is heavy.
+bedrock-default-credentials = ["bedrock", "dep:aws-config", "dep:aws-credential-types"]
 cloudflare = []
+fireworks = []
+gemini = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
+mai = ["dep:tokio", "dep:tracing"]
+meta = []
+openai = ["dep:tokio", "dep:tracing", "everruns-provider/responses-websocket"]
+openrouter = []
 vercel = []
 
 [dependencies]
@@ -45,6 +69,26 @@ serde_json.workspace = true
 # Date/time (model `created` timestamps)
 chrono.workspace = true
 
+# Per-vendor dependencies, each pulled in only by the features that need it.
+tokio = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
+eventsource-stream = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+aws-sdk-bedrockruntime = { version = "1", optional = true, default-features = false, features = [
+    "default-https-client",
+    "rt-tokio",
+] }
+aws-smithy-types = { version = "1", optional = true }
+aws-config = { version = "1", optional = true, default-features = false, features = [
+    "default-https-client",
+    "rt-tokio",
+    "sso",
+    "credentials-process",
+] }
+aws-credential-types = { version = "1", optional = true }
+
 # Internal dependencies
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
@@ -57,6 +101,63 @@ everruns-provider = { version = "0.34.2", path = "../../provider" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 futures.workspace = true
 wiremock = "0.6"
+serde_json.workspace = true
+
+[[test]]
+name = "anthropic_chat_wire"
+required-features = ["anthropic"]
+
+[[test]]
+name = "anthropic_computer_toolset_wire"
+required-features = ["anthropic"]
+
+[[test]]
+name = "anthropic_parallel_tool_calls_live"
+required-features = ["anthropic"]
+
+[[test]]
+name = "openai_astra_compaction_live"
+required-features = ["openai"]
+
+[[test]]
+name = "openai_completions_max_tokens_live"
+required-features = ["openai"]
+
+[[test]]
+name = "openai_hosted_tools_live"
+required-features = ["openai"]
+
+[[test]]
+name = "openai_parallel_tool_calls_live"
+required-features = ["openai"]
+
+[[test]]
+name = "gemini_chat_wire"
+required-features = ["gemini"]
+
+[[test]]
+name = "openrouter_chat_live"
+required-features = ["openrouter"]
+
+[[test]]
+name = "openrouter_discovery_live"
+required-features = ["openrouter"]
+
+[[test]]
+name = "openrouter_request_wire"
+required-features = ["openrouter"]
+
+[[test]]
+name = "fireworks_chat_live"
+required-features = ["fireworks"]
+
+[[test]]
+name = "mai_chat_wire"
+required-features = ["mai"]
+
+[[test]]
+name = "meta_model_api_live"
+required-features = ["meta"]
 
 [lints]
 workspace = true

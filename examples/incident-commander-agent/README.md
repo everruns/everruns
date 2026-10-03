@@ -39,7 +39,7 @@ This is the actual builder from `src/main.rs`. The prompt is `src/instructions.m
 let agent = Agent::builder()
     .name("incident-commander-agent")
     .instructions(include_str!("instructions.md"))
-    .provider(everruns_meta::from_env("meta")?)
+    .provider(everruns_drivers::meta::from_env("meta")?)
     .model(MODEL)
     .max_iterations(12)
     .tool(tools::inspect_evidence())

@@ -113,7 +113,7 @@ relaxed; they are failure modes that can no longer be expressed:
   has always behaved.
 
 **What it costs, deliberately.** A crate's version no longer claims "this crate
-changed". `everruns-anthropic` moves with the platform whether or not it was
+changed". `everruns-drivers` moves with the platform whether or not it was
 touched, and `CHANGELOG.md` is the record of what actually changed. Every release
 is a breaking-slot bump for every consumer — which was already true in practice,
 since recent cycles bumped everything regardless. All 41 packages are republished
@@ -197,9 +197,15 @@ crates.io boundary, which is the whole of
 public contract now. Document such an item rather than hiding it.
 
 **Retired and absorbed crates.** A single version cannot republish a package that
-no longer exists. When a crate is deleted or absorbed, **yank** its orphaned
-version with the **Yank Crate** workflow so new resolutions stop selecting it, and
-record in the changelog where its API moved.
+no longer exists. When a crate is absorbed into another, keep it for one release
+as a deprecated shim that re-exports the new home: crates.io and docs.rs show the
+newest version's README and docs, so that release is what tells existing users
+where the API went, and a yanked version would hide it. The shim's
+`description` and README name the new crate, and its items carry `#[deprecated]`
+so dependents see the move as a compiler warning. Delete the shim in the next
+release and record the move in the changelog. A crate deleted outright, with no
+new home, is **yanked** with the **Yank Crate** workflow so new resolutions stop
+selecting it.
 
 **The gate.** One check enforces all of this:
 

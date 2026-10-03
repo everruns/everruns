@@ -1,53 +1,46 @@
 # everruns-anthropic
 
-> Anthropic Claude LLM provider for Everruns agents.
+> Moved: Anthropic Claude support is now the `anthropic` module of `everruns-drivers`.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-anthropic.svg)](https://crates.io/crates/everruns-anthropic)
-[![Documentation](https://docs.rs/everruns-anthropic/badge.svg)](https://docs.rs/everruns-anthropic)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+Part of the [Everruns](https://everruns.com) ecosystem. `everruns-anthropic` is a
+deprecated shim that re-exports
+[`everruns_drivers::anthropic`](https://docs.rs/everruns-drivers/latest/everruns_drivers/anthropic/)
+and receives no further updates. This is its last release.
 
-`everruns-anthropic` registers an Anthropic driver into a `DriverRegistry` from
-[`everruns-provider`](https://crates.io/crates/everruns-provider) so the same Everruns
-agent loop can run against Claude models through the provider-neutral driver
-trait. It speaks the Claude Messages API with streaming, tool use, and reasoning,
-and maps provider errors onto Everruns runtime errors.
+## Migrate
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. Providers are swappable: see
-[`everruns-openai`](https://crates.io/crates/everruns-openai) for OpenAI models,
-or run with no key through the offline simulator in the application-facing
-[`everruns`](https://crates.io/crates/everruns) crate.
+Replace the dependency with `everruns-drivers` and its `anthropic` feature, which
+ships it from 0.35:
 
-## Quick Example
-
-```rust
-use everruns_anthropic::{AnthropicChatDriver, register_driver};
-use everruns_provider::DriverRegistry;
-
-let driver = AnthropicChatDriver::new("your-api-key");
-
-let mut registry = DriverRegistry::new();
-register_driver(&mut registry);
-
-assert!(format!("{driver:?}").contains("AnthropicChatDriver"));
+```toml
+# before
+everruns-anthropic = "0.34"
+# after
+everruns-drivers = { version = "0.35", features = ["anthropic"] }
 ```
 
-Framework applications attach the ready-made provider through the open
-`ModelSpec`/`Provider` boundary. Low-level hosts can register the driver directly.
+Then replace `everruns_anthropic::` with `everruns_drivers::anthropic::` in your code:
+
+```rust
+let mut registry = everruns_drivers::DriverRegistry::new();
+everruns_drivers::anthropic::register_driver(&mut registry);
+```
+
+Using the [`everruns`](https://crates.io/crates/everruns) facade? Nothing to
+change: its `anthropic` feature turns on the new module, re-exported as
+`everruns::drivers::anthropic`.
 
 ## What It Provides
 
-- Claude Messages API streaming
-- Registration into the Everruns `DriverRegistry` via `register_driver`
-- Provider-specific error mapping into Everruns runtime errors
-- Support for provider-neutral messages, tools, and reasoning metadata
+- A glob re-export of `everruns_drivers::anthropic`, so existing code keeps building
+- `#[deprecated]` wrappers for the driver type, `register_driver`,
+  `descriptor`, and `from_env`, so the compiler points at every call site to
+  change
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-anthropic)
-- [Anthropic provider guide](https://docs.everruns.com/providers/anthropic/)
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [`everruns-drivers` API reference (docs.rs)](https://docs.rs/everruns-drivers)
+- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License

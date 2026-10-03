@@ -2338,13 +2338,10 @@ dependencies = [
  "chrono-tz",
  "cron",
  "everruns-ag-ui",
- "everruns-anthropic",
- "everruns-bedrock",
  "everruns-builtins",
  "everruns-capability",
  "everruns-core",
  "everruns-drivers",
- "everruns-gemini",
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-duckduckgo",
@@ -2353,8 +2350,6 @@ dependencies = [
  "everruns-integrations-web-fetch",
  "everruns-llmsim",
  "everruns-macros",
- "everruns-openai",
- "everruns-openrouter",
  "everruns-platform",
  "everruns-provider",
  "everruns-test-support",
@@ -2394,17 +2389,8 @@ dependencies = [
 name = "everruns-anthropic"
 version = "0.34.2"
 dependencies = [
- "async-trait",
- "chrono",
- "eventsource-stream",
+ "everruns-drivers",
  "everruns-provider",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
 ]
 
 [[package]]
@@ -2440,20 +2426,8 @@ dependencies = [
 name = "everruns-bedrock"
 version = "0.34.2"
 dependencies = [
- "async-trait",
- "aws-config",
- "aws-credential-types",
- "aws-sdk-bedrockruntime",
- "aws-smithy-types",
- "base64 0.23.1",
+ "everruns-drivers",
  "everruns-provider",
- "futures",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tracing",
- "wiremock",
 ]
 
 [[package]]
@@ -2546,7 +2520,7 @@ name = "everruns-coding-review-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-anthropic",
+ "everruns-drivers",
  "everruns-example-demo",
  "tempfile",
  "tokio",
@@ -2596,8 +2570,7 @@ version = "0.34.2"
 dependencies = [
  "axum",
  "everruns",
- "everruns-anthropic",
- "everruns-fireworks",
+ "everruns-drivers",
  "everruns-host",
  "everruns-integrations-brave-search",
  "everruns-llmsim",
@@ -2612,13 +2585,21 @@ name = "everruns-drivers"
 version = "0.34.2"
 dependencies = [
  "async-trait",
+ "aws-config",
+ "aws-credential-types",
+ "aws-sdk-bedrockruntime",
+ "aws-smithy-types",
+ "base64 0.23.1",
  "chrono",
+ "eventsource-stream",
  "everruns-provider",
  "futures",
  "reqwest",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-stream",
+ "tracing",
  "wiremock",
 ]
 
@@ -2679,15 +2660,8 @@ dependencies = [
 name = "everruns-fireworks"
 version = "0.34.2"
 dependencies = [
- "async-trait",
- "chrono",
+ "everruns-drivers",
  "everruns-provider",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "wiremock",
 ]
 
 [[package]]
@@ -2698,9 +2672,9 @@ dependencies = [
  "async-trait",
  "clap",
  "everruns",
+ "everruns-drivers",
  "everruns-example-demo",
  "everruns-foreman-agent",
- "everruns-openrouter",
  "libc",
  "serde",
  "serde_json",
@@ -2714,13 +2688,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "clap",
- "everruns-anthropic",
  "everruns-core",
+ "everruns-drivers",
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-filesystem",
  "everruns-llmsim",
- "everruns-openai",
  "everruns-provider",
  "serde_json",
  "tokio",
@@ -2731,7 +2704,7 @@ name = "everruns-framework-support-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-anthropic",
+ "everruns-drivers",
  "everruns-example-demo",
  "tokio",
 ]
@@ -2740,16 +2713,8 @@ dependencies = [
 name = "everruns-gemini"
 version = "0.34.2"
 dependencies = [
- "async-trait",
- "eventsource-stream",
+ "everruns-drivers",
  "everruns-provider",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
 ]
 
 [[package]]
@@ -2763,6 +2728,7 @@ dependencies = [
  "everruns-builtins",
  "everruns-capability",
  "everruns-core",
+ "everruns-drivers",
  "everruns-engine",
  "everruns-integrations-bashkit",
  "everruns-integrations-duckduckgo",
@@ -2771,8 +2737,6 @@ dependencies = [
  "everruns-integrations-web-fetch",
  "everruns-llmsim",
  "everruns-mcp",
- "everruns-openai",
- "everruns-openrouter",
  "everruns-provider",
  "everruns-test-support",
  "fs2",
@@ -2817,8 +2781,8 @@ name = "everruns-incident-commander-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
+ "everruns-drivers",
  "everruns-example-demo",
- "everruns-meta",
  "tempfile",
  "tokio",
 ]
@@ -3126,7 +3090,7 @@ dependencies = [
  "async-trait",
  "everruns-capability",
  "everruns-core",
- "everruns-openrouter",
+ "everruns-drivers",
  "everruns-provider",
  "reqwest",
  "serde",
@@ -3240,20 +3204,13 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns",
- "everruns-anthropic",
- "everruns-bedrock",
  "everruns-builtins",
  "everruns-core",
  "everruns-drivers",
  "everruns-engine",
- "everruns-fireworks",
- "everruns-gemini",
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-filesystem",
- "everruns-meta",
- "everruns-openai",
- "everruns-openrouter",
  "everruns-platform",
  "everruns-provider",
  "everruns-test-support",
@@ -3292,16 +3249,8 @@ dependencies = [
 name = "everruns-mai"
 version = "0.34.2"
 dependencies = [
- "async-trait",
- "chrono",
+ "everruns-drivers",
  "everruns-provider",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
 ]
 
 [[package]]
@@ -3332,14 +3281,8 @@ dependencies = [
 name = "everruns-meta"
 version = "0.34.2"
 dependencies = [
- "async-trait",
- "chrono",
+ "everruns-drivers",
  "everruns-provider",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "wiremock",
 ]
 
 [[package]]
@@ -3355,31 +3298,16 @@ dependencies = [
 name = "everruns-openai"
 version = "0.34.2"
 dependencies = [
- "async-trait",
- "chrono",
+ "everruns-drivers",
  "everruns-provider",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
 ]
 
 [[package]]
 name = "everruns-openrouter"
 version = "0.34.2"
 dependencies = [
- "async-trait",
- "chrono",
+ "everruns-drivers",
  "everruns-provider",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "wiremock",
 ]
 
 [[package]]
@@ -3468,9 +3396,9 @@ name = "everruns-research-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
+ "everruns-drivers",
  "everruns-example-demo",
  "everruns-integrations-brave-search",
- "everruns-openrouter",
  "serde_json",
  "tokio",
 ]
@@ -3741,16 +3669,12 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "clap",
- "everruns-anthropic",
- "everruns-bedrock",
  "everruns-capability",
  "everruns-cli-contract",
  "everruns-core",
  "everruns-drivers",
  "everruns-durable",
  "everruns-engine",
- "everruns-fireworks",
- "everruns-gemini",
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-browserless",
@@ -3763,11 +3687,7 @@ dependencies = [
  "everruns-integrations-typesafe",
  "everruns-internal-protocol",
  "everruns-llmsim",
- "everruns-mai",
  "everruns-mcp",
- "everruns-meta",
- "everruns-openai",
- "everruns-openrouter",
  "everruns-platform",
  "everruns-provider",
  "mimalloc",

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Migration Notes
+
+- **One crate for all LLM drivers.** `everruns-anthropic`, `everruns-bedrock`,
+  `everruns-fireworks`, `everruns-gemini`, `everruns-mai`, `everruns-meta`,
+  `everruns-openai`, and `everruns-openrouter` moved into `everruns-drivers` as
+  modules, one feature per vendor. This release publishes each old crate once
+  more as a deprecated shim that re-exports its module; the next release removes
+  them. To migrate, replace the dependency with
+  `everruns-drivers = { version = "...", features = ["openai"] }` and
+  `everruns_openai::X` with `everruns_drivers::openai::X`. Bedrock's
+  `default-credentials` feature is now `bedrock-default-credentials`. The
+  `everruns` facade keeps its vendor features and re-exports the crate as
+  `everruns::drivers`.
+
 ## [0.34.2] - 2026-10-02
 
 ### Highlights

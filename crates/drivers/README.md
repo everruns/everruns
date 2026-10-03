@@ -1,18 +1,20 @@
 # LLM drivers
 
-This directory groups Everruns model-provider driver packages by repository
-concern. It is not a Rust package.
+This directory groups Everruns model-provider driver code. It is not a Rust
+package.
 
-Each child remains a separate crates.io package with its existing `everruns-*`
-package name and public API, published at the shared platform version. Drivers implement provider-specific
-wire protocols over the neutral contracts in
-[`everruns-provider`](../provider/README.md); product and Framework composition
-remain outside this directory.
+- `drivers/` (`everruns-drivers`) holds every vendor driver as a feature-gated
+  module over the neutral contracts in
+  [`everruns-provider`](../provider/README.md). A new vendor is a new module and
+  feature there, not a new crate.
+- `llmsim/` (`everruns-llmsim`) is the production-safe deterministic, offline
+  implementation of the same provider contract. It stays its own crate because
+  its `host` feature depends on `everruns-host`, which depends on
+  `everruns-drivers`.
+- `anthropic/`, `bedrock/`, `fireworks/`, `gemini/`, `mai/`, `meta/`, `openai/`,
+  and `openrouter/` are deprecated shim crates that re-export the matching
+  `everruns-drivers` module under the old package name. They ship for one
+  release so existing dependents keep building and see the move on crates.io
+  and docs.rs, then they are deleted.
 
-The production-safe `everruns-llmsim` driver lives here as the deterministic,
-offline implementation of the same provider contract.
-
-`drivers/` (`everruns-drivers`) is the exception to one package per vendor: it
-hosts, behind per-vendor features, the drivers that need no bespoke wire
-protocol and so would not earn a package of their own. Its README states the
-membership rule and when a vendor graduates out of it.
+Product and Framework composition remain outside this directory.

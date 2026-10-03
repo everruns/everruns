@@ -254,9 +254,9 @@ mod test_fixtures;
 pub mod turn;
 pub mod turn_completion;
 
-// Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) are now in
-// separate crates (everruns-anthropic, everruns-openai) that depend on everruns-core.
-// This enables dependency inversion - provider crates register their drivers at startup.
+// Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) live in
+// everruns-drivers, one feature per vendor, and depend only on everruns-provider.
+// This enables dependency inversion - hosts register the drivers they enable at startup.
 
 // Re-exports for convenience
 pub use command_host::{

@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 everruns = { path = "../../crates/everruns" }
 everruns-example-demo = { path = "../demo-support" }
-everruns-meta = { path = "../../crates/drivers/meta" }
+everruns-drivers = { path = "../../crates/drivers/drivers", features = ["meta"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]

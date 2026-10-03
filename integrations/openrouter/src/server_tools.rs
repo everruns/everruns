@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
 };
-use everruns_openrouter::options::{
+use everruns_drivers::openrouter::options::{
     OpenRouterRoutingConfig, OpenRouterServerTool, OpenRouterServerToolKind, insert_routing_option,
 };
 use serde_json::{Value, json};

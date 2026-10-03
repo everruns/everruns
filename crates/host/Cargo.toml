@@ -43,7 +43,7 @@ everruns-builtins = { workspace = true, optional = true }
 everruns-engine.workspace = true
 everruns-mcp = { workspace = true, optional = true }
 everruns-provider.workspace = true
-everruns-openrouter = { workspace = true, optional = true }
+everruns-drivers = { workspace = true, optional = true }
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
 # Kernel containment (`native-containment`). `anyhow` carries the OS-level
@@ -98,7 +98,7 @@ native-containment = [
     "dep:seccompiler",
 ]
 # Deployment-owned utility LLM (OpenAI or the OpenRouter gateway).
-utility-llm = ["everruns-provider/http", "dep:everruns-openrouter"]
+utility-llm = ["everruns-provider/http", "dep:everruns-drivers", "everruns-drivers/openrouter"]
 # Kept as the pre-OpenRouter name of the same wiring.
 utility-openai = ["utility-llm"]
 otel = [
@@ -144,7 +144,7 @@ path = "src/bin/sandbox_exec.rs"
 required-features = ["native-containment"]
 
 [dev-dependencies]
-everruns-openai.workspace = true
+everruns-drivers = { workspace = true, features = ["openai"] }
 everruns-builtins.workspace = true
 # In-memory span exporter for the observability listener tests.
 opentelemetry_sdk = { workspace = true, features = ["testing"] }

@@ -412,19 +412,19 @@ fn provider(target: &Target) -> Result<Provider, String> {
             let key_name = "ANTHROPIC_API_KEY";
             let key =
                 std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
-            everruns_anthropic::provider("anthropic", key)
+            everruns_drivers::anthropic::provider("anthropic", key)
         }
         "openai" => {
             let key_name = "OPENAI_API_KEY";
             let key =
                 std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
-            everruns_openai::provider("openai", key)
+            everruns_drivers::openai::provider("openai", key)
         }
         "openrouter" => {
             let key_name = "OPENROUTER_API_KEY";
             let key =
                 std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
-            everruns_openrouter::provider("openrouter", key)
+            everruns_drivers::openrouter::provider("openrouter", key)
         }
         other => {
             return Err(format!(
@@ -610,7 +610,7 @@ mod tests {
                 &target,
                 harness,
                 profiles::config_profile("default").unwrap(),
-                everruns_openai::provider("openai", "test-key"),
+                everruns_drivers::openai::provider("openai", "test-key"),
             );
             match session {
                 Ok(_) => {}

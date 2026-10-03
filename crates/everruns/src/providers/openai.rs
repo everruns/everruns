@@ -4,7 +4,7 @@
 //! Responses API. Pass it to [`AgentBuilder::provider`](crate::AgentBuilder::provider)
 //! and select the provider-visible model id separately.
 //!
-//! The existing `everruns-openai` drivers are re-exported here
+//! The existing `everruns_drivers::openai` drivers are re-exported here
 //! ([`OpenAIChatDriver`], [`OpenAICompletionsChatDriver`], [`register_driver`])
 //! for embedders who need the low-level driver directly.
 
@@ -14,8 +14,10 @@ use everruns_provider::credential_provider::EnvCredentialProvider;
 
 use crate::Provider;
 
-/// Re-exported `everruns-openai` drivers for direct, low-level use.
-pub use everruns_openai::{OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver};
+/// Re-exported `everruns_drivers::openai` drivers for direct, low-level use.
+pub use everruns_drivers::openai::{
+    OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver,
+};
 
 /// Why an [`OpenAI`] provider configuration could not be produced.
 ///
@@ -117,7 +119,7 @@ impl OpenAI {
     where
         F: Fn(&str) -> Option<String>,
     {
-        let driver = everruns_openai::descriptor();
+        let driver = everruns_drivers::openai::descriptor();
         let credentials = EnvCredentialProvider::resolve_with(&driver, lookup)
             .filter(|credentials| credentials.api_key().is_some())
             .ok_or_else(|| OpenAIError::MissingEnvVar {
@@ -155,8 +157,8 @@ impl fmt::Debug for OpenAI {
 impl From<OpenAI> for Provider {
     fn from(config: OpenAI) -> Self {
         let (api_key, base_url) = config.into_parts();
-        let mut provider =
-            everruns_openai::provider("openai", api_key).with_driver_id(crate::DriverId::OpenAI);
+        let mut provider = everruns_drivers::openai::provider("openai", api_key)
+            .with_driver_id(crate::DriverId::OpenAI);
         if let Some(base_url) = base_url {
             provider = provider.base_url(base_url);
         }

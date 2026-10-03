@@ -130,7 +130,7 @@ fn sessions(repo: &Path) -> Result<Crew> {
     let model = || -> Result<Model> {
         Ok(Model::new(
             agent::WORKER_MODEL,
-            everruns_openrouter::from_env("openrouter")?,
+            everruns_drivers::openrouter::from_env("openrouter")?,
         ))
     };
     Ok(Crew::sessions(

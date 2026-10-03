@@ -1,40 +1,47 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! Fireworks AI provider driver for Everruns.
+//! **Moved.** `everruns-fireworks` is now the [`fireworks`](everruns_drivers::fireworks) module of
+//! [`everruns-drivers`](https://docs.rs/everruns-drivers), part of the
+//! [Everruns](https://everruns.com) ecosystem. This crate is a deprecated shim
+//! that re-exports that module and receives no further updates.
 //!
-//! `everruns-fireworks` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-provider`
-//! and registers the Fireworks AI provider into a [`DriverRegistry`].
+//! To migrate, depend on `everruns-drivers` with its `fireworks` feature instead,
+//! and replace `everruns_fireworks::` with `everruns_drivers::fireworks::`:
 //!
-//! [Fireworks AI](https://fireworks.ai) serves open models (Llama, Qwen,
-//! DeepSeek, GLM, Kimi, gpt-oss, ...) behind an OpenAI-compatible Chat
-//! Completions API, so [`FireworksChatDriver`] wraps
-//! `everruns_provider::OpenAIProtocolChatDriver` tagged with `DriverId::Fireworks`.
-//! Its `/models` endpoint advertises richer metadata (`supports_chat`,
-//! `supports_tools`, `supports_image_input`, `context_length`) that this crate
-//! parses into capability profiles at discovery time.
-//!
-//! # Authentication
-//!
-//! Fireworks authenticates with a single API key, sent as a bearer token by the
-//! underlying protocol driver's default (non-Azure) auth path.
-//!
-//! # Registering the Driver
-//!
-//! ```
-//! use everruns_provider::DriverRegistry;
-//! use everruns_fireworks::register_driver;
-//!
-//! let mut registry = DriverRegistry::new();
-//! register_driver(&mut registry);
-//! assert!(registry.has_driver(&everruns_provider::DriverId::Fireworks));
+//! ```rust
+//! let mut registry = everruns_drivers::DriverRegistry::new();
+//! everruns_drivers::fireworks::register_driver(&mut registry);
 //! ```
 
-mod driver;
+pub use everruns_drivers::fireworks::*;
 
-pub use driver::{
-    FIREWORKS_DEFAULT_API_URL, FireworksChatDriver, descriptor, from_env, is_fireworks_api_url,
-    provider, register_driver,
-};
+/// Moved to [`everruns_drivers::fireworks::FireworksChatDriver`].
+#[deprecated(
+    note = "moved to everruns_drivers::fireworks::FireworksChatDriver; everruns-fireworks is no longer updated"
+)]
+pub type FireworksChatDriver = everruns_drivers::fireworks::FireworksChatDriver;
 
-// Re-export core types for convenience.
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+/// Moved to [`everruns_drivers::fireworks::register_driver`].
+#[deprecated(
+    note = "moved to everruns_drivers::fireworks::register_driver; everruns-fireworks is no longer updated"
+)]
+pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+    everruns_drivers::fireworks::register_driver(registry);
+}
+
+/// Moved to [`everruns_drivers::fireworks::descriptor`].
+#[deprecated(
+    note = "moved to everruns_drivers::fireworks::descriptor; everruns-fireworks is no longer updated"
+)]
+pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+    everruns_drivers::fireworks::descriptor()
+}
+
+/// Moved to [`everruns_drivers::fireworks::from_env`].
+#[deprecated(
+    note = "moved to everruns_drivers::fireworks::from_env; everruns-fireworks is no longer updated"
+)]
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+{
+    everruns_drivers::fireworks::from_env(id)
+}

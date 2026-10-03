@@ -103,8 +103,8 @@ async fn main() -> anyhow::Result<()> {
     // so the drivers must be registered before their declared variables can be read.
     let driver_registry = {
         let mut registry = DriverRegistry::new();
-        everruns_openai::register_driver(&mut registry);
-        everruns_anthropic::register_driver(&mut registry);
+        everruns_drivers::openai::register_driver(&mut registry);
+        everruns_drivers::anthropic::register_driver(&mut registry);
         registry
     };
 

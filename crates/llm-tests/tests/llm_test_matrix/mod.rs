@@ -259,18 +259,18 @@ impl std::fmt::Display for ProviderModelConfig {
 pub const ANTHROPIC_FABLE_5_1: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-fable-5-1",
-    everruns_anthropic::descriptor,
+    everruns_drivers::anthropic::descriptor,
 );
 pub const ANTHROPIC_FABLE: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-fable-5",
-    everruns_anthropic::descriptor,
+    everruns_drivers::anthropic::descriptor,
 );
 
 pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-haiku-4-5-20251001",
-    everruns_anthropic::descriptor,
+    everruns_drivers::anthropic::descriptor,
 );
 
 // Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
@@ -282,67 +282,88 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 pub const ANTHROPIC_OPUS55: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-opus-5-5",
-    everruns_anthropic::descriptor,
+    everruns_drivers::anthropic::descriptor,
 );
 pub const ANTHROPIC_OPUS5: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-opus-5",
-    everruns_anthropic::descriptor,
+    everruns_drivers::anthropic::descriptor,
 );
 
 pub const ANTHROPIC_SONNET55: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-sonnet-5-5",
-    everruns_anthropic::descriptor,
+    everruns_drivers::anthropic::descriptor,
 );
 
 pub const ANTHROPIC_SONNET5: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-sonnet-5",
-    everruns_anthropic::descriptor,
+    everruns_drivers::anthropic::descriptor,
 );
 
 pub const OPENAI_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenAI,
     "gpt-5.6-luna",
-    everruns_openai::descriptor,
+    everruns_drivers::openai::descriptor,
 )
 .reasoning_as_text();
 
 // GPT-6 Astra is covered by the basic and reasoning-plus-tool-call scenarios.
 // Its reasoning can carry opaque encrypted replay state without readable text.
-pub const OPENAI_GPT6_ASTRA: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-astra", everruns_openai::descriptor);
+pub const OPENAI_GPT6_ASTRA: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-6-astra",
+    everruns_drivers::openai::descriptor,
+);
 
 // GPT-6 Luna is the platform default model; Sol is the balanced GPT-6 tier.
 // Both run the basic, tool, schema, and reasoning-plus-tool-call scenarios,
 // which accept readable reasoning or opaque replay state alike.
-pub const OPENAI_GPT6_SOL: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-sol", everruns_openai::descriptor);
+pub const OPENAI_GPT6_SOL: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-6-sol",
+    everruns_drivers::openai::descriptor,
+);
 
 // GPT-6.1 Sol: near-Astra quality at Sol's price (DevDay 2026-09-29).
-pub const OPENAI_GPT61_SOL: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6.1-sol", everruns_openai::descriptor);
+pub const OPENAI_GPT61_SOL: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-6.1-sol",
+    everruns_drivers::openai::descriptor,
+);
 
-pub const OPENAI_GPT6_LUNA: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-luna", everruns_openai::descriptor);
+pub const OPENAI_GPT6_LUNA: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-6-luna",
+    everruns_drivers::openai::descriptor,
+);
 
-pub const OPENAI_GPT52: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.2", everruns_openai::descriptor)
-        .reasoning_as_text();
+pub const OPENAI_GPT52: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-5.2",
+    everruns_drivers::openai::descriptor,
+)
+.reasoning_as_text();
 
-pub const OPENAI_GPT54: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.4", everruns_openai::descriptor)
-        .reasoning_as_text();
+pub const OPENAI_GPT54: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-5.4",
+    everruns_drivers::openai::descriptor,
+)
+.reasoning_as_text();
 
-pub const OPENAI_GPT55: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.5", everruns_openai::descriptor)
-        .reasoning_as_text();
+pub const OPENAI_GPT55: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenAI,
+    "gpt-5.5",
+    everruns_drivers::openai::descriptor,
+)
+.reasoning_as_text();
 
 pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Gemini,
     "gemini-2.5-flash",
-    everruns_gemini::descriptor,
+    everruns_drivers::gemini::descriptor,
 );
 
 // Use Meta's lower-cost Contributor tier for the live matrix. Its data-use
@@ -350,7 +371,7 @@ pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
 pub const META_MUSE_SPARK_CONTRIBUTOR: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Meta,
     "muse-spark-1.3-contributor",
-    everruns_meta::descriptor,
+    everruns_drivers::meta::descriptor,
 )
 .reasoning_as_text();
 
@@ -360,7 +381,7 @@ pub const META_MUSE_SPARK_CONTRIBUTOR: ProviderModelConfig = ProviderModelConfig
 pub const OPENROUTER_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenRouter,
     "openai/gpt-5.6-luna",
-    everruns_openrouter::descriptor,
+    everruns_drivers::openrouter::descriptor,
 )
 .reasoning_as_text();
 
@@ -369,7 +390,7 @@ pub const OPENROUTER_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
 pub const OPENROUTER_GPT6_LUNA: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenRouter,
     "openai/gpt-6-luna",
-    everruns_openrouter::descriptor,
+    everruns_drivers::openrouter::descriptor,
 );
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
@@ -392,7 +413,7 @@ pub const OPENROUTER_GPT6_LUNA: ProviderModelConfig = ProviderModelConfig::new(
 pub const FIREWORKS_KIMI_K3: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
     "accounts/fireworks/models/kimi-k3",
-    everruns_fireworks::descriptor,
+    everruns_drivers::fireworks::descriptor,
 );
 
 // Vercel AI Gateway routes to upstream providers over the Open Responses
@@ -439,7 +460,7 @@ pub const CLOUDFLARE_LLAMA_33_70B: ProviderModelConfig = ProviderModelConfig::ne
 pub const BEDROCK_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Bedrock,
     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-    everruns_bedrock::descriptor,
+    everruns_drivers::bedrock::descriptor,
 );
 
 // Referenced by no suite: the account cannot reach this model, and the id is
@@ -466,7 +487,7 @@ pub const BEDROCK_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 pub const BEDROCK_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Bedrock,
     "global.anthropic.claude-sonnet-5-5",
-    everruns_bedrock::descriptor,
+    everruns_drivers::bedrock::descriptor,
 );
 
 // ============================================================================
@@ -914,13 +935,13 @@ pub fn live_retry_backoff(attempt: u32) -> std::time::Duration {
 /// Registry with all real providers registered.
 pub fn all_providers_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
-    everruns_anthropic::register_driver(&mut registry);
-    everruns_openai::register_driver(&mut registry);
-    everruns_openrouter::register_driver(&mut registry);
-    everruns_fireworks::register_driver(&mut registry);
-    everruns_gemini::register_driver(&mut registry);
-    everruns_bedrock::register_driver(&mut registry);
-    everruns_meta::register_driver(&mut registry);
+    everruns_drivers::anthropic::register_driver(&mut registry);
+    everruns_drivers::openai::register_driver(&mut registry);
+    everruns_drivers::openrouter::register_driver(&mut registry);
+    everruns_drivers::fireworks::register_driver(&mut registry);
+    everruns_drivers::gemini::register_driver(&mut registry);
+    everruns_drivers::bedrock::register_driver(&mut registry);
+    everruns_drivers::meta::register_driver(&mut registry);
     everruns_drivers::register_drivers(&mut registry);
     registry
 }
