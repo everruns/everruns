@@ -137,6 +137,11 @@ published name can land in any release.
    merged names.
 3. **Phrase `PlatformStore` in runtime terms.** No crate is renamed. The hosted
    capabilities stop seeing records, and yolop can drop its subagents override.
+   [`PlatformStore`](../../crates/platform/src/platform_store.rs) reuses the
+   existing portable definitions, resolved harness configuration, and
+   `ExecutionSession`; server command adapters own record projection and
+   authorization. The [external runtime host fixture](../../crates/everruns/tests/fixtures/external-consumer/platform-store/src/lib.rs)
+   executes the stock subagents capability through that seam.
 4. **Split platform.** Records go to the server, and the rest becomes
    `everruns-capabilities`. Shim `everruns-platform`, then widen the record guard.
 5. **Fold the kernel into core.** Engine, host, builtins, MCP, and AG-UI become core

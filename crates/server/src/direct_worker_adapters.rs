@@ -33,7 +33,7 @@ use everruns_core::session_file::{
 };
 use everruns_platform::Harness;
 use everruns_platform::{Agent, AgentStatus};
-use everruns_platform::{Session, SessionParticipant, SessionStatus};
+use everruns_platform::{Session, SessionStatus};
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
@@ -2416,7 +2416,23 @@ impl DirectPlatformStore {
             .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
     }
 
-    async fn execute_domain_lookup<T>(
+    async fn execute_runtime_command<T>(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> everruns_contracts::error::Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let ctx = self.command_ctx().await?;
+        let json = crate::services::runtime_command_view::dispatch_runtime_view(name, params, &ctx)
+            .await
+            .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
+        serde_json::from_str(&json)
+            .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
+    }
+
+    async fn execute_runtime_lookup<T>(
         &self,
         name: &str,
         params: serde_json::Value,
@@ -2425,7 +2441,8 @@ impl DirectPlatformStore {
         T: serde::de::DeserializeOwned,
     {
         let ctx = self.command_ctx().await?;
-        match crate::domains::common::dispatch(name, params, &ctx).await {
+        match crate::services::runtime_command_view::dispatch_runtime_view(name, params, &ctx).await
+        {
             Ok(json) => serde_json::from_str(&json)
                 .map(Some)
                 .map_err(|e| store_error(format!("Failed to decode {name} response: {e}"))),
@@ -2524,261 +2541,8 @@ impl SessionCreationAuthority for DirectPlatformStore {
     }
 }
 
-#[async_trait]
-impl everruns_platform::PlatformStore for DirectPlatformStore {
-    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
-        let mut bound = self.clone();
-        bound.input_message_id = Some(id);
-        Some(Arc::new(bound))
-    }
-
-    async fn platform_discover(
-        &self,
-        arguments: serde_json::Value,
-    ) -> everruns_contracts::error::Result<String> {
-        self.invoke_platform_command_surface(
-            crate::services::platform_command_surface::Operation::Discover,
-            arguments,
-        )
-        .await
-    }
-
-    async fn platform_query(
-        &self,
-        arguments: serde_json::Value,
-    ) -> everruns_contracts::error::Result<String> {
-        self.invoke_platform_command_surface(
-            crate::services::platform_command_surface::Operation::Query,
-            arguments,
-        )
-        .await
-    }
-
-    async fn platform_execute(
-        &self,
-        arguments: serde_json::Value,
-    ) -> everruns_contracts::error::Result<String> {
-        self.invoke_platform_command_surface(
-            crate::services::platform_command_surface::Operation::Execute,
-            arguments,
-        )
-        .await
-    }
-
-    // =========================================================================
-    // Harness Operations
-    // =========================================================================
-
-    async fn get_harness(
-        &self,
-        id: HarnessId,
-    ) -> everruns_contracts::error::Result<Option<Harness>> {
-        self.execute_domain_lookup("get_harness", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    // =========================================================================
-    // Agent Operations
-    // =========================================================================
-
-    async fn get_agent_by_id(
-        &self,
-        id: AgentId,
-    ) -> everruns_contracts::error::Result<Option<Agent>> {
-        self.execute_domain_lookup("get_agent", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    // =========================================================================
-    // App Operations
-    // =========================================================================
-
-    // =========================================================================
-    // Session Operations
-    // =========================================================================
-
-    async fn create_session_with_options(
-        &self,
-        request: everruns_platform::PlatformCreateSessionRequest,
-    ) -> everruns_contracts::error::Result<Session> {
-        self.execute_domain_command(
-            "create_session",
-            serde_json::json!({
-                "harness_id": request.harness_id.to_string(),
-                "agent_id": request.agent_id.map(|id| id.to_string()),
-                "title": request.title,
-                "goal": request.goal,
-                "locale": request.locale,
-                "tags": ["managed"],
-                "capabilities": [],
-                "tools": [],
-                "mcp_servers": {},
-                "initial_files": [],
-                "blueprint_id": request.blueprint_id,
-                "blueprint_config": request.blueprint_config,
-                "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
-                "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
-                "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
-                "seed": request.seed,
-            }),
-        )
-        .await
-    }
-
-    async fn get_session_by_id(
-        &self,
-        id: SessionId,
-    ) -> everruns_contracts::error::Result<Option<Session>> {
-        self.execute_domain_lookup(
-            "get_session",
-            serde_json::json!({ "session_id": id.to_string() }),
-        )
-        .await
-    }
-
-    async fn add_agent_session_participant(
-        &self,
-        session_id: SessionId,
-        agent_id: AgentId,
-    ) -> everruns_contracts::error::Result<SessionParticipant> {
-        self.execute_domain_command(
-            "add_session_participant",
-            serde_json::json!({
-                "session_id": session_id.to_string(),
-                "kind": "agent",
-                "agent_id": agent_id.to_string(),
-            }),
-        )
-        .await
-    }
-
-    // =========================================================================
-    // Messaging
-    // =========================================================================
-
-    async fn send_message(
-        &self,
-        session_id: SessionId,
-        content: &str,
-    ) -> everruns_contracts::error::Result<()> {
-        let _: serde_json::Value = self
-            .execute_domain_command(
-                "create_message",
-                serde_json::json!({
-                    "session_id": session_id.to_string(),
-                    "message": {
-                        "content": [{ "type": "text", "text": content }],
-                    },
-                }),
-            )
-            .await?;
-        Ok(())
-    }
-
-    async fn get_messages(
-        &self,
-        session_id: SessionId,
-        limit: Option<usize>,
-    ) -> everruns_contracts::error::Result<Vec<everruns_platform::PlatformMessage>> {
-        let mut messages: Vec<crate::api::messages::Message> = self
-            .execute_domain_command(
-                "list_messages",
-                serde_json::json!({
-                    "session_id": session_id.to_string(),
-                    "limit": limit.unwrap_or(10),
-                }),
-            )
-            .await?;
-        messages.retain(|message| {
-            matches!(
-                message.role,
-                crate::api::messages::MessageRole::User | crate::api::messages::MessageRole::Agent
-            )
-        });
-
-        Ok(messages
-            .into_iter()
-            .filter_map(|message| {
-                let content = message
-                    .content
-                    .iter()
-                    .filter_map(|part| match part {
-                        everruns_core::ContentPart::Text(text) => Some(text.text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if content.is_empty() {
-                    return None;
-                }
-                Some(everruns_platform::PlatformMessage {
-                    role: match message.role {
-                        crate::api::messages::MessageRole::User => "user".to_string(),
-                        _ => "agent".to_string(),
-                    },
-                    content,
-                    created_at: message.created_at,
-                })
-            })
-            .collect())
-    }
-
-    // =========================================================================
-    // Turn Management
-    // =========================================================================
-
-    async fn wait_for_idle(
-        &self,
-        session_id: SessionId,
-        timeout_secs: Option<u64>,
-    ) -> everruns_contracts::error::Result<String> {
-        let timeout = std::time::Duration::from_secs(timeout_secs.unwrap_or(120));
-        let start = std::time::Instant::now();
-        let poll_interval = std::time::Duration::from_millis(500);
-
-        loop {
-            let session = self
-                .get_session_by_id(session_id)
-                .await?
-                .ok_or_else(|| store_error("Session not found"))?;
-
-            match session.status {
-                SessionStatus::Idle => {
-                    if let Some(status) = self.latest_terminal_turn_status(session_id).await? {
-                        return Ok(status);
-                    }
-                    // Session status flips to idle independently from terminal
-                    // turn-event persistence. Keep polling until the event lands
-                    // so callers can distinguish successful and failed idle turns.
-                }
-                SessionStatus::Started => {
-                    // Not yet active, keep waiting
-                }
-                SessionStatus::Active => {
-                    // Turn in progress, keep waiting
-                }
-                SessionStatus::WaitingForToolResults => {
-                    return Ok("waiting_for_tool_results".to_string());
-                }
-                SessionStatus::Paused => return Ok("paused".to_string()),
-            }
-
-            if start.elapsed() > timeout {
-                return Ok(format!("timeout (last status: {:?})", session.status));
-            }
-
-            tokio::time::sleep(poll_interval).await;
-        }
-    }
-
-    // =========================================================================
-    // Capabilities
-    // =========================================================================
-
-    // =========================================================================
-    // UI Links
-    // =========================================================================
-}
+#[path = "direct_worker_adapters/platform_store.rs"]
+mod platform_store;
 
 #[cfg(test)]
 #[path = "direct_worker_adapters/tests.rs"]

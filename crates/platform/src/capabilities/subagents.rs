@@ -2100,13 +2100,7 @@ mod tests {
             session_id: everruns_contracts::typed_id::SessionId,
         ) -> everruns_contracts::error::Result<Option<everruns_core::session::ExecutionSession>>
         {
-            // EVE-882: the store holds the platform record; execution sees the
-            // projected view.
-            Ok(self
-                .0
-                .get_session_by_id(session_id)
-                .await?
-                .map(|session| session.execution_session()))
+            self.0.get_session_by_id(session_id).await
         }
     }
 

@@ -320,6 +320,7 @@ async fn test_execute_command_lists_seeded_harnesses() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            runtime_view: String::new(),
             input_message_id: None,
             platform_session_id: None,
 
@@ -368,6 +369,7 @@ async fn test_execute_command_denies_org_disabled_feature() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            runtime_view: false,
             input_message_id: None,
             platform_session_id: None,
 
@@ -399,6 +401,7 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            runtime_view: false,
             input_message_id: None,
             platform_session_id: None,
 
@@ -437,6 +440,7 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
     ] {
         let response = service
             .execute_command(Request::new(ExecuteCommandRequest {
+                runtime_view: false,
                 input_message_id: None,
                 platform_session_id: None,
 
@@ -1026,6 +1030,7 @@ async fn test_execute_command_uses_user_permissions() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            runtime_view: false,
             input_message_id: None,
             platform_session_id: None,
 
@@ -1494,3 +1499,6 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
         task_id
     );
 }
+
+#[path = "tests_runtime_command_view.rs"]
+mod runtime_command_view;

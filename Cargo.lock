@@ -2432,13 +2432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-capability"
-version = "0.37.0"
-dependencies = [
- "everruns-contracts",
-]
-
-[[package]]
 name = "everruns-cli"
 version = "0.37.0"
 dependencies = [
@@ -3253,13 +3246,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-model-profiles"
-version = "0.37.0"
-dependencies = [
- "everruns-contracts",
-]
-
-[[package]]
 name = "everruns-platform"
 version = "0.37.0"
 dependencies = [
@@ -3300,13 +3286,6 @@ dependencies = [
  "utoipa",
  "uuid",
  "wiremock",
-]
-
-[[package]]
-name = "everruns-provider"
-version = "0.37.0"
-dependencies = [
- "everruns-contracts",
 ]
 
 [[package]]

@@ -30,6 +30,7 @@ pub mod platform_command_surface;
 pub mod principal;
 pub mod provider_resolver;
 pub mod run_summary;
+pub(crate) mod runtime_command_view;
 pub mod standard_webhooks;
 pub mod turn_latency;
 pub mod usage_tracking;
