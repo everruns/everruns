@@ -147,7 +147,7 @@ fn provider_masks_and_curated_models_survive_enumeration() {
         assert!(!astra.profile.supports_server_compaction);
     }
     for (provider, required) in [
-        ("openai", &["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"][..]),
+        ("openai", &["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"][..]),
         ("anthropic", &["claude-opus-5-5", "claude-fable-5-1"][..]),
         (
             "meta",

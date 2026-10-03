@@ -86,8 +86,9 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-6-sol",
         display_name: "GPT-6 Sol",
-        enabled: true,     // Enabled by default
-        is_favorite: true, // Favorite model
+        // Keep the legacy model available without recommending it over GPT-6.1 Sol.
+        enabled: true,
+        is_favorite: false,
     },
     SeedModel {
         // Platform default model (see `platform::PLATFORM_DEFAULT_MODEL_ID`).
