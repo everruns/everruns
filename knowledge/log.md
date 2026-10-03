@@ -2,6 +2,10 @@
 
 ## 2026-10-03
 
+* **Agent page Test chat.** The gold masthead CTA starts an interactive chat
+  thread (`source: chat` → `/chats/{id}`) instead of opening a read-only
+  session recording. See [Agent Page](ui/agent-page.md).
+
 * **Sandbox secret forgery closed.** Capability-owned sandbox secret prefixes
   (`container_sandbox:`, `daytona_sandbox:`, `e2b_sandbox:`, `deno_sandbox:`,
   `sprites_sprite:`) are reserved from user-facing `secret_store`, and
