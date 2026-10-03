@@ -12,12 +12,13 @@ import subprocess
 RUNTIME_HANDLES = {
     'crates/everruns/src/agent.rs': {'Agent', 'Model'},
     'crates/everruns/src/session.rs': {'Session'},
+    'crates/everruns/src/mcp.rs': {'McpServer'},
     'crates/contracts/src/runtime_provider.rs': {'Provider'},
     'crates/everruns/src/harness.rs': {'Harness'},
     'crates/host/src/workspace.rs': {'Workspace'},
     'crates/host/tests/agents_api_support/mod.rs': {'Harness'},
     'crates/serve/src/agent.rs': {'Agent'},
-    'crates/serve/src/app.rs': {'App'},
+    'crates/serve/src/app.rs': {'App', 'Skill'},
     # This is the external Cursor service's status, not an Everruns agent row.
     'integrations/cursor/src/client.rs': {'AgentStatus'},
 }

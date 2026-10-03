@@ -1536,7 +1536,7 @@ impl ResourceUrlable for crate::records::Session {
     }
 }
 
-impl ResourceUrlable for everruns_core::VirtualUser {
+impl ResourceUrlable for crate::records::VirtualUser {
     fn api_path() -> &'static str {
         "v1/virtual-users"
     }
@@ -1560,7 +1560,7 @@ impl ResourceUrlable for crate::records::eval::Eval {
     }
 }
 
-impl ResourceUrlable for everruns_core::McpServer {
+impl ResourceUrlable for crate::records::McpServer {
     fn api_path() -> &'static str {
         "v1/mcp-servers"
     }
@@ -1578,10 +1578,10 @@ impl ResourceUrlable for everruns_core::McpServer {
 /// Hypermedia actions for a `Skill`. See `knowledge/execution/api-conventions.md`.
 pub fn skill_allowed_actions(
     id: &str,
-    status: &everruns_core::SkillStatus,
+    status: &crate::records::SkillStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_core::SkillStatus;
+    use crate::records::SkillStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1612,7 +1612,7 @@ pub fn skill_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_core::Skill {
+impl ResourceUrlable for crate::records::Skill {
     fn api_path() -> &'static str {
         "v1/skills"
     }
@@ -2508,7 +2508,7 @@ mod tests {
 
     #[test]
     fn skill_actions_omit_delete_for_terminal_states() {
-        use everruns_core::SkillStatus;
+        use crate::records::SkillStatus;
         for status in [SkillStatus::Active, SkillStatus::Disabled] {
             let actions = skill_allowed_actions("skill_01", &status, "https://api.example");
             assert!(

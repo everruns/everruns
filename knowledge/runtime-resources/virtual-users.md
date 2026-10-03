@@ -54,7 +54,7 @@ Evidence and implementation entry points:
   [principal service](../../crates/server/src/services/principal.rs).
   External principal identity currently hashes `source:actor_id`; provider realm
   metadata is not part of that key.
-- [Agent identity](../../crates/core/src/virtual_user.rs), its
+- [Agent identity](../../crates/server/src/records/virtual_user.rs), its
   [current contract](agent-identities.md), and
   [identity connections](../../crates/server/src/api/virtual_user_connections.rs).
   API-key connections exist, and MCP service OAuth also writes identity grants

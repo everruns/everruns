@@ -244,7 +244,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
 /// 5. MCP server deletion
 #[tokio::test]
 async fn test_mcp_server_crud() {
-    use everruns_core::McpServer;
+    use everruns_server::records::McpServer;
 
     let client = reqwest::Client::new();
 

@@ -252,6 +252,9 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _session_id: Uuid,
             ) -> CoreResult<WorkerTurnContext> {
+                if let Some(error) = self.load_failure() {
+                    return Err(everruns_contracts::error::AgentLoopError::config(error));
+                }
                 Ok(WorkerTurnContext {
                     agent: Some(($agent)(self)),
                     session: ($session)(self),

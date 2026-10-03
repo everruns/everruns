@@ -16,14 +16,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::typed_id::{ModelId, ModelRouterId};
+use everruns_contracts::typed_id::{ModelId, ModelRouterId};
 
-#[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
 /// Router lifecycle status. Mirrors other building-block lifecycles.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelRouterStatus {
     Active,
@@ -52,8 +50,7 @@ impl From<&str> for ModelRouterStatus {
 }
 
 /// Selection strategy for a route. See `knowledge/integrations/model-router.md` for behavior.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelRouterStrategy {
     /// Exactly one candidate; trivial selection.
@@ -100,15 +97,11 @@ impl ModelRouterStrategy {
 }
 
 /// A Model Router — org-scoped named container of routes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ModelRouter {
     /// External identifier (`mrtr_<32-hex>`). Shown as `id` in API responses.
     #[serde(rename = "id")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(value_type = String, example = "mrtr_01933b5a000070008000000000000001")
-    )]
+    #[schema(value_type = String, example = "mrtr_01933b5a000070008000000000000001")]
     pub public_id: ModelRouterId,
     /// Internal UUID primary key. Used for FK references. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]
@@ -138,8 +131,7 @@ pub struct ModelRouter {
 /// A named route inside a router. Carries the human-facing `purpose` and
 /// the model-facing `when_to_use` description used by the future
 /// `set_model` discoverability tool.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ModelRouterRoute {
     pub id: Uuid,
     /// Stable identifier within router (e.g. `base`, `analysis`).
@@ -161,15 +153,11 @@ pub struct ModelRouterRoute {
 /// An ordered candidate inside a route. References a concrete model and may
 /// carry provider-agnostic request overrides plus a weight (for `weighted`)
 /// or rules (for `rules`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ModelRouterCandidate {
     pub id: Uuid,
     /// The concrete model to invoke.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(value_type = String, example = "model_01933b5a000070008000000000000001")
-    )]
+    #[schema(value_type = String, example = "model_01933b5a000070008000000000000001")]
     pub model_id: ModelId,
     /// Provider-agnostic overrides applied at LLM-call time
     /// (`reasoning_effort`, `temperature`, `max_output_tokens`, ...).

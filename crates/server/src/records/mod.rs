@@ -106,3 +106,10 @@ pub mod wire;
 mod wire_tests;
 
 pub use environment_profile::*;
+pub mod mcp_server;
+pub mod model_router;
+pub mod skill;
+pub mod virtual_user;
+pub use mcp_server::{McpServer, McpServerStatus};
+pub use skill::{Skill, SkillSourceType, SkillStatus, SkillUsage};
+pub use virtual_user::{VirtualUser, VirtualUserStatus, VirtualUserUsage};

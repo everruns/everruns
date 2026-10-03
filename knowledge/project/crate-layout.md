@@ -77,7 +77,7 @@ in those types.
 `PlatformStore` ([source](../../crates/capabilities/src/platform_store.rs)) now
 returns portable execution views. The server resolves ownership, inheritance,
 versions and lifecycle at its edge. All persistence/API aggregates, including
-provider and model rows, live in [`server records`](../../crates/server/src/records/mod.rs).
+provider, model, virtual-user, skill, model-router, and MCP-server rows, live in [`server records`](../../crates/server/src/records/mod.rs).
 The worker receives portable definitions and neutral dependency blockers.
 
 [`check-agent-record-isolation.sh`](../../scripts/lib/check-agent-record-isolation.sh)

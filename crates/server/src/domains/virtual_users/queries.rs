@@ -32,7 +32,7 @@ pub async fn row_to_identity(
     Ok(VirtualUser {
         id: row.id,
         organization_id: everruns_core::org_public_id_from_internal(org_id),
-        usage: everruns_core::VirtualUserUsage::try_from(row.usage.as_str())
+        usage: crate::records::VirtualUserUsage::try_from(row.usage.as_str())
             .map_err(anyhow::Error::msg)?,
         name: row.name,
         description: row.description,

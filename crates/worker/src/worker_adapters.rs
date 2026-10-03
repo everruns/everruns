@@ -30,9 +30,8 @@ use everruns_core::{
     session_services::LeasedResourceStore, tool_execution::BudgetChecker,
     tool_execution::PaymentAuthority,
 };
-// EVE-877: the stored Agent record moved to `everruns-capabilities`. WorkerAdapters
-// still transports it between control plane and worker; host/engine only ever
-// see the projected `AgentDefinition` / resolved execution snapshot.
+// The server projects management records into portable definitions and neutral
+// lifecycle blockers before they cross this worker boundary.
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::tool_types::ToolDefinition;
