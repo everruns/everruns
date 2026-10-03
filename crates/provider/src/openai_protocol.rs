@@ -28,6 +28,7 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
+use crate::openai_compat::{chat_completions_url, max_output_fields};
 use crate::openai_message_convert::convert_messages;
 use crate::openai_types::*;
 use crate::runtime_provider::ProviderEndpoint;
@@ -436,11 +437,14 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         } else {
             Some(config.metadata.clone())
         };
+        let api_url = chat_completions_url(endpoint)?;
+        let (max_tokens, max_completion_tokens) = max_output_fields(&api_url, config.max_tokens);
         let request = OpenAiRequest {
             model: config.model.clone(),
             messages: openai_messages,
             temperature: config.temperature,
-            max_tokens: config.max_tokens,
+            max_tokens,
+            max_completion_tokens,
             stream: false,
             stream_options: None,
             tools,
@@ -453,11 +457,6 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             response_format: OpenAiRequest::response_format_for(config),
         };
         let captured_request = capture_request_body(config, &request);
-        let api_url = endpoint.url("chat/completions").ok_or_else(|| {
-            AgentLoopError::Configuration(
-                "OpenAI Chat Completions provider has no base URL".to_string(),
-            )
-        })?;
         let (response, retry_metadata) = self
             .send_chat_completion_request(
                 endpoint,
@@ -593,11 +592,14 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             Some(config.metadata.clone())
         };
 
+        let api_url = chat_completions_url(endpoint)?;
+        let (max_tokens, max_completion_tokens) = max_output_fields(&api_url, config.max_tokens);
         let request = OpenAiRequest {
             model: config.model.clone(),
             messages: openai_messages,
             temperature: config.temperature,
-            max_tokens: config.max_tokens,
+            max_tokens,
+            max_completion_tokens,
             stream: true,
             stream_options: Some(OpenAiStreamOptions {
                 include_usage: true,
@@ -617,11 +619,6 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // decoding response body" flake). Header-phase retries (429/5xx and
         // transient send failures) are handled inside the per-attempt send;
         // this adds the body-phase reconnect the official SDKs get for free.
-        let api_url = endpoint.url("chat/completions").ok_or_else(|| {
-            AgentLoopError::Configuration(
-                "OpenAI Chat Completions provider has no base URL".to_string(),
-            )
-        })?;
         let (event_stream, retry_metadata) =
             connect_sse_with_reconnect(&self.retry_config, "OpenAIProtocolDriver", |attempts| {
                 self.send_chat_completion_request(
@@ -1282,6 +1279,7 @@ mod tests {
             messages: vec![],
             temperature: Some(0.5),
             max_tokens: Some(64),
+            max_completion_tokens: None,
             stream: true,
             stream_options: None,
             tools: None,
