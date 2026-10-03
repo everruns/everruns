@@ -54,7 +54,7 @@ This approach:
 - Is reliable to parse with a simple regex
 - Degrades gracefully (shows as a code block if rendering fails)
 
-## Module: `everruns_builtins::openui`
+## Module: `everruns_core::builtins::openui`
 
 Path: `crates/core/src/builtins/openui/`
 

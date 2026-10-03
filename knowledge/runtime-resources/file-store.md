@@ -64,7 +64,7 @@ The public surface is split across the execution and host concerns:
 
 - `everruns_core::session_files::SessionFileSystem`, the read/write contract every
   filesystem-aware capability calls.
-- `everruns_host::SessionFileSystemFactory`, resolves the deployment's
+- `everruns_core::host::SessionFileSystemFactory`, resolves the deployment's
   chosen filesystem from host-provided dependencies.
 
 See `crates/core/src/session_files.rs` and
@@ -178,7 +178,7 @@ Guarantees:
 
 `MountFs` is a pure *virtual* router with no host knowledge. The only place that
 needs to translate the virtual namespace onto a real directory is the host-backed
-store, so that logic is private to `everruns_host::RealDiskFileStore`
+store, so that logic is private to `everruns_core::host::RealDiskFileStore`
 (`HostPathMap`), not a shared abstraction:
 
 - It maps a session path to an absolute host path, accepts host-absolute inputs
@@ -421,7 +421,7 @@ Source: `crates/core/src/host/real_disk.rs`.
 
 ### Multi-root host filesystems
 
-`everruns-host` exposes `multi_root_file_system(root_set)` and teaches
+`everruns-core` (`host` feature) exposes `multi_root_file_system(root_set)` and teaches
 `RealDiskSessionFileSystemFactory` to read an optional
 `WorkspaceRootSet` from `SessionFileSystemFactoryContext::workspace_roots()`.
 When present, the factory builds a `MountFs` over one `RealDiskFileStore` per

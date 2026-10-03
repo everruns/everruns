@@ -8,7 +8,7 @@ tags:
 ---
 # MCP Server Specification
 
-> Part of the [MCP spec family](mcp.md). This document covers MCP server registration, CRUD API, tool naming, discovery, and execution. For MCP-client support in the in-process runtime (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth), see [runtime-mcp.md](runtime-mcp.md).
+> Part of the [MCP spec family](mcp.md). This document covers MCP server registration, CRUD API, tool naming, discovery, and execution. For MCP-client support in the in-process runtime (shared core MCP module, HTTP + optional stdio transport, pluggable auth), see [runtime-mcp.md](runtime-mcp.md).
 
 ## Abstract
 
@@ -267,7 +267,7 @@ MCP-specific `-32002` onto the standard JSON-RPC `-32602`, so the client maps
 `-32002 → -32602` before surfacing or classifying an error
 (`normalize_mcp_error_code`).
 
-The negotiation engine lives in `everruns-mcp` (`protocol.rs` for the pure
+The negotiation engine lives in `everruns-core` (`mcp` feature) (`protocol.rs` for the pure
 pieces, `http.rs` for the egress-bound orchestration); see
 [runtime-mcp.md](runtime-mcp.md). Server-side adoption of `2026-07-28` on
 Everruns' own `/mcp` endpoint (accepting `_meta`/session-less requests, emitting
@@ -618,10 +618,10 @@ A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this 
 
 | Crate | Responsibility |
 |-------|----------------|
-| `everruns-core` | Neutral MCP wire/config types (`McpServer`, `McpToolDefinition`) and transport-independent tool-name helpers (`mcp_tool_name`, `parse_mcp_tool_name`, `is_mcp_tool`) |
-| `everruns-mcp` | MCP client transports plus virtual-capability IDs and adapter (`McpCapability`) |
-| `everruns-server` | API routes, gRPC services, database operations |
-| `everruns-worker` | Runtime adapter and scoped server resolution injected into `everruns-mcp` |
+| `everruns-core` | Neutral MCP wire/scoped config types (`ScopedMcpServer`, `McpToolDefinition`) and transport-independent tool-name helpers (`mcp_tool_name`, `parse_mcp_tool_name`, `is_mcp_tool`) |
+| `everruns-core` (`mcp` feature) | MCP client transports plus virtual-capability IDs and adapter (`McpCapability`) |
+| `everruns-server` | Control-plane `McpServer` records, API routes, gRPC services, database operations |
+| `everruns-worker` | Runtime adapter and scoped server resolution injected into `everruns-core` (`mcp` feature) |
 
 ### Key Components
 

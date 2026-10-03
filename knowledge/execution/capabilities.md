@@ -134,7 +134,7 @@ layer. See [guardrails.md](guardrails.md).
 ### Neutral capability contract
 
 One open identity/configuration contract is shared by the Framework and the
-product (EVE-873), owned by `crates/capability` (`everruns-capability`):
+product (EVE-873), owned by `crates/contracts/src/capability` (`everruns-contracts`):
 validated `CapabilityId`s, the `CapabilityRef` reference/config value,
 `CapabilitySpec` plus the non-sealed `IntoCapability` conversion boundary, the
 code-defined capability authoring surface (`definition` feature), structured
@@ -154,8 +154,8 @@ Contract rules:
   (`__everruns_`) and open string IDs are enforced there.
 - `CapabilityRef` redacts its config from `Debug`; attachment rows flowing
   through logs never expose config payloads.
-- The contract crate depends on neither `everruns-core` nor `everruns-host`
-  and carries no Tokio/HTTP/SQLx/OpenAPI/inventory edge, so third-party
+- The contracts crate has no dependency on core or its host module. HTTP,
+  database codecs, OpenAPI derives, and sandbox inventory are opt-in, so third-party
   capability crates can depend on it alone
   (`crates/everruns/tests/fixtures/external-consumer/capability-pack/`
   proves this;
@@ -165,9 +165,9 @@ Contract rules:
   step and CI job `capability-contract`) fails any new capability
   ID/config/definition type in core, host, or platform.
 
-Capability identity/configuration lives in `everruns-capability`. Runtime
+Capability identity/configuration lives in `everruns-contracts`. Runtime
 execution contracts, the registry, and neutral collection algorithms live in
-`everruns-core`. Portable implementations live in `everruns-builtins`;
+`everruns-core`. Portable implementations live in `everruns-core` (`builtins` feature);
 environment and hosted implementations live in their owning
 integration/product crates. No implementation bundle registers itself merely
 by being linked. The environment, portable, and hosted isolation guards enforce
@@ -179,9 +179,9 @@ Capability implementations are composed explicitly by the selected host:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ everruns-capability: identity + configuration contract │
+│ everruns-contracts: identity + configuration contract    │
 │ everruns-core: registry, contracts + neutral kernel    │
-│ everruns-builtins/integrations/product: implementations│
+│ core builtins/integrations/product: implementations      │
 └───────────────────────────┬─────────────────────────────┘
                             ↑ platform -> core
 ┌─────────────────────────────────────────────────────────┐
@@ -204,11 +204,12 @@ Capability implementations are composed explicitly by the selected host:
 └─────────────────────────────────────────────────────────┘
 ```
 
-- Portable policy capabilities are defined in **everruns-builtins**. Linking
+- Portable policy capabilities are defined in core’s **`builtins` feature**. Linking
   the crate has no side effect; registry composition calls its registration
   function explicitly and collision checks are fail-closed.
-- Core owns only the registry, contracts, and neutral collection algorithms.
-- `everruns-host::runtime_capability_registry()` and
+- Default core owns the registry, contracts, and neutral collection algorithms;
+  portable implementations are selected by its `builtins` feature.
+- `everruns::batteries::runtime_capability_registry()` and
   `compose_runtime_capability_registry(base)` add feature-selected embedded
   integrations.
 - `everruns-capabilities::capabilities::hosted_capability_registry_for_grade()`
@@ -549,7 +550,7 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 
 ##### Capability-Contributed Skills
 
-Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-builtins` then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/core/src/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
+Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-core` (`builtins` feature) then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/core/src/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
 
 ### Capability Dependencies
 
@@ -928,7 +929,7 @@ OpenUI is a pure system prompt capability, it provides no tools. It instructs th
 
 ##### Design Decision: Component Library from Crate
 
-The system prompt is generated by the OpenUI module in `everruns-builtins`, which defines the full component library (50+ components across 7 groups: Content, Tables, Charts 2D, Charts 1D, Forms, Buttons, Layout). Component signatures are included in the prompt so the LLM knows valid props.
+The system prompt is generated by the OpenUI module in `everruns-core` (`builtins` feature), which defines the full component library (50+ components across 7 groups: Content, Tables, Charts 2D, Charts 1D, Forms, Buttons, Layout). Component signatures are included in the prompt so the LLM knows valid props.
 
 See `knowledge/ui/openui.md` for full architecture and UI integration details.
 
@@ -1178,7 +1179,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 
 ### Adding New Capabilities
 
-1. Choose the implementation owner: backend-neutral policy in `everruns-builtins`; environment or hosted behavior in its integration/product crate. Implement the `Capability` trait from `everruns-core`.
+1. Choose the implementation owner: backend-neutral policy in `everruns-core` (`builtins` feature); environment or hosted behavior in its integration/product crate. Implement the `Capability` trait from `everruns-core`.
 2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in the owner and return it from `fn id()` (see **Built-in Capability ID Constants** above).
 3. Re-export the constant and implementation from the owning crate's public root.
 4. Add it to the owning crate's explicit registration function and each

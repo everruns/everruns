@@ -132,17 +132,17 @@ bedrock = ["dep:everruns-drivers", "everruns-drivers/bedrock-default-credentials
 # Typed decision: the TypeSafe-backed `DecisionsService` behind
 # `Decisions`, re-exported so one import reaches both halves.
 typesafe = ["dep:everruns-integrations-typesafe"]
-# Framework observability is opt-in. Each feature enables only its host
-# exporter and leaves default and no-default builds offline.
 # Serve an AG-UI 1.0 run from any session (`everruns::ag_ui`): the protocol
 # types, the shared runtime-event projection, and an interrupt gate for
-# `ask_user` and tool approvals. Off by default; it adds only the
-# transport-free `everruns-ag-ui` crate, never an HTTP server.
+# `ask_user` and tool approvals. Off by default; it enables core's
+# transport-free AG-UI types and projection without an HTTP server.
 ag-ui = ["builtins", "everruns-core/ag-ui", "everruns-core/ag-ui-projection", "dep:futures", "dep:serde"]
 # A ready-made axum handler for `ag-ui` (`everruns::ag_ui::AgUiHandler`):
 # authorizer, thread resolution, SSE framing and keepalive. A separate opt-in
 # so `ag-ui` alone stays free of an HTTP server dependency.
 ag-ui-axum = ["ag-ui", "dep:axum"]
+# Framework observability is opt-in. Each feature enables only its host
+# exporter and leaves default and no-default builds offline.
 otel = ["everruns-core/otel"]
 braintrust = ["everruns-core/braintrust"]
 
@@ -168,8 +168,6 @@ everruns-drivers = { workspace = true, optional = true }
 # `hosted` feature off, so enabling `typesafe` on the facade does not drag in
 # everruns-capabilities. Guarded by scripts/lib/check-portable-builtins-isolation.sh.
 everruns-integrations-typesafe = { workspace = true, optional = true }
-# AG-UI wire types plus the transport-free projection the server and `serve`
-# share. Activated by `ag-ui`.
 # The `AgUiHandler` route and SSE response. Activated by `ag-ui-axum`.
 axum = { workspace = true, optional = true }
 async-trait.workspace = true

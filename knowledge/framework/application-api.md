@@ -20,7 +20,7 @@ implementation crates. Session history and resume are application concerns,
 but their durable source is the canonical event log rather than a writable
 message store.
 
-`everruns-host` is the neutral, non-application-facing implementation boundary
+`everruns-core` (`host` feature) is the neutral, non-application-facing implementation boundary
 for shared effectful orchestration, and the only low-level host boundary. There
 is no separate runtime compatibility crate.
 
@@ -69,8 +69,8 @@ The application execution boundary is the concrete `everruns::Engine`.
 implementation. `Agent` is immutable behavior; an Engine owns Agent snapshots,
 the session catalog, and the backend bundle needed to execute and resume those
 sessions. `Session` is engine-bound and does not expose its private execution
-binding, concrete in-process runtime, stores, or platform DTOs. The separate
-`everruns-engine` crate owns shared Input/Reason/Act execution and turn
+binding, concrete in-process runtime, stores, or platform DTOs. The `engine` feature of
+`everruns-core` owns shared Input/Reason/Act execution and turn
 planning; it is the lower-level host kernel, not an application-pluggable
 Engine implementation.
 
@@ -114,23 +114,22 @@ support; this does not imply the entire hosted catalog is executable by default.
 An ordinary application targets `everruns` alone for agent configuration and
 execution. The facade-only acceptance fixture enforces that boundary and is
 intentionally stricter than the requirement for a complete execution host.
-The default facade and `everruns-host --no-default-features` graphs do not
-contain `everruns-capabilities`, Reqwest, Rustls, or Hyper. `everruns-host` owns
-the session mutation/storage capability boundary and platform re-exports it;
-hosted product services remain opt-in through
-platform-enabled product composition.
+The default facade and core host graphs do not contain `everruns-capabilities`,
+Reqwest, Rustls, or Hyper. Core’s `host` feature owns the session
+mutation/storage capability boundary; hosted product services remain opt-in
+through product composition.
 
-An advanced system integrator may combine `everruns` with `everruns-host` and
-focused engine, MCP, provider, and integration crates. `everruns-engine` is the
-portable executor/planner boundary; `everruns-host` supplies deployment
-composition and lifecycle I/O. That modular composition is
-healthy: success means the host composes focused crates deliberately, not that
-every transport, backend, or integration is re-exported by one facade.
+Advanced hosts use `everruns-core` with selected `engine`, `host`, `builtins`,
+`mcp`, and AG-UI features, plus `everruns-contracts` for neutral provider and
+extension types. Core’s host composition accepts injected services;
+[`everruns::batteries`](../../crates/everruns/src/batteries.rs) selects concrete
+integrations and provider wiring. These hosts never depend on control-plane
+records, which belong to `everruns-server`.
 
 ## Audited application and host surfaces
 
 The inventory covers the public [repository README](../../README.md),
-[host README](../../crates/host/README.md),
+[core README](../../crates/core/README.md),
 [Everruns skill](../../skills/everruns/SKILL.md), and
 [custom backends guide](../../docs/framework/custom-backends.md). It also includes
 the in-process, inspection, real-disk, plugin, mount, and Lua examples
@@ -146,7 +145,7 @@ that examples do not: the offline
 [local host builder](../../crates/everruns/src/local/runtime_builder.rs), and the
 [live subagent host test](../../crates/llm-tests/tests/subagent_live_test.rs).
 The decision below is the durable decision for each family; individual
-implementation tests inside `crates/host` remain host coverage, not additional
+implementation tests inside `crates/core/tests/consolidated/host` remain host coverage, not additional
 application entrypoints.
 
 ## Deliberately low-level host concerns
@@ -169,7 +168,8 @@ application configuration:
 These are valid extension points for server, worker, evaluation, research, or
 specialized embedding hosts. Re-exporting their backend-oriented entities from
 the Framework would recreate the coupling the application API is intended to
-remove. Advanced integrations depend on `everruns-host` directly.
+remove. Advanced integrations select core’s `host` feature and declare neutral
+`everruns-contracts` types directly.
 
 ## Decision of existing public use cases
 
@@ -201,7 +201,7 @@ remove. Advanced integrations depend on `everruns-host` directly.
 | Local subagent tests with a custom platform store/task registry/session runner | Host-only | The public local profile does not claim to own that specialized topology or its runner lifecycle. |
 
 The decision names the owning entrypoint for each use case; host-only
-rows stay reachable through `everruns-host` and its focused siblings.
+rows stay reachable through core’s opt-in modules and facade batteries.
 
 ## Session work boundary
 

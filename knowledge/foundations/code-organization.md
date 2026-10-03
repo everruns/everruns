@@ -107,15 +107,15 @@ bridge. `everruns-core` carries no simulator edge, product registries never
 register fixtures, and `scripts/lib/check-test-support-isolation.sh`
 (pre-push + CI) enforces these boundaries. Concrete
 application-grade agent, harness, session, and provider stores live in
-`everruns-host`; hosted conversation writes append only to its canonical
+`everruns-core` (`host` feature); hosted conversation writes append only to its canonical
 `EventLog`, with `EventHistory` providing the read-only message projection.
 
 Telemetry initialization and exporter implementations live in
-`everruns-host::observability`: opt-in OTLP exporter wiring,
+`everruns_core::host::observability`: opt-in OTLP exporter wiring,
 tracing-subscriber layers, `TelemetryConfig`/`init_telemetry`, the
 `CompositeEventListener` fan-out, and the OTel/Braintrust listeners.
-`everruns-core` keeps only neutral contracts and carries no exporter dependencies;
-server and worker binaries enable the host feature explicitly.
+Default core keeps neutral contracts and carries no exporter dependencies;
+server and worker binaries enable the opt-in exporter features explicitly.
 `scripts/lib/check-observability-isolation.sh` (pre-push + CI) enforces the
 boundary and keeps Framework/provider dependency trees exporter-free.
 
@@ -130,24 +130,24 @@ resolution tasks, and the `turn.sealed` projection of a sealed task) live in
 Environment-backed capability implementations live outside `everruns-core`.
 Core owns the capability, tool, filesystem, egress, and MCP-neutral contracts;
 focused integration crates own filesystem, Bashkit, web fetch, Lua, and
-OpenRouter workspace behavior, while `everruns-mcp` owns the MCP capability
-adapter and `everruns-host` owns its concrete direct HTTP transport alongside
-the other in-process effects it composes. `everruns-host` composes
-feature-selected integrations for embedders, and `everruns-capabilities`
-composes the complete hosted-product catalog. The
+OpenRouter workspace behavior. Core’s `mcp` feature owns the MCP capability
+adapter; its separate `direct-egress` feature owns the concrete HTTP transport.
+Core’s host module accepts injected services. `everruns::batteries` selects
+concrete integrations for embedders, and `everruns-capabilities` composes the
+complete hosted-product catalog. The
 `scripts/lib/check-environment-capability-isolation.sh` pre-push/CI guard keeps
 the implementation modules and their shell/interpreter/transport dependencies
-out of core and the default Framework dependency tree.
+out of default core and the default Framework dependency tree.
 
 Core's per-turn service contracts follow the same ownership rule internally:
 loading, provider resolution, tool context, filesystem, session services,
 durability, events, images, connections, and delegation each have a focused module. A generic
 `traits` module is not a public boundary. Host-only construction contracts,
-including `SessionFileSystemFactory`, live in `everruns-host` with the
+including `SessionFileSystemFactory`, live in `everruns-core` (`host` feature) with the
 composition that consumes them.
 
 Hosted capability implementations live in `everruns-capabilities` (EVE-885):
-platform depends on the neutral `everruns-host` extension ports and installs
+platform depends on the neutral `everruns-core` (`host` feature) extension ports and installs
 typed context services, subagent delegation, and turn-dependent hosted tools.
 The reverse `host -> platform` edge is forbidden so the reusable execution
 host remains product-independent.
@@ -161,7 +161,7 @@ advertise service-backed product capabilities. The capability-isolation guard
 keeps these implementations and their service contracts out of core.
 
 Session metadata and key/secret storage are host services, not product
-entities. `everruns-host` owns `SessionMutator` plus the portable
+entities. `everruns-core` (`host` feature) owns `SessionMutator` plus the portable
 `session` and `session_storage` capabilities, and platform re-exports that surface. The
 default Framework host can therefore provide them without compiling the
 control plane. `session_sql_database` and `session_sandbox` stay in
@@ -181,14 +181,13 @@ not from environment variables in the kernel.
 and imports only the contracts needed by neutral execution. It does not
 re-export provider-owned modules. Low-level consumers declare
 `everruns-contracts` directly; the application-facing `everruns` facade may
-selectively expose the coherent Framework API from either owner. Crates that
-pull in the host (for example `everruns`'s `local` feature → `everruns-host`) still depend
-on full `everruns-core`.
+selectively expose the coherent Framework API from either owner. Core’s optional
+host modules retain that boundary; enabling a host feature does not introduce a reverse edge into the facade or product crate.
 
 Two pin conventions follow from package publishability:
 
 - **Unpublished** crates reference path deps without a version
-  (`{ path = "../../provider" }` for crates nested under `crates/drivers/`;
+  (`{ path = "../../contracts" }` for crates nested under `crates/drivers/`;
   top-level workspace crates use their corresponding sibling path).
 - **Published** crates inherit the one platform version with
   `version.workspace = true` and never declare a version of their own. Their
@@ -202,7 +201,7 @@ Two pin conventions follow from package publishability:
 - **Dev-dependencies** stay version-less by default: `cargo publish` strips a
   version-less path dev-dependency, which keeps siblings that dev-depend on each
   other free of a publish-order deadlock. A dev-dependency that needs features the
-  workspace entry does not carry (`everruns-ard` dev-depends on `everruns-host`
+  workspace entry does not carry (`everruns-ard` dev-depends on `everruns-core`
   with `direct-egress`) spells out its own version and is then synced like any
   other pin, because a release moves every crate's version and would otherwise
   leave the published crate requesting a version that no longer exists.
@@ -288,7 +287,7 @@ files, the Rust toolchain pin, or the CI workflow itself change.
 - `everruns-drivers` - LLM vendor drivers, request/response parsing
 - `everruns-internal-protocol` - Protobuf definitions
 - `everruns-core` - Agent logic, tool handling, prompt building
-- `everruns-host` - in-process runtime and shared host-phase orchestration
+- `everruns-core` (`host` feature) - in-process runtime and shared host-phase orchestration
 - `everruns-cli` - subprocess integration tests for help text, auth profile handling, and file-sync argument validation
 
 Note: `everruns-cli` is binary-only (no lib target). Keep its lightweight subprocess

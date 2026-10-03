@@ -25,13 +25,9 @@ exclude = ["testdata/", "src/ag_ui/spec/1.0/fixtures", "src/ag_ui/spec/1.0/confo
 
 [dependencies]
 # Provider/LLM abstraction foundation (typed IDs, credential schema, user-facing
-# error taxonomy, compact contracts, URL validation). Core enables no concrete
-# provider transport and does not re-export provider-owned modules.
+# error taxonomy, capability identity, compact contracts, URL validation). Core
+# enables no concrete provider transport or provider-owned module re-exports.
 everruns-contracts = { workspace = true, default-features = false }
-
-# Neutral capability contract (EVE-873): capability identity, references, and
-# registry index. Only the identity surface — the code-defined authoring
-# surface (`definition` feature) is consumed by `everruns`, not core.
 
 # Core dependencies
 anyhow.workspace = true
@@ -40,7 +36,7 @@ async-trait.workspace = true
 
 # Async runtime
 # `sync` backs channels/locks, `rt` backs parallel turn tasks, and `time` backs
-# bounded retry and stream-liveness timers. Core performs no networking.
+# bounded retry and stream-liveness timers. Default core performs no networking.
 tokio = { version = "1.50", default-features = false, features = ["sync", "rt", "time", "macros"] }
 # `CancellationToken` for cooperative tool-call cancellation (ToolContext).
 tokio-util = { version = "0.7", default-features = false }
@@ -89,10 +85,8 @@ tree-sitter-python = { version = "0.25", optional = true }
 # OpenAPI schema generation (optional, enabled by everruns-server)
 utoipa = { workspace = true, optional = true }
 
-# Database (optional, for TypedId sqlx support)
-
-# Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
-# Tool types are defined locally in this crate
+# Default core is a portable kernel over everruns-contracts, with no database
+# driver or concrete provider transport.
 
 # Plugin system for external integrations
 inventory.workspace = true

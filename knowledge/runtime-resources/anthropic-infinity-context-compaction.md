@@ -392,8 +392,8 @@ Implementation is complete only when all checks pass:
    metadata contains no prompt content.
 10. **Commands:** run:
     - `cargo test -p everruns-drivers --lib --all-features`
-    - `cargo test -p everruns-builtins infinity_context`
-    - `cargo test -p everruns-model-profiles`
+    - `cargo test -p everruns-core --features builtins infinity_context`
+    - `cargo test -p everruns-contracts`
     - `cargo test -p everruns-test-support --test reason_atom_test`
     - `just check-okf`
     - `just pre-push`

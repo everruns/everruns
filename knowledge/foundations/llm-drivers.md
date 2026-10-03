@@ -23,18 +23,17 @@ provider-owned endpoint into the protocol driver.
 
 Official vendor drivers are feature-gated modules of one crate,
 `everruns-drivers` ([`crates/drivers/drivers/`](../../crates/drivers/drivers/README.md)),
-over the neutral `everruns-provider` SPI. They were separate crates through
+over the neutral `everruns-contracts` SPI. They were separate crates through
 0.34.2; one crate means one publish, one version, and one place a host
-picks vendors by feature. The old per-vendor directories under
-[`crates/drivers/`](../../crates/drivers/README.md) hold deprecated shim crates
-for one release only. `everruns-llmsim` stays its own crate because its
-`host` feature depends on `everruns-host`, which depends on the drivers crate.
+picks vendors by feature. The former vendor packages shipped one deprecated
+forwarding release before source deletion. `everruns-llmsim` remains separate so hosts can select a
+deterministic driver independently of concrete vendor transports.
 
 ## Architecture
 
 ```mermaid
 graph TD
-    subgraph Provider [everruns-provider]
+    subgraph Provider [everruns-contracts]
         ChatDriver[ChatDriver Trait]
         Registry[ProviderRegistry]
         Errors[AgentLoopError]
@@ -129,7 +128,7 @@ by open `ProviderKey`. Official integration crates expose ready-made provider
 assemblies; downstream code may construct the same public `Provider` directly.
 
 `DriverDescriptor`/`DriverRegistry` remain as the hosted provider-management
-catalog and the host-facing surface for `everruns-host`. Descriptor factories
+catalog and the host-facing surface for `everruns-core` (`host` feature). Descriptor factories
 compose runtime providers and route into the same registry/execution path; they
 are not a second driver semantics layer.
 
@@ -637,7 +636,7 @@ rather than paginating on that number.
 Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry
 behind an OpenAI-compatible Chat Completions API. The `mai` module of
 `everruns-drivers` wraps the shared
-`OpenAIProtocolChatDriver` (from `everruns-provider`) and tags it with
+`OpenAIProtocolChatDriver` (from `everruns-contracts`) and tags it with
 `DriverId::Mai`. Model ids resolve
 to the Microsoft-vendor profiles in `crates/contracts/src/model_profile_data/profiles.rs` (the
 `MICROSOFT_MAI` surface).
@@ -1194,7 +1193,7 @@ gives; a driver opts in by naming what its vendor reads.
 
 Standalone/dev/CLI entrypoints opt in by constructing `EnvCredentialProvider` and
 passing it where credentials are needed, e.g.
-`everruns_host::InMemoryProviderStore::from_credential_provider(&registry, &EnvCredentialProvider)`,
+`everruns_core::host::InMemoryProviderStore::from_credential_provider(&registry, &EnvCredentialProvider)`,
 the in-memory dev store used by `just start-dev`. **The server path never
 constructs an `EnvCredentialProvider`.**
 

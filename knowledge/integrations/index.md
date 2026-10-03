@@ -4,7 +4,7 @@
 
 * [MCP (Model Context Protocol) Specification](mcp.md) - MCP server endpoint, OAuth 2.1 authentication, protocol, security.
 * [MCP Server Specification](mcp-servers.md) - MCP client remote server registration, CRUD API, tool naming, execution.
-* [Runtime MCP Client Specification](runtime-mcp.md) - MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth.
+* [Runtime MCP Client Specification](runtime-mcp.md) - MCP client in the in-process runtime: shared core MCP module, transport abstraction (HTTP + optional stdio), pluggable auth.
 * [Agent MCP Attachments (acts-as semantics)](agent-mcp-attachments.md) - Make who an MCP server acts as an explicit, fail-closed property of an Agent attachment; org MCP servers become presets; one MCP surface per Agent.
 * [MCP Events: session webhooks out, agent triggers in](mcp-events.md) - /mcp clients subscribe to session webhooks; agents subscribe to their MCP servers' events as `mcp_event` triggers.
 * [Inbound Form Mode Elicitation](mcp-form-elicitation.md) - Answering an attached MCP server's form mode elicitation through ask_user, and the trust rules that shape it.

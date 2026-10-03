@@ -111,7 +111,7 @@ forked chat threads interactive even when their stored session hints predate
 support for the card. The engine recognises the call through
 `ASK_USER_TOOL_NAME` in `everruns-provider`, and `unattended_ask_user_result`
 there is the JSON twin of `DefaultsResponder`; a drift test in
-`everruns-builtins` fails if the two disagree.
+`everruns-core` (`builtins` feature) fails if the two disagree.
 
 ### Deadlines
 

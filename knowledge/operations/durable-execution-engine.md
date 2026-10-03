@@ -16,7 +16,7 @@ Custom PostgreSQL-backed durable execution engine for workflow orchestration wit
 and schedules, with no `everruns-*` dependency (enforced by
 `scripts/lib/check-durable-isolation.sh`). Agent semantics live above it. Turns
 use the worker's `DurableExecution`, the checkpointed driver for
-`everruns-engine::Execution`; the worker's `durable_turn` module owns the
+`everruns_core::engine::Execution`; the worker's `durable_turn` module owns the
 turn-level conventions (the `user_message` signal, idempotent waiting-turn
 resolution tasks via `ActivityOptions::dedupe_by_activity_id`); and the server
 turns a sealed task into `turn.sealed`. The durable crate owns persistence,
@@ -278,7 +278,7 @@ defense tied to *progress* and a deliberate **Sealed** terminal.
   See `crates/durable/src/persistence/store.rs` (`SealedTaskInfo`, `ReclaimResult`)
   and `reclaim_stale_tasks` in the Postgres/in-memory stores.
 
-The turn-level outcome is `everruns_engine::TurnPlan::Terminal` with
+The turn-level outcome is `everruns_core::engine::TurnPlan::Terminal` with
 `everruns_core::TurnStopReason::Sealed`,
 distinct from `Success` and `Failed`. `SealReason` is `no_progress` (this guard)
 or `budget`.

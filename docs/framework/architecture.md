@@ -82,7 +82,7 @@ not implemented by applications. Provider integrations implement the open
 `EventLog`/`EventReader` through `everruns-core` (`host` feature).
 
 An application that is itself an execution host may compose
-`everruns-engine::Execution` with `everruns-core` (`host` feature) or `everruns-durable`. That is
+`everruns_core::engine::Execution` with `everruns-core` (`host` feature) or `everruns-durable`. That is
 an advanced deployment boundary: preserve event ordering, workspace isolation,
 credential separation, cancellation, and committed effect semantics. Start
 with [Custom Backends](/framework/custom-backends/) before crossing it.

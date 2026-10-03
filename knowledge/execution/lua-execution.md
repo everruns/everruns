@@ -266,7 +266,7 @@ superseding bash.
 
 ### Evaluation harness
 
-Lives in **`research/lua-vs-bash`** (a standalone crate over `everruns-host`,
+Lives in **`research/lua-vs-bash`** (a standalone crate over `everruns-core` (`host` feature),
 excluded from the workspace), **not** `knowledge/test-cases/`, which is for manual UI
 testing.
 
@@ -286,7 +286,7 @@ testing.
   up here and must be weighed.
 
 The harness is implemented in `research/lua-vs-bash` (`lua-vs-bash` bin), runs
-both arms over `everruns-host`, and grades against the resulting workspace.
+both arms over `everruns-core` (`host` feature), and grades against the resulting workspace.
 
 ### Empirical results
 

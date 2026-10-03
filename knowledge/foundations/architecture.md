@@ -222,14 +222,14 @@ internals.
 ### Embedded Runtime
 
 Embedders who want to execute Everruns harnesses directly inside their own
-process should use `everruns-host`.
+process should use `everruns-core` (`host` feature).
 
-`everruns-host` provides:
+`everruns-core` (`host` feature) provides:
 
 - `InProcessRuntimeBuilder`
 - in-memory session/filesystem/storage/event backends
-- turn execution via `everruns-engine::TurnExecution` and
-  `everruns-host::InProcessExecution`
+- turn execution via `everruns_core::engine::TurnExecution` and
+  `everruns_core::host::InProcessExecution`
 - direct seeding of harnesses, agents, sessions, and files
 - engine-owned Input/Reason/Act algorithms composed by the host
 
@@ -351,7 +351,7 @@ Workers communicate with the control-plane via gRPC instead of direct database a
 2. **gRPC Client Adapters** (in worker crate):
    - `GrpcAdapter` - Implements session-scoped message, event, filesystem, task, and budget effects via gRPC
    - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, platform, and scheduling effects via gRPC
-   - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-host` host execution
+   - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-core` (`host` feature) host execution
    - `GrpcDurableStore` - Implements durable workflow operations via gRPC
 
 3. **Durable Execution gRPC Operations**:
@@ -466,7 +466,7 @@ The `TaskWorker` provides a unified worker implementation that works with both i
 
 **Benefits of Unified Architecture**:
 - Single codebase for activity implementations (input, reason, act)
-- `everruns-engine` owns the shared turn planner and phase algorithms, so in-process and gRPC-backed workers use the same reason/act continuation, event ordering, and tool-results pause/resume policy
+- `everruns-core` (`engine` feature) owns the shared turn planner and phase algorithms, so in-process and gRPC-backed workers use the same reason/act continuation, event ordering, and tool-results pause/resume policy
 - Shared task scheduling logic
 - Easy to test with mock adapters
 - Consistent behavior across deployment modes
@@ -494,21 +494,22 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
    - `input_message_id` - User message that triggered this turn
    - `exec_id` - Unique identifier for this phase execution
 
-### Shared Execution Kernel (`everruns-engine`)
+### Shared Execution Kernel (`everruns-core`, `engine` feature)
 
-`everruns-engine` owns the `Execution` contract, serializable `TurnExecution`
+`everruns-core` (`engine` feature) owns the `Execution` contract, serializable `TurnExecution`
 state machine, concrete `InputAtom`, `ReasonAtom`, and `ActAtom` algorithms,
 their phase values, post-act helpers, tool scheduler, infrastructure hooks, and
-pure turn planner. There is no generic public `Atom` trait. `everruns-host`
+pure turn planner. There is no generic public `Atom` trait. `everruns-core` (`host` feature)
 retains state in `InProcessExecution`; `everruns-worker` checkpoints the same
 state through `DurableExecution` on the generic `everruns-durable` engine. Hosts inject core/provider contracts and keep
 deployment composition outside the engine.
 
 4. **Concrete In-Memory Implementations**:
-   - `everruns-host` owns application stores and canonical event history
+   - `everruns-core` (`host` feature) owns application stores and canonical event history
    - `everruns-llmsim` owns the deterministic production-safe LLM simulator
    - `everruns-test-support` owns writable deterministic message/event fixtures
-   - `everruns-core` exposes traits and values, not concrete public backends
+   - Default `everruns-core` exposes traits and values; reference backends are
+     available through its opt-in `host` module
 
 ### OpenAI Provider (`everruns_drivers::openai`)
 

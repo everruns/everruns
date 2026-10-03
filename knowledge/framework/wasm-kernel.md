@@ -30,9 +30,9 @@ own storage.
 
 ## Decisions
 
-- **Port the kernel, not the host.** Only `everruns-provider`,
-  `everruns-core` and `everruns-engine` (no default features) build for
-  wasm32. The host, stores, HTTP drivers and the server stay native. The
+- **Port the kernel, not the host.** `everruns-contracts` and `everruns-core`
+  with default features disabled, including core’s portable `engine` feature,
+  build for wasm32. The host, stores, HTTP drivers and the server stay native. The
   engine's `tokio` dependency is narrowed to `rt`, `sync`, `time` and
   `macros`; `getrandom` and `uuid` take their JavaScript backends on that
   target only.

@@ -121,7 +121,7 @@ Two records, for two different questions.
 **The session event log** answers "what happened in this conversation": the
 ask and the grant appear in order, in context, and are readable from
 `/v1/sessions/{id}/events`. This is the only record a portable host
-(`everruns-builtins` alone, or a terminal agent) gets, and for a single-user
+(`everruns-core` (`builtins` feature) alone, or a terminal agent) gets, and for a single-user
 host it is sufficient.
 
 **The org audit log** (`audit_logs`, see [Audit Logging](../security/audit-logging.md))

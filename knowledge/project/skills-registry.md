@@ -278,10 +278,11 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 
 | Crate | Responsibility |
 |-------|----------------|
-| `everruns-core` | Skill types, SKILL.md parser, name validation, stable capability identity and contribution values |
-| `everruns-builtins` | `AttachSkillCapability` + `SkillsCapability` implementations |
-| `everruns-server` | API routes, gRPC services, database operations, ZIP handling |
-| `everruns-worker` | No skill-specific role, the `activate_skill` / `list_skills` tools execute in-process from `everruns-builtins` (`SkillsCapability`) |
+| `everruns-core` | Portable SKILL.md parser and name validation; neutral contribution values |
+| `everruns-contracts` | Stable capability identity |
+| `everruns-core` (`builtins` feature) | `AttachSkillCapability` + `SkillsCapability` implementations |
+| `everruns-server` | Control-plane Skill records, API routes, gRPC services, database operations, ZIP handling |
+| `everruns-worker` | No skill-specific role, the `activate_skill` / `list_skills` tools execute in-process from `everruns-core` (`builtins` feature) (`SkillsCapability`) |
 
 ### Key Components
 

@@ -228,7 +228,7 @@ message. Image bytes are never copied into telemetry (base64 images become a
 | `crates/core/src/telemetry.rs` | Gen-AI attribute names, provider mapping, `content` JSON builders, `error_type` |
 | `crates/server/src/app_builder.rs` | Listener registration |
 
-Ownership boundary: core holds only the neutral observability contracts, the `EventListener` trait, event types, and gen-AI span conventions. `everruns-host::observability` owns telemetry initialization, exporter dependencies, and the `CompositeEventListener` fan-out behind an opt-in feature. The isolation guard keeps exporter crates out of core and default Framework/provider dependency trees.
+Ownership boundary: default core holds neutral observability contracts, the `EventListener` trait, event types, and gen-AI span conventions. `everruns_core::host::observability` owns telemetry initialization, exporter dependencies, and the `CompositeEventListener` fan-out behind an opt-in feature. The isolation guard keeps exporter crates out of default core and default Framework/provider dependency trees.
 
 ---
 

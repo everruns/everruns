@@ -21,7 +21,7 @@ Before EVE-1100, an application built on the `everruns` crate could observe even
 awaited lifecycle hooks on `AgentBuilder` (`crates/everruns/src/agent.rs`).
 
 It could not register a push listener. OpenTelemetry and Braintrust exist as
-`everruns_core::EventListener` implementations in `everruns-host/observability`
+`everruns_core::EventListener` implementations in `everruns_core::host::observability`
 (`crates/core/src/host/observability/mod.rs`), but only the server wires them
 (`crates/server/src/app_builder.rs`). A framework user has to pump each
 session's stream by hand, re-deserialize core events, and remember to do it again for
@@ -147,7 +147,7 @@ The framework never installs a global tracer or `tracing` subscriber on its own.
 ### 7. Features and stability
 
 - Independent `everruns` features `otel` and `braintrust` forward to their
-  matching `everruns-host` exporter features. Default features stay offline.
+  matching `everruns-core` exporter features. Default features stay offline.
 - The new surface is marked `Stability: Alpha` (see `crates/everruns/src/stability.rs`).
 - Update `knowledge/framework/application-api.md`, which lists promoted concerns,
   and `docs/observability/*` with a framework section.

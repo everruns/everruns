@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-Everruns is embeddable through a shared `HostComposition`, owned by `everruns-host`, the layer that executes a turn, rather than by the kernel (EVE-887). An embedder can assemble a custom runtime surface, then pass the same composition to the control plane and worker so capabilities, LLM drivers, and host services stay aligned. Hosted product services, built-in harness templates (EVE-881), the connector registry, and the system email sender (EVE-879), are composed on `ServerAppBuilder` instead.
+Everruns is embeddable through a shared `HostComposition` in `everruns_core::host` (the `host` feature), outside the default portable kernel. An embedder can assemble a custom runtime surface, then pass the same composition to the control plane and worker so capabilities, LLM drivers, and host services stay aligned. Hosted product services, built-in harness templates (EVE-881), the connector registry, and the system email sender (EVE-879), are composed on `ServerAppBuilder` instead.
 
 This spec defines the contract for embedding. See `crates/core/src/host/composition.rs` for the public Rust API.
 
@@ -34,9 +34,10 @@ This spec defines the contract for embedding. See `crates/core/src/host/composit
 - Session filesystem factory
 - Vector store
 
-The type lives in `everruns-host`, the layer that consumes it, so constructing
-an execution host does not make the kernel own deployment composition and does
-not require depending on `everruns-server`.
+The type lives in the optional core host module, so constructing an execution
+host does not require `everruns-server`. Concrete integration selection belongs
+to [`everruns::batteries`](../../crates/everruns/src/batteries.rs); the core host
+accepts injected services.
 
 Hosted control-plane services live on `ServerAppBuilder`, not on
 `HostComposition`: `built_in_harnesses` (EVE-881), `connector_registry`,
@@ -56,9 +57,10 @@ engine or control-plane server, should use the application-facing `everruns`
 crate and the Everruns Framework. This document owns the lower-level
 `HostComposition` composition contract, not the normal application path.
 
-Advanced hosts may use `everruns-host`, the only low-level host boundary. It
-owns `HostComposition` and uses the shared `everruns-engine` planner, keeping
-low-level in-process hosts aligned with worker behavior.
+Advanced hosts use `everruns-core`’s `host` feature, which enables the shared
+`engine` planner, plus `everruns-contracts` for neutral extension types. Facade
+batteries supply optional concrete integrations. The same host composition
+keeps in-process execution aligned with worker behavior.
 
 See [knowledge/framework/](../framework/) for application-facing ownership and
 [the runtime specification](runtime.md) for the low-level host contract.

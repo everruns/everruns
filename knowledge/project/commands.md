@@ -52,7 +52,7 @@ Decisions:
 ### One implementation, three hosts
 
 Core provides only the credential-free `CommandHost` contract. The concrete
-`everruns_host::StoreCommandHost` is built from the host's store traits
+`everruns_core::host::StoreCommandHost` is built from the host's store traits
 (`HarnessStore`, `AgentStore`, `SessionStore`, `MessageRetriever`,
 `ProviderStore`, optional `ImageResolver`/`SessionFileSystem`) plus the
 capability and driver registries. It reuses host-owned `inspect_turn_context`

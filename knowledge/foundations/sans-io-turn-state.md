@@ -91,15 +91,15 @@ cannot be verified against current behavior does not ship.
 
 The migration began with a temporary serializable value in core and a
 conformance test against the former mutable machine. That scaffolding was
-removed once `everruns-engine::TurnExecution` became the only representation.
+removed once `everruns_core::engine::TurnExecution` became the only representation.
 
 Nothing is rewired. The deliverable is a representation both hosts *could*
 share, plus the evidence that it behaves identically.
 
 ### Stage 1b, one planner, two hosts (landed)
 
-`crates/engine`: the planner moved out of the runtime into `everruns-engine`
-(EVE-840), then `InProcessRuntime::run_turn` was rewired onto it (EVE-842). The
+The planner moved out of the runtime in EVE-840 and now lives in
+`crates/core/src/engine` behind the `engine` feature, then `InProcessRuntime::run_turn` was rewired onto it (EVE-842). The
 in-process loop no longer decides reason-vs-act-vs-complete; it executes the host
 operation each `TurnPlan` names and performs the returned `TurnLifecycleEffect`s.
 `crates/everruns/tests/host/engine_planned_turn_test.rs` carries the behavior-preserving
@@ -109,15 +109,15 @@ evidence and the restart-between-steps property.
 
 The concrete Input, Reason, and Act algorithms, phase I/O values, post-act
 helpers, scheduler, and infrastructure hooks live beside the planner in
-`everruns-engine`. `everruns-core` retains the neutral `ExecutionContext`,
+`everruns-core` (`engine` feature). `everruns-core` retains the neutral `ExecutionContext`,
 per-tool hook contracts, and injected service traits. Both in-process and
-durable paths call the same host composition over these engine executors; core
-has no atom implementation or compatibility module.
+durable paths call the same host composition over these engine executors;
+the default kernel contains no atom implementation or compatibility module.
 
 ### Stage 1d, one execution machine, two drivers (landed)
 
-`everruns-engine::TurnExecution` owns state advancement as well as planning.
-`everruns-host::InProcessExecution` retains it for the turn lifetime;
+`everruns_core::engine::TurnExecution` owns state advancement as well as planning.
+`everruns_core::host::InProcessExecution` retains it for the turn lifetime;
 `everruns-worker::DurableExecution` checkpoints the same state between
 durable activities. A cross-driver conformance test feeds identical outcomes into both
 implementations and compares the resulting engine state.
@@ -159,7 +159,7 @@ path retains `InProcessExecution` and applies the same transition directly.
 - **Behavior-preserving.** For a fixed scenario, the emitted event sequence
   before and after each stage is identical. This is the primary bar; a stage
   that cannot demonstrate it does not ship.
-- **No new representation.** `everruns-engine::TurnState` is the only turn
+- **No new representation.** `everruns_core::engine::TurnState` is the only turn
   state. Two copies of a field is the failure mode this work prevents.
 - **Durable equivalence.** A test that discards `TurnState` at every step and
   rebuilds it from the serialized value must produce the same outcome as one

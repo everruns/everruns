@@ -26,8 +26,8 @@ phases, or a control plane to run an agent.
 
 - **Framework** means the application-facing `everruns` crate and its public
   library experience.
-- **Runtime** means low-level host execution. `everruns-host` is the crate that
-  implements it, not a synonym for Framework.
+- **Runtime** means low-level host execution, implemented by `everruns-core`’s
+  `host` feature. It is distinct from the application-facing Framework.
 - **SDKs** are remote clients for a running Everruns server. They do not embed
   Framework execution in the client process.
 - **Platform** is the control plane, server, workers, UI, durable storage, and
@@ -38,14 +38,14 @@ not alternative product names for the Framework.
 
 ## Crate relationships
 
-`everruns` composes the application contract over focused implementation
-crates. Core owns shared agent and provider-facing values; provider owns the
-lean model-driver abstraction; engine owns the abstract execution contract,
-state machine, atoms, and deterministic turn planning; host owns the immediate
-in-process driver, shared effect application, backend composition, event persistence,
-and low-level in-process execution; local supplies optional local host state;
-macros implements the tool attribute re-exported by `everruns`; platform owns
-backend control-plane entities.
+`everruns` supplies application values, optional local state, and concrete
+batteries. `everruns-core` owns the portable execution kernel and feature-selected
+engine, host, built-in, MCP, and AG-UI modules. `everruns-contracts` owns neutral
+provider, capability, and extension contracts; `everruns-drivers` supplies
+feature-selected vendors. `everruns-macros` implements the tool attribute
+re-exported by the facade. Hosted capabilities belong to
+`everruns-capabilities`, while control-plane records belong only to
+`everruns-server`.
 
 Those implementation relationships do not make the focused crates alternative
 application entrypoints. Advanced hosts may depend on the focused crates they

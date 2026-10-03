@@ -19,7 +19,7 @@ Proceed with a limited OpenAI-only backend, not a default runtime replacement. T
 
 The backend is opt-in at three layers, so the default worker path is unchanged:
 
-1. **Compiled** with the `everruns-host/openai-agents-api` Cargo feature (the worker and server enable it).
+1. **Compiled** with the `everruns-core/openai-agents-api` Cargo feature (the worker and server enable it).
 2. **Allowed** per org by the `openai_agents_api` [rollout-grade policy](../security/feature-flags.md), with platform-managed internal enrolment by default. `FEATURE_OPENAI_AGENTS_API` overrides its grade. The flag gates the `openai_agents_api_runtime` capability; the server strips gated capabilities from the worker snapshot and rejects them on agent, harness, and session writes.
 3. **Selected** per agent or session by that capability, a marker with no tools or prompt ([platform capability](../../crates/capabilities/src/capabilities/openai_agents_api_runtime.rs)).
 
