@@ -6741,8 +6741,15 @@
             "null"
           ]
         },
+        "playground_user_id": {
+          "description": "Fixed Playground end user. Defaults to the caller's linked virtual user. Only valid with source=playground.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "source": {
-          "description": "How this session was started. Clients may declare only `chat` (an\ninteractive thread) or `api` (the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
+          "description": "How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`\n(the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
           "example": "chat",
           "type": [
             "string",
@@ -9680,6 +9687,13 @@
                 }
               ]
             },
+            "archived_only": {
+              "description": "Return only archived sessions.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "created_after": {
               "description": "Inclusive lower bound on `created_at` (RFC 3339).",
               "type": [
@@ -9715,6 +9729,17 @@
                 "null"
               ]
             },
+            "playground_user_id": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/identityId",
+                  "description": "Fixed Playground end-user identity."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "search": {
               "description": "Case-insensitive title substring match.",
               "type": [
@@ -9743,6 +9768,12 @@
           "description": "Prefixed identifier with 'agent' prefix",
           "example": "agent_01933b5a000070008000000000000001",
           "pattern": "^agent_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "identityId": {
+          "description": "Prefixed identifier with 'identity' prefix",
+          "example": "identity_01933b5a000070008000000000000001",
+          "pattern": "^identity_[0-9a-f]{32}$",
           "type": "string"
         }
       },
@@ -12796,6 +12827,13 @@
                 }
               ]
             },
+            "archived_only": {
+              "description": "Return only archived sessions.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "created_after": {
               "description": "Inclusive lower bound on `created_at` (RFC 3339).",
               "type": [
@@ -12831,6 +12869,17 @@
                 "null"
               ]
             },
+            "playground_user_id": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/identityId",
+                  "description": "Fixed Playground end-user identity."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "search": {
               "description": "Case-insensitive title substring match.",
               "type": [
@@ -12859,6 +12908,12 @@
           "description": "Prefixed identifier with 'agent' prefix",
           "example": "agent_01933b5a000070008000000000000001",
           "pattern": "^agent_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "identityId": {
+          "description": "Prefixed identifier with 'identity' prefix",
+          "example": "identity_01933b5a000070008000000000000001",
+          "pattern": "^identity_[0-9a-f]{32}$",
           "type": "string"
         }
       },

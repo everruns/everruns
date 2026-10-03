@@ -10,7 +10,6 @@
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
 use crate::test_harness;
-
 use chrono::Utc;
 use serde_json::json;
 use sqlx::{Connection, PgConnection, PgPool};
@@ -566,6 +565,7 @@ async fn test_agent_get_by_name() {
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
+mod playground;
 #[path = "repository_integration_test/runtime_connections.rs"]
 mod runtime_connections;
 

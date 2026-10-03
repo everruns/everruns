@@ -36,6 +36,8 @@ export async function createSession(request: CreateSessionRequest): Promise<Sess
  * lets the facet counts annotate the very rows the list returns.
  */
 export interface SessionListFilters {
+  playgroundUserId?: string;
+  archivedOnly?: boolean;
   /** Filter by agent public id. */
   agentId?: string;
   /** Case-insensitive title substring match. */
@@ -58,6 +60,8 @@ export interface SessionListFilters {
 
 function sessionFilterParams(filters?: SessionListFilters): URLSearchParams {
   const searchParams = new URLSearchParams();
+  if (filters?.playgroundUserId) searchParams.set("playground_user_id", filters.playgroundUserId);
+  if (filters?.archivedOnly) searchParams.set("archived_only", "true");
   if (filters?.agentId) searchParams.set("agent_id", filters.agentId);
   if (filters?.search) searchParams.set("search", filters.search);
   if (filters?.source) searchParams.set("source", filters.source);

@@ -382,6 +382,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

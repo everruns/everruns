@@ -469,6 +469,7 @@ impl SessionService {
                 .as_ref()
                 .map(|version| version.config_hash.clone()),
             virtual_user_id,
+            playground_user_id: req.playground_user_id,
             owner_principal_id,
             resolved_owner_user_id,
             title: req.title,
@@ -524,7 +525,8 @@ impl SessionService {
             // User memory is private to the resolved user. Do not materialize it
             // into caller-attached shared workspaces because workspace files are
             // currently workspace-wide rather than participant-local.
-            user_id: if workspace_id.is_none() {
+            user_id: if workspace_id.is_none() && !self.db.is_playground_session(session.id).await?
+            {
                 resolved_owner_user_id
             } else {
                 None
@@ -650,6 +652,7 @@ impl SessionService {
         let requested_goal = req.goal.clone();
 
         let input = CreateSessionRow {
+            playground_user_id: None,
             workspace_id: None,
             org_id,
             source,

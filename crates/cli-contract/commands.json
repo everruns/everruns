@@ -7455,6 +7455,13 @@
         "help": "Request-level parallel tool calling preference (EVE-598)."
       },
       {
+        "field": "playground_user_id",
+        "long": "playground-user-id",
+        "kind": "string",
+        "required": false,
+        "help": "Fixed Playground end user."
+      },
+      {
         "field": "source",
         "long": "source",
         "kind": "string",
@@ -7888,6 +7895,13 @@
         "required": false
       },
       {
+        "field": "archived_only",
+        "long": "archived-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return only archived sessions."
+      },
+      {
         "field": "created_after",
         "long": "created-after",
         "kind": "string",
@@ -7921,6 +7935,12 @@
         "kind": "string",
         "required": false,
         "help": "`created_at` (default) or `last_activity`."
+      },
+      {
+        "field": "playground_user_id",
+        "long": "playground-user-id",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "search",
@@ -8435,6 +8455,13 @@
         "required": false
       },
       {
+        "field": "archived_only",
+        "long": "archived-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return only archived sessions."
+      },
+      {
         "field": "created_after",
         "long": "created-after",
         "kind": "string",
@@ -8482,6 +8509,12 @@
         "kind": "string",
         "required": false,
         "help": "`created_at` (default) or `last_activity`."
+      },
+      {
+        "field": "playground_user_id",
+        "long": "playground-user-id",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "search",
