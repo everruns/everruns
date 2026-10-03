@@ -46,7 +46,6 @@ everruns-mcp
 everruns-meta
 everruns-openai
 everruns-openrouter
-everruns-platform
 everruns-serve
 everruns-serve-agentcore
 everruns-serve-build

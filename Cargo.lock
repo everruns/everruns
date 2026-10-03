@@ -3270,13 +3270,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-platform"
-version = "0.34.2"
-dependencies = [
- "everruns-capabilities",
-]
-
-[[package]]
 name = "everruns-research-agent"
 version = "0.1.0"
 dependencies = [

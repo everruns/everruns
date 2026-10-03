@@ -106,7 +106,6 @@ Production event routing therefore prefers:
    - `core/src/engine/` - Pure turn state machine plus shared Input/Reason/Act execution, enabled by `engine`
    - `capabilities/` → `everruns-capabilities` - Hosted capability implementations and orchestration
    - `server/src/records/` - Control-plane persistence/API records
-   - `platform/` → `everruns-platform` - Deprecated capability shim for one release
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `core/src/host/` - Opt-in neutral host implementation and session services; concrete integrations are composed by `everruns::batteries`
    - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`
@@ -137,7 +136,6 @@ everruns/
 │   ├── contracts/        # Provider/capability SPIs, model profiles, neutral host services
 │   ├── engine/           # Deprecated one-release engine shim
 │   ├── capabilities/     # Hosted capabilities and orchestration
-│   ├── platform/         # Deprecated one-release capabilities shim
 │   ├── everruns/         # Application-facing Framework crate
 │   ├── host/             # Deprecated one-release host shim
 │   ├── macros/           # everruns-macros implementation crate
