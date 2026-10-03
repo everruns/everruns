@@ -731,22 +731,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-anthropic"
-version = "0.34.2"
-dependencies = [
- "async-trait",
- "chrono",
- "eventsource-stream",
- "everruns-provider",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "everruns-builtins"
 version = "0.34.2"
 dependencies = [
@@ -806,6 +790,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-drivers"
+version = "0.34.2"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "eventsource-stream",
+ "everruns-provider",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "everruns-engine"
 version = "0.34.2"
 dependencies = [
@@ -831,11 +831,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "everruns",
- "everruns-anthropic",
+ "everruns-drivers",
  "everruns-integrations-typesafe",
  "everruns-llmsim",
- "everruns-openai",
- "everruns-openrouter",
  "mira-eval",
  "regex",
  "serde_json",
@@ -947,32 +945,6 @@ name = "everruns-model-profiles"
 version = "0.34.2"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "everruns-openai"
-version = "0.34.2"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-provider",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "everruns-openrouter"
-version = "0.34.2"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-provider",
- "reqwest",
- "serde",
- "serde_json",
 ]
 
 [[package]]

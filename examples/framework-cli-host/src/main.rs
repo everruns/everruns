@@ -133,11 +133,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .filter(|k| !k.is_empty()),
         ) {
             (Some(key), _) => builder.provider_with_default_model(
-                everruns_anthropic::provider("anthropic", key),
+                everruns_drivers::anthropic::provider("anthropic", key),
                 ANTHROPIC_MODEL,
             ),
             (None, Some(key)) => builder.provider_with_default_model(
-                everruns_openai::provider("openai", key),
+                everruns_drivers::openai::provider("openai", key),
                 OPENAI_MODEL,
             ),
             (None, None) => {

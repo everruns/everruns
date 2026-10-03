@@ -1259,12 +1259,12 @@ fn default_credential_schema(id: &DriverId) -> CredentialFormSchema {
 ///
 /// ```ignore
 /// use everruns_core::{DriverRegistry, DriverId};
-/// use everruns_anthropic::register_driver;
-/// use everruns_openai::register_driver as register_openai;
+/// use everruns_drivers::anthropic::register_driver;
+/// use everruns_drivers::openai::register_driver as register_openai;
 ///
 /// let mut registry = DriverRegistry::new();
-/// everruns_anthropic::register_driver(&mut registry);
-/// everruns_openai::register_driver(&mut registry);
+/// everruns_drivers::anthropic::register_driver(&mut registry);
+/// everruns_drivers::openai::register_driver(&mut registry);
 ///
 /// // Later, create a driver from config
 /// let driver = registry.create_chat_driver(&config)?;

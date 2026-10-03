@@ -49,5 +49,5 @@ chat models are imported, image and other non-chat endpoints are filtered out.
 
 - [Fireworks AI](https://fireworks.ai/)
 - [Fireworks docs](https://docs.fireworks.ai/)
-- [`everruns-fireworks` on crates.io](https://crates.io/crates/everruns-fireworks)
+- [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `fireworks`
 - [Migrate between providers](/how-to/migrate-providers/)

@@ -453,6 +453,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-drivers"
+version = "0.34.2"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-provider",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "everruns-engine"
 version = "0.34.2"
 dependencies = [
@@ -495,8 +507,8 @@ dependencies = [
  "chrono",
  "everruns-capability",
  "everruns-core",
+ "everruns-drivers",
  "everruns-engine",
- "everruns-openrouter",
  "everruns-provider",
  "fs2",
  "futures",
@@ -533,18 +545,6 @@ name = "everruns-model-profiles"
 version = "0.34.2"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "everruns-openrouter"
-version = "0.34.2"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-provider",
- "reqwest",
- "serde",
- "serde_json",
 ]
 
 [[package]]

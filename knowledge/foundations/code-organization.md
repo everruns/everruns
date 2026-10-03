@@ -68,13 +68,14 @@ should be folded into that owner. Conversely, mechanical consolidation must not
 erase one of those boundaries merely to reduce the workspace package count.
 
 Repository folders may group related packages without merging their package
-identity. `crates/drivers/` is such a grouping: its children remain separate
-crates.io packages over the common provider SPI, published at the shared
-platform version.
+identity. `crates/drivers/` was such a grouping until the vendor drivers were
+folded into one `everruns-drivers` crate with a feature per vendor: they shared
+one SPI, one version, and one owner, so separate packages bought nothing but
+publish slots.
 
-Thin LLM provider crates (`openai`, `anthropic`, `gemini`, `bedrock`, `mai`,
-`fireworks`, `openrouter`) depend on `everruns-provider`, **not**
-`everruns-core`. `everruns-provider` is the lean provider/LLM abstraction crate
+The `everruns-drivers` crate (vendor modules `openai`, `anthropic`, `gemini`,
+`bedrock`, `mai`, `fireworks`, `openrouter`, `meta`, `cloudflare`, `vercel`)
+depends on `everruns-provider`, **not** `everruns-core`. `everruns-provider` is the lean provider/LLM abstraction crate
 that owns the driver surface (`ChatDriver`, the shared OpenAI/OpenResponses
 protocol drivers, model profiles, retry/stream helpers, typed IDs, the
 credential form schema, and the LLM error taxonomy). It carries none of core's
@@ -281,8 +282,7 @@ files, the Rust toolchain pin, or the CI workflow itself change.
 **Goal:** Fast feedback on logic errors without infrastructure.
 
 **Crates tested:**
-- `everruns-anthropic` - LLM client SDK, request/response parsing
-- `everruns-openai` - LLM client SDK, request/response parsing
+- `everruns-drivers` - LLM vendor drivers, request/response parsing
 - `everruns-internal-protocol` - Protobuf definitions
 - `everruns-core` - Agent logic, tool handling, prompt building
 - `everruns-host` - in-process runtime and shared host-phase orchestration

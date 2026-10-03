@@ -27,8 +27,8 @@
 //! - Total per scenario: ~175-220k tokens (well over 100k budget)
 
 use crate::dataset::{
-    make_input_event, make_output_event, make_output_event_with_tool_call, make_tool_event,
-    DatasetRecord, Event, Input, Meta, PlantedInfo, SessionId,
+    DatasetRecord, Event, Input, Meta, PlantedInfo, SessionId, make_input_event, make_output_event,
+    make_output_event_with_tool_call, make_tool_event,
 };
 
 /// Generate synthetic test scenarios - one of each type
@@ -1462,9 +1462,11 @@ mod tests {
         assert!(types.iter().any(|t| t.as_str() == "cumulative"));
         assert!(types.iter().any(|t| t.as_str() == "final_decision"));
         assert!(types.iter().any(|t| t.as_str() == "decision_timeline"));
-        assert!(types
-            .iter()
-            .any(|t| t.as_str() == "tool_result_disambiguation"));
+        assert!(
+            types
+                .iter()
+                .any(|t| t.as_str() == "tool_result_disambiguation")
+        );
     }
 
     #[test]

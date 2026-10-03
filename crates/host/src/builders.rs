@@ -11,7 +11,7 @@ use everruns_core::{
     SessionExecutionState,
 };
 /// Metadata keys consumed by the OpenRouter driver as `HTTP-Referer` / `X-Title`.
-/// Owned by `everruns_openrouter::options`; duplicated here as plain strings so
+/// Owned by `everruns_drivers::openrouter::options`; duplicated here as plain strings so
 /// the host harness keeps zero type-level coupling to any leaf driver crate.
 const OPENROUTER_HTTP_REFERER_METADATA_KEY: &str = "openrouter.http_referer";
 const OPENROUTER_X_TITLE_METADATA_KEY: &str = "openrouter.x_title";

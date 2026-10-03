@@ -85,7 +85,7 @@ are the same on every path.
   as `action`; replay reverses it and tags every result with `toolset_name`.
   Members with no neutral action (`zoom`, raw button down/up,
   `cursor_position`, `hold_key`) are sent disabled. See
-  [`crates/drivers/anthropic/src/computer_toolset.rs`](../../crates/drivers/anthropic/src/computer_toolset.rs).
+  [`crates/drivers/drivers/src/anthropic/computer_toolset.rs`](../../crates/drivers/drivers/src/anthropic/computer_toolset.rs).
 
 Model support is a model-id rule next to each adapter rather than a model
 profile flag: the native tools landed on a handful of current models, and the

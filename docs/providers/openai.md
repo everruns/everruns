@@ -67,7 +67,7 @@ instead, opt in per call with the `openai/websocket` driver option set to
 code:
 
 ```rust
-use everruns_openai::OpenAIChatDriver;
+use everruns_drivers::openai::OpenAIChatDriver;
 
 let driver = OpenAIChatDriver::new().with_websocket_transport(true);
 ```
@@ -88,5 +88,5 @@ from Everruns' built-in model profiles, matched by model id.
 ## Links
 
 - [OpenAI Platform](https://platform.openai.com/)
-- [`everruns-openai` on crates.io](https://crates.io/crates/everruns-openai)
+- [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `openai`
 - [Migrate between providers](/how-to/migrate-providers/)

@@ -48,5 +48,5 @@ known profile falls back to a minimal profile.
 ## Links
 
 - [Azure AI Foundry](https://ai.azure.com/)
-- [`everruns-mai` on crates.io](https://crates.io/crates/everruns-mai)
+- [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `mai`
 - [Migrate between providers](/how-to/migrate-providers/)

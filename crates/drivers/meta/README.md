@@ -1,38 +1,44 @@
 # everruns-meta
 
-> Meta Model API provider support for Everruns agents.
+> Moved: Meta Model API support is now the `meta` module of `everruns-drivers`.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-meta.svg)](https://crates.io/crates/everruns-meta)
-[![Documentation](https://docs.rs/everruns-meta/badge.svg)](https://docs.rs/everruns-meta)
-[![License](https://img.shields.io/crates/l/everruns-meta.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+Part of the [Everruns](https://everruns.com) ecosystem. `everruns-meta` is a
+deprecated shim that re-exports
+[`everruns_drivers::meta`](https://docs.rs/everruns-drivers/latest/everruns_drivers/meta/)
+and receives no further updates. This is its last release.
 
-`everruns-meta` implements Meta's OpenAI-compatible Responses API, including
-first-party endpoint defaults and Muse model discovery.
+## Migrate
 
-It is a provider crate in the [Everruns](https://everruns.com) ecosystem and
-builds on `everruns-provider`. Framework applications pair it with `everruns`.
+Replace the dependency with `everruns-drivers` and its `meta` feature, which
+ships it from 0.35:
 
-## Quick Example
+```toml
+# before
+everruns-meta = "0.34"
+# after
+everruns-drivers = { version = "0.35", features = ["meta"] }
+```
+
+Then replace `everruns_meta::` with `everruns_drivers::meta::` in your code:
 
 ```rust
-use everruns_meta::provider;
-
-let meta = provider("meta", "model-api-key");
-assert_eq!(meta.id().as_str(), "meta");
+let mut registry = everruns_drivers::DriverRegistry::new();
+everruns_drivers::meta::register_driver(&mut registry);
 ```
+
 
 ## What It Provides
 
-- A ready-to-use Meta provider assembly
-- A Meta-compatible Responses API `ChatDriver`
-- Muse model discovery and Meta endpoint defaults
-- Registration helpers for low-level provider registries
+- A glob re-export of `everruns_drivers::meta`, so existing code keeps building
+- `#[deprecated]` wrappers for the driver type, `register_driver`,
+  `descriptor`, and `from_env`, so the compiler points at every call site to
+  change
 
 ## Documentation
 
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Meta provider guide](https://docs.everruns.com/providers/meta/)
-- [API reference](https://docs.rs/everruns-meta)
+- [`everruns-drivers` API reference (docs.rs)](https://docs.rs/everruns-drivers)
+- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
+- [Everruns documentation](https://docs.everruns.com)
 
 ## License
 

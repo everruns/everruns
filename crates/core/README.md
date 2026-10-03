@@ -20,7 +20,7 @@ advertised by the Framework preset.
 
 Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. Provider crates such as
-[`everruns-openai`](https://crates.io/crates/everruns-openai) and
+[`everruns-drivers`](https://crates.io/crates/everruns-drivers) and
 [`everruns-host`](https://crates.io/crates/everruns-host) depend on these
 contracts instead of on server internals.
 

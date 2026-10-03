@@ -6,7 +6,7 @@
 //! [`Completion::provider`](crate::llm::Completion::provider), and select the
 //! provider-visible model id separately.
 //!
-//! The `everruns-anthropic` driver is re-exported here
+//! The `everruns_drivers::anthropic` driver is re-exported here
 //! ([`AnthropicChatDriver`], [`register_driver`]) for embedders who need the
 //! low-level driver directly.
 
@@ -16,8 +16,8 @@ use everruns_provider::credential_provider::EnvCredentialProvider;
 
 use crate::Provider;
 
-/// Re-exported `everruns-anthropic` driver for direct, low-level use.
-pub use everruns_anthropic::{AnthropicChatDriver, register_driver};
+/// Re-exported `everruns_drivers::anthropic` driver for direct, low-level use.
+pub use everruns_drivers::anthropic::{AnthropicChatDriver, register_driver};
 
 /// Why an [`Anthropic`] provider configuration could not be produced.
 ///
@@ -118,7 +118,7 @@ impl Anthropic {
     where
         F: Fn(&str) -> Option<String>,
     {
-        let driver = everruns_anthropic::descriptor();
+        let driver = everruns_drivers::anthropic::descriptor();
         let credentials = EnvCredentialProvider::resolve_with(&driver, lookup)
             .filter(|credentials| credentials.api_key().is_some())
             .ok_or_else(|| AnthropicError::MissingEnvVar {
@@ -156,7 +156,7 @@ impl fmt::Debug for Anthropic {
 impl From<Anthropic> for Provider {
     fn from(config: Anthropic) -> Self {
         let (api_key, base_url) = config.into_parts();
-        let mut provider = everruns_anthropic::provider("anthropic", api_key)
+        let mut provider = everruns_drivers::anthropic::provider("anthropic", api_key)
             .with_driver_id(crate::DriverId::Anthropic);
         if let Some(base_url) = base_url {
             provider = provider.base_url(base_url);

@@ -1,69 +1,46 @@
 # everruns-openai
 
-> OpenAI LLM provider for Everruns agents.
+> Moved: OpenAI and Azure OpenAI support is now the `openai` module of `everruns-drivers`.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-openai.svg)](https://crates.io/crates/everruns-openai)
-[![Documentation](https://docs.rs/everruns-openai/badge.svg)](https://docs.rs/everruns-openai)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+Part of the [Everruns](https://everruns.com) ecosystem. `everruns-openai` is a
+deprecated shim that re-exports
+[`everruns_drivers::openai`](https://docs.rs/everruns-drivers/latest/everruns_drivers/openai/)
+and receives no further updates. This is its last release.
 
-`everruns-openai` registers OpenAI drivers into a `DriverRegistry` from
-[`everruns-provider`](https://crates.io/crates/everruns-provider) so the same Everruns
-agent loop can run against OpenAI models. It ships the recommended Responses API
-driver plus a Chat Completions compatibility driver for OpenAI-compatible
-endpoints, mapping Everruns' provider-neutral messages, tools, and reasoning
-onto the OpenAI wire format.
+## Migrate
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. Providers are swappable: see
-[`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude
-models. Framework applications use the application-facing
-[`everruns`](https://crates.io/crates/everruns) crate; its simulator runs
-offline without a key.
+Replace the dependency with `everruns-drivers` and its `openai` feature, which
+ships it from 0.35:
 
-## Quick Example: Agent With OpenAI
-
-```rust,no_run
-use everruns::{Agent, InMemoryEngine, OpenAI};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let agent = Agent::builder()
-        .instructions("Answer clearly and concisely.")
-        .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
-        .build()?;
-    let result = InMemoryEngine::new()
-        .create(agent)
-        .run("Write one sentence about reliable agents.")
-        .await?;
-
-    println!("{}", result.response);
-    Ok(())
-}
+```toml
+# before
+everruns-openai = "0.34"
+# after
+everruns-drivers = { version = "0.35", features = ["openai"] }
 ```
 
-## Driver-Only Example
+Then replace `everruns_openai::` with `everruns_drivers::openai::` in your code:
 
 ```rust
-use everruns_openai::OpenAIChatDriver;
-
-let driver = OpenAIChatDriver::new("your-api-key");
-assert!(!driver.uses_custom_url());
+let mut registry = everruns_drivers::DriverRegistry::new();
+everruns_drivers::openai::register_driver(&mut registry);
 ```
+
+Using the [`everruns`](https://crates.io/crates/everruns) facade? Nothing to
+change: its `openai` feature turns on the new module, re-exported as
+`everruns::drivers::openai`.
 
 ## What It Provides
 
-- A Responses API driver (recommended) and a Chat Completions compatibility driver
-- Registration into the Everruns `DriverRegistry` via `register_driver`
-- `base_url` override for OpenAI-compatible endpoints
-- Streaming, tool calls, and reasoning mapped to provider-neutral Everruns types
+- A glob re-export of `everruns_drivers::openai`, so existing code keeps building
+- `#[deprecated]` wrappers for the driver type, `register_driver`,
+  `descriptor`, and `from_env`, so the compiler points at every call site to
+  change
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-openai)
-- [OpenAI provider guide](https://docs.everruns.com/providers/openai/)
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [`everruns-drivers` API reference (docs.rs)](https://docs.rs/everruns-drivers)
+- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License

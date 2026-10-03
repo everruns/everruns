@@ -242,7 +242,7 @@ impl InMemoryAgenticLoopBuilder {
     /// use everruns_provider::driver_registry::DriverRegistry;
     ///
     /// let mut driver_registry = DriverRegistry::new();
-    /// everruns_anthropic::register_driver(&mut driver_registry);
+    /// everruns_drivers::anthropic::register_driver(&mut driver_registry);
     ///
     /// let runner = InMemoryAgenticLoop::builder()
     ///     .model(model)

@@ -6,7 +6,7 @@
 //! [`Completion::provider`](crate::llm::Completion::provider), and select the
 //! provider-visible model id separately.
 //!
-//! The `everruns-gemini` driver is re-exported here
+//! The `everruns_drivers::gemini` driver is re-exported here
 //! ([`GeminiChatDriver`], [`register_driver`]) for embedders who need the
 //! low-level driver directly.
 
@@ -16,8 +16,8 @@ use everruns_provider::credential_provider::EnvCredentialProvider;
 
 use crate::Provider;
 
-/// Re-exported `everruns-gemini` driver for direct, low-level use.
-pub use everruns_gemini::{GeminiChatDriver, register_driver};
+/// Re-exported `everruns_drivers::gemini` driver for direct, low-level use.
+pub use everruns_drivers::gemini::{GeminiChatDriver, register_driver};
 
 /// Why an [`Gemini`] provider configuration could not be produced.
 ///
@@ -117,7 +117,7 @@ impl Gemini {
     where
         F: Fn(&str) -> Option<String>,
     {
-        let driver = everruns_gemini::descriptor();
+        let driver = everruns_drivers::gemini::descriptor();
         let credentials = EnvCredentialProvider::resolve_with(&driver, lookup)
             .filter(|credentials| credentials.api_key().is_some())
             .ok_or_else(|| GeminiError::MissingEnvVar {
@@ -155,8 +155,8 @@ impl fmt::Debug for Gemini {
 impl From<Gemini> for Provider {
     fn from(config: Gemini) -> Self {
         let (api_key, base_url) = config.into_parts();
-        let mut provider =
-            everruns_gemini::provider("gemini", api_key).with_driver_id(crate::DriverId::Gemini);
+        let mut provider = everruns_drivers::gemini::provider("gemini", api_key)
+            .with_driver_id(crate::DriverId::Gemini);
         if let Some(base_url) = base_url {
             provider = provider.base_url(base_url);
         }

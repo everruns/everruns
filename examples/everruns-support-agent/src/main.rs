@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // ANTHROPIC_API_KEY, declared by the Anthropic driver itself.
-    let agent = agent::build(everruns_anthropic::from_env("anthropic")?)?;
+    let agent = agent::build(everruns_drivers::anthropic::from_env("anthropic")?)?;
     let engine = Engine::new();
     let session = engine.create(agent);
 

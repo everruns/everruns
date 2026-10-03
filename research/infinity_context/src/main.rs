@@ -119,7 +119,12 @@ async fn main() -> Result<()> {
             delay_ms,
             save,
             moniker,
-        } => cmd_run(dataset, record, approach, model, dry_run, delay_ms, save, moniker).await,
+        } => {
+            cmd_run(
+                dataset, record, approach, model, dry_run, delay_ms, save, moniker,
+            )
+            .await
+        }
     }
 }
 
@@ -180,17 +185,14 @@ async fn cmd_health() -> Result<()> {
     // Check LLM judge
     print!("LLM Judge:           ");
     if !anthropic_ok {
-        println!(
-            "{}",
-            "✗ skipped (no Anthropic key)".bright_yellow()
-        );
+        println!("{}", "✗ skipped (no Anthropic key)".bright_yellow());
     } else {
         println!("{}", "testing...".dimmed());
         let health = scorer::check_llm_judge_health().await;
 
         // Move cursor up and overwrite
         print!("\x1b[1A"); // Move up one line
-        print!("\x1b[K");  // Clear line
+        print!("\x1b[K"); // Clear line
         print!("LLM Judge:           ");
 
         if health.llm_judge_working {
@@ -330,11 +332,7 @@ async fn cmd_run(
         return Ok(());
     }
 
-    println!(
-        "{} Found {} record(s)",
-        "✓".bright_green(),
-        records.len()
-    );
+    println!("{} Found {} record(s)", "✓".bright_green(), records.len());
     for r in &records {
         println!("  - {}", r.id.dimmed());
     }

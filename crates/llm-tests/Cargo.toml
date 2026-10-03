@@ -26,14 +26,17 @@ everruns-platform = { path = "../platform" }
 # Host + local wiring for the live subagent end-to-end test.
 everruns-host = { path = "../host" }
 everruns = { path = "../everruns", features = ["local"] }
-everruns-openai = { path = "../drivers/openai" }
-everruns-openrouter = { path = "../drivers/openrouter" }
-everruns-fireworks = { path = "../drivers/fireworks" }
-everruns-anthropic = { path = "../drivers/anthropic" }
-everruns-gemini = { path = "../drivers/gemini" }
-everruns-bedrock = { path = "../drivers/bedrock" }
-everruns-meta = { path = "../drivers/meta" }
-everruns-drivers = { path = "../drivers/drivers", features = ["cloudflare", "vercel"] }
+everruns-drivers = { path = "../drivers/drivers", features = [
+    "anthropic",
+    "bedrock",
+    "cloudflare",
+    "fireworks",
+    "gemini",
+    "meta",
+    "openai",
+    "openrouter",
+    "vercel",
+] }
 everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 

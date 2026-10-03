@@ -1,12 +1,15 @@
-# AWS Bedrock Provider Implementation
-# Decision: Implements LlmDriver using the AWS Bedrock Runtime ConverseStream API.
-# Uses aws-sdk-bedrockruntime for event stream handling; credentials are carried
-# as JSON in the ProviderConfig.api_key field.
+# Deprecated shim: AWS Bedrock moved into everruns-drivers (feature `bedrock`).
+#
+# Decision: the driver crates were folded into everruns-drivers. crates.io has
+# no "moved" flag and shows the newest version's README and description, and
+# docs.rs shows its crate docs, so this crate publishes one last release that
+# says where it went on each of those surfaces and re-exports the new module.
+# It leaves the workspace and the publish set in the release after.
 
 [package]
 name = "everruns-bedrock"
 readme = "README.md"
-keywords = ["agent", "llm", "ai", "bedrock", "aws"]
+keywords = ["deprecated", "everruns", "llm", "bedrock"]
 categories = ["api-bindings", "asynchronous"]
 version.workspace = true
 edition.workspace = true
@@ -16,66 +19,14 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-bedrock"
-description = "AWS Bedrock provider for Everruns agents"
+description = "Moved to everruns-drivers (feature `bedrock`). Deprecated shim, no longer updated."
 
 [features]
-# Resolve credentials through the AWS default chain instead of static keys
-# (`BedrockAuth::default_chain`). Off by default: the server and worker always
-# pass org-scoped stored keys and must never pick up ambient AWS credentials
-# (scripts/lib/check-provider-isolation.sh). Standalone hosts, such as a serve
-# app on AgentCore Runtime with an execution role, opt in.
-default-credentials = ["dep:aws-config", "dep:aws-credential-types"]
+default-credentials = ["everruns-drivers/bedrock-default-credentials"]
 
 [dependencies]
-# Core dependencies
-async-trait.workspace = true
-
-# Async runtime
-tokio.workspace = true
-futures.workspace = true
-tokio-stream.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# Tracing
-tracing.workspace = true
-
-# Internal dependencies
-base64.workspace = true
-# Provider SPI only (EVE-874): wire-protocol crates never depend on
-# everruns-core. Intentional optional features of everruns-provider (`openapi`
-# schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { path = "../../provider", version = "0.34.2" }
-
-# AWS SDK for Bedrock Runtime
-# Default features include the legacy `rustls` connector (rustls 0.21 +
-# rustls-webpki 0.101, flagged by GHSA-82j2-j2ch-gfr8). BehaviorVersion::latest()
-# uses the modern `default-https-client` (rustls 0.23), so the legacy stack is
-# excluded.
-aws-sdk-bedrockruntime = { version = "1", default-features = false, features = [
-    "default-https-client",
-    "rt-tokio",
-] }
-aws-smithy-types = "1"
-# Opt-in AWS default credential chain (`default-credentials` feature): env,
-# shared profile/SSO, web identity, ECS/AgentCore container credentials, and
-# the EC2 instance profile. Same stack rule as aws-sdk-bedrockruntime above:
-# default features would bring back the legacy `rustls` connector, so only the
-# modern `default-https-client` (rustls 0.23) plus `rt-tokio`, `sso`, and
-# `credentials-process` are enabled.
-aws-config = { version = "1", optional = true, default-features = false, features = [
-    "default-https-client",
-    "rt-tokio",
-    "sso",
-    "credentials-process",
-] }
-aws-credential-types = { version = "1", optional = true }
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
+everruns-drivers = { workspace = true, features = ["bedrock"] }
+everruns-provider.workspace = true
 
 [lints]
 workspace = true

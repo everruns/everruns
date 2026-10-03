@@ -1,50 +1,46 @@
 # everruns-gemini
 
-> Google Gemini LLM provider for Everruns agents.
+> Moved: Google Gemini support is now the `gemini` module of `everruns-drivers`.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-gemini.svg)](https://crates.io/crates/everruns-gemini)
-[![Documentation](https://docs.rs/everruns-gemini/badge.svg)](https://docs.rs/everruns-gemini)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+Part of the [Everruns](https://everruns.com) ecosystem. `everruns-gemini` is a
+deprecated shim that re-exports
+[`everruns_drivers::gemini`](https://docs.rs/everruns-drivers/latest/everruns_drivers/gemini/)
+and receives no further updates. This is its last release.
 
-`everruns-gemini` registers a Google Gemini driver into a `DriverRegistry` from
-[`everruns-provider`](https://crates.io/crates/everruns-provider) so
-the same Everruns agent loop can run against Gemini models. It implements the
-provider-neutral `ChatDriver` contract and maps Everruns' messages, tools, and
-reasoning onto the Gemini API. Core has no knowledge of specific providers; hosts
-register whichever drivers they want available.
+## Migrate
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. Providers are swappable: see
-[`everruns-openai`](https://crates.io/crates/everruns-openai) and
-[`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for other
-backends, or run with no key using the offline simulator in the
-application-facing [`everruns`](https://crates.io/crates/everruns) crate.
+Replace the dependency with `everruns-drivers` and its `gemini` feature, which
+ships it from 0.35:
 
-## Quick Example
-
-```rust
-use everruns_gemini::{GeminiChatDriver, register_driver};
-use everruns_provider::DriverRegistry;
-
-let mut registry = DriverRegistry::new();
-register_driver(&mut registry);
+```toml
+# before
+everruns-gemini = "0.34"
+# after
+everruns-drivers = { version = "0.35", features = ["gemini"] }
 ```
 
-Framework applications attach the ready-made provider through the open
-`ModelSpec`/`Provider` boundary. Low-level hosts can register the driver directly.
+Then replace `everruns_gemini::` with `everruns_drivers::gemini::` in your code:
+
+```rust
+let mut registry = everruns_drivers::DriverRegistry::new();
+everruns_drivers::gemini::register_driver(&mut registry);
+```
+
+Using the [`everruns`](https://crates.io/crates/everruns) facade? Nothing to
+change: its `gemini` feature turns on the new module, re-exported as
+`everruns::drivers::gemini`.
 
 ## What It Provides
 
-- A Google Gemini LLM driver
-- Registration into the Everruns `DriverRegistry` via `register_driver`
-- Streaming, tool calls, and reasoning mapped to provider-neutral Everruns types
+- A glob re-export of `everruns_drivers::gemini`, so existing code keeps building
+- `#[deprecated]` wrappers for the driver type, `register_driver`,
+  `descriptor`, and `from_env`, so the compiler points at every call site to
+  change
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-gemini)
-- [Google Gemini provider guide](https://docs.everruns.com/providers/gemini/)
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [`everruns-drivers` API reference (docs.rs)](https://docs.rs/everruns-drivers)
+- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License

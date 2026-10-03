@@ -43,5 +43,5 @@ metadata.
 
 - [Amazon Bedrock](https://aws.amazon.com/bedrock/)
 - [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/)
-- [`everruns-bedrock` on crates.io](https://crates.io/crates/everruns-bedrock)
+- [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `bedrock`
 - [Migrate between providers](/how-to/migrate-providers/)

@@ -14,8 +14,7 @@ everruns-provider = { path = "../../crates/provider" }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
 everruns-llmsim = { path = "../../crates/drivers/llmsim", features = ["host"] }
-everruns-openai = { path = "../../crates/drivers/openai" }
-everruns-anthropic = { path = "../../crates/drivers/anthropic" }
+everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai"] }
 async-trait.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -36,7 +36,7 @@ everruns-example-demo = { path = "../demo-support" }
 # The worker runs on an OpenRouter-served model, which the facade does not
 # configure; the driver crate is the supported way to reach one, as in
 # `research-agent`.
-everruns-openrouter = { path = "../../crates/drivers/openrouter" }
+everruns-drivers = { path = "../../crates/drivers/drivers", features = ["openrouter"] }
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

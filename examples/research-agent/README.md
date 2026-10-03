@@ -40,7 +40,7 @@ This is the actual builder from `src/main.rs`. The prompt is `src/instructions.m
 let agent = Agent::builder()
     .name("research-agent")
     .instructions(include_str!("instructions.md"))
-    .provider(everruns_openrouter::provider("openrouter", api_key))
+    .provider(everruns_drivers::openrouter::provider("openrouter", api_key))
     .model(MODEL)
     .max_iterations(6)
     .parallel_tool_calls(false)

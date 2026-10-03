@@ -16,8 +16,7 @@ everruns-llmsim = { path = "../../crates/drivers/llmsim" }
 everruns-host = { path = "../../crates/host", features = ["lua"] }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 everruns-integrations-lua = { path = "../../integrations/lua" }
-everruns-anthropic = { path = "../../crates/drivers/anthropic" }
-everruns-openai = { path = "../../crates/drivers/openai" }
+everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 anyhow = "1"

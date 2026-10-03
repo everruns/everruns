@@ -21,11 +21,14 @@ drivers to concrete services. Core business logic resolves a credential-free
 model specification and runtime provider independently, then passes the
 provider-owned endpoint into the protocol driver.
 
-Official driver packages are physically grouped under
-[`crates/drivers/`](../../crates/drivers/README.md). The folder is only a
-repository organization boundary: every child remains an independently
-versioned crate, and `everruns-provider` remains the neutral SPI they
-implement.
+Official vendor drivers are feature-gated modules of one crate,
+`everruns-drivers` ([`crates/drivers/drivers/`](../../crates/drivers/drivers/README.md)),
+over the neutral `everruns-provider` SPI. They were separate crates through
+0.34.2; one crate means one publish, one version, and one place a host
+picks vendors by feature. The old per-vendor directories under
+[`crates/drivers/`](../../crates/drivers/README.md) hold deprecated shim crates
+for one release only. `everruns-llmsim` stays its own crate because its
+`host` feature depends on `everruns-host`, which depends on the drivers crate.
 
 ## Architecture
 
@@ -38,9 +41,9 @@ graph TD
     end
 
     subgraph Providers
-        OpenAI[everruns-openai]
-        Anthropic[everruns-anthropic]
-        Gemini[everruns-gemini]
+        OpenAI[everruns_drivers::openai]
+        Anthropic[everruns_drivers::anthropic]
+        Gemini[everruns_drivers::gemini]
     end
 
     subgraph Host
@@ -115,9 +118,9 @@ Drivers MUST use the following error types from `AgentLoopError`:
 
 Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. A per-window quota or rate-limit rejection (a 429 whose request would fit once the window resets) is transient and MUST stay on the retry path, even when its wording mentions tokens and limits; only a request that exceeds the limit on its own is `RequestTooLarge`. See the individual driver crates for the detection logic:
 - `crates/provider/src/openai_errors.rs`, shared OpenAI-compatible (Chat Completions and Responses) detection
-- `crates/drivers/openai/src/`, OpenAI error detection
-- `crates/drivers/anthropic/src/`, Anthropic error detection
-- `crates/drivers/gemini/src/`, Gemini error detection
+- `crates/drivers/drivers/src/openai/`, OpenAI error detection
+- `crates/drivers/drivers/src/anthropic/`, Anthropic error detection
+- `crates/drivers/drivers/src/gemini/`, Gemini error detection
 
 ### Provider registry and 0.17 compatibility catalog
 
@@ -263,9 +266,9 @@ value remains a hard limit on all generated tokens and is serialized unchanged. 
 fit underneath it — measured against `budget_tokens` for budget-based thinking, or the effort-sized room
 adaptive thinking needs, since it carries no budget — the driver omits thinking rather than exceed the
 cap. A small cap therefore returns a short answer rather than an empty one. Source:
-`crates/drivers/anthropic/src/effort.rs`.
+`crates/drivers/drivers/src/anthropic/effort.rs`.
 
-**Append-only history (Anthropic)**: Claude Opus 5.5, Sonnet 5.5, and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5, Sonnet 5.5, and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/anthropic/src/driver_layout.rs`.
+**Append-only history (Anthropic)**: Claude Opus 5.5, Sonnet 5.5, and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5, Sonnet 5.5, and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/drivers/src/anthropic/driver_layout.rs`.
 
 **Always-thinking Claude models**: on families where thinking cannot be disabled (Opus 5.5, Sonnet 5.5, Fable 5.x)
 the driver always sends an explicit effort. No caller effort sends the profile default, and an explicit
@@ -301,7 +304,7 @@ replay state (signature / encrypted payload), and identity (provider, item id,
 bound tool call). Only readable text is ever rendered or published; replay state
 is carried verbatim and never leaves the driver boundary.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/model-profiles/src/profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/drivers/src/anthropic/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/model-profiles/src/profiles.rs`.
 
 #### Stream Events
 
@@ -333,9 +336,9 @@ OpenAI returns `encrypted_content` only when the request opts in via
 replayable and nothing reaches the reasoning channel.
 
 Provider-specific wire format details live in the driver implementations:
-- `crates/drivers/anthropic/src/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, per-block signature capture, message ordering
+- `crates/drivers/drivers/src/anthropic/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, per-block signature capture, message ordering
 - `crates/provider/src/openresponses_protocol/mod.rs` -- reasoning config, `include`, encrypted content, reasoning item ids
-- `crates/drivers/gemini/src/driver.rs` -- thinking budget, thought parts, thought signatures
+- `crates/drivers/drivers/src/gemini/driver.rs` -- thinking budget, thought parts, thought signatures
 
 #### Reasoning Guard Logic
 
@@ -527,15 +530,15 @@ re-executes a completed tool.
 |-----------|----------|
 | ChatDriver trait | `crates/provider/src/driver_registry.rs` |
 | AgentLoopError | `crates/provider/src/error.rs` |
-| OpenAI driver | `crates/drivers/openai/src/driver.rs` |
+| OpenAI driver | `crates/drivers/drivers/src/openai/driver.rs` |
 | Open Responses protocol | `crates/provider/src/openresponses_protocol/mod.rs` |
 | Chat Completions protocol | `crates/provider/src/openai_protocol.rs` |
-| Anthropic driver | `crates/drivers/anthropic/src/driver.rs` |
-| Gemini driver | `crates/drivers/gemini/src/driver.rs` |
-| Bedrock driver | `crates/drivers/bedrock/src/driver.rs` |
-| Microsoft MAI driver | `crates/drivers/mai/src/driver.rs` |
-| Fireworks AI driver | `crates/drivers/fireworks/src/driver.rs` |
-| Meta Model API driver | `crates/drivers/meta/src/driver.rs` |
+| Anthropic driver | `crates/drivers/drivers/src/anthropic/driver.rs` |
+| Gemini driver | `crates/drivers/drivers/src/gemini/driver.rs` |
+| Bedrock driver | `crates/drivers/drivers/src/bedrock/driver.rs` |
+| Microsoft MAI driver | `crates/drivers/drivers/src/mai/driver.rs` |
+| Fireworks AI driver | `crates/drivers/drivers/src/fireworks/driver.rs` |
+| Meta Model API driver | `crates/drivers/drivers/src/meta/driver.rs` |
 | Cloudflare AI Gateway driver | `crates/drivers/drivers/src/cloudflare.rs` |
 | Vercel AI Gateway driver | `crates/drivers/drivers/src/vercel.rs` |
 | Error handling | `crates/engine/src/execution/reason.rs` |
@@ -571,7 +574,7 @@ that unsupported model-facing pattern is omitted and the tool remains the
 authoritative validation boundary. This keeps third-party MCP discovery live
 without mutating or weakening unrelated schemas.
 
-## Meta Model API Driver (`everruns-meta`)
+## Meta Model API Driver (`everruns_drivers::meta`)
 
 Meta Model API serves Muse models at `https://api.meta.ai/v1`. The dedicated
 driver uses the shared Responses protocol, preserves server-managed continuation
@@ -580,13 +583,11 @@ through `previous_response_id`, and discovers models from the host-gated
 hosted tool search only on the direct `meta` surface; gateway aliases fall back
 to client-side transcript replay and tool search.
 
-## Gateway Drivers (`everruns-drivers`)
+## Gateway Drivers (`everruns_drivers::{cloudflare, vercel}`)
 
 Cloudflare AI Gateway and Vercel AI Gateway front many upstream vendors behind one
 OpenAI-compatible endpoint, so neither needs a wire implementation. Both live as feature-gated
-modules in one crate rather than a package each; the crate's
-[README](../../crates/drivers/drivers/README.md) owns the membership rule and when a vendor
-graduates out of it.
+modules of `everruns-drivers`, like every other vendor.
 
 Which endpoint each speaks was settled by measurement, and the losing options fail in ways worth
 recording because the documentation does not predict them.
@@ -631,11 +632,11 @@ endpoint's `result_info.total_count` does not describe the result — an account
 one page is told the total is 321, and page 2 is empty — so the driver reads the page it is given
 rather than paginating on that number.
 
-## Microsoft MAI Driver (`everruns-mai`)
+## Microsoft MAI Driver (`everruns_drivers::mai`)
 
 Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry
-behind an OpenAI-compatible Chat Completions API. The `everruns-mai` crate is a
-standalone, crates.io-publishable provider crate that wraps the shared
+behind an OpenAI-compatible Chat Completions API. The `mai` module of
+`everruns-drivers` wraps the shared
 `OpenAIProtocolChatDriver` (from `everruns-provider`) and tags it with
 `DriverId::Mai`. Model ids resolve
 to the Microsoft-vendor profiles in `crates/model-profiles/src/profiles.rs` (the
@@ -904,7 +905,7 @@ Presets are applied before capacity strategy, `apply_presets()` runs first, then
 `apply_capacity_strategy()` runs on the result.
 
 Preset definitions and their exact mappings live in
-[`OpenRouterRoutingPreset` and its compiler](../../crates/drivers/openrouter/src/options.rs).
+[`OpenRouterRoutingPreset` and its compiler](../../crates/drivers/drivers/src/openrouter/options.rs).
 Price ceilings retain USD per million prompt/completion tokens, matching the
 [OpenRouter routing contract](https://openrouter.ai/docs/guides/routing/provider-selection).
 Catalog model pricing uses a different unit and must not be applied to routing ceilings.
@@ -1080,15 +1081,14 @@ incident, not a cosmetic bug.
 
 > **Driver code never reads provider *credentials* from the process
 > environment.** No `std::env::var` for an API key, secret, or endpoint base URL
-> in any `crates/drivers/openai`, `crates/drivers/anthropic`, `crates/drivers/gemini`,
-> `crates/drivers/openrouter`, `crates/drivers/bedrock`, `crates/drivers/mai`, or the protocol drivers in
+> in any `crates/drivers/drivers/src/` vendor module, or the protocol drivers in
 > `crates/core` (`openai_protocol.rs`, `openresponses_protocol.rs`). Credentials
 > only ever arrive through a runtime provider assembly or a `DriverConfig`
 > compatibility/catalog adapter.
 >
 > Scope: this bans reading *credentials* from env, not all environment access. A
 > driver may still read a non-credential tuning knob from env (e.g.
-> `OPENAI_IMAGE_TIMEOUT_SECS` in `crates/drivers/openai/src/images.rs`).
+> `OPENAI_IMAGE_TIMEOUT_SECS` in `crates/drivers/drivers/src/openai/images.rs`).
 
 There are exactly **two** sanctioned ways credentials reach a driver. Every code
 path must be one of them; there is no third option and no fallback between them.

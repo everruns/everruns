@@ -1,45 +1,46 @@
 # everruns-openrouter
 
-> OpenRouter LLM provider for Everruns agents.
+> Moved: OpenRouter support is now the `openrouter` module of `everruns-drivers`.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-openrouter.svg)](https://crates.io/crates/everruns-openrouter)
-[![Documentation](https://docs.rs/everruns-openrouter/badge.svg)](https://docs.rs/everruns-openrouter)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+Part of the [Everruns](https://everruns.com) ecosystem. `everruns-openrouter` is a
+deprecated shim that re-exports
+[`everruns_drivers::openrouter`](https://docs.rs/everruns-drivers/latest/everruns_drivers/openrouter/)
+and receives no further updates. This is its last release.
 
-`everruns-openrouter` registers the OpenRouter driver into a `DriverRegistry` from
-[`everruns-provider`](https://crates.io/crates/everruns-provider) so the same Everruns
-agent loop can run against OpenRouter's model catalog. OpenRouter exposes an
-OpenAI-compatible Responses API, so the driver wraps the core Open Responses
-protocol driver and parses OpenRouter's richer `/models` metadata into capability
-profiles (notably reasoning support).
+## Migrate
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. Providers are swappable: see
-[`everruns-openai`](https://crates.io/crates/everruns-openai) for OpenAI models,
-or [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude
-models.
+Replace the dependency with `everruns-drivers` and its `openrouter` feature, which
+ships it from 0.35:
 
-## Driver-Only Example
+```toml
+# before
+everruns-openrouter = "0.34"
+# after
+everruns-drivers = { version = "0.35", features = ["openrouter"] }
+```
+
+Then replace `everruns_openrouter::` with `everruns_drivers::openrouter::` in your code:
 
 ```rust
-use everruns_openrouter::OpenRouterChatDriver;
-
-let driver = OpenRouterChatDriver::new("your-api-key");
-assert!(!driver.uses_custom_url());
+let mut registry = everruns_drivers::DriverRegistry::new();
+everruns_drivers::openrouter::register_driver(&mut registry);
 ```
+
+Using the [`everruns`](https://crates.io/crates/everruns) facade? Nothing to
+change: its `openrouter` feature turns on the new module, re-exported as
+`everruns::drivers::openrouter`.
 
 ## What It Provides
 
-- An OpenRouter Responses API driver wrapping the Everruns Open Responses protocol
-- Registration into the Everruns `DriverRegistry` via `register_driver`
-- `base_url` override for OpenRouter-compatible endpoints
-- Capability profiling derived from OpenRouter's `/models` metadata
+- A glob re-export of `everruns_drivers::openrouter`, so existing code keeps building
+- `#[deprecated]` wrappers for the driver type, `register_driver`,
+  `descriptor`, and `from_env`, so the compiler points at every call site to
+  change
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-openrouter)
-- [OpenRouter provider guide](https://docs.everruns.com/providers/openrouter/)
-- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [`everruns-drivers` API reference (docs.rs)](https://docs.rs/everruns-drivers)
+- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License

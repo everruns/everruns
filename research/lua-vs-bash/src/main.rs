@@ -101,8 +101,8 @@ fn platform() -> HostComposition {
     caps.register(LuaCapability);
 
     let mut drivers = DriverRegistry::new();
-    everruns_anthropic::register_driver(&mut drivers);
-    everruns_openai::register_driver(&mut drivers);
+    everruns_drivers::anthropic::register_driver(&mut drivers);
+    everruns_drivers::openai::register_driver(&mut drivers);
     everruns_llmsim::register_driver(&mut drivers);
 
     HostComposition::new(caps, drivers)
@@ -143,7 +143,7 @@ async fn run_one(
 
     let runtime = match InProcessRuntimeBuilder::new()
         .host_composition(platform())
-        .provider(everruns_anthropic::provider("anthropic", api_key))
+        .provider(everruns_drivers::anthropic::provider("anthropic", api_key))
         .default_model(model.clone())
         .harness(harness)
         .agent(agent)
@@ -222,7 +222,10 @@ async fn dump_prompts(model: &ModelSpec) -> anyhow::Result<()> {
             .build();
         let runtime = InProcessRuntimeBuilder::new()
             .host_composition(platform())
-            .provider(everruns_anthropic::provider("anthropic", "dump-only"))
+            .provider(everruns_drivers::anthropic::provider(
+                "anthropic",
+                "dump-only",
+            ))
             .default_model(model.clone())
             .harness(harness)
             .agent(agent)

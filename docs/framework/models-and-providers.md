@@ -110,18 +110,18 @@ The set below is what ships today. The boundary is open, so a
 
 | Driver | Crate | Wire protocol | Services | Model discovery |
 | --- | --- | --- | --- | --- |
-| OpenAI | `everruns-openai` | OpenAI Responses | chat, embeddings, realtime | yes |
-| OpenAI (Chat Completions) | `everruns-openai` | OpenAI Chat Completions | chat | yes |
-| Azure OpenAI | `everruns-openai` | OpenAI Responses | chat | yes |
-| Anthropic | `everruns-anthropic` | Anthropic Messages | chat | yes |
-| Google Gemini | `everruns-gemini` | Gemini `generateContent` | chat | yes |
-| AWS Bedrock | `everruns-bedrock` | Bedrock `ConverseStream` (SigV4) | chat | no |
-| OpenRouter | `everruns-openrouter` | OpenAI Responses-compatible | chat | yes |
-| Microsoft MAI | `everruns-mai` | OpenAI Chat Completions (Azure AI Foundry) | chat | yes |
-| Fireworks AI | `everruns-fireworks` | OpenAI Chat Completions-compatible | chat | yes |
-| Meta Model API | `everruns-meta` | OpenAI Responses-compatible | chat | yes |
-| Cloudflare AI Gateway | `everruns-drivers` | OpenAI Chat Completions-compatible | chat | Workers AI only |
-| Vercel AI Gateway | `everruns-drivers` | Open Responses | chat | yes |
+| OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat, embeddings, realtime | yes |
+| OpenAI (Chat Completions) | `everruns-drivers` (`openai`) | OpenAI Chat Completions | chat | yes |
+| Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat | yes |
+| Anthropic | `everruns-drivers` (`anthropic`) | Anthropic Messages | chat | yes |
+| Google Gemini | `everruns-drivers` (`gemini`) | Gemini `generateContent` | chat | yes |
+| AWS Bedrock | `everruns-drivers` (`bedrock`) | Bedrock `ConverseStream` (SigV4) | chat | no |
+| OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible | chat | yes |
+| Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions (Azure AI Foundry) | chat | yes |
+| Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
+| Meta Model API | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
+| Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible | chat | Workers AI only |
+| Vercel AI Gateway | `everruns-drivers` (`vercel`) | Open Responses | chat | yes |
 | LLM Simulator | `everruns-llmsim` | none — in-process test double | chat | no |
 
 Every chat driver produces an incremental stream — server-sent events for the
@@ -189,7 +189,7 @@ use everruns::{Agent, Model};
 // Reads FIREWORKS_API_KEY, and FIREWORKS_BASE_URL when set.
 let model = Model::new(
     "accounts/fireworks/models/llama-v3p1-70b-instruct",
-    everruns_fireworks::from_env("fireworks")?,
+    everruns_drivers::fireworks::from_env("fireworks")?,
 );
 # let _ = model;
 # Ok(())
@@ -294,7 +294,7 @@ descriptor:
 use everruns::{CredentialProvider, EnvCredentialProvider, provider_from_env};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-let driver = everruns_anthropic::descriptor();
+let driver = everruns_drivers::anthropic::descriptor();
 
 // What this driver reads, for an error message or a setup check.
 let names = driver.declared_env_vars();

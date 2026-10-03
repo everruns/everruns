@@ -1,22 +1,47 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! Meta Model API provider support for the
-//! [Everruns Framework](https://docs.everruns.com/framework/).
+//! **Moved.** `everruns-meta` is now the [`meta`](everruns_drivers::meta) module of
+//! [`everruns-drivers`](https://docs.rs/everruns-drivers), part of the
+//! [Everruns](https://everruns.com) ecosystem. This crate is a deprecated shim
+//! that re-exports that module and receives no further updates.
 //!
-//! Meta Model API serves Muse models through an OpenAI-compatible Responses
-//! API. [`MetaChatDriver`] wraps the shared Responses protocol driver and adds
-//! first-party endpoint defaults plus model discovery.
-//! It is part of the [Everruns](https://everruns.com) ecosystem.
+//! To migrate, depend on `everruns-drivers` with its `meta` feature instead,
+//! and replace `everruns_meta::` with `everruns_drivers::meta::`:
 //!
-//! # Example
-//!
-//! ```
-//! let provider = everruns_meta::provider("meta", "model-api-key");
-//! assert_eq!(provider.id().as_str(), "meta");
+//! ```rust
+//! let mut registry = everruns_drivers::DriverRegistry::new();
+//! everruns_drivers::meta::register_driver(&mut registry);
 //! ```
 
-mod driver;
+pub use everruns_drivers::meta::*;
 
-pub use driver::{
-    META_DEFAULT_API_URL, MetaChatDriver, descriptor, from_env, provider, register_driver,
-};
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+/// Moved to [`everruns_drivers::meta::MetaChatDriver`].
+#[deprecated(
+    note = "moved to everruns_drivers::meta::MetaChatDriver; everruns-meta is no longer updated"
+)]
+pub type MetaChatDriver = everruns_drivers::meta::MetaChatDriver;
+
+/// Moved to [`everruns_drivers::meta::register_driver`].
+#[deprecated(
+    note = "moved to everruns_drivers::meta::register_driver; everruns-meta is no longer updated"
+)]
+pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+    everruns_drivers::meta::register_driver(registry);
+}
+
+/// Moved to [`everruns_drivers::meta::descriptor`].
+#[deprecated(
+    note = "moved to everruns_drivers::meta::descriptor; everruns-meta is no longer updated"
+)]
+pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+    everruns_drivers::meta::descriptor()
+}
+
+/// Moved to [`everruns_drivers::meta::from_env`].
+#[deprecated(
+    note = "moved to everruns_drivers::meta::from_env; everruns-meta is no longer updated"
+)]
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+{
+    everruns_drivers::meta::from_env(id)
+}

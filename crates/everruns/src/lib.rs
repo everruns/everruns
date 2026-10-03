@@ -241,6 +241,17 @@ pub mod __macro_support {
 // `providers::anthropic::Anthropic`, `gemini` adds `providers::gemini::Gemini`,
 // `bedrock` adds `providers::bedrock::Bedrock`.
 pub mod providers;
+/// The vendor drivers behind `providers`, for hosts that need a driver type or
+/// a protocol detail the config types do not expose. Only the vendors whose
+/// facade features are enabled are compiled in.
+#[cfg(any(
+    feature = "anthropic",
+    feature = "bedrock",
+    feature = "gemini",
+    feature = "openai",
+    feature = "openrouter"
+))]
+pub use everruns_drivers as drivers;
 #[cfg(feature = "anthropic")]
 pub use providers::anthropic::{Anthropic, AnthropicError};
 #[cfg(feature = "bedrock")]

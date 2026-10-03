@@ -1,0 +1,87 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+//! Live smoke test for OpenRouter chat + session tracking.
+//!
+//! Exercises a real streamed chat completion through `OpenRouterChatDriver`,
+//! including the `OpenRouterRequestExtension` that forwards `session_id` and
+//! routing controls. Confirms OpenRouter accepts the decorated request and
+//! streams back a non-empty response — the live counterpart to the wiremock
+//! request-contract tests.
+//!
+//! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
+//!   `doppler run -- cargo test -p everruns-drivers --features openrouter --test openrouter_chat_live -- --ignored --nocapture`
+
+use everruns_drivers::openrouter::options::{
+    OpenRouterRoute, OpenRouterRoutingConfig, insert_routing_option,
+};
+use everruns_drivers::openrouter::provider;
+use everruns_provider::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
+use everruns_provider::model::ReasoningEffort;
+use futures::StreamExt;
+
+#[tokio::test]
+#[ignore = "live network + OPENROUTER_API_KEY"]
+async fn openrouter_chat_with_session_id_and_routing_succeeds() {
+    let api_key = std::env::var("OPENROUTER_API_KEY")
+        .expect("OPENROUTER_API_KEY must be set for the live smoke test");
+
+    let provider = provider("openrouter", api_key);
+
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert("session_id".to_string(), "session_live_smoke".to_string());
+
+    let mut config = LlmCallConfig::new("openai/gpt-5.6-luna");
+    config.max_tokens = Some(128);
+    config.reasoning_effort = Some(ReasoningEffort::Low);
+    config.metadata = metadata;
+    // Exercise the routing-decoration path alongside session_id forwarding.
+    insert_routing_option(
+        &mut config.driver_options,
+        &OpenRouterRoutingConfig {
+            models: vec![
+                "openai/gpt-5.6-luna".to_string(),
+                "openai/gpt-5.6-terra".to_string(),
+            ],
+            route: Some(OpenRouterRoute::Fallback),
+            ..Default::default()
+        },
+    );
+
+    let messages = vec![Message::text(
+        MessageRole::User,
+        "Reply with exactly one word: pong",
+    )];
+
+    let mut stream = provider
+        .chat_completion_stream(messages, &config)
+        .await
+        .expect("OpenRouter should accept the decorated chat request");
+
+    let mut text = String::new();
+    let mut done = false;
+    let mut error: Option<String> = None;
+    while let Some(event) = stream.next().await {
+        match event.expect("stream item should not be a transport error") {
+            LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+            LlmStreamEvent::Done(meta) => {
+                done = true;
+                eprintln!(
+                    "OpenRouter chat done: finish={:?} tokens in/out={:?}/{:?} cost_usd={:?}",
+                    meta.finish_reason,
+                    meta.prompt_tokens,
+                    meta.completion_tokens,
+                    meta.provider_cost_usd,
+                );
+            }
+            LlmStreamEvent::Error(e) => error = Some(e.to_string()),
+            _ => {}
+        }
+    }
+
+    assert!(error.is_none(), "stream returned an error: {error:?}");
+    assert!(done, "stream did not complete with a Done event");
+    assert!(
+        !text.trim().is_empty(),
+        "expected non-empty assistant text, got {text:?}"
+    );
+    eprintln!("OpenRouter chat reply: {text:?}");
+}

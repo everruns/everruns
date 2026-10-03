@@ -36,5 +36,5 @@ the model profile, falling back to a safe value.
 
 - [Google AI for Developers](https://ai.google.dev/)
 - [Google AI Studio](https://aistudio.google.com/)
-- [`everruns-gemini` on crates.io](https://crates.io/crates/everruns-gemini)
+- [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `gemini`
 - [Migrate between providers](/how-to/migrate-providers/)

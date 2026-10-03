@@ -1,9 +1,10 @@
-# Fireworks AI Provider Implementation
-# Decision: Fireworks AI serves open models (Llama, Qwen, DeepSeek, GLM, Kimi,
-# gpt-oss, ...) behind an OpenAI-compatible Chat Completions API. This crate
-# wraps the shared everruns-provider Chat Completions protocol driver and adds
-# Fireworks-specific model discovery, which advertises rich capability metadata (supports_chat,
-# supports_tools, supports_image_input, context_length).
+# Deprecated shim: Fireworks AI moved into everruns-drivers (feature `fireworks`).
+#
+# Decision: the driver crates were folded into everruns-drivers. crates.io has
+# no "moved" flag and shows the newest version's README and description, and
+# docs.rs shows its crate docs, so this crate publishes one last release that
+# says where it went on each of those surfaces and re-exports the new module.
+# It leaves the workspace and the publish set in the release after.
 
 [package]
 name = "everruns-fireworks"
@@ -15,34 +16,14 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-fireworks"
-description = "Fireworks AI provider implementation for Everruns"
+description = "Moved to everruns-drivers (feature `fireworks`). Deprecated shim, no longer updated."
 readme = "README.md"
 
+keywords = ["deprecated", "everruns", "llm", "fireworks"]
+
 [dependencies]
-async-trait.workspace = true
-
-# HTTP client (model discovery)
-reqwest.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# Date/time (model `created` timestamps)
-chrono.workspace = true
-
-# Internal dependencies
-# Provider SPI only (EVE-874): wire-protocol crates never depend on
-# everruns-core. Intentional optional features of everruns-provider (`openapi`
-# schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { version = "0.34.2", path = "../../provider" }
-
-[dev-dependencies]
-# tokio powers `#[tokio::test]`; wiremock captures discovery requests;
-# futures drains the chat stream.
-tokio = { workspace = true, features = ["full", "test-util"] }
-futures.workspace = true
-wiremock = "0.6"
+everruns-drivers = { workspace = true, features = ["fireworks"] }
+everruns-provider.workspace = true
 
 [lints]
 workspace = true

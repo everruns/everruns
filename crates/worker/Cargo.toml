@@ -42,15 +42,18 @@ everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
 everruns-integrations-openai-decisions = { path = "../../integrations/openai-decisions" }
-everruns-openai = { path = "../drivers/openai" }
-everruns-drivers = { workspace = true, features = ["cloudflare", "vercel"] }
-everruns-openrouter = { path = "../drivers/openrouter" }
-everruns-mai = { path = "../drivers/mai" }
-everruns-fireworks = { path = "../drivers/fireworks" }
-everruns-meta = { path = "../drivers/meta" }
-everruns-anthropic = { path = "../drivers/anthropic" }
-everruns-gemini = { path = "../drivers/gemini" }
-everruns-bedrock = { path = "../drivers/bedrock" }
+everruns-drivers = { workspace = true, features = [
+    "anthropic",
+    "bedrock",
+    "cloudflare",
+    "fireworks",
+    "gemini",
+    "mai",
+    "meta",
+    "openai",
+    "openrouter",
+    "vercel",
+] }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-mcp.workspace = true
 # `openai-agents-api` compiles the opt-in backend; it runs only for sessions

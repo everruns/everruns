@@ -1,35 +1,45 @@
 # everruns-drivers
 
-> Everruns model drivers for vendors that need no bespoke wire protocol.
+> Everruns model drivers, one feature per vendor.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-drivers.svg)](https://crates.io/crates/everruns-drivers)
 [![Documentation](https://docs.rs/everruns-drivers/badge.svg)](https://docs.rs/everruns-drivers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-drivers` registers vendor drivers into a `DriverRegistry` from
-[`everruns-provider`](https://crates.io/crates/everruns-provider). Each module
-wraps one of that crate's shared protocol drivers — `OpenAIProtocolChatDriver`
-(Chat Completions) or `OpenResponsesProtocolChatDriver`
-([Open Responses](https://openresponses.org)) — and adds only what is
-vendor-specific: identity, credential schema, authentication, base URL, and
-model discovery.
+[`everruns-provider`](https://crates.io/crates/everruns-provider). Vendors whose
+API is OpenAI-compatible wrap one of that crate's shared protocol drivers,
+`OpenAIProtocolChatDriver` (Chat Completions) or
+`OpenResponsesProtocolChatDriver` ([Open Responses](https://openresponses.org)),
+and add only identity, credential schema, authentication, base URL, and model
+discovery. Anthropic, Gemini, and Bedrock carry their own wire types.
 
 Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. Providers are swappable: see
-[`everruns-openai`](https://crates.io/crates/everruns-openai) for OpenAI models,
-or [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude
-models.
+harness engine for building unstoppable agents. Most applications reach these
+drivers through the [`everruns`](https://crates.io/crates/everruns) facade, whose
+vendor features turn on the matching features here and re-export this crate as
+`everruns::drivers`.
 
-| Feature | Driver | `DriverId` | Wire protocol |
+| Feature | Module | Driver | Wire protocol |
 | --- | --- | --- | --- |
-| `cloudflare` | Cloudflare AI Gateway | `cloudflare` | OpenAI Chat Completions |
-| `vercel` | Vercel AI Gateway | `vercel` | Open Responses |
+| `anthropic` | `anthropic` | Anthropic Claude | Anthropic Messages |
+| `bedrock` | `bedrock` | AWS Bedrock | Bedrock Converse |
+| `bedrock-default-credentials` | `bedrock` | AWS default credential chain | |
+| `cloudflare` | `cloudflare` | Cloudflare AI Gateway | OpenAI Chat Completions |
+| `fireworks` | `fireworks` | Fireworks AI | OpenAI Chat Completions |
+| `gemini` | `gemini` | Google Gemini | Gemini API |
+| `mai` | `mai` | Microsoft AI (Foundry) | OpenAI Chat Completions |
+| `meta` | `meta` | Meta Model API | Open Responses |
+| `openai` | `openai` | OpenAI and Azure OpenAI | Responses and Chat Completions |
+| `openrouter` | `openrouter` | OpenRouter | OpenAI Responses-compatible |
+| `vercel` | `vercel` | Vercel AI Gateway | Open Responses |
 
 No vendor is enabled by default, so a consumer compiles and ships only the ones
-it serves:
+it serves. Vendor dependencies such as the AWS SDK are optional and come in
+only with their feature:
 
 ```toml
-everruns-drivers = { version = "0.33.0", features = ["cloudflare", "vercel"] }
+everruns-drivers = { version = "0.35", features = ["openai", "anthropic"] }
 ```
 
 ## Driver-Only Example
@@ -41,40 +51,41 @@ let mut registry = DriverRegistry::new();
 register_drivers(&mut registry);
 ```
 
+`register_drivers` registers every enabled vendor. Each module also has its own
+`register_driver`, `descriptor`, and `from_env`.
+
 ## What It Provides
 
-- A Cloudflare driver over the AI REST API's Chat Completions endpoint,
-  deriving its URL from the account id and selecting a gateway with the
-  `cf-aig-gateway-id` header, with Workers AI model discovery gated to the
-  Cloudflare host
-- A Vercel AI Gateway driver over the gateway's Open Responses API, with model
-  discovery gated to the gateway host
-- Registration into the Everruns `DriverRegistry`, per vendor or all at once
-  via `register_drivers`
-- `base_url` override on every driver, for a proxy in front of the vendor
+- A `ChatDriver` per vendor, each behind its own feature
+- Registration into the Everruns `DriverRegistry`, per vendor or all enabled
+  vendors at once via `register_drivers`
+- Credential schemas and `from_env` constructors that read each vendor's own
+  environment variables, for standalone and CLI use
+- Host-gated model discovery and a `base_url` override on every driver, for a
+  proxy in front of the vendor
 
-## Why One Crate
+## Moved Crates
 
-A vendor whose API is already OpenAI-compatible needs a descriptor, a
-credential schema, auth, and a base URL — not a wire implementation. A separate
-package for each would cost a workspace member, an entry in four isolation
-guards, a CI shard, and a publish pin every time; a module costs none of that.
+`everruns-anthropic`, `everruns-bedrock`, `everruns-fireworks`,
+`everruns-gemini`, `everruns-mai`, `everruns-meta`, `everruns-openai`, and
+`everruns-openrouter` are now modules of this crate. Their last release is a
+deprecated shim that re-exports the module, and they get no further updates.
+To migrate, replace the dependency with this crate and the vendor's feature:
 
-A vendor graduates to its own crate in two cases, both about what the rest of
-the workspace pays. **Its own wire**: a vendor needing its own request and
-response types is a protocol implementation, not a binding
-([`everruns-anthropic`](https://crates.io/crates/everruns-anthropic),
-[`everruns-gemini`](https://crates.io/crates/everruns-gemini)). **Heavy
-dependencies**: this crate is a single dependency edge, so a dependency added
-for one vendor lands on every consumer of the others
-([`everruns-bedrock`](https://crates.io/crates/everruns-bedrock) and the AWS
-SDK).
+```toml
+# before
+everruns-openai = "0.34"
+# after
+everruns-drivers = { version = "0.35", features = ["openai"] }
+```
+
+and `everruns_openai::X` with `everruns_drivers::openai::X`. Bedrock's
+`default-credentials` feature is `bedrock-default-credentials` here.
 
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-drivers)
-- [Cloudflare AI Gateway provider guide](https://docs.everruns.com/providers/cloudflare/)
-- [Vercel AI Gateway provider guide](https://docs.everruns.com/providers/vercel/)
+- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 

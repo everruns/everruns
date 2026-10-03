@@ -69,7 +69,7 @@ The Framework interaction stays small in `main.rs`. The shared demo helper subsc
 
 ```rust ignore
 // ANTHROPIC_API_KEY, declared by the Anthropic driver itself.
-let agent = agent::build(everruns_anthropic::from_env("anthropic")?)?;
+let agent = agent::build(everruns_drivers::anthropic::from_env("anthropic")?)?;
 let engine = Engine::new();
 let session = engine.create(agent);
 

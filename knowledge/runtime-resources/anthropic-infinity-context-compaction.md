@@ -74,10 +74,10 @@ other providers.
   override (`crates/host/src/runtime_context.rs:242-274`).
 - The Anthropic driver places later system messages in `messages` for selected
   models, but its two moving message-level cache markers still edit prior
-  blocks (`crates/drivers/anthropic/src/driver_layout.rs:160-207`).
+  blocks (`crates/drivers/drivers/src/anthropic/driver_layout.rs:160-207`).
 - The Anthropic stream parser already retains complete provider-native response
   content as internal `provider_opaque_content`
-  (`crates/drivers/anthropic/src/driver.rs:1330-1358`).
+  (`crates/drivers/drivers/src/anthropic/driver.rs:1330-1358`).
 - Durable compaction checkpoints already store encrypted provider/model-specific
   state beside the immutable event log
   (`crates/core/src/compaction_checkpoint.rs:11-61`,
@@ -391,7 +391,7 @@ Implementation is complete only when all checks pass:
    cache-creation token buckets remain disjoint and compaction lifecycle
    metadata contains no prompt content.
 10. **Commands:** run:
-    - `cargo test -p everruns-anthropic --lib --all-features`
+    - `cargo test -p everruns-drivers --lib --all-features`
     - `cargo test -p everruns-builtins infinity_context`
     - `cargo test -p everruns-model-profiles`
     - `cargo test -p everruns-test-support --test reason_atom_test`

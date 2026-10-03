@@ -93,7 +93,7 @@ Entra auth. Bedrock uses the same provider boundary while retaining the AWS SDK
 client in provider-owned auth so ConverseStream framing and SigV4 signing remain
 unchanged.
 
-The `meta` driver (`everruns-meta`) wraps `OpenResponsesProtocolChatDriver` for Meta Model API at `api.meta.ai`. It uses Meta's stateful Responses API, bearer API-key authentication, and host-gated `/models` discovery. Muse profiles keep the Standard and Contributor data-use/pricing tiers distinct.
+The `meta` driver (`everruns_drivers::meta`) wraps `OpenResponsesProtocolChatDriver` for Meta Model API at `api.meta.ai`. It uses Meta's stateful Responses API, bearer API-key authentication, and host-gated `/models` discovery. Muse profiles keep the Standard and Contributor data-use/pricing tiers distinct.
 
 Each registered driver declares:
 

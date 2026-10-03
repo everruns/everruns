@@ -1,46 +1,45 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! Microsoft MAI provider driver for Everruns.
+//! **Moved.** `everruns-mai` is now the [`mai`](everruns_drivers::mai) module of
+//! [`everruns-drivers`](https://docs.rs/everruns-drivers), part of the
+//! [Everruns](https://everruns.com) ecosystem. This crate is a deprecated shim
+//! that re-exports that module and receives no further updates.
 //!
-//! `everruns-mai` is part of the [Everruns](https://everruns.com) ecosystem. It
-//! implements the [`ChatDriver`] contract from `everruns-provider` and registers a
-//! Microsoft MAI provider (e.g. `mai-code-1-flash`) into a [`DriverRegistry`].
+//! To migrate, depend on `everruns-drivers` with its `mai` feature instead,
+//! and replace `everruns_mai::` with `everruns_drivers::mai::`:
 //!
-//! Microsoft MAI models are served via [Azure AI Foundry](https://ai.azure.com)
-//! behind an OpenAI-compatible Chat Completions API, so [`MaiChatDriver`] wraps
-//! `everruns_provider::OpenAIProtocolChatDriver`; its runtime provider owns
-//! authentication through [`ProviderAuth`].
-//!
-//! # Authentication
-//!
-//! Two schemes are supported, both selected from the provider configuration:
-//!
-//! - **Azure AI Foundry API key** — the resource key, sent as `api-key`.
-//! - **Microsoft Entra ID (OAuth)** — a client-credentials service principal
-//!   (`tenant_id`, `client_id`, `client_secret`), supplied through provider
-//!   metadata. Bearer tokens are minted and cached, refreshed before expiry.
-//!
-//! Additional schemes (managed identity, workload identity federation, ...) can
-//! be added by implementing [`ProviderAuth`] without changing the driver.
-//!
-//! # Registering the Driver
-//!
+//! ```rust
+//! let mut registry = everruns_drivers::DriverRegistry::new();
+//! everruns_drivers::mai::register_driver(&mut registry);
 //! ```
-//! use everruns_provider::DriverRegistry;
-//! use everruns_mai::register_driver;
-//!
-//! let mut registry = DriverRegistry::new();
-//! register_driver(&mut registry);
-//! ```
-//!
-//! [`ProviderAuth`]: everruns_provider::ProviderAuth
 
-mod auth;
-mod driver;
+pub use everruns_drivers::mai::*;
 
-pub use auth::{
-    DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, EntraOAuthConfig, EntraOAuthProvider, MaiAuth,
-};
-pub use driver::{MaiChatDriver, descriptor, from_env, provider, register_driver};
+/// Moved to [`everruns_drivers::mai::MaiChatDriver`].
+#[deprecated(
+    note = "moved to everruns_drivers::mai::MaiChatDriver; everruns-mai is no longer updated"
+)]
+pub type MaiChatDriver = everruns_drivers::mai::MaiChatDriver;
 
-// Re-export core types for convenience.
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+/// Moved to [`everruns_drivers::mai::register_driver`].
+#[deprecated(
+    note = "moved to everruns_drivers::mai::register_driver; everruns-mai is no longer updated"
+)]
+pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+    everruns_drivers::mai::register_driver(registry);
+}
+
+/// Moved to [`everruns_drivers::mai::descriptor`].
+#[deprecated(
+    note = "moved to everruns_drivers::mai::descriptor; everruns-mai is no longer updated"
+)]
+pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+    everruns_drivers::mai::descriptor()
+}
+
+/// Moved to [`everruns_drivers::mai::from_env`].
+#[deprecated(note = "moved to everruns_drivers::mai::from_env; everruns-mai is no longer updated")]
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+{
+    everruns_drivers::mai::from_env(id)
+}

@@ -1,49 +1,47 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! OpenAI provider drivers for Everruns.
+//! **Moved.** `everruns-openai` is now the [`openai`](everruns_drivers::openai) module of
+//! [`everruns-drivers`](https://docs.rs/everruns-drivers), part of the
+//! [Everruns](https://everruns.com) ecosystem. This crate is a deprecated shim
+//! that re-exports that module and receives no further updates.
 //!
-//! `everruns-openai` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-provider` and
-//! registers OpenAI providers into a [`DriverRegistry`].
+//! To migrate, depend on `everruns-drivers` with its `openai` feature instead,
+//! and replace `everruns_openai::` with `everruns_drivers::openai::`:
 //!
-//! The crate exposes two drivers:
-//!
-//! - [`OpenAIChatDriver`], the recommended Responses API driver.
-//! - [`OpenAICompletionsChatDriver`], a Chat Completions compatibility driver.
-//!
-//! OpenRouter lives in the separate `everruns-openrouter` crate.
-//!
-//! # Registering the Driver
-//!
+//! ```rust
+//! let mut registry = everruns_drivers::DriverRegistry::new();
+//! everruns_drivers::openai::register_driver(&mut registry);
 //! ```
-//! use everruns_provider::DriverRegistry;
-//! use everruns_openai::register_driver;
-//!
-//! let mut registry = DriverRegistry::new();
-//! register_driver(&mut registry);
-//! ```
-//!
-//!
-//! Application authors normally configure OpenAI through the
-//! application-facing `everruns::OpenAI` value. See the
-//! [Framework model guide](https://docs.everruns.com/framework/models-and-providers/).
 
-mod driver;
-pub(crate) mod embeddings;
-mod types;
+pub use everruns_drivers::openai::*;
 
-#[cfg(test)]
-mod tests;
+/// Moved to [`everruns_drivers::openai::OpenAIChatDriver`].
+#[deprecated(
+    note = "moved to everruns_drivers::openai::OpenAIChatDriver; everruns-openai is no longer updated"
+)]
+pub type OpenAIChatDriver = everruns_drivers::openai::OpenAIChatDriver;
 
-pub use driver::{
-    OpenAIChatDriver, OpenAICompletionsChatDriver, azure_descriptor, azure_provider,
-    completions_descriptor, completions_provider, descriptor, from_env, provider, register_driver,
-};
-pub use embeddings::OpenAIEmbeddingsDriver;
-pub use types::{
-    ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
-};
+/// Moved to [`everruns_drivers::openai::register_driver`].
+#[deprecated(
+    note = "moved to everruns_drivers::openai::register_driver; everruns-openai is no longer updated"
+)]
+pub fn register_driver(registry: &mut everruns_provider::driver_registry::DriverRegistry) {
+    everruns_drivers::openai::register_driver(registry);
+}
 
-// Re-export core types for convenience
-pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+/// Moved to [`everruns_drivers::openai::descriptor`].
+#[deprecated(
+    note = "moved to everruns_drivers::openai::descriptor; everruns-openai is no longer updated"
+)]
+pub fn descriptor() -> everruns_provider::driver_registry::DriverDescriptor {
+    everruns_drivers::openai::descriptor()
+}
 
-pub mod async_tools;
+/// Moved to [`everruns_drivers::openai::from_env`].
+#[deprecated(
+    note = "moved to everruns_drivers::openai::from_env; everruns-openai is no longer updated"
+)]
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> Result<everruns_provider::Provider, everruns_provider::credential_provider::EnvCredentialError>
+{
+    everruns_drivers::openai::from_env(id)
+}

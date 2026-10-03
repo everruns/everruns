@@ -65,7 +65,7 @@ pub use worker_adapters::{
 };
 
 // Re-export OpenAI driver from the openai crate
-pub use everruns_openai::OpenAIChatDriver;
+pub use everruns_drivers::openai::OpenAIChatDriver;
 
 // Re-export app builder for composable worker configurations
 pub use app_builder::WorkerAppBuilder;

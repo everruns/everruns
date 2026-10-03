@@ -113,6 +113,6 @@ configure that on the OpenRouter side. This complements Everruns' own
 - [OpenRouter](https://openrouter.ai/)
 - [OpenRouter docs](https://openrouter.ai/docs)
 - [OpenRouter Server Tools capability](/capabilities/openrouter-server-tools/)
-- [`everruns-openrouter` on crates.io](https://crates.io/crates/everruns-openrouter)
+- [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `openrouter`
 - [Integrations overview](/integrations/)
 - [Migrate between providers](/how-to/migrate-providers/)
