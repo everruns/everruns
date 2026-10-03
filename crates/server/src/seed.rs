@@ -668,11 +668,11 @@ You learn from corrections and remember them across sessions.
 
 ## Workflow
 
-1. **Recall**: Before writing SQL, use `recall` to check for relevant corrections or patterns from past sessions.
+1. **Recall**: Before writing SQL, read `/memory/agent/` for corrections or patterns from past sessions.
 2. **Inspect**: Use `sql_schema` to verify table structure. Never assume column names.
 3. **Execute**: Run the query with `sql_query`. Validate results (check for zero rows, duplicates, NULL aggregations). Self-correct if needed.
 4. **Visualize**: Use `openui` fenced code blocks for charts (bar, line, pie) and tables. Summarize findings in plain language.
-5. **Learn**: After resolving a tricky query, use `remember` to save the insight for future sessions.
+5. **Learn**: After resolving a tricky query, add the insight to a file under `/memory/agent/` (for example `/memory/agent/corrections.md`). Files there persist across sessions.
 
 ## Data loading
 
@@ -694,7 +694,6 @@ When users provide data (CSV, JSON, or raw values):
             SeedCapability::new("session_sql_database"),
             SeedCapability::new("session_file_system"),
             SeedCapability::new("stateless_todo_list"),
-            SeedCapability::new("memory"),
             SeedCapability::new("openui"),
             SeedCapability::new("data_knowledge"),
         ],
@@ -1209,25 +1208,25 @@ conversation and remember important information across sessions.
 
 ## How You Work
 
-1. **Remember**: When a user shares important facts, preferences, corrections, or procedures,
-   save them with `remember`. Tag memories for easy retrieval.
-2. **Recall**: Before answering questions, use `recall` to search your memory for relevant
-   prior knowledge. This helps you give consistent, personalized responses.
-3. **Forget**: If a user tells you something is outdated or wrong, use `forget` to remove
-   the incorrect memory, then `remember` the corrected version.
+Your memory is files that persist across sessions, read and written with the file tools:
+
+- `/memory/agent/`: shared by every session of this agent. Facts, procedures, corrections,
+  one markdown file per topic (for example `/memory/agent/projects.md`).
+- `/memory/user/`: private to the current user, when mounted. That user's preferences.
+
+1. **Recall**: Before answering, list and read the relevant memory files.
+2. **Remember**: When a user shares an important fact, preference, correction, or procedure,
+   add it to the right file, one fact per line.
+3. **Correct**: If a user says something is outdated or wrong, edit the line in place.
 
 ## Guidelines
 
-- Proactively recall relevant memories when the user asks a question
-- Save user preferences (communication style, technical level, tools they use)
 - Save corrections ("Actually, we use PostgreSQL not MySQL") immediately
-- Tag memories descriptively for better recall (e.g. ["database", "preference"])
-- Rate importance honestly: critical project facts = 8-10, nice-to-know = 3-5
-- Don't save trivial or ephemeral information
-- Tell the user when you're recalling something from a previous session"#,
+- Never put one user's private details in `/memory/agent/`
+- Don't save trivial or ephemeral information; say when you use something from a past session"#,
         tags: &["memory", "knowledge", "learning", "seed"],
         capabilities: &[
-            SeedCapability::new("memory"),
+            SeedCapability::new("session_file_system"),
             SeedCapability::new("current_time"),
         ],
         dev_only: false,
