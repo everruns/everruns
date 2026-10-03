@@ -515,47 +515,63 @@ async fn test_anthropic_generic_tool_search_low_threshold() {
 /// the deferred tool can still be discovered, loaded, and called by the loop.
 #[tokio::test]
 async fn test_anthropic_claude_tool_search_low_threshold() {
-    let Some(model) = ANTHROPIC_HAIKU.model() else {
+    if ANTHROPIC_HAIKU.model().is_none() {
         eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
         return;
-    };
-
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Claude Tool Search Agent")
-        .system_prompt("When asked to add numbers, use the add tool.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(TestMathCapability)
-        .capability(CurrentTimeCapability)
-        // Low threshold: hosted tool_search activates even with few tools (5 > 3).
-        .capability(ClaudeToolSearchCapability::with_threshold(3))
-        .max_iterations(6)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
-
-    assert!(result.success, "Turn should succeed: {:?}", result.error);
-    assert!(
-        result.tool_calls_count > 0,
-        "Claude should call the add tool even with deferred schemas"
-    );
-    assert_hosted_tool_search_was_enabled(&runner).await;
-
-    // The hosted path must not also offer the client-side `tool_search` tool —
-    // its presence would mean the generic fallback was selected instead.
-    let generations = runner.events_by_type(LLM_GENERATION).await;
-    for event in &generations {
-        let EventData::LlmGeneration(data) = &event.data else {
-            continue;
-        };
-        assert!(
-            !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
-            "hosted claude_tool_search must not offer the client-side \
-             `{TOOL_SEARCH_TOOL_NAME}` tool"
-        );
     }
+
+    // Haiku sometimes answers "7 + 3" without the tool; retry fresh sessions
+    // like the GPT cases, but check the hosted wire contract on every attempt.
+    const MAX_ATTEMPTS: usize = 5;
+    let mut called_add = false;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let model = ANTHROPIC_HAIKU.model().expect("checked above");
+        let runner = InMemoryAgenticLoop::builder()
+            .agent_name("Claude Tool Search Agent")
+            .system_prompt("When asked to add numbers, use the add tool.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(TestMathCapability)
+            .capability(CurrentTimeCapability)
+            // Low threshold: hosted tool_search activates even with few tools (5 > 3).
+            .capability(ClaudeToolSearchCapability::with_threshold(3))
+            .max_iterations(6)
+            .build()
+            .await
+            .unwrap();
+
+        let result = runner.run_turn("What is 7 + 3?").await.unwrap();
+
+        assert!(result.success, "Turn should succeed: {:?}", result.error);
+        assert_hosted_tool_search_was_enabled(&runner).await;
+
+        // The hosted path must not also offer the client-side `tool_search` tool —
+        // its presence would mean the generic fallback was selected instead.
+        let generations = runner.events_by_type(LLM_GENERATION).await;
+        for event in &generations {
+            let EventData::LlmGeneration(data) = &event.data else {
+                continue;
+            };
+            assert!(
+                !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
+                "hosted claude_tool_search must not offer the client-side \
+                 `{TOOL_SEARCH_TOOL_NAME}` tool"
+            );
+        }
+
+        if result.tool_calls_count > 0 {
+            called_add = true;
+            break;
+        }
+        eprintln!("attempt {attempt}/{MAX_ATTEMPTS}: no tool call yet; retrying");
+    }
+
+    assert!(
+        called_add,
+        "Claude should call the add tool even with deferred schemas \
+         within {MAX_ATTEMPTS} attempts"
+    );
 }
 
 /// Tests model-adaptive hosted resolution on Claude Haiku 4.5 and on Opus 5.5,

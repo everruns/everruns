@@ -1456,7 +1456,7 @@ async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
         create_published_served_a2a_app().await;
     let discovery_base_url = spawn_agent_card_server(a2a_agent_card(&endpoint)).await;
     let config = outbound_delegation_config(&endpoint, &api_key, Some(&discovery_base_url));
-
+    let _dev_grade = crate::dev_grade::DevGradeGuard::set();
     let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
 
     assert_ne!(
@@ -1494,7 +1494,7 @@ async fn outbound_a2a_delegation_reaches_local_app_with_inline_card() {
     let (_server, endpoint, api_key, _app_id, _channel_id) =
         create_published_served_a2a_app().await;
     let config = outbound_delegation_config(&endpoint, &api_key, None);
-
+    let _dev_grade = crate::dev_grade::DevGradeGuard::set();
     let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
 
     assert_ne!(
