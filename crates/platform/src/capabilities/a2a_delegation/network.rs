@@ -56,6 +56,7 @@ pub(super) async fn hardened_a2a_http_client(
         .map_err(|e| format!("Failed to build A2A HTTP client: {e}"))
 }
 
+#[cfg(test)]
 pub(super) fn controlled_dns_resolver<F, Fut>(resolve: F) -> DnsResolver
 where
     F: Fn(String, u16) -> Fut + Send + Sync + 'static,

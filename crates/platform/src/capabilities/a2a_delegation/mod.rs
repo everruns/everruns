@@ -450,10 +450,6 @@ impl ExternalA2aAgentConfig {
         Ok(())
     }
 
-    async fn resolve_card(&self) -> std::result::Result<AgentCard, String> {
-        self.resolve_card_with_resolver(None).await
-    }
-
     async fn resolve_card_with_resolver(
         &self,
         resolver: Option<&DnsResolver>,

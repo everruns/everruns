@@ -181,7 +181,10 @@ async fn a2a_clients_do_not_follow_redirects_to_private_destinations() {
         poll_interval_ms: None,
         allow_local_urls: true,
     };
-    let err = discovery_agent.resolve_card().await.unwrap_err();
+    let err = discovery_agent
+        .resolve_card_with_resolver(None)
+        .await
+        .unwrap_err();
     assert!(
         err.contains("Failed to resolve") || err.contains("agent-card") || err.contains("302"),
         "discovery must fail closed on redirect, not follow it: {err}"
