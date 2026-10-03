@@ -5,7 +5,7 @@
 use crate::events::{EventContext, EventRequest};
 use everruns_contracts::typed_id::{MessageId, TurnId};
 
-use crate::host::host::{RuntimeHostAdapter, RuntimeSessionLifecycle};
+use crate::host::runtime_host::{RuntimeHostAdapter, RuntimeSessionLifecycle};
 
 impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
     /// Answer `ask_user` calls the client structurally cannot be asked.

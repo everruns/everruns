@@ -27,7 +27,7 @@ See `crates/core/src/command.rs` for `CommandDescriptor`, `CommandSource`, `Comm
 
 `Capability::commands()` returns `Vec<CommandDescriptor>` (default: empty). Capabilities that provide commands override this method. `Capability::execute_command()` executes a declared command; capabilities that declare commands must override it.
 
-See `crates/builtins/src/btw.rs` for the built-in `/btw` capability.
+See `crates/core/src/builtins/btw.rs` for the built-in `/btw` capability.
 
 ## Command Host (EVE-543)
 

@@ -1,9 +1,9 @@
 flowchart TB
     F["Everruns Framework<br/>Agent • Engine • Session"]
     P["Everruns Platform<br/>Server • Worker"]
-    H["everruns-host<br/>InProcessExecution"]
+    H["core::host<br/>InProcessExecution"]
     D["everruns-durable<br/>DurableExecution"]
-    K["everruns-engine<br/>Execution • TurnExecution • Input / Reason / Act"]
+    K["core::engine<br/>Execution • TurnExecution • Input / Reason / Act"]
 
     F -->|"create / resume / run"| H
     P -->|"schedule / checkpoint / retry"| D

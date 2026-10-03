@@ -291,7 +291,7 @@ All participating title mutation paths suppress no-ops and emit the typed
 mutations preserve the current turn correlation. Embedders can reuse the
 title-mutation helpers and project events through the runtime event bus without
 replacing the capability. See
-[`crates/host/src/session_services/capabilities/session.rs`](../../crates/host/src/session_services/capabilities/session.rs)
+[`crates/core/src/host/session_services/capabilities/session.rs`](../../crates/core/src/host/session_services/capabilities/session.rs)
 for the public config and helper APIs, and [`knowledge/execution/events.md`](events.md) for the
 event contract.
 
@@ -368,7 +368,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 **Built-in IDs** use `snake_case` naming and are validated against the `CapabilityRegistry`. **MCP IDs** use the `mcp:` prefix followed by the MCP server's UUID. **Declarative IDs** use the `declarative:` prefix followed by the persisted definition's unique name. See `knowledge/integrations/mcp-servers.md` for MCP details.
 
 For the portable policy catalog and its stable registration order, see
-`crates/builtins/src/lib.rs`. Environment and hosted catalogs stay with their
+`crates/core/src/builtins/mod.rs`. Environment and hosted catalogs stay with their
 owning crates.
 
 ##### Built-in Capability ID Constants
@@ -376,7 +376,7 @@ owning crates.
 Every built-in capability **must** declare a `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str` in its owning module and return it from `fn id()`. The owning crate re-exports the constant.
 
 ```rust
-// In crates/builtins/src/current_time.rs
+// In crates/core/src/builtins/current_time.rs
 pub const CURRENT_TIME_CAPABILITY_ID: &str = "current_time";
 
 impl Capability for CurrentTimeCapability {
@@ -441,7 +441,7 @@ resets); see `crates/core/src/llm_error_hook.rs`.
 
 This is the generic mechanism behind "the current time is X": baking a changing timestamp into the system prompt would bust the system-prompt cache every turn, and a tool round-trip is slower and only informs the model when it asks. `current_time` contributes its value as a `Dynamic` fact (and keeps `get_current_time` for explicit timezone/format queries). Static facts share the same `<facts>` wire format; a single explanatory note (`FACTS_DYNAMIC_NOTE`) is added to the cached prompt once whenever any active capability declares a dynamic fact.
 
-`facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per answered input on every request (via `collect_dynamic_facts`), so implementations must be cheap, side-effect free, and derive time-dependent values from `ctx.as_of`, never from the clock: a past block has to render the same text on every later request. See `crates/core/src/capabilities/facts.rs` and `crates/engine/src/execution/reason/facts.rs`.
+`facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per answered input on every request (via `collect_dynamic_facts`), so implementations must be cheap, side-effect free, and derive time-dependent values from `ctx.as_of`, never from the clock: a past block has to render the same text on every later request. See `crates/core/src/capabilities/facts.rs` and `crates/core/src/engine/execution/reason/facts.rs`.
 
 **Cache-anchor interaction.** Every facts block is replayed on the next request, so none is volatile and cache breakpoints may sit on them. The one exception is a conversation that ends on an answer (a continuation): the block then trails the answer as of now and nothing reproduces it, so `ReasonAtom` sets `LlmCallConfig.volatile_suffix_len` to 1 and the Anthropic driver anchors its breakpoint before it. Drivers that do not implement message-level anchoring ignore the field (`0` is the default).
 
@@ -668,7 +668,7 @@ harness rows.
 - **`retired`** is the removal. The implementation is deleted down to an
   identity-only shell: no tools, prompt, mounts, dependencies, or hooks. The ID
   stays registered on purpose — an unregistered ID fails
-  `RuntimeAgent` activation (`crates/host/src/runtime.rs`), whereas a retired one
+  `RuntimeAgent` activation (`crates/core/src/host/runtime.rs`), whereas a retired one
   resolves to a no-op, so an agent that still references it keeps running. It is
   hidden from `list_capabilities` unless `include_retired` is set, which is how
   management UIs still name the stale attachment and offer to remove it.
@@ -977,7 +977,7 @@ Following the agentskills.io specification:
 - **Purpose**: Detects repeated tool loops and injects a warning to break the loop
 - **Tools**: None (uses `MessageFilterProvider::post_load` only)
 - **Config**: `{"threshold": N}`, number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
-- **Source**: `crates/builtins/src/loop_detection.rs`
+- **Source**: `crates/core/src/builtins/loop_detection.rs`
 - **Behavior**: Reconstructs each warning after the input that triggered it, so later prompt views replay the same warning even after the loop clears. Models with turn-scoped system support expire it with `clear_at`; other providers retain their existing system-message handling.
 
 #### ToolApproval
@@ -987,7 +987,7 @@ Following the agentskills.io specification:
 - **Status**: Not in the portable registry, it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `HostComposition`. The hosted product registers it with `DurableToolApprover`, so any hosted agent can opt in; see [Tool Approval](tool-approval.md) for how a hosted turn parks on it and resumes.
 - **Tools**: None (contributes a `PreToolUseHook`)
 - **Config**: `mode` (`off` / `normal` / `protective`, default `normal`) and, for hosted sessions, `timeout_seconds`; schema in source
-- **Source**: `crates/builtins/src/tool_approval.rs`
+- **Source**: `crates/core/src/builtins/tool_approval.rs`
 - **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints`. `destructive`/`open_world` (or a definition whose policy requires approval) decide first, so a tool cannot escape the gate by also declaring itself `readonly`; only a tool that declares `readonly` and neither risky hint counts as read-only; an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which blocks the call: the gate is only registered by hosts that can service a prompt, so an unreachable approver is a transport failure, and a gate that fails open is not a gate. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
 
 #### SoftApproval
@@ -997,7 +997,7 @@ Following the agentskills.io specification:
 - **Status**: Registered and included in Worker Base, Worker, deprecated Generic and the Platform Chat Agent at level `normal`
 - **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
-- **Source**: `crates/builtins/src/soft_approval.rs`
+- **Source**: `crates/core/src/builtins/soft_approval.rs`
 - **Behavior**: Contributes a `<soft_approval>` system-prompt block resolved per turn, so a config edit or `set_approval_mode` applies on the next turn; `off` contributes nothing. The pause is the `request_approval` call, not prose, which gives hosts a `PendingApprovalStore` to render and the event log a record of what was asked. Shares the `ApprovalMode` vocabulary with `tool_approval`, and its tools declare themselves read-only so the hard gate never gates the act of asking. The tools record the turn and message a consent was spoken in but never the approver: `ApprovalAuditListener` resolves that server-side from the authenticated `input.message` initiator and writes `agent.approval.requested` / `agent.approval.granted` to the org audit log. Full rationale in [Soft Approval](soft-approval.md).
 
 #### ProgressGuard
@@ -1007,7 +1007,7 @@ Following the agentskills.io specification:
 - **Status**: Registered, opt-in per agent. Behavior-only.
 - **Tools**: None (contributes a `PostToolExecHook`)
 - **Config**: None
-- **Source**: `crates/builtins/src/progress_guard.rs`
+- **Source**: `crates/core/src/builtins/progress_guard.rs`
 - **Behavior**: Observes tool traffic per session and appends a warning to the *next* tool result when a threshold trips, naming the situation and the required next action. Runtime-enforced rather than prompt-only, and contributes no system prompt text: a warning that usually never fires should not be paid for on every turn. Complements `loop_detection`, which catches literal repeats of the same call; this catches activity that varies but goes nowhere. Ported from yolop.
 
 #### ToolCallRepair
@@ -1017,7 +1017,7 @@ Following the agentskills.io specification:
 - **Status**: Opt-in. Registered but **disabled by default**: contributes nothing unless an agent explicitly enables it; with it off, behavior is byte-for-byte unchanged.
 - **Tools**: None (intercepts in the `reason` atom, after tool calls are finalized and before the assistant message is built)
 - **Config**: `{"max_reprompts": N}`, corrective re-prompt attempts allowed per malformed call before falling through to the existing error path (default 1, range 0–5)
-- **Source**: `crates/builtins/src/tool_call_repair.rs`
+- **Source**: `crates/core/src/builtins/tool_call_repair.rs`
 - **Behavior**: Runs a pure, table-tested `salvage_tool_arguments` over each call's `arguments`: unwraps fenced ```json blocks and surrounding prose, strips trailing commas, normalizes single quotes, and coerces string-typed known keys against the tool's JSON schema (`"42"` → `42`). The already-valid case is a no-op. When local salvage fails the bounded re-prompt path applies (capped by `max_reprompts`), then falls through to today's exact error. Emits one `tool.call_repaired` event per malformed call with an outcome label (`local-salvage` | `re-prompt` | `gave-up`). Salvage parses untrusted model output and is bounded: inputs over 256 KiB are rejected and all scanning is linear and non-recursive.
 
 #### MessageMetadata
@@ -1026,7 +1026,7 @@ Following the agentskills.io specification:
 - **Purpose**: Annotates user and agent messages with metadata (message timestamp, UTC) in the prompt-facing model view so the model can reason about timing and gaps between messages
 - **Tools**: None (uses `ModelViewProvider` only; priority 100, after compaction masking)
 - **Config**: `{"fields": ["timestamp"]}`, which metadata fields to render, in order (default `["timestamp"]`; `[]` disables annotations). User and agent messages are always annotated; system and tool-result messages never are.
-- **Source**: `crates/builtins/src/message_metadata.rs`
+- **Source**: `crates/core/src/builtins/message_metadata.rs`
 - **Behavior**: Prefixes the first text part of each user/agent message with one bracketed segment per configured field (e.g. `[time <RFC3339 UTC>]` from `Message::created_at`); tool-call-only agent messages get the annotation as a leading text part. Fields are an extensible enum (`MessageMetadataField`); future fields (e.g. the LLM model behind an agent message, once stored messages record it) render their own segment and may skip messages that lack the data. Stored messages are unchanged, and `created_at` is immutable, so annotations are deterministic across turns and do not invalidate provider prompt caches. A small system prompt addition explains the annotation and forbids the model from emitting it. `filter_response_text` strips echoed leading `[time <RFC3339>]` prefixes, echoed `<facts>` blocks, and whole-message degenerate `time <junk>` echoes from assistant text and (via ReasonAtom) from `reason.item` summaries so the work log does not show annotation junk.
 
 #### PromptCanaryGuardrail
@@ -1036,7 +1036,7 @@ Following the agentskills.io specification:
 - **Tools**: None (uses `output_guardrails()` only)
 - **Config**: `{"replacement": "..."}`, optional replacement text shown in place of the leak (default: a generic "withheld" message)
 - **Risk**: `Low`, read-only inspection of model output
-- **Source**: `crates/builtins/src/prompt_canary_guardrail.rs`
+- **Source**: `crates/core/src/builtins/prompt_canary_guardrail.rs`
 - **Behavior**: At stream arm time, extracts the first sentence of the assembled system prompt whose normalized form is ≥ 30 chars and uses it as a substring needle (lowercased, whitespace-collapsed). Each batched delta runs the substring check; on hit, the stream is aborted and `output.message.replaced` is emitted. The original tokens are never persisted or replayed. See [Output Guardrails](#output-guardrails).
 
 ### MCP Virtual Capabilities

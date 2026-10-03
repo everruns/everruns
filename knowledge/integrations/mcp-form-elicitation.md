@@ -39,7 +39,7 @@ asking a person to open a link — is answered with domain highlighting and
 Punycode warnings (TM-TOOL-033). Form mode has no domain to show, so it needs a
 different answer.
 
-**The answer routes back through the model.** `crates/mcp/src/protocol.rs`
+**The answer routes back through the model.** `crates/core/src/mcp/protocol.rs`
 records this as the reason form mode stays undeclared: a form answer is carried
 by a tool result, so it lands in the event log and permanently in model context.
 That is the TM-AGENT-016 class of problem, and it is exactly what URL mode exists
@@ -188,11 +188,11 @@ answer and a model cannot answer a server's form in the person's name
 
 ## How it landed
 
-- **Projection and bounds**: `crates/mcp/src/form_elicitation.rs`. Bounds are
+- **Projection and bounds**: `crates/core/src/mcp/form_elicitation.rs`. Bounds are
   refusals, never trims (16 properties, 32 enum members, and limits on names,
   titles and text). `ask_user`'s own caps for model-authored calls (four
   questions, six options) do not apply here; the form bounds replace them.
-- **The pause**: `FormElicitationHook` (`crates/engine/src/execution/act_hooks.rs`)
+- **The pause**: `FormElicitationHook` (`crates/core/src/engine/execution/act_hooks.rs`)
   turns `form_elicitation_required` into an engine-authored `ask_user` call whose
   id carries `mcp_form_elicitation_` and whose arguments carry `mcp_elicitation`
   (server, tool, retry tool, message, schema fingerprint). It rides the existing

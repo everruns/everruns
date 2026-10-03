@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::ToolRegistry;
 use crate::host::SessionMutatorExt;
-use crate::host::host::{RuntimeHostAdapter, ToolContextRequest};
+use crate::host::runtime_host::{RuntimeHostAdapter, ToolContextRequest};
 use crate::org_public_id_from_internal;
 
 pub(crate) struct RuntimeToolCapabilityContext {

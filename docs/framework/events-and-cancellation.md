@@ -252,7 +252,7 @@ are not part of the event protocol.
 
 ### Implementing a custom event log
 
-An advanced host can store canonical events itself. `everruns-host` exposes
+An advanced host can store canonical events itself. `everruns-core` (`host` feature) exposes
 `EventReader` and `EventLog` as a public SPI: an external crate implements both
 against its own storage and supplies the result to composition through
 `HostBackends::with_event_log`. No in-crate access is required, cursors and
@@ -274,7 +274,7 @@ Three request shapes are distinguished by `EventReadRequest::cursor()`:
 use async_trait::async_trait;
 use everruns_core::events::{Event, EventRequest};
 use everruns_contracts::typed_id::EventId;
-use everruns_host::{
+use everruns_core::host::{
     EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest,
     EventReader,
 };
@@ -386,7 +386,7 @@ persisted transcript with bounded
 [`Session::history()` pages](/framework/sessions/#history-and-resume). That projection
 excludes ephemeral deltas by design. Applications that need raw durable
 envelopes rather than derived messages can provide and read an `EventLog`
-through the advanced `everruns-host` SPI; neither recovery path relies on the
+through the advanced `everruns-core` (`host` feature) SPI; neither recovery path relies on the
 in-process subscriber.
 
 ### Cancellation and failure

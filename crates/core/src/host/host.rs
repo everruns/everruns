@@ -45,6 +45,7 @@ use everruns_contracts::user_facing_error::{ErrorDisclosure, UserFacingError};
 use std::sync::Arc;
 use tracing::warn;
 
+#[path = "host/message_filter_only.rs"]
 mod message_filter_only;
 use message_filter_only::MessageFilterOnlyCapability;
 
@@ -1486,5 +1487,6 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     atom.execute(input).await
 }
 
+#[path = "host/execution_capabilities.rs"]
 mod execution_capabilities;
 use execution_capabilities::load_execution_capabilities;

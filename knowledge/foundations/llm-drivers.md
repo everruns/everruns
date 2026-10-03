@@ -387,7 +387,7 @@ A long `xhigh`/`max` reasoning call on the OpenAI driver runs with `background: 
 
 Policy lives in `crates/contracts/src/openresponses_protocol/background.rs`: on for `xhigh`/`max`, forced on or off by the `openai/background` driver option, and limited to OpenAI and Azure hosts (OpenRouter and custom gateways have no resume API). Background mode requires stored responses, so it is not zero-data-retention compatible: a 400 naming the background fields retries once in the foreground, and ZDR deployments can set the option to `false`.
 
-Re-attaching survives a worker restart (EVE-1134). A durable host passes a `BackgroundCallContext` (`crates/contracts/src/background_call.rs`) on `LlmCallConfig`: a journal for the response id and an explicit turn-cancel signal. The id is saved when `response.created` arrives, before the parser sees any event, into the turn's native-async checkpoint (`crates/host/src/background_call.rs`; each write takes and releases the turn lease, so no lease is held across the call). The durable retry of the same call re-attaches with `GET /responses/{id}?stream=true` from the first event, because its parser starts empty, instead of posting again. The record carries a fingerprint of the request (metadata excluded, since it holds per-attempt ids); a record for a different request is cancelled rather than resumed, and a record that can no longer be fetched falls back to posting. The record is cleared at the terminal event.
+Re-attaching survives a worker restart (EVE-1134). A durable host passes a `BackgroundCallContext` (`crates/contracts/src/background_call.rs`) on `LlmCallConfig`: a journal for the response id and an explicit turn-cancel signal. The id is saved when `response.created` arrives, before the parser sees any event, into the turn's native-async checkpoint (`crates/core/src/host/background_call.rs`; each write takes and releases the turn lease, so no lease is held across the call). The durable retry of the same call re-attaches with `GET /responses/{id}?stream=true` from the first event, because its parser starts empty, instead of posting again. The record carries a fingerprint of the request (metadata excluded, since it holds per-attempt ids); a record for a different request is cancelled rather than resumed, and a record that can no longer be fetched falls back to posting. The record is cleared at the terminal event.
 
 With a journal, dropping the stream no longer cancels the response: the drop may be a worker shutdown or a stall whose retry re-attaches. Cancellation is explicit instead: the worker heartbeat reports a cancelled workflow to the worker that still owns the task (see [durable execution](../operations/durable-execution-engine.md#task-heartbeat-cancellation)), and the driver sends `POST /responses/{id}/cancel` while it is still reading the stream. Ownership loss never cancels, because the next owner is re-attaching to that response. Without a journal (embedded hosts, or a journal write that fails) the in-process behaviour stays: an abandoned response is cancelled on drop.
 
@@ -541,7 +541,7 @@ re-executes a completed tool.
 | Meta Model API driver | `crates/drivers/drivers/src/meta/driver.rs` |
 | Cloudflare AI Gateway driver | `crates/drivers/drivers/src/cloudflare.rs` |
 | Vercel AI Gateway driver | `crates/drivers/drivers/src/vercel.rs` |
-| Error handling | `crates/engine/src/execution/reason.rs` |
+| Error handling | `crates/core/src/engine/execution/reason.rs` |
 
 ## OpenAI Driver Variants
 
@@ -972,7 +972,7 @@ stream that produced no tokens within its window, is treated the same way as an
 in-band transient error: before any output it is classified transient and routed
 through the same bounded retry path, re-issuing the identical request with no
 artificial history; after output, or once the retry budget is exhausted, it
-fails the turn. See `crates/engine/src/execution/reason.rs`.
+fails the turn. See `crates/core/src/engine/execution/reason.rs`.
 
 ### Rate Limit Header Support
 

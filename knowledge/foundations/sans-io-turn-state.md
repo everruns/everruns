@@ -102,7 +102,7 @@ share, plus the evidence that it behaves identically.
 (EVE-840), then `InProcessRuntime::run_turn` was rewired onto it (EVE-842). The
 in-process loop no longer decides reason-vs-act-vs-complete; it executes the host
 operation each `TurnPlan` names and performs the returned `TurnLifecycleEffect`s.
-`crates/host/tests/engine_planned_turn_test.rs` carries the behavior-preserving
+`crates/everruns/tests/host/engine_planned_turn_test.rs` carries the behavior-preserving
 evidence and the restart-between-steps property.
 
 ### Stage 1c, one execution kernel, two hosts (landed)
@@ -188,18 +188,18 @@ converge later.
 ## References
 
 - `crates/core/src/turn.rs`, the shared provider-neutral stop reason only
-- `crates/engine/src/machine.rs`, the shared `Execution` contract and serializable
+- `crates/core/src/engine/machine.rs`, the shared `Execution` contract and serializable
   `TurnExecution` state machine
-- `crates/engine/src/turn.rs`, the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
+- `crates/core/src/engine/turn.rs`, the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
   `plan_next_turn`, `TurnLifecycleEffect`), extracted from the runtime in EVE-840
-- `crates/engine/src/execution/`, the shared Input/Reason/Act algorithms and
+- `crates/core/src/engine/execution/`, the shared Input/Reason/Act algorithms and
   engine-owned phase I/O values
-- `crates/engine/src/phase_effects.rs`, live host-applied phase effects
+- `crates/core/src/engine/phase_effects.rs`, live host-applied phase effects
 - `crates/core/src/execution_context.rs` and `crates/core/src/tool_hooks.rs`,
   neutral contracts used by the engine and capability authors
-- `crates/host/src/turn_strategy.rs`, `advance_host_execution`, the runtime
+- `crates/core/src/host/turn_strategy.rs`, `advance_host_execution`, the runtime
   host's thin I/O wrapper over an explicit engine driver, plus host-fact
   resolvers and the lifecycle-effect applier both drivers share
-- `crates/host/src/runtime.rs`, `InProcessRuntime::run_turn`, the engine-planned
+- `crates/core/src/host/runtime.rs`, `InProcessRuntime::run_turn`, the engine-planned
   in-process loop (EVE-842)
 - `knowledge/operations/durable-execution-engine.md`, the durable host this converges with

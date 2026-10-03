@@ -101,7 +101,7 @@ A decision driver is one vendor's transport for the contract above, the
 decisions equivalent of an LLM chat driver. The trait lives in core
 ([`crates/core/src/decision_driver.rs`](../../crates/core/src/decision_driver.rs));
 the registry and router live in host
-([`crates/host/src/decisions/`](../../crates/host/src/decisions/)); vendor drivers
+([`crates/core/src/host/decisions/`](../../crates/core/src/host/decisions/)); vendor drivers
 live with their vendor, so host still names none.
 
 - **Capabilities are declared.** A driver states which primitives it answers
@@ -129,7 +129,7 @@ Drivers today:
 | Driver | Where | Answers | Calibrated |
 |---|---|---|---|
 | `typesafe` | [`integrations/typesafe`](../../integrations/typesafe/src/decisions.rs) | all three primitives, owns `jev-*` | yes |
-| `llm` | [`crates/host/src/decisions/llm.rs`](../../crates/host/src/decisions/llm.rs) | all three, via the utility LLM and a validated JSON reply | no |
+| `llm` | [`crates/core/src/host/decisions/llm.rs`](../../crates/core/src/host/decisions/llm.rs) | all three, via the utility LLM and a validated JSON reply | no |
 | `openai` (preview) | [`integrations/openai-decisions`](../../integrations/openai-decisions/src/lib.rs) | choice native; noul and score asked as choices; one call per question, concurrent | only when a response carries a probability for every label |
 
 The `openai` driver fronts OpenAI's Decisions API (DevDay 2026, limited

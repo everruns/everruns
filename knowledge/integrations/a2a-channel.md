@@ -386,7 +386,7 @@ protocol does have: a task state, and typed parts on `TaskStatus.message`.
   projection read nothing else, so the prose is what makes this additive
   rather than a breaking change.
 - a **data part** whose `data` holds the `everruns/ask_user` envelope: the
-  question set exactly as [`crates/builtins/src/ask_user.rs`](../../crates/builtins/src/ask_user.rs) serializes it,
+  question set exactly as [`crates/core/src/builtins/ask_user.rs`](../../crates/core/src/builtins/ask_user.rs) serializes it,
   the `tool_call_id`, the server-stamped `expires_at`, and an `answer_schema`
   (JSON Schema) describing the object to answer with, down to the option
   labels that may be selected. The schema is what stands in for the

@@ -12,7 +12,7 @@ tags:
 
 Everruns is embeddable through a shared `HostComposition`, owned by `everruns-host`, the layer that executes a turn, rather than by the kernel (EVE-887). An embedder can assemble a custom runtime surface, then pass the same composition to the control plane and worker so capabilities, LLM drivers, and host services stay aligned. Hosted product services, built-in harness templates (EVE-881), the connector registry, and the system email sender (EVE-879), are composed on `ServerAppBuilder` instead.
 
-This spec defines the contract for embedding. See `crates/host/src/composition.rs` for the public Rust API.
+This spec defines the contract for embedding. See `crates/core/src/host/composition.rs` for the public Rust API.
 
 ## Goals
 
@@ -489,7 +489,7 @@ Those may be added later, but they are outside the current embedding contract.
 
 ## Source Index
 
-- `crates/host/src/composition.rs`
+- `crates/core/src/host/composition.rs`
 - `crates/contracts/src/connector.rs`
 - `crates/core/src/error_reporter.rs`
 - `apps/ui/src/providers/error-reporter-provider.tsx`
