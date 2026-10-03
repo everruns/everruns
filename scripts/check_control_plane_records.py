@@ -19,13 +19,14 @@ RUNTIME_HANDLES = {
     'crates/host/tests/agents_api_support/mod.rs': {'Harness'},
     'crates/serve/src/agent.rs': {'Agent'},
     'crates/serve/src/app.rs': {'App', 'Skill'},
+    'crates/serve/src/connection.rs': {'McpServer'},
     # This is the external Cursor service's status, not an Everruns agent row.
     'integrations/cursor/src/client.rs': {'AgentStatus'},
 }
 PUBLIC_DECLARATION = re.compile(r'\bpub(?:\([^)]*\))?\s+(?:struct|enum|type)\s+(\w+)\b')
 DECLARATION = re.compile(r'\b(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|type)\s+(\w+)\b')
 SERVER_REFERENCE = re.compile(r'\beverruns_server\s*::\s*records\b')
-ROW = re.compile(r'\bpub\s+struct\s+(Model|Provider)\b[^;{]*\{([^}]+)\}', re.S)
+ROW = re.compile(r'\b(?:pub(?:\([^)]*\))?\s+)?struct\s+(\w+)\b[^;{]*\{([^}]+)\}', re.S)
 
 
 def violations(root: Path) -> list[str]:
@@ -62,7 +63,7 @@ def violations(root: Path) -> list[str]:
                 for match in ROW.finditer(text):
                     fields = match[2]
                     if 'pub created_at:' in fields and (
-                        'pub provider_id:' in fields or 'pub api_key_set:' in fields
+                        any(field in fields for field in ('pub provider_id:', 'pub api_key_set:', 'pub archived_at:', 'pub deleted_at:'))
                     ):
                         failures.append(f'{path}: persisted {match[1]} row outside the server')
     return failures

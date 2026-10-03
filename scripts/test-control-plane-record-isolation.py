@@ -61,6 +61,14 @@ class RecordIsolation(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('references server records', result.stdout)
 
+    def test_renamed_persisted_row_cannot_bypass_guard(self):
+        (self.root / 'crates/library/src/lib.rs').write_text(
+            'pub struct RenamedSkill { pub created_at: String, pub archived_at: Option<String> }\n'
+        )
+        result = self.guard()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('persisted RenamedSkill row outside the server', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()
