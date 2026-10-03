@@ -2433,7 +2433,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capabilities"
-version = "0.34.2"
+version = "0.36.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
