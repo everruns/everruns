@@ -14,7 +14,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,13 @@ const HARNESS_VALUE_PREFIX = "harness:";
 
 export function NewChatForm({
   onStartingChange,
+  surface = "chat",
+  endUserId,
+  children,
 }: {
+  surface?: "chat" | "playground";
+  endUserId?: string;
+  children?: ReactNode;
   /**
    * Fired when a thread starts being created, and again with `false` if it
    * fails. Creating a thread invalidates the session list, and a host that swaps
@@ -50,7 +56,11 @@ export function NewChatForm({
 } = {}) {
   const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
-  const { data: harnesses = [], isLoading: harnessesLoading } = useHarnesses();
+  const { data: allHarnesses = [], isLoading: harnessesLoading } = useHarnesses();
+  const harnesses =
+    surface === "playground"
+      ? allHarnesses.filter((h) => !h.is_built_in || !h.name.startsWith("platform-chat"))
+      : allHarnesses;
   const createSession = useCreateSession();
   const [selection, setSelection] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -68,11 +78,13 @@ export function NewChatForm({
       const session = await createSession.mutateAsync({
         request: {
           ...binding,
-          source: "chat",
-          tags: [CHAT_THREAD_TAG],
-        } as CreateSessionRequest,
+          source: surface,
+          ...(surface === "playground"
+            ? { playground_user_id: endUserId }
+            : { tags: [CHAT_THREAD_TAG] }),
+        },
       });
-      router.push(`/chats/${session.id}`);
+      router.push(`/${surface === "playground" ? "playground" : "chats"}/${session.id}`);
     } catch (e) {
       onStartingChange?.(false);
       setError(e instanceof Error ? e.message : "Could not start the chat.");
@@ -92,9 +104,18 @@ export function NewChatForm({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-center gap-2">
+      <div
+        className={
+          surface === "playground"
+            ? "flex flex-col gap-3"
+            : "flex flex-wrap items-center justify-center gap-2"
+        }
+      >
         <Select value={selection} onValueChange={setSelection} disabled={optionsLoading}>
-          <SelectTrigger className="w-64" aria-label="Chat counterpart">
+          <SelectTrigger
+            className={surface === "playground" ? "w-full" : "w-64"}
+            aria-label="Chat counterpart"
+          >
             <SelectValue
               placeholder={optionsLoading ? "Loading options..." : "Pick an agent or harness"}
             />
@@ -122,13 +143,19 @@ export function NewChatForm({
             )}
           </SelectContent>
         </Select>
-        <Button onClick={start} disabled={!selection || createSession.isPending}>
+        {children}
+        <Button
+          onClick={start}
+          disabled={
+            !selection || createSession.isPending || (surface === "playground" && !endUserId)
+          }
+        >
           {createSession.isPending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <MessageCircle className="size-4" />
           )}
-          Start chat
+          {surface === "playground" ? "Start conversation" : "Start chat"}
         </Button>
       </div>
       {error && <ChatErrorAlert message={error} />}

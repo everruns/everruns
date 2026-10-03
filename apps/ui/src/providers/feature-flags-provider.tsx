@@ -28,6 +28,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   public_chat: false,
   webmcp: false,
   reports: false,
+  playground: false,
   machine_payments: false,
 };
 
@@ -85,5 +86,5 @@ export function useFeatureFlagsState(): FeatureFlagsContextValue {
 
 export function useFeatureFlag(flag: keyof FeatureFlags): boolean {
   const flags = useFeatureFlags();
-  return flags[flag];
+  return flags[flag] ?? false;
 }

@@ -64,6 +64,34 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
 * **Identities is Building, not Registries.** An identity is authored per agent
   deployment with credentials and scope decisions, not registered once and forgotten.
 
+## Playground
+
+Playground belongs under Building: it is the team's place to try the agents they are authoring.
+Chats remains the personal conversation surface and the unconditional landing route. Playground
+conversations are ordinary organisation-scoped sessions, listed independently of personal Chats.
+They use the same header, transcript, composer, streaming context, and workspace viewer.
+
+A conversation fixes its counterpart and end-user virtual user at creation. The default subject is
+the operator's linked virtual user; selecting another subject requires organisation admin authority.
+Every organisation member may inspect shared conversations. Sending as another subject rechecks
+that authority on each message. The selected identity and human operator remain separate audit facts;
+simulation never supplies management authority or private end-user connection grants. Private user
+memory is excluded from these shared workspaces, including delegated runs. Explicit agent service
+connections retain their existing access rules. The personal Platform Chat harness is unavailable.
+
+The initial experience starts with a fresh workspace. Workspace is a secondary inspection view,
+not a prerequisite for starting a conversation. Realtime voice remains on the personal Chat surface
+until its direct transcript path supports fixed test-subject attribution. A persistent Open session action leads to the same
+recording; Trace opens its timeline. Archiving is shared; pinning is personal. The library offers
+server-paginated search, agent and virtual-user filters, and active/archived views.
+
+Playground is disabled by default on every deployment grade and requires deployment enablement
+plus organisation opt-in. The flag hides the navigation and all Playground routes and gates creation
+and new messages on the server. Existing recordings remain inspectable through the ordinary Sessions
+API and UI if the flag is later disabled; disabling a surface does not erase its history.
+See [source and binding policy](../../crates/server/src/domains/sessions/playground.rs) and
+[shared creation flow](../../apps/ui/src/components/chat/new-chat-form.tsx).
+
 ## Surface contracts
 
 * **Chats is the unconditional landing route.** It is core functionality, requires no feature

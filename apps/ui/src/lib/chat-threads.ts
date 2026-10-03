@@ -38,7 +38,10 @@ export const SIDEBAR_THREAD_LIMIT = 5;
 export const THREAD_SCAN_LIMIT = 100;
 
 export function isChatThread(session: Session): boolean {
-  return session.tags.includes(CHAT_THREAD_TAG) || session.tags.includes(LEGACY_GLOBAL_CHAT_TAG);
+  return (
+    session.source !== "playground" &&
+    (session.tags.includes(CHAT_THREAD_TAG) || session.tags.includes(LEGACY_GLOBAL_CHAT_TAG))
+  );
 }
 
 /** Last activity for ordering: the most recent of the session's timestamps.
@@ -83,10 +86,13 @@ export function selectChatThreads(
 }
 
 /** Title to show for a thread that has not been named yet. */
-export function threadTitle(session: Pick<Session, "title" | "preview">): string {
+export function threadTitle(
+  session: Pick<Session, "title" | "preview">,
+  untitled = "New chat",
+): string {
   const title = session.title?.trim();
   if (title) return title;
   const preview = session.preview?.trim();
   if (preview) return preview.length > 60 ? `${preview.slice(0, 60)}…` : preview;
-  return "New chat";
+  return untitled;
 }

@@ -835,6 +835,7 @@ async fn resolve_session(
             app.resolved_owner_user_id,
             everruns_platform::SessionSource::Fcp,
             CreateSessionRequest {
+                playground_user_id: None,
                 source: None,
                 workspace_id: None,
                 harness_id: Some(app.harness_id),

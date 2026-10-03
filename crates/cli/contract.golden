@@ -228,7 +228,7 @@ sessions environment get	--session-id!
 sessions events list	--after-sequence --around --before-sequence --exclude... --exec-id --from-ts --limit --order-desc --q --session-id! --since-id --tags... --to-ts --tool-name --trace-id --turn-id --types... --window
 sessions events summary events	--session-id!
 sessions export	--format --output/-o <session>!
-sessions facets	--agent-id --created-after --created-before --include-archived --mine --order --search --source --status
+sessions facets	--agent-id --archived-only --created-after --created-before --include-archived --mine --order --playground-user-id --search --source --status
 sessions fork	--overrides --session <session_id>
 sessions fs - copy	--dst-path! --session-id! --src-path!
 sessions fs - grep	--path-pattern --pattern! --session-id!

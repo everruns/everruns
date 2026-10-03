@@ -159,7 +159,9 @@ impl MemoryMountRouter {
             )
             .await?;
         }
-        if let Some(user_id) = session.resolved_owner_user_id {
+        if !self.db.is_playground_session(session.id).await?
+            && let Some(user_id) = session.resolved_owner_user_id
+        {
             self.push_scoped(
                 &mut mounts,
                 session.org_id,

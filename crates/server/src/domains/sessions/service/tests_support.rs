@@ -65,6 +65,7 @@ pub(crate) fn build_create_request(
     model_id: Option<ModelId>,
 ) -> CreateSessionRequest {
     CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: Some(harness_id),

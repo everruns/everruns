@@ -165,6 +165,16 @@ impl DbConnectionResolver {
         &self,
         session: SessionId,
     ) -> Result<Option<everruns_provider::typed_id::VirtualUserId>> {
+        // THREAT[TM-AUTHZ-021]: Shared transcripts and workspaces cannot receive private grants,
+        // even when the operator selected their own identity. Service grants remain explicit.
+        if self
+            .db
+            .is_playground_session(session)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+        {
+            return Ok(None);
+        }
         match self.input_message_id {
             Some(id) => self
                 .db

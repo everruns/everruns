@@ -1435,3 +1435,60 @@ async fn test_agents_api_session_fork_is_refused_and_delete_queues_the_provider_
         )
     );
 }
+
+#[tokio::test]
+async fn test_playground_input_uses_org_effective_feature_gate() {
+    let server = TestServer::in_memory().await;
+    let org = everruns_core::DEFAULT_ORG_ID;
+    server
+        .db
+        .replace_org_feature_flags(
+            org,
+            &std::collections::HashMap::from([("playground".to_string(), false)]),
+        )
+        .await
+        .unwrap();
+    let subject = server
+        .db
+        .resolve_runtime_identity(
+            everruns_server::storage::runtime_identity::VerifiedRuntimeIdentity {
+                org_id: org,
+                provider: "test".into(),
+                realm: "test".into(),
+                subject: "playground".into(),
+                name: "Test subject".into(),
+                avatar_url: None,
+                management_user_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    let owner = everruns_server::services::PrincipalService::new(server.db.clone())
+        .ensure_system_principal(org, "playground-test")
+        .await
+        .unwrap();
+    let session = server
+        .db
+        .create_session(everruns_server::storage::CreateSessionRow {
+            harness_id: Some(server.seed_base_harness_id.parse().unwrap()),
+            owner_principal_id: owner.id,
+            source: everruns_platform::SessionSource::Playground,
+            playground_user_id: Some(subject.id),
+            ..crate::session_row_fixture::base_session_row(org)
+        })
+        .await
+        .unwrap();
+    let result: Value = server
+        .post(
+            &format!("/v1/sessions/{}/messages", session.id),
+            json!({"message":{"role":"user","content":[{"type":"text","text":"Blocked input"}]}}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    assert_eq!(result["code"], "feature_not_enabled");
+    server
+        .get(&format!("/v1/sessions/{}", session.id))
+        .await
+        .assert_status(StatusCode::OK);
+}

@@ -509,6 +509,7 @@ pub async fn create_agent_voice_session(
 > {
     ensure_voice_enabled(&org)?;
     let session = CreateSession(crate::api::sessions::CreateSessionRequest {
+        playground_user_id: None,
         source: None,
         workspace_id: None,
         harness_id: None,
@@ -738,21 +739,9 @@ fn realtime_session_payload(options: &NormalizedVoiceOptions) -> Value {
     payload
 }
 
-async fn authorize_session(
-    state: &AppState,
-    org: &ResolvedOrg,
-    session_id: SessionId,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    state
-        .session_service
-        .get(&Caller::from(org), session_id.uuid(), None)
-        .await
-        .map(|_| ())
-        .map_err(|err| {
-            tracing::debug!(error = %err, "voice session authorization failed");
-            ErrorResponse::not_found("Session")
-        })
-}
+#[path = "voice/authorization.rs"]
+mod authorization;
+use authorization::authorize_session;
 
 /// Resolve the realtime-voice provider connection for an org via service-bound
 /// resolution (knowledge/foundations/providers.md): the provider whose driver declares

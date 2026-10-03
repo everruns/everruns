@@ -302,6 +302,7 @@ async fn create_persisted_session(
     .unwrap();
     let session = db
         .create_session(CreateSessionRow {
+            playground_user_id: None,
             trigger_id: None,
             source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
