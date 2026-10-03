@@ -116,7 +116,7 @@ relaxed; they are failure modes that can no longer be expressed:
 changed". `everruns-drivers` moves with the platform whether or not it was
 touched, and `CHANGELOG.md` is the record of what actually changed. Every release
 is a breaking-slot bump for every consumer — which was already true in practice,
-since recent cycles bumped everything regardless. All 41 packages are republished
+since recent cycles bumped everything regardless. Every package in the active published set is republished
 each release; crates.io rate-limits this to roughly one publish per minute after
 an initial burst, which the dependency-ordered **Crate Release** workflow absorbs.
 
