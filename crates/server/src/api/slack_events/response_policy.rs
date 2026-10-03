@@ -159,7 +159,7 @@ async fn decision_state(
     }))
 }
 
-// THREAT[TM-SLACK-010]: unrelated threads and tool results must not steer participation.
+// THREAT[TM-SLACK-011]: unrelated threads and tool results must not steer participation.
 /// Only this endpoint's persisted messages from this Slack thread are context.
 /// Shared per-channel/per-user sessions must not import unrelated conversations.
 fn thread_history(events: &[EventRow], channel: &str, thread_ts: &str) -> Vec<Value> {

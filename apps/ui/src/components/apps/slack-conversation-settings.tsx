@@ -1,5 +1,6 @@
 "use client";
 
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -22,6 +23,7 @@ const SLACK_SESSION_DESCRIPTIONS: Record<SessionStrategy, string> = {
 };
 
 export function SlackConversationSettings({
+  idPrefix = "slack",
   sessionStrategy,
   replyMode,
   onSessionStrategyChange,
@@ -29,6 +31,7 @@ export function SlackConversationSettings({
   responsePolicy,
   onResponsePolicyChange,
 }: {
+  idPrefix?: string;
   sessionStrategy: SessionStrategy;
   replyMode: SlackReplyMode;
   responsePolicy: SlackResponsePolicy;
@@ -37,9 +40,9 @@ export function SlackConversationSettings({
   onReplyModeChange: (value: SlackReplyMode) => void;
 }) {
   return (
-    <section className="space-y-4" aria-labelledby="slack_conversation_heading">
+    <section className="space-y-4" aria-labelledby={`${idPrefix}_conversation_heading`}>
       <div className="space-y-1">
-        <h3 id="slack_conversation_heading" className="text-sm font-medium">
+        <h3 id={`${idPrefix}_conversation_heading`} className="text-sm font-medium">
           Conversation behavior
         </h3>
         <p className="text-xs leading-relaxed text-muted-foreground">
@@ -48,15 +51,15 @@ export function SlackConversationSettings({
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="min-w-0 space-y-2">
-          <Label htmlFor="slack_session_strategy">Session strategy</Label>
+          <Label htmlFor={`${idPrefix}_session_strategy`}>Session strategy</Label>
           <Select
             value={sessionStrategy}
             onValueChange={(value) => onSessionStrategyChange(value as SessionStrategy)}
           >
             <SelectTrigger
-              id="slack_session_strategy"
+              id={`${idPrefix}_session_strategy`}
               className="w-full"
-              aria-describedby="slack_session_strategy_description"
+              aria-describedby={`${idPrefix}_session_strategy_description`}
             >
               <SelectValue />
             </SelectTrigger>
@@ -71,22 +74,22 @@ export function SlackConversationSettings({
             </SelectContent>
           </Select>
           <p
-            id="slack_session_strategy_description"
+            id={`${idPrefix}_session_strategy_description`}
             className="text-xs leading-relaxed text-muted-foreground"
           >
             {SLACK_SESSION_DESCRIPTIONS[sessionStrategy]}
           </p>
         </div>
         <div className="min-w-0 space-y-2">
-          <Label htmlFor="slack_reply_mode">Reply mode</Label>
+          <Label htmlFor={`${idPrefix}_reply_mode`}>Reply mode</Label>
           <Select
             value={replyMode}
             onValueChange={(value) => onReplyModeChange(value as SlackReplyMode)}
           >
             <SelectTrigger
-              id="slack_reply_mode"
+              id={`${idPrefix}_reply_mode`}
               className="w-full"
-              aria-describedby="slack_reply_mode_description"
+              aria-describedby={`${idPrefix}_reply_mode_description`}
             >
               <SelectValue />
             </SelectTrigger>
@@ -100,7 +103,7 @@ export function SlackConversationSettings({
             </SelectContent>
           </Select>
           <p
-            id="slack_reply_mode_description"
+            id={`${idPrefix}_reply_mode_description`}
             className="text-xs leading-relaxed text-muted-foreground"
           >
             {replyMode === "all_messages" ? (
@@ -115,15 +118,15 @@ export function SlackConversationSettings({
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="slack_response_policy">Response policy</Label>
+        <Label htmlFor={`${idPrefix}_response_policy`}>Response policy</Label>
         <Select
           value={responsePolicy}
           onValueChange={(value) => onResponsePolicyChange(value as SlackResponsePolicy)}
         >
           <SelectTrigger
-            id="slack_response_policy"
+            id={`${idPrefix}_response_policy`}
             className="w-full"
-            aria-describedby="slack_response_policy_description"
+            aria-describedby={`${idPrefix}_response_policy_description`}
           >
             <SelectValue />
           </SelectTrigger>
@@ -134,7 +137,7 @@ export function SlackConversationSettings({
           </SelectContent>
         </Select>
         <p
-          id="slack_response_policy_description"
+          id={`${idPrefix}_response_policy_description`}
           className="text-xs leading-relaxed text-muted-foreground"
         >
           {responsePolicy === "all_messages"
@@ -145,5 +148,36 @@ export function SlackConversationSettings({
         </p>
       </div>
     </section>
+  );
+}
+
+export function SlackAgentPaneSettings({
+  enabled,
+  configured,
+  onChange,
+  idPrefix = "slack",
+}: {
+  enabled: boolean;
+  configured: boolean;
+  onChange: (enabled: boolean) => void;
+  idPrefix?: string;
+}) {
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <div className="flex items-center justify-between gap-4">
+        <Label htmlFor={`${idPrefix}_agent_surface`}>Slack agent pane</Label>
+        <Switch id={`${idPrefix}_agent_surface`} checked={enabled} onCheckedChange={onChange} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Show this agent in Slack’s agent pane alongside its channel bot. Requires the
+        assistant:write permission.
+      </p>
+      {enabled && configured && (
+        <p className="text-xs text-muted-foreground">
+          Save changes, update the existing Slack app with a fresh manifest under Configure
+          manually, and reinstall it to grant the permission.
+        </p>
+      )}
+    </div>
   );
 }

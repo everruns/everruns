@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, MoreHorizontal, Play } from "lucide-react";
+import { slackConnectionLabel } from "@/components/agents/integrations/slack-setup-guidance";
 import { ChannelIcon } from "./channel-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -46,7 +48,7 @@ function channelName(channel: AgentEndpoint): string {
   }
   if (channel.channel_type === "slack") {
     const config = channel.channel_config as SlackChannelConfig;
-    return config.channel_id || config.team_id || "Slack channel";
+    return config.channel_id ? `Slack · ${config.channel_id}` : "Slack endpoint";
   }
   if (channel.channel_type === "webhook") return "Webhook endpoint";
   if (channel.channel_type === "ag_ui") return "AG-UI endpoint";
@@ -66,6 +68,14 @@ function channelSubline(channel: AgentEndpoint): React.ReactNode {
     return (
       <>
         Schedule · <CronLabel expr={config.cron_expression} tz={config.timezone} /> · {description}
+      </>
+    );
+  }
+  if (channel.channel_type === "slack") {
+    const config = channel.channel_config as SlackChannelConfig;
+    return (
+      <>
+        {slackConnectionLabel(config)} · {config.team_id ?? "Workspace not selected"}
       </>
     );
   }
@@ -145,6 +155,12 @@ export function ChannelRow({
   const { isLive } = lifecycle;
   const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
   const panelId = `endpoint-panel-${channel.id}`;
+  const inlineConfiguration = channel.channel_type === "slack" && !!configureHref;
+  const [hasExpanded, setHasExpanded] = useState(expanded);
+  const toggle = () => {
+    setHasExpanded(true);
+    onToggle();
+  };
 
   return (
     <div className="border bg-card">
@@ -158,19 +174,23 @@ export function ChannelRow({
           // for. The publish switch shares the actions cell for the same
           // reason.
           onPublishChange
-            ? "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_88px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_88px] md:items-center"
+            ? "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_160px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_160px] md:items-center"
             : "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_48px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center"
         }
       >
         <button
           type="button"
-          onClick={onToggle}
-          className="min-w-0 text-left"
+          onClick={toggle}
+          className="min-w-0 text-left hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring"
           aria-expanded={expanded}
           aria-controls={panelId}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${channelName(channel)} details`}
         >
           <div className="flex min-w-0 items-start gap-3">
+            <ChevronDown
+              aria-hidden="true"
+              className={`mt-2 size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? "" : "-rotate-90"}`}
+            />
             <span className="flex size-9 shrink-0 items-center justify-center border bg-background">
               <ChannelIcon kind={channel.channel_type} className="size-4" />
             </span>
@@ -183,6 +203,9 @@ export function ChannelRow({
                 <Badge variant={isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel)}</p>
+              <p className="mt-1 text-xs">
+                {expanded ? "Hide" : "Show"} {inlineConfiguration ? "configuration" : "details"}
+              </p>
             </div>
           </div>
         </button>
@@ -203,12 +226,15 @@ export function ChannelRow({
         <MiniTimeline runs={timeline} length={12} className="hidden 2xl:flex" />
         <div className="flex items-center justify-end gap-1">
           {onPublishChange && (
-            <Switch
-              checked={isLive}
-              onCheckedChange={onPublishChange}
-              disabled={publishPending || !channel.enabled}
-              aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
-            />
+            <label className="flex items-center gap-2 text-xs">
+              {isLive ? "Published" : "Draft"}
+              <Switch
+                checked={isLive}
+                onCheckedChange={onPublishChange}
+                disabled={publishPending || !channel.enabled}
+                aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
+              />
+            </label>
           )}
           {(configureHref || onRunNow) && (
             <DropdownMenu>
@@ -222,7 +248,7 @@ export function ChannelRow({
                 <DropdownMenuContent>
                   {configureHref && (
                     <DropdownMenuItem render={<Link href={configureHref} />}>
-                      Configure
+                      {inlineConfiguration ? "Endpoint options" : "Configure"}
                     </DropdownMenuItem>
                   )}
                   {onRunNow && (
@@ -237,30 +263,34 @@ export function ChannelRow({
           )}
         </div>
       </div>
-      {expanded && (
-        <div id={panelId} className="border-t bg-muted/20 px-4 py-3">
-          <div className="grid gap-3 text-sm md:grid-cols-3">
-            <div>
-              <p className="text-xs font-medium uppercase text-muted-foreground">Configuration</p>
-              <p className="mt-1">{detailText(channel)}</p>
+      {(expanded || (inlineConfiguration && hasExpanded)) && (
+        <div id={panelId} hidden={!expanded} className="border-t bg-muted/20 px-4 py-3">
+          {!inlineConfiguration && (
+            <div className="grid gap-3 text-sm md:grid-cols-3">
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Configuration</p>
+                <p className="mt-1">{detailText(channel)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Created</p>
+                <p className="mt-1">{new Date(channel.created_at).toLocaleString()}</p>
+              </div>
+              <div className="flex items-center justify-between gap-3 md:justify-end">
+                <Button type="button" variant="outline" size="sm" onClick={toggle}>
+                  <ChevronDown className="size-4 rotate-180 transition-transform" />
+                  Collapse
+                </Button>
+                {configureHref && (
+                  <Link href={configureHref} className={buttonVariants({ size: "sm" })}>
+                    Configure
+                  </Link>
+                )}
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-medium uppercase text-muted-foreground">Created</p>
-              <p className="mt-1">{new Date(channel.created_at).toLocaleString()}</p>
-            </div>
-            <div className="flex items-center justify-between gap-3 md:justify-end">
-              <Button type="button" variant="outline" size="sm" onClick={onToggle}>
-                <ChevronDown className="size-4 rotate-180 transition-transform" />
-                Collapse
-              </Button>
-              {configureHref && (
-                <Link href={configureHref} className={buttonVariants({ size: "sm" })}>
-                  Configure
-                </Link>
-              )}
-            </div>
-          </div>
-          {usePanel && <div className="mt-4 border-t pt-4">{usePanel}</div>}
+          )}
+          {usePanel && (
+            <div className={inlineConfiguration ? "" : "mt-4 border-t pt-4"}>{usePanel}</div>
+          )}
         </div>
       )}
     </div>

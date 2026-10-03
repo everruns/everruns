@@ -98,9 +98,9 @@ it("uses the shared masthead and status tabs for evals", () => {
   ).toBeInTheDocument();
   const evalsMasthead = document.querySelector<HTMLElement>('[data-slot="page-masthead"]');
   expect(evalsMasthead).not.toBeNull();
-  expect(within(evalsMasthead!).getByText("2")).toBeInTheDocument();
-  expect(screen.getByText("1 active")).toBeInTheDocument();
-  expect(screen.getByText("1 archived")).toBeInTheDocument();
+  expect(within(evalsMasthead!).queryByText("2")).not.toBeInTheDocument();
+  expect(within(screen.getByRole("tab", { name: "Active" })).getByText("1")).toBeInTheDocument();
+  expect(within(screen.getByRole("tab", { name: "Archived" })).getByText("1")).toBeInTheDocument();
   expect(mockUseEvals).toHaveBeenCalledWith({ includeArchived: true });
   expect(screen.getByText("Active eval")).toBeInTheDocument();
   expect(screen.queryByText("Archived eval")).not.toBeInTheDocument();
@@ -132,9 +132,9 @@ it("uses the shared masthead and status tabs for observers", () => {
   ).toBeInTheDocument();
   const observersMasthead = document.querySelector<HTMLElement>('[data-slot="page-masthead"]');
   expect(observersMasthead).not.toBeNull();
-  expect(within(observersMasthead!).getByText("2")).toBeInTheDocument();
-  expect(screen.getByText("1 active")).toBeInTheDocument();
-  expect(screen.getByText("1 archived")).toBeInTheDocument();
+  expect(within(observersMasthead!).queryByText("2")).not.toBeInTheDocument();
+  expect(within(screen.getByRole("tab", { name: "Active" })).getByText("1")).toBeInTheDocument();
+  expect(within(screen.getByRole("tab", { name: "Archived" })).getByText("1")).toBeInTheDocument();
   expect(mockUseObservers).toHaveBeenCalledWith({
     includeArchived: true,
     enabled: true,

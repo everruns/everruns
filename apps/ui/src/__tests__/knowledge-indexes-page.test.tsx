@@ -210,7 +210,7 @@ describe("KnowledgeIndexesPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Product Docs")).toBeInTheDocument();
     expect(screen.getByText("Synced product documentation")).toBeInTheDocument();
-    expect(screen.getAllByText("synced").length).toBeGreaterThan(0);
+    expect(screen.getByText("Up to date")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open/i })).toHaveAttribute(
       "href",
       "/knowledge-indexes/kidx_019dfb261a407c6085dcdd602402c3f7",

@@ -35,7 +35,7 @@ interface PageContainerProps {
 
 /**
  * Outer page wrapper. Provides padding and the consistent vertical rhythm between
- * the five zones so callers never hand-roll spacing.
+ * the optional page zones so callers never hand-roll spacing.
  */
 export function PageContainer({ children, fullWidth = false, className }: PageContainerProps) {
   return (
@@ -119,8 +119,7 @@ export function PageBreadcrumb({
 /* ──────────────────────────────── Icon tile ────────────────────────────── */
 
 /**
- * The gold-tinted square that leads the header (and entity cards). `lg` is the
- * masthead size; `md` matches inline card rows.
+ * A softly tinted masthead tile (`lg`) or plain entity-card glyph (`md`).
  */
 export function IconTile({
   icon,
@@ -135,8 +134,8 @@ export function IconTile({
     <span
       data-slot="icon-tile"
       className={cn(
-        "inline-flex flex-none items-center justify-center border bg-accent/20 text-foreground",
-        size === "lg" ? "size-11 [&_svg]:size-[22px]" : "size-8 [&_svg]:size-4",
+        "inline-flex flex-none items-center justify-center text-foreground",
+        size === "lg" ? "size-10 border bg-accent/10 [&_svg]:size-5" : "size-7 [&_svg]:size-5",
         className,
       )}
     >
@@ -226,7 +225,7 @@ export function PageMasthead({
           )}
         >
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-            <h1 className="min-w-0 text-2xl font-semibold tracking-tight text-foreground">
+            <h1 className="min-w-0 text-[28px] font-semibold leading-tight tracking-tight text-foreground">
               {entityId ? (
                 <EntityIdentity value={entityId} truncate={false}>
                   {title}
@@ -290,6 +289,7 @@ export interface SectionTabItem {
   value: string;
   label: ReactNode;
   icon?: ReactNode;
+  count?: number;
 }
 
 /**
@@ -309,7 +309,10 @@ export function SectionTabs({
 }) {
   return (
     <div
-      className={cn("flex max-w-full items-center overflow-x-auto border-b", className)}
+      className={cn(
+        "flex max-w-full items-center overflow-x-auto border-b border-border/50",
+        className,
+      )}
       role="tablist"
     >
       {items.map((item) => {
@@ -320,16 +323,23 @@ export function SectionTabs({
             type="button"
             role="tab"
             aria-selected={isActive}
+            aria-label={typeof item.label === "string" ? item.label : undefined}
+            aria-description={item.count !== undefined ? `${item.count} items` : undefined}
             onClick={() => onValueChange(item.value)}
             className={cn(
               "-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3.5 py-2 text-[13px] font-medium transition-colors",
               isActive
-                ? "border-primary text-foreground"
+                ? "border-primary font-semibold text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {item.icon}
             {item.label}
+            {item.count !== undefined && (
+              <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                {item.count}
+              </span>
+            )}
           </button>
         );
       })}
@@ -458,7 +468,7 @@ export function EmptyState({ icon, title, description, action, className }: Empt
  */
 export function PageColumns({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]", className)}>
+    <div className={cn("grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_280px]", className)}>
       {children}
     </div>
   );

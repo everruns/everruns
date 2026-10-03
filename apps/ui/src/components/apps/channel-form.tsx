@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import Link from "next/link";
 import {
   CalendarClock,
@@ -25,8 +25,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { buildSlackChannelConfig } from "./slack-form-config";
 import { Textarea } from "@/components/ui/textarea";
-import { SlackConversationSettings } from "@/components/apps/slack-conversation-settings";
+import {
+  SlackConnectionStatus,
+  SlackManualSetup,
+  type SlackEndpointConfig,
+} from "@/components/agents/integrations/slack-setup-guidance";
+import {
+  SlackConversationSettings,
+  SlackAgentPaneSettings,
+} from "@/components/apps/slack-conversation-settings";
 import { CronInput, CronLabel, isSupportedCronExpression } from "@/components/apps/cron-label";
 import {
   DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
@@ -43,7 +52,6 @@ import type {
   PublicChatChannelConfig,
   ScheduleChannelConfig,
   SessionStrategy,
-  SlackChannelConfig,
   SlackReplyMode,
   SlackResponsePolicy,
   WebhookChannelConfig,
@@ -82,12 +90,6 @@ const DEFAULT_PUBLIC_CHAT_EXPIRATION_HOURS = 6;
 const DEFAULT_FCP_EXPIRATION_HOURS = 6;
 const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
 
-/** Read-only fields the server adds to a Slack endpoint's config once Everruns created its app. */
-type SlackProvisionedConfig = {
-  /** Public id of the Slack app Everruns created for this endpoint. */
-  slack_app_id?: string;
-};
-
 export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" | "runs";
 
 export type ChannelFormState = {
@@ -105,6 +107,7 @@ export type ChannelFormState = {
   slackInstallTeamId: string;
   /** Public id of the Slack app Everruns created for this endpoint, once there is one. */
   slackAppId: string;
+  slackAgentSurfaceEnabled: boolean;
   slackSessionStrategy: SessionStrategy;
   slackReplyMode: SlackReplyMode;
   slackResponsePolicy: SlackResponsePolicy;
@@ -163,6 +166,7 @@ export function getDefaultChannelFormState(
     slackCredentialsConfigured: false,
     slackInstallTeamId: "",
     slackAppId: "",
+    slackAgentSurfaceEnabled: false,
     slackSessionStrategy: "per_thread",
     slackReplyMode: "all_messages",
     slackResponsePolicy: "all_messages",
@@ -304,7 +308,7 @@ export function getDefaultChannelFormState(
     };
   }
   if (channel.channel_type === "slack") {
-    const config = channel.channel_config as SlackChannelConfig;
+    const config = channel.channel_config as SlackEndpointConfig;
     return {
       ...base,
       kind: "slack",
@@ -315,7 +319,8 @@ export function getDefaultChannelFormState(
       slackCredentialsConfigured: Boolean(
         config.signing_secret_configured || config.bot_token_configured,
       ),
-      slackAppId: (config as SlackChannelConfig & SlackProvisionedConfig).slack_app_id || "",
+      slackAppId: config.slack_app_id || "",
+      slackAgentSurfaceEnabled: config.agent_surface_enabled ?? false,
       slackSessionStrategy: config.session_strategy || "per_thread",
       slackReplyMode: config.reply_mode || "all_messages",
       slackResponsePolicy: config.response_policy || "all_messages",
@@ -425,19 +430,7 @@ export function buildChannelConfig(state: ChannelFormState) {
       };
     }
     case "slack":
-      return {
-        ...(state.slackSigningSecret.trim()
-          ? { signing_secret: state.slackSigningSecret.trim() }
-          : {}),
-        ...(state.slackBotToken.trim() ? { bot_token: state.slackBotToken.trim() } : {}),
-        ...(state.slackTeamId.trim() ? { team_id: state.slackTeamId.trim() } : {}),
-        ...(state.slackChannelId.trim() ? { channel_id: state.slackChannelId.trim() } : {}),
-        session_strategy: state.slackSessionStrategy,
-        reply_mode: state.slackReplyMode,
-        ...(state.slackResponsePolicy !== "all_messages"
-          ? { response_policy: state.slackResponsePolicy }
-          : {}),
-      };
+      return buildSlackChannelConfig(state);
     default:
       return {};
   }
@@ -722,6 +715,8 @@ export function ChannelForm({
   mode,
   section = "all",
   endpointId,
+  endpoint,
+  slackInstallDisabled = false,
   slackInstallCapability,
   onSlackCapabilityChanged,
 }: {
@@ -735,12 +730,15 @@ export function ChannelForm({
    * callback route, so the button appears only after the endpoint is saved.
    */
   endpointId?: string;
+  endpoint?: AgentEndpoint;
+  slackInstallDisabled?: boolean;
   slackInstallCapability?: SlackInstallCapability;
   onSlackCapabilityChanged?: () => void | Promise<unknown>;
 }) {
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
   const slackInstallAvailable = slackInstallCapability?.connected === true;
+  const slackFormId = useId();
   const [manualSlackOpen, setManualSlackOpen] = useState(false);
   const openManualSlack = useCallback(() => setManualSlackOpen(true), []);
   const slackInstall = useSlackInstall(endpointId, state.slackInstallTeamId, openManualSlack);
@@ -771,6 +769,7 @@ export function ChannelForm({
             </p>
           </div>
           <Switch
+            aria-label="Enabled"
             checked={state.enabled}
             onCheckedChange={(checked) => update("enabled", checked)}
           />
@@ -1254,82 +1253,100 @@ export function ChannelForm({
         </div>
       )}
 
-      {state.kind === "slack" &&
-        (section === "all" || section === "invocation") &&
-        (slackLive || slackInstallCapability?.supported || slackInstallAvailable) && (
-          <div className="space-y-4">
-            {slackLive && (
+      {state.kind === "slack" && (section === "all" || section === "invocation") && (
+        <div className="space-y-4">
+          {endpoint && <SlackConnectionStatus endpoint={endpoint} />}
+          {slackLive && (
+            <div className="space-y-3 border p-4">
+              <div className="space-y-1">
+                {!endpoint && <p className="text-sm font-medium">Installed in Slack</p>}
+                <p className="text-xs text-muted-foreground">
+                  This agent has its own Slack app in workspace {state.slackTeamId}. Mention it in a
+                  channel
+                  {state.slackAgentSurfaceEnabled ? ", or open it from Slack’s Agents menu." : "."}
+                </p>
+              </div>
+              <a
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+                href={slackAppUrl(state.slackAppId, state.slackTeamId)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Slack className="size-4" />
+                Open in Slack
+              </a>
+            </div>
+          )}
+          {!slackLive && !state.slackCredentialsConfigured && slackInstallCapability?.supported && (
+            <SlackWorkspaceChoice
+              capability={slackInstallCapability}
+              selected={state.slackInstallTeamId}
+              onSelect={selectSlackInstallTeam}
+              onChanged={onSlackCapabilityChanged}
+            />
+          )}
+          {!slackLive &&
+            mode === "edit" &&
+            endpointId &&
+            slackInstallAvailable &&
+            !state.slackCredentialsConfigured &&
+            !slackInstall.unavailable && (
               <div className="space-y-3 border p-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">Live in Slack</p>
+                  <p className="text-sm font-medium">Add to Slack</p>
                   <p className="text-xs text-muted-foreground">
-                    This agent has its own Slack app in workspace {state.slackTeamId}. Mention it in
-                    a channel, or open it from Slack&apos;s Agents menu.
+                    Creates this agent&apos;s own Slack app in the workspace above and opens Slack
+                    to approve it. The signing secret, bot token and workspace ID are filled in for
+                    you.
                   </p>
                 </div>
-                <a
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
-                  href={slackAppUrl(state.slackAppId, state.slackTeamId)}
-                  target="_blank"
-                  rel="noreferrer"
+                <Button
+                  type="button"
+                  onClick={slackInstall.begin}
+                  disabled={
+                    slackInstall.pending || !state.slackInstallTeamId || slackInstallDisabled
+                  }
                 >
                   <Slack className="size-4" />
-                  Open in Slack
-                </a>
+                  {slackInstall.pending ? "Opening Slack…" : "Add to Slack"}
+                </Button>
+                {slackInstallDisabled && (
+                  <p className="text-xs text-muted-foreground">
+                    Save changes before opening Slack.
+                  </p>
+                )}
+                {slackInstall.error && (
+                  <SlackInstallError error={slackInstall.error} onRetry={slackInstall.begin} />
+                )}
               </div>
             )}
-            {!slackLive && slackInstallCapability?.supported && (
-              <SlackWorkspaceChoice
-                capability={slackInstallCapability}
-                selected={state.slackInstallTeamId}
-                onSelect={selectSlackInstallTeam}
-                onChanged={onSlackCapabilityChanged}
-              />
-            )}
-            {!slackLive &&
-              mode === "edit" &&
-              endpointId &&
-              slackInstallAvailable &&
-              !slackInstall.unavailable && (
-                <div className="space-y-3 border p-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">Add to Slack</p>
-                    <p className="text-xs text-muted-foreground">
-                      Creates this agent&apos;s own Slack app in the workspace above and opens Slack
-                      to approve it. The signing secret, bot token and workspace ID are filled in
-                      for you.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={slackInstall.begin}
-                    disabled={slackInstall.pending || !state.slackInstallTeamId}
-                  >
-                    <Slack className="size-4" />
-                    {slackInstall.pending ? "Opening Slack…" : "Add to Slack"}
-                  </Button>
-                  {slackInstall.error && (
-                    <SlackInstallError error={slackInstall.error} onRetry={slackInstall.begin} />
-                  )}
-                </div>
-              )}
-            {!slackLive && mode === "new" && slackInstallAvailable && (
-              <p className="text-xs text-muted-foreground">
-                Save the endpoint to add it to Slack in one click. If you already have a Slack app,
-                open Configure manually below.
-              </p>
-            )}
-          </div>
-        )}
+          {!slackLive && mode === "new" && slackInstallAvailable && (
+            <p className="text-xs text-muted-foreground">
+              Save the endpoint to add it to Slack in one click. If you already have a Slack app,
+              open Configure manually below.
+            </p>
+          )}
+        </div>
+      )}
 
       {state.kind === "slack" && (section === "all" || section === "session") && (
         <SlackConversationSettings
+          idPrefix={slackFormId}
           sessionStrategy={state.slackSessionStrategy}
           replyMode={state.slackReplyMode}
           responsePolicy={state.slackResponsePolicy}
           onResponsePolicyChange={(value) => update("slackResponsePolicy", value)}
           onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
           onReplyModeChange={(value) => update("slackReplyMode", value)}
+        />
+      )}
+
+      {state.kind === "slack" && (section === "all" || section === "session") && (
+        <SlackAgentPaneSettings
+          idPrefix={slackFormId}
+          enabled={state.slackAgentSurfaceEnabled}
+          configured={state.slackCredentialsConfigured}
+          onChange={(checked) => update("slackAgentSurfaceEnabled", checked)}
         />
       )}
 
@@ -1344,7 +1361,7 @@ export function ChannelForm({
               <button
                 type="button"
                 className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-describedby="slack_manual_description"
+                aria-describedby={`${slackFormId}_manual_description`}
               >
                 <ChevronDown
                   className={cn(
@@ -1356,7 +1373,7 @@ export function ChannelForm({
               </button>
             </CollapsibleTrigger>
             <p
-              id="slack_manual_description"
+              id={`${slackFormId}_manual_description`}
               className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground"
             >
               {slackLive || state.slackCredentialsConfigured
@@ -1366,6 +1383,7 @@ export function ChannelForm({
                   : "Use credentials from your Slack app to connect this endpoint. You can save now and finish setup later."}
             </p>
             <CollapsibleContent className="space-y-4 pt-4">
+              {manualSlackOpen && endpoint && <SlackManualSetup endpoint={endpoint} />}
               <p className="text-xs text-muted-foreground">
                 These fields are optional when saving. Slack requests are rejected until a signing
                 secret is set; a bot token is needed to send replies.
@@ -1373,9 +1391,9 @@ export function ChannelForm({
               </p>
               <FieldGrid>
                 <div className="space-y-2">
-                  <Label htmlFor="slack_signing_secret">Signing secret</Label>
+                  <Label htmlFor={`${slackFormId}_signing_secret`}>Signing secret</Label>
                   <Input
-                    id="slack_signing_secret"
+                    id={`${slackFormId}_signing_secret`}
                     type="password"
                     value={state.slackSigningSecret}
                     onChange={(event) => update("slackSigningSecret", event.target.value)}
@@ -1387,9 +1405,9 @@ export function ChannelForm({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="slack_bot_token">Bot token</Label>
+                  <Label htmlFor={`${slackFormId}_bot_token`}>Bot token</Label>
                   <Input
-                    id="slack_bot_token"
+                    id={`${slackFormId}_bot_token`}
                     type="password"
                     value={state.slackBotToken}
                     onChange={(event) => update("slackBotToken", event.target.value)}
@@ -1401,25 +1419,25 @@ export function ChannelForm({
               </FieldGrid>
               <FieldGrid>
                 <div className="space-y-2">
-                  <Label htmlFor="slack_team_id">Workspace ID</Label>
+                  <Label htmlFor={`${slackFormId}_team_id`}>Workspace ID</Label>
                   <Input
-                    id="slack_team_id"
+                    id={`${slackFormId}_team_id`}
                     value={state.slackTeamId}
                     onChange={(event) => update("slackTeamId", event.target.value)}
                     placeholder="T0123456789"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="slack_channel_id">Channel ID</Label>
+                  <Label htmlFor={`${slackFormId}_channel_id`}>Channel ID</Label>
                   <Input
-                    id="slack_channel_id"
-                    aria-describedby="slack_channel_id_description"
+                    id={`${slackFormId}_channel_id`}
+                    aria-describedby={`${slackFormId}_channel_id_description`}
                     value={state.slackChannelId}
                     onChange={(event) => update("slackChannelId", event.target.value)}
                     placeholder="C0123456789"
                   />
                   <p
-                    id="slack_channel_id_description"
+                    id={`${slackFormId}_channel_id_description`}
                     className="text-xs leading-relaxed text-muted-foreground"
                   >
                     Limit this endpoint to one channel. Leave blank to accept any channel in the

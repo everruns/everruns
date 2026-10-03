@@ -468,7 +468,7 @@ describe("Sidebar", () => {
 
     const agentsLink = screen.getByRole("link", { name: /agents/i });
     expect(agentsLink).toHaveClass("border-l-primary");
-    expect(agentsLink).toHaveClass("bg-card");
+    expect(agentsLink).toHaveClass("bg-primary/5");
   });
 
   it("highlights navigation for nested routes", () => {
@@ -477,7 +477,7 @@ describe("Sidebar", () => {
 
     const agentsLink = screen.getByRole("link", { name: /agents/i });
     expect(agentsLink).toHaveClass("border-l-primary");
-    expect(agentsLink).toHaveClass("bg-card");
+    expect(agentsLink).toHaveClass("bg-primary/5");
   });
 
   it.each([
@@ -575,7 +575,7 @@ describe("Sidebar", () => {
 
     const workersLink = screen.getByRole("link", { name: /workers/i });
     expect(workersLink).toHaveClass("border-l-primary");
-    expect(workersLink).toHaveClass("bg-card");
+    expect(workersLink).toHaveClass("bg-primary/5");
   });
 
   it("hides Durable Execution when durable policy is denied", () => {
@@ -727,7 +727,7 @@ describe("Sidebar with config", () => {
 
     const exactLink = screen.getByRole("link", { name: /exact match/i });
     expect(exactLink).toHaveClass("border-l-primary");
-    expect(exactLink).toHaveClass("bg-card");
+    expect(exactLink).toHaveClass("bg-primary/5");
   });
 
   it("does not highlight exact-match item on child route", () => {

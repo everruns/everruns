@@ -6,10 +6,12 @@ import { updateModel } from "@/lib/api/providers";
 import { ApiError } from "@/lib/api/client";
 
 const mockUseSearchParams = jest.fn();
+const mockRouterPush = jest.fn();
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/models",
   useSearchParams: () => mockUseSearchParams(),
+  useRouter: () => ({ push: mockRouterPush }),
 }));
 
 jest.mock("next/link", () => ({
@@ -106,6 +108,32 @@ jest.mock("@/lib/query-keys", () => ({
 }));
 
 describe("ModelsPage", () => {
+  it("keeps provider filtering in the toolbar and preserves other URL parameters", async () => {
+    mockUseSearchParams.mockReturnValue(new URLSearchParams("mode=grid&provider=provider-1"));
+    mockUseModels.mockReturnValue({
+      data: [
+        ...mockModels,
+        {
+          ...mockModels[0],
+          id: "model-2",
+          provider_id: "provider-2",
+          provider_name: "Anthropic Dev",
+          provider_type: "anthropic",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<ModelsPage />, { wrapper });
+    fireEvent.click(screen.getByRole("combobox", { name: "Provider" }));
+    const option = await screen.findByRole("option", { name: "Anthropic Dev" });
+    fireEvent.pointerDown(option, { pointerType: "mouse" });
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(mockRouterPush).toHaveBeenCalledWith("/models?mode=grid&provider=provider-2"),
+    );
+  });
+
   let queryClient: QueryClient;
 
   const wrapper = ({ children }: { children: ReactNode }) => (

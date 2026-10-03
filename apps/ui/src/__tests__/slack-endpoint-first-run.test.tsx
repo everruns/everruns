@@ -363,7 +363,7 @@ describe("Slack endpoint first run", () => {
         slackInstallCapability={mockSlackCapability}
       />,
     );
-    expect(screen.getByText("Live in Slack")).toBeInTheDocument();
+    expect(screen.getByText("Installed in Slack")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open in Slack/ })).toHaveAttribute(
       "href",
       "https://slack.com/app_redirect?app=A0123&team=T1",

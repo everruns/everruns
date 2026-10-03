@@ -281,6 +281,7 @@ function AgentEndpointForm({
                   onChange={setFormState}
                   mode="edit"
                   endpointId={endpoint.id}
+                  endpoint={endpoint}
                   slackInstallCapability={slackInstallCapability}
                   onSlackCapabilityChanged={onSlackCapabilityChanged}
                 />

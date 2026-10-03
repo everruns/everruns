@@ -37,6 +37,7 @@ import {
 } from "@/components/layout";
 import type { Agent } from "@/lib/api/types";
 import type { AgentEndpointRow } from "@/hooks/use-agent-endpoints";
+import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
@@ -95,8 +96,8 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const budgetsEnabled = useFeatureFlag("app_budgets");
 
   const suspended = agent.exposures_suspended ?? false;
-  const canManage = canAgent("agent.manage");
-  const canDangerous = canAgent("agent.dangerous");
+  const canManage = canAgent("agent.manage") && !isReadOnlyStatus(agent.status);
+  const canDangerous = canAgent("agent.dangerous") && !isReadOnlyStatus(agent.status);
   const canViewBudgets = canBudget("budget.view");
   const canManageBudgets = canBudget("budget.manage");
 
@@ -178,6 +179,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                           selection={versionSelectionOf(channel)}
                         />
                         <EndpointDetailsPanel
+                          agentId={agent.id}
                           agentName={agent.display_name ?? agent.name}
                           agentDescription={agent.description}
                           channel={channel}

@@ -1,29 +1,24 @@
 "use client";
-import { useMemo, useState } from "react";
 
+import { EntityStatus } from "@/components/ui/entity-status";
+import { useMemo, useState } from "react";
 import { useEvals } from "@/hooks";
 import { useAgents, usePageTitle } from "@/hooks";
 import { LinkButton } from "@/components/ui/button";
-import { EntityCard } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { ClipboardCheck, Plus } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import type { Eval, EvalTarget } from "@/lib/api/types";
 import { getDisplayName, isArchivedStatus } from "@/lib/entity-lifecycle";
-import { pluralize } from "@/lib/formatting";
 import {
   PageBreadcrumb,
   PageContainer,
   PageControlStrip,
-  PageFooter,
   PageMain,
   PageMasthead,
-  PageColumns,
-  PageRail,
-  RailSection,
   SectionTabs,
 } from "@/components/layout";
-import { cn } from "@/lib/utils";
 
 type StatusTab = "active" | "archived";
 
@@ -55,15 +50,10 @@ function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, st
       className="h-full"
       title={ev.name}
       href={`/evals/${ev.id}`}
-      copyValue={ev.id}
-      headerActions={
-        <Badge variant={ev.status === "active" ? "default" : "secondary"}>{ev.status}</Badge>
-      }
+      headerActions={<EntityStatus status={ev.status} />}
     >
       <div className="space-y-2">
-        {ev.description && (
-          <p className="text-sm text-muted-foreground line-clamp-2">{ev.description}</p>
-        )}
+        {ev.description && <EntityCardDescription>{ev.description}</EntityCardDescription>}
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           {label && <span>{label}</span>}
           {ev.target?.type && (
@@ -130,18 +120,7 @@ export default function EvalsPage() {
       <PageMasthead
         icon={<ClipboardCheck />}
         title="Evals"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {counts.all}
-          </Badge>
-        }
         description="Define, run, and track behavioral tests for your agents."
-        meta={
-          <>
-            <span>{counts.active} active</span>
-            <span>{counts.archived} archived</span>
-          </>
-        }
         actions={
           <LinkButton variant="accent" href="/evals/new">
             <Plus className="size-4" />
@@ -154,73 +133,35 @@ export default function EvalsPage() {
         <SectionTabs
           value={statusTab}
           onValueChange={(value) => setStatusTab(value as StatusTab)}
-          items={statusItems}
+          items={statusItems.map((item) => ({ ...item, count: counts[item.value] }))}
         />
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          <QueryStateWrapper
-            isLoading={isLoading}
-            error={error}
-            data={filteredEvals}
-            errorMessagePrefix="Failed to load evals"
-            emptyState={
-              <div className="py-12 text-center">
-                <p className="mb-4 text-muted-foreground">No evals yet</p>
-                <LinkButton href="/evals/new">
-                  <Plus className="mr-2 size-4" />
-                  Create your first eval
-                </LinkButton>
-              </div>
-            }
-          >
-            {(items) => (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {items.map((ev) => (
-                  <EvalCard key={ev.id} eval={ev} agentMap={agentMap} />
-                ))}
-              </div>
-            )}
-          </QueryStateWrapper>
-        </PageMain>
-
-        <PageRail>
-          <RailSection label="Status">
-            <div className="flex flex-col gap-1.5 text-[13px]">
-              {statusItems.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setStatusTab(item.value)}
-                  className={cn(
-                    "flex items-center justify-between transition-colors hover:text-foreground",
-                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-muted-foreground">{counts[item.value]}</span>
-                </button>
+      <PageMain>
+        <QueryStateWrapper
+          isLoading={isLoading}
+          error={error}
+          data={filteredEvals}
+          errorMessagePrefix="Failed to load evals"
+          emptyState={
+            <div className="py-12 text-center">
+              <p className="mb-4 text-muted-foreground">No evals yet</p>
+              <LinkButton href="/evals/new">
+                <Plus className="mr-2 size-4" />
+                Create your first eval
+              </LinkButton>
+            </div>
+          }
+        >
+          {(items) => (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {items.map((ev) => (
+                <EvalCard key={ev.id} eval={ev} agentMap={agentMap} />
               ))}
             </div>
-          </RailSection>
-        </PageRail>
-      </PageColumns>
-
-      <PageFooter>
-        <span>
-          Showing {filteredEvals.length} of {counts.all} {pluralize(counts.all, "eval")}
-        </span>
-        {counts.archived > 0 && statusTab !== "archived" && (
-          <button
-            type="button"
-            onClick={() => setStatusTab("archived")}
-            className="text-primary transition-colors hover:underline"
-          >
-            View archived →
-          </button>
-        )}
-      </PageFooter>
+          )}
+        </QueryStateWrapper>
+      </PageMain>
     </PageContainer>
   );
 }

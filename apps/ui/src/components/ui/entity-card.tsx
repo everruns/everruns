@@ -85,7 +85,7 @@ export function EntityCard({
     return (
       <div
         className={cn(
-          "group flex items-start justify-between border p-3 transition-colors hover:bg-muted",
+          "group flex items-start justify-between border bg-card p-4 transition-colors hover:border-muted-foreground/40",
           className,
         )}
       >
@@ -123,17 +123,17 @@ export function EntityCard({
   return (
     <Card
       className={cn(
-        "gap-0 bg-card transition-colors hover:bg-muted/30",
+        "gap-0 bg-card transition-colors hover:border-muted-foreground/40",
         footer && "pb-0",
         className,
       )}
     >
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-4">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
         <div data-slot="entity-card-heading" className="flex min-w-0 flex-1 items-start gap-3">
           {icon && <div className="flex-shrink-0">{icon}</div>}
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <div className="flex min-w-0 items-center gap-2">
-              <CardTitle className="min-w-0 flex-1 text-lg">
+              <CardTitle className="min-w-0 flex-1 text-lg leading-snug">
                 {copyValue ? (
                   <EntityIdentity value={copyValue} labelClassName={titleClassName}>
                     <EntityCardTitleLink href={href}>{title}</EntityCardTitleLink>
@@ -153,7 +153,7 @@ export function EntityCard({
         )}
       </CardHeader>
       <CardContent className="flex-1">{children}</CardContent>
-      {footer && <div className="mt-4">{footer}</div>}
+      {footer && <div className="mt-3">{footer}</div>}
     </Card>
   );
 }
@@ -171,7 +171,12 @@ export function EntityCardFooter({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-2 border-t px-4 py-2", className)}>
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-2",
+        className,
+      )}
+    >
       {meta && <div className="min-w-0 text-xs text-muted-foreground">{meta}</div>}
       {actions && <div className="ml-auto">{actions}</div>}
     </div>
@@ -180,15 +185,83 @@ export function EntityCardFooter({
 
 /** Quiet tags shared by entity cards, distinct from capability chips. */
 export function EntityCardTags({ tags }: { tags: string[] }) {
+  const [expanded, setExpanded] = React.useState(false);
   if (tags.length === 0) return null;
+  const visibleTags = expanded ? tags : tags.slice(0, 3);
   return (
-    <span
+    <div
       aria-label="Tags"
-      className="min-w-0 truncate text-xs text-muted-foreground"
-      title={tags.join(" · ")}
+      className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
     >
-      {tags.join(" · ")}
-    </span>
+      {visibleTags.map((tag) => (
+        <span key={tag} className="max-w-40 truncate bg-muted/60 px-2 py-1" title={tag}>
+          {tag}
+        </span>
+      ))}
+      {tags.length > 3 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Show fewer tags" : `Show ${tags.length - 3} more tags`}
+          onClick={() => setExpanded(!expanded)}
+          className="bg-muted/60 px-2 py-1 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          {expanded ? "Less" : `+${tags.length - 3}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Keep large capability sets readable without losing configuration details. */
+export function EntityCardCapabilities({
+  children,
+  label,
+  ariaLabel,
+}: {
+  children: React.ReactNode;
+  label?: string;
+  ariaLabel?: string;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const items = React.Children.toArray(children);
+  if (items.length === 0 && !label) return null;
+  return (
+    <div
+      aria-label={ariaLabel ?? label ?? "Capabilities"}
+      className="flex flex-wrap items-center gap-x-3 gap-y-2"
+    >
+      {label && <span className="text-[11px] text-muted-foreground">{label}</span>}
+      {expanded ? items : items.slice(0, 4)}
+      {items.length > 4 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={
+            expanded ? "Show fewer capabilities" : `Show ${items.length - 4} more capabilities`
+          }
+          onClick={() => setExpanded(!expanded)}
+          className="bg-muted/60 px-2 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          {expanded ? "Less" : `+${items.length - 4}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Descriptions carry more contrast than secondary configuration and metadata. */
+export function EntityCardDescription({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("mb-3 line-clamp-2 text-sm leading-relaxed text-foreground/75", className)}>
+      {children}
+    </div>
   );
 }
 

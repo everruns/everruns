@@ -1,5 +1,6 @@
 "use client";
 
+import { EntityStatus } from "@/components/ui/entity-status";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Archive, FolderOpen, GitBranch, Library, Pencil, Plus, RefreshCw } from "lucide-react";
@@ -8,7 +9,6 @@ import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ArchiveKnowledgeIndexDialog } from "@/components/knowledge-indexes/archive-knowledge-index-dialog";
 import { KnowledgeIndexDiagnosticBadge } from "@/components/knowledge-indexes/knowledge-index-diagnostic";
 import { KnowledgeIndexFormDialog } from "@/components/knowledge-indexes/knowledge-index-form-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { SearchInput } from "@/components/ui/search-input";
@@ -27,11 +27,7 @@ import {
   PageControlStrip,
   SectionTabs,
   EmptyState,
-  PageColumns,
   PageMain,
-  PageRail,
-  RailSection,
-  PageFooter,
 } from "@/components/layout";
 import {
   useArchiveKnowledgeIndex,
@@ -46,20 +42,14 @@ import type {
   KnowledgeIndex,
   UpdateKnowledgeIndexRequest,
 } from "@/lib/api/types";
-import {
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-  isArchivedStatus,
-  isReadOnlyStatus,
-} from "@/lib/entity-lifecycle";
-import { formatRelativeTime, pluralize } from "@/lib/formatting";
+import { getEntityNameClassName, isArchivedStatus, isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import { formatRelativeTime } from "@/lib/formatting";
 import {
   getKnowledgeIndexDiagnostic,
   knowledgeIndexDiagnosticBlocksSync,
   knowledgeIndexSyncActionLabel,
   type KnowledgeIndexDiagnostic,
 } from "@/lib/knowledge-index-diagnostics";
-import { cn } from "@/lib/utils";
 import { useModels } from "@/hooks/use-providers";
 
 type StatusTab = "all" | "active" | "archived";
@@ -77,8 +67,7 @@ export default function KnowledgeIndexesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<KnowledgeIndex | null>(null);
   const [archivingIndex, setArchivingIndex] = useState<KnowledgeIndex | null>(null);
-  // Fetch the full set (including archived) so the facet rail can show accurate counts;
-  // the active/archived/all split is applied client-side from the same response.
+  // Tabs count the same complete set they filter.
   const {
     data: indexes,
     isLoading,
@@ -96,22 +85,6 @@ export default function KnowledgeIndexesPage() {
     return { all: list.length, active: list.length - archived, archived };
   }, [indexes]);
 
-  const sourceFacets = useMemo(() => {
-    const tally = new Map<string, number>();
-    for (const index of indexes ?? []) {
-      tally.set(index.source_type, (tally.get(index.source_type) ?? 0) + 1);
-    }
-    return [...tally.entries()].sort((a, b) => b[1] - a[1]);
-  }, [indexes]);
-
-  const syncFacets = useMemo(() => {
-    const tally = new Map<string, number>();
-    for (const index of indexes ?? []) {
-      tally.set(index.sync_status, (tally.get(index.sync_status) ?? 0) + 1);
-    }
-    return [...tally.entries()].sort((a, b) => b[1] - a[1]);
-  }, [indexes]);
-
   const filteredIndexes = useMemo(() => {
     return (indexes ?? []).filter((index) => {
       if (statusTab === "active" && isArchivedStatus(index.status)) return false;
@@ -127,18 +100,7 @@ export default function KnowledgeIndexesPage() {
       <PageMasthead
         icon={<Library />}
         title="Knowledge Indexes"
-        badges={
-          <Badge variant="outline" className="font-mono">
-            {counts.all}
-          </Badge>
-        }
         description="Synced document collections that power retrieval — sources, embeddings, and sync state."
-        meta={
-          <>
-            <span>{counts.active} active</span>
-            <span>{counts.archived} archived</span>
-          </>
-        }
         actions={
           <Button variant="accent" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
@@ -159,143 +121,71 @@ export default function KnowledgeIndexesPage() {
         <SectionTabs
           value={statusTab}
           onValueChange={(v) => setStatusTab(v as StatusTab)}
-          items={statusItems}
+          items={statusItems.map((item) => ({ ...item, count: counts[item.value] }))}
         />
       </PageControlStrip>
 
-      <PageColumns>
-        <PageMain>
-          <QueryStateWrapper
-            isLoading={isLoading}
-            error={error}
-            data={filteredIndexes}
-            errorMessagePrefix="Failed to load knowledge indexes"
-            skeletonCount={6}
-            emptyState={
-              <EmptyState
-                icon={<Library />}
-                title={
-                  search.trim() || statusTab !== "active"
-                    ? "No knowledge indexes match your filters."
-                    : "No knowledge indexes yet"
-                }
-                action={
-                  !search.trim() &&
-                  statusTab === "active" && (
-                    <Button variant="accent" onClick={() => setCreateOpen(true)}>
-                      <Plus className="size-4" />
-                      New index
-                    </Button>
-                  )
-                }
-              />
-            }
-          >
-            {(items) => (
-              <div className="min-w-0 border">
-                <Table aria-label="Knowledge indexes" className="xl:min-w-[960px]">
-                  <TableHeader className="hidden xl:table-header-group">
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Index state</TableHead>
-                      <TableHead>Last synced</TableHead>
-                      <TableHead>Updated</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((index) => (
-                      <KnowledgeIndexRow
-                        key={index.id}
-                        index={index}
-                        onEdit={setEditingIndex}
-                        onArchive={setArchivingIndex}
-                        onSync={(candidate) => syncIndex.mutate(candidate.id)}
-                        isSyncing={syncIndex.isPending}
-                        diagnostic={getKnowledgeIndexDiagnostic(index, {
-                          models,
-                          modelsReady: !modelsLoading && !modelsError,
-                        })}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </QueryStateWrapper>
-        </PageMain>
-
-        <PageRail>
-          <RailSection label="Status">
-            <div className="flex flex-col gap-1.5 text-[13px]">
-              {statusItems.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setStatusTab(item.value)}
-                  className={cn(
-                    "flex items-center justify-between transition-colors hover:text-foreground",
-                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-muted-foreground">{counts[item.value]}</span>
-                </button>
-              ))}
+      <PageMain>
+        <QueryStateWrapper
+          isLoading={isLoading}
+          error={error}
+          data={filteredIndexes}
+          errorMessagePrefix="Failed to load knowledge indexes"
+          skeletonCount={6}
+          emptyState={
+            <EmptyState
+              icon={<Library />}
+              title={
+                search.trim() || statusTab !== "active"
+                  ? "No knowledge indexes match your filters."
+                  : "No knowledge indexes yet"
+              }
+              action={
+                !search.trim() &&
+                statusTab === "active" && (
+                  <Button variant="accent" onClick={() => setCreateOpen(true)}>
+                    <Plus className="size-4" />
+                    New index
+                  </Button>
+                )
+              }
+            />
+          }
+        >
+          {(items) => (
+            <div className="min-w-0 border">
+              <Table aria-label="Knowledge indexes" className="xl:min-w-[960px]">
+                <TableHeader className="hidden xl:table-header-group">
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Index state</TableHead>
+                    <TableHead>Last synced</TableHead>
+                    <TableHead>Updated</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((index) => (
+                    <KnowledgeIndexRow
+                      key={index.id}
+                      index={index}
+                      onEdit={setEditingIndex}
+                      onArchive={setArchivingIndex}
+                      onSync={(candidate) => syncIndex.mutate(candidate.id)}
+                      isSyncing={syncIndex.isPending}
+                      diagnostic={getKnowledgeIndexDiagnostic(index, {
+                        models,
+                        modelsReady: !modelsLoading && !modelsError,
+                      })}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-          </RailSection>
-
-          {sourceFacets.length > 0 && (
-            <RailSection label="Source">
-              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
-                {sourceFacets.map(([source, count]) => (
-                  <div key={source} className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5">
-                      {source === "github" ? (
-                        <Github className="size-3.5" />
-                      ) : (
-                        <GitBranch className="size-3.5" />
-                      )}
-                      {source}
-                    </span>
-                    <span>{count}</span>
-                  </div>
-                ))}
-              </div>
-            </RailSection>
           )}
-
-          {syncFacets.length > 0 && (
-            <RailSection label="Sync status">
-              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
-                {syncFacets.map(([syncStatus, count]) => (
-                  <div key={syncStatus} className="flex items-center justify-between">
-                    <span>{syncStatus}</span>
-                    <span>{count}</span>
-                  </div>
-                ))}
-              </div>
-            </RailSection>
-          )}
-        </PageRail>
-      </PageColumns>
-
-      <PageFooter>
-        <span>
-          Showing {filteredIndexes.length} of {counts.all}{" "}
-          {pluralize(counts.all, "index", "indexes")}
-        </span>
-        {counts.archived > 0 && statusTab !== "archived" && (
-          <button
-            type="button"
-            onClick={() => setStatusTab("archived")}
-            className="text-primary transition-colors hover:underline"
-          >
-            View archived →
-          </button>
-        )}
-      </PageFooter>
+        </QueryStateWrapper>
+      </PageMain>
 
       <KnowledgeIndexFormDialog
         mode="create"
@@ -362,7 +252,7 @@ function KnowledgeIndexRow({
               </Link>
             </EntityIdentity>
           </div>
-          <Badge variant={getEntityStatusBadgeVariant(index.status)}>{index.status}</Badge>
+          <EntityStatus status={index.status} />
         </div>
         {index.description && (
           <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
