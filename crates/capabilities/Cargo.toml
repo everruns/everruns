@@ -86,8 +86,8 @@ inventory.workspace = true
 
 # Optional HTTP transport for delegation and container-sandbox capabilities.
 # Each capability retains its runtime egress and deployment-grade checks.
-thiserror.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"], optional = true }
+thiserror.workspace = true
 sha2 = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
 tar = { workspace = true, optional = true }

@@ -3070,7 +3070,6 @@ dependencies = [
  "eventsource-stream",
  "everruns-contracts",
  "everruns-core",
- "everruns-host",
  "futures",
  "reqwest",
  "serde",

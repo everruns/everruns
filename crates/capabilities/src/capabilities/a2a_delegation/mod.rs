@@ -14,20 +14,14 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SESSION_TASKS_CAPABILITY_ID,
     SpawnMode, SystemPromptContext,
 };
-use a2a::{
-    AgentCard, CancelTaskRequest, GetTaskRequest, Message, Part, PartContent, Role,
-    SendMessageConfiguration, SendMessageRequest, SendMessageResponse, Task, TaskState,
-};
-use a2a_client::A2AClientFactory;
-use a2a_client::agent_card::AgentCardResolver;
-use a2a_client::jsonrpc::JsonRpcTransportFactory;
-use a2a_client::middleware::CallInterceptor;
-use a2a_client::rest::RestTransportFactory;
-use a2a_client::transport::ServiceParams;
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::url_validation::validate_safe_url;
+use everruns_core::a2a::{
+    self, AgentCard, CancelTaskRequest, DnsResolver, GetTaskRequest, Message, Part, PartContent,
+    Role, SendMessageConfiguration, SendMessageRequest, SendMessageResponse, Task, TaskState,
+};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::session_task::{
@@ -50,8 +44,8 @@ use url::Url;
 // out the A2A delegation implementation. See the `a2a` feature.
 pub use super::A2A_AGENT_DELEGATION_CAPABILITY_ID;
 
+#[cfg(test)]
 mod network;
-use network::{DnsResolver, hardened_a2a_http_client};
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1_000;
 /// Error prefix returned by `wait_for_run` when the attempt fence reveals the
@@ -462,14 +456,9 @@ impl ExternalA2aAgentConfig {
             .base_url
             .as_deref()
             .ok_or_else(|| format!("A2A agent {} has no base_url", self.id))?;
-        // THREAT[TM-AGENT-024]: discovery uses a no-redirect, DNS-pinned client
-        // so a public-looking base_url cannot rebind or 302 into private space.
-        let client =
-            hardened_a2a_http_client(&[base_url], self.local_urls_permitted(), resolver).await?;
-        let card = AgentCardResolver::new(Some(client))
-            .resolve(base_url)
-            .await
-            .map_err(|e| format!("Failed to resolve A2A AgentCard: {e}"))?;
+        // The protocol owner preserves pinned DNS and no-redirect discovery.
+        let card =
+            a2a::discover_agent_card(base_url, None, self.local_urls_permitted(), resolver).await?;
         self.validate_card(&card)?;
         Ok(card)
     }
@@ -485,25 +474,6 @@ fn validate_http_url(raw_url: &str) -> std::result::Result<(), String> {
         return Err("URL must have a hostname".to_string());
     }
     Ok(())
-}
-
-#[derive(Clone)]
-struct StaticHeaderInterceptor {
-    headers: Vec<(String, String)>,
-}
-
-#[async_trait]
-impl CallInterceptor for StaticHeaderInterceptor {
-    async fn before(
-        &self,
-        _method: &str,
-        params: &mut ServiceParams,
-    ) -> std::result::Result<(), a2a::A2AError> {
-        for (name, value) in &self.headers {
-            params.entry(name.clone()).or_default().push(value.clone());
-        }
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1081,7 +1051,7 @@ fn enforce_network_access_post_resolve(
 async fn build_client(
     agent: &ExternalA2aAgentConfig,
     context: &ToolContext,
-) -> std::result::Result<a2a_client::A2AClient<Box<dyn a2a_client::Transport>>, String> {
+) -> std::result::Result<a2a::Client, String> {
     build_client_with_resolver(agent, context, None).await
 }
 
@@ -1089,40 +1059,19 @@ async fn build_client_with_resolver(
     agent: &ExternalA2aAgentConfig,
     context: &ToolContext,
     resolver: Option<&DnsResolver>,
-) -> std::result::Result<a2a_client::A2AClient<Box<dyn a2a_client::Transport>>, String> {
+) -> std::result::Result<a2a::Client, String> {
     enforce_network_access_pre_resolve(agent, context)?;
     let card = agent.resolve_card_with_resolver(resolver).await?;
     enforce_network_access_post_resolve(&card, context)?;
-    // THREAT[TM-AGENT-024]: every AgentCard interface URL is re-checked with
-    // DNS pinning and wired into a no-redirect client before any transport
-    // request. The merged network ACL already gated the same URLs above.
-    let interface_urls: Vec<&str> = card
-        .supported_interfaces
-        .iter()
-        .map(|iface| iface.url.as_str())
-        .collect();
-    let http =
-        hardened_a2a_http_client(&interface_urls, agent.local_urls_permitted(), resolver).await?;
-    let mut builder = A2AClientFactory::builder()
-        .no_defaults()
-        .register(Arc::new(JsonRpcTransportFactory::new(Some(http.clone()))))
-        .register(Arc::new(RestTransportFactory::new(Some(http))));
-    if let Some(binding) = &agent.preferred_binding {
-        builder = builder.preferred_bindings(vec![binding.clone()]);
-    }
-    let headers = agent
-        .headers
-        .iter()
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect::<Vec<_>>();
-    if !headers.is_empty() {
-        builder = builder.with_interceptor(Arc::new(StaticHeaderInterceptor { headers }));
-    }
-    builder
-        .build()
-        .create_from_card(&card)
-        .await
-        .map_err(|e| format!("Failed to create A2A client: {e}"))
+    a2a::client_for_card(
+        &card,
+        agent.preferred_binding.as_deref(),
+        &agent.headers,
+        context.network_access.as_ref(),
+        agent.local_urls_permitted(),
+        resolver,
+    )
+    .await
 }
 
 fn send_request(

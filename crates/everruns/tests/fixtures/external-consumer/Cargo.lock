@@ -562,13 +562,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-platform"
-version = "0.34.2"
-dependencies = [
- "everruns-capabilities",
-]
-
-[[package]]
 name = "external-builtin-pack"
 version = "0.0.0"
 dependencies = [
@@ -622,9 +615,9 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns",
+ "everruns-capabilities",
  "everruns-contracts",
  "everruns-core",
- "everruns-platform",
  "serde_json",
  "tokio",
 ]
