@@ -17,6 +17,9 @@ use crate::errors::BadRequestError;
 use anyhow::Result;
 use uuid::Uuid;
 
+const SLACK_INSTALL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const SLACK_INSTALL_LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
 fn schedule_cap_error(max: i64, count: i64) -> anyhow::Error {
     BadRequestError::new(format!(
         "Organization may have at most {max} enabled schedule channel(s); currently has {count}"
@@ -68,14 +71,31 @@ impl Database {
         &self,
         endpoint_id: Uuid,
     ) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
-        let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            "SELECT pg_advisory_xact_lock(hashtextextended('slack_install:' || $1::text, 0))",
-        )
-        .bind(endpoint_id)
-        .execute(&mut *tx)
-        .await?;
-        Ok(tx)
+        let deadline = tokio::time::Instant::now() + SLACK_INSTALL_LOCK_TIMEOUT;
+        loop {
+            let mut tx = self.pool.begin().await?;
+            let acquired: bool = sqlx::query_scalar(
+                "SELECT pg_try_advisory_xact_lock(\
+                    hashtextextended('slack_install:' || $1::text, 0))",
+            )
+            .bind(endpoint_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            if acquired {
+                return Ok(tx);
+            }
+
+            // A blocking advisory-lock query would retain this shared-pool
+            // connection for the whole wait and let contenders starve the
+            // lock holder's ordinary database work.
+            drop(tx);
+            tokio::time::timeout_at(
+                deadline,
+                tokio::time::sleep(SLACK_INSTALL_LOCK_RETRY_INTERVAL),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!("timed out waiting for Slack install lock"))?;
+        }
     }
 
     pub async fn create_app_channel(

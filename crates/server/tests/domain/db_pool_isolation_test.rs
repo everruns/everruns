@@ -213,3 +213,42 @@ async fn saturated_request_pool_returns_retryable_service_unavailable_after_acqu
     assert_eq!(body["code"], "database_pool_exhausted");
     assert_eq!(body["retry_after_seconds"], 1);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slack_install_lock_waiters_do_not_starve_request_queries() {
+    let mut config = scaled_config(0);
+    config.max_connections = 2;
+    let db = Database::connect_with_config(&database_url(), config)
+        .await
+        .expect("connect");
+    let endpoint_id = uuid::Uuid::now_v7();
+    let first = db
+        .lock_slack_install(endpoint_id)
+        .await
+        .expect("first Slack install lock");
+
+    let mut waiters = tokio::task::JoinSet::new();
+    for _ in 0..8 {
+        let db = db.clone();
+        waiters.spawn(async move {
+            let _guard = db
+                .lock_slack_install(endpoint_id)
+                .await
+                .expect("contending Slack install lock");
+        });
+    }
+
+    tokio::time::timeout(Duration::from_millis(400), async {
+        sqlx::query("SELECT 1")
+            .execute(db.pool())
+            .await
+            .expect("unrelated request query");
+    })
+    .await
+    .expect("lock waiters must release request-pool connections between attempts");
+
+    drop(first);
+    while let Some(waiter) = waiters.join_next().await {
+        waiter.expect("lock waiter task");
+    }
+}
