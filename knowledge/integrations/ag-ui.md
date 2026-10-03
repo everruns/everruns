@@ -22,6 +22,25 @@ behind its own `ag-ui` feature (see [serve](#serve)), with the runnable
 consumer half (below), which outbound delegation, the
 [AG-UI Capability](ag-ui-capability.md), builds on.
 
+### Migration boundary
+
+EVE-1135 replaced the pre-1.0 emitter and moved the UI's contract validation
+to 1.0 in PR #3965. Existing endpoints emit the new reasoning vocabulary
+without a legacy translation mode; the version handshake acknowledges a
+request's declaration, not a negotiation back to the old protocol. The public
+[endpoint guide](../../docs/features/endpoints.md#upgrade-a-pre-10-client)
+owns client migration instructions.
+
+The UI's isolated OpenUI dependency remains on its declared pre-1.0 range
+through the scoped override in
+[`pnpm-workspace.yaml`](../../apps/ui/pnpm-workspace.yaml). It is used for
+OpenUI rendering, not to consume the endpoint's stream. Keep that boundary
+until OpenUI supports 1.0 rather than forcing an unsupported transitive major.
+Consequently the lockfile still contains both AG-UI versions and Zod 3;
+the app's 1.0 contract validation resolves Zod 4. Zod 3 is also required by
+another development dependency, so eliminating it is not a success bar for
+the protocol migration.
+
 ## Pieces
 
 - **Wire types**: the published [`everruns-ag-ui`](../../crates/ag-ui) crate.
@@ -172,7 +191,7 @@ because every top-level agent is an endpoint and none is declared separately.
 - **Absent means absent.** Nothing emitted carries `null`; input tolerates
   historical `null` and unknown fields, as 1.0 consumers must.
 - **Version handshake.** `RUN_STARTED` carries `protocolVersion: "1.0"` only
-  when the request declared one, so pre-1.0 clients see the stream they did.
+  when the request declared one. The emitted vocabulary remains 1.0 either way.
 - **Closed before terminal.** Every open text message, reasoning message and
   reasoning span is closed before `RUN_FINISHED` or `RUN_ERROR`, on every path
   including cancellation and failure. 1.0 fails a run that leaves one open.
