@@ -40,7 +40,7 @@ use uuid::Uuid;
 pub struct CreateSessionRow {
     pub org_id: i64,
     /// How this session was started. Set by the creating ingress path, never
-    /// taken from untrusted client input except for the two client-declarable
+    /// taken from untrusted client input except for client-declarable
     /// variants (see `SessionSource::is_client_declarable`).
     pub source: everruns_platform::SessionSource,
     pub app_id: Option<Uuid>,
