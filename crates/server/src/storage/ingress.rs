@@ -3,7 +3,7 @@ use everruns_durable::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-/// Non-secret endpoint metadata for agent collection cards.
+/// Non-secret channel metadata for agent collection cards.
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentChannelSummaryRow {
     pub agent_id: Uuid,
@@ -14,7 +14,7 @@ pub struct AgentChannelSummaryRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateAgentEndpointRow {
+pub struct CreateAgentChannelRow {
     pub agent_id: Uuid,
     pub public_id: String,
     pub channel_type: String,
@@ -32,7 +32,7 @@ pub struct CreateAgentEndpointRow {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct UpdateAgentEndpointRow {
+pub struct UpdateAgentChannelRow {
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
     pub channel_config_encrypted: UpdateField<Vec<u8>>,
@@ -43,11 +43,11 @@ pub struct UpdateAgentEndpointRow {
     pub agent_version_policy: Option<String>,
     pub agent_version_id: UpdateField<Uuid>,
 }
-/// Endpoint-owned values required to serve ingress without archival App reads.
+/// Channel-owned values required to serve ingress without archival App reads.
 #[derive(Debug, Clone, FromRow)]
-pub struct IngressEndpointRow {
-    pub endpoint_id: Uuid,
-    pub endpoint_public_id: String,
+pub struct IngressChannelRow {
+    pub channel_id: Uuid,
+    pub channel_public_id: String,
     pub legacy_app_id: Option<Uuid>,
     pub legacy_alias_id: Option<String>,
     pub org_id: i64,
@@ -69,7 +69,7 @@ pub struct IngressEndpointRow {
     pub auth: Option<serde_json::Value>,
     pub auth_encrypted: Option<Vec<u8>>,
     pub enabled: bool,
-    pub endpoint_status: String,
+    pub channel_status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

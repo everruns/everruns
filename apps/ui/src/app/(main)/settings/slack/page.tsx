@@ -13,12 +13,12 @@ import {
   useInvalidateSlackWorkspaces,
   useSlackInstallCapability,
   useSlackWorkspaces,
-} from "@/hooks/use-agent-endpoints";
+} from "@/hooks/use-agent-channels";
 import {
   disconnectSlackWorkspace,
   testSlackWorkspace,
   type SlackWorkspace,
-} from "@/lib/api/agent-endpoints";
+} from "@/lib/api/agent-channels";
 
 export default function SlackWorkspacesPage() {
   usePageTitle("Slack workspaces", "Settings");

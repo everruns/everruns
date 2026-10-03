@@ -5,7 +5,7 @@
 //
 // `app_channel` is gone too, and it was the last subject resolved from a tag.
 // Migration 138 had moved App webhooks onto `agent_triggers`, moved their
-// budgets back from `agent_endpoint` to `app_channel`, and deleted the endpoint
+// budgets back from `agent_channel` to `app_channel`, and deleted the endpoint
 // rows those budgets had been keyed on, leaving the tag as a webhook trigger's
 // only identifier. Migration 153 adds `sessions.trigger_id` and re-keys those
 // budgets onto the `agent_trigger` subject, so the resolver reads a column.
@@ -37,7 +37,7 @@ async fn create_session(
         workspace_id: None,
         org_id,
         app_id: None,
-        endpoint_id: None,
+        channel_id: None,
         trigger_id,
         harness_id: None,
         agent_id: None,

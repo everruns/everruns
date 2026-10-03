@@ -23,7 +23,7 @@ const agentCard = {
 function renderGuidance(overrides: Partial<React.ComponentProps<typeof A2aSetupGuidance>> = {}) {
   return render(
     <A2aSetupGuidance
-      endpointUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123"
+      channelUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123"
       agentCardUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123/.well-known/agent-card.json"
       apiKeyPrefix="evra2a_12345678..."
       sessionMode="session_per_invocation"
@@ -81,7 +81,7 @@ describe("A2aSetupGuidance", () => {
   it("does not fetch while unpublished or disabled", () => {
     renderGuidance({ isPublished: false });
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(screen.getByText(/Publish and enable this endpoint/)).toBeInTheDocument();
+    expect(screen.getByText(/Publish and enable this channel/)).toBeInTheDocument();
   });
 
   it("keeps the raw URL copy fallback when fetch fails", async () => {

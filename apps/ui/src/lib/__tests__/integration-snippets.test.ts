@@ -41,8 +41,8 @@ describe("integration snippets", () => {
     const all = [
       ...sessionFlowSamples({ origin: ORIGIN, agentId: "a" }),
       ...sdkSessionSamples({ origin: ORIGIN, agentId: "a" }),
-      ...webhookSamples({ origin: ORIGIN, endpointUrl: "/api/v1/apps/x/webhooks/y" }),
-      ...a2aSamples({ origin: ORIGIN, endpointUrl: "https://h/api/v1/apps/x/a2a/y" }),
+      ...webhookSamples({ origin: ORIGIN, channelUrl: "/api/v1/apps/x/webhooks/y" }),
+      ...a2aSamples({ origin: ORIGIN, channelUrl: "https://h/api/v1/apps/x/a2a/y" }),
     ];
     for (const sample of all) {
       expect(sample.code).not.toContain("${");
@@ -62,7 +62,7 @@ describe("integration snippets", () => {
   });
 
   it("absolutizes relative webhook endpoints", () => {
-    const [curl] = webhookSamples({ origin: ORIGIN, endpointUrl: "/api/v1/apps/x/webhooks/y" });
+    const [curl] = webhookSamples({ origin: ORIGIN, channelUrl: "/api/v1/apps/x/webhooks/y" });
     expect(curl.code).toContain("https://app.example.com/api/v1/apps/x/webhooks/y");
   });
 
@@ -101,10 +101,10 @@ describe("integration snippets", () => {
     expect(codingAgentPrompt({ origin: ORIGIN, kind: "harness", id: "h" })).toMatch(
       /^I want to integrate an Everruns harness /,
     );
-    expect(codingAgentPrompt({ origin: ORIGIN, kind: "webhook", endpointUrl: "/w" })).toMatch(
+    expect(codingAgentPrompt({ origin: ORIGIN, kind: "webhook", channelUrl: "/w" })).toMatch(
       /^I want to integrate an Everruns app \(webhook channel\) /,
     );
-    expect(codingAgentPrompt({ origin: ORIGIN, kind: "a2a", endpointUrl: "/a" })).toMatch(
+    expect(codingAgentPrompt({ origin: ORIGIN, kind: "a2a", channelUrl: "/a" })).toMatch(
       /^I want to integrate an Everruns app \(A2A channel\) /,
     );
   });

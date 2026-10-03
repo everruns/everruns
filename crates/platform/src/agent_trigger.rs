@@ -5,16 +5,16 @@
 //   agent gets invoked autonomously (e.g. on a schedule). It mirrors the
 //   VirtualUser CRUD shape (see `virtual_user.rs`).
 // - The concrete per-type configuration lives in `config` (JSONB). Typed
-//   accessors parse it on demand, mirroring `AgentEndpoint::schedule_config()`.
+//   accessors parse it on demand, mirroring `AgentChannel::schedule_config()`.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 // Reuse the app-side invocation/schedule config so schedule triggers and
 // schedule channels share one shape. Do not duplicate these.
-use crate::app::default_invocation_binding;
-use everruns_contracts::typed_id::{AgentEndpointId, AgentId, TriggerId};
+use crate::agent_channel::default_invocation_binding;
 use everruns_core::channel::SessionBinding;
+use everruns_contracts::typed_id::{AgentChannelId, AgentId, TriggerId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -294,14 +294,14 @@ pub struct AgentTrigger {
     /// Stable HTTP ingress identifier for trigger types that accept requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
-    pub ingress_id: Option<AgentEndpointId>,
+    pub ingress_id: Option<AgentChannelId>,
     /// Type-specific configuration (parsed via typed accessors).
     pub config: serde_json::Value,
     /// Whether the trigger is currently active.
     pub enabled: bool,
     /// Which Agent version sessions started by this trigger run.
     #[serde(default)]
-    pub agent_version_policy: crate::app::AgentVersionPolicy,
+    pub agent_version_policy: crate::agent_channel::AgentVersionPolicy,
     /// Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
@@ -321,7 +321,7 @@ pub struct AgentTrigger {
 impl AgentTrigger {
     /// Parse `config` as [`ScheduleTriggerConfig`]. Errors if this is not a
     /// schedule trigger or the config is malformed. Mirrors
-    /// `AgentEndpoint::schedule_config()`.
+    /// `AgentChannel::schedule_config()`.
     pub fn schedule_config(&self) -> anyhow::Result<ScheduleTriggerConfig> {
         if self.trigger_type != AgentTriggerType::Schedule {
             anyhow::bail!("agent trigger {} is not a schedule trigger", self.id);

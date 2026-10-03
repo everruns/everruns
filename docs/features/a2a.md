@@ -8,13 +8,13 @@ sidebar:
 [A2A](https://a2a-protocol.org) is an open protocol for agents to call each
 other over HTTP. Everruns supports it in both directions:
 
-- **Inbound**: an A2A endpoint makes an Everruns agent callable by any A2A
+- **Inbound**: an A2A channel makes an Everruns agent callable by any A2A
   client, such as another vendor's agent, the official `a2a` CLI, or the
   A2A Inspector.
 - **Outbound**: the `a2a_agent_delegation` capability lets an Everruns agent
   hand work to external A2A agents through `spawn_agent`.
 
-Both speak A2A 1.0. The inbound endpoint also answers A2A 0.3 clients on the
+Both speak A2A 1.0. The inbound channel also answers A2A 0.3 clients on the
 same URL.
 
 Framework apps can serve their agents over A2A too. See
@@ -22,7 +22,7 @@ Framework apps can serve their agents over A2A too. See
 
 ## Expose an agent over A2A
 
-An A2A endpoint belongs to an agent. Create it through the API with a key you
+An A2A channel belongs to an agent. Create it through the API with a key you
 generate. Everruns stores only the key's SHA-256 hash, so keep the plaintext
 somewhere safe.
 
@@ -31,7 +31,7 @@ EVERRUNS=https://your-everruns-host/api
 KEY="evra2a_$(openssl rand -hex 32)"
 HASH=$(printf %s "$KEY" | sha256sum | cut -d' ' -f1)
 
-curl -sS -X POST "$EVERRUNS/v1/agents/$AGENT_ID/endpoints" \
+curl -sS -X POST "$EVERRUNS/v1/agents/$AGENT_ID/channels" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" \
   -H 'Content-Type: application/json' \
   -d "{
@@ -47,19 +47,19 @@ curl -sS -X POST "$EVERRUNS/v1/agents/$AGENT_ID/endpoints" \
   }"
 ```
 
-The response carries the endpoint `id`. Publish it so it accepts traffic:
+The response carries the channel `id`. Publish it so it accepts traffic:
 
 ```bash
-curl -sS -X POST "$EVERRUNS/v1/agents/$AGENT_ID/endpoints/$ENDPOINT_ID/publish" \
+curl -sS -X POST "$EVERRUNS/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/publish" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 
-The endpoint then serves:
+The channel then serves:
 
 | Path | What it is |
 | --- | --- |
-| `POST /v1/e/{endpoint_id}/a2a` | The A2A JSON-RPC endpoint. Needs `Authorization: Bearer <key>`. |
-| `GET /v1/e/{endpoint_id}/a2a/.well-known/agent-card.json` | The public Agent Card, served only while the endpoint is live. |
+| `POST /v1/channels/{channel_id}/a2a` | The A2A JSON-RPC endpoint. Needs `Authorization: Bearer <key>`. |
+| `GET /v1/channels/{channel_id}/a2a/.well-known/agent-card.json` | The public Agent Card, served only while the channel is live. |
 
 ### Configuration
 
@@ -68,10 +68,10 @@ The endpoint then serves:
 | `session_mode` | `session_per_invocation` starts a fresh session for each new task. `shared_session` sends every call into one long-lived session. |
 | `message` | Template for the user message the agent receives. `{{a2a.text}}` is the caller's text parts joined by newlines; `a2a.task_id`, `a2a.context_id`, and `payload` (the raw request params) are also available. |
 | `agent_card_name`, `agent_card_description` | Shown in the Agent Card. They default to the agent's name and description. |
-| `rate_limit_per_minute` | Optional per-caller-IP limit for this endpoint. Over the limit, calls get HTTP 429. |
+| `rate_limit_per_minute` | Optional per-caller-IP limit for this channel. Over the limit, calls get HTTP 429. |
 | `signing_secret` | Optional. When set, every request must also carry an HMAC signature of its body. |
 
-Instead of a generated key, an endpoint can use the shared endpoint auth
+Instead of a generated key, a channel can use the shared channel auth
 modes: HTTP Basic, OIDC or Google JWT bearer tokens, OAuth2 token
 introspection, or mTLS. The Agent Card advertises whichever scheme is in use
 and never includes a credential.
@@ -82,7 +82,7 @@ Any A2A 1.0 client works. With the official
 [`a2a` CLI](https://github.com/a2aproject/a2a-go):
 
 ```bash
-CARD="$EVERRUNS/v1/e/$ENDPOINT_ID/a2a/.well-known/agent-card.json"
+CARD="$EVERRUNS/v1/channels/$CHANNEL_ID/a2a/.well-known/agent-card.json"
 a2a card get -a "$CARD"
 a2a send -a "$CARD" --auth "Bearer $KEY" "Summarize the A2A spec in three bullets."
 a2a send -a "$CARD" --auth "Bearer $KEY" --stream "Explain A2A tasks in one sentence."
@@ -91,7 +91,7 @@ a2a send -a "$CARD" --auth "Bearer $KEY" --stream "Explain A2A tasks in one sent
 Or with plain JSON-RPC:
 
 ```bash
-curl -sS -X POST "$EVERRUNS/v1/e/$ENDPOINT_ID/a2a" \
+curl -sS -X POST "$EVERRUNS/v1/channels/$CHANNEL_ID/a2a" \
   -H "Authorization: Bearer $KEY" \
   -H 'Content-Type: application/json' \
   -H 'A2A-Version: 1.0' \
@@ -123,9 +123,9 @@ clients. Without it, 1.0 method names such as `SendMessage` are answered in
 | A2A 1.0 | A2A 0.3 | Notes |
 | --- | --- | --- |
 | `SendMessage` | `message/send` | A `taskId` or `contextId` from an earlier reply continues that conversation. |
-| `SendStreamingMessage` | `message/stream` | Server-sent events: the task, then the reply as an artifact, then the final status. Needs `session_mode: session_per_invocation`; a `shared_session` endpoint answers `-32004`. |
+| `SendStreamingMessage` | `message/stream` | Server-sent events: the task, then the reply as an artifact, then the final status. Needs `session_mode: session_per_invocation`; a `shared_session` channel answers `-32004`. |
 | `GetTask` | `tasks/get` | Current state and the latest turn's reply. |
-| `ListTasks` | `tasks/list` | This endpoint's tasks, newest first, filtered by `contextId`, `status`, or `statusTimestampAfter`, with `pageSize` and `pageToken` paging. |
+| `ListTasks` | `tasks/list` | This channel's tasks, newest first, filtered by `contextId`, `status`, or `statusTimestampAfter`, with `pageSize` and `pageToken` paging. |
 | `SubscribeToTask` | `tasks/resubscribe` | Reattach a stream to a running task. A finished task answers `-32004`. |
 | `CancelTask` | `tasks/cancel` | Cancels the running turn. A finished task answers `-32002`. |
 | `CreateTaskPushNotificationConfig`, `Get…`, `List…`, `Delete…` | `tasks/pushNotificationConfig/set`, `get`, `list`, `delete` | Webhooks for a task. See below. |
@@ -134,7 +134,7 @@ The extended Agent Card is not offered (`-32007`).
 
 A task's id is the id of the Everruns session that runs it, and its
 `contextId` is the same value. A caller can only see and continue tasks
-started through its own endpoint.
+started through its own channel.
 
 ### Push notifications
 
@@ -225,8 +225,8 @@ followed. `allow_local_urls: true` lifts the address check only when
 In a [Framework](/framework/) app (full guide: [Framework A2A](/framework/a2a/)):
 
 - To **serve** agents over A2A, turn on the `a2a` feature of `everruns-serve`.
-  Every top-level agent then answers at `POST /v1/e/{agent}/a2a`, the same
-  path shape as an Everruns endpoint. See [Serve](/framework/serve/#a2a).
+  Every top-level agent then answers at `POST /v1/channels/{agent}/a2a`, the same
+  path shape as an Everruns channel. See [Serve](/framework/serve/#a2a).
 - To **delegate** to A2A agents, turn on the `a2a` feature of `everruns` and
   add `CapabilityRef::new("a2a_agent_delegation")` with the config above.
 
@@ -244,4 +244,4 @@ cargo run -p serve-example-a2a --bin writer -- "tide pools"
 
 - [Sub-agents](/capabilities/sub-agents/), the shared `spawn_agent` tool.
 - [ARD Discovery](/integrations/ard/), for finding A2A agents at runtime.
-- [Apps Compatibility](/features/apps/), for endpoint lifecycle and legacy routes.
+- [Channels](/features/channels/), for channel lifecycle and legacy routes.

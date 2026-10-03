@@ -22,8 +22,8 @@ use axum::{
 };
 use serde_json::json;
 
+use super::channel_webhooks::ChannelWebhookState;
 use super::common::ErrorResponse;
-use super::endpoint_webhooks::EndpointWebhookState;
 use crate::domains::agent_triggers::events::TriggerEventOutcome;
 use crate::domains::agent_triggers::mcp_event::{
     CALLBACK_SEGMENT, InboundDelivery, InboundOutcome, InboundRejection,
@@ -33,7 +33,7 @@ use crate::services::standard_webhooks::{
     HEADER_ID, HEADER_SIGNATURE, HEADER_SUBSCRIPTION_ID, HEADER_TIMESTAMP,
 };
 
-pub fn routes(state: EndpointWebhookState) -> Router {
+pub fn routes(state: ChannelWebhookState) -> Router {
     Router::new()
         .route(
             &format!("/v1/e/{{ingress_id}}/{CALLBACK_SEGMENT}"),
@@ -53,7 +53,7 @@ fn error(status: StatusCode, message: &str) -> Response {
 }
 
 async fn receive(
-    State(state): State<EndpointWebhookState>,
+    State(state): State<ChannelWebhookState>,
     Path(ingress_id): Path<String>,
     req_id: Option<axum::Extension<RequestId>>,
     headers: HeaderMap,

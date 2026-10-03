@@ -1,8 +1,8 @@
 use crate::api::common::{AllowedAction, ApiResultExt, ErrorResponse, ResourceUrlable};
 use crate::storage::StorageBackend;
 use axum::{Json, http::StatusCode};
+use everruns_platform::{Agent, ChannelStatus, ChannelType};
 use everruns_contracts::typed_id::{AgentId, HarnessId};
-use everruns_platform::{Agent, EndpointStatus, EndpointTransport};
 use futures::future::try_join_all;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -39,9 +39,9 @@ pub struct AgentHarnessSummary {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentChannelSummary {
     pub id: String,
-    pub channel_type: EndpointTransport,
+    pub channel_type: ChannelType,
     pub enabled: bool,
-    pub status: EndpointStatus,
+    pub status: ChannelStatus,
 }
 
 /// Agent list/detail payload with relationship counts and resolved harness metadata.
@@ -217,7 +217,7 @@ pub(super) async fn add_agents_counts(
             .await
             .log_internal_error_json("list agent channels")?
         {
-            let channel_type = EndpointTransport::from_str_opt(&row.channel_type)
+            let channel_type = ChannelType::from_str_opt(&row.channel_type)
                 .ok_or_else(ErrorResponse::internal_error)?;
             channels
                 .entry(row.agent_id)
@@ -226,7 +226,7 @@ pub(super) async fn add_agents_counts(
                     id: row.public_id,
                     channel_type,
                     enabled: row.enabled,
-                    status: EndpointStatus::from(row.status.as_str()),
+                    status: ChannelStatus::from(row.status.as_str()),
                 });
         }
     }

@@ -2134,6 +2134,101 @@
     "read_only": false
   },
   {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Create an ingress channel for an agent.",
+    "input_schema": {
+      "$defs": {
+        "AgentVersionPolicy": {
+          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
+          "enum": [
+            "default",
+            "latest",
+            "pinned"
+          ],
+          "example": "pinned",
+          "type": "string"
+        },
+        "ChannelType": {
+          "description": "Supported channel types for app distribution.",
+          "enum": [
+            "slack",
+            "ag_ui",
+            "schedule",
+            "webhook",
+            "a2a",
+            "fcp",
+            "api_endpoint",
+            "public_chat"
+          ],
+          "example": "webhook",
+          "type": "string"
+        },
+        "CreateAgentChannelRequest": {
+          "description": "Request to create an ingress channel owned by an Agent.",
+          "properties": {
+            "agent_version_id": {
+              "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
+              "example": "agentver_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "agent_version_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentVersionPolicy",
+                  "description": "Which Agent version sessions started through this channel run.\nOmitted means `default` (the agent's default version)."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "channel_config": {
+              "description": "Transport-specific channel configuration."
+            },
+            "channel_type": {
+              "$ref": "#/$defs/ChannelType",
+              "description": "Transport used by the channel."
+            },
+            "enabled": {
+              "description": "Whether the channel can accept ingress traffic.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "channel_type"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CreateAgentChannelRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "create_agent_channel",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": null,
     "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
@@ -2186,101 +2281,6 @@
     "name": "create_agent_credential_binding",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/credentials",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "Create an ingress endpoint for an agent.",
-    "input_schema": {
-      "$defs": {
-        "AgentVersionPolicy": {
-          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
-          "enum": [
-            "default",
-            "latest",
-            "pinned"
-          ],
-          "example": "pinned",
-          "type": "string"
-        },
-        "ChannelType": {
-          "description": "Supported channel types for app distribution.",
-          "enum": [
-            "slack",
-            "ag_ui",
-            "schedule",
-            "webhook",
-            "a2a",
-            "fcp",
-            "api_endpoint",
-            "public_chat"
-          ],
-          "example": "webhook",
-          "type": "string"
-        },
-        "CreateAgentEndpointRequest": {
-          "description": "Request to create an ingress endpoint owned by an Agent.",
-          "properties": {
-            "agent_version_id": {
-              "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-              "example": "agentver_01933b5a00007000800000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "agent_version_policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentVersionPolicy",
-                  "description": "Which Agent version sessions started through this endpoint run.\nOmitted means `default` (the agent's default version)."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "channel_config": {
-              "description": "Transport-specific endpoint configuration."
-            },
-            "channel_type": {
-              "$ref": "#/$defs/ChannelType",
-              "description": "Transport used by the endpoint."
-            },
-            "enabled": {
-              "description": "Whether the endpoint can accept ingress traffic.",
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "channel_type"
-          ],
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/CreateAgentEndpointRequest"
-        },
-        {
-          "properties": {
-            "agent_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "agent_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "POST",
-    "name": "create_agent_endpoint",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints",
     "positional_arg": null,
     "read_only": false
   },
@@ -5815,7 +5815,7 @@
           "type": "string"
         },
         "subject_type": {
-          "description": "Class of subject this policy binds to. One of: `user`, `virtual_user`,\n`agent`, `agent_endpoint`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,\n`agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
+          "description": "Class of subject this policy binds to. One of: `user`, `virtual_user`,\n`agent`, `agent_channel`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,\n`agent`→`agent_…`, `agent_channel`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
           "example": "virtual_user",
           "type": "string"
         }
@@ -7655,6 +7655,32 @@
     "read_only": false
   },
   {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Delete an agent ingress channel.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "channel_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_agent_channel",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": null,
     "description": "Delete an agent check rule (built-in override or custom rule).",
@@ -7674,32 +7700,6 @@
     "name": "delete_agent_check_rule",
     "output_shape": "unknown",
     "path": "/v1/agents/check-rules/{rule_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "Delete an agent ingress endpoint.",
-    "input_schema": {
-      "properties": {
-        "agent_id": {
-          "type": "string"
-        },
-        "endpoint_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "agent_id",
-        "endpoint_id"
-      ],
-      "type": "object"
-    },
-    "method": "DELETE",
-    "name": "delete_agent_endpoint",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -9275,28 +9275,28 @@
     "read_only": true
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Get an agent ingress endpoint.",
+    "description": "Get an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "GET",
-    "name": "get_agent_endpoint",
+    "name": "get_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -12007,24 +12007,9 @@
     "read_only": false
   },
   {
-    "category": "agents",
+    "category": "agent_channels",
     "cli": null,
-    "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
-    "input_schema": {
-      "description": "List the org's effective check-rule configuration (built-ins + custom).",
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "list_agent_check_rules",
-    "output_shape": "unknown",
-    "path": "/v1/agents/check-rules",
-    "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "List an agent's ingress endpoints.",
+    "description": "List an agent's ingress channels.",
     "input_schema": {
       "properties": {
         "agent_id": {
@@ -12037,9 +12022,24 @@
       "type": "object"
     },
     "method": "GET",
-    "name": "list_agent_endpoints",
+    "name": "list_agent_channels",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints",
+    "path": "/v1/agents/{agent_id}/channels",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": null,
+    "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
+    "input_schema": {
+      "description": "List the org's effective check-rule configuration (built-ins + custom).",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_check_rules",
+    "output_shape": "unknown",
+    "path": "/v1/agents/check-rules",
     "positional_arg": null,
     "read_only": true
   },
@@ -15090,28 +15090,28 @@
     "read_only": true
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Publish an agent ingress endpoint.",
+    "description": "Publish an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "publish_agent_endpoint",
+    "name": "publish_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/publish",
     "positional_arg": null,
     "read_only": false
   },
@@ -15941,28 +15941,28 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Run an agent schedule endpoint now.",
+    "description": "Run an agent schedule channel now.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "trigger_agent_endpoint",
+    "name": "trigger_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
     "positional_arg": null,
     "read_only": false
   },
@@ -16111,28 +16111,28 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Unpublish an agent ingress endpoint.",
+    "description": "Unpublish an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "unpublish_agent_endpoint",
+    "name": "unpublish_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
     "positional_arg": null,
     "read_only": false
   },
@@ -17188,9 +17188,9 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Update an agent ingress endpoint.",
+    "description": "Update an agent ingress channel.",
     "input_schema": {
       "$defs": {
         "AgentVersionPolicy": {
@@ -17203,8 +17203,8 @@
           "example": "pinned",
           "type": "string"
         },
-        "UpdateAgentEndpointRequest": {
-          "description": "Request to update an ingress endpoint owned by an Agent.",
+        "UpdateAgentChannelRequest": {
+          "description": "Request to update an ingress channel owned by an Agent.",
           "properties": {
             "agent_version_id": {
               "description": "Version to pin. Only valid with policy `pinned`.",
@@ -17226,10 +17226,10 @@
               ]
             },
             "channel_config": {
-              "description": "Replacement transport-specific endpoint configuration."
+              "description": "Replacement transport-specific channel configuration."
             },
             "enabled": {
-              "description": "Whether the endpoint can accept ingress traffic.",
+              "description": "Whether the channel can accept ingress traffic.",
               "type": [
                 "boolean",
                 "null"
@@ -17241,29 +17241,29 @@
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateAgentEndpointRequest"
+          "$ref": "#/$defs/UpdateAgentChannelRequest"
         },
         {
           "properties": {
             "agent_id": {
               "type": "string"
             },
-            "endpoint_id": {
+            "channel_id": {
               "type": "string"
             }
           },
           "required": [
             "agent_id",
-            "endpoint_id"
+            "channel_id"
           ],
           "type": "object"
         }
       ]
     },
     "method": "PATCH",
-    "name": "update_agent_endpoint",
+    "name": "update_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": false
   },

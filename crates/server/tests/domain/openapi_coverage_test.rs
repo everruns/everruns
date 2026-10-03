@@ -136,14 +136,14 @@ fn every_utoipa_handler_is_registered_in_apidoc() {
 fn endpoint_scoped_ingress_paths_are_documented_with_channel_parameters() {
     let doc = ApiDoc::openapi();
     for path in [
-        "/v1/e/{channel_id}/webhook",
-        "/v1/e/{channel_id}/a2a",
-        "/v1/e/{channel_id}/a2a/.well-known/agent-card.json",
-        "/v1/e/{channel_id}/fcp",
-        "/v1/e/{channel_id}/sessions",
-        "/v1/e/{channel_id}/sessions/{session_id}",
-        "/v1/e/{channel_id}/sessions/{session_id}/messages",
-        "/v1/e/{channel_id}/sessions/{session_id}/cancel",
+        "/v1/channels/{channel_id}/webhook",
+        "/v1/channels/{channel_id}/a2a",
+        "/v1/channels/{channel_id}/a2a/.well-known/agent-card.json",
+        "/v1/channels/{channel_id}/fcp",
+        "/v1/channels/{channel_id}/sessions",
+        "/v1/channels/{channel_id}/sessions/{session_id}",
+        "/v1/channels/{channel_id}/sessions/{session_id}/messages",
+        "/v1/channels/{channel_id}/sessions/{session_id}/cancel",
     ] {
         let item = doc
             .paths

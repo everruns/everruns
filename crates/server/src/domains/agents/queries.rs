@@ -333,7 +333,7 @@ pub async fn with_derived_exposure(
     if candidates.is_empty() {
         return Ok(());
     }
-    let live = db.agents_with_live_endpoints(&candidates).await?;
+    let live = db.agents_with_live_channels(&candidates).await?;
     for agent in agents.iter_mut() {
         agent.exposed = live.contains(&agent.internal_id);
     }

@@ -4,19 +4,19 @@ import {
   SlackConnectionStatus,
   SlackManualSetup,
 } from "@/components/agents/integrations/slack-setup-guidance";
-import { getSlackEndpointManifest } from "@/lib/api/agent-endpoints";
-import type { AgentEndpoint, SlackChannelConfig } from "@/lib/api/types";
+import { getSlackChannelManifest } from "@/lib/api/agent-channels";
+import type { AgentChannel, SlackChannelConfig } from "@/lib/api/types";
 
-jest.mock("@/lib/api/agent-endpoints", () => ({ getSlackEndpointManifest: jest.fn() }));
+jest.mock("@/lib/api/agent-channels", () => ({ getSlackChannelManifest: jest.fn() }));
 const configured = {
   session_strategy: "per_thread",
   signing_secret_configured: true,
   bot_token_configured: true,
 } satisfies SlackChannelConfig;
-function endpoint(
+function channel(
   config: SlackChannelConfig = configured,
-  status: AgentEndpoint["status"] = "live",
-): AgentEndpoint {
+  status: AgentChannel["status"] = "live",
+): AgentChannel {
   return {
     id: "endpoint_1",
     channel_type: "slack",
@@ -27,12 +27,12 @@ function endpoint(
     updated_at: "2026-10-03T00:00:00Z",
   };
 }
-function renderManual(value: AgentEndpoint) {
+function renderManual(value: AgentChannel) {
   return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <SlackManualSetup endpoint={value} />
+      <SlackManualSetup channel={value} />
     </QueryClientProvider>,
   );
 }
@@ -42,24 +42,24 @@ describe("Slack connection guidance", () => {
   it("removes completed setup steps and accepts signed messages without a URL challenge", () => {
     render(
       <SlackConnectionStatus
-        endpoint={endpoint({ ...configured, first_message_received_at: "2026-10-03T10:00:00Z" })}
+        channel={channel({ ...configured, first_message_received_at: "2026-10-03T10:00:00Z" })}
       />,
     );
     expect(screen.getByText("Message received")).toBeInTheDocument();
     expect(screen.getByText(/A signed Slack message/)).toBeInTheDocument();
     expect(
-      screen.queryByText(/Publish the endpoint|Waiting for Slack|Invite the bot/),
+      screen.queryByText(/Publish the channel|Waiting for Slack|Invite the bot/),
     ).not.toBeInTheDocument();
   });
   it("does not claim credentials alone establish a verified connection", () => {
-    render(<SlackConnectionStatus endpoint={endpoint()} />);
+    render(<SlackConnectionStatus channel={channel()} />);
     expect(screen.getByText("Credentials saved")).toBeInTheDocument();
     expect(screen.getByText(/No Slack message received yet/)).toBeInTheDocument();
   });
   it("shows the remaining test action after URL verification", () => {
     render(
       <SlackConnectionStatus
-        endpoint={endpoint({ ...configured, webhook_verified_at: "2026-10-03T10:00:00Z" })}
+        channel={channel({ ...configured, webhook_verified_at: "2026-10-03T10:00:00Z" })}
       />,
     );
     expect(screen.getByText("Request URL verified")).toBeInTheDocument();
@@ -68,34 +68,34 @@ describe("Slack connection guidance", () => {
   it("keeps publication separate from observed delivery", () => {
     render(
       <SlackConnectionStatus
-        endpoint={endpoint(
+        channel={channel(
           { ...configured, first_message_received_at: "2026-10-03T10:00:00Z" },
           "draft",
         )}
       />,
     );
     expect(screen.getByText("Message received")).toBeInTheDocument();
-    expect(screen.getByText(/Publish this endpoint/)).toBeInTheDocument();
+    expect(screen.getByText(/Publish this channel/)).toBeInTheDocument();
   });
   it("does not consider partial credentials configured", () => {
     render(
-      <SlackConnectionStatus endpoint={endpoint({ ...configured, bot_token_configured: false })} />,
+      <SlackConnectionStatus channel={channel({ ...configured, bot_token_configured: false })} />,
     );
     expect(screen.getByText("Not connected")).toBeInTheDocument();
   });
   it("keeps manual app creation behind publication", () => {
-    renderManual(endpoint({ session_strategy: "per_thread" }, "draft"));
-    expect(screen.getByText(/Publish this endpoint before creating/)).toBeInTheDocument();
+    renderManual(channel({ session_strategy: "per_thread" }, "draft"));
+    expect(screen.getByText(/Publish this channel before creating/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create Slack app" })).not.toBeInTheDocument();
-    expect(getSlackEndpointManifest).not.toHaveBeenCalled();
+    expect(getSlackChannelManifest).not.toHaveBeenCalled();
   });
-  it("opens the endpoint manifest only with a public HTTPS request URL", async () => {
+  it("opens the channel manifest only with a public HTTPS request URL", async () => {
     const open = jest.spyOn(window, "open").mockImplementation(() => null);
-    (getSlackEndpointManifest as jest.Mock).mockResolvedValue({
+    (getSlackChannelManifest as jest.Mock).mockResolvedValue({
       manifest_yaml: 'event_subscriptions:\n  request_url: "https://example.com/slack/events"',
       create_url: "https://api.slack.com/apps?new_app=1",
     });
-    renderManual(endpoint({ session_strategy: "per_thread" }));
+    renderManual(channel({ session_strategy: "per_thread" }));
     const create = screen.getByRole("button", { name: "Create Slack app" });
     await waitFor(() => expect(create).toBeEnabled());
     fireEvent.click(create);
@@ -107,17 +107,17 @@ describe("Slack connection guidance", () => {
     open.mockRestore();
   });
   it("disables manual app creation on localhost", async () => {
-    (getSlackEndpointManifest as jest.Mock).mockResolvedValue({
+    (getSlackChannelManifest as jest.Mock).mockResolvedValue({
       manifest_yaml: 'event_subscriptions:\n  request_url: "http://localhost:9300/slack/events"',
       create_url: "https://api.slack.com/apps?new_app=1",
     });
-    renderManual(endpoint({ session_strategy: "per_thread" }));
+    renderManual(channel({ session_strategy: "per_thread" }));
     await screen.findByText(/PUBLIC_APP_URL/);
     expect(screen.getByRole("button", { name: "Create Slack app" })).toBeDisabled();
   });
   it("shows a retry action when loading a manual manifest fails", async () => {
-    (getSlackEndpointManifest as jest.Mock).mockRejectedValue(new Error("unavailable"));
-    renderManual(endpoint());
+    (getSlackChannelManifest as jest.Mock).mockRejectedValue(new Error("unavailable"));
+    renderManual(channel());
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not load the Slack app manifest",
     );

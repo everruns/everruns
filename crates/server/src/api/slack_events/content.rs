@@ -115,8 +115,8 @@ pub(crate) fn build_attachment_content_parts(
 }
 
 pub(crate) fn build_session_tags(
-    app: &crate::api::endpoint_ingress::IngressContext,
-    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
+    app: &crate::api::channel_ingress::IngressContext,
+    slack_channel: &crate::api::channel_ingress::IngressChannel,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
     surface: SlackSurface,
@@ -157,7 +157,7 @@ pub(crate) fn build_session_tags(
             SlackSurface::Channel => None,
         },
     );
-    if !everruns_platform::EndpointTransport::Slack.allows_binding(binding) {
+    if !everruns_platform::ChannelType::Slack.allows_binding(binding) {
         anyhow::bail!("unsupported Slack session binding: {binding:?}");
     }
     if let Some(routing_tag) = build_session_routing_tag("slack", &binding, &routing_metadata) {
@@ -193,11 +193,11 @@ pub(crate) fn build_session_title(slack_config: &SlackChannelConfig, event: &Sla
             let user = event.user.as_deref().unwrap_or("unknown");
             format!("Slack user {} in {}", user, channel)
         }
-        // Not offerable on Slack — `EndpointTransport::Slack.allowed_bindings()`
+        // Not offerable on Slack — `ChannelType::Slack.allowed_bindings()`
         // rejects both at write time. Reachable only from a config stored
         // before that guard existed, so title it by the channel rather than
         // panicking on a live inbound event (EVE-1005).
-        SessionBinding::Endpoint | SessionBinding::Ephemeral => {
+        SessionBinding::Shared | SessionBinding::Ephemeral => {
             format!("Slack channel {}", channel)
         }
     }

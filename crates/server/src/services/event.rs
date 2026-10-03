@@ -743,7 +743,7 @@ mod tests {
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             trigger_id: None,
             harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
             agent_id: Some(agent_id),

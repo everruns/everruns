@@ -88,7 +88,7 @@ async fn create_fcp_app(server: &TestServer, channel_config: Value) -> App {
 
     serde_json::from_value(
         server
-            .seed_app_endpoint(&unique_id("FCP App"), &agent_id, "fcp", channel_config)
+            .seed_app_channel(&unique_id("FCP App"), &agent_id, "fcp", channel_config)
             .await,
     )
     .expect("fixture App")
@@ -99,20 +99,17 @@ async fn create_published_fcp_app(server: &TestServer, channel_config: Value) ->
 
     serde_json::from_value(
         server
-            .set_app_endpoints_live(&app.public_id.to_string(), true)
+            .set_app_channels_live(&app.public_id.to_string(), true)
             .await,
     )
     .expect("published fixture App")
 }
 
-async fn create_published_native_fcp_endpoint(
-    server: &TestServer,
-    channel_config: Value,
-) -> String {
+async fn create_published_native_fcp_channel(server: &TestServer, channel_config: Value) -> String {
     let agent_id = create_llmsim_agent(server).await;
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/endpoints"),
+            &format!("/v1/agents/{agent_id}/channels"),
             json!({
                 "channel_type": "fcp",
                 "channel_config": channel_config
@@ -121,15 +118,15 @@ async fn create_published_native_fcp_endpoint(
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let endpoint_id = endpoint["id"].as_str().unwrap();
+    let channel_id = endpoint["id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish"),
+            &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
             json!({}),
         )
         .await
         .assert_success();
-    endpoint_id.to_string()
+    channel_id.to_string()
 }
 
 async fn get_handshake(
@@ -269,7 +266,7 @@ async fn fcp_handshake_returns_markdown_for_published_app() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_endpoint_handshake_matches_legacy_alias() {
+async fn fcp_channel_handshake_matches_legacy_alias() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(&server, json!({})).await;
     let channel_id = app.channels[0].public_id;
@@ -277,7 +274,7 @@ async fn fcp_endpoint_handshake_matches_legacy_alias() {
     let endpoint = server
         .request_raw(
             Method::GET,
-            &format!("/v1/e/{channel_id}/fcp"),
+            &format!("/v1/channels/{channel_id}/fcp"),
             vec![],
             Vec::new(),
         )
@@ -397,8 +394,8 @@ async fn fcp_post_json_body_is_parsed_via_message_field() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_session_cookie_reuses_same_session() {
     let server = TestServer::in_memory().await;
-    let endpoint_id = create_published_native_fcp_endpoint(&server, fast_timeout_config()).await;
-    let path = format!("/v1/e/{endpoint_id}/fcp");
+    let channel_id = create_published_native_fcp_channel(&server, fast_timeout_config()).await;
+    let path = format!("/v1/channels/{channel_id}/fcp");
 
     let first = send_fcp_post_to_path(
         &server,
@@ -411,7 +408,7 @@ async fn fcp_post_session_cookie_reuses_same_session() {
     let cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
 
     // Inspect sessions by tag — first POST must have created exactly one.
-    let expected_tag = format!("fcp:endpoint:{endpoint_id}");
+    let expected_tag = format!("fcp:endpoint:{channel_id}");
     let first_count = count_sessions_with_tag(&server, &expected_tag).await;
     assert_eq!(first_count, 1);
 
@@ -540,7 +537,7 @@ async fn fcp_post_requires_token_when_configured() {
 
     send_fcp_post_to_path(
         &server,
-        &format!("/v1/e/{channel_id}/fcp"),
+        &format!("/v1/channels/{channel_id}/fcp"),
         "hi",
         vec![
             ("content-type", "text/plain"),
@@ -565,7 +562,7 @@ async fn fcp_post_requires_token_when_configured() {
 
     let endpoint_ok = send_fcp_post_to_path(
         &server,
-        &format!("/v1/e/{channel_id}/fcp"),
+        &format!("/v1/channels/{channel_id}/fcp"),
         "hi",
         vec![
             ("content-type", "text/plain"),
@@ -601,7 +598,7 @@ async fn fcp_invalid_token_does_not_consume_channel_rate_limit() {
         }),
     )
     .await;
-    let path = format!("/v1/e/{}/fcp", app.channels[0].public_id);
+    let path = format!("/v1/channels/{}/fcp", app.channels[0].public_id);
     let client_headers = || {
         vec![
             ("content-type", "text/plain"),

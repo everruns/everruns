@@ -51,7 +51,7 @@ pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> Cre
         source: everruns_platform::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
-        endpoint_id: None,
+        channel_id: None,
         trigger_id: None,
         harness_id: None,
         agent_id: None,

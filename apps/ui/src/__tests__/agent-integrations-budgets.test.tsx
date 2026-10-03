@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
-import type { Agent, AgentEndpoint } from "@/lib/api/types";
+import type { Agent, AgentChannel } from "@/lib/api/types";
 
 const mockUseFeatureFlag = jest.fn();
 const mockCanAgent = jest.fn();
@@ -10,10 +10,10 @@ jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: (flag: string) => mockUseFeatureFlag(flag),
 }));
 
-jest.mock("@/hooks/use-agent-endpoints", () => ({
+jest.mock("@/hooks/use-agent-channels", () => ({
   isTriggerChannel: () => false,
-  useAgentEndpoints: () => ({
-    endpoints: [
+  useAgentChannels: () => ({
+    channels: [
       {
         channel: {
           id: "endpoint_1",
@@ -23,13 +23,13 @@ jest.mock("@/hooks/use-agent-endpoints", () => ({
           status: "live",
           created_at: "2026-09-19T00:00:00Z",
           updated_at: "2026-09-19T00:00:00Z",
-        } satisfies AgentEndpoint,
+        } satisfies AgentChannel,
       },
     ],
     isLoading: false,
   }),
-  usePublishAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
-  useTriggerAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
+  usePublishAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
+  useTriggerAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 jest.mock("@/hooks/use-agent-triggers", () => ({
@@ -48,13 +48,13 @@ jest.mock("@/hooks/use-agents", () => ({
   useAgentVersions: () => ({ data: [], isLoading: false }),
 }));
 
-jest.mock("@/components/apps/channel-row", () => ({
+jest.mock("@/components/agents/channels/channel-row", () => ({
   ChannelRow: ({ usePanel }: { usePanel?: React.ReactNode }) => <div>{usePanel}</div>,
 }));
 
-jest.mock("@/components/agents/integrations/endpoint-details-panel", () => ({
-  EndpointDetailsPanel: ({ channel }: { channel: AgentEndpoint }) => (
-    <div data-testid={`endpoint-details-${channel.id}`} />
+jest.mock("@/components/agents/integrations/channel-details-panel", () => ({
+  ChannelDetailsPanel: ({ channel }: { channel: AgentChannel }) => (
+    <div data-testid={`channel-details-${channel.id}`} />
   ),
 }));
 
@@ -116,12 +116,12 @@ describe("AgentIntegrationsPanel budgets", () => {
     render(<AgentIntegrationsPanel agent={agent} />);
 
     expect(mockUseFeatureFlag).toHaveBeenCalledWith("app_budgets");
-    expect(screen.getByTestId("endpoint-details-endpoint_1")).toBeInTheDocument();
+    expect(screen.getByTestId("channel-details-endpoint_1")).toBeInTheDocument();
     expect(screen.getByTestId("budget-agent-agent_1")).toHaveAttribute(
       "data-can-manage",
       String(canManage),
     );
-    expect(screen.getByTestId("budget-agent_endpoint-endpoint_1")).toHaveAttribute(
+    expect(screen.getByTestId("budget-agent_channel-endpoint_1")).toHaveAttribute(
       "data-can-manage",
       String(canManage),
     );

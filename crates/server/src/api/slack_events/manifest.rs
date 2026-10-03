@@ -27,11 +27,11 @@ pub(crate) async fn handle_slack_manifest_legacy(
     handle_slack_manifest(state, SlackTarget::LegacyApp(app_id)).await
 }
 
-pub(crate) async fn handle_slack_manifest_endpoint(
+pub(crate) async fn handle_slack_manifest_channel(
     State(state): State<SlackState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
-    handle_slack_manifest(state, SlackTarget::Endpoint(channel_id)).await
+    handle_slack_manifest(state, SlackTarget::Channel(channel_id)).await
 }
 
 pub(crate) async fn handle_slack_manifest(
@@ -39,7 +39,7 @@ pub(crate) async fn handle_slack_manifest(
     target: SlackTarget,
 ) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
     let (app, slack_channel) = resolve_slack_channel(&state, target).await?;
-    let manifest_yaml = manifest_yaml_for_endpoint(&state, &app, &slack_channel).await?;
+    let manifest_yaml = manifest_yaml_for_channel(&state, &app, &slack_channel).await?;
 
     // URL-encode the manifest for the Slack "create from manifest" URL
     let encoded = urlencoding_encode(&manifest_yaml);
@@ -60,10 +60,10 @@ pub(crate) async fn handle_slack_manifest(
 /// creates the app from exactly the manifest the copy-paste flow serves —
 /// the PoC's finding that `apps.manifest.create` accepts it whole only holds
 /// if the two cannot drift.
-pub(crate) async fn manifest_yaml_for_endpoint(
+pub(crate) async fn manifest_yaml_for_channel(
     state: &SlackState,
-    app: &crate::api::endpoint_ingress::IngressContext,
-    slack_channel: &crate::api::endpoint_ingress::IngressEndpoint,
+    app: &crate::api::channel_ingress::IngressContext,
+    slack_channel: &crate::api::channel_ingress::IngressChannel,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     // A config we cannot parse still produces the channel-bot manifest rather than
     // a 500: the agent surface is additive, so defaulting it off is the safe read.
@@ -106,7 +106,7 @@ pub(crate) async fn manifest_yaml_for_endpoint(
 /// which makes `event_subscriptions` generatable.
 pub(crate) fn slack_webhook_url(api_base_url: &str, channel_public_id: &str) -> String {
     format!(
-        "{}/v1/e/{}/slack/events",
+        "{}/v1/channels/{}/slack/events",
         api_base_url.trim_end_matches('/'),
         channel_public_id
     )
@@ -119,7 +119,7 @@ pub(crate) fn slack_webhook_url(api_base_url: &str, channel_public_id: &str) -> 
 /// an operator never has to add it by hand.
 pub(crate) fn slack_interactivity_url(api_base_url: &str, channel_public_id: &str) -> String {
     format!(
-        "{}/v1/e/{}/slack/interactivity",
+        "{}/v1/channels/{}/slack/interactivity",
         api_base_url.trim_end_matches('/'),
         channel_public_id
     )
@@ -134,7 +134,7 @@ pub(crate) fn slack_interactivity_url(api_base_url: &str, channel_public_id: &st
 /// yet; declaring it here is what makes the app installable once it does.
 pub(crate) fn slack_oauth_redirect_url(api_base_url: &str, channel_public_id: &str) -> String {
     format!(
-        "{}/v1/e/{}/slack/oauth/callback",
+        "{}/v1/channels/{}/slack/oauth/callback",
         api_base_url.trim_end_matches('/'),
         channel_public_id
     )
@@ -149,7 +149,7 @@ pub(crate) fn slack_oauth_redirect_url(api_base_url: &str, channel_public_id: &s
 /// cosmetic next to that.
 pub(crate) async fn resolve_manifest_starters(
     state: &SlackState,
-    app: &crate::api::endpoint_ingress::IngressContext,
+    app: &crate::api::channel_ingress::IngressContext,
 ) -> Vec<ConversationStarter> {
     match app.agent_id.as_ref() {
         Some(agent_id) => {

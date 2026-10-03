@@ -1,10 +1,10 @@
 // Frozen App query helpers — read-only archival access and reference guards.
 //
 // No policy checks, no input validation. Pure data access + mapping. Endpoint
-// config encryption and row mapping live in `domains::agent_endpoints::queries`.
+// config encryption and row mapping live in `domains::agent_channels::queries`.
 
-use crate::domains::agent_endpoints::queries::{
-    channel_row_to_channel, decrypt_channel_config, parse_legacy_endpoint_auth,
+use crate::domains::agent_channels::queries::{
+    channel_row_to_channel, decrypt_channel_config, parse_legacy_channel_auth,
 };
 use crate::domains::common::CommandError;
 use crate::services::row_to_principal;
@@ -13,8 +13,7 @@ use crate::storage::encryption::EncryptionService;
 use everruns_contracts::typed_id::AppId;
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, VirtualUserId};
 use everruns_platform::{
-    AgentEndpoint, AgentEndpointId, AgentVersionPolicy, App, AppStatus, EndpointStatus,
-    EndpointTransport,
+    AgentChannel, AgentChannelId, AgentVersionPolicy, App, AppStatus, ChannelStatus, ChannelType,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -50,7 +49,7 @@ pub async fn row_to_app(
         .unwrap_or_else(|_| AppId::from_uuid(row.id));
 
     // Load channels from app_channels table; fall back to legacy columns
-    let channel_rows = match db.list_legacy_alias_endpoints(row.id).await {
+    let channel_rows = match db.list_legacy_alias_channels(row.id).await {
         Ok(rows) => rows,
         Err(err) => {
             tracing::error!(
@@ -61,13 +60,13 @@ pub async fn row_to_app(
             Vec::new()
         }
     };
-    let channels: Vec<AgentEndpoint> = if channel_rows.is_empty() {
+    let channels: Vec<AgentChannel> = if channel_rows.is_empty() {
         // Fallback: synthesize a channel from legacy apps columns when no
         // app_channels rows exist (e.g. incomplete migration, DB restore).
         if let Some(ct) = row
             .channel_type
             .as_deref()
-            .and_then(EndpointTransport::from_str_opt)
+            .and_then(ChannelType::from_str_opt)
         {
             let mut config = decrypt_channel_config(
                 encryption,
@@ -77,9 +76,9 @@ pub async fn row_to_app(
             let auth = config
                 .as_object_mut()
                 .and_then(|object| object.remove("auth"))
-                .map(|value| Box::new(parse_legacy_endpoint_auth(value)));
-            vec![AgentEndpoint {
-                public_id: AgentEndpointId::from_uuid(row.id),
+                .map(|value| Box::new(parse_legacy_channel_auth(value)));
+            vec![AgentChannel {
+                public_id: AgentChannelId::from_uuid(row.id),
                 internal_id: row.id,
                 channel_type: ct,
                 channel_config: config,
@@ -88,9 +87,9 @@ pub async fn row_to_app(
                 // Legacy fallback: this App predates `app_channels` rows, so the
                 // only lifecycle it has is its own publish state.
                 status: if row.status == "published" {
-                    EndpointStatus::Live
+                    ChannelStatus::Live
                 } else {
-                    EndpointStatus::Draft
+                    ChannelStatus::Draft
                 },
                 agent_version_policy: AgentVersionPolicy::Default,
                 agent_version_id: None,
@@ -109,7 +108,7 @@ pub async fn row_to_app(
     // The frozen App carried one version selection for all of its channels.
     let agent_version_policy = AgentVersionPolicy::from(row.agent_version_policy.as_str());
     let agent_version_id = row.agent_version_id.map(AgentVersionId::from_uuid);
-    let channels: Vec<AgentEndpoint> = channels
+    let channels: Vec<AgentChannel> = channels
         .into_iter()
         .map(|mut channel| {
             channel.agent_version_policy = agent_version_policy.clone();

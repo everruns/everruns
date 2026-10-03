@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { getInvocationSessionModeDisplayName } from "@/lib/endpoint-display";
+import { getInvocationSessionModeDisplayName } from "@/lib/channel-display";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, FileJson } from "lucide-react";
 import { EntityIdentity } from "@/components/ui/entity-identity";
@@ -31,7 +31,7 @@ interface A2aAgentCardPreviewProps {
   card?: A2aAgentCard;
   agentName: string;
   agentDescription?: string | null;
-  endpointUrl?: string;
+  channelUrl?: string;
   agentCardName?: string | null;
   agentCardDescription?: string | null;
   sessionMode: InvocationSessionMode;
@@ -66,7 +66,7 @@ export function sanitizeA2aAgentCardForDisplay(card: A2aAgentCard): A2aAgentCard
 export function buildA2aAgentCardPreview({
   agentName,
   agentDescription,
-  endpointUrl,
+  channelUrl,
   agentCardName,
   agentCardDescription,
   sessionMode,
@@ -76,7 +76,7 @@ export function buildA2aAgentCardPreview({
   return {
     name: agentCardName?.trim() || agentName,
     description,
-    url: endpointUrl || "(generated after save)",
+    url: channelUrl || "(generated after save)",
     protocolVersion: A2A_AGENT_CARD_PROTOCOL_VERSION,
     version: A2A_AGENT_CARD_VERSION,
     preferredTransport: "JSONRPC",

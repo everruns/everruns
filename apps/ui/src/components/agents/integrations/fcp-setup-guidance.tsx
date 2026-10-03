@@ -4,7 +4,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { Globe } from "lucide-react";
 
 interface FcpSetupGuidanceProps {
-  endpointUrl: string;
+  channelUrl: string;
   isPublished: boolean;
   anonymousEnabled: boolean;
   sessionExpirationSeconds: number;
@@ -35,7 +35,7 @@ export function formatFcpSessionExpiration(seconds: number): string {
 }
 
 export function FcpSetupGuidance({
-  endpointUrl,
+  channelUrl,
   isPublished,
   anonymousEnabled,
   sessionExpirationSeconds,
@@ -58,16 +58,16 @@ export function FcpSetupGuidance({
           {accessBadge}
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {isPublished ? "Ready for FCP clients" : "Publish the endpoint to accept requests"}
+          {isPublished ? "Ready for FCP clients" : "Publish the channel to accept requests"}
         </span>
       </div>
 
       <div>
-        <p className="text-sm font-medium">Endpoint</p>
+        <p className="text-sm font-medium">Channel</p>
         <div className="mt-2 flex items-center gap-2 bg-muted p-3">
           <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <code className="flex-1 truncate text-sm">{endpointUrl}</code>
-          <CopyButton value={endpointUrl} />
+          <code className="flex-1 truncate text-sm">{channelUrl}</code>
+          <CopyButton value={channelUrl} />
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           GET this URL for the Markdown handshake. POST plain text (or JSON{" "}
@@ -118,7 +118,7 @@ export function FcpSetupGuidance({
         <p className="text-sm text-muted-foreground">
           {hasRateLimit
             ? `${rateLimitPerMinute} requests per minute, per client IP`
-            : "No per-endpoint cap (global API limit applies)"}
+            : "No per-channel cap (global API limit applies)"}
           {" — counted in an FCP-only limiter namespace."}
         </p>
       </div>
@@ -126,7 +126,7 @@ export function FcpSetupGuidance({
       <div>
         <p className="text-sm font-medium">Response timeout</p>
         <p className="text-sm text-muted-foreground">
-          {timeoutSeconds} seconds — after which the endpoint returns 504 with the same{" "}
+          {timeoutSeconds} seconds — after which the channel returns 504 with the same{" "}
           <code>fcp_session</code> cookie so the client can retry.
         </p>
       </div>

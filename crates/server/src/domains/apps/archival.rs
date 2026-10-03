@@ -1,7 +1,7 @@
 // Deprecated read-only access to frozen App records.
 
 use super::queries as q;
-use crate::domains::agent_endpoints::redact_channel_for_response;
+use crate::domains::agent_channels::redact_channel_for_response;
 use crate::domains::common::*;
 use everruns_contracts::typed_id::AppId;
 use everruns_core::{Permission, Policy, Rule};

@@ -36,9 +36,9 @@ client.messages().create(&session.id, "What was revenue last week?").await?;
 | `POST /v1/sessions/{id}/approvals/{tool_call_id}` (serve) | `{decision: "approve" \| "deny", note?}` | `{status, tool_call_id, session_status}`, `404` when nothing is pending |
 | `GET /v1/agent` (serve) | | agent card: agents, tools, skills, channels, schedules, version |
 | `POST /v1/channels/{name}` (serve) | the provider's webhook | whatever the channel answers |
-| `POST /v1/e/{agent}/ag-ui` (`ag-ui` feature) | AG-UI 1.0 `RunAgentInput` | SSE stream of AG-UI events, see [AG-UI](#ag-ui) |
-| `POST /v1/e/{agent}/a2a` (`a2a` feature) | A2A 1.0 JSON-RPC (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) | JSON-RPC result, or SSE for the streaming methods, see [A2A](#a2a) |
-| `GET /v1/e/{agent}/a2a/.well-known/agent-card.json` (`a2a` feature) | | A2A 1.0 Agent Card |
+| `POST /v1/channels/{agent}/ag-ui` (`ag-ui` feature) | AG-UI 1.0 `RunAgentInput` | SSE stream of AG-UI events, see [AG-UI](#ag-ui) |
+| `POST /v1/channels/{agent}/a2a` (`a2a` feature) | A2A 1.0 JSON-RPC (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) | JSON-RPC result, or SSE for the streaming methods, see [A2A](#a2a) |
+| `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json` (`a2a` feature) | | A2A 1.0 Agent Card |
 | `GET /health` (serve) | | `{status, build_id}` |
 | `POST /dev/schedules/{name}` (serve, `dev` only) | | runs a schedule now |
 
@@ -146,7 +146,7 @@ no secrets, so `secret` questions cannot be answered.
 ## AG-UI
 
 With the `ag-ui` cargo feature, every top-level agent also answers AG-UI 1.0
-clients (CopilotKit, `@ag-ui/client`) at `POST /v1/e/{agent}/ag-ui`, the route
+clients (CopilotKit, `@ag-ui/client`) at `POST /v1/channels/{agent}/ag-ui`, the route
 shape of the server's endpoint channel, so a front end moves between the two by
 base URL and id alone. The agent card lists the routes under `ag_ui`, and the
 manifest under `routes`.
@@ -170,7 +170,7 @@ manifest under `routes`.
 ## A2A
 
 With the `a2a` cargo feature, every top-level agent also answers A2A 1.0
-JSON-RPC at `POST /v1/e/{agent}/a2a`, with its Agent Card under it, the shape
+JSON-RPC at `POST /v1/channels/{agent}/a2a`, with its Agent Card under it, the shape
 of the server's A2A endpoint. The protocol is the A2A Rust SDK's
 (`a2a-server-lf`) request handler; serve supplies the executor. The agent card
 lists the routes under `a2a`, and the manifest under `routes`.

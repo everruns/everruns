@@ -899,7 +899,7 @@ async fn approvals_in_two_sessions_do_not_collide() {
     assert_eq!(call(&still), call(&b));
 }
 
-/// `POST /v1/e/{agent}/ag-ui`: AG-UI 1.0 runs over the same host, with
+/// `POST /v1/channels/{agent}/ag-ui`: AG-UI 1.0 runs over the same host, with
 /// serve's approvals and questions as interrupts.
 #[cfg(feature = "ag-ui")]
 mod ag_ui {
@@ -920,7 +920,11 @@ mod ag_ui {
 
     /// The `data:` payloads of one AG-UI run, after checking the SSE framing.
     async fn run(server: &Server, agent: &str, body: Value) -> Vec<Value> {
-        let response = server.post(&format!("/v1/e/{agent}/ag-ui"), body).await;
+        run_at(server, "/v1/channels", agent, body).await
+    }
+
+    async fn run_at(server: &Server, base: &str, agent: &str, body: Value) -> Vec<Value> {
+        let response = server.post(&format!("{base}/{agent}/ag-ui"), body).await;
         assert_eq!(response.status(), 200);
         assert!(
             response.headers()["content-type"]
@@ -964,7 +968,7 @@ mod ag_ui {
         let host = Host::new(app(), Mode::Eval, None).unwrap();
         let server = serve(host.clone()).await;
 
-        let first = run(&server, "tester", run_input("t1", "r1", "go")).await;
+        let first = run_at(&server, "/v1/e", "tester", run_input("t1", "r1", "go")).await;
         assert_eq!(first[0]["threadId"], "t1");
         assert_eq!(first[0]["protocolVersion"], "1.0");
         assert_eq!(text(&first), "shouted");
@@ -1131,7 +1135,7 @@ mod ag_ui {
         let post_raw = |body: &'static str| {
             server
                 .client
-                .post(format!("{}/v1/e/tester/ag-ui", server.base))
+                .post(format!("{}/v1/channels/tester/ag-ui", server.base))
                 .header("content-type", "application/json")
                 .body(body)
                 .send()
@@ -1147,12 +1151,12 @@ mod ag_ui {
         assert_eq!(wrong_shape.status(), 400);
 
         let no_thread = server
-            .post("/v1/e/tester/ag-ui", run_input("", "r1", "hi"))
+            .post("/v1/channels/tester/ag-ui", run_input("", "r1", "hi"))
             .await;
         assert_eq!(no_thread.status(), 400);
         let no_message = server
             .post(
-                "/v1/e/tester/ag-ui",
+                "/v1/channels/tester/ag-ui",
                 json!({ "threadId": "t", "runId": "r", "messages": [] }),
             )
             .await;
@@ -1161,7 +1165,7 @@ mod ag_ui {
         assert_eq!(problem["status"], 400);
         let assistant_last = server
             .post(
-                "/v1/e/tester/ag-ui",
+                "/v1/channels/tester/ag-ui",
                 json!({ "threadId": "t", "runId": "r", "messages": [
                     { "id": "a1", "role": "assistant", "content": "hi" }
                 ] }),
@@ -1170,7 +1174,7 @@ mod ag_ui {
         assert_eq!(assistant_last.status(), 400);
 
         let unknown = server
-            .post("/v1/e/nobody/ag-ui", run_input("t", "r", "hi"))
+            .post("/v1/channels/nobody/ag-ui", run_input("t", "r", "hi"))
             .await;
         assert_eq!(unknown.status(), 404);
     }
@@ -1181,15 +1185,15 @@ mod ag_ui {
         assert!(
             manifest
                 .routes
-                .contains(&"POST /v1/e/tester/ag-ui".to_string()),
+                .contains(&"POST /v1/channels/tester/ag-ui".to_string()),
             "{:?}",
             manifest.routes
         );
         let host = Host::new(app(), Mode::Eval, None).unwrap();
         let server = serve(host).await;
         let card: Value = server.get("/v1/agent").await.json().await.unwrap();
-        assert_eq!(card["ag_ui"]["tester"], "/v1/e/tester/ag-ui");
-        assert_eq!(card["ag_ui"]["asker"], "/v1/e/asker/ag-ui");
+        assert_eq!(card["ag_ui"]["tester"], "/v1/channels/tester/ag-ui");
+        assert_eq!(card["ag_ui"]["asker"], "/v1/channels/asker/ag-ui");
     }
 }
 

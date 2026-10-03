@@ -2,7 +2,7 @@ use super::*;
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use everruns_core::{DefaultPermissionResolver, Permission};
-use everruns_platform::{EndpointStatus, EndpointTransport};
+use everruns_platform::{ChannelStatus, ChannelType};
 use std::sync::Arc;
 
 struct AgentsOnlyResolver;
@@ -143,9 +143,9 @@ fn effective_harness_metadata_allows_harness_view() {
 fn agent_channel_summary_serializes_only_non_secret_metadata() {
     let summary = AgentChannelSummary {
         id: "aep_example".into(),
-        channel_type: EndpointTransport::Webhook,
+        channel_type: ChannelType::Webhook,
         enabled: true,
-        status: EndpointStatus::Draft,
+        status: ChannelStatus::Draft,
     };
     assert_eq!(
         serde_json::to_value(summary).unwrap(),

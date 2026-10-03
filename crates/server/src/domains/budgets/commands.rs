@@ -15,7 +15,7 @@ fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
         "user",
         "org",
         "agent_trigger",
-        "agent_endpoint",
+        "agent_channel",
     ];
     if SUPPORTED.contains(&subject_type) {
         return Ok(());
@@ -82,7 +82,10 @@ impl Command for CreateBudget {
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
-        let req = self.0;
+        let mut req = self.0;
+        if req.subject_type == "agent_endpoint" {
+            req.subject_type = "agent_channel".into();
+        }
         validate_subject_type(&req.subject_type)?;
         validate_limit(req.limit, req.soft_limit)?;
 
@@ -133,7 +136,13 @@ impl Command for ListBudgets {
             .db
             .list_budgets(
                 ctx.org_id(),
-                self.subject_type.as_deref(),
+                self.subject_type.as_deref().map(|subject| {
+                    if subject == "agent_endpoint" {
+                        "agent_channel"
+                    } else {
+                        subject
+                    }
+                }),
                 self.subject_id.as_deref(),
             )
             .await
@@ -687,7 +696,7 @@ mod tests {
             "user",
             "org",
             "agent_trigger",
-            "agent_endpoint",
+            "agent_channel",
         ] {
             assert!(validate_subject_type(kind).is_ok(), "expected {kind} ok");
         }
@@ -730,10 +739,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_endpoint_budget_remains_creatable_and_updatable() {
+    async fn agent_channel_budget_remains_creatable_and_updatable() {
         let ctx = ctx_for_role(OrgRole::Owner);
         let budget = CreateBudget(CreateBudgetRequest {
-            subject_type: "agent_endpoint".to_string(),
+            subject_type: "agent_channel".to_string(),
             subject_id: "endpoint".to_string(),
             currency: "usd".to_string(),
             limit: 10.0,
@@ -743,7 +752,7 @@ mod tests {
         })
         .execute(&ctx)
         .await
-        .expect("agent endpoint budget remains supported");
+        .expect("agent channel budget remains supported");
 
         let updated = UpdateBudgetCmd {
             budget_id: budget.id.to_string(),
@@ -754,7 +763,7 @@ mod tests {
         }
         .execute(&ctx)
         .await
-        .expect("agent endpoint budget remains writable");
+        .expect("agent channel budget remains writable");
         assert_eq!(updated.limit, 20.0);
     }
 

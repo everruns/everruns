@@ -30,7 +30,7 @@ async fn create_app(
         .json();
 
     server
-        .seed_app_endpoint(
+        .seed_app_channel(
             name,
             agent["id"].as_str().unwrap(),
             channel_type,
@@ -40,10 +40,10 @@ async fn create_app(
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {
-    server.set_app_endpoints_live(app_id, true).await;
+    server.set_app_channels_live(app_id, true).await;
 }
 #[tokio::test]
-async fn webhook_legacy_alias_endpoint_mismatch_is_not_found() {
+async fn webhook_legacy_alias_channel_mismatch_is_not_found() {
     let server = TestServer::in_memory().await;
     let app_a = create_app(
         &server,
@@ -309,7 +309,7 @@ async fn webhook_channel_per_invocation_rejects_bad_token_and_creates_new_sessio
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/e/{channel_id}/webhook"),
+            &format!("/v1/channels/{channel_id}/webhook"),
             vec![
                 ("content-type", "application/json"),
                 ("x-everruns-webhook-token", "wrong"),
@@ -336,7 +336,7 @@ async fn webhook_channel_per_invocation_rejects_bad_token_and_creates_new_sessio
     let second: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/e/{channel_id}/webhook"),
+            &format!("/v1/channels/{channel_id}/webhook"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", "Bearer secret-2"),

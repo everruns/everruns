@@ -7,28 +7,26 @@ pub(super) async fn authorize_ag_ui_request(
     peer_addr: Option<std::net::SocketAddr>,
 ) -> Result<AuthorizedAgUiRequest, Response> {
     let (context, channel) = match target {
-        AgUiTarget::LegacyApp(app_id) => {
-            match crate::api::endpoint_ingress::resolve_legacy_endpoint(
-                &state.db,
-                state.encryption.as_ref(),
-                &app_id,
-                EndpointTransport::AgUi,
-            )
-            .await
-            .map_err(internal_error)?
-            {
-                crate::api::endpoint_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
-                crate::api::endpoint_ingress::LegacyEndpointMatch::NotFound => {
-                    return Err(not_found());
-                }
-                crate::api::endpoint_ingress::LegacyEndpointMatch::Ambiguous => {
-                    return Err(conflict(
-                        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL",
-                    ));
-                }
+        AgUiTarget::LegacyApp(app_id) => match crate::api::channel_ingress::resolve_legacy_channel(
+            &state.db,
+            state.encryption.as_ref(),
+            &app_id,
+            ChannelType::AgUi,
+        )
+        .await
+        .map_err(internal_error)?
+        {
+            crate::api::channel_ingress::LegacyChannelMatch::One(endpoint) => *endpoint,
+            crate::api::channel_ingress::LegacyChannelMatch::NotFound => {
+                return Err(not_found());
             }
-        }
-        AgUiTarget::Endpoint(channel_id) => crate::api::endpoint_ingress::resolve_endpoint(
+            crate::api::channel_ingress::LegacyChannelMatch::Ambiguous => {
+                return Err(conflict(
+                    "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/channels/{channel_id}/ag-ui URL",
+                ));
+            }
+        },
+        AgUiTarget::Channel(channel_id) => crate::api::channel_ingress::resolve_channel(
             &state.db,
             state.encryption.as_ref(),
             &channel_id,
@@ -48,13 +46,13 @@ pub(super) async fn authorize_ag_ui_request(
     // AG-UI channel / is misconfigured". Every such case collapses to a single
     // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
     // logged server-side only.
-    if channel.channel_type != EndpointTransport::AgUi {
+    if channel.channel_type != ChannelType::AgUi {
         return Err(not_found());
     }
-    if let Err(reason) = crate::api::endpoint_ingress::endpoint_liveness(&context, &channel) {
+    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&context, &channel) {
         tracing::debug!(
             app_id = %context.public_id,
-            endpoint_id = %channel.public_id,
+            channel_id = %channel.public_id,
             reason = reason.as_str(),
             "AG-UI request rejected: endpoint not live"
         );
@@ -71,9 +69,9 @@ pub(super) async fn authorize_ag_ui_request(
     let real_auth = channel
         .auth
         .as_deref()
-        .filter(|auth| auth.mode != everruns_platform::EndpointAuthMode::Anonymous);
+        .filter(|auth| auth.mode != everruns_platform::ChannelAuthMode::Anonymous);
     let runtime_user = if let Some((account, _)) =
-        runtime_endpoint_account(state, &channel.public_id.to_string(), headers).await?
+        runtime_channel_account(state, &channel.public_id.to_string(), headers).await?
     {
         Some(account.id)
     } else if let Some(auth) = real_auth {
@@ -82,7 +80,7 @@ pub(super) async fn authorize_ag_ui_request(
             .verify_principal(
                 auth,
                 headers,
-                LegacyEndpointAuth {
+                LegacyChannelAuth {
                     shared_secret: channel_config.token.as_deref(),
                     api_key: None,
                 },
@@ -145,7 +143,7 @@ pub(super) async fn authorize_ag_ui_request(
 
     Ok(AuthorizedAgUiRequest {
         channel_id: channel.public_id.to_string(),
-        endpoint_internal_id: channel.internal_id,
+        channel_internal_id: channel.internal_id,
         context,
         channel_config,
         runtime_user,
@@ -178,7 +176,7 @@ pub(crate) async fn resolve_ingress_identity(
     Ok(user.id)
 }
 
-pub(crate) async fn runtime_endpoint_account(
+pub(crate) async fn runtime_channel_account(
     state: &AgUiState,
     endpoint: &str,
     headers: &HeaderMap,
@@ -207,7 +205,7 @@ pub(crate) async fn runtime_endpoint_account(
     let account = crate::auth::runtime::RuntimeAccount::from_token(auth, token)
         .await
         .map_err(|_| unauthorized())?;
-    if account.endpoint_id.as_deref() != Some(endpoint) {
+    if account.channel_id.as_deref() != Some(endpoint) {
         return Err(unauthorized());
     }
     let claims = jwt

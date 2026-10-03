@@ -24,8 +24,8 @@ use serde::Serialize;
 use sha2::Sha256;
 use uuid::Uuid;
 
+use super::channel_webhooks::ChannelWebhookState;
 use super::common::ErrorResponse;
-use super::endpoint_webhooks::EndpointWebhookState;
 use crate::domains::agent_triggers::events::TriggerEventOutcome;
 use crate::domains::agent_triggers::github::{GitHubDelivery, dispatch_github_delivery};
 use crate::middleware::RequestId;
@@ -34,7 +34,7 @@ use crate::security::constant_time_eq;
 const MAX_DELIVERY_ID_LEN: usize = 128;
 const MAX_EVENT_NAME_LEN: usize = 64;
 
-pub fn routes(state: EndpointWebhookState) -> Router {
+pub fn routes(state: ChannelWebhookState) -> Router {
     Router::new()
         .route("/v1/github/apps/{app_row_id}/webhook", post(receive))
         .with_state(state)
@@ -78,7 +78,7 @@ fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
 }
 
 async fn receive(
-    State(state): State<EndpointWebhookState>,
+    State(state): State<ChannelWebhookState>,
     Path(app_row_id): Path<Uuid>,
     req_id: Option<axum::Extension<RequestId>>,
     headers: HeaderMap,
@@ -160,7 +160,7 @@ async fn receive(
 /// The user uninstalled the App on GitHub: drop the identity's connection so
 /// nothing keeps minting tokens for an installation that is gone.
 async fn forget_installation(
-    state: &EndpointWebhookState,
+    state: &ChannelWebhookState,
     app: &crate::storage::github_app_rows::GitHubAppRow,
     payload: &serde_json::Value,
 ) {

@@ -29,11 +29,11 @@
 
   <rect x="30" y="144" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="44" y="168" class="label">AG-UI clients</text>
-  <text x="346" y="167" text-anchor="end" class="mono">/v1/e/{agent}/ag-ui</text>
+  <text x="346" y="167" text-anchor="end" class="mono">/v1/channels/{agent}/ag-ui</text>
 
   <rect x="30" y="192" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="44" y="216" class="label">A2A agents</text>
-  <text x="346" y="215" text-anchor="end" class="mono">/v1/e/{agent}/a2a</text>
+  <text x="346" y="215" text-anchor="end" class="mono">/v1/channels/{agent}/a2a</text>
 
   <rect x="30" y="240" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="44" y="264" class="label">AgentCore Runtime</text>

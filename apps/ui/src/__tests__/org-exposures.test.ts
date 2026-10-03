@@ -4,9 +4,9 @@ import {
   resolveExposureState,
   type ExposureState,
 } from "@/hooks/use-org-exposures";
-import type { Agent, AgentEndpoint } from "@/lib/api/types";
+import type { Agent, AgentChannel } from "@/lib/api/types";
 
-function channel(overrides: Partial<AgentEndpoint> = {}): AgentEndpoint {
+function channel(overrides: Partial<AgentChannel> = {}): AgentChannel {
   return {
     id: "appchan_test",
     channel_type: "webhook",
@@ -16,7 +16,7 @@ function channel(overrides: Partial<AgentEndpoint> = {}): AgentEndpoint {
     created_at: "2026-05-10T00:00:00Z",
     updated_at: "2026-05-10T00:00:00Z",
     ...overrides,
-  } as AgentEndpoint;
+  } as AgentChannel;
 }
 
 function agent(overrides: Partial<Agent> = {}): Agent {
@@ -28,7 +28,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   } as Agent;
 }
 
-// Pinned to `endpoint_liveness` in crates/server/src/api/endpoint_ingress.rs:
+// Pinned to `endpoint_liveness` in crates/server/src/api/channel_ingress.rs:
 //
 //   live = endpoint.status == live && agent.status == active
 //                                  && !agent.exposures_suspended
@@ -36,7 +36,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 // The view exists to be trusted during an incident, so it must never report
 // something live that the server would refuse. Change these together.
 describe("exposure state resolution", () => {
-  const cases: Array<[string, AgentEndpoint, Agent | undefined, ExposureState]> = [
+  const cases: Array<[string, AgentChannel, Agent | undefined, ExposureState]> = [
     ["a live endpoint on an active agent", channel(), agent(), "live"],
     ["a draft endpoint", channel({ status: "draft" }), agent(), "draft"],
     ["a disabled endpoint", channel({ status: "disabled" }), agent(), "disabled"],

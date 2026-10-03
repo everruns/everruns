@@ -1,10 +1,10 @@
 ---
 title: Publish an Agent to Slack
-description: Add a Slack endpoint to an Agent, publish it, connect a Slack workspace, and verify the first message.
+description: Add a Slack channel to an Agent, publish it, connect a Slack workspace, and verify the first message.
 appliesTo: [platform, cloud]
 ---
 
-This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For Slack scopes, manual setup, and troubleshooting, see [Slack Integration](/capabilities/slack/).
+This guide deploys an Agent as a Slack bot through an Agent-owned channel. For Slack scopes, manual setup, and troubleshooting, see [Slack Integration](/capabilities/slack/).
 
 ## Prerequisites
 
@@ -12,12 +12,12 @@ This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For 
 - A public HTTPS Everruns origin configured through `PUBLIC_APP_URL`.
 - Permission to install an app in a Slack workspace.
 
-## Add the Endpoint
+## Add the Channel
 
 1. Open the Agent and select **Integrations**.
-2. Select **Add endpoint**, then select **Slack**.
+2. Select **Add channel**, then select **Slack**.
 3. Choose a session strategy and reply mode.
-4. Leave the Slack credentials empty and select **Save endpoint**.
+4. Leave the Slack credentials empty and select **Save channel**.
 
 ## Choose a session strategy
 
@@ -51,24 +51,24 @@ behavior.
 
 Your organization must have a Slack workspace connected in **Settings** > **Slack workspaces** first; an administrator does this once. See [Connect a Slack Workspace](/capabilities/slack/#connect-a-slack-workspace).
 
-1. Select **Publish** in the endpoint editor.
+1. Select **Publish** in the channel editor.
 2. If more than one workspace is connected, choose which one.
 3. Select **Add to Slack**.
 4. Approve Slack's consent screen. The workspace is already selected.
-5. If one-click setup is unavailable, return to **Integrations**, expand the endpoint, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
+5. If one-click setup is unavailable, return to **Integrations**, expand the channel, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
 
-Publish first because Slack verifies the manifest's endpoint Request URL when it creates the Slack app. New installs use `/v1/e/{endpoint_id}/slack/events`.
+Publish first because Slack verifies the manifest's channel Request URL when it creates the Slack app. New installs use `/v1/channels/{channel_id}/slack/events`.
 
 ## Verify
 
 1. In Slack, enter `/invite @botname` in a channel.
 2. Mention the bot.
-3. Return to the Agent's **Integrations** tab and expand the Slack endpoint.
+3. Return to the Agent's **Integrations** tab and expand the Slack channel.
 4. Confirm that the checklist records the first message.
 
-To stop new Slack messages without deleting the configuration, select **Unpublish** on this endpoint. Existing sessions remain available.
+To stop new Slack messages without deleting the configuration, select **Unpublish** on this channel. Existing sessions remain available.
 
 ## See also
 
 - [Slack Integration](/capabilities/slack/), including scopes, manual setup, and troubleshooting.
-- [Agent Versions](/features/agent-versions/), including endpoint version selection.
+- [Agent Versions](/features/agent-versions/), including channel version selection.

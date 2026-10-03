@@ -8,7 +8,7 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
-# The serve app: `POST /v1/e/researcher/a2a` and its Agent Card.
+# The serve app: `POST /v1/channels/researcher/a2a` and its Agent Card.
 [[bin]]
 name = "researcher"
 path = "src/main.rs"
@@ -19,7 +19,7 @@ name = "writer"
 path = "src/bin/writer.rs"
 
 [dependencies]
-# The `a2a` feature serves `POST /v1/e/{agent}/a2a` for every top-level agent.
+# The `a2a` feature serves `POST /v1/channels/{agent}/a2a` for every top-level agent.
 everruns-serve = { workspace = true, features = ["a2a"] }
 # `a2a`: the `a2a_agent_delegation` capability (`spawn_agent` to a remote
 # A2A agent). `local`: the session storage it records delegated runs in.

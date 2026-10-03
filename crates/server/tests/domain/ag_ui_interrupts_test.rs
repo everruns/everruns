@@ -61,7 +61,7 @@ impl everruns_worker::AgentRunner for ResumeRecordingRunner {
 struct Fixture {
     server: TestServer,
     resumes: Arc<AtomicUsize>,
-    endpoint_id: String,
+    channel_id: String,
     thread_id: String,
 }
 
@@ -82,16 +82,16 @@ async fn fixture(channel_config: Value) -> Fixture {
     let agent_id = agent["id"].as_str().unwrap();
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/endpoints"),
+            &format!("/v1/agents/{agent_id}/channels"),
             json!({ "channel_type": "ag_ui", "channel_config": channel_config }),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let endpoint_id = endpoint["id"].as_str().unwrap().to_string();
+    let channel_id = endpoint["id"].as_str().unwrap().to_string();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish"),
+            &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
             json!({}),
         )
         .await
@@ -99,7 +99,7 @@ async fn fixture(channel_config: Value) -> Fixture {
     Fixture {
         server,
         resumes,
-        endpoint_id,
+        channel_id,
         thread_id: uuid::Uuid::new_v4().to_string(),
     }
 }
@@ -117,7 +117,7 @@ fn run_input(thread_id: &str, messages: Value, resume: Value) -> Value {
 }
 
 async fn post_run(f: &Fixture, payload: &Value, collect: bool) -> test_harness::TestResponse {
-    let path = format!("/v1/e/{}/ag-ui", f.endpoint_id);
+    let path = format!("/v1/channels/{}/ag-ui", f.channel_id);
     let headers = vec![
         ("content-type", "application/json"),
         ("accept", "text/event-stream"),
@@ -350,7 +350,7 @@ async fn resume_with_an_answer_that_was_not_offered_is_refused() {
 }
 
 #[tokio::test]
-async fn approvals_belong_to_an_operator_unless_the_endpoint_opts_in() {
+async fn approvals_belong_to_an_operator_unless_the_channel_opts_in() {
     let f = fixture(json!({ "anonymous": true })).await;
     let session_id = park(&f, approval_call()).await;
 
@@ -410,7 +410,7 @@ async fn approvals_belong_to_an_operator_unless_the_endpoint_opts_in() {
 }
 
 #[tokio::test]
-async fn an_opted_in_endpoint_takes_the_approval_from_the_client() {
+async fn an_opted_in_channel_takes_the_approval_from_the_client() {
     let f = fixture(json!({ "anonymous": true, "tool_approval_interrupts": true })).await;
     let session_id = park(&f, approval_call()).await;
 

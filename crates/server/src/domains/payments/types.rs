@@ -70,9 +70,9 @@ pub struct CreatePaymentPolicyRequest {
     #[schema(example = "payacct_01933b5a00007000800000000000001")]
     pub payment_account_id: String,
     /// Class of subject this policy binds to. One of: `user`, `virtual_user`,
-    /// `agent`, `agent_endpoint`, `session`, `org`.
+    /// `agent`, `agent_channel`, `session`, `org`.
     /// The prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,
-    /// `agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the
+    /// `agent`→`agent_…`, `agent_channel`→`appchan_…` (an endpoint kept the
     /// identifier it carried as an App channel), `session`→`session_…`,
     /// `org`→`org_…`. The identifier must be the API-facing one — an internal
     /// uuid will be stored and then never match (EVE-1130).

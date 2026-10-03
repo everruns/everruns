@@ -292,7 +292,7 @@ fn test_build_session_tags_rejects_invocation_only_bindings() {
     let app = test_app();
     let event = test_event("C123", Some("1234.5678"), None);
 
-    for binding in [SessionBinding::Endpoint, SessionBinding::Ephemeral] {
+    for binding in [SessionBinding::Shared, SessionBinding::Ephemeral] {
         let error = build_session_tags(
             &app,
             &app.channels[0],
@@ -852,7 +852,7 @@ mod pane_rename_tests {
                 workspace_id: None,
                 org_id: app.org_id,
                 app_id: Some(app.internal_id),
-                endpoint_id: None,
+                channel_id: None,
                 trigger_id: None,
                 harness_id: Some(everruns_contracts::typed_id::HarnessId::from_uuid(
                     uuid::Uuid::nil(),

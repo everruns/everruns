@@ -71,7 +71,7 @@ it("keeps triggers out of channels and distinguishes empty from unavailable data
   expect(screen.getByText("None configured")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Add" })).toHaveAttribute(
     "href",
-    "/agents/agent_test/endpoints/new",
+    "/agents/agent_test/channels/new",
   );
   rerender(<AgentCardChannels agent={{ ...agent, channels: [] }} />);
   expect(screen.queryByRole("link", { name: "Add" })).not.toBeInTheDocument();

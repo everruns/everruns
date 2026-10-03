@@ -608,18 +608,18 @@ impl StorageBackend {
     }
 
     /// Find a native endpoint session matching ALL given tags + owner within an org.
-    pub async fn find_endpoint_session_by_tags_and_owner(
+    pub async fn find_channel_session_by_tags_and_owner(
         &self,
         org_id: i64,
-        endpoint_id: Uuid,
+        channel_id: Uuid,
         owner_principal_id: PrincipalId,
         tags: &[String],
     ) -> Result<Option<SessionRow>> {
         dispatch!(
             self,
-            find_endpoint_session_by_tags_and_owner,
+            find_channel_session_by_tags_and_owner,
             org_id,
-            endpoint_id,
+            channel_id,
             owner_principal_id,
             tags
         )

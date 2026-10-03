@@ -5,7 +5,7 @@ describe("WebhookSetupGuidance", () => {
   it("renders the endpoint and auth guidance", () => {
     render(
       <WebhookSetupGuidance
-        endpointUrl="https://example.com/api/v1/apps/app-123/webhooks/appchan-123"
+        channelUrl="https://example.com/api/v1/apps/app-123/webhooks/appchan-123"
         sessionMode="session_per_invocation"
         message="Process {{payload.repo.name}}"
         tokenConfigured={true}

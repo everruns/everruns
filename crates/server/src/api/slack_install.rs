@@ -10,11 +10,11 @@
 //!
 //! Two routes with deliberately different auth:
 //!
-//! * `POST /v1/e/{channel_id}/slack/install` is authenticated. It spends a
+//! * `POST /v1/channels/{channel_id}/slack/install` is authenticated. It spends a
 //!   connected workspace's app configuration token and creates a real app in
 //!   that workspace, so an unauthenticated caller could exhaust the
 //!   organization's credential and fill its workspace with orphans.
-//! * `GET /v1/e/{channel_id}/slack/oauth/callback` cannot be: Slack redirects
+//! * `GET /v1/channels/{channel_id}/slack/oauth/callback` cannot be: Slack redirects
 //!   the operator's browser to it and carries none of our auth. It is
 //!   protected by the single-use `install_state` nonce instead.
 
@@ -29,7 +29,7 @@ use everruns_platform::slack_provisioning::{
     ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningError, UnavailableSlackAppProvisioner,
 };
-use everruns_platform::{EndpointTransport, SlackChannelConfig};
+use everruns_platform::{ChannelType, SlackChannelConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -276,7 +276,15 @@ pub fn routes(state: SlackInstallState) -> Router {
         )
         .route("/v1/slack/workspaces/{id}", delete(disconnect_workspace))
         .route("/v1/slack/workspaces/{id}/test", post(test_workspace))
+        .route(
+            "/v1/channels/{channel_id}/slack/install",
+            post(begin_install),
+        )
         .route("/v1/e/{channel_id}/slack/install", post(begin_install))
+        .route(
+            "/v1/channels/{channel_id}/slack/oauth/callback",
+            get(finish_install),
+        )
         .route(
             "/v1/e/{channel_id}/slack/oauth/callback",
             get(finish_install),
@@ -329,34 +337,34 @@ pub struct BeginInstallRequest {
     team_id: Option<String>,
 }
 
-async fn resolve_install_endpoint(
+async fn resolve_install_channel(
     state: &SlackState,
     channel_id: &str,
 ) -> Result<
     (
-        super::endpoint_ingress::IngressContext,
-        super::endpoint_ingress::IngressEndpoint,
+        super::channel_ingress::IngressContext,
+        super::channel_ingress::IngressChannel,
     ),
     (StatusCode, Json<ErrorResponse>),
 > {
     // Setup precedes publication. Ingress keeps its liveness gate; setup is
     // protected by the caller's organization or the callback's install nonce.
     let endpoint =
-        super::endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+        super::channel_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
             .await
             .map_err(|error| {
                 tracing::error!(channel_id, %error, "Failed to lookup Slack install endpoint");
                 ErrorResponse::new("Internal server error")
                     .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             })?
-            .filter(|(_, endpoint)| endpoint.channel_type == EndpointTransport::Slack)
+            .filter(|(_, endpoint)| endpoint.channel_type == ChannelType::Slack)
             .ok_or_else(|| {
                 ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND)
             })?;
     Ok(endpoint)
 }
 
-/// POST /v1/e/{channel_id}/slack/install
+/// POST /v1/channels/{channel_id}/slack/install
 async fn begin_install(
     org: ResolvedOrg,
     State(state): State<SlackInstallState>,
@@ -372,7 +380,7 @@ async fn begin_install(
             ErrorResponse::new("Invalid install request").into_response(StatusCode::BAD_REQUEST)
         })?
     };
-    let (app, endpoint) = resolve_install_endpoint(&state.slack, &channel_id).await?;
+    let (app, endpoint) = resolve_install_channel(&state.slack, &channel_id).await?;
 
     // The webhook routes resolve an endpoint by public id alone because Slack
     // is the caller and there is no org to check against. Here there is one,
@@ -396,7 +404,7 @@ async fn begin_install(
             ErrorResponse::new("Internal server error")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
-    let (app, endpoint) = resolve_install_endpoint(&state.slack, &channel_id).await?;
+    let (app, endpoint) = resolve_install_channel(&state.slack, &channel_id).await?;
 
     let mut config = parse_config(&endpoint.channel_config);
 
@@ -446,7 +454,7 @@ async fn begin_install(
         }
         None => {
             let manifest =
-                super::slack_events::manifest_yaml_for_endpoint(&state.slack, &app, &endpoint)
+                super::slack_events::manifest_yaml_for_channel(&state.slack, &app, &endpoint)
                     .await?;
             let created = state
                 .provisioner
@@ -518,7 +526,7 @@ pub struct CallbackQuery {
     error: Option<String>,
 }
 
-/// GET /v1/e/{channel_id}/slack/oauth/callback
+/// GET /v1/channels/{channel_id}/slack/oauth/callback
 ///
 /// THREAT[TM-SLACK-009]: Slack echoes `state` back here without verifying it, and
 /// this route cannot be authenticated because it is reached by a browser
@@ -537,7 +545,7 @@ async fn finish_install(
         tracing::warn!(%channel_id, reason, "Slack install callback rejected");
         Redirect::to(&format!("{ui_base}/agents?slack_install=failed")).into_response()
     };
-    let (context, endpoint) = match resolve_install_endpoint(&state.slack, &channel_id).await {
+    let (context, endpoint) = match resolve_install_channel(&state.slack, &channel_id).await {
         Ok(endpoint) => endpoint,
         Err(_) => return rejected("endpoint not found"),
     };
@@ -557,7 +565,7 @@ async fn finish_install(
     // the owning agent in this unauthenticated callback's return URL.
     let editor_url = match context.agent_id {
         Some(agent_id) => format!(
-            "{ui_base}/agents/{agent_id}/endpoints/{}",
+            "{ui_base}/agents/{agent_id}/channels/{}",
             endpoint.public_id
         ),
         None => format!("{ui_base}/agents"),
@@ -576,7 +584,7 @@ async fn finish_install(
 
 async fn finish_install_inner(
     state: &SlackInstallState,
-    endpoint: &super::endpoint_ingress::IngressEndpoint,
+    endpoint: &super::channel_ingress::IngressChannel,
     mut config: SlackChannelConfig,
     provisioned: ProvisionedSlackApp,
     query: CallbackQuery,
@@ -709,17 +717,17 @@ fn parse_config(raw: &serde_json::Value) -> SlackChannelConfig {
 
 async fn persist(
     state: &SlackInstallState,
-    endpoint_internal_id: uuid::Uuid,
+    channel_internal_id: uuid::Uuid,
     config: &SlackChannelConfig,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let json = serde_json::to_value(config).map_err(|error| {
         tracing::error!(%error, "Failed to serialise Slack channel config");
         ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
-    crate::domains::agent_endpoints::queries::update_channel_config_unscoped(
+    crate::domains::agent_channels::queries::update_channel_config_unscoped(
         &state.slack.db,
         state.slack.encryption.as_ref(),
-        endpoint_internal_id,
+        channel_internal_id,
         &json,
     )
     .await
@@ -924,7 +932,7 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_object_parses_as_an_unconfigured_endpoint() {
+    fn an_empty_object_parses_as_an_unconfigured_channel() {
         let config = parse_config(&serde_json::json!({}));
         assert!(config.provisioned_app.is_none());
     }
@@ -1087,7 +1095,7 @@ mod tests {
     #[test]
     fn consent_requests_manifest_scopes_for_both_slack_surfaces() {
         for agent_surface_enabled in [false, true] {
-            let redirect = "https://example.com/api/v1/e/test/slack/oauth/callback";
+            let redirect = "https://example.com/api/v1/channels/test/slack/oauth/callback";
             let url = url::Url::parse(&authorize_url(
                 "client-id",
                 "nonce",
@@ -1138,18 +1146,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn concurrent_installs_for_one_endpoint_are_serialized() {
+    async fn concurrent_installs_for_one_channel_are_serialized() {
         let db = Arc::new(StorageBackend::in_memory());
-        let endpoint_id = uuid::Uuid::now_v7();
-        let first = db
-            .lock_slack_install(endpoint_id)
-            .await
-            .expect("first lock");
+        let channel_id = uuid::Uuid::now_v7();
+        let first = db.lock_slack_install(channel_id).await.expect("first lock");
 
         let waiting_db = db.clone();
         let waiting = tokio::spawn(async move {
             let _guard = waiting_db
-                .lock_slack_install(endpoint_id)
+                .lock_slack_install(channel_id)
                 .await
                 .expect("second lock");
         });
@@ -1161,7 +1166,7 @@ mod tests {
         );
 
         drop(first);
-        db.lock_slack_install(endpoint_id)
+        db.lock_slack_install(channel_id)
             .await
             .expect("lock released when guard drops");
     }

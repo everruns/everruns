@@ -60,7 +60,7 @@ issuer/realm/subject to a binding, then to a virtual user. It must not accept an
 unverified `external_actor` payload as proof of identity.
 
 Browser self-service outside the console uses
-`POST /v1/e/{endpoint_id}/runtime-auth`: exchange the endpoint's verified
+`POST /v1/channels/{channel_id}/runtime-auth`: exchange the endpoint's verified
 consumer authentication for a bounded runtime session/token. It binds the org,
 virtual user, endpoint, audience, expiry, and allowed actions/session scope.
 Shared application tokens do not identify a person. Anonymous ingress uses a bounded visitor cookie and cannot claim another consumer's account. Runtime self-service setup currently requires verified endpoint authentication.
@@ -102,7 +102,7 @@ Keep the existing Agent and Session resource families.
 - Platform Chat management commands require explicit, revalidated Everruns-user
   authority. Virtual-user self auth and session ownership do not supply it.
 
-Existing `/v1/e/{endpoint_id}/...` ingress protocols stay in place. They call
+Existing `/v1/channels/{channel_id}/...` ingress protocols stay in place. They call
 the same subject resolver and execution commands; no separate virtual-user chat
 storage or second sessions API is introduced. Preserve each ingress protocol's
 sanitized responses and event projection.

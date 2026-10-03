@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getInvocationSessionModeDisplayName } from "@/lib/endpoint-display";
+import { getInvocationSessionModeDisplayName } from "@/lib/channel-display";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Clock3 } from "lucide-react";
 

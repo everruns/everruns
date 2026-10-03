@@ -24,7 +24,7 @@ use super::commands::{
     emit_agent_trigger_audit_event, find_or_create_trigger_session,
     resolve_trigger_execution_context,
 };
-use crate::domains::agent_endpoints::invocation::{render_message_template, template_lookup};
+use crate::domains::agent_channels::invocation::{render_message_template, template_lookup};
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;

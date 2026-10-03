@@ -32,12 +32,12 @@ fn validate_status(value: &str) -> Result<(), CommandError> {
 }
 
 fn validate_subject_type(value: &str) -> Result<(), CommandError> {
-    // `app` is retired (EVE-1130, migration 152). `agent_endpoint` takes its
+    // `app` is retired (EVE-1130, migration 152). `agent_channel` takes its
     // place as the exposure-level subject, and is resolvable — `subject_candidates`
-    // produces it from `sessions.endpoint_id`, which is what makes it enforceable
+    // produces it from `sessions.channel_id`, which is what makes it enforceable
     // rather than merely storable.
     match value {
-        "user" | "virtual_user" | "agent" | "agent_endpoint" | "session" | "org" => Ok(()),
+        "user" | "virtual_user" | "agent" | "agent_channel" | "session" | "org" => Ok(()),
         _ => Err(CommandError::bad_request("Invalid subject_type")),
     }
 }
@@ -344,7 +344,10 @@ impl Command for CreatePaymentPolicy {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentPolicy, CommandError> {
-        let req = self.0;
+        let mut req = self.0;
+        if req.subject_type == "agent_endpoint" {
+            req.subject_type = "agent_channel".into();
+        }
         validate_subject_type(&req.subject_type)?;
         for rail in &req.rail_preference {
             validate_rail(rail)?;
@@ -423,7 +426,13 @@ impl Command for ListPaymentPolicies {
             .list_payment_policies(
                 ctx.org_id(),
                 account_id,
-                self.subject_type.as_deref(),
+                self.subject_type.as_deref().map(|subject| {
+                    if subject == "agent_endpoint" {
+                        "agent_channel"
+                    } else {
+                        subject
+                    }
+                }),
                 self.subject_id.as_deref(),
             )
             .await
@@ -654,7 +663,7 @@ mod tests {
     /// naming the field — rather than accepted and then silently never matched,
     /// which is what it did before, and rather than a 500.
     #[test]
-    fn subject_type_rejects_app_and_accepts_agent_endpoint() {
+    fn subject_type_rejects_app_and_accepts_agent_channel() {
         let rejected = validate_subject_type("app").expect_err("`app` must be refused");
         assert!(
             matches!(rejected.kind, CommandErrorKind::BadRequest(_)),
@@ -667,7 +676,7 @@ mod tests {
             "user",
             "virtual_user",
             "agent",
-            "agent_endpoint",
+            "agent_channel",
             "session",
             "org",
         ] {

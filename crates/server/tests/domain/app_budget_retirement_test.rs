@@ -2,7 +2,7 @@
 //!
 //! `app_channel` outlived `app` by one migration, because 138 had moved App
 //! webhooks onto `agent_triggers`, moved their budgets back from
-//! `agent_endpoint` to `app_channel`, and deleted the endpoint rows, leaving it
+//! `agent_channel` to `app_channel`, and deleted the endpoint rows, leaving it
 //! with no structural successor to retire onto. Migration 153 gives it one; see
 //! `trigger_budget_subject_test.rs` (EVE-1138). Only `app` had one from the
 //! start: the agent.
@@ -187,7 +187,7 @@ async fn seed_app_budget(
         // rejects new rows, which is all these tests need it for.
         "ALTER TABLE budgets ADD CONSTRAINT budgets_subject_type_check
          CHECK (subject_type IN ('session', 'agent', 'user', 'org', 'agent_trigger',
-                                 'agent_endpoint'))
+                                 'agent_channel'))
          NOT VALID",
     )
     .execute(&mut **tx)

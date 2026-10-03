@@ -12,7 +12,7 @@
   <!-- White background -->
   <rect width="800" height="470" fill="#FFFFFF"/>
 
-  <!-- ===== Endpoints: an external caller waits for a reply ===== -->
+  <!-- ===== Channels: an external caller waits for a reply ===== -->
   <text x="30" y="44" class="header-text">ENDPOINTS</text>
   <text x="230" y="44" text-anchor="end" class="sublabel">caller gets a reply</text>
 
@@ -36,7 +36,7 @@
   <text x="42" y="236" class="label">Public Chat</text>
   <text x="218" y="236" text-anchor="end" class="mono">public_chat</text>
 
-  <!-- Endpoint bus -->
+  <!-- Channel bus -->
   <line x1="230" y1="72" x2="270" y2="72" stroke="#0A1636" stroke-width="1.5"/>
   <line x1="230" y1="112" x2="270" y2="112" stroke="#0A1636" stroke-width="1.5"/>
   <line x1="230" y1="152" x2="270" y2="152" stroke="#0A1636" stroke-width="1.5"/>
@@ -46,11 +46,11 @@
   <line x1="270" y1="152" x2="312" y2="152" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="312,148 320,152 312,156" fill="#0A1636"/>
 
-  <!-- Endpoint box -->
+  <!-- Channel box -->
   <rect x="320" y="120" width="190" height="64" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="415" y="142" text-anchor="middle" class="label">Endpoint</text>
+  <text x="415" y="142" text-anchor="middle" class="label">Channel</text>
   <text x="415" y="159" text-anchor="middle" class="sublabel">auth, session routing</text>
-  <text x="415" y="175" text-anchor="middle" class="mono">/v1/e/{endpoint_id}/…</text>
+  <text x="415" y="175" text-anchor="middle" class="mono">/v1/channels/{channel_id}/…</text>
 
   <!-- ===== Triggers: work starts with no reply channel ===== -->
   <text x="30" y="286" class="header-text">TRIGGERS</text>
@@ -93,12 +93,12 @@
   <text x="670" y="270" text-anchor="middle" class="sublabel">message lands in a session</text>
   <text x="670" y="288" text-anchor="middle" class="sublabel">turn runs on its Harness</text>
 
-  <!-- Endpoint -> Agent -->
+  <!-- Channel -> Agent -->
   <path d="M 510,168 L 540,168 L 540,240 L 562,240" stroke="#0A1636" stroke-width="1.5" fill="none"/>
   <polygon points="562,236 570,240 562,244" fill="#0A1636"/>
   <text x="548" y="206" class="arrow-label">message</text>
 
-  <!-- Agent -> Endpoint reply (dashed) -->
+  <!-- Agent -> Channel reply (dashed) -->
   <path d="M 700,213 L 700,136 L 518,136" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" fill="none"/>
   <polygon points="518,132 510,136 518,140" fill="#A0A0A0"/>
   <text x="610" y="128" text-anchor="middle" class="arrow-label">reply</text>

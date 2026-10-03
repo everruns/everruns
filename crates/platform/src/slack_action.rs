@@ -131,7 +131,7 @@ pub enum SlackActionError {
 
     /// The session's endpoint is gone, disabled, or belongs to another org.
     #[error("the Slack endpoint for this session is no longer available")]
-    EndpointUnavailable,
+    ChannelUnavailable,
 
     /// The endpoint exists but carries no bot token yet.
     #[error("the Slack endpoint for this session has no bot token configured")]

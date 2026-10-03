@@ -512,7 +512,7 @@ pub enum DeliveryResult {
 /// and `Requester` `user`. Renaming a segment silently orphans every session
 /// routed under the old one (EVE-1005).
 ///
-/// `Endpoint` and `Ephemeral` return `None`: they are not keyed off inbound
+/// `Shared` and `Ephemeral` return `None`: they are not keyed off inbound
 /// message metadata at all. Their tags come from the exposure that owns the
 /// invocation — see `trigger_session_tags` in the agent-triggers domain.
 pub fn build_session_routing_tag(
@@ -530,7 +530,7 @@ pub fn build_session_routing_tag(
         SessionBinding::Requester => metadata
             .get("user_id")
             .map(|u| format!("{}:user:{}", platform, u)),
-        SessionBinding::Endpoint | SessionBinding::Ephemeral => None,
+        SessionBinding::Shared | SessionBinding::Ephemeral => None,
     }
 }
 
@@ -589,7 +589,7 @@ pub enum SessionBinding {
     /// One durable session shared by every invocation of the exposure.
     /// Was `shared_session`.
     #[serde(rename = "shared_session", alias = "endpoint")]
-    Endpoint,
+    Shared,
     /// A fresh session per invocation. Was `session_per_invocation`.
     #[serde(rename = "session_per_invocation", alias = "ephemeral")]
     Ephemeral,
@@ -606,7 +606,7 @@ impl SessionBinding {
     /// Bindings available where nothing is listening on a thread — triggers and
     /// request/reply endpoints.
     pub const INVOCATION_KEYED: [SessionBinding; 2] =
-        [SessionBinding::Endpoint, SessionBinding::Ephemeral];
+        [SessionBinding::Shared, SessionBinding::Ephemeral];
 
     /// Whether this binding is keyed off inbound message metadata.
     pub fn is_message_keyed(self) -> bool {
@@ -743,7 +743,7 @@ mod tests {
             (SessionBinding::Requester, Some("slack:user:U1")),
             // Not keyed off inbound metadata: the exposure that owns the
             // invocation supplies these tags.
-            (SessionBinding::Endpoint, None),
+            (SessionBinding::Shared, None),
             (SessionBinding::Ephemeral, None),
         ] {
             assert_eq!(
@@ -804,7 +804,7 @@ mod tests {
             (SessionBinding::Conversation, "\"per_channel\""),
             (SessionBinding::Requester, "\"per_user\""),
             // Legacy `SessionBinding` values.
-            (SessionBinding::Endpoint, "\"shared_session\""),
+            (SessionBinding::Shared, "\"shared_session\""),
             (SessionBinding::Ephemeral, "\"session_per_invocation\""),
         ] {
             assert_eq!(
@@ -828,7 +828,7 @@ mod tests {
             ("\"thread\"", SessionBinding::Thread),
             ("\"conversation\"", SessionBinding::Conversation),
             ("\"requester\"", SessionBinding::Requester),
-            ("\"endpoint\"", SessionBinding::Endpoint),
+            ("\"endpoint\"", SessionBinding::Shared),
             ("\"ephemeral\"", SessionBinding::Ephemeral),
         ] {
             assert_eq!(

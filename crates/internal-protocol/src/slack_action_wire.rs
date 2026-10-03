@@ -121,7 +121,7 @@ impl From<SlackActionError> for proto::SlackActionError {
                 message: None,
                 retry_after_secs: None,
             },
-            SlackActionError::EndpointUnavailable => Self {
+            SlackActionError::ChannelUnavailable => Self {
                 kind: Kind::EndpointUnavailable as i32,
                 message: None,
                 retry_after_secs: None,
@@ -166,7 +166,7 @@ impl From<proto::SlackActionError> for SlackActionError {
         };
         match Kind::try_from(error.kind) {
             Ok(Kind::NoSlackSession) => Self::NoSlackSession,
-            Ok(Kind::EndpointUnavailable) => Self::EndpointUnavailable,
+            Ok(Kind::EndpointUnavailable) => Self::ChannelUnavailable,
             Ok(Kind::NotConfigured) => Self::NotConfigured,
             Ok(Kind::Rejected) => Self::Rejected(detail()),
             Ok(Kind::RateLimited) => Self::RateLimited {
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn every_error_keeps_its_kind_and_classification() {
         round_trip_error(SlackActionError::NoSlackSession);
-        round_trip_error(SlackActionError::EndpointUnavailable);
+        round_trip_error(SlackActionError::ChannelUnavailable);
         round_trip_error(SlackActionError::NotConfigured);
         round_trip_error(SlackActionError::Rejected("bad scope".to_string()));
         round_trip_error(SlackActionError::RateLimited {

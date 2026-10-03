@@ -1668,7 +1668,7 @@ impl Command for ResumeAgentExposures {
         CommandMeta {
             name: "resume_agent_exposures",
             category: "agents",
-            description: "Let an agent's live endpoints accept traffic again.",
+            description: "Let an agent's live channels accept traffic again.",
             method: "POST",
             path: "/v1/agents/{agent_id}/exposures/resume",
         }

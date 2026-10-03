@@ -2,12 +2,9 @@
 
 import Link from "next/link";
 import { Pause } from "lucide-react";
-import { ChannelIcon } from "@/components/apps/channel-icon";
+import { ChannelIcon } from "@/components/agents/channels/channel-icon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  getEndpointLifecyclePresentation,
-  getEndpointTransportDisplayName,
-} from "@/lib/endpoint-display";
+import { getChannelLifecyclePresentation, getChannelTypeDisplayName } from "@/lib/channel-display";
 import type { Agent, AgentChannelSummary } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -22,14 +19,14 @@ function channelLabel(channel: AgentChannelSummary) {
     case "api_endpoint":
       return "API";
     default:
-      return getEndpointTransportDisplayName(channel.channel_type);
+      return getChannelTypeDisplayName(channel.channel_type);
   }
 }
 
 function presentation(agent: Agent, channel: AgentChannelSummary) {
   if (agent.status !== "active") return { label: "disabled", description: "Agent unavailable" };
   if (agent.exposures_suspended) return { label: "disabled", description: "Suspended" };
-  return getEndpointLifecyclePresentation(channel);
+  return getChannelLifecyclePresentation(channel);
 }
 
 export function AgentCardChannels({
@@ -64,7 +61,7 @@ export function AgentCardChannels({
         <>
           <span className="text-muted-foreground">None configured</span>
           {canManage && agent.status === "active" && (
-            <Link href={`/agents/${agent.id}/endpoints/new`} className="ml-auto hover:underline">
+            <Link href={`/agents/${agent.id}/channels/new`} className="ml-auto hover:underline">
               Add
             </Link>
           )}
@@ -102,7 +99,7 @@ export function AgentCardChannels({
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {getEndpointTransportDisplayName(channel.channel_type)} · {state.description}
+                    {getChannelTypeDisplayName(channel.channel_type)} · {state.description}
                   </TooltipContent>
                 </Tooltip>
               );

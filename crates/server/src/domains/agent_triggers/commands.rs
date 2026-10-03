@@ -14,7 +14,7 @@ use super::webhook;
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
-use crate::domains::agent_endpoints::invocation::{
+use crate::domains::agent_channels::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
 };
 use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
@@ -35,7 +35,7 @@ use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
 };
-use everruns_platform::AgentEndpointId;
+use everruns_platform::AgentChannelId;
 use everruns_platform::{AgentAction, AuditEvent};
 use everruns_platform::{
     AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, SessionBinding, WebhookTriggerConfig,
@@ -135,7 +135,7 @@ fn prepare_trigger_config(
     config: &impl serde::Serialize,
 ) -> Result<(Value, Option<Vec<u8>>), CommandError> {
     let config = serde_json::to_value(config).map_err(|e| CommandError::internal(e.into()))?;
-    crate::domains::agent_endpoints::queries::prepare_channel_config(
+    crate::domains::agent_channels::queries::prepare_channel_config(
         ctx.encryption.as_ref(),
         &config,
     )
@@ -461,7 +461,7 @@ impl Command for CreateAgentTrigger {
                 };
                 let (config, encrypted) = prepare_trigger_config(ctx, &config)?;
                 (
-                    Some(AgentEndpointId::from_uuid(trigger_id.uuid()).to_string()),
+                    Some(AgentChannelId::from_uuid(trigger_id.uuid()).to_string()),
                     config,
                     encrypted,
                 )
@@ -471,7 +471,7 @@ impl Command for CreateAgentTrigger {
             }
             // The ingress id names the MCP server's callback for this trigger.
             AgentTriggerType::McpEvent => (
-                Some(AgentEndpointId::from_uuid(trigger_id.uuid()).to_string()),
+                Some(AgentChannelId::from_uuid(trigger_id.uuid()).to_string()),
                 mcp_event::create_config(ctx, &agent, &req).await?,
                 None,
             ),
@@ -992,7 +992,7 @@ impl Command for TriggerAgentTriggerNow {
 inventory::submit! { CommandDescriptor::of::<TriggerAgentTriggerNow>() }
 
 // ============================================================================
-// invoke_agent_trigger — execution activity (mirrors invoke_scheduled_legacy_alias_endpoint)
+// invoke_agent_trigger — execution activity (mirrors invoke_scheduled_legacy_alias_channel)
 // ============================================================================
 
 #[derive(Debug, Clone)]
@@ -1220,12 +1220,12 @@ pub(super) async fn find_or_create_trigger_session(
     let session_mode = match (session_mode, subject) {
         (SessionBinding::Thread, Some(subject)) => {
             shared_tags.push(events::subject_session_tag(subject));
-            SessionBinding::Endpoint
+            SessionBinding::Shared
         }
         (SessionBinding::Thread, None) => SessionBinding::Ephemeral,
         (mode, _) => mode,
     };
-    if session_mode == SessionBinding::Endpoint {
+    if session_mode == SessionBinding::Shared {
         let existing = if let Some(app_id) = execution_context.app_id {
             db.find_app_session_by_tags_and_owner(
                 org_id,
@@ -1265,10 +1265,9 @@ pub(super) async fn find_or_create_trigger_session(
     } else {
         "agent_trigger"
     };
-    let title = if let Some(subject) = subject.filter(|_| session_mode == SessionBinding::Endpoint)
-    {
+    let title = if let Some(subject) = subject.filter(|_| session_mode == SessionBinding::Shared) {
         format!("{title_subject} {subject}")
-    } else if session_mode == SessionBinding::Endpoint {
+    } else if session_mode == SessionBinding::Shared {
         format!("{title_subject} {title_source}")
     } else {
         format!("{title_subject} {title_source} {}", Utc::now().to_rfc3339())

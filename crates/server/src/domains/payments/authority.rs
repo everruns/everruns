@@ -247,10 +247,10 @@ impl ServerPaymentAuthority {
                 })?,
             None => None,
         };
-        let endpoint_public_id = match session.endpoint_id {
-            Some(endpoint_id) => self
+        let channel_public_id = match session.channel_id {
+            Some(channel_id) => self
                 .db
-                .get_agent_endpoint_public_id(self.org_id, endpoint_id)
+                .get_agent_channel_public_id(self.org_id, channel_id)
                 .await
                 .map_err(|error| {
                     AgentLoopError::store(format!("Failed to resolve payment endpoint: {error}"))
@@ -263,7 +263,7 @@ impl ServerPaymentAuthority {
             agent_public_id,
             session.virtual_user_id,
             session.resolved_owner_user_id,
-            endpoint_public_id,
+            channel_public_id,
         );
         let mut policies = Vec::new();
         let mut seen_policy_ids = HashSet::new();
@@ -542,7 +542,7 @@ fn request_host(url: &str) -> Result<String> {
 /// session. A policy authorizes a payment only on an exact match, so a subject
 /// missing from here is a subject that can be stored and never applied.
 ///
-/// `agent_public_id` and `endpoint_public_id` are resolved by the caller,
+/// `agent_public_id` and `channel_public_id` are resolved by the caller,
 /// because both need a lookup. They are the identifiers the API and the UI
 /// expose, and therefore the only ones an operator can put in a policy
 /// (EVE-1130) — the typed ids taken off the session row spell internal uuids.
@@ -558,15 +558,15 @@ fn subject_candidates(
     agent_public_id: Option<String>,
     virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     user_id: Option<uuid::Uuid>,
-    endpoint_public_id: Option<String>,
+    channel_public_id: Option<String>,
 ) -> Vec<(&'static str, String)> {
     let mut candidates = vec![
         ("session", session_id.to_string()),
         ("session", session_id.uuid().to_string()),
         ("org", "org".to_string()),
     ];
-    if let Some(endpoint_public_id) = endpoint_public_id {
-        candidates.push(("agent_endpoint", endpoint_public_id));
+    if let Some(channel_public_id) = channel_public_id {
+        candidates.push(("agent_channel", channel_public_id));
     }
     if let Some(agent_public_id) = agent_public_id {
         candidates.push(("agent", agent_public_id));
@@ -929,14 +929,14 @@ mod tests {
         assert!(candidates.contains(&("agent", agent_id.to_string())));
     }
 
-    /// `agent_endpoint` is offered as a subject, so it has to resolve. A subject
+    /// `agent_channel` is offered as a subject, so it has to resolve. A subject
     /// that can be selected and stored but never matched is worse than one that
     /// is absent: it reads as authority scoped to an endpoint while nothing
     /// enforces the scope.
     #[test]
-    fn agent_endpoint_is_a_candidate_when_the_session_arrived_through_one() {
+    fn agent_channel_is_a_candidate_when_the_session_arrived_through_one() {
         let session_id = SessionId::new();
-        let endpoint_public_id = "appchan_0199f0c2d4b17a3e9c1155aa77e30b41".to_string();
+        let channel_public_id = "appchan_0199f0c2d4b17a3e9c1155aa77e30b41".to_string();
 
         let candidates = subject_candidates(
             session_id,
@@ -944,11 +944,11 @@ mod tests {
             None,
             None,
             None,
-            Some(endpoint_public_id.clone()),
+            Some(channel_public_id.clone()),
         );
 
         assert!(
-            candidates.contains(&("agent_endpoint", endpoint_public_id)),
+            candidates.contains(&("agent_channel", channel_public_id)),
             "an endpoint-scoped policy must be reachable: {candidates:?}"
         );
     }

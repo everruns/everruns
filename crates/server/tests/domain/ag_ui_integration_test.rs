@@ -25,12 +25,12 @@ fn unique_id(prefix: &str) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_rejects_ambiguity() {
+async fn test_ag_ui_channel_routes_distinguish_channels_and_legacy_alias_rejects_ambiguity() {
     let server = TestServer::in_memory().await;
     let agent_id = create_llmsim_agent(&server).await;
     let app: App = serde_json::from_value(
         server
-            .seed_app_endpoint(
+            .seed_app_channel(
                 &unique_id("Multi AG-UI App"),
                 &agent_id,
                 "ag_ui",
@@ -44,7 +44,7 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
     .expect("fixture App");
     let first_channel_id = app.channels[0].public_id.to_string();
     let second_channel = server
-        .seed_endpoint_for_app(
+        .seed_channel_for_app(
             &app.public_id.to_string(),
             "ag_ui",
             json!({
@@ -55,7 +55,7 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
         .await;
     let second_channel_id = second_channel["id"].as_str().unwrap();
     server
-        .set_app_endpoints_live(&app.public_id.to_string(), true)
+        .set_app_channels_live(&app.public_id.to_string(), true)
         .await;
 
     let payload = json!({
@@ -70,7 +70,7 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
 
     send_ag_ui_run_to_path(
         &server,
-        &format!("/v1/e/{first_channel_id}/ag-ui"),
+        &format!("/v1/channels/{first_channel_id}/ag-ui"),
         &payload,
         vec![("authorization", "Bearer first-channel-token")],
     )
@@ -78,7 +78,7 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
     .assert_status(StatusCode::BAD_REQUEST);
     send_ag_ui_run_to_path(
         &server,
-        &format!("/v1/e/{first_channel_id}/ag-ui"),
+        &format!("/v1/channels/{first_channel_id}/ag-ui"),
         &payload,
         vec![("authorization", "Bearer second-channel-token")],
     )
@@ -86,7 +86,7 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
     .assert_status(StatusCode::UNAUTHORIZED);
     send_ag_ui_run_to_path(
         &server,
-        &format!("/v1/e/{second_channel_id}/ag-ui"),
+        &format!("/v1/channels/{second_channel_id}/ag-ui"),
         &payload,
         vec![("authorization", "Bearer second-channel-token")],
     )
@@ -102,12 +102,12 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
     .assert_status(StatusCode::CONFLICT);
     assert_eq!(
         legacy.json::<Value>()["detail"],
-        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL"
+        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/channels/{channel_id}/ag-ui URL"
     );
 }
 
 /// Seed a live AG-UI endpoint whose inline `auth.mode` is `anonymous`.
-async fn seed_inline_anonymous_ag_ui_endpoint(
+async fn seed_inline_anonymous_ag_ui_channel(
     server: &TestServer,
     mut channel_config: Value,
 ) -> String {
@@ -115,7 +115,7 @@ async fn seed_inline_anonymous_ag_ui_endpoint(
     channel_config["auth"] = json!({ "mode": "anonymous" });
     let app: App = serde_json::from_value(
         server
-            .seed_app_endpoint(
+            .seed_app_channel(
                 &unique_id("Inline Anonymous AG-UI"),
                 &agent_id,
                 "ag_ui",
@@ -125,7 +125,7 @@ async fn seed_inline_anonymous_ag_ui_endpoint(
     )
     .expect("fixture App");
     server
-        .set_app_endpoints_live(&app.public_id.to_string(), true)
+        .set_app_channels_live(&app.public_id.to_string(), true)
         .await;
     app.channels[0].public_id.to_string()
 }
@@ -136,11 +136,11 @@ async fn seed_inline_anonymous_ag_ui_endpoint(
 async fn test_inline_anonymous_auth_respects_anonymous_false_lock() {
     let server = TestServer::in_memory().await;
     let channel_id =
-        seed_inline_anonymous_ag_ui_endpoint(&server, json!({ "anonymous": false })).await;
+        seed_inline_anonymous_ag_ui_channel(&server, json!({ "anonymous": false })).await;
 
     send_ag_ui_run_to_path(
         &server,
-        &format!("/v1/e/{channel_id}/ag-ui"),
+        &format!("/v1/channels/{channel_id}/ag-ui"),
         &ag_ui_payload_without_messages(),
         vec![],
     )
@@ -152,12 +152,12 @@ async fn test_inline_anonymous_auth_respects_anonymous_false_lock() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_inline_anonymous_auth_requires_shared_token() {
     let server = TestServer::in_memory().await;
-    let channel_id = seed_inline_anonymous_ag_ui_endpoint(
+    let channel_id = seed_inline_anonymous_ag_ui_channel(
         &server,
         json!({ "anonymous": true, "token": "inline-anon-token" }),
     )
     .await;
-    let path = format!("/v1/e/{channel_id}/ag-ui");
+    let path = format!("/v1/channels/{channel_id}/ag-ui");
 
     send_ag_ui_run_to_path(&server, &path, &ag_ui_payload_without_messages(), vec![])
         .await
@@ -183,14 +183,14 @@ async fn test_inline_anonymous_auth_requires_shared_token() {
 
 // Explicitly public endpoints with inline anonymous auth stay reachable.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_inline_anonymous_auth_allows_public_endpoint() {
+async fn test_inline_anonymous_auth_allows_public_channel() {
     let server = TestServer::in_memory().await;
     let channel_id =
-        seed_inline_anonymous_ag_ui_endpoint(&server, json!({ "anonymous": true })).await;
+        seed_inline_anonymous_ag_ui_channel(&server, json!({ "anonymous": true })).await;
 
     send_ag_ui_run_to_path(
         &server,
-        &format!("/v1/e/{channel_id}/ag-ui"),
+        &format!("/v1/channels/{channel_id}/ag-ui"),
         &ag_ui_payload_without_messages(),
         vec![],
     )
@@ -261,7 +261,7 @@ async fn create_published_ag_ui_app(server: &TestServer) -> App {
 
     let app: App = serde_json::from_value(
         server
-            .seed_app_endpoint(
+            .seed_app_channel(
                 &unique_id("AG-UI App"),
                 &agent_id,
                 "ag_ui",
@@ -273,17 +273,17 @@ async fn create_published_ag_ui_app(server: &TestServer) -> App {
 
     serde_json::from_value(
         server
-            .set_app_endpoints_live(&app.public_id.to_string(), true)
+            .set_app_channels_live(&app.public_id.to_string(), true)
             .await,
     )
     .expect("published fixture App")
 }
 
-async fn create_published_native_ag_ui_endpoint(server: &TestServer) -> String {
+async fn create_published_native_ag_ui_channel(server: &TestServer) -> String {
     let agent_id = create_llmsim_agent(server).await;
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/endpoints"),
+            &format!("/v1/agents/{agent_id}/channels"),
             json!({
                 "channel_type": "ag_ui",
                 "channel_config": { "anonymous": true }
@@ -292,15 +292,15 @@ async fn create_published_native_ag_ui_endpoint(server: &TestServer) -> String {
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let endpoint_id = endpoint["id"].as_str().unwrap();
+    let channel_id = endpoint["id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish"),
+            &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
             json!({}),
         )
         .await
         .assert_success();
-    endpoint_id.to_string()
+    channel_id.to_string()
 }
 fn ag_ui_payload_without_messages() -> Value {
     json!({
@@ -321,7 +321,7 @@ async fn test_encrypted_legacy_auth_without_encryption_denies_anonymous_ingress(
     let channel_id = app.channels[0].public_id.to_string();
     let row = server
         .db
-        .get_endpoint_row_by_public_id(&channel_id)
+        .get_channel_row_by_public_id(&channel_id)
         .await
         .unwrap()
         .unwrap();
@@ -341,7 +341,7 @@ async fn test_encrypted_legacy_auth_without_encryption_denies_anonymous_ingress(
         .encrypt_string(&serde_json::to_string(&legacy).unwrap())
         .unwrap();
     sqlx::query(
-        "UPDATE agent_endpoints
+        "UPDATE agent_channels
          SET channel_config = '{}'::jsonb, channel_config_encrypted = $1,
              auth = NULL, auth_encrypted = NULL
          WHERE id = $2",
@@ -354,7 +354,7 @@ async fn test_encrypted_legacy_auth_without_encryption_denies_anonymous_ingress(
 
     send_ag_ui_run_to_path(
         &server,
-        &format!("/v1/e/{channel_id}/ag-ui"),
+        &format!("/v1/channels/{channel_id}/ag-ui"),
         &ag_ui_payload_without_messages(),
         vec![],
     )
@@ -367,7 +367,7 @@ async fn assert_malformed_legacy_auth_denies_anonymous_ingress(encrypted: bool) 
     let channel_id = app.channels[0].public_id.to_string();
     let row = server
         .db
-        .get_endpoint_row_by_public_id(&channel_id)
+        .get_channel_row_by_public_id(&channel_id)
         .await
         .unwrap()
         .unwrap();
@@ -388,7 +388,7 @@ async fn assert_malformed_legacy_auth_denies_anonymous_ingress(encrypted: bool) 
         (legacy, None)
     };
     sqlx::query(
-        "UPDATE agent_endpoints
+        "UPDATE agent_channels
          SET channel_config = $1, channel_config_encrypted = $2,
              auth = NULL, auth_encrypted = NULL
          WHERE id = $3",
@@ -402,7 +402,7 @@ async fn assert_malformed_legacy_auth_denies_anonymous_ingress(encrypted: bool) 
 
     send_ag_ui_run_to_path(
         &server,
-        &format!("/v1/e/{channel_id}/ag-ui"),
+        &format!("/v1/channels/{channel_id}/ag-ui"),
         &ag_ui_payload_without_messages(),
         vec![],
     )
@@ -465,15 +465,15 @@ async fn send_ag_ui_run_to_path(
         .await
 }
 
-async fn start_ag_ui_run_at_endpoint(
+async fn start_ag_ui_run_at_channel(
     server: &TestServer,
-    endpoint_id: &str,
+    channel_id: &str,
     payload: &Value,
 ) -> test_harness::TestResponse {
     server
         .request_raw_without_collecting_body(
             Method::POST,
-            &format!("/v1/e/{endpoint_id}/ag-ui"),
+            &format!("/v1/channels/{channel_id}/ag-ui"),
             vec![
                 ("content-type", "application/json"),
                 ("accept", "text/event-stream"),
@@ -577,7 +577,7 @@ async fn test_ag_ui_public_image_upload_returns_image_id() {
 
     let body: Value = upload_ag_ui_image_to_path(
         &server,
-        &format!("/v1/e/{}/ag-ui/images", app.channels[0].public_id),
+        &format!("/v1/channels/{}/ag-ui/images", app.channels[0].public_id),
         vec![],
     )
     .await
@@ -635,7 +635,7 @@ async fn test_ag_ui_run_rejects_image_uploaded_for_other_app() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_same_thread_id_reuses_session() {
     let server = TestServer::in_memory().await;
-    let endpoint_id = create_published_native_ag_ui_endpoint(&server).await;
+    let channel_id = create_published_native_ag_ui_channel(&server).await;
     let thread_id = raw_uuid();
     let expected_tag = format!("ag_ui:thread:{thread_id}");
 
@@ -651,7 +651,7 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
         "forwardedProps": {}
     });
 
-    start_ag_ui_run_at_endpoint(&server, &endpoint_id, &first_payload)
+    start_ag_ui_run_at_channel(&server, &channel_id, &first_payload)
         .await
         .assert_status(StatusCode::OK);
 
@@ -675,7 +675,7 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
         "forwardedProps": {}
     });
 
-    start_ag_ui_run_at_endpoint(&server, &endpoint_id, &second_payload)
+    start_ag_ui_run_at_channel(&server, &channel_id, &second_payload)
         .await
         .assert_status(StatusCode::OK);
 
@@ -691,8 +691,8 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
         "AG-UI thread resume should reuse the original session id"
     );
 
-    let other_endpoint_id = create_published_native_ag_ui_endpoint(&server).await;
-    start_ag_ui_run_at_endpoint(&server, &other_endpoint_id, &second_payload)
+    let other_channel_id = create_published_native_ag_ui_channel(&server).await;
+    start_ag_ui_run_at_channel(&server, &other_channel_id, &second_payload)
         .await
         .assert_status(StatusCode::OK);
     assert_eq!(

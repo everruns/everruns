@@ -105,7 +105,7 @@ impl InMemoryDatabase {
             org_id: input.org_id,
             workspace_id,
             app_id: input.app_id,
-            endpoint_id: input.endpoint_id,
+            channel_id: input.channel_id,
             trigger_id: input.trigger_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
@@ -990,10 +990,10 @@ impl InMemoryDatabase {
     }
 
     /// Find a native endpoint session matching ALL given tags + owner within an org.
-    pub async fn find_endpoint_session_by_tags_and_owner(
+    pub async fn find_channel_session_by_tags_and_owner(
         &self,
         org_id: i64,
-        endpoint_id: Uuid,
+        channel_id: Uuid,
         owner_principal_id: PrincipalId,
         tags: &[String],
     ) -> Result<Option<SessionRow>> {
@@ -1002,7 +1002,7 @@ impl InMemoryDatabase {
             .values()
             .filter(|s| {
                 s.org_id == org_id
-                    && s.endpoint_id == Some(endpoint_id)
+                    && s.channel_id == Some(channel_id)
                     && s.owner_principal_id == owner_principal_id
                     && tags.iter().all(|tag| s.tags.contains(tag))
             })

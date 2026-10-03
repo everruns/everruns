@@ -5,10 +5,10 @@ import {
 } from "@/components/agents/integrations/ag-ui-setup-guidance";
 
 describe("AgUiSetupGuidance", () => {
-  it("renders the endpoint and anonymous status", () => {
+  it("renders the channel and anonymous status", () => {
     render(
       <AgUiSetupGuidance
-        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
         imageUploadUrl="https://example.com/api/v1/apps/app-123/ag-ui/images"
         isPublished={true}
         anonymousEnabled={true}
@@ -33,7 +33,7 @@ describe("AgUiSetupGuidance", () => {
   it("renders 'Never' when expiration is disabled", () => {
     render(
       <AgUiSetupGuidance
-        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={0}
@@ -72,7 +72,7 @@ describe("formatSessionExpiration", () => {
   it("displays rate limit when configured", () => {
     render(
       <AgUiSetupGuidance
-        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         rateLimitPerMinute={120}
@@ -86,20 +86,20 @@ describe("formatSessionExpiration", () => {
   it("falls back to global cap message when rate limit is not configured", () => {
     render(
       <AgUiSetupGuidance
-        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
       />,
     );
 
-    expect(screen.getByText("No per-endpoint cap (global API limit applies)")).toBeInTheDocument();
+    expect(screen.getByText("No per-channel cap (global API limit applies)")).toBeInTheDocument();
   });
 
   it("renders configured token guidance", () => {
     render(
       <AgUiSetupGuidance
-        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -115,7 +115,7 @@ describe("formatSessionExpiration", () => {
   it("renders public tool activity visibility with generic text", () => {
     render(
       <AgUiSetupGuidance
-        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}

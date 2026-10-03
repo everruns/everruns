@@ -1,12 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
-import { getAgUiToolVisibilityDisplayName } from "@/lib/endpoint-display";
+import { getAgUiToolVisibilityDisplayName } from "@/lib/channel-display";
 import type { AgUiToolVisibility } from "@/lib/api/types";
 import { Globe } from "lucide-react";
 
 interface AgUiSetupGuidanceProps {
-  endpointUrl: string;
+  channelUrl: string;
   imageUploadUrl?: string;
   isPublished: boolean;
   anonymousEnabled: boolean;
@@ -38,7 +38,7 @@ export function formatSessionExpiration(seconds: number): string {
 }
 
 export function AgUiSetupGuidance({
-  endpointUrl,
+  channelUrl,
   imageUploadUrl,
   isPublished,
   anonymousEnabled,
@@ -58,16 +58,16 @@ export function AgUiSetupGuidance({
       <div className="flex items-center gap-2">
         <Badge variant={anonymousEnabled ? "default" : "secondary"}>{accessBadge}</Badge>
         <span className="text-sm text-muted-foreground">
-          {isPublished ? "Ready for AG-UI clients" : "Publish the endpoint to accept requests"}
+          {isPublished ? "Ready for AG-UI clients" : "Publish the channel to accept requests"}
         </span>
       </div>
 
       <div>
-        <p className="text-sm font-medium">Endpoint</p>
+        <p className="text-sm font-medium">Channel</p>
         <div className="mt-2 flex items-center gap-2 bg-muted p-3">
           <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <code className="flex-1 truncate text-sm">{endpointUrl}</code>
-          <CopyButton value={endpointUrl} />
+          <code className="flex-1 truncate text-sm">{channelUrl}</code>
+          <CopyButton value={channelUrl} />
         </div>
       </div>
 
@@ -111,7 +111,7 @@ export function AgUiSetupGuidance({
         <p className="text-sm text-muted-foreground">
           {hasRateLimit
             ? `${rateLimitPerMinute} requests per minute, per IP`
-            : "No per-endpoint cap (global API limit applies)"}
+            : "No per-channel cap (global API limit applies)"}
         </p>
       </div>
 
@@ -124,7 +124,7 @@ export function AgUiSetupGuidance({
       </div>
 
       <div className="space-y-1 text-sm text-muted-foreground">
-        <p>Send AG-UI `RunAgentInput` JSON to this endpoint.</p>
+        <p>Send AG-UI `RunAgentInput` JSON to this channel.</p>
         {imageUploadUrl && (
           <p>
             Upload images as multipart `file`, then pass returned IDs in `forwardedProps.imageIds`.
