@@ -53,6 +53,8 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
+| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (dev-only, contributes the `agent` `spawn_agent` target) |
+| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (dev-only, contributes the `external_a2a` `spawn_agent` target) |
 
 ### Sandboxes
 
@@ -63,6 +65,7 @@ Cloud and container sandbox environments for isolated code execution.
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
 | Deno Sandboxes | `deno` | 6 |
+| [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=true`) |
 | [Docker Container](/capabilities/docker/) | `docker_container` | 5 (dev-only, needs `FEATURE_DOCKER_CAPABILITY=true`) |
 
 ### Browser
@@ -83,10 +86,10 @@ Structured data, knowledge retrieval, and memory.
 | [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
 | [Retrieval Citations](/capabilities/citation-retrieval/) | `citation_retrieval` | 0 |
 | [Citation Verification](/capabilities/citation-verification/) | `citation_verification` | 0 |
-| Data Knowledge | `data_knowledge` | 0 |
-| Knowledge Base | `knowledge_base` | 1 |
-| Knowledge Index | `knowledge_index` | 0 |
-| Memory | `memory` | 0 |
+| [Data Knowledge](/capabilities/data-knowledge/) | `data_knowledge` | 0 |
+| [Knowledge Base](/capabilities/knowledge-base/) | `knowledge_base` | 1 |
+| [Knowledge Index](/capabilities/knowledge-index/) | `knowledge_index` | 0 (adds `search_index` when `indexes` is set) |
+| [Memory](/capabilities/memory/) | `memory` | 0 |
 
 ### Media
 
@@ -152,6 +155,7 @@ Performance and cost optimization for LLM interactions.
 | [Self-Budget](/capabilities/self-budget/) | `self_budget` | 0 |
 | [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | `parallel_tool_calls` | 0 |
 | Native Async Tools | `native_async_tools` | 0 |
+| [Prompt Caching](/capabilities/prompt-caching/) | `prompt_caching` | 0 |
 
 ### Safety
 
@@ -164,6 +168,8 @@ Streaming-output guardrails and runtime safety nets.
 | [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
 | [Tool Approval](/capabilities/tool-approval/) | `tool_approval` | 0 |
 | Progress Guard | `progress_guard` | 0 |
+| [Soft Approval](/capabilities/soft-approval/) | `soft_approval` | 3 |
+| [Tool Loop Detection](/capabilities/loop-detection/) | `loop_detection` | 0 |
 
 The [`guardrails`](/capabilities/guardrails/) capability runs config-driven
 checks over model output and tool activity, blocking or logging per check.
@@ -189,8 +195,8 @@ agent actions from outside the model.
 | [User Hooks](/capabilities/user-hooks/) | `user_hooks` | 0 |
 
 Harnesses also compose capabilities that are settings rather than features:
-Soft Approval, Human Intent, BTW, Tool Loop Detection, Error Disclosure, Prompt
-Caching, and Tool Output Persistence and Distillation. The
+Human Intent, BTW, Error Disclosure, and Tool Output Persistence and
+Distillation. The
 [Generic](/built-ins/harnesses/generic/) and
 [Platform Chat](/built-ins/harnesses/platform-chat/) harness pages describe them.
 
@@ -274,8 +280,10 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Browserless](/capabilities/browserless/) | [Storage](/capabilities/session-storage/) |
 | [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
-| Data Knowledge | File System |
-| Memory | File System |
+| [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
+| [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
+| [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
+| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
 
 ### Features
 

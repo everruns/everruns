@@ -44,9 +44,6 @@ INDEX_EXEMPT = {
     "btw": "harness-composed side-question command",
     "error_disclosure": "harness-composed error detail setting",
     "human_intent": "harness-composed tool-call narration",
-    "loop_detection": "harness-composed safeguard",
-    "prompt_caching": "harness-composed provider setting",
-    "soft_approval": "harness-composed prompt-level gate",
     "tool_output_distillation": "harness-composed output handling",
     "tool_output_persistence": "harness-composed output handling",
 }

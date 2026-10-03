@@ -55,6 +55,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Direct calls and decisions](/framework/direct-model-calls/), one prompt and one answer without an agent, or a calibrated number rather than prose.
 - [Sessions](/framework/sessions/), independent multi-turn conversations, bounded history, typed resume, and engine-lifetime or crash-durable persistence.
 - [Events and cancellation](/framework/events-and-cancellation/), observe a live turn, stop work cooperatively, and record bounded canonical event envelopes.
+- [Observability](/framework/observability/), export every session to OpenTelemetry or Braintrust, or register your own event listeners.
 - [Workspaces and environments](/framework/workspaces-and-environments/), bind sessions to isolated or shared heads and configure read and write scopes with secure defaults.
 - [Lifecycle hooks](/framework/lifecycle-hooks/), run awaited application behavior at execution boundaries.
 - [Answer agent questions](/framework/ask-user/), implement `AskUser` so your application answers the agent's structured questions.
@@ -72,6 +73,8 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 
 ## Expose and deploy
 
+- [Deploy a Framework app](/framework/deployment/), ship the binary or a container with a persistent data directory and environment-provided keys.
+- [Move to Platform or Cloud](/framework/moving-to-platform/), what carries over to a hosted agent and what has to be rebuilt.
 - [Serve](/framework/serve/) (experimental), attribute macros, file-layout discovery and a manifest, served over the Everruns server `/v1` API.
 - [Serve AG-UI](/framework/ag-ui/), stream a session to CopilotKit or any AG-UI 1.0 client from your own HTTP server.
 - [A2A](/framework/a2a/), serve Framework agents to other agents over A2A 1.0, and delegate work to remote A2A agents.

@@ -16,6 +16,8 @@ serve adds no runtime of its own. Agents, sessions, tools, approvals,
 from the `everruns` crate: serve is a thin layer over
 [`Engine`](/framework/architecture/).
 
+![Serve request map: the /v1 session routes, channel webhooks, the AG-UI and A2A routes, AgentCore's /invocations and /ws, and in-process schedules all reach one serve host, which runs sessions, approvals and ask_user questions on one everruns::Engine backed by a local SQLite session log.](./serve-routes.svg)
+
 ```rust ignore
 use serve::prelude::*;
 

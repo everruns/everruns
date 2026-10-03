@@ -8,6 +8,8 @@ An **endpoint** is an Agent-owned way for an external caller to reach that Agent
 
 Use an endpoint when an external peer sends a request and waits for a reply. Use an [Agent trigger](/features/agent-triggers/) when a schedule or event starts Agent work without a reply channel.
 
+![How work enters an Agent: endpoints (Slack, AG-UI, A2A, FCP, Public Chat) route a caller's message to the Agent and return its reply; triggers (schedule, webhook, GitHub, MCP events) send a configured message with no reply channel. Either way the message lands in a session and the turn runs on the Agent's Harness.](../images/features/agent-entry-points.svg)
+
 ![Agent Endpoint Architecture](../images/apps/architecture.svg)
 
 ## Endpoint types

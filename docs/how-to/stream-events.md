@@ -105,6 +105,8 @@ data: {"id":"event_...","type":"turn.completed","data":{...}}
 
 Pass `since_id` to pick up where you left off:
 
+![SSE reconnect sequence: the client subscribes and receives connected, events with ids, heartbeats and a disconnecting notice; the stream closes; it reconnects with since_id set to the last event id; the server replays the stored events after that id from PostgreSQL, then continues with live events.](../images/concepts/sse-reconnect.svg)
+
 ```bash
 curl -N "https://your-host/api/v1/sessions/$SESSION_ID/sse?since_id=event_..." \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"

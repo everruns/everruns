@@ -6,7 +6,7 @@
       "dependencies": [
         "session_tasks"
       ],
-      "docs_slug": null,
+      "docs_slug": "a2a-agent-delegation",
       "feature_flag": null,
       "features": [
         "agent_runs"
@@ -57,7 +57,7 @@
     {
       "category": "Orchestration",
       "dependencies": [],
-      "docs_slug": null,
+      "docs_slug": "agent-handoff",
       "feature_flag": null,
       "features": [
         "agent_handoffs"
@@ -336,7 +336,7 @@
       "dependencies": [
         "session_storage"
       ],
-      "docs_slug": null,
+      "docs_slug": "container-sandbox",
       "feature_flag": "container_sandbox",
       "features": [
         "leased_resources"
@@ -406,7 +406,7 @@
       "dependencies": [
         "session_file_system"
       ],
-      "docs_slug": null,
+      "docs_slug": "data-knowledge",
       "feature_flag": null,
       "features": [
         "file_system"
@@ -677,7 +677,7 @@
     {
       "category": "Knowledge",
       "dependencies": [],
-      "docs_slug": null,
+      "docs_slug": "knowledge-base",
       "feature_flag": null,
       "features": [
         "knowledge"
@@ -696,7 +696,7 @@
     {
       "category": "Knowledge",
       "dependencies": [],
-      "docs_slug": null,
+      "docs_slug": "knowledge-index",
       "feature_flag": null,
       "features": [
         "knowledge"
@@ -713,7 +713,7 @@
     {
       "category": null,
       "dependencies": [],
-      "docs_slug": null,
+      "docs_slug": "loop-detection",
       "feature_flag": null,
       "features": [],
       "grades": [
@@ -730,7 +730,7 @@
       "dependencies": [
         "session_file_system"
       ],
-      "docs_slug": null,
+      "docs_slug": "memory",
       "feature_flag": null,
       "features": [
         "file_system"
@@ -987,7 +987,7 @@
     {
       "category": "Optimization",
       "dependencies": [],
-      "docs_slug": null,
+      "docs_slug": "prompt-caching",
       "feature_flag": null,
       "features": [],
       "grades": [
@@ -1237,7 +1237,7 @@
     {
       "category": "Safety",
       "dependencies": [],
-      "docs_slug": null,
+      "docs_slug": "soft-approval",
       "feature_flag": null,
       "features": [],
       "grades": [

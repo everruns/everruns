@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 310" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="310" fill="#FFFFFF"/>
+
+  <!-- Section header -->
+  <text x="400" y="24" text-anchor="middle" class="header-text">ONE AGENT, THREE PLACES TO RUN IT</text>
+
+  <!-- The agent (terminal style) -->
+  <rect x="270" y="38" width="260" height="50" fill="#F5F5F5" stroke="#0A1636" stroke-width="2"/>
+  <text x="400" y="59" text-anchor="middle" class="label">Your agent</text>
+  <text x="400" y="77" text-anchor="middle" class="sublabel">same agent, session and event model</text>
+
+  <!-- Fan-out connector -->
+  <line x1="400" y1="88" x2="400" y2="102" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="140" y1="102" x2="660" y2="102" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="140" y1="102" x2="140" y2="112" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="400" y1="102" x2="400" y2="112" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="660" y1="102" x2="660" y2="112" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="136,112 140,120 144,112" fill="#0A1636"/>
+  <polygon points="396,112 400,120 404,112" fill="#0A1636"/>
+  <polygon points="656,112 660,120 664,112" fill="#0A1636"/>
+
+  <!-- Framework -->
+  <rect x="20" y="120" width="240" height="140" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <rect x="20" y="120" width="240" height="4" fill="#0A1636"/>
+  <text x="140" y="144" text-anchor="middle" class="header-text">FRAMEWORK</text>
+  <text x="140" y="168" text-anchor="middle" class="label">Embedded crate</text>
+  <text x="140" y="186" text-anchor="middle" class="sublabel">inside your Rust process</text>
+  <line x1="36" y1="200" x2="244" y2="200" stroke="#A0A0A0" stroke-width="1"/>
+  <text x="140" y="220" text-anchor="middle" class="sublabel">You run: your application</text>
+  <text x="140" y="242" text-anchor="middle" class="mono">cargo add everruns</text>
+
+  <!-- Self-hosted Platform -->
+  <rect x="280" y="120" width="240" height="140" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <rect x="280" y="120" width="240" height="4" fill="#0A1636"/>
+  <text x="400" y="144" text-anchor="middle" class="header-text">SELF-HOSTED</text>
+  <text x="400" y="168" text-anchor="middle" class="label">Control plane + workers</text>
+  <text x="400" y="186" text-anchor="middle" class="sublabel">on your infrastructure</text>
+  <line x1="296" y1="200" x2="504" y2="200" stroke="#A0A0A0" stroke-width="1"/>
+  <text x="400" y="220" text-anchor="middle" class="sublabel">You run: API, workers, PostgreSQL</text>
+  <text x="400" y="242" text-anchor="middle" class="mono">docker compose up -d</text>
+
+  <!-- Everruns Cloud -->
+  <rect x="540" y="120" width="240" height="140" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <rect x="540" y="120" width="240" height="4" fill="#0A1636"/>
+  <text x="660" y="144" text-anchor="middle" class="header-text">EVERRUNS CLOUD</text>
+  <text x="660" y="168" text-anchor="middle" class="label">Hosted Platform</text>
+  <text x="660" y="186" text-anchor="middle" class="sublabel">run by Everruns</text>
+  <line x1="556" y1="200" x2="764" y2="200" stroke="#A0A0A0" stroke-width="1"/>
+  <text x="660" y="220" text-anchor="middle" class="sublabel">You run: nothing</text>
+  <text x="660" y="242" text-anchor="middle" class="mono">app.everruns.com</text>
+
+  <!-- How you talk to it -->
+  <path d="M 30,268 L 30,276 L 250,276 L 250,268" stroke="#A0A0A0" stroke-width="1" fill="none"/>
+  <text x="140" y="294" text-anchor="middle" class="arrow-label">Rust API, in process</text>
+
+  <path d="M 290,268 L 290,276 L 770,276 L 770,268" stroke="#A0A0A0" stroke-width="1" fill="none"/>
+  <text x="530" y="294" text-anchor="middle" class="arrow-label">Same Platform API: REST, SDKs, CLI, UI, MCP</text>
+</svg>

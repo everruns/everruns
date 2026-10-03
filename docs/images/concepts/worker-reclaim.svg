@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="600" fill="#FFFFFF"/>
+
+  <!-- Participants -->
+  <rect x="40" y="20" width="180" height="48" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="130" y="40" text-anchor="middle" class="label">Worker A</text>
+  <text x="130" y="57" text-anchor="middle" class="sublabel">durable worker</text>
+
+  <rect x="290" y="20" width="220" height="48" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="40" text-anchor="middle" class="label">Control plane</text>
+  <text x="400" y="57" text-anchor="middle" class="mono">task queue in PostgreSQL</text>
+
+  <rect x="580" y="20" width="180" height="48" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="670" y="40" text-anchor="middle" class="label">Worker B</text>
+  <text x="670" y="57" text-anchor="middle" class="sublabel">durable worker</text>
+
+  <!-- Lifelines (Worker A ends at the crash) -->
+  <line x1="130" y1="68" x2="130" y2="270" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="400" y1="68" x2="400" y2="556" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="670" y1="68" x2="670" y2="556" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- 1. Claim -->
+  <rect x="104" y="82" width="18" height="18" fill="#0A1636"/>
+  <text x="113" y="95" text-anchor="middle" class="step-num">1</text>
+  <text x="265" y="92" text-anchor="middle" class="mono">ClaimDurableTasks</text>
+  <line x1="130" y1="100" x2="392" y2="100" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="392,96 400,100 392,104" fill="#0A1636"/>
+
+  <rect x="290" y="110" width="220" height="24" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="126" text-anchor="middle" class="mono">claimed by A, attempt 1</text>
+
+  <!-- 2. Heartbeat -->
+  <rect x="104" y="148" width="18" height="18" fill="#0A1636"/>
+  <text x="113" y="161" text-anchor="middle" class="step-num">2</text>
+  <text x="265" y="158" text-anchor="middle" class="mono">HeartbeatDurableTask  (every 10s)</text>
+  <line x1="130" y1="166" x2="392" y2="166" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="392,162 400,166 392,170" fill="#0A1636"/>
+
+  <!-- Step result committed -->
+  <text x="265" y="190" text-anchor="middle" class="mono">CompleteDurableTask</text>
+  <line x1="130" y1="198" x2="392" y2="198" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="392,194 400,198 392,202" fill="#0A1636"/>
+
+  <rect x="290" y="208" width="220" height="24" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="224" text-anchor="middle" class="sublabel">step result committed</text>
+
+  <text x="265" y="254" text-anchor="middle" class="sublabel">next step claimed, running…</text>
+
+  <!-- Crash -->
+  <line x1="120" y1="262" x2="140" y2="282" stroke="#0A1636" stroke-width="2"/>
+  <line x1="140" y1="262" x2="120" y2="282" stroke="#0A1636" stroke-width="2"/>
+  <text x="110" y="277" text-anchor="end" class="label">crash</text>
+  <text x="265" y="290" text-anchor="middle" class="sublabel">heartbeats stop</text>
+
+  <!-- 3. Reclaim -->
+  <rect x="270" y="306" width="260" height="58" fill="#F5F5F5" stroke="#0A1636" stroke-width="2"/>
+  <rect x="278" y="314" width="18" height="18" fill="#0A1636"/>
+  <text x="287" y="327" text-anchor="middle" class="step-num">3</text>
+  <text x="408" y="327" text-anchor="middle" class="label">Stale task reclaim</text>
+  <text x="400" y="352" text-anchor="middle" class="sublabel">no heartbeat for 30s, back to pending</text>
+
+  <!-- 4. Claim by Worker B -->
+  <rect x="678" y="380" width="18" height="18" fill="#0A1636"/>
+  <text x="687" y="393" text-anchor="middle" class="step-num">4</text>
+  <text x="535" y="390" text-anchor="middle" class="mono">ClaimDurableTasks</text>
+  <line x1="670" y1="398" x2="408" y2="398" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="408,394 400,398 408,402" fill="#0A1636"/>
+
+  <rect x="290" y="408" width="220" height="24" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="424" text-anchor="middle" class="mono">claimed by B, attempt 2</text>
+
+  <text x="535" y="452" text-anchor="middle" class="arrow-label">same task input</text>
+  <line x1="400" y1="460" x2="662" y2="460" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="662,456 670,460 662,464" fill="#0A1636"/>
+
+  <!-- 5. Resume -->
+  <rect x="560" y="472" width="220" height="40" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="670" y="488" text-anchor="middle" class="sublabel">reruns only the interrupted step;</text>
+  <text x="670" y="503" text-anchor="middle" class="sublabel">committed steps are not rerun</text>
+
+  <rect x="678" y="522" width="18" height="18" fill="#0A1636"/>
+  <text x="687" y="535" text-anchor="middle" class="step-num">5</text>
+  <text x="535" y="532" text-anchor="middle" class="mono">CompleteDurableTask</text>
+  <line x1="670" y1="540" x2="408" y2="540" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="408,536 400,540 408,544" fill="#0A1636"/>
+
+  <!-- Footnote -->
+  <text x="400" y="584" text-anchor="middle" class="sublabel">A task that runs out of attempts, or makes no progress across repeated reclaims, is marked dead.</text>
+</svg>

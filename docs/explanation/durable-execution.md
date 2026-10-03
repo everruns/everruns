@@ -34,6 +34,8 @@ A turn is a small state machine over those tasks. The state lives in `durable_wo
 
 When a worker crashes mid-turn, the control plane sees the missed heartbeats, marks the in-flight task as failed, and re-queues it. Another worker picks it up. The application sees a momentary stall in the SSE stream, then it continues.
 
+![Worker crash and reclaim: worker A claims a task and heartbeats every 10 seconds, commits a step result, then crashes mid-step; the control plane finds the task with no heartbeat for 30 seconds and returns it to pending; worker B claims it as attempt 2, reruns only the interrupted step, and completes it. A task that runs out of attempts or makes no progress across reclaims is marked dead.](../images/concepts/worker-reclaim.svg)
+
 ## Why a custom engine
 
 The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable engine, `everruns-durable`, instead. The reasoning:

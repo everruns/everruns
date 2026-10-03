@@ -224,6 +224,16 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "tool_call_repair" => Some("tool-call-repair"),
         "usage_limit_auto_continue" => Some("usage-limit-auto-continue"),
         "user_hooks" => Some("user-hooks"),
+        "memory" => Some("memory"),
+        "knowledge_base" => Some("knowledge-base"),
+        "knowledge_index" => Some("knowledge-index"),
+        "data_knowledge" => Some("data-knowledge"),
+        "soft_approval" => Some("soft-approval"),
+        "container_sandbox" => Some("container-sandbox"),
+        "agent_handoff" => Some("agent-handoff"),
+        "a2a_agent_delegation" => Some("a2a-agent-delegation"),
+        "loop_detection" => Some("loop-detection"),
+        "prompt_caching" => Some("prompt-caching"),
         // Kept complete by scripts/check_docs_catalogs.py: every capability
         // the docs index links to a page must map to that page here.
         _ => None,

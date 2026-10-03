@@ -213,6 +213,8 @@ Framework history is a read-only projection of canonical events. Normal
 execution has one write path, the engine's event log, so a resumed session and a
 running session cannot disagree about the conversation.
 
+![Framework persistence ladder: Engine::new() keeps volatile state in memory for one Engine; adding LocalConfig gives a crash-durable event log and SQLite task and schedule state for one application process; the Everruns Platform stores PostgreSQL checkpoints and canonical events across a distributed server and workers.](./persistence-ladder.svg)
+
 | Deployment | Conversation state | Recovery boundary | Use when |
 | --- | --- | --- | --- |
 | `Engine::new()` | Volatile memory | One Engine in one process | Embedding, tests, and short-lived tools |

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="380" fill="#FFFFFF"/>
+
+  <!-- Column headers -->
+  <text x="30" y="34" class="header-text">CALLER</text>
+  <text x="346" y="34" text-anchor="end" class="header-text">ROUTE</text>
+  <text x="515" y="133" text-anchor="middle" class="header-text">SERVE HOST</text>
+  <text x="705" y="133" text-anchor="middle" class="header-text">ONE ENGINE</text>
+
+  <!-- Callers and routes -->
+  <rect x="30" y="48" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="44" y="72" class="label">SDKs, CLI, UI chat</text>
+  <text x="346" y="71" text-anchor="end" class="mono">/v1/sessions/…</text>
+
+  <rect x="30" y="96" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="44" y="120" class="label">Channels</text>
+  <text x="346" y="119" text-anchor="end" class="mono">/v1/channels/{name}</text>
+
+  <rect x="30" y="144" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="44" y="168" class="label">AG-UI clients</text>
+  <text x="346" y="167" text-anchor="end" class="mono">/v1/e/{agent}/ag-ui</text>
+
+  <rect x="30" y="192" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="44" y="216" class="label">A2A agents</text>
+  <text x="346" y="215" text-anchor="end" class="mono">/v1/e/{agent}/a2a</text>
+
+  <rect x="30" y="240" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="44" y="264" class="label">AgentCore Runtime</text>
+  <text x="346" y="263" text-anchor="end" class="mono">/invocations, /ws</text>
+
+  <rect x="30" y="288" width="330" height="38" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="44" y="312" class="label">Schedules</text>
+  <text x="346" y="311" text-anchor="end" class="mono">cron, in process</text>
+
+  <!-- Bus into the host -->
+  <line x1="360" y1="67" x2="400" y2="67" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="360" y1="115" x2="400" y2="115" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="360" y1="163" x2="400" y2="163" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="360" y1="211" x2="400" y2="211" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="360" y1="259" x2="400" y2="259" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="360" y1="307" x2="400" y2="307" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="400" y1="67" x2="400" y2="259" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="400" y1="259" x2="400" y2="307" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="400" y1="187" x2="432" y2="187" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="432,183 440,187 432,191" fill="#0A1636"/>
+
+  <!-- Serve host -->
+  <rect x="440" y="147" width="150" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="515" y="177" text-anchor="middle" class="label">Host</text>
+  <text x="515" y="196" text-anchor="middle" class="sublabel">sessions, approvals,</text>
+  <text x="515" y="212" text-anchor="middle" class="sublabel">ask_user questions</text>
+
+  <!-- Host -> Engine -->
+  <line x1="590" y1="187" x2="622" y2="187" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="622,183 630,187 622,191" fill="#0A1636"/>
+
+  <!-- Engine -->
+  <rect x="630" y="147" width="150" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <rect x="630" y="147" width="150" height="4" fill="#0A1636"/>
+  <text x="705" y="179" text-anchor="middle" class="label">Engine</text>
+  <text x="705" y="197" text-anchor="middle" class="mono">everruns::Engine</text>
+  <text x="705" y="213" text-anchor="middle" class="sublabel">turns and event log</text>
+
+  <!-- Engine -> local store -->
+  <line x1="705" y1="227" x2="705" y2="262" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="701,262 705,270 709,262" fill="#0A1636"/>
+
+  <rect x="630" y="270" width="150" height="56" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="705" y="294" text-anchor="middle" class="label">Local store</text>
+  <text x="705" y="312" text-anchor="middle" class="sublabel">SQLite session log</text>
+
+  <!-- Footnote -->
+  <text x="400" y="360" text-anchor="middle" class="sublabel">AG-UI and A2A are crate features; the AgentCore routes come from everruns-serve-agentcore.</text>
+</svg>

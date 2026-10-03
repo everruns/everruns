@@ -9,6 +9,8 @@ Everruns is a durable agentic harness engine built on Rust. You can use it in
 three ways. They run the same agent model (agents, sessions, capabilities,
 events) and differ in what you operate.
 
+![One agent, three places to run it: the Framework embeds the everruns crate in your Rust process, the self-hosted Platform runs the control plane, workers and PostgreSQL on your infrastructure, and Everruns Cloud is the same Platform hosted at app.everruns.com. The self-hosted Platform and Cloud share one API: REST, SDKs, CLI, UI and MCP.](../images/concepts/run-modes.svg)
+
 | | Framework | Self-hosted | Everruns Cloud |
 |---|---|---|---|
 | **For** | Rust developers who want agents inside their own application | Teams that need the full Platform on their own infrastructure | Anyone who wants the Platform without operating it |
