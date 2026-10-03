@@ -28,6 +28,7 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
+use crate::openai_compat::{chat_completions_url, max_output_fields};
 use crate::openai_message_convert::convert_messages;
 use crate::openai_types::*;
 use crate::runtime_provider::ProviderEndpoint;
@@ -53,29 +54,6 @@ pub fn is_openai_api_url(api_url: &str) -> bool {
         .ok()
         .and_then(|url| url.host_str().map(|host| host.to_ascii_lowercase()))
         .is_some_and(|host| host == "api.openai.com")
-}
-
-/// Split an output-token cap into the field name the endpoint accepts, as
-/// `(max_tokens, max_completion_tokens)`.
-///
-/// OpenAI deprecated `max_tokens` on Chat Completions and current models reject
-/// it outright: `gpt-6-luna` answers HTTP 400 "Unsupported parameter:
-/// 'max_tokens' is not supported with this model. Use 'max_completion_tokens'
-/// instead." Azure serves the same models through the same parameter rules.
-///
-/// Everything else on this protocol keeps `max_tokens`. Measured against live
-/// accounts, Fireworks and Cloudflare accept *either* name and honour both
-/// (a cap of 16 returns `finish_reason: length` at 16 completion tokens), so
-/// switching them would buy nothing — while the self-hosted OpenAI-compatible
-/// servers this driver also serves may only implement the original name.
-/// Narrowing the change to the hosts that reject `max_tokens` keeps the blast
-/// radius at exactly the endpoints that need it.
-pub fn max_output_fields(api_url: &str, max_tokens: Option<u32>) -> (Option<u32>, Option<u32>) {
-    if is_openai_api_url(api_url) || is_azure_openai_api_url(api_url) {
-        (None, max_tokens)
-    } else {
-        (max_tokens, None)
-    }
 }
 
 // ============================================================================
@@ -459,11 +437,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         } else {
             Some(config.metadata.clone())
         };
-        let api_url = endpoint.url("chat/completions").ok_or_else(|| {
-            AgentLoopError::Configuration(
-                "OpenAI Chat Completions provider has no base URL".to_string(),
-            )
-        })?;
+        let api_url = chat_completions_url(endpoint)?;
         let (max_tokens, max_completion_tokens) = max_output_fields(&api_url, config.max_tokens);
         let request = OpenAiRequest {
             model: config.model.clone(),
@@ -618,11 +592,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             Some(config.metadata.clone())
         };
 
-        let api_url = endpoint.url("chat/completions").ok_or_else(|| {
-            AgentLoopError::Configuration(
-                "OpenAI Chat Completions provider has no base URL".to_string(),
-            )
-        })?;
+        let api_url = chat_completions_url(endpoint)?;
         let (max_tokens, max_completion_tokens) = max_output_fields(&api_url, config.max_tokens);
         let request = OpenAiRequest {
             model: config.model.clone(),
@@ -1302,56 +1272,6 @@ mod tests {
             json!([{"type":"function","function":{"name":"lookup","description":"Lookup","parameters":{"type":"object","allOf":[{"type":"object"}]}}}])
         );
     }
-    /// OpenAI and Azure reject `max_tokens` on current models; everything else
-    /// on this protocol still takes it. Exactly one field is ever set, so a
-    /// request never carries both names.
-    #[test]
-    fn the_output_cap_uses_the_field_name_the_endpoint_accepts() {
-        for url in [
-            "https://api.openai.com/v1/chat/completions",
-            "https://my-resource.openai.azure.com/openai/v1/chat/completions",
-            "https://my-resource.services.ai.azure.com/openai/v1/chat/completions",
-        ] {
-            assert_eq!(
-                max_output_fields(url, Some(128)),
-                (None, Some(128)),
-                "OpenAI-family host should use max_completion_tokens: {url}"
-            );
-        }
-
-        for url in [
-            // Measured live: both accept either name and honour both, so the
-            // original name stays.
-            "https://api.fireworks.ai/inference/v1/chat/completions",
-            "https://api.cloudflare.com/client/v4/accounts/acct/ai/v1/chat/completions",
-            // A self-hosted OpenAI-compatible server may only implement
-            // `max_tokens`; it is not ours to break.
-            "http://localhost:8000/v1/chat/completions",
-        ] {
-            assert_eq!(
-                max_output_fields(url, Some(128)),
-                (Some(128), None),
-                "non-OpenAI host should keep max_tokens: {url}"
-            );
-        }
-    }
-
-    /// No cap set means neither field is sent, on either branch.
-    #[test]
-    fn an_absent_cap_sends_neither_field() {
-        assert_eq!(
-            max_output_fields("https://api.openai.com/v1/chat/completions", None),
-            (None, None)
-        );
-        assert_eq!(
-            max_output_fields(
-                "https://api.fireworks.ai/inference/v1/chat/completions",
-                None
-            ),
-            (None, None)
-        );
-    }
-
     #[test]
     fn the_request_capture_is_opt_in_and_is_what_goes_on_the_wire() {
         let request = OpenAiRequest {
