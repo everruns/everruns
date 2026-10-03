@@ -25,7 +25,9 @@ fi
 
 echo "1. kernel crates for $TARGET"
 cargo check --locked --target "$TARGET" --no-default-features \
-  -p everruns-contracts -p everruns-core --features everruns-core/engine
+  -p everruns-contracts -p everruns-core
+cargo check --locked --target "$TARGET" --no-default-features \
+  -p everruns-core --features engine
 
 EXAMPLE=examples/celld-engine/Cargo.toml
 echo "2. $EXAMPLE: native tests, then $TARGET"

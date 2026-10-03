@@ -5,9 +5,7 @@
 
 use everruns_contracts::runtime_provider::BearerAuth;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::host::{
-    AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, RuntimeHostAdapter, SessionBuilder,
-};
+use everruns_core::host::{AgentBuilder, HarnessBuilder, RuntimeHostAdapter, SessionBuilder};
 use everruns_core::mcp_server::ScopedMcpServer;
 use everruns_core::{DEFAULT_ORG_ID, ResolvedExecutionSnapshot};
 use everruns_llmsim::LlmSimConfig;

@@ -289,9 +289,7 @@ async fn run_native_runtime_case(custom: bool) {
         typed_id::{HarnessId, SessionId},
     };
     use everruns_core::CapabilityRegistry;
-    use everruns_core::host::{
-        HarnessBuilder, HostBackends, HostComposition, InProcessRuntimeBuilder, SessionBuilder,
-    };
+    use everruns_core::host::{HarnessBuilder, HostBackends, HostComposition, SessionBuilder};
     let server = MockServer::start().await;
     let tool_name = if custom { "raw_lookup" } else { "add" };
     let tool_type = if custom { "custom" } else { "function" };

@@ -1,18 +1,4 @@
-// Skills Capability (built-in)
-//
-// Generic mechanism for filesystem-based skill discovery and activation.
-// When enabled on an agent, provides:
-// - System prompt explaining the skills system
-// - `list_skills` tool: scans /.agents/skills/ in session VFS
-// - `activate_skill` tool: loads SKILL.md instructions from VFS
-//
-// This is the built-in "skills" capability. It does NOT ship with any skills.
-// Users upload SKILL.md files to /.agents/skills/{name}/SKILL.md in the
-// session filesystem, and the agent discovers them at runtime.
-//
-// Database-registered skills are attached via AttachSkillCapability, which
-// mounts skill files into the VFS so this capability discovers them.
-//
+// Discover uploaded and attached VFS skills; no skill files ship here.
 // COMMAND-SUBSTITUTION TRUST GATE (see also `knowledge/project/skills-registry.md`
 // "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020):
 // SKILL.md may contain ``!`command` `` placeholders that, when expanded by
@@ -37,11 +23,9 @@
 // filesystem, not the worker host. Adding provenance alone would still be RCE
 // against the worker. See threat-model TM-TOOL-020 step 6.
 
+use super::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
+use super::tools::{Tool, ToolExecutionResult};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::builtins::tool_types::{
-    BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
-};
-use crate::builtins::tools::{Tool, ToolExecutionResult};
 use crate::tool_context::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;

@@ -1,20 +1,5 @@
-//! ReasonAtom - Atom for LLM reasoning (model call)
-//!
-//! This atom handles:
-//! 1. Emitting reason.started event
-//! 2. Context preparation (loading message history, adding system message)
-//! 3. Fixing invalid context (e.g., missing tool_results for dangling tool calls)
-//! 4. LLM call with streaming support
-//! 5. Storing the assistant response
-//! 6. Emitting reason.completed event
-//! 7. Returning the result with tool calls (if any)
-//!
-//! NOTES from Python spec:
-//! - Context preparation includes loading message history, adding system message, editing context if needed
-//! - Before LLM call, invalid context (e.g. missing tool_results) should be fixed
-//! - LLM call should emit start/end events
-//! - Failure of the LLM call should be "normal" result, should user message that LLM call failed
-//! - Reason should be cancellable, cancellation should stop LLM call and exit with message
+//! Reason phase: prepare context, stream the model response, and emit lifecycle events.
+//! Provider failures are normal phase outcomes; execution remains cancellable.
 
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};

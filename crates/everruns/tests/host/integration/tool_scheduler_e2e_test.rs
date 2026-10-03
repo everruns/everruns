@@ -18,7 +18,7 @@ use everruns_contracts::provider::DriverId;
 use everruns_contracts::tool_types::{ToolCall, ToolHints};
 use everruns_core::capabilities::{Capability, CapabilityStatus};
 use everruns_core::host::HostComposition;
-use everruns_core::host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{AgentDefinition, CapabilityRegistry, ExecutionSession};
 use everruns_llmsim::LlmSimConfig;

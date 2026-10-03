@@ -1,31 +1,8 @@
-//! ActAtom - Atom for scheduled tool execution
-//!
-//! This atom handles:
-//! 1. Emitting act.started event
-//! 2. Executing the batch of tool calls via the [`tool_scheduler`] (with
-//!    tool.started/completed events). Calls run concurrently by default, but
-//!    calls that share a [`crate::engine::tool_types::ToolHints::concurrency_class`] are
-//!    serialized to avoid mutation races, total concurrency is capped, and
-//!    `cpu_bound` tools are offloaded to their own task.
-//! 3. Handling errors, timeouts, and cancellations as "normal" results
-//! 4. Emitting act.completed event
-//! 5. Returning all tool results (success, error, timeout, or cancelled)
-//!
-//! Tool results are emitted as `tool.completed` events and returned in ActResult.
-//! Messages are derived from events - no separate message storage is needed.
-//!
-//! Note: OTel instrumentation is handled via the event-listener pattern.
-//! tool.started/completed events are emitted by this atom, and OtelEventListener
-//! creates the appropriate gen-ai spans from those events.
-//!
-//! NOTES from Python spec:
-//! - Tool calls run concurrently by default; the scheduler serializes only
-//!   conflicting (same-concurrency-class) calls. See [`tool_scheduler`].
-//! - Error from tool call is not an error for the whole Act, error from tool is "normal" result
-//! - Tool invocations should be timeouted, timeout is also "normal" result from tool
-//! - Exit of act should have all tool calls finished (successfully or with error/timeout)
-//! - Act and each tool call should emit start/end events
-//! - Act and each tool call should be cancellable, and this is also "normal" result
+//! Scheduled tool execution through [`tool_scheduler`].
+//! Calls run concurrently within the configured bound; matching concurrency
+//! classes serialize mutation and CPU-bound tools use separate tasks.
+//! Timeouts, errors, and cancellation return normal per-tool outcomes.
+//! Lifecycle events provide canonical history and observability.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;

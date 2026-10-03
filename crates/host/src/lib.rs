@@ -1,4 +1,5 @@
-//! Deprecated compatibility shim for the canonical core module.
+//! Deprecated compatibility shim for the canonical core module in the
+//! [Everruns](https://everruns.com) ecosystem.
 //!
 //! This is the final forwarding release. Enable the matching `everruns-core`
 //! feature and migrate imports to its module before the next platform release.

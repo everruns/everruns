@@ -17,8 +17,8 @@ use everruns_contracts::tool_types::ToolCall;
 use everruns_core::host::AcceptedTurnInput;
 use everruns_core::host::HostComposition;
 use everruns_core::host::{
-    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
-    SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext, TurnStopReason,
+    AgentBuilder, HarnessBuilder, HostBackends, RealDiskFileStore, SessionBuilder,
+    SessionFileSystemFactory, SessionFileSystemFactoryContext, TurnStopReason,
 };
 #[cfg(feature = "bashkit")]
 use everruns_core::{Capability, CapabilityStatus};

@@ -14,7 +14,7 @@ use everruns_contracts::provider::DriverId;
 use everruns_contracts::tool_types::{ToolCall, ToolResult};
 use everruns_core::command::{CommandDescriptor, CommandSource};
 use everruns_core::host::HostComposition;
-use everruns_core::host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
 use everruns_core::{
     Capability, CapabilityMcpServer, CapabilityMcpServers, CapabilityRegistry, CapabilityStatus,
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,

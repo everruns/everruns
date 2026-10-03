@@ -10,15 +10,14 @@ for pair in 'host host' 'engine engine' 'builtins builtins' 'mcp mcp' 'ag_ui ag-
   printf '#[cfg(feature = "%s")]\npub mod %s;\n' "$feature" "$module" >> "$work/lib.rs"
 done
 assert_core_feature_module_gates "$work/lib.rs"
-for module in host mcp ag_ui a2a; do
-  sed '/#\[cfg/d' "$work/lib.rs" > "$work/ungated.rs"
+for feature in host mcp ag-ui a2a; do
+  sed "/cfg.*\"$feature\"/d" "$work/lib.rs" > "$work/ungated.rs"
   if assert_core_feature_module_gates "$work/ungated.rs" > "$work/out" 2>&1; then
     echo "FAIL: an ungated relocated module escaped the guard"
     exit 1
   fi
   grep -q 'must stay behind feature' "$work/out"
 done
-repo="$PWD"
 mkdir -p "$work/crates/core/src/host" "$work/crates/core/src/mcp" "$work/crates/core/src/ag_ui"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/kernel.rs"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/host/transport.rs"

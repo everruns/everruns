@@ -12,7 +12,7 @@ use everruns_core::events::EventData;
 use everruns_core::host::HostComposition;
 use everruns_core::host::{
     AgentBuilder, HarnessBuilder, HostBackends, InMemoryProviderStore, InProcessRuntime,
-    InProcessRuntimeBuilder, SessionBuilder,
+    SessionBuilder,
 };
 use everruns_core::message::{ContentPart, Controls, RuntimeMessageRole};
 use everruns_core::message_retriever::InputMessage;

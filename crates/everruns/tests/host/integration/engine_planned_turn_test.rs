@@ -19,8 +19,7 @@ use everruns_core::engine::{
 };
 use everruns_core::host::HostComposition;
 use everruns_core::host::{
-    AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
-    TurnStopReason,
+    AgentBuilder, HarnessBuilder, InProcessRuntime, SessionBuilder, TurnStopReason,
 };
 use everruns_core::{AgentDefinition, CapabilityRegistry, ExecutionSession};
 use everruns_llmsim::LlmSimRuntimeExt;

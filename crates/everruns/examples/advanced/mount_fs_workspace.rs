@@ -7,7 +7,7 @@
 // at once while preserving a stable agent-facing display identity.
 //
 // Run it:
-//   cargo run -p everruns-host --example mount_fs_workspace
+//   cargo run -p everruns --example mount_fs_workspace
 //
 // See `knowledge/runtime-resources/file-store.md` for the contract.
 

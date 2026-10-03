@@ -3,7 +3,7 @@
 //!
 //! Only built with the `stdio` feature, mirroring how runtime/CLI hosts opt in.
 
-#![cfg(feature = "stdio")]
+#![cfg(feature = "mcp-stdio")]
 
 use everruns_core::mcp::{McpConnection, McpEndpoint, McpTransport, StdioTransport};
 use everruns_core::{McpProtocolMode, McpServerAuthMode};

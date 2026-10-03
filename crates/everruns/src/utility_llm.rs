@@ -170,8 +170,11 @@ pub enum SystemUtilityLlmConfig {
     Disabled,
     /// Enable the utility model on `backend` with a system-owned API key.
     Enabled {
+        /// Deployment-selected provider backend.
         backend: UtilityLlmBackend,
+        /// Deployment-owned credential; omitted from Debug output.
         api_key: String,
+        /// Provider-specific utility model identifier.
         model: String,
     },
 }

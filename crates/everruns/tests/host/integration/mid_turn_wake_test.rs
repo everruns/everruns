@@ -20,7 +20,7 @@ use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::builtins::InfinityContextCapability;
 use everruns_core::capabilities::{Capability, CapabilityStatus};
-use everruns_core::host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskWakePolicy, apply_task_update,

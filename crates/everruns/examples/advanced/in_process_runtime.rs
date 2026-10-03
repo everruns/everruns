@@ -1,4 +1,4 @@
-//! Compose an in-process execution host directly from `everruns-host`.
+//! Compose an in-process execution host directly from `everruns-core::host`.
 //!
 //! Ordinary applications use the [`everruns`](https://docs.rs/everruns)
 //! Framework instead; this example is for advanced hosts that assemble the
@@ -7,7 +7,7 @@
 //! Run it:
 //!
 //! ```text
-//! cargo run -p everruns-host --example in_process_runtime
+//! cargo run -p everruns --example in_process_runtime
 //! ```
 
 use everruns_contracts::driver_registry::DriverRegistry;
@@ -15,7 +15,7 @@ use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::provider::DriverId;
 use everruns_core::CapabilityRegistry;
 use everruns_core::host::HostComposition;
-use everruns_core::host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
 use everruns_llmsim::LlmSimConfig;
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;

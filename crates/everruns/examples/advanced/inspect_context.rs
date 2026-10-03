@@ -2,12 +2,12 @@
 //! turn.
 //!
 //! Ordinary applications use `Session::inspect` from `everruns`; this example
-//! shows the equivalent at the `everruns-host` boundary.
+//! shows the equivalent at the `everruns-core::host` boundary.
 //!
 //! Run it:
 //!
 //! ```text
-//! cargo run -p everruns-host --example inspect_context
+//! cargo run -p everruns --example inspect_context
 //! ```
 
 use everruns_core::host::HostComposition;
@@ -17,7 +17,6 @@ use everruns_test_support::TestMathCapability;
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::provider::DriverId;
-use everruns_core::host::InProcessRuntimeBuilder;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };

@@ -175,6 +175,8 @@ jobs:
               - 'scripts/check_control_plane_records.py'
               - 'scripts/test-control-plane-record-isolation.py'
               - 'scripts/lib/check-core-kernel-dependencies.sh'
+              - 'scripts/lib/core-feature-modules.sh'
+              - 'scripts/test-core-feature-modules.sh'
               - 'scripts/lib/check-durable-isolation.sh'
               - 'scripts/lib/check-hosted-capability-isolation.sh'
               - 'scripts/lib/check-observability-isolation.sh'
@@ -702,7 +704,9 @@ jobs:
         uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Check core kernel dependencies
-        run: bash scripts/lib/check-core-kernel-dependencies.sh
+        run: |
+          bash scripts/lib/check-core-kernel-dependencies.sh
+          bash scripts/test-core-feature-modules.sh
 
   # Architecture guard: everruns-durable is a generic durable-execution engine
   # with no everruns-* normal or build dependency; agent/turn semantics live in
@@ -1018,7 +1022,8 @@ jobs:
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
           cargo test -p everruns-contracts --all-features
-          cargo test -p everruns-engine -p everruns-builtins --all-features
+          # Canonical module tests (one integration binary) plus deprecated shim doctests.
+          cargo test -p everruns-core -p everruns-engine -p everruns-host -p everruns-builtins -p everruns-mcp -p everruns-ag-ui --all-features
           cargo test -p everruns-integrations-docker --all-features
           # The integration catalog is the one list naming every plugin-publishing
           # crate; check-integration-catalog.sh guards completeness, these tests
@@ -1045,35 +1050,15 @@ jobs:
           cargo test -p everruns-test-support --all-features
               ;;
             host-mcp)
-          # mcp: whole crate (lib + http_transport + stdio_transport + doctests).
-          # Was not tested in CI at all. --all-features enables the `stdio` transport
-          # (off in hosted builds) so its transport test runs here. All in-process,
-          # no network/credentials.
-          cargo test -p everruns-mcp --all-features
+          # MCP and AG-UI protocol/transport suites run in the canonical core
+          # invocation above; this shard retains adapter integration coverage.
           # ard: platform discovery capability (sibling of mcp/a2a). No --all-features
           # here — it enables `ard-live-tests`, which fails closed without a live
           # registry. Live coverage runs in the dedicated ard.yml workflow.
           cargo test -p everruns-ard
-          # ag-ui: AG-UI 1.0 wire types against the vendored upstream schema
-          # and fixture corpus, the consumer against the upstream client
-          # conformance corpus, and the `client` feature against a local mock
-          # agent on 127.0.0.1. No external network.
-          cargo test -p everruns-ag-ui --all-features
           # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
           cargo test -p everruns-turbopuffer --lib
-          # Run the whole host crate (lib unit tests incl. RealDiskFileStore /
-          # in-memory store, ALL integration tests incl. the EVE-660 mount-resolver
-          # conformance, and doctests). No per-test enumeration: new test files are
-          # picked up automatically rather than silently skipped. Enable `lua` for
-          # code-mode coverage, `bashkit` for the moved user-hook dispatcher, and
-          # `host-shell` for the contained host shell — its native_containment
-          # target spawns the real helper binary and asserts the Landlock and
-          # seccomp boundary, and on a runner whose kernel cannot enforce
-          # Landlock ABI v3 it asserts the fail-closed error instead of passing
-          # vacuously. The feature-specific MCP target runs immediately afterward.
-          cargo test -p everruns-host --features lua,bashkit,host-shell -- --test-threads=1
-          cargo test -p everruns-host --features mcp --test mcp_runtime_test -- --test-threads=1
               ;;
             facade-cli)
           # everruns facade (EVE-830): whole crate across every optional facade
@@ -1082,14 +1067,16 @@ jobs:
           # acquire a feature-only dependency. Pure llmsim; no credentials.
           # everruns-docs-snippets rides in the same invocation: its doctests
           # compile every Rust block in docs/framework/ against the facade.
-          cargo test -p everruns -p everruns-docs-snippets --all-features
+          # Relocated host acceptance tests include process-global fixtures; preserve
+          # their serial execution in this existing single facade invocation.
+          cargo test -p everruns -p everruns-docs-snippets --all-features -- --test-threads=1
           cargo check -p everruns --no-default-features
           # Dynamically inventories every crates/everruns/examples/*.rs target,
           # rejects internal-crate imports, and compiles the complete set offline.
           bash scripts/lib/check-everruns-examples.sh
-          cargo run -p everruns-host --features lua --example lua_code_mode_agent
+          cargo run -p everruns --features lua --example lua_code_mode_agent
           # Runnable demonstration of the EVE-660 mount resolver (/workspace mount + cwd).
-          cargo run -p everruns-host --example mount_fs_workspace
+          cargo run -p everruns --example mount_fs_workspace
           # --bins runs the unit tests inside src/main.rs, contract_golden among
           # them: the guard on the shipped command line. Without it the three
           # named --test targets are all that run and the golden drifts unseen.
