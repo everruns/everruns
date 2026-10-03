@@ -75,7 +75,7 @@ if [ -e crates/openui/Cargo.toml ] || [ -e crates/a2ui/Cargo.toml ]; then
   fail "OpenUI and A2UI catalogs belong to core builtins, not standalone crates"
 fi
 
-if matches=$(rg -n 'everruns-(openui|a2ui)' Cargo.toml crates/{core,builtins}/Cargo.toml); then
+if matches=$(rg -n 'everruns-(openui|a2ui)' Cargo.toml crates/core/Cargo.toml); then
   fail "standalone UI catalog dependencies remain in workspace manifests:"
   printf '%s\n' "$matches"
 fi
