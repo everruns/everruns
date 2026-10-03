@@ -18563,6 +18563,17 @@
             "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
             "example": "Customer Support Agent"
           },
+          "environments": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentSet",
+                "description": "Named execution environments offered by this Agent version. A Session\npins one resolved profile when it is created; later edits affect only\nnew Sessions."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "exposed": {
             "type": "boolean",
             "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
@@ -22312,6 +22323,17 @@
             "description": "Human-readable display name shown in UI.\nFalls back to `name` when absent.",
             "example": "Customer Support Agent"
           },
+          "environments": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentSet",
+                "description": "Named execution environments this Agent offers. One profile must be\nnamed by `default`; Sessions may inherit it or select another profile."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "harness_id": {
             "type": [
               "string",
@@ -23799,6 +23821,17 @@
               }
             ]
           },
+          "environment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentSelection",
+                "description": "Execution environment for this Session. Omit to inherit the Agent's\ndefault profile, use `{ \"use\": \"name\" }` to select a named profile, or\ninline a profile for a caller-authored one-off environment."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "goal": {
             "type": [
               "string",
@@ -24710,6 +24743,18 @@
           }
         }
       },
+      "EnvironmentBootstrap": {
+        "type": "object",
+        "description": "Reproducible initialization pinned with the profile snapshot.",
+        "properties": {
+          "commands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "EnvironmentCapabilities": {
         "type": "object",
         "description": "What the environment can actually do.\n\nRead this before assuming a shell behaves like Linux. Bashkit reports\n`native_processes: false`, which is why a build fails there; the answer is\navailable before the first turn rather than after a confusing tool error.",
@@ -24760,6 +24805,221 @@
           }
         }
       },
+      "EnvironmentContainmentLevel": {
+        "type": "string",
+        "enum": [
+          "none",
+          "native",
+          "isolated"
+        ]
+      },
+      "EnvironmentContainmentProfile": {
+        "type": "object",
+        "description": "What commands may touch.",
+        "required": [
+          "level"
+        ],
+        "properties": {
+          "escalation": {
+            "$ref": "#/components/schemas/EnvironmentEscalation"
+          },
+          "filesystem": {
+            "$ref": "#/components/schemas/EnvironmentFilesystemPolicy"
+          },
+          "level": {
+            "$ref": "#/components/schemas/EnvironmentContainmentLevel"
+          },
+          "network": {
+            "$ref": "#/components/schemas/EnvironmentNetworkPolicy"
+          }
+        }
+      },
+      "EnvironmentDurability": {
+        "type": "string",
+        "description": "What survives physical compute loss.",
+        "enum": [
+          "checkpointed",
+          "provider_snapshot",
+          "none"
+        ]
+      },
+      "EnvironmentEscalation": {
+        "type": "string",
+        "description": "Who may widen containment after a session starts.",
+        "enum": [
+          "never",
+          "approval",
+          "auto"
+        ]
+      },
+      "EnvironmentFilesystemPolicy": {
+        "type": "object",
+        "description": "Filesystem paths the target permits command execution to mutate.",
+        "properties": {
+          "writable_roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "EnvironmentIdleAction": {
+        "type": "string",
+        "enum": [
+          "checkpoint_and_stop",
+          "stop",
+          "keep_running"
+        ]
+      },
+      "EnvironmentLifecycle": {
+        "type": "object",
+        "description": "Control-plane lifecycle intent. Providers do not own these timers.",
+        "properties": {
+          "idle_action": {
+            "$ref": "#/components/schemas/EnvironmentIdleAction"
+          },
+          "idle_after_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "EnvironmentNetworkPolicy": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "deny"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "allowed_hosts",
+              "mode"
+            ],
+            "properties": {
+              "allowed_hosts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "allowlist"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "allow"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Outbound network policy the target must actually enforce."
+      },
+      "EnvironmentProfile": {
+        "type": "object",
+        "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
+        "required": [
+          "target"
+        ],
+        "properties": {
+          "bootstrap": {
+            "$ref": "#/components/schemas/EnvironmentBootstrap"
+          },
+          "containment": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentContainmentProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "durability": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentDurability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/EnvironmentLifecycle"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EnvironmentTargetProfile"
+          }
+        }
+      },
+      "EnvironmentSelection": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "use"
+            ],
+            "properties": {
+              "use": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/EnvironmentProfile"
+          }
+        ],
+        "description": "Session-level selection: use an Agent profile, or provide an inline one."
+      },
+      "EnvironmentSet": {
+        "type": "object",
+        "description": "Named execution environments offered by an Agent version.",
+        "required": [
+          "default"
+        ],
+        "properties": {
+          "default": {
+            "type": "string",
+            "description": "Profile inherited when session creation does not choose one explicitly."
+          },
+          "profiles": {
+            "type": "object",
+            "description": "Human-authored profiles addressable by name at session creation.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EnvironmentProfile"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "EnvironmentTarget": {
         "type": "object",
         "description": "Where a session's commands run.",
@@ -24767,6 +25027,13 @@
           "kind"
         ],
         "properties": {
+          "connection_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Registered connection used by a machine target."
+          },
           "kind": {
             "type": "string",
             "description": "Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`."
@@ -24823,6 +25090,47 @@
               "null"
             ],
             "description": "Why it is unavailable. Present only when `available` is false."
+          }
+        }
+      },
+      "EnvironmentTargetKind": {
+        "type": "string",
+        "description": "Provider-neutral target class.",
+        "enum": [
+          "host",
+          "machine",
+          "vfs",
+          "container",
+          "managed"
+        ]
+      },
+      "EnvironmentTargetProfile": {
+        "type": "object",
+        "description": "Where commands execute.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "connection_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Credential/transport binding for a registered machine target."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EnvironmentTargetKind"
+          },
+          "options": {
+            "type": "object",
+            "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Concrete adapter for target kinds with more than one implementation."
           }
         }
       },
@@ -28570,6 +28878,17 @@
                   ],
                   "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
                   "example": "Customer Support Agent"
+                },
+                "environments": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EnvironmentSet",
+                      "description": "Named execution environments offered by this Agent version. A Session\npins one resolved profile when it is created; later edits affect only\nnew Sessions."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "exposed": {
                   "type": "boolean",
@@ -37960,6 +38279,34 @@
           }
         }
       },
+      "ResolvedEnvironmentProfile": {
+        "type": "object",
+        "description": "Session-pinned profile. Every security- and recovery-relevant default has\nbeen made explicit.",
+        "required": [
+          "target",
+          "containment",
+          "durability",
+          "lifecycle",
+          "bootstrap"
+        ],
+        "properties": {
+          "bootstrap": {
+            "$ref": "#/components/schemas/EnvironmentBootstrap"
+          },
+          "containment": {
+            "$ref": "#/components/schemas/EnvironmentContainmentProfile"
+          },
+          "durability": {
+            "$ref": "#/components/schemas/EnvironmentDurability"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/EnvironmentLifecycle"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EnvironmentTargetProfile"
+          }
+        }
+      },
       "ResourceConfigResponse": {
         "type": "object",
         "description": "Response type for per-resource config endpoints.\n\nEvery resource exposes `GET /v1/{resource}/config` returning this type.\nUI uses it to gate controls (create/edit/delete buttons, admin panels).",
@@ -39332,9 +39679,68 @@
           "containment": {
             "$ref": "#/components/schemas/EnvironmentContainment"
           },
+          "current_checkpoint_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "desired_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Control-plane lifecycle intent and latest observed physical state."
+          },
           "durability": {
             "type": "string",
             "description": "`checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a\nsession on somebody else's machine is never reported as recoverable."
+          },
+          "generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Physical incarnation fence. Increments whenever compute is replaced."
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable logical Environment id. Absent for legacy capability-derived sessions."
+          },
+          "last_activity_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent profile name selected for this Session (`inline` for one-offs)."
+          },
+          "observed_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedEnvironmentProfile",
+                "description": "Immutable resolved profile pinned when the Session was created."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "resolved_from": {
             "type": "string",
@@ -42387,6 +42793,17 @@
             "description": "Human-readable display name shown in UI.",
             "example": "Updated Support Agent"
           },
+          "environments": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentSet",
+                "description": "Replace or clear the Agent's named execution environments."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "harness_id": {
             "type": [
               "string",
@@ -44914,6 +45331,17 @@
                 ],
                 "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
                 "example": "Customer Support Agent"
+              },
+              "environments": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/EnvironmentSet",
+                    "description": "Named execution environments offered by this Agent version. A Session\npins one resolved profile when it is created; later edits affect only\nnew Sessions."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "exposed": {
                 "type": "boolean",

@@ -369,6 +369,13 @@ impl IdMarker for SessionIdMarker {
     const PREFIX: &'static str = "session";
 }
 
+/// Marker for logical execution Environment IDs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EnvironmentIdMarker;
+impl IdMarker for EnvironmentIdMarker {
+    const PREFIX: &'static str = "env";
+}
+
 /// Marker for Session Participant IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionParticipantIdMarker;
@@ -719,6 +726,8 @@ pub type NotificationId = TypedId<NotificationIdMarker>;
 pub type MemoryId = TypedId<MemoryIdMarker>;
 /// Workspace ID (org-scoped named Workspace — see `knowledge/runtime-resources/workspace.md`)
 pub type WorkspaceId = TypedId<WorkspaceIdMarker>;
+/// Logical execution Environment ID.
+pub type EnvironmentId = TypedId<EnvironmentIdMarker>;
 /// Eval ID
 pub type EvalId = TypedId<EvalIdMarker>;
 /// Eval Case ID

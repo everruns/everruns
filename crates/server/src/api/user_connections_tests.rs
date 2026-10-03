@@ -193,6 +193,7 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

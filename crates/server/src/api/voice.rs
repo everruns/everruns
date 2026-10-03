@@ -523,6 +523,7 @@ pub async fn create_agent_voice_session(
         tags: vec!["voice".to_string()],
         model_id: None,
         capabilities: Vec::new(),
+        environment: None,
         tools: Vec::new(),
         mcp_servers: Default::default(),
         system_prompt: None,
@@ -1492,7 +1493,6 @@ mod tests {
             "surfaces the resolver reason: {detail}"
         );
     }
-
     #[test]
     fn missing_realtime_provider_without_binding_maps_to_bad_gateway() {
         // No binding => server-side configuration gap, reported like any other

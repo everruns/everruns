@@ -1,7 +1,4 @@
-// Budget system tests
-//
-// Tests for BudgetService (rules engine, metering, cost computation),
-// storage layer (CRUD, ledger, hierarchy), and end-to-end integration.
+// BudgetService, storage, ledger, hierarchy, and end-to-end integration tests.
 
 use crate::domains::budgets::BudgetService;
 use crate::storage::StorageBackend;
@@ -139,6 +136,7 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

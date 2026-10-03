@@ -894,12 +894,6 @@ mod tests {
         assert!(prompt.contains("not a guarantee"), "{prompt}");
     }
 
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
     // Metadata/dependency constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
@@ -979,20 +973,10 @@ mod tests {
     }
 
     #[test]
-    fn session_sandbox_registry_is_flag_gated() {
-        // The gate moved with the capability (EVE-886): product composition
-        // decides, the kernel preset no longer carries it either way.
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
-        let registry =
-            crate::capabilities::hosted_capability_registry_for_grade(DeploymentGrade::Dev);
-        assert!(!registry.has("session_sandbox"));
-
-        unsafe { std::env::set_var("FEATURE_SESSION_SANDBOX", "true") };
+    fn session_sandbox_registry_is_always_available_for_environment_profiles() {
         let registry =
             crate::capabilities::hosted_capability_registry_for_grade(DeploymentGrade::Dev);
         assert!(registry.has("session_sandbox"));
-        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
     }
 
     #[tokio::test]

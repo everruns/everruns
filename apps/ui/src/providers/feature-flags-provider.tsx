@@ -24,7 +24,6 @@ const DEFAULT_FLAGS: FeatureFlags = {
   voice: false,
   agent_delegation: false,
   observers: false,
-  environments: false,
   public_chat: false,
   webmcp: false,
   reports: false,

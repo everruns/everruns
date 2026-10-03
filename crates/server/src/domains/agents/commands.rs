@@ -1,8 +1,7 @@
 // Agent commands — user-facing operations.
-//
-// Each struct is the request type, catalog entry, and execution logic.
-// inventory::submit! auto-registers for MCP catalog.
+// Request types double as catalog entries and auto-register with inventory.
 
+use super::environment as environment_profiles;
 use super::preview::PreviewAgent;
 use super::queries as q;
 use super::types::{
@@ -22,9 +21,7 @@ use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-// ============================================================================
 // Input validation
-// ============================================================================
 
 use crate::api::validation::{
     MAX_AGENT_CAPABILITIES, MAX_AGENT_DESCRIPTION_BYTES, MAX_AGENT_NAME_BYTES,
@@ -80,9 +77,7 @@ async fn normalize_capability_refs(
     Ok(caps)
 }
 
-// ============================================================================
 // Shared persistence helpers
-// ============================================================================
 
 async fn persist_capabilities(
     db: &crate::storage::StorageBackend,
@@ -191,9 +186,7 @@ async fn resolve_harness_id(
     Ok(Some(row.id))
 }
 
-// ============================================================================
 // CreateAgent
-// ============================================================================
 
 /// Create a new agent with a name, system prompt, and optional capabilities.
 #[derive(Debug, Deserialize)]
@@ -244,6 +237,7 @@ impl Command for CreateAgent {
         // Validate
         validate_name("Agent", &req.name)?;
         validate_create_limits(&req)?;
+        environment_profiles::validate(req.environments.as_ref())?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
 
         // Enforce per-org agent cap (excludes soft-deleted) before insert.
@@ -320,6 +314,7 @@ impl Command for CreateAgent {
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                environments: environment_profiles::to_json(req.environments.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
                 is_built_in: false,
@@ -356,6 +351,7 @@ impl Command for CreateAgent {
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                environments: environment_profiles::to_json(req.environments.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
                 is_built_in: false,
@@ -395,9 +391,7 @@ impl Command for CreateAgent {
 
 inventory::submit! { CommandDescriptor::of::<CreateAgent>() }
 
-// ============================================================================
 // ListAgents
-// ============================================================================
 
 /// List agents. Supports search, include_archived, pagination.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -597,6 +591,7 @@ impl Command for UpdateAgentCmd {
             validate_name("Agent", name)?;
         }
         validate_update_limits(&req)?;
+        environment_profiles::validate_update(&req.environments)?;
         if matches!(req.status, Some(AgentStatus::Deleted)) {
             return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
@@ -738,6 +733,7 @@ impl Command for UpdateAgentCmd {
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
             parallel_tool_calls: req.parallel_tool_calls.map(Some),
+            environments: environment_profiles::update_to_json(req.environments),
             ..Default::default()
         };
         let row = ctx
@@ -925,6 +921,7 @@ impl Command for UpsertAgent {
         // Validate (same checks as CreateAgent)
         validate_name("Agent", &req.name)?;
         validate_create_limits(&req)?;
+        environment_profiles::validate(req.environments.as_ref())?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
 
         let caps = normalize_capability_refs(
@@ -995,6 +992,7 @@ impl Command for UpsertAgent {
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             max_iterations: max_iterations::to_db(req.max_iterations).map_err(classify_anyhow)?,
             parallel_tool_calls: req.parallel_tool_calls,
+            environments: environment_profiles::to_json(req.environments.as_ref()),
             network_access: req
                 .network_access
                 .as_ref()
@@ -1109,6 +1107,7 @@ impl Command for CopyAgent {
             harness_name: None,
             tags: source.tags,
             capabilities: source.capabilities,
+            environments: source.environments,
             initial_files: source.initial_files,
             tools: source.tools,
             mcp_servers: source.mcp_servers,
@@ -2009,6 +2008,7 @@ impl Command for ForkAgentVersion {
             harness_name: None,
             tags: fork.tags.clone(),
             capabilities: fork.capabilities.clone(),
+            environments: fork.environments.clone(),
             initial_files: fork.initial_files.clone(),
             tools: fork.tools.clone(),
             mcp_servers: fork.mcp_servers.clone(),

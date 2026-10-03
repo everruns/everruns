@@ -84,7 +84,7 @@ pub use partial_stream::PgPartialStreamStore;
 pub use provider_store::{DbProviderStore, create_db_provider_store};
 pub use repositories::*;
 pub use repository::*;
-pub use sandbox_checkpoint_store::PgSandboxCheckpointStore;
+pub use sandbox_checkpoint_store::{EnvironmentRecord, PgSandboxCheckpointStore};
 pub use session_file_store::{DbSessionFileStore, create_db_session_file_store};
 pub use session_resource_store::DbSessionResourceRegistry;
 pub use session_schedule_store::DbSessionScheduleStore;

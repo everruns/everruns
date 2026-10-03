@@ -27,7 +27,8 @@ use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_host::HostComposition;
 use everruns_platform::BuiltInHarnessRole;
 use everruns_platform::{
-    Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+    EnvironmentSelection, Session, SessionParticipant, SessionParticipantKind,
+    SessionParticipantRole,
 };
 use everruns_provider::typed_id::{
     AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,

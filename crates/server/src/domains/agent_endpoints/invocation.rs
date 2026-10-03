@@ -377,6 +377,7 @@ async fn find_or_create_invocation_session(
                 tags,
                 model_id: None,
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

@@ -1,5 +1,4 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
-
 #[path = "agents/preview.rs"]
 pub mod preview;
 use preview::preview_agent;
@@ -34,6 +33,7 @@ use super::dispatch::{Dispatchable, impl_dispatchable};
 use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
 };
+use crate::domains::agents::environment::selection_update as environment_update;
 use crate::domains::agents::types::{
     AgentAnalysisResponse, CheckAgentNameQuery, CheckAgentNameResponse, CreateAgentRequest,
     CreateAgentVersionRequest, ForkAgentVersionRequest, ImportAgentQuery, ListAgentsQuery,
@@ -47,13 +47,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-/// Capability entry in agent file - supports both string and object formats
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum AgentFileCapability {
-    /// Legacy format: just capability ID string
     Simple(String),
-    /// New format: object with ref and config
     WithConfig {
         #[serde(rename = "ref")]
         capability_ref: String,
@@ -1115,6 +1112,7 @@ pub async fn upsert_agent(
                     harness_name: req.harness_name,
                     tags: Some(req.tags),
                     capabilities: Some(req.capabilities),
+                    environments: environment_update(req.environments),
                     initial_files: Some(req.initial_files),
                     tools: Some(req.tools),
                     mcp_servers: Some(req.mcp_servers),
@@ -1329,6 +1327,7 @@ async fn import_from_example(
         harness_name: None,
         tags: seed.tags.iter().map(|s| s.to_string()).collect(),
         capabilities,
+        environments: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),
@@ -1427,6 +1426,7 @@ async fn import_from_file(
             .iter()
             .map(|c| c.to_agent_capability_config())
             .collect(),
+        environments: None,
         initial_files,
         tools: vec![],
         mcp_servers: agent_file.mcp_servers,

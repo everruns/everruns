@@ -189,6 +189,7 @@ async fn run_case(
                 tags: vec!["health_check".to_string()],
                 model_id: model_id.as_ref().and_then(|m| m.parse().ok()),
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

@@ -272,6 +272,7 @@ async fn test_agent_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -359,6 +360,7 @@ async fn test_agent_upsert_initial_files() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -393,6 +395,7 @@ async fn test_agent_upsert_initial_files() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -547,6 +550,7 @@ async fn test_agent_get_by_name() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -638,6 +642,7 @@ async fn test_session_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -917,6 +922,7 @@ async fn test_event_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -997,6 +1003,7 @@ async fn test_event_exclude_types() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1085,6 +1092,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1167,6 +1175,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1265,6 +1274,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1472,6 +1482,7 @@ async fn test_event_filter_types() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1763,6 +1774,7 @@ async fn test_session_file_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2106,6 +2118,7 @@ async fn test_agent_capabilities() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2390,6 +2403,7 @@ async fn test_session_usage_tracking() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -2479,6 +2493,7 @@ async fn test_session_previews() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -3090,9 +3105,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let backend = create_test_backend().await;
 
-    // ------------------------------------------------------------------
-    // Fixtures: principal + session (minimal, no agent required)
-    // ------------------------------------------------------------------
+    // Fixtures: principal and session (minimal; no agent required).
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
@@ -3105,9 +3118,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let session_id = session.id;
 
-    // ------------------------------------------------------------------
-    // Fixture: a recurring session schedule (enabled = true by default)
-    // ------------------------------------------------------------------
+    // Fixture: a recurring session schedule, enabled by default.
     let schedule = backend
         .create_session_schedule(CreateSessionScheduleRow {
             org_id: TEST_ORG_ID,
@@ -3163,9 +3174,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let fired_one_shot_schedule_id: ScheduleId = fired_one_shot_schedule.id;
 
-    // ------------------------------------------------------------------
-    // Fixture: running monitor task with a valid prefixed schedule_id
-    // ------------------------------------------------------------------
+    // Fixture: running monitor task with a valid prefixed schedule_id.
     let monitor_task = new_session_task(
         CreateSessionTask {
             session_id,
@@ -3226,11 +3235,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let fired_one_shot_task_id = fired_one_shot_monitor_task.id.clone();
 
-    // ------------------------------------------------------------------
-    // Fixture: a second monitor task with a *malformed* schedule_id.
-    // The regex '^sched_[0-9a-f]{32}$' must reject this, so it should
-    // never appear in results.
-    // ------------------------------------------------------------------
+    // A malformed schedule_id must never appear in results.
     let malformed_task = new_session_task(
         CreateSessionTask {
             session_id,
@@ -3251,7 +3256,6 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let malformed_task_id = malformed_task.id.clone();
 
-    // Helper: filter the global result list to rows belonging to this test.
     let our_ids: std::collections::HashSet<String> = [
         task_id.clone(),
         one_shot_task_id.clone(),
@@ -3260,9 +3264,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     ]
     .into();
 
-    // ------------------------------------------------------------------
-    // Step 4: schedule is still enabled → our task must NOT appear.
-    // ------------------------------------------------------------------
+    // The enabled schedule's task must not appear.
     let results_before = backend
         .list_monitor_tasks_with_inactive_schedules(500)
         .await
@@ -3279,10 +3281,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         our_results_before
     );
 
-    // ------------------------------------------------------------------
-    // Step 5: disable the recurring and one-shot schedules. The recurring and
-    // directly canceled one-shot tasks must appear; the fired one-shot must not.
-    // ------------------------------------------------------------------
+    // Disabled recurring/canceled tasks appear; the fired one-shot does not.
     backend
         .update_session_schedule(
             TEST_ORG_ID,
@@ -3355,9 +3354,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         "session_id mismatch in results"
     );
 
-    // ------------------------------------------------------------------
-    // Step 6: malformed-spec task must NEVER appear (regex filter).
-    // ------------------------------------------------------------------
+    // The malformed-spec task remains excluded by the regex filter.
     assert!(
         results_after
             .iter()

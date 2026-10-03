@@ -90,6 +90,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> AgentRow
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            environments: None,
             is_built_in: false,
         },
     )

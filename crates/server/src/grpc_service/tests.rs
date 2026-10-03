@@ -948,6 +948,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
                 max_iterations: None,
                 network_access: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -1211,7 +1212,6 @@ fn test_grpc_server_tls_panics_on_missing_cert_file() {
         std::env::set_var("WORKER_GRPC_TLS_KEY", "/nonexistent/key.pem");
     }
     let _config = grpc_server_tls_from_env();
-    // cleanup won't run due to panic, but that's fine for test
 }
 
 // ========================================================================

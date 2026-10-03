@@ -419,7 +419,6 @@ impl CommandMeta {
             "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
-            "environments" => Some("environments"),
             "notifications" => Some("notifications"),
             "payments" => Some("machine_payments"),
             _ => match self.name {

@@ -4819,6 +4819,7 @@ export interface components {
        * @example Customer Support Agent
        */
       display_name?: string | null;
+      environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Whether any endpoint on this agent is currently live. Derived from the
        *     endpoint rows on read and never stored: a stored flag would be a second
@@ -6863,6 +6864,7 @@ export interface components {
        * @example Customer Support Agent
        */
       display_name?: string | null;
+      environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Harness ID used as this agent's base execution environment. If omitted,
        *     the org's built-in `generic` harness is used.
@@ -7740,6 +7742,7 @@ export interface components {
        *     ]
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
+      environment?: components["schemas"]["EnvironmentSelection"] | null;
       /**
        * @description Optional objective for the session. Visible to the agent at system-prompt level.
        * @example Investigate the queue latency regression and propose a fix
@@ -8297,6 +8300,10 @@ export interface components {
        */
       task_id: string;
     };
+    /** @description Reproducible initialization pinned with the profile snapshot. */
+    EnvironmentBootstrap: {
+      commands?: string[];
+    };
     /**
      * @description What the environment can actually do.
      *
@@ -8319,8 +8326,85 @@ export interface components {
       /** @description Outbound network policy: `deny`, `allowlist`, or `allow`. */
       network: string;
     };
+    /** @enum {string} */
+    EnvironmentContainmentLevel: "none" | "native" | "isolated";
+    /** @description What commands may touch. */
+    EnvironmentContainmentProfile: {
+      escalation?: components["schemas"]["EnvironmentEscalation"];
+      filesystem?: components["schemas"]["EnvironmentFilesystemPolicy"];
+      level: components["schemas"]["EnvironmentContainmentLevel"];
+      network?: components["schemas"]["EnvironmentNetworkPolicy"];
+    };
+    /**
+     * @description What survives physical compute loss.
+     * @enum {string}
+     */
+    EnvironmentDurability: "checkpointed" | "provider_snapshot" | "none";
+    /**
+     * @description Who may widen containment after a session starts.
+     * @enum {string}
+     */
+    EnvironmentEscalation: "never" | "approval" | "auto";
+    /** @description Filesystem paths the target permits command execution to mutate. */
+    EnvironmentFilesystemPolicy: {
+      writable_roots?: string[];
+    };
+    /** @enum {string} */
+    EnvironmentIdleAction: "checkpoint_and_stop" | "stop" | "keep_running";
+    /** @description Control-plane lifecycle intent. Providers do not own these timers. */
+    EnvironmentLifecycle: {
+      idle_action?: components["schemas"]["EnvironmentIdleAction"];
+      /** Format: int64 */
+      idle_after_seconds?: number;
+    };
+    /** @description Outbound network policy the target must actually enforce. */
+    EnvironmentNetworkPolicy:
+      | {
+          /** @enum {string} */
+          mode: "deny";
+        }
+      | {
+          allowed_hosts: string[];
+          /** @enum {string} */
+          mode: "allowlist";
+        }
+      | {
+          /** @enum {string} */
+          mode: "allow";
+        };
+    /**
+     * @description Desired environment configuration authored by a human or application.
+     *
+     *     Containment and durability may be omitted when the target has exactly one
+     *     honest answer. Resolution fills those fields before the profile is pinned
+     *     to a Session.
+     */
+    EnvironmentProfile: {
+      bootstrap?: components["schemas"]["EnvironmentBootstrap"];
+      containment?: components["schemas"]["EnvironmentContainmentProfile"] | null;
+      durability?: components["schemas"]["EnvironmentDurability"] | null;
+      lifecycle?: components["schemas"]["EnvironmentLifecycle"];
+      target: components["schemas"]["EnvironmentTargetProfile"];
+    };
+    /** @description Session-level selection: use an Agent profile, or provide an inline one. */
+    EnvironmentSelection:
+      | {
+          use: string;
+        }
+      | components["schemas"]["EnvironmentProfile"];
+    /** @description Named execution environments offered by an Agent version. */
+    EnvironmentSet: {
+      /** @description Profile inherited when session creation does not choose one explicitly. */
+      default: string;
+      /** @description Human-authored profiles addressable by name at session creation. */
+      profiles?: {
+        [key: string]: components["schemas"]["EnvironmentProfile"];
+      };
+    };
     /** @description Where a session's commands run. */
     EnvironmentTarget: {
+      /** @description Registered connection used by a machine target. */
+      connection_id?: string | null;
       /** @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`. */
       kind: string;
       /** @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...). */
@@ -8338,6 +8422,24 @@ export interface components {
       provider?: string | null;
       /** @description Why it is unavailable. Present only when `available` is false. */
       reason?: string | null;
+    };
+    /**
+     * @description Provider-neutral target class.
+     * @enum {string}
+     */
+    EnvironmentTargetKind: "host" | "machine" | "vfs" | "container" | "managed";
+    /** @description Where commands execute. */
+    EnvironmentTargetProfile: {
+      /** @description Credential/transport binding for a registered machine target. */
+      connection_id?: string | null;
+      kind: components["schemas"]["EnvironmentTargetKind"];
+      /**
+       * @description Provider-owned, non-secret configuration. Credentials are references,
+       *     never values in this object.
+       */
+      options?: Record<string, unknown>;
+      /** @description Concrete adapter for target kinds with more than one implementation. */
+      provider?: string | null;
     };
     /** @description Response body for the `list_environment_targets` operation. */
     EnvironmentTargetsResponse: {
@@ -10418,6 +10520,7 @@ export interface components {
          * @example Customer Support Agent
          */
         display_name?: string | null;
+        environments?: components["schemas"]["EnvironmentSet"] | null;
         /**
          * @description Whether any endpoint on this agent is currently live. Derived from the
          *     endpoint rows on read and never stored: a stored flag would be a second
@@ -15867,6 +15970,17 @@ export interface components {
       org_name: string;
     };
     /**
+     * @description Session-pinned profile. Every security- and recovery-relevant default has
+     *     been made explicit.
+     */
+    ResolvedEnvironmentProfile: {
+      bootstrap: components["schemas"]["EnvironmentBootstrap"];
+      containment: components["schemas"]["EnvironmentContainmentProfile"];
+      durability: components["schemas"]["EnvironmentDurability"];
+      lifecycle: components["schemas"]["EnvironmentLifecycle"];
+      target: components["schemas"]["EnvironmentTargetProfile"];
+    };
+    /**
      * @description Response type for per-resource config endpoints.
      *
      *     Every resource exposes `GET /v1/{resource}/config` returning this type.
@@ -16752,11 +16866,27 @@ export interface components {
     SessionEnvironmentResponse: {
       capabilities: components["schemas"]["EnvironmentCapabilities"];
       containment: components["schemas"]["EnvironmentContainment"];
+      current_checkpoint_id?: string | null;
+      /** @description Control-plane lifecycle intent and latest observed physical state. */
+      desired_state?: string | null;
       /**
        * @description `checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a
        *     session on somebody else's machine is never reported as recoverable.
        */
       durability: string;
+      /**
+       * Format: int64
+       * @description Physical incarnation fence. Increments whenever compute is replaced.
+       */
+      generation?: number | null;
+      /** @description Durable logical Environment id. Absent for legacy capability-derived sessions. */
+      id?: string | null;
+      /** Format: date-time */
+      last_activity_at?: string | null;
+      /** @description Agent profile name selected for this Session (`inline` for one-offs). */
+      name?: string | null;
+      observed_state?: string | null;
+      profile?: components["schemas"]["ResolvedEnvironmentProfile"] | null;
       /**
        * @description How this view was produced. `capabilities` means it was derived from the
        *     session's effective capability set rather than read from a stored
@@ -18352,6 +18482,7 @@ export interface components {
        * @example Updated Support Agent
        */
       display_name?: string | null;
+      environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Harness ID used as this agent's base execution environment. Omit to leave unchanged.
        * @example harness_01933b5a00007000800000000000001
@@ -19623,6 +19754,7 @@ export interface components {
        * @example Customer Support Agent
        */
       display_name?: string | null;
+      environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Whether any endpoint on this agent is currently live. Derived from the
        *     endpoint rows on read and never stored: a stored flag would be a second
