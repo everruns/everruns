@@ -61,3 +61,38 @@ pub async fn subject_principal(ctx: &Ctx, id: VirtualUserId) -> Result<Principal
         .map_err(classify_anyhow)?
         .id)
 }
+
+pub async fn bind_creation(
+    ctx: &Ctx,
+    req: &mut crate::api::sessions::CreateSessionRequest,
+    harness: &crate::storage::models::HarnessRow,
+    source: everruns_platform::SessionSource,
+) -> Result<(), CommandError> {
+    use everruns_platform::SessionSource;
+    if !source.is_client_declarable() {
+        return Err(CommandError::bad_request(format!(
+            "source must be one of chat, playground, api (got {source})"
+        )));
+    }
+    if source == SessionSource::Playground {
+        if req.parent_session_id.is_some()
+            || req.forked_from_session_id.is_some()
+            || req.workspace_id.is_some()
+        {
+            return Err(CommandError::bad_request(
+                "Playground starts with a fresh session and workspace",
+            ));
+        }
+        if harness.is_built_in && harness.name.starts_with("platform-chat") {
+            return Err(CommandError::bad_request(
+                "Platform Chat is a personal operator harness and cannot be shared in Playground",
+            ));
+        }
+        req.playground_user_id = Some(validate_subject(ctx, req.playground_user_id).await?);
+    } else if req.playground_user_id.is_some() {
+        return Err(CommandError::bad_request(
+            "playground_user_id requires source=playground",
+        ));
+    }
+    Ok(())
+}

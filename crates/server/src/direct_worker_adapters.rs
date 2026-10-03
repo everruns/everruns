@@ -5,7 +5,6 @@
 //
 // This implementation provides the same interface as GrpcWorkerAdapters
 // but with direct access to the storage backend, domains, and infra helpers.
-
 use crate::kernel_imports::{
     Caller, ContentPart, EgressRequest, EgressRequestKind, EgressService, EventData,
     RuntimeMessage, RuntimeMessageRole, ToolResultContentPart, UtilityLlmService,

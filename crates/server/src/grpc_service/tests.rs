@@ -1,7 +1,6 @@
 use super::worker::commands::test_support::execute_test_command;
 use super::*;
 use tonic::service::Interceptor;
-
 // Env-var-mutating tests must not run in parallel.
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const EXAMPLE_TOKEN: &str = "YExample0";

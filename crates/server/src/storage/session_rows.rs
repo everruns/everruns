@@ -33,6 +33,7 @@ use crate::kernel_imports::{
     everruns_provider::typed_id::ModelId, everruns_provider::typed_id::PrincipalId,
     everruns_provider::typed_id::VirtualUserId,
 };
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -129,4 +130,36 @@ impl Default for CreateSessionRow {
             workspace_id: None,
         }
     }
+}
+
+/// Ordering for the sessions list. The chat thread list wants last activity;
+/// the operational list wants creation order.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SessionListOrder {
+    #[default]
+    CreatedAt,
+    LastActivity,
+}
+
+/// Filter predicate shared by the sessions list and its facet aggregates
+/// (EVE-852). Both read the same struct so a count can never describe a
+/// different population than the page it annotates.
+#[derive(Debug, Clone, Default)]
+pub struct SessionListFilters {
+    pub playground_user_id: Option<VirtualUserId>,
+    pub archived_only: bool,
+    pub agent_id: Option<AgentId>,
+    pub search: Option<String>,
+    /// Empty means "any source".
+    pub sources: Vec<everruns_platform::SessionSource>,
+    /// Empty means "any activity".
+    pub activities: Vec<everruns_platform::SessionActivity>,
+    /// Restrict to sessions whose resolved human owner is this user (`mine`).
+    pub owner_user_id: Option<Uuid>,
+    pub created_after: Option<DateTime<Utc>>,
+    pub created_before: Option<DateTime<Utc>>,
+    /// Widen the result set to archived sessions too. Default `false`: archive
+    /// is a "put it away" bit, so hiding it is the point.
+    pub include_archived: bool,
+    pub order: SessionListOrder,
 }
