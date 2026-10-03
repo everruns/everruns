@@ -53,14 +53,14 @@ use crate::grpc_durable_store::GrpcClientAuth;
 mod connection_resolver;
 mod session_storage;
 
-const COMMAND_API_VERSION_V1: &str = "v1";
+pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
 
 /// Map a tonic gRPC status to the appropriate AgentLoopError variant.
 ///
 /// Preserves the semantic meaning of gRPC status codes so that callers
 /// (e.g. retry logic in the durable engine) can distinguish transient
 /// transport errors from permanent domain errors.
-fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
+pub(crate) fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
     let msg = status.message().to_string();
     match status.code() {
         tonic::Code::NotFound => {
@@ -98,7 +98,7 @@ fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
 }
 
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
-fn grpc_missing_field(field: &str) -> AgentLoopError {
+pub(crate) fn grpc_missing_field(field: &str) -> AgentLoopError {
     AgentLoopError::store(format!("gRPC response error: {field}"))
 }
 
@@ -626,7 +626,7 @@ pub struct GrpcAdapter {
     /// cleanup, the task reaper): those claim work spanning organizations, so
     /// there is no org to carry. Surfaces that reach the org-scoped command
     /// transport require `Some`, and say so rather than inventing a default.
-    org_id: Option<i64>,
+    pub(crate) org_id: Option<i64>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
 }
 
@@ -647,71 +647,6 @@ impl GrpcAdapter {
         Self {
             org_id: Some(org_id),
             ..Self::new(client)
-        }
-    }
-
-    /// The org this adapter speaks for, or an error naming the surface that
-    /// needs one. Callers that reach the command transport go through here.
-    pub(crate) fn require_org(&self, surface: &str) -> Result<i64> {
-        self.org_id.ok_or_else(|| {
-            AgentLoopError::store(format!(
-                "{surface} requires an org-scoped adapter; this one is the cross-org sweeper context"
-            ))
-        })
-    }
-
-    /// Run a registered domain command as the org's internal caller.
-    ///
-    /// `user_id: None` makes the server resolve `Caller::internal(org_id)`, which
-    /// is what the worker is: trusted, acting for the org rather than for a
-    /// person. The command still runs through `Command::run`, so policy applies
-    /// here exactly as it does for HTTP and MCP callers.
-    /// Run a registered domain command as the org's internal caller.
-    ///
-    /// `acting_for_session` states which session's agent runtime is speaking.
-    /// It does not change the caller — it is what entitles the runtime to that
-    /// session's private user-memory mount, and nothing else. Pass `None` from
-    /// surfaces that are not executing a specific session's turn.
-    pub(crate) async fn execute_session_command(
-        &self,
-        surface: &str,
-        name: &str,
-        params: serde_json::Value,
-        acting_for_session: Option<SessionId>,
-    ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
-        let org_id = self.require_org(surface)?;
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .execute_command(proto::ExecuteCommandRequest {
-                input_message_id: None,
-                platform_session_id: None,
-                acting_for_session_id: acting_for_session.map(|id| uuid_to_proto(id.uuid())),
-
-                name: name.to_string(),
-                api_version: COMMAND_API_VERSION_V1.to_string(),
-                params_json: serde_json::to_vec(&params).map_err(|error| {
-                    AgentLoopError::store(format!("JSON serialization failed: {error}"))
-                })?,
-                org_id,
-                user_id: None,
-                idempotency_key: None,
-                metadata: Default::default(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?
-            .into_inner();
-
-        match response
-            .result
-            .ok_or_else(|| grpc_missing_field("No command result in response"))?
-        {
-            proto::execute_command_response::Result::OkJson(ok_json) => {
-                let value = serde_json::from_slice(&ok_json).map_err(|error| {
-                    AgentLoopError::store(format!("Failed to decode command response: {error}"))
-                })?;
-                Ok(Ok(value))
-            }
-            proto::execute_command_response::Result::Error(error) => Ok(Err(error)),
         }
     }
 }
@@ -772,9 +707,8 @@ impl GrpcOrgAdapter {
                 org_id: self.org_id,
                 user_id: None,
                 platform_session_id: self.platform_session_id.map(|id| uuid_to_proto(id.uuid())),
-                // Platform commands act AS the invocation's management user,
-                // resolved from `platform_session_id`. They are not a session
-                // runtime claiming its own memory mount.
+                // Acts AS the invocation's management user, not as a session
+                // runtime claiming its own mount.
                 acting_for_session_id: None,
                 input_message_id: self.input_message_id.map(uuid_to_proto),
                 idempotency_key: None,

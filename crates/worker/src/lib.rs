@@ -7,6 +7,7 @@ pub mod durable_execution;
 pub mod durable_runner;
 pub mod durable_turn;
 pub mod grpc_adapters;
+pub mod grpc_command_transport;
 pub mod grpc_durable_store;
 pub mod grpc_files_adapter;
 pub mod grpc_slack_actions;
