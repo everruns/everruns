@@ -774,11 +774,12 @@ mod tests {
             "expected an approval refusal, got {message}"
         );
         assert!(!denied_dir.path().join("ran").exists());
-        let requests = denying.requests.lock().expect("approval log");
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].command, command);
-        assert!(!requests[0].full_access);
-        drop(requests);
+        {
+            let requests = denying.requests.lock().expect("approval log");
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].command, command);
+            assert!(!requests[0].full_access);
+        }
 
         let unattended = workspace();
         let refused = tool()
