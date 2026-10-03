@@ -296,7 +296,18 @@ jobs:
               echo "::error::Publish Crate run for $PKG did not start"; exit 1
             fi
             echo "Watching Publish Crate run $RUN_ID for $PKG..."
-            gh run watch "$RUN_ID" --exit-status --interval 15
+            # One automatic retry, of the same run (same tag, SHA and
+            # correlation). The 0.34.2 cascade halted three times on a dropped
+            # crates.io index connection, each costing a manual re-run. The
+            # publish job is idempotent: an already-published version passes
+            # only if its digest matches this commit's artifact, so a retry can
+            # never publish anything a first attempt would not have.
+            if ! gh run watch "$RUN_ID" --exit-status --interval 15; then
+              echo "::warning::Publish Crate run $RUN_ID for $PKG failed; retrying its failed job once"
+              gh run rerun "$RUN_ID" --failed
+              sleep 10
+              gh run watch "$RUN_ID" --exit-status --interval 15
+            fi
 
             # Let the crates.io sparse index publish the new version before a
             # dependant crate that pins it is published next.

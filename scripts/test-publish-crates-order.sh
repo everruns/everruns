@@ -432,6 +432,10 @@ require(
     "git push --atomic origin" in crate_release,
     "crate tags must be created up front in one atomic push, before anything publishes",
 )
+require(
+    'gh run rerun "$RUN_ID" --failed' in crate_release,
+    "a failed Publish Crate run must be retried once before the cascade halts",
+)
 
 # Re-running a half-finished cascade is not a late join. Attempt 1 of the v0.30.0
 # release published everruns-core from this commit and then died on a crates.io

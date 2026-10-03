@@ -144,6 +144,22 @@ registry({"crate-a": {"versions": ["0.5.0"]}})
 missing = preflight.audit("0.5.0", CRATES, preflight.Registry())
 require(missing == ["crate-b (not on crates.io yet)"], f"audit must list a never-published crate: {missing}")
 
+# Provenance: one commit for every tag passes; a mixed or untagged version fails.
+SHA_A, SHA_B = "a" * 40, "b" * 40
+both = {"crate/crate-a/v0.5.0": SHA_A, "crate/crate-b/v0.5.0": SHA_A}
+require(preflight.audit_provenance("0.5.0", CRATES, both) == [], "one release commit must pass")
+mixed = preflight.audit_provenance(
+    "0.5.0", {**CRATES, "crate-c": "0.5.0"}, {**both, "crate/crate-c/v0.5.0": SHA_B}
+)
+require(mixed == [f"crate-c tagged at {SHA_B[:9]}, not the release commit {SHA_A[:9]}"],
+        f"a crate released from another commit must fail (0.34.1): {mixed}")
+untagged = preflight.audit_provenance("0.5.0", CRATES, {"crate/crate-a/v0.5.0": SHA_A})
+require(untagged == ["crate-b has no crate/crate-b/v0.5.0 release tag"], f"an untagged crate must fail: {untagged}")
+tags_path = tmp / "tags.json"
+tags_path.write_text(json.dumps({"tags": both}))
+os.environ["RELEASE_PREFLIGHT_TAGS_FIXTURE"] = str(tags_path)
+require(preflight.release_tags("0.5.0") == both, "tags fixture must load")
+
 if failures:
     raise SystemExit("release preflight test failures:\n  " + "\n  ".join(failures))
 print("release preflight tests passed")
