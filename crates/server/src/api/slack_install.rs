@@ -532,28 +532,53 @@ async fn finish_install(
     Path(channel_id): Path<String>,
     Query(query): Query<CallbackQuery>,
 ) -> Response {
-    match finish_install_inner(&state, &channel_id, query).await {
-        Ok(()) => Redirect::to(&format!(
-            "{}/endpoints/{channel_id}?slack_install=ok",
-            state.ui_base_url.trim_end_matches('/')
-        ))
-        .into_response(),
+    let ui_base = state.ui_base_url.trim_end_matches('/');
+    let rejected = |reason: &str| {
+        tracing::warn!(%channel_id, reason, "Slack install callback rejected");
+        Redirect::to(&format!("{ui_base}/agents?slack_install=failed")).into_response()
+    };
+    let (context, endpoint) = match resolve_install_endpoint(&state.slack, &channel_id).await {
+        Ok(endpoint) => endpoint,
+        Err(_) => return rejected("endpoint not found"),
+    };
+    let mut config = parse_config(&endpoint.channel_config);
+    let Some(mut provisioned) = config.provisioned_app.take() else {
+        return rejected("no provisioned app");
+    };
+    if let Err(reason) = spend_install_state(
+        &mut provisioned,
+        query.state.as_deref().unwrap_or_default(),
+        chrono::Utc::now(),
+    ) {
+        return rejected(reason);
+    }
+
+    // Endpoint editors are agent-scoped. Only a valid install nonce may expose
+    // the owning agent in this unauthenticated callback's return URL.
+    let editor_url = match context.agent_id {
+        Some(agent_id) => format!(
+            "{ui_base}/agents/{agent_id}/endpoints/{}",
+            endpoint.public_id
+        ),
+        None => format!("{ui_base}/agents"),
+    };
+    let outcome = match finish_install_inner(&state, &endpoint, config, provisioned, query).await {
+        Ok(()) => "ok",
         Err(reason) => {
             // The operator sees a generic marker; the detail stays in the log.
             // This page is reached by a redirect an attacker can also trigger.
             tracing::warn!(%channel_id, reason, "Slack install callback rejected");
-            Redirect::to(&format!(
-                "{}/endpoints/{channel_id}?slack_install=failed",
-                state.ui_base_url.trim_end_matches('/')
-            ))
-            .into_response()
+            "failed"
         }
-    }
+    };
+    Redirect::to(&format!("{editor_url}?slack_install={outcome}")).into_response()
 }
 
 async fn finish_install_inner(
     state: &SlackInstallState,
-    channel_id: &str,
+    endpoint: &super::endpoint_ingress::IngressEndpoint,
+    mut config: SlackChannelConfig,
+    provisioned: ProvisionedSlackApp,
     query: CallbackQuery,
 ) -> Result<(), &'static str> {
     if query.error.is_some() {
@@ -561,15 +586,6 @@ async fn finish_install_inner(
         return Err("slack reported an error");
     }
     let code = query.code.filter(|c| !c.is_empty()).ok_or("missing code")?;
-    let presented = query.state.unwrap_or_default();
-
-    let (_, endpoint) = resolve_install_endpoint(&state.slack, channel_id)
-        .await
-        .map_err(|_| "endpoint not found")?;
-
-    let mut config = parse_config(&endpoint.channel_config);
-    let mut provisioned = config.provisioned_app.take().ok_or("no provisioned app")?;
-    spend_install_state(&mut provisioned, &presented, chrono::Utc::now())?;
     let client_id = provisioned.client_id.clone();
     if provisioned.client_secret.is_empty() {
         return Err("no client secret");
