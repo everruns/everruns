@@ -127,7 +127,7 @@ impl SlackApiProvisioner {
                 "invalid_refresh_token".to_string(),
             ));
         }
-        let rotated = self.rotate_with(None, refresh_token).await?;
+        let rotated = self.rotate(refresh_token).await?;
         let team_id = rotated
             .team_id
             .clone()
@@ -305,9 +305,8 @@ impl SlackApiProvisioner {
                 .wait_for_rotation(row.org_id, row.id, original_generation)
                 .await;
         };
-        let access_token = self.decrypt_required(claimed.access_token_encrypted.as_deref())?;
         let refresh_token = self.decrypt_required(claimed.refresh_token_encrypted.as_deref())?;
-        let rotated = match self.rotate_with(Some(&access_token), &refresh_token).await {
+        let rotated = match self.rotate(&refresh_token).await {
             Ok(rotated) => rotated,
             Err(SlackProvisioningError::Rejected(code)) if code == "invalid_refresh_token" => {
                 self.mark_reconnect(claimed.id, claimed.token_generation)
@@ -405,18 +404,15 @@ impl SlackApiProvisioner {
         Ok(())
     }
 
-    async fn rotate_with(
-        &self,
-        access_token: Option<&str>,
-        refresh_token: &str,
-    ) -> SlackProvisioningResult<RotateResponse> {
-        let response = self
-            .post(
-                "/tooling.tokens.rotate",
-                access_token,
-                serde_json::json!({"refresh_token": refresh_token}),
-            )
-            .await?;
+    async fn rotate(&self, refresh_token: &str) -> SlackProvisioningResult<RotateResponse> {
+        // Slack reads `tooling.tokens.rotate` arguments only from a form body:
+        // a JSON body is ignored and the call fails with `invalid_arguments`.
+        // The method authenticates with the refresh token alone.
+        let request = self
+            .client
+            .post(format!("{}/tooling.tokens.rotate", self.api_base))
+            .form(&[("refresh_token", refresh_token)]);
+        let response = self.send(request).await?;
         let rotated: RotateResponse = serde_json::from_value(response)
             .map_err(|_| malformed_response("tooling.tokens.rotate"))?;
         if rotated.token.is_empty()
@@ -441,6 +437,13 @@ impl SlackApiProvisioner {
         if let Some(access_token) = access_token {
             request = request.bearer_auth(access_token);
         }
+        self.send(request).await
+    }
+
+    async fn send(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> SlackProvisioningResult<serde_json::Value> {
         let response = request.send().await.map_err(|error| {
             SlackProvisioningError::Unreachable(format!("request failed: {error}"))
         })?;
@@ -600,7 +603,7 @@ fn is_auth_error(code: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{body_json, method, path};
+    use wiremock::matchers::{body_string, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn encryption() -> Arc<EncryptionService> {
@@ -638,6 +641,7 @@ mod tests {
     async fn mount_rotate(server: &MockServer, team_id: &str) {
         Mock::given(method("POST"))
             .and(path("/tooling.tokens.rotate"))
+            .and(header("content-type", "application/x-www-form-urlencoded"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "ok": true,
                 "token": "new-access",
@@ -655,9 +659,9 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/tooling.tokens.rotate"))
-            .and(body_json(
-                serde_json::json!({"refresh_token": "input-refresh"}),
-            ))
+            // Slack ignores a JSON body here and answers `invalid_arguments`.
+            .and(header("content-type", "application/x-www-form-urlencoded"))
+            .and(body_string("refresh_token=input-refresh"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "ok": true,
                 "token": "new-access",
