@@ -9,5 +9,6 @@
 * [XML Prompt Formatting](xml-prompt-formatting.md) - XML tags for system prompt structure.
 * [Build Artifact Size](build-artifact-size.md) - Why the library crates compile large, and which levers move it.
 * [CI Build Time](ci-build-time.md) - Why the Rust CI jobs spend their wall-clock compiling, and which levers move it.
+* [Crate Layout](crate-layout.md) - Target crate layout, its dependency rules, and the release-by-release plan to reach it.
 * [Dependency Surface](dependency-surface.md) - Which third-party crates are worth removing or reimplementing in-tree.
 * [Dismissed Options](dismissed-options.md) - Technical options considered but dismissed.
