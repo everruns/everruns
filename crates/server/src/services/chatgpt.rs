@@ -6,12 +6,12 @@ use crate::storage::{
 };
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
+use everruns_contracts::typed_id::ProviderId;
 use everruns_drivers::chatgpt::{
     CodexAuth,
     auth::{RotatingAuth, TokenRoute, TokenStore},
     oauth,
 };
-use everruns_contracts::typed_id::ProviderId;
 use serde_json::{Value, json};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::{Mutex, OwnedMutexGuard};
@@ -29,7 +29,7 @@ pub async fn require_enabled(db: &StorageBackend, org: i64) -> Result<()> {
     let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         db,
         org,
-        &everruns_platform::FeatureFlags::current(),
+        &everruns_platform::FeatureFlagPolicy::current(),
     )
     .await?;
     anyhow::ensure!(
@@ -159,6 +159,7 @@ pub async fn access_token(
     .await?;
     Ok(auth.access_token)
 }
+// THREAT[TM-AUTHZ-024]: Personal grants require the exact session runtime principal.
 pub async fn check_session(
     db: &StorageBackend,
     row: &ProviderRow,

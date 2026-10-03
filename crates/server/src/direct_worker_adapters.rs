@@ -8,8 +8,8 @@ mod message_projection;
 // Implements GrpcWorkerAdapters' interface using storage, domains, and infra directly.
 use crate::kernel_imports::{
     Caller, EgressRequest, EgressRequestKind, EgressService, RuntimeMessage, UtilityLlmService,
-    everruns_contracts::driver_registry::DriverRegistry, everruns_contracts::provider::DriverId,
-    everruns_contracts::tool_types::ToolDefinition, resolve_runtime_capabilities,
+    contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
+    contracts::tool_types::ToolDefinition, resolve_runtime_capabilities,
 };
 use crate::kernel_imports::{
     connection_services::ProviderCredentialStore, contracts::model_spec::ModelSpec,
@@ -21,7 +21,7 @@ use crate::kernel_imports::{
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::connection_services::ProviderCredentials;

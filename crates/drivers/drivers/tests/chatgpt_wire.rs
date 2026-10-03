@@ -2,14 +2,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 use async_trait::async_trait;
 use base64::Engine as _;
+use everruns_contracts::{
+    BearerAuth, LlmCallConfig, LlmStreamEvent, Message, MessageRole, Provider,
+};
 use everruns_drivers::chatgpt::{
     ChatGptChatDriver, CodexAuth, OpenSourceGrant,
     auth::{RotatingAuth, TokenRoute, TokenStore},
     login::LoginAttempt,
     oauth::{self, Endpoints},
-};
-use everruns_contracts::{
-    BearerAuth, LlmCallConfig, LlmStreamEvent, Message, MessageRole, Provider,
 };
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -23,8 +23,8 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn codex_compaction_cooldown_is_account_scoped_and_preserves_opaque_output() {
-    use everruns_drivers::codex::CodexChatDriver;
     use everruns_contracts::{ChatDriver, CompactRequest};
+    use everruns_drivers::codex::CodexChatDriver;
     use wiremock::matchers::header;
     let server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -247,7 +247,12 @@ async fn declined_scope_and_failed_refresh_keep_credentials() {
     assert!(driver.token().await.is_err());
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
 }
-async fn collect(sse: &str) -> (Vec<everruns_contracts::error::Result<LlmStreamEvent>>, Value) {
+async fn collect(
+    sse: &str,
+) -> (
+    Vec<everruns_contracts::error::Result<LlmStreamEvent>>,
+    Value,
+) {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .respond_with(
