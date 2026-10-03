@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { GitFork, Loader2 } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useForkSession } from "@/hooks/use-sessions";
 import { CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import { cn } from "@/lib/utils";
@@ -29,7 +28,6 @@ export function SessionForkButton({
   const router = useRouter();
   const { t } = useLocale();
   const forkSession = useForkSession();
-  const playgroundEnabled = useFeatureFlag("playground");
   const [forkError, setForkError] = useState<string | null>(null);
 
   const handleFork = () => {
@@ -58,14 +56,14 @@ export function SessionForkButton({
   };
 
   if (!platformChat) {
-    return playgroundEnabled ? (
+    return (
       <Link
         className={buttonVariants({ variant: "outline", size: "sm", className })}
         href={`/playground/new${agentId ? `?agent=${encodeURIComponent(agentId)}` : ""}`}
       >
         Test in Playground
       </Link>
-    ) : null;
+    );
   }
 
   return (

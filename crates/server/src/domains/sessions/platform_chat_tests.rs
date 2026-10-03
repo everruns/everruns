@@ -113,8 +113,6 @@ async fn side_chat_starts_empty_on_the_same_agent_and_generic() {
                 .is_err()
         );
     }
-    let mut ctx = ctx;
-    ctx.feature_flags.playground = true;
     assert!(
         CreateSession(
             serde_json::from_value(json!({"source":"playground", "agent_name":"platform-chat"}))

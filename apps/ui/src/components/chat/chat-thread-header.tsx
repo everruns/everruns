@@ -162,8 +162,12 @@ export function ChatThreadHeader({
   const showDescription = !!platformDescription && !introVisible;
   const actions = (
     <>
-      {showPin && <ChatPinButton session={session} showLabel />}
-      <ChatArchiveButton session={session} showLabel />
+      {!permanent && (
+        <>
+          {showPin && <ChatPinButton session={session} showLabel />}
+          <ChatArchiveButton session={session} showLabel />
+        </>
+      )}
       <ShareButton />
       <LinkButton
         href={`/sessions/${session.id}/transcript`}
@@ -234,29 +238,7 @@ export function ChatThreadHeader({
           </span>
         ) : null}
       </div>
-<<<<<<< HEAD
       <div className="ml-auto flex items-center gap-2">{actions}</div>
-=======
-      <div className="ml-auto flex items-center gap-2">
-        {!permanent && (
-          <>
-            <ChatPinButton session={session} showLabel />
-            <ChatArchiveButton session={session} showLabel />
-          </>
-        )}
-        <ShareButton />
-        <LinkButton
-          href={`/sessions/${session.id}/transcript`}
-          variant="outline"
-          size="sm"
-          aria-label="Open session"
-          className="max-sm:w-7 max-sm:px-0"
-        >
-          <ExternalLink className="size-4" />
-          <span className="max-sm:hidden">Open session</span>
-        </LinkButton>
-      </div>
->>>>>>> a31abd11e (feat(chat): manage platform conversations with a built-in Agent)
     </div>
   );
 }
