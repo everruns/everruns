@@ -491,6 +491,7 @@ everruns_core::egress::EgressError::NetworkAccessDenied	variant
 everruns_core::egress::EgressError::SigningUnavailable	variant
 everruns_core::egress::EgressError::Transport	variant
 everruns_core::egress::EgressRequest	struct
+everruns_core::egress::EgressRequest::require_dns_pinning	function
 everruns_core::egress::EgressRequestKind	enum
 everruns_core::egress::EgressRequestKind::Capability	variant
 everruns_core::egress::EgressRequestKind::Integration	variant
