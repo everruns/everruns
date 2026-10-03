@@ -114,6 +114,11 @@ impl Database {
         Ok(rows)
     }
 
+    pub async fn clear_provider_credential(&self, org_id: i64, id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE providers SET api_key_encrypted=NULL,api_key_set=false,updated_at=NOW() WHERE org_id=$1 AND id=$2").bind(org_id).bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
     pub async fn update_provider(
         &self,
         org_id: i64,

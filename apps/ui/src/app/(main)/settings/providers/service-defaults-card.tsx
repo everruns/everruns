@@ -72,11 +72,13 @@ export function ServiceDefaultsCard({ providers }: { providers: Provider[] }) {
               onChange={(event) => handleChange(service.key, event.target.value)}
             >
               <option value="">No default</option>
-              {providers.map((provider) => (
-                <option key={provider.id} value={provider.id}>
-                  {provider.name}
-                </option>
-              ))}
+              {providers
+                .filter((provider) => provider.provider_type !== "chatgpt")
+                .map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
             </select>
           </div>
         ))}

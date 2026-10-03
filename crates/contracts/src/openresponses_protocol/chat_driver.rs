@@ -438,6 +438,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None
         };
 
+        let required_completion = self.required_completion;
+        let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed_completion = completed.clone();
         let frame_deferred_events = Arc::clone(&deferred_events);
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
@@ -448,11 +451,21 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             let finish_reason = Arc::clone(&finish_reason);
             let deferred_events = Arc::clone(&frame_deferred_events);
             let retry_metadata_for_done = shared_retry_metadata.clone();
+            let observed_completion = observed_completion.clone();
 
             async move {
                 match result {
                     Ok(event) => {
                         let event_data = &event.data;
+                        if required_completion && let Ok(frame) = serde_json::from_str::<Value>(event_data) {
+                                if let Some(event) = super::completion_contract::terminal(&frame) {
+                                    observed_completion.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    return Ok(event);
+                                }
+                                if frame["type"] == "response.completed" {
+                                    observed_completion.store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
+                        }
 
                         // OpenAI-compatible gateways (e.g. OpenRouter) terminate the
                         // Responses SSE stream with a chat-completions-style `[DONE]`
@@ -846,6 +859,21 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 futures::stream::iter(batch)
             }));
 
+        if required_completion {
+            return Ok(Box::pin(converted_stream.chain(futures::stream::once(
+                async move {
+                    if completed.load(std::sync::atomic::Ordering::Relaxed) {
+                        Ok(LlmStreamEvent::TextDelta(String::new()))
+                    } else {
+                        Ok(LlmStreamEvent::Error(crate::LlmStreamError::provider(
+                            Some("malformed_response".to_owned()),
+                            None,
+                            "The provider stream ended before response.completed.",
+                        )))
+                    }
+                },
+            ))));
+        }
         Ok(converted_stream)
     }
 

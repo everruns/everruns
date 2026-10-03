@@ -12,6 +12,19 @@ impl InMemoryDatabase {
     // LLM Providers
     // ============================================
 
+    pub async fn clear_provider_credential(&self, org_id: i64, id: Uuid) -> Result<()> {
+        let mut providers = self.providers.write();
+        if let Some(row) = providers
+            .get_mut(&ProviderId::from_uuid(id))
+            .filter(|r| r.org_id == org_id)
+        {
+            row.api_key_encrypted = None;
+            row.api_key_set = false;
+            row.updated_at = Self::now();
+        }
+        Ok(())
+    }
+
     pub async fn create_provider(
         &self,
         org_id: i64,

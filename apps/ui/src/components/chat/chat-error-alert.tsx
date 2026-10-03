@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, X } from "lucide-react";
+import { CHATGPT_USAGE_URL } from "@/lib/api/chatgpt";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -9,9 +10,16 @@ interface ChatErrorAlertProps {
   description?: string;
   details?: string | null;
   className?: string;
+  manageChatGptUsage?: boolean;
 }
 
-export function ChatErrorAlert({ message, description, details, className }: ChatErrorAlertProps) {
+export function ChatErrorAlert({
+  message,
+  description,
+  details,
+  className,
+  manageChatGptUsage,
+}: ChatErrorAlertProps) {
   const { t } = useLocale();
   const displayMessage = message.trim() || t("chat_error_fallback");
   const trimmedDetails = details?.trim();
@@ -33,6 +41,16 @@ export function ChatErrorAlert({ message, description, details, className }: Cha
       <div className="mt-3 rounded-md bg-muted/70 px-3 py-2 font-mono text-sm leading-5 text-foreground">
         {displayMessage}
       </div>
+      {manageChatGptUsage && (
+        <a
+          href={CHATGPT_USAGE_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-block text-sm underline"
+        >
+          Manage ChatGPT usage
+        </a>
+      )}
       {trimmedDetails ? (
         <details className="group mt-2">
           <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground marker:hidden">

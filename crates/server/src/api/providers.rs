@@ -536,6 +536,14 @@ pub async fn provider_config(
         .registered_providers()
         .into_iter()
         .filter_map(|id| {
+            // Legacy Codex stays an SDK driver for Yolop. Server accounts use
+            // the personal ChatGPT connection and its runtime ownership checks.
+            if id.as_str() == "openai-codex" {
+                return None;
+            }
+            if id.as_str() == "chatgpt" && !org.feature_flags.chatgpt_plan {
+                return None;
+            }
             let descriptor = state.driver_registry.descriptor(&id)?;
             Some(DriverCredentialInfo {
                 driver: id.to_string(),
@@ -649,6 +657,12 @@ pub async fn oauth_authorize(
     );
 
     let redirect_url = match oauth.flow {
+        DriverOAuthFlow::ChatGptPlan => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Use the ChatGPT connection endpoint.".to_string(),
+            ));
+        }
         DriverOAuthFlow::OpenRouterPkce => {
             let mut url = reqwest::Url::parse(&oauth.authorize_url)
                 .map_err(|e| internal("OAuth provider connection", &e))?;
@@ -704,6 +718,12 @@ pub async fn oauth_callback(
     require_encryption_configured(&state)?;
 
     let api_key = match oauth.flow {
+        DriverOAuthFlow::ChatGptPlan => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Use the ChatGPT connection endpoint.".to_string(),
+            ));
+        }
         DriverOAuthFlow::OpenRouterPkce => {
             exchange_openrouter_code(&oauth.token_url, &query.code, &pending.code_verifier).await?
         }
@@ -950,6 +970,18 @@ fn internal(context: &str, err: &impl std::fmt::Display) -> (StatusCode, String)
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/providers/config", get(provider_config))
+        .route(
+            "/v1/providers/{id}/chatgpt",
+            get(super::chatgpt::status).delete(super::chatgpt::disconnect),
+        )
+        .route(
+            "/v1/providers/{id}/chatgpt/login",
+            post(super::chatgpt::login),
+        )
+        .route(
+            "/v1/providers/{id}/chatgpt/import",
+            post(super::chatgpt::import),
+        )
         .route("/v1/providers", post(create_provider).get(list_providers))
         .route(
             "/v1/providers/{id}",

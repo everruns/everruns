@@ -44,6 +44,8 @@ bedrock = [
 # Resolve Bedrock credentials from the AWS default chain (env, profile, SSO,
 # credential process). Off by default because aws-config is heavy.
 bedrock-default-credentials = ["bedrock", "dep:aws-config", "dep:aws-credential-types"]
+chatgpt = ["dep:tokio", "dep:tracing", "dep:futures", "dep:anyhow", "dep:rand", "dep:sha2", "dep:base64", "dep:jsonwebtoken"]
+codex = ["chatgpt"]
 cloudflare = []
 fireworks = []
 gemini = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
@@ -69,6 +71,10 @@ serde_json.workspace = true
 chrono.workspace = true
 
 # Per-vendor dependencies, each pulled in only by the features that need it.
+anyhow = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+jsonwebtoken = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 tokio-stream = { workspace = true, optional = true }
@@ -157,6 +163,14 @@ required-features = ["mai"]
 [[test]]
 name = "meta_model_api_live"
 required-features = ["meta"]
+
+[[example]]
+name = "chatgpt-login"
+required-features = ["chatgpt"]
+
+[[test]]
+name = "chatgpt_wire"
+required-features = ["chatgpt", "codex"]
 
 [lints]
 workspace = true

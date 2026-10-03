@@ -1,15 +1,15 @@
+mod message_projection;
+
 // Direct implementation of WorkerAdapters for in-process worker
 //
 // Decision: Uses StorageBackend, domains, and infra helpers directly (no gRPC)
 // Decision: Used by in-process worker in DEV_MODE
 //
-// This implementation provides the same interface as GrpcWorkerAdapters
-// but with direct access to the storage backend, domains, and infra helpers.
+// Implements GrpcWorkerAdapters' interface using storage, domains, and infra directly.
 use crate::kernel_imports::{
-    Caller, ContentPart, EgressRequest, EgressRequestKind, EgressService, EventData,
-    RuntimeMessage, RuntimeMessageRole, ToolResultContentPart, UtilityLlmService,
-    contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
-    contracts::tool_types::ToolDefinition, resolve_runtime_capabilities,
+    Caller, EgressRequest, EgressRequestKind, EgressService, RuntimeMessage, UtilityLlmService,
+    everruns_contracts::driver_registry::DriverRegistry, everruns_contracts::provider::DriverId,
+    everruns_contracts::tool_types::ToolDefinition, resolve_runtime_capabilities,
 };
 use crate::kernel_imports::{
     connection_services::ProviderCredentialStore, contracts::model_spec::ModelSpec,
@@ -801,8 +801,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to load messages")
             })?;
 
-        let messages: Vec<RuntimeMessage> =
-            events.into_iter().filter_map(event_to_message).collect();
+        let messages: Vec<RuntimeMessage> = events
+            .into_iter()
+            .filter_map(message_projection::event_to_message)
+            .collect();
         Ok(messages)
     }
 
@@ -856,6 +858,35 @@ impl WorkerAdapters for DirectWorkerAdapters {
             })?;
 
         Ok(resolved.map(|r| ModelSpec::on(r.provider_id, r.model_id)))
+    }
+
+    async fn get_provider_config_for_session(
+        &self,
+        org_id: i64,
+        provider: &everruns_contracts::ProviderKey,
+        session: SessionId,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        let resolved = self
+            .provider_resolver
+            .resolve_runtime_provider_config_for_session(
+                org_id,
+                provider.as_str(),
+                Some(session.uuid()),
+            )
+            .await
+            .map_err(|_| {
+                store_error("Provider is unavailable for this session's runtime identity")
+            })?;
+        Ok(resolved.map(|value| {
+            let mut config = everruns_contracts::driver_registry::ProviderConfig::for_provider(
+                provider.clone(),
+                string_to_provider_type(&value.provider_type),
+            );
+            config.api_key = value.api_key;
+            config.base_url = value.base_url;
+            config.request_options = value.request_options;
+            config
+        }))
     }
 
     async fn get_provider_config(
@@ -1965,37 +1996,6 @@ fn string_to_provider_type(s: &str) -> DriverId {
     // FromStr is infallible: unknown ids become External providers, preserving
     // the id so embedder-defined providers resolve correctly.
     s.to_lowercase().parse().unwrap_or_else(|_| unreachable!())
-}
-
-/// Convert an event to a message
-fn event_to_message(event: Event) -> Option<RuntimeMessage> {
-    match &event.data {
-        EventData::InputMessage(data) => Some(data.message.clone()),
-        EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
-        EventData::ToolCompleted(data) => {
-            let result_json = data
-                .result
-                .as_ref()
-                .and_then(|r| serde_json::to_value(r).ok());
-            let content = vec![ContentPart::ToolResult(ToolResultContentPart {
-                tool_call_id: data.tool_call_id.clone(),
-                result: result_json,
-                error: data.error.clone(),
-            })];
-            Some(RuntimeMessage {
-                id: MessageId::from_uuid(event.id.uuid()),
-                role: RuntimeMessageRole::ToolResult,
-                content,
-                phase: None,
-                phase_source: None,
-                controls: None,
-                metadata: None,
-                external_actor: None,
-                created_at: event.ts,
-            })
-        }
-        _ => None,
-    }
 }
 
 // =============================================================================

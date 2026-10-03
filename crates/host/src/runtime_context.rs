@@ -298,7 +298,13 @@ async fn assemble_from_snapshot(
     let controls_model_id = latest_model_override(&messages);
     let (model, resolved_model_id) =
         resolve_model(provider_store, controls_model_id, snapshot.default_model_id).await?;
-    let mut model = resolve_model_execution(provider_store, driver_registry, model).await?;
+    let mut model = resolve_model_execution_for_session(
+        provider_store,
+        driver_registry,
+        model,
+        Some(snapshot.session_id),
+    )
+    .await?;
     let provider_managed_reduction_option = allow_provider_managed_reduction
         .then(|| {
             provider_managed_reduction_budget(
@@ -398,15 +404,29 @@ pub(crate) async fn resolve_model_execution(
     driver_registry: &DriverRegistry,
     spec: ModelSpec,
 ) -> Result<ResolvedModelExecution> {
-    let config = provider_store
-        .get_provider_config(&spec.provider)
-        .await?
-        .unwrap_or_else(|| {
-            everruns_contracts::driver_registry::ProviderConfig::for_provider(
-                spec.provider.clone(),
-                DriverId::external(spec.provider.as_str()),
-            )
-        });
+    resolve_model_execution_for_session(provider_store, driver_registry, spec, None).await
+}
+
+async fn resolve_model_execution_for_session(
+    provider_store: &dyn ProviderStore,
+    driver_registry: &DriverRegistry,
+    spec: ModelSpec,
+    session: Option<SessionId>,
+) -> Result<ResolvedModelExecution> {
+    let config = match session {
+        Some(session) => {
+            provider_store
+                .get_provider_config_for_session(&spec.provider, session)
+                .await?
+        }
+        None => provider_store.get_provider_config(&spec.provider).await?,
+    }
+    .unwrap_or_else(|| {
+        everruns_contracts::driver_registry::ProviderConfig::for_provider(
+            spec.provider.clone(),
+            DriverId::external(spec.provider.as_str()),
+        )
+    });
     let provider_type = config.provider_type.clone();
     let driver: Arc<dyn ChatDriver> = Arc::from(driver_registry.create_chat_driver(&config)?);
     Ok(ResolvedModelExecution {

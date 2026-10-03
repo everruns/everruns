@@ -1,3 +1,6 @@
+mod status_error;
+use status_error::grpc_status_to_error;
+
 // gRPC-backed adapters for core traits
 //
 // Decision: Workers communicate with control plane via gRPC for all operations
@@ -60,43 +63,6 @@ const COMMAND_API_VERSION_V1: &str = "v1";
 /// Preserves the semantic meaning of gRPC status codes so that callers
 /// (e.g. retry logic in the durable engine) can distinguish transient
 /// transport errors from permanent domain errors.
-fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
-    let msg = status.message().to_string();
-    match status.code() {
-        tonic::Code::NotFound => {
-            // Map to specific "not found" variants when possible
-            if msg.contains("Session") {
-                AgentLoopError::store(format!("Session not found: {msg}"))
-            } else if msg.contains("Agent") {
-                AgentLoopError::store(format!("Agent not found: {msg}"))
-            } else if msg.contains("Harness") {
-                AgentLoopError::store(format!("Harness not found: {msg}"))
-            } else {
-                AgentLoopError::store(format!("Not found: {msg}"))
-            }
-        }
-        tonic::Code::InvalidArgument => AgentLoopError::config(format!("Invalid argument: {msg}")),
-        tonic::Code::Unavailable => AgentLoopError::store(format!("Service unavailable: {msg}")),
-        tonic::Code::ResourceExhausted => {
-            let msg_lower = msg.to_ascii_lowercase();
-            if msg_lower.contains("message")
-                || msg_lower.contains("payload")
-                || msg_lower.contains("size")
-                || msg_lower.contains("too large")
-                || msg_lower.contains("context length")
-            {
-                AgentLoopError::request_too_large(msg)
-            } else {
-                AgentLoopError::store(format!("Resource exhausted: {msg}"))
-            }
-        }
-        tonic::Code::Unauthenticated | tonic::Code::PermissionDenied => {
-            AgentLoopError::config(format!("Auth error: {msg}"))
-        }
-        _ => AgentLoopError::store(format!("gRPC error ({}): {msg}", status.code())),
-    }
-}
-
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
 fn grpc_missing_field(field: &str) -> AgentLoopError {
     AgentLoopError::store(format!("gRPC response error: {field}"))
@@ -325,6 +291,7 @@ impl GrpcClient {
             org_id,
             provider_type: provider_type.to_string(),
             provider_id: String::new(),
+            session_id: None,
         };
 
         let mut client = self.inner.lock().await;
@@ -349,10 +316,20 @@ impl GrpcClient {
         org_id: i64,
         provider_id: &str,
     ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        self.get_provider_config_for_session(org_id, provider_id, None)
+            .await
+    }
+    pub async fn get_provider_config_for_session(
+        &self,
+        org_id: i64,
+        provider_id: &str,
+        session_id: Option<SessionId>,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         let request = proto::GetDefaultProviderCredentialsRequest {
             org_id,
             provider_type: String::new(),
             provider_id: provider_id.to_string(),
+            session_id: session_id.map(|id| uuid_to_proto(id.uuid())),
         };
         let mut client = self.inner.lock().await;
         let response = client
@@ -1805,6 +1782,16 @@ impl ProviderStore for GrpcOrgAdapter {
             }
             None => Ok(None),
         }
+    }
+
+    async fn get_provider_config_for_session(
+        &self,
+        provider: &everruns_contracts::ProviderKey,
+        session: SessionId,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        self.client
+            .get_provider_config_for_session(self.org_id, provider.as_str(), Some(session))
+            .await
     }
 
     async fn get_provider_config(

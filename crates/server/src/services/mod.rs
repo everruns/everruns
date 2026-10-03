@@ -1,3 +1,4 @@
+pub mod chatgpt;
 // Cross-cutting infrastructure modules.
 //
 // Domain-owned business logic lives under `crate::domains::*`. The modules

@@ -97,6 +97,16 @@ impl ProviderService {
                 serde_json::to_value(request_options)?,
             );
         }
+        if req.provider_type.as_str() == "chatgpt" {
+            anyhow::ensure!(
+                req.api_key.is_none() && req.credentials.is_none() && req.base_url.is_none(),
+                "ChatGPT credentials must be connected through sign-in"
+            );
+            settings_map.insert(
+                "chatgpt".into(),
+                crate::services::chatgpt::initial_settings(self.db.clone(), caller).await?,
+            );
+        }
         let settings =
             (!settings_map.is_empty()).then_some(serde_json::Value::Object(settings_map));
 
@@ -130,7 +140,10 @@ impl ProviderService {
                     "Failed to read llm provider"
                 );
             })?;
-        Ok(row.as_ref().map(Self::row_to_provider))
+        Ok(row
+            .as_ref()
+            .filter(|row| crate::services::chatgpt::visible(&row.settings, caller))
+            .map(Self::row_to_provider))
     }
 
     pub async fn list(&self, caller: &Caller) -> Result<Vec<Provider>> {
@@ -147,7 +160,11 @@ impl ProviderService {
                     "Failed to list llm providers"
                 );
             })?;
-        Ok(rows.iter().map(Self::row_to_provider).collect())
+        Ok(rows
+            .iter()
+            .filter(|row| crate::services::chatgpt::visible(&row.settings, caller))
+            .map(Self::row_to_provider)
+            .collect())
     }
 
     pub async fn update(
@@ -160,6 +177,26 @@ impl ProviderService {
             Some(row) => row,
             None => return Ok(None),
         };
+
+        anyhow::ensure!(
+            crate::services::chatgpt::visible(&existing.settings, caller),
+            "Provider not found"
+        );
+        if existing.provider_type == "chatgpt"
+            || req
+                .provider_type
+                .as_ref()
+                .is_some_and(|t| t.as_str() == "chatgpt")
+        {
+            anyhow::ensure!(
+                req.api_key.is_none()
+                    && req.credentials.is_none()
+                    && req.provider_type.is_none()
+                    && req.base_url.is_none()
+                    && req.request_options.is_none(),
+                "ChatGPT connection authentication and endpoint are managed by sign-in"
+            );
+        }
 
         // EVE-810 / TM-AUTHZ: a host-managed provider is owned by the embedder.
         // Refuse tenant edits (credentials, base_url, status) with a 403 so a
@@ -250,6 +287,22 @@ impl ProviderService {
             .into());
         }
 
+        if let Some(row) = self.db.get_provider(caller.org_id, id).await? {
+            anyhow::ensure!(
+                crate::services::chatgpt::visible(&row.settings, caller),
+                "Provider not found"
+            );
+            if row.provider_type == "chatgpt" {
+                crate::api::chatgpt::cancel_attempt(caller.org_id, row.id).await;
+                crate::services::chatgpt::disconnect(&crate::services::chatgpt::store(
+                    self.db.clone(),
+                    self.encryption.clone(),
+                    caller.org_id,
+                    row.id,
+                )?)
+                .await?;
+            }
+        }
         let deleted = self.db.delete_provider(caller.org_id, id).await?;
         if deleted {
             self.invalidate_resolver_cache(caller.org_id).await;
@@ -504,6 +557,11 @@ fn render_trace_template_for_validation(template: &str) -> Result<String> {
 
 pub(crate) fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
     let raw = provider_type.as_str();
+    if raw == "openai-codex" {
+        return Err(
+            BadRequestError::new("Use a personal ChatGPT connection for plan sign-in").into(),
+        );
+    }
     if raw.trim().is_empty() {
         return Err(BadRequestError::new("Provider type cannot be empty").into());
     }
@@ -836,6 +894,13 @@ mod tests {
     #[test]
     fn provider_type_accepts_external_id() {
         assert!(validate_provider_type(&DriverId::external("custom-driver")).is_ok());
+    }
+
+    #[test]
+    fn legacy_codex_cannot_bypass_personal_plan_connections() {
+        let err = validate_provider_type(&DriverId::external("openai-codex")).unwrap_err();
+        assert!(err.downcast_ref::<BadRequestError>().is_some());
+        assert!(err.to_string().contains("personal ChatGPT connection"));
     }
 
     #[test]

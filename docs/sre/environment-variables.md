@@ -893,3 +893,9 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 | `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Tool argument export mode: `full`, `redacted`, `none` |
 | `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Tool result export mode: `full`, `summary`, `redacted`, `none` |
 | `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Print full outbound Braintrust payload JSON to local debug logs |
+
+## FEATURE_CHATGPT_PLAN
+
+Enable personal ChatGPT plan connections in self-hosted deployments. Defaults to
+`false`; each organization must also opt in. Requires a stable
+`SECRETS_ENCRYPTION_KEY`. See [ChatGPT plan](/features/chatgpt/).

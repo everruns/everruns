@@ -2,6 +2,7 @@
 
 import { EntityStatus } from "@/components/ui/entity-status";
 import Link from "next/link";
+import { useChatGptConnection } from "@/hooks/use-chatgpt-connection";
 import { Button } from "@/components/ui/button";
 import { Card, CardActions, CardContent, CardHeader } from "@/components/ui/card";
 import { EntityCard, EntityCardDetail, EntityCardFooter } from "@/components/ui/entity-card";
@@ -25,7 +26,20 @@ type ProviderModelCounts = {
   enabled: number;
 };
 
-export function ProviderCard({
+type ProviderCardProps = Omit<React.ComponentProps<typeof ProviderCardContent>, "connection">;
+export function ProviderCard(props: ProviderCardProps) {
+  return props.provider.provider_type === "chatgpt" ? (
+    <PersonalProviderCard {...props} />
+  ) : (
+    <ProviderCardContent {...props} />
+  );
+}
+function PersonalProviderCard(props: ProviderCardProps) {
+  const { data: connection } = useChatGptConnection(props.provider.id);
+  return <ProviderCardContent {...props} connection={connection} />;
+}
+
+function ProviderCardContent({
   provider,
   onDelete,
   onSetApiKey,
@@ -33,6 +47,7 @@ export function ProviderCard({
   isSyncing,
   modelCounts,
   modelsLoading,
+  connection,
 }: {
   provider: Provider;
   onDelete: (id: string) => void;
@@ -41,7 +56,9 @@ export function ProviderCard({
   isSyncing: boolean;
   modelCounts: ProviderModelCounts;
   modelsLoading: boolean;
+  connection?: import("@/lib/api/chatgpt").ChatGptConnection;
 }) {
+  const personal = provider.provider_type === "chatgpt";
   const canSync =
     provider.api_key_set && (!provider.base_url || isOpenRouterUrl(provider.base_url));
   const modelsHref = `/models?provider=${encodeURIComponent(provider.id)}`;
@@ -64,10 +81,19 @@ export function ProviderCard({
   ) : null;
 
   const keyButton = canEdit ? (
-    <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
-      <Key className="icon-sharp h-4 w-4 mr-1" />
-      {keyActionLabel}
-    </Button>
+    personal ? (
+      <Link
+        href={`/settings/providers/${provider.id}`}
+        className="inline-flex h-8 items-center border px-3 text-xs font-medium hover:bg-muted"
+      >
+        Manage account
+      </Link>
+    ) : (
+      <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
+        <Key className="icon-sharp h-4 w-4 mr-1" />
+        {keyActionLabel}
+      </Button>
+    )
   ) : null;
 
   // Highest-priority action stays visible at every card width; the rest collapse
@@ -143,7 +169,7 @@ export function ProviderCard({
                       </DropdownMenuTrigger>
                       <DropdownMenuPositioner align="end">
                         <DropdownMenuContent>
-                          {hasOverflow && (
+                          {hasOverflow && !personal && (
                             <DropdownMenuItem onClick={() => onSetApiKey(provider)}>
                               <Key />
                               {keyActionLabel}
@@ -175,9 +201,28 @@ export function ProviderCard({
             </span>
           </EntityCardDetail>
         )}
-        <EntityCardDetail icon={<Key className="icon-sharp size-3.5" />} label="API key">
-          <span className="truncate">{provider.api_key_set ? "Configured" : "Not set"}</span>
+        <EntityCardDetail
+          icon={<Key className="icon-sharp size-3.5" />}
+          label={personal ? "Sign-in" : "API key"}
+        >
+          <span className="truncate">
+            {personal
+              ? (connection?.email ?? (provider.api_key_set ? "Connected" : "Not connected"))
+              : provider.api_key_set
+                ? "Configured"
+                : "Not set"}
+          </span>
         </EntityCardDetail>
+        {personal && (
+          <EntityCardDetail label="Owner" icon={<Link2 className="icon-sharp size-3.5" />}>
+            <span>
+              You{" "}
+              <Badge variant="outline" className="ml-2">
+                Personal
+              </Badge>
+            </span>
+          </EntityCardDetail>
+        )}
         <EntityCardDetail icon={<Boxes className="icon-sharp size-3.5" />} label="Models">
           {modelsLoading ? (
             <Skeleton className="h-4 w-40" />
