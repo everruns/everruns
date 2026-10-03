@@ -12,6 +12,9 @@
 // pooled keep-alive connection driven by another test's runtime could otherwise
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 
+use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
+use everruns_contracts::model::ReasoningEffort;
+use everruns_contracts::{BearerAuth, Provider};
 use everruns_drivers::openrouter::OpenRouterChatDriver;
 use everruns_drivers::openrouter::options::{
     OpenRouterDataCollection, OpenRouterMaxPrice, OpenRouterPluginConfig,
@@ -20,9 +23,6 @@ use everruns_drivers::openrouter::options::{
     OpenRouterServerToolKind, OpenRouterSortPartition, OpenRouterWebSearchPlugin,
     insert_routing_option,
 };
-use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
-use everruns_contracts::model::ReasoningEffort;
-use everruns_contracts::{BearerAuth, Provider};
 use serde_json::json;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};

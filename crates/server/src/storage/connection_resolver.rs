@@ -10,14 +10,13 @@
 // Legacy OAuth connections: decrypts the stored token.
 
 use crate::kernel_imports::{
-    EgressService, McpServerAuthMode, everruns_contracts::error::AgentLoopError,
-    everruns_contracts::error::Result,
+    EgressService, McpServerAuthMode, contracts::error::AgentLoopError, contracts::error::Result,
 };
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Duration, Utc};
-use everruns_core::connection_services::UserConnectionResolver;
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::connection_services::UserConnectionResolver;
 use moka::sync::Cache;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;

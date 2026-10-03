@@ -4,11 +4,10 @@
 // has a single import path.
 
 use crate::kernel_imports::{
-    AgentCapabilityConfig, InitialFile, ScopedMcpServers,
-    everruns_contracts::tool_types::ToolDefinition,
+    AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use everruns_platform::{AgentStatus, EnvironmentSet};
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
+use everruns_platform::{AgentStatus, EnvironmentSet};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 

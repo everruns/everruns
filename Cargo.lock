@@ -2863,7 +2863,6 @@ dependencies = [
  "chrono",
  "everruns-contracts",
  "everruns-core",
- "everruns-platform",
  "futures-util",
  "reqwest",
  "rustls",

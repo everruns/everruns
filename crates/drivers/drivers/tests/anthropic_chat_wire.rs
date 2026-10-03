@@ -16,7 +16,6 @@
 // pooled keep-alive connection driven by another test's runtime could otherwise
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 
-use everruns_drivers::anthropic::AnthropicChatDriver;
 use everruns_contracts::driver_registry::{
     CacheDiagnosticsConfig, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream,
     LlmStreamEvent, Message, MessageRole,
@@ -24,6 +23,7 @@ use everruns_contracts::driver_registry::{
 use everruns_contracts::model::ReasoningEffort;
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::{Provider, StaticHeaderAuth};
+use everruns_drivers::anthropic::AnthropicChatDriver;
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

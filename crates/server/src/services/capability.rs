@@ -21,7 +21,9 @@ use crate::domains::mcp_servers::McpServerService;
 use crate::domains::skills::queries as skill_q;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
-use everruns_contracts::capability::{CapabilityId, is_plugin_capability, parse_plugin_capability_id};
+use everruns_contracts::capability::{
+    CapabilityId, is_plugin_capability, parse_plugin_capability_id,
+};
 use everruns_core::capabilities::{Capability, CapabilityRegistry, SkillCapabilityIdExt};
 use everruns_core::{
     Caller, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition, RiskLevel, Skill,
@@ -647,7 +649,8 @@ impl CapabilityService {
         // Separate built-in capabilities from MCP capabilities
         // Skill capabilities (skill:{uuid}) are mount-only; skip in preview.
         let mut mcp_cap_ids: Vec<uuid::Uuid> = Vec::new();
-        let mut builtin_cap_configs: Vec<everruns_contracts::capability::CapabilityRef> = Vec::new();
+        let mut builtin_cap_configs: Vec<everruns_contracts::capability::CapabilityRef> =
+            Vec::new();
 
         for cap_config in &capability_configs {
             let cap_ref = &cap_config.typed_id();
@@ -738,8 +741,8 @@ mod tests {
         CreateMcpServerRow, CreatePluginInstallRow, UpdateMcpServerTools,
     };
     use everruns_contracts::capability::CapabilityRef;
-    use everruns_core::McpServerAuthMode;
     use everruns_contracts::typed_id::{PluginInstallId, SkillId};
+    use everruns_core::McpServerAuthMode;
 
     fn make_service() -> CapabilityService {
         let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));

@@ -17,11 +17,11 @@
 // pooled keep-alive connection driven by another test's runtime could otherwise
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 
-use everruns_drivers::gemini::GeminiChatDriver;
 use everruns_contracts::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
 use everruns_contracts::{Provider, StaticHeaderAuth};
+use everruns_drivers::gemini::GeminiChatDriver;
 use futures::StreamExt;
 use wiremock::matchers::{method, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};

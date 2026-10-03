@@ -13,8 +13,8 @@ use crate::domains::session_files::limits::{QuotaLimits, check_write_quota as qu
 use crate::domains::session_files::memory_mounts::{MemoryMount, MemoryMountRouter};
 use crate::kernel_imports::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepResult, GrepSearchResult, MountAccess,
-    MountEntry, MountPoint, MountSource, SessionFile, everruns_contracts::error::AgentLoopError,
-    everruns_contracts::typed_id::SessionId, session_files::SessionFileSystem,
+    MountEntry, MountPoint, MountSource, SessionFile, contracts::error::AgentLoopError,
+    contracts::typed_id::SessionId, session_files::SessionFileSystem,
 };
 use crate::storage::{
     StorageBackend,

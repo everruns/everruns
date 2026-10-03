@@ -482,6 +482,7 @@ dependencies = [
  "base64",
  "everruns-contracts",
  "everruns-core",
+ "globset",
  "hex",
  "serde_json",
  "sha2",
