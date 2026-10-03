@@ -106,7 +106,7 @@ mod tests {
 
     use async_trait::async_trait;
     use everruns_core::InitialFile;
-    use everruns_host::{InMemorySessionFileStore, InMemorySessionStorageStore};
+    use everruns_core::host::{InMemorySessionFileStore, InMemorySessionStorageStore};
 
     use super::*;
     use crate::session_sandbox::{

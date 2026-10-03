@@ -9,11 +9,17 @@ pub use a2a_wire::*;
 use crate::network_access::NetworkAccessList;
 use a2a_client::A2AClientFactory;
 use a2a_client::agent_card::AgentCardResolver;
+use a2a_client::jsonrpc::JsonRpcTransportFactory;
 use a2a_client::middleware::CallInterceptor;
+use a2a_client::rest::RestTransportFactory;
 use a2a_client::transport::ServiceParams;
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+mod network;
+use network::hardened_a2a_http_client;
+pub use network::{DnsResolveFuture, DnsResolver};
 
 /// Outbound protocol client; delegation persistence remains a host concern.
 pub type Client = a2a_client::A2AClient<Box<dyn a2a_client::Transport>>;
@@ -51,27 +57,47 @@ pub fn enforce_interface_policy(
     Ok(())
 }
 
-/// Discover an AgentCard from a host-validated URL under the runtime policy.
+/// Discover an AgentCard with no redirects and public-address DNS pinning.
+///
+/// The host must restrict `allow_local` to its development grade. A supplied
+/// resolver controls DNS lookup; its answers still pass the same public-IP checks.
 pub async fn discover_agent_card(
     base_url: &str,
     acl: Option<&NetworkAccessList>,
+    allow_local: bool,
+    resolver: Option<&DnsResolver>,
 ) -> std::result::Result<AgentCard, String> {
     enforce_discovery_policy(base_url, acl)?;
-    AgentCardResolver::new(None)
+    let http = hardened_a2a_http_client(&[base_url], allow_local, resolver).await?;
+    AgentCardResolver::new(Some(http))
         .resolve(base_url)
         .await
         .map_err(|error| format!("Failed to resolve A2A AgentCard: {error}"))
 }
 
-/// Construct a protocol client from a host-validated card and injected policy.
+/// Construct pinned, no-redirect JSON-RPC and REST transports for a validated card.
+///
+/// Every interface is checked against `acl`. The host must restrict `allow_local`
+/// to its development grade; configured headers and binding order are preserved.
 pub async fn client_for_card(
     card: &AgentCard,
     preferred_binding: Option<&str>,
     headers: &BTreeMap<String, String>,
     acl: Option<&NetworkAccessList>,
+    allow_local: bool,
+    resolver: Option<&DnsResolver>,
 ) -> std::result::Result<Client, String> {
     enforce_interface_policy(card, acl)?;
-    let mut builder = A2AClientFactory::builder();
+    let interface_urls: Vec<&str> = card
+        .supported_interfaces
+        .iter()
+        .map(|iface| iface.url.as_str())
+        .collect();
+    let http = hardened_a2a_http_client(&interface_urls, allow_local, resolver).await?;
+    let mut builder = A2AClientFactory::builder()
+        .no_defaults()
+        .register(Arc::new(JsonRpcTransportFactory::new(Some(http.clone()))))
+        .register(Arc::new(RestTransportFactory::new(Some(http))));
     if let Some(binding) = preferred_binding {
         builder = builder.preferred_bindings(vec![binding.to_owned()]);
     }

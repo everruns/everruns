@@ -696,12 +696,12 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         use std::sync::Mutex;
 
+        use crate::session_files::SessionFileSystem;
+        use crate::tools::Tool;
         use async_trait::async_trait;
         use everruns_contracts::typed_id::SessionId;
-        use everruns_core::session_files::SessionFileSystem;
-        use everruns_core::tools::Tool;
 
-        use crate::RealDiskFileStore;
+        use crate::host::RealDiskFileStore;
 
         struct RecordingGate {
             allow: bool,

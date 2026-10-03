@@ -871,8 +871,8 @@ impl Tool for EnvironmentGrepTool {
 mod tests {
     use std::sync::Arc;
 
+    use everruns_core::host::InMemorySessionStorageStore;
     use everruns_core::tools::Tool;
-    use everruns_host::InMemorySessionStorageStore;
 
     use super::*;
 
