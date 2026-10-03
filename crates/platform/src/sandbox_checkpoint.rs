@@ -46,7 +46,7 @@ impl SandboxCheckpointKind {
 }
 
 /// Identity and fencing state of a logical sandbox.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SandboxRef {
     pub id: Uuid,
     /// Current incarnation. Writes carry the generation they were issued
@@ -55,7 +55,7 @@ pub struct SandboxRef {
 }
 
 /// A recorded workspace revision.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SandboxCheckpoint {
     pub id: Uuid,
     pub sandbox_id: Uuid,
@@ -71,7 +71,7 @@ pub struct SandboxCheckpoint {
 }
 
 /// A checkpoint upload that has completed but is not yet authoritative.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewSandboxCheckpoint {
     pub sandbox_id: Uuid,
     pub generation: i64,

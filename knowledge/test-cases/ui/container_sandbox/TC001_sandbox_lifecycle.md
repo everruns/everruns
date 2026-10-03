@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: Container Sandbox - Sandbox Lifecycle"
-description: "Verify that the Coding (Container) harness creates a container sandbox, executes a command, and removes the sandbox on request."
+description: "Verify that a custom container harness creates a container sandbox, executes a command, and removes the sandbox on request."
 tags:
   - everruns
   - test-case
@@ -12,7 +12,8 @@ tags:
 
 ## Description
 
-Verify that the Coding (Container) harness creates a container sandbox, executes a command, and removes the sandbox on request.
+Verify that a custom harness with the Container Sandbox capability creates a
+container sandbox, executes a command, and removes the sandbox on request.
 
 ## Preconditions
 
@@ -29,13 +30,13 @@ Verify that the Coding (Container) harness creates a container sandbox, executes
 
 | Field | Value |
 |-------|-------|
-| Harness | Coding (Container) (built-in, name: `coding-container`) |
+| Harness | Custom harness with `container_sandbox` and `github_scout` |
 | First Message | Create a sandbox and calculate the result of 123 * 456. Do NOT remove the sandbox after - I want to keep it running. |
 | Cleanup Message | Remove the sandbox |
 
 ## Steps
 
-1. Create a new session using the **Coding (Container)** harness
+1. Create a custom harness with `container_sandbox` and `github_scout`, then create a session using it
 2. Send the message: `Create a sandbox and calculate the result of 123 * 456. Do NOT remove the sandbox after - I want to keep it running.`
 3. Wait for the agent to create a sandbox (tool call: `sandbox_create`)
 4. Wait for the agent to execute the calculation (tool call: `sandbox_exec`)
@@ -46,7 +47,7 @@ Verify that the Coding (Container) harness creates a container sandbox, executes
 
 ## Notes
 
-- The Coding (Container) harness system prompt says "Always delete sandboxes when done." The first message must instruct the agent **not** to remove the sandbox to test explicit removal as a separate step.
+- Tell the custom harness to remove containers when work is complete. The first message must explicitly keep it running so removal can be tested separately.
 - **DEV_MODE limitation**: Leased resource tracking requires PostgreSQL. Use `just start-all` for reliable testing.
 - Docker must be accessible from the server process. If running in a container, ensure Docker socket is mounted or a remote Docker host is configured.
 

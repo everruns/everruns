@@ -8357,6 +8357,24 @@ export interface components {
       /** Format: int64 */
       idle_after_seconds?: number;
     };
+    /** @description Non-secret lifecycle details for a managed Environment incarnation. */
+    EnvironmentLifecycleData: {
+      /** @description Replacement physical resource. Present only on `environment.recovered`. */
+      current_instance_id?: string | null;
+      /** @description Durable logical Environment identifier, when hosted persistence is available. */
+      environment_id?: string | null;
+      /**
+       * Format: int64
+       * @description Current incarnation fence, when hosted persistence is available.
+       */
+      generation?: number | null;
+      /** @description Physical provider resource that was lost or replaced. */
+      previous_instance_id: string;
+      /** @description Provider process state is ephemeral and is not restored across replacement. */
+      process_state_lost: boolean;
+      /** @description Compute provider selected by the Environment profile. */
+      provider: string;
+    };
     /** @description Outbound network policy the target must actually enforce. */
     EnvironmentNetworkPolicy:
       | {
@@ -8629,6 +8647,8 @@ export interface components {
       | components["schemas"]["SessionIdledData"]
       | components["schemas"]["SessionTitleUpdatedData"]
       | components["schemas"]["SessionModelChangedData"]
+      | components["schemas"]["EnvironmentLifecycleData"]
+      | components["schemas"]["EnvironmentLifecycleData"]
       | components["schemas"]["SessionTaskEventData"]
       | components["schemas"]["SessionTaskEventData"]
       | components["schemas"]["TaskMessageEventData"]

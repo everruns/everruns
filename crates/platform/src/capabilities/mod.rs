@@ -14,6 +14,7 @@ pub mod citation_retrieval;
 pub mod citation_verification;
 pub mod data_knowledge;
 pub mod delegation_result;
+mod environment_tools;
 pub mod knowledge_base;
 pub mod knowledge_index;
 pub mod memory;

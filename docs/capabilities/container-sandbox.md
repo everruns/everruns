@@ -26,10 +26,9 @@ turns it on while `FEATURE_CONTAINER_SANDBOX` is unset.
 2. Set `CONTAINER_SANDBOX_DOCKER_HOST` to its `http://` or `https://` URL, on
    the server and every worker.
 3. Set `FEATURE_CONTAINER_SANDBOX=true` in the same places.
-4. Add `container_sandbox` to an agent or harness. The `coding-container`
-   harness example composes it with [GitHub Scout](/capabilities/github-scout/)
-   and the [Generic](/built-ins/harnesses/generic/) capabilities, and is
-   offered only when the capability is registered.
+4. Add `container_sandbox` to a custom agent or harness. For coding work,
+   inherit [Generic](/built-ins/harnesses/generic/) and optionally add
+   [GitHub Scout](/capabilities/github-scout/).
 
 Without `CONTAINER_SANDBOX_DOCKER_HOST` the client defaults to
 `unix:///var/run/docker.sock`. The client cannot use a Unix socket yet, so every

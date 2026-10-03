@@ -4,7 +4,7 @@
 // Decision: Adoption is handled by `POST /v1/harnesses/import?from-example={name}`
 // Decision: Examples are identified by their `name` (slug).
 // Decision: Examples are filtered at request time by capability registration so
-//   that capability-gated harnesses (e.g. `coding-container`) only appear when
+//   that capability-gated harnesses only appear when
 //   the corresponding capability plugin is registered for the deployment.
 
 use crate::auth::{AuthState, ResolvedOrg};
@@ -136,7 +136,7 @@ mod tests {
             .iter()
             .map(|e| e.definition.name.clone())
             .collect();
-        for expected in ["coding-daytona", "coding-container", "data-analyst"] {
+        for expected in ["coding", "data-analyst"] {
             assert!(
                 names.iter().any(|n| n == expected),
                 "expected {expected} in harness examples catalogue"

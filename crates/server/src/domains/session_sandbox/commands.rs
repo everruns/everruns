@@ -330,7 +330,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
-            content: &str,
+            content: &[u8],
         ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxWriteFileResponse {
                 path: path.to_string(),

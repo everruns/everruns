@@ -356,8 +356,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     /// Logical environment state and checkpoint persistence (EVE-870).
-    /// Remote workers retain the compatibility secret representation until a
-    /// control-plane RPC can implement this composite store.
+    /// Hosted workers route this composite store through the control plane;
+    /// portable Framework hosts may leave it absent and use compatibility
+    /// session storage.
     fn sandbox_persistence_store(
         &self,
     ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {

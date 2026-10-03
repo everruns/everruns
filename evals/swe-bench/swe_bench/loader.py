@@ -151,7 +151,7 @@ def main():
     parser = argparse.ArgumentParser(description="Load SWE-bench Lite into Everruns evals")
     parser.add_argument("--base-url", default=None, help="Everruns API base URL")
     parser.add_argument("--api-key", default=None, help="Everruns API key")
-    parser.add_argument("--harness", default="coding-daytona", help="Harness name for sessions")
+    parser.add_argument("--harness", default="coding", help="Harness name for sessions")
     parser.add_argument("--name", default=None, help="Eval name")
     parser.add_argument("--limit", type=int, default=None, help="Max instances to load")
     parser.add_argument("--integration", action="store_true", help="Load only 2 integration test instances")

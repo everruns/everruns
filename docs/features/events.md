@@ -19,6 +19,7 @@ For *why* the platform is shaped this way, see [Events as the primary store](/ex
 | **Atom** | `reason.*`, `act.*`, `tool.*` | Internal execution phases |
 | **LLM** | `llm.generation` | Full LLM API call details |
 | **Session** | `session.started`, `session.activated`, `session.idled`, `session.model.changed` | Session state changes |
+| **Environment** | `environment.instance_lost`, `environment.recovered` | Managed compute replacement and durable-workspace recovery |
 | **Subagent** | `subagent.*` | Subagent lifecycle |
 
 ## Event structure

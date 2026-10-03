@@ -816,6 +816,28 @@ fn representative_event_payloads_preserve_wire_identity() {
             .into(),
         ),
         (
+            "environment.instance_lost",
+            EventData::EnvironmentInstanceLost(EnvironmentLifecycleData {
+                environment_id: Some("environment-1".to_string()),
+                provider: "daytona".to_string(),
+                previous_instance_id: "physical-1".to_string(),
+                current_instance_id: None,
+                generation: Some(1),
+                process_state_lost: true,
+            }),
+        ),
+        (
+            "environment.recovered",
+            EventData::EnvironmentRecovered(EnvironmentLifecycleData {
+                environment_id: Some("environment-1".to_string()),
+                provider: "daytona".to_string(),
+                previous_instance_id: "physical-1".to_string(),
+                current_instance_id: Some("physical-2".to_string()),
+                generation: Some(2),
+                process_state_lost: true,
+            }),
+        ),
+        (
             "tool.started",
             ToolStartedData {
                 tool_call: ToolCall {

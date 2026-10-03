@@ -11,7 +11,7 @@
 
 use everruns_platform::BuiltInHarnessDefinition;
 
-use super::{coding_container, coding_daytona, data_analyst};
+use super::{coding, data_analyst};
 
 /// A harness example wrapping a `BuiltInHarnessDefinition` with adoption
 /// metadata (dev gating).
@@ -33,13 +33,11 @@ impl HarnessExampleDef {
 
 /// Adoptable harness examples in display order.
 ///
-/// Each example is filtered at request time by capability registration so that
-/// `coding-container` (and any future feature-gated capability) only appears
-/// when the corresponding capability plugin is registered for the deployment.
+/// Each example is filtered at request time by capability registration, so an
+/// example only appears when its required plugins are available.
 pub fn harness_examples() -> Vec<HarnessExampleDef> {
     vec![
-        HarnessExampleDef::new(coding_daytona::definition()),
-        HarnessExampleDef::new(coding_container::definition()),
+        HarnessExampleDef::new(coding::definition()),
         HarnessExampleDef::new(data_analyst::definition()),
     ]
 }
@@ -55,7 +53,12 @@ pub fn find_harness_example(name: &str) -> Option<HarnessExampleDef> {
 /// are now opt-in examples. Used by reconciliation to release legacy
 /// `is_built_in = true` rows back to org ownership without breaking existing
 /// references.
-pub const LEGACY_BUILT_IN_NAMES: &[&str] = &["coding-container", "coding-daytona", "data-analyst"];
+pub const LEGACY_BUILT_IN_NAMES: &[&str] = &[
+    "coding-container",
+    "coding-daytona",
+    "coding-session-sandbox",
+    "data-analyst",
+];
 
 #[cfg(test)]
 mod tests {
@@ -87,16 +90,19 @@ mod tests {
     }
 
     #[test]
-    fn legacy_names_match_examples() {
-        let example_names: Vec<String> = harness_examples()
-            .iter()
-            .map(|e| e.definition.name.clone())
-            .collect();
-        for name in LEGACY_BUILT_IN_NAMES {
-            assert!(
-                example_names.iter().any(|n| n == name),
-                "legacy built-in {name} must be re-exposed as a harness example"
-            );
+    fn old_provider_specific_coding_names_remain_reconciliation_only() {
+        let example_names = harness_examples()
+            .into_iter()
+            .map(|example| example.definition.name)
+            .collect::<Vec<_>>();
+        assert!(example_names.iter().any(|name| name == "coding"));
+        for name in [
+            "coding-container",
+            "coding-daytona",
+            "coding-session-sandbox",
+        ] {
+            assert!(!example_names.iter().any(|example| example == name));
+            assert!(LEGACY_BUILT_IN_NAMES.contains(&name));
         }
     }
 
