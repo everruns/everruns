@@ -323,6 +323,14 @@ pub async fn initialize_org_harnesses_with_definitions(
         }
     }
 
+    if harnesses
+        .iter()
+        .any(|harness| harness.name == "platform-chat")
+        && db.consolidate_platform_chat(org_id).await?
+    {
+        result.updated += 1;
+    }
+
     sync_org_harness_settings_with_definitions(db, org_id, harnesses).await?;
 
     Ok(result)
