@@ -18,3 +18,4 @@ mod harnesses;
 mod providers_models;
 mod sessions;
 mod support;
+mod voice;
