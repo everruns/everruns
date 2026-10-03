@@ -2,68 +2,51 @@
 
 ## What this codebase does
 
-Everruns is a self-hostable durable agent runtime and management app. The Rust
-control plane (`crates/server`, `crates/core`, `crates/worker`, integrations)
-exposes Axum REST/SSE/MCP/app-channel endpoints backed by PostgreSQL or in-memory
-dev storage. The UI (`apps/ui`) is a Next.js app that talks to the backend under
-`/api`, manages auth/org state with React Query providers, and renders agent,
-session, tool-call, file, model, MCP, app, eval, budget, and settings workflows.
+Everruns is a multi-tenant agent runtime and control plane. Rust services expose the API and run durable agent work; a Next.js application supplies the administrative and chat UI.
+
+- Axum serves organization-scoped REST APIs, SSE event streams, authentication, public metadata, and published-agent protocols.
+- Public agent surfaces include AG-UI, A2A, FCP, public chat, generic webhooks, and Slack events/interactivity.
+- Stateless workers claim durable task rows through an internal gRPC service; NATS primarily carries wake-up notifications and session event streams.
+- Background schedulers handle session work, scheduled triggers, lease cleanup, task reaping, tool-result timeouts, retention, and reporting.
+- A Rust CLI and MCP endpoint expose control-plane operations, while runtime ToolRegistry and ToolContext objects expose capabilities to agents.
 
 ## Auth shape
 
-- `AuthUser`, `PlatformUser`, `ResolvedOrg`, `OrgContext`, `OrgAdmin`, and
-  `OrgOwner` are Axum extractors in `crates/server/src/auth/middleware.rs`.
-- `AuthState` wires `BuiltinAuthBackend`; credentials are JWT cookies, bearer
-  JWTs, or `evr_` API keys. `AUTH_MODE=none` intentionally returns an anonymous
-  owner/admin user for local/dev OSS mode.
-- Tenant scoping usually flows through `ResolvedOrg` and then `Caller`; API key
-  org selection is `X-Org-Id`, `everruns_org`, or single-org fallback.
-- UI auth is cookie-based: `AuthProvider` fetches `/v1/auth/config` and
-  `/v1/auth/me`; `OrgProvider` syncs `everruns_org` via
-  `/v1/users/me/switch-org`; `api/client.ts` refreshes on 401.
-- Route-level guards are mostly extractors inside handlers, not one global auth
-  middleware. Public/anonymous routes must document their alternate auth gate.
+Authentication is selected at startup and authorization is enforced mainly through handler extractors and domain-layer callers rather than one global HTTP guard.
+
+- AuthMode supports none, admin, full, and external backends; none grants a stable anonymous administrator only in development and is rejected in non-development environments.
+- AuthUser accepts opaque personal access tokens, JWT bearer tokens, legacy API-key forms, or the HttpOnly access-token cookie; refresh cookies are rotated atomically.
+- ResolvedOrg and OrgContext validate X-Org-Id, organization cookies, or path IDs against stored membership before constructing an organization-scoped Caller.
+- Personal access tokens are random opaque credentials stored as SHA-256 digests; current scope enforcement is effectively all-access within the owning user's memberships.
+- MCP, published-agent endpoints, Slack, and generic webhooks use distinct primitives such as McpAuthUser, endpoint auth policies, Slack HMAC verification, and channel secrets.
 
 ## Threat model
 
-Highest-impact failures are cross-organization data access, unauthorized app or
-agent invocation, exposure of LLM/provider/API secrets, and writes into another
-tenant's sessions, files, memory, volumes, schedules, budgets, or MCP servers.
-Unauthenticated ingress exists by design for published apps, Slack, AG-UI, A2A,
-webhooks, OAuth/MCP metadata, health, OpenAPI, and presigned worker image URLs;
-those paths rely on per-channel tokens, Slack signing secrets, HMAC signatures,
-publication state, method gates, and rate limits. Agent/tool outputs are
-untrusted UI content and can contain markdown, generated UI, images, and file
-metadata.
+Tenant users, public channel senders, browsers, remote identity providers, MCP peers, plugin/provider endpoints, repository content, and model-generated tool arguments should be treated as untrusted.
+
+- Cross-organization access is the primary isolation risk: every storage query, resource lookup, SSE subscription, and command must retain the resolved organization boundary.
+- The internal worker gRPC credential is highly privileged and shared across organizations; accidental public exposure would permit client-supplied organization IDs to reach Caller::internal paths.
+- Public agent channels can create durable work and model spend, making signature checks, endpoint liveness, request limits, deduplication, and rate limits security controls.
+- Outbound HTTP, OAuth discovery, JWKS retrieval, MCP servers, git operations, and provider integrations create SSRF and credential-exfiltration risk.
+- Model output can select tools and arguments; filesystem, shell, network, connection-secret, and durable-resource tools need workspace boundaries and policy enforcement independent of the model.
 
 ## Project-specific patterns to flag
 
-- Handler uses an unscoped storage/domain lookup (`*_unscoped`,
-  `get_by_public_id_unscoped`) without an explicit public-channel or internal
-  signature gate.
-- Handler accepts `SessionId`, `AgentId`, `AppId`, `ImageId`, `VolumeId`, or
-  other prefixed IDs and does not bind the resource back to the current
-  `ResolvedOrg`/`Caller` or authenticated app channel.
-- Anonymous app ingress (`endpoint_webhooks`, `endpoint_a2a`, `ag_ui`, `slack_events`)
-  reaches session/message creation before checking publication status, channel
-  enabled state, per-channel token/key/signature, and method/rate gates.
-- UI code renders agent/tool/markdown/OpenUI/A2UI/MCP-card content with HTML,
-  iframe, or postMessage behavior outside the established renderers and
-  sandbox/origin checks.
-- Secret-bearing connection/provider/MCP/agent-identity code returns raw
-  encrypted/plain API keys, headers, OAuth tokens, or webhook tokens instead of
-  redacted/set-only response fields.
+These patterns deserve focused review because they encode the project's principal trust boundaries.
+
+- HTTP handlers that omit AuthUser, ResolvedOrg, or OrgContext, use unscoped lookups, or construct Caller::internal outside a documented internal path.
+- Public channel handlers (`endpoint_webhooks`, `endpoint_a2a`, `ag_ui`, `slack_events`) that parse or enqueue a body before token/signature verification, endpoint liveness, or rate limiting.
+- Direct outbound clients that bypass validate_safe_url, DNS/public-IP checks, pinned resolution, EgressService, or configured network ACLs.
+- Tools registered without required context services, argument-schema validation, permission resolution, workspace confinement, or an appropriate PreToolUseHook.
+- Queue consumers that trust NATS payloads as authoritative instead of claiming durable rows with ownership and organization checks.
+- UI renderers that bypass sandbox/origin checks, or APIs that expose raw provider, connection, MCP, or agent-identity secrets.
 
 ## Known false-positives
 
-- `AUTH_MODE=none`, anonymous owner/admin, seed data, and `apps/ui/src/app/dev`
-  fixtures are dev-mode behavior, not production auth bypasses.
-- `GET /health`, `/api-doc/openapi.json`, OAuth/MCP metadata, and homepage
-  discovery links are intended public endpoints.
-- `/v1/apps/{app_id}/ag-ui`, `/ag-ui/images`, `/webhooks/{channel_id}`,
-  `/a2a/{channel_id}`, and Slack event/manifest endpoints are public only for
-  published apps/channels and must be judged by their app-channel gates.
-- `/internal/images/{image_id}` deliberately has no user/org auth; access is
-  via short-lived HMAC-signed URLs using `WORKER_GRPC_AUTH_TOKEN`.
-- UI API clients in `apps/ui/src/lib/api/*` usually omit explicit auth headers
-  because same-origin cookies carry `access_token` and `everruns_org`.
+Several intentional patterns can resemble vulnerabilities without their surrounding controls.
+
+- Development AuthMode::None deliberately maps an anonymous user to an administrator; startup is intended to fail if this mode is selected outside development.
+- SHA-256 is intentionally used for lookup of high-entropy opaque personal access tokens, not for hashing human passwords.
+- Published-agent and webhook routes intentionally lack normal AuthUser extraction; review their channel token, signature, endpoint-auth, liveness, and rate-limit controls instead.
+- X-Org-Id and the organization cookie are selectors, not authority by themselves; ResolvedOrg and OrgContext are expected to validate membership.
+- The Next.js proxy checks only for cookie presence as a navigation convenience; the Rust API and AuthProvider remain the authoritative session validators.

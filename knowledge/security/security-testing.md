@@ -52,11 +52,16 @@ and test there and reference the threat ID it guards.
 configured for the `everruns` project (priority paths: `apps/ui/`,
 `crates/server/`, `crates/core/`, `crates/worker/`, `crates/host/`,
 `integrations/`). It pairs a free regex `scan` with an AI `process` stage that
-triages findings against the project context in `.deepsec/data/everruns/INFO.md`.
+investigates candidates against the project context in
+`.deepsec/data/everruns/INFO.md`. The checked-in config uses Codex and a local
+Codex login. Setup inventories entry points, verifies matcher coverage, and
+adds scoped matchers before AI processing.
 
 ```bash
 cd .deepsec
 pnpm install
+pnpm deepsec setup      --project-id everruns --status --output json
+pnpm deepsec setup      --project-id everruns --agent codex --model-auth local --yes
 pnpm deepsec scan       --project-id everruns
 pnpm deepsec process    --project-id everruns --concurrency 5
 pnpm deepsec revalidate --project-id everruns --concurrency 5   # cuts false positives
@@ -66,7 +71,8 @@ pnpm deepsec report     --project-id everruns
 `.deepsec/` is local dev-only scanning tooling, not a shipped dependency, so it
 is exempt from the runtime seven-day dependency-maturity floor; bump it
 (`pnpm update deepsec@latest`) in its own commit. Generated scan output is
-gitignored; the curated `INFO.md` and config are checked in so context is shared. File real true positives as Linear/GitHub
+gitignored; the curated `INFO.md`, config, and generated matchers are checked in
+so context is shared. File real true positives as Linear/GitHub
 issues with a `TM-` reference where one applies. See `.deepsec/README.md` for
 setup and `.deepsec/AGENTS.md` for agent usage.
 
