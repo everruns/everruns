@@ -20,9 +20,12 @@ use a2a::{
 };
 use a2a_client::A2AClientFactory;
 use a2a_client::agent_card::AgentCardResolver;
+use a2a_client::jsonrpc::JsonRpcTransportFactory;
 use a2a_client::middleware::CallInterceptor;
+use a2a_client::rest::RestTransportFactory;
 use a2a_client::transport::ServiceParams;
 use async_trait::async_trait;
+use everruns_core::deployment::DeploymentGrade;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskState, SessionTaskUpdate,
@@ -33,10 +36,15 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{session_services::SessionStorageStore, tool_context::ToolContext};
 use everruns_provider::error::Result;
 use everruns_provider::tool_types::ToolHints;
-use everruns_provider::url_validation::validate_safe_url;
+use everruns_provider::url_validation::{
+    validate_safe_url, validate_url_dns_pinned, validate_url_with_resolver,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::future::Future;
+use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{Instant, sleep};
@@ -48,6 +56,11 @@ use url::Url;
 pub use super::A2A_AGENT_DELEGATION_CAPABILITY_ID;
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1_000;
+/// Connect timeout for outbound A2A discovery and transport (matches AG-UI).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+type DnsResolveFuture = Pin<Box<dyn Future<Output = std::io::Result<Vec<SocketAddr>>> + Send>>;
+type DnsResolver = Arc<dyn Fn(String, u16) -> DnsResolveFuture + Send + Sync>;
 
 /// Error prefix returned by `wait_for_run` when the attempt fence reveals the
 /// executor was superseded (reaper re-attached the task elsewhere). The
@@ -149,7 +162,7 @@ impl Capability for A2aAgentDelegationCapability {
                             "allow_local_urls": {
                                 "type": "boolean",
                                 "title": "Allow local URLs",
-                                "description": "Testing/dev escape hatch for localhost A2A agents. Keep false in production.",
+                                "description": "Testing/dev escape hatch for localhost A2A agents. Only honored when DEPLOYMENT_GRADE=dev; rejected in every other grade.",
                                 "default": false
                             }
                         },
@@ -238,7 +251,7 @@ impl Capability for A2aAgentDelegationCapability {
                                     },
                                     "allow_local_urls": {
                                         "title": "Дозволити локальні URL",
-                                        "description": "Обхідний шлях для тестування та розробки з локальними агентами A2A. У продакшені тримайте вимкненим."
+                                        "description": "Обхідний шлях для тестування та розробки з локальними агентами A2A. Діє лише за DEPLOYMENT_GRADE=dev; в інших режимах відхиляється."
                                     }
                                 }
                             }
@@ -355,7 +368,22 @@ struct ExternalA2aAgentConfig {
 }
 
 impl ExternalA2aAgentConfig {
+    /// `allow_local_urls` is a development escape hatch. It is honored only
+    /// when the process deployment grade is `dev` so production/preview/poc
+    /// cannot open loopback or private A2A targets via config alone (EVE-1173).
+    fn local_urls_permitted(&self) -> bool {
+        self.local_urls_permitted_for_grade(DeploymentGrade::from_env())
+    }
+
+    fn local_urls_permitted_for_grade(&self, grade: DeploymentGrade) -> bool {
+        self.allow_local_urls && grade.is_dev()
+    }
+
     fn validate(&self) -> std::result::Result<(), String> {
+        self.validate_for_grade(DeploymentGrade::from_env())
+    }
+
+    fn validate_for_grade(&self, grade: DeploymentGrade) -> std::result::Result<(), String> {
         if self.id.trim().is_empty() {
             return Err("A2A agent id cannot be empty".to_string());
         }
@@ -385,8 +413,16 @@ impl ExternalA2aAgentConfig {
                 self.id
             ));
         }
+        // THREAT[TM-AGENT-024]: the hatch is isolated to deployment grade dev.
+        if self.allow_local_urls && !grade.is_dev() {
+            return Err(format!(
+                "A2A agent {} allow_local_urls is only permitted when DEPLOYMENT_GRADE=dev",
+                self.id
+            ));
+        }
+        let allow_local = self.local_urls_permitted_for_grade(grade);
         if let Some(base_url) = &self.base_url {
-            if self.allow_local_urls {
+            if allow_local {
                 validate_http_url(base_url)
                     .map_err(|e| format!("A2A agent {} has invalid base_url: {e}", self.id))?;
             } else {
@@ -395,14 +431,23 @@ impl ExternalA2aAgentConfig {
             }
         }
         if let Some(card) = &self.agent_card {
-            self.validate_card(card)?;
+            self.validate_card_for_grade(card, grade)?;
         }
         Ok(())
     }
 
     fn validate_card(&self, card: &AgentCard) -> std::result::Result<(), String> {
+        self.validate_card_for_grade(card, DeploymentGrade::from_env())
+    }
+
+    fn validate_card_for_grade(
+        &self,
+        card: &AgentCard,
+        grade: DeploymentGrade,
+    ) -> std::result::Result<(), String> {
+        let allow_local = self.local_urls_permitted_for_grade(grade);
         for iface in &card.supported_interfaces {
-            if self.allow_local_urls {
+            if allow_local {
                 validate_http_url(&iface.url)
                     .map_err(|e| format!("A2A agent {} has invalid interface URL: {e}", self.id))?;
             } else {
@@ -414,6 +459,13 @@ impl ExternalA2aAgentConfig {
     }
 
     async fn resolve_card(&self) -> std::result::Result<AgentCard, String> {
+        self.resolve_card_with_resolver(None).await
+    }
+
+    async fn resolve_card_with_resolver(
+        &self,
+        resolver: Option<&DnsResolver>,
+    ) -> std::result::Result<AgentCard, String> {
         self.validate()?;
         if let Some(card) = &self.agent_card {
             return Ok(card.clone());
@@ -422,7 +474,11 @@ impl ExternalA2aAgentConfig {
             .base_url
             .as_deref()
             .ok_or_else(|| format!("A2A agent {} has no base_url", self.id))?;
-        let card = AgentCardResolver::new(None)
+        // THREAT[TM-AGENT-024]: discovery uses a no-redirect, DNS-pinned client
+        // so a public-looking base_url cannot rebind or 302 into private space.
+        let client =
+            hardened_a2a_http_client(&[base_url], self.local_urls_permitted(), resolver).await?;
+        let card = AgentCardResolver::new(Some(client))
             .resolve(base_url)
             .await
             .map_err(|e| format!("Failed to resolve A2A AgentCard: {e}"))?;
@@ -441,6 +497,52 @@ fn validate_http_url(raw_url: &str) -> std::result::Result<(), String> {
         return Err("URL must have a hostname".to_string());
     }
     Ok(())
+}
+
+/// Build the HTTP client used for AgentCard discovery and every interface
+/// request. Redirects are always disabled. Unless `allow_local` is set (dev
+/// hatch only), each URL is DNS-pinned so the connected address is the one
+/// that passed the public-IP checks.
+async fn hardened_a2a_http_client(
+    urls: &[&str],
+    allow_local: bool,
+    resolver: Option<&DnsResolver>,
+) -> std::result::Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(CONNECT_TIMEOUT);
+    if !allow_local {
+        for raw in urls {
+            let validated = match resolver {
+                Some(resolve) => {
+                    let resolve = Arc::clone(resolve);
+                    validate_url_with_resolver(raw, move |host, port| {
+                        let resolve = Arc::clone(&resolve);
+                        async move { resolve(host, port).await }
+                    })
+                    .await
+                }
+                None => validate_url_dns_pinned(raw).await,
+            };
+            let (url, addrs) = validated.map_err(|e| format!("A2A URL unsafe: {e}"))?;
+            // An IP literal comes back with no addresses: the static check
+            // already validated it and there is nothing to pin.
+            if let (Some(host), false) = (url.host_str(), addrs.is_empty()) {
+                builder = builder.resolve_to_addrs(host, &addrs);
+            }
+        }
+    }
+    builder
+        .build()
+        .map_err(|e| format!("Failed to build A2A HTTP client: {e}"))
+}
+
+fn controlled_dns_resolver<F, Fut>(resolve: F) -> DnsResolver
+where
+    F: Fn(String, u16) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = std::io::Result<Vec<SocketAddr>>> + Send + 'static,
+{
+    Arc::new(move |host, port| Box::pin(resolve(host, port)))
 }
 
 #[derive(Clone)]
@@ -1038,10 +1140,31 @@ async fn build_client(
     agent: &ExternalA2aAgentConfig,
     context: &ToolContext,
 ) -> std::result::Result<a2a_client::A2AClient<Box<dyn a2a_client::Transport>>, String> {
+    build_client_with_resolver(agent, context, None).await
+}
+
+async fn build_client_with_resolver(
+    agent: &ExternalA2aAgentConfig,
+    context: &ToolContext,
+    resolver: Option<&DnsResolver>,
+) -> std::result::Result<a2a_client::A2AClient<Box<dyn a2a_client::Transport>>, String> {
     enforce_network_access_pre_resolve(agent, context)?;
-    let card = agent.resolve_card().await?;
+    let card = agent.resolve_card_with_resolver(resolver).await?;
     enforce_network_access_post_resolve(&card, context)?;
-    let mut builder = A2AClientFactory::builder();
+    // THREAT[TM-AGENT-024]: every AgentCard interface URL is re-checked with
+    // DNS pinning and wired into a no-redirect client before any transport
+    // request. The merged network ACL already gated the same URLs above.
+    let interface_urls: Vec<&str> = card
+        .supported_interfaces
+        .iter()
+        .map(|iface| iface.url.as_str())
+        .collect();
+    let http =
+        hardened_a2a_http_client(&interface_urls, agent.local_urls_permitted(), resolver).await?;
+    let mut builder = A2AClientFactory::builder()
+        .no_defaults()
+        .register(Arc::new(JsonRpcTransportFactory::new(Some(http.clone()))))
+        .register(Arc::new(RestTransportFactory::new(Some(http))));
     if let Some(binding) = &agent.preferred_binding {
         builder = builder.preferred_bindings(vec![binding.clone()]);
     }
@@ -1151,6 +1274,41 @@ impl WaitOutcome {
     }
 }
 
+/// Heartbeat once through the registry. A fence miss means a newer executor
+/// owns the task — stop before building a client or writing failure state.
+async fn heartbeat_or_superseded(
+    context: &ToolContext,
+    record: &AgentRunRecord,
+    attempt: i32,
+) -> Option<WaitOutcome> {
+    let (Some(registry), Some(task_id)) =
+        (&context.session_task_registry, record.task_id.as_deref())
+    else {
+        return None;
+    };
+    let heartbeat = registry
+        .update(
+            context.session_id,
+            task_id,
+            SessionTaskUpdate {
+                heartbeat_at: Some(chrono::Utc::now()),
+                expected_attempt: Some(attempt),
+                ..Default::default()
+            },
+        )
+        .await;
+    if let Ok(Some(task)) = heartbeat
+        && task.attempt != attempt
+    {
+        return Some(WaitOutcome::Superseded {
+            run_id: record.run_id.clone(),
+            attempt,
+            by_attempt: task.attempt,
+        });
+    }
+    None
+}
+
 async fn wait_for_run(
     context: &ToolContext,
     agent: &ExternalA2aAgentConfig,
@@ -1172,6 +1330,13 @@ async fn wait_for_run(
     let Some(remote_task_id) = record.remote_task_id.clone() else {
         return Ok(WaitOutcome::Completed(Box::new(record)));
     };
+    // Check the fence before DNS-pinning / building the A2A client so a
+    // superseded executor never opens outbound connections (EVE-1173).
+    if let Some(attempt) = heartbeat_attempt
+        && let Some(superseded) = heartbeat_or_superseded(context, &record, attempt).await
+    {
+        return Ok(superseded);
+    }
     let client = build_client(agent, context).await?;
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let poll_interval = Duration::from_millis(
@@ -1186,31 +1351,10 @@ async fn wait_for_run(
         // A fence miss (returned attempt differs from ours) means the reaper
         // superseded this executor — stop polling immediately so we never
         // write failure state over the new attempt's work.
-        if let (Some(attempt), Some(registry), Some(task_id)) = (
-            heartbeat_attempt,
-            &context.session_task_registry,
-            record.task_id.as_deref(),
-        ) {
-            let heartbeat = registry
-                .update(
-                    context.session_id,
-                    task_id,
-                    SessionTaskUpdate {
-                        heartbeat_at: Some(chrono::Utc::now()),
-                        expected_attempt: Some(attempt),
-                        ..Default::default()
-                    },
-                )
-                .await;
-            if let Ok(Some(task)) = heartbeat
-                && task.attempt != attempt
-            {
-                return Ok(WaitOutcome::Superseded {
-                    run_id: record.run_id.clone(),
-                    attempt,
-                    by_attempt: task.attempt,
-                });
-            }
+        if let Some(attempt) = heartbeat_attempt
+            && let Some(superseded) = heartbeat_or_superseded(context, &record, attempt).await
+        {
+            return Ok(superseded);
         }
 
         let task = client
@@ -1866,7 +2010,20 @@ mod tests {
     use everruns_provider::typed_id::SessionId;
     use futures::stream;
     use std::collections::{BTreeMap, HashMap};
-    use std::sync::Mutex;
+    use std::net::IpAddr;
+    use std::sync::{Mutex, OnceLock};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// Local mock agents need `allow_local_urls`; that hatch is gated to
+    /// `DEPLOYMENT_GRADE=dev`. Set once for the test process — production
+    /// refusal is covered via `validate_for_grade` without mutating env.
+    fn ensure_dev_deployment_grade() {
+        static INIT: OnceLock<()> = OnceLock::new();
+        INIT.get_or_init(|| {
+            unsafe { std::env::set_var("DEPLOYMENT_GRADE", "dev") };
+        });
+    }
     use tokio::net::TcpListener;
     #[derive(Default)]
     struct TestStorageStore {
@@ -2156,6 +2313,8 @@ mod tests {
     }
 
     fn configured_capability(base_url: String) -> A2aDelegationConfig {
+        // Local mock agents need the hatch; it is gated to DEPLOYMENT_GRADE=dev.
+        ensure_dev_deployment_grade();
         A2aDelegationConfig {
             agents: vec![ExternalA2aAgentConfig {
                 id: "echo".to_string(),
@@ -2411,6 +2570,232 @@ mod tests {
         assert!(config.agents[0].validate().is_err());
         config.agents[0].allow_local_urls = true;
         assert!(config.agents[0].validate().is_ok());
+    }
+
+    #[test]
+    fn allow_local_urls_rejected_outside_dev_grade() {
+        let agent = ExternalA2aAgentConfig {
+            id: "echo".to_string(),
+            name: "Echo".to_string(),
+            description: None,
+            base_url: Some("http://127.0.0.1:1".to_string()),
+            agent_card: None,
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: true,
+        };
+        assert!(!agent.local_urls_permitted_for_grade(DeploymentGrade::Prod));
+        assert!(!agent.local_urls_permitted_for_grade(DeploymentGrade::Preview));
+        assert!(!agent.local_urls_permitted_for_grade(DeploymentGrade::Poc));
+        assert!(agent.local_urls_permitted_for_grade(DeploymentGrade::Dev));
+        let err = agent.validate_for_grade(DeploymentGrade::Prod).unwrap_err();
+        assert!(
+            err.contains("DEPLOYMENT_GRADE=dev"),
+            "prod must reject the hatch explicitly: {err}"
+        );
+    }
+
+    /// EVE-1173: controlled resolver proves private/loopback/link-local/metadata
+    /// DNS answers are denied for discovery base URLs and AgentCard interfaces
+    /// before any TCP connect (destination mock sees zero requests).
+    #[tokio::test]
+    async fn controlled_resolver_denies_private_answers_for_base_and_interface_urls() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/agent-card.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("leaked"))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("leaked"))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let listen = reqwest::Url::parse(&server.uri()).unwrap();
+        let port = listen.port().unwrap();
+        let blocked_answers = ["10.0.0.1", "127.0.0.1", "169.254.169.254", "fe80::1"];
+
+        for blocked in blocked_answers {
+            let blocked_ip: IpAddr = blocked.parse().unwrap();
+            let resolver = controlled_dns_resolver(move |_host, resolved_port| {
+                let addr = SocketAddr::new(blocked_ip, resolved_port);
+                async move { Ok(vec![addr]) }
+            });
+
+            // Base URL / discovery path.
+            let discovery_agent = ExternalA2aAgentConfig {
+                id: "probe".to_string(),
+                name: "Probe".to_string(),
+                description: None,
+                base_url: Some(format!("http://rebind.example:{port}")),
+                agent_card: None,
+                headers: BTreeMap::new(),
+                preferred_binding: None,
+                poll_interval_ms: None,
+                allow_local_urls: false,
+            };
+            let err = discovery_agent
+                .resolve_card_with_resolver(Some(&resolver))
+                .await
+                .unwrap_err();
+            assert!(
+                err.contains("unsafe") || err.contains("blocked") || err.contains(blocked),
+                "base URL must deny blocked answer {blocked}: {err}"
+            );
+
+            // AgentCard interface path (inline card; no discovery fetch).
+            let interface_agent = ExternalA2aAgentConfig {
+                id: "probe".to_string(),
+                name: "Probe".to_string(),
+                description: None,
+                base_url: None,
+                agent_card: Some(AgentCard {
+                    name: "probe".to_string(),
+                    description: "probe".to_string(),
+                    version: "1".to_string(),
+                    supported_interfaces: vec![AgentInterface::new(
+                        format!("http://rebind.example:{port}/jsonrpc"),
+                        "JSONRPC",
+                    )],
+                    capabilities: AgentCapabilities {
+                        streaming: None,
+                        push_notifications: None,
+                        extensions: None,
+                        extended_agent_card: None,
+                    },
+                    default_input_modes: vec![],
+                    default_output_modes: vec![],
+                    skills: vec![],
+                    provider: None,
+                    documentation_url: None,
+                    icon_url: None,
+                    security_schemes: None,
+                    security_requirements: None,
+                    signatures: None,
+                }),
+                headers: BTreeMap::new(),
+                preferred_binding: Some("JSONRPC".to_string()),
+                poll_interval_ms: None,
+                allow_local_urls: false,
+            };
+            let ctx = ToolContext::new(SessionId::new());
+            let err =
+                match build_client_with_resolver(&interface_agent, &ctx, Some(&resolver)).await {
+                    Ok(_) => panic!("interface URL must deny blocked answer {blocked}"),
+                    Err(err) => err,
+                };
+            assert!(
+                err.contains("unsafe") || err.contains("blocked") || err.contains(blocked),
+                "interface URL must deny blocked answer {blocked}: {err}"
+            );
+        }
+    }
+
+    /// EVE-1173: discovery and interface clients never follow redirects, so a
+    /// 302 to loopback/metadata cannot move the request off the checked URL.
+    #[tokio::test]
+    async fn a2a_clients_do_not_follow_redirects_to_private_destinations() {
+        ensure_dev_deployment_grade();
+
+        let private_dest = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("secret"))
+            .expect(0)
+            .mount(&private_dest)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("secret"))
+            .expect(0)
+            .mount(&private_dest)
+            .await;
+
+        // Discovery: base URL returns 302 to a private/loopback Location.
+        let discovery = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/agent-card.json"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("Location", format!("{}/secret", private_dest.uri())),
+            )
+            .expect(1)
+            .mount(&discovery)
+            .await;
+
+        let discovery_agent = ExternalA2aAgentConfig {
+            id: "redir".to_string(),
+            name: "Redir".to_string(),
+            description: None,
+            base_url: Some(discovery.uri()),
+            agent_card: None,
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: true,
+        };
+        let err = discovery_agent.resolve_card().await.unwrap_err();
+        assert!(
+            err.contains("Failed to resolve") || err.contains("agent-card") || err.contains("302"),
+            "discovery must fail closed on redirect, not follow it: {err}"
+        );
+
+        // Interface: transport POST gets 302 to private; destination untouched.
+        let interface = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("Location", format!("{}/secret", private_dest.uri())),
+            )
+            .expect(1)
+            .mount(&interface)
+            .await;
+
+        let interface_agent = ExternalA2aAgentConfig {
+            id: "redir".to_string(),
+            name: "Redir".to_string(),
+            description: None,
+            base_url: None,
+            agent_card: Some(AgentCard {
+                name: "redir".to_string(),
+                description: "redir".to_string(),
+                version: "1".to_string(),
+                supported_interfaces: vec![AgentInterface::new(
+                    format!("{}/jsonrpc", interface.uri()),
+                    "JSONRPC",
+                )],
+                capabilities: AgentCapabilities {
+                    streaming: None,
+                    push_notifications: None,
+                    extensions: None,
+                    extended_agent_card: None,
+                },
+                default_input_modes: vec![],
+                default_output_modes: vec![],
+                skills: vec![],
+                provider: None,
+                documentation_url: None,
+                icon_url: None,
+                security_schemes: None,
+                security_requirements: None,
+                signatures: None,
+            }),
+            headers: BTreeMap::new(),
+            preferred_binding: Some("JSONRPC".to_string()),
+            poll_interval_ms: None,
+            allow_local_urls: true,
+        };
+        let ctx = ToolContext::new(SessionId::new());
+        let client = build_client(&interface_agent, &ctx).await.unwrap();
+        let send_err = client
+            .send_message(&send_request("hi", None, None, true))
+            .await
+            .unwrap_err();
+        assert!(
+            !send_err.to_string().is_empty(),
+            "transport must surface the unfollowed redirect as an error"
+        );
     }
 
     #[test]
@@ -2915,8 +3300,8 @@ mod tests {
         let session_id = everruns_provider::typed_id::SessionId::new();
 
         let run_id = "run-superseded".to_string();
-        // Inline card so build_client performs no network discovery; the
-        // heartbeat fence check fires before any remote get_task call.
+        // Inline card with a non-routable host: the heartbeat fence check
+        // fires before build_client / DNS pinning / any remote get_task call.
         let inline_card = AgentCard {
             name: "Echo".to_string(),
             description: "Echo".to_string(),
