@@ -322,6 +322,13 @@ fn is_degenerate_time_payload(payload: &str) -> bool {
     if chrono::DateTime::parse_from_rfc3339(payload).is_ok() {
         return true;
     }
+    // Short clock-like answers (`2:30`, `14:30:00`) are legitimate prose.
+    if payload
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, ':' | '.' | ' '))
+    {
+        return false;
+    }
     // No Latin letters ⇒ cannot be ordinary English (`time to go`).
     !payload.chars().any(|c| c.is_ascii_alphabetic())
 }
@@ -570,11 +577,13 @@ mod tests {
             ""
         );
         assert_eq!(strip_degenerate_time_echo("[time 天天中彩票不能]"), "");
-        // Ordinary English that happens to start with "time" is preserved.
+        // Ordinary English / short clock answers that start with "time" are preserved.
         assert_eq!(
             strip_degenerate_time_echo("time to go home"),
             "time to go home"
         );
+        assert_eq!(strip_degenerate_time_echo("time 2:30"), "time 2:30");
+        assert_eq!(strip_degenerate_time_echo("time 14:30:00"), "time 14:30:00");
         assert_eq!(
             strip_degenerate_time_echo("[time to go] home"),
             "[time to go] home"
