@@ -1,19 +1,19 @@
-version: 0.34.2
-date: 2026-10-02
+version: 0.35.0
+date: 2026-10-03
 headline:
-  - The kernel runs
-  - in an isolate.
+  - Safer tools.
+  - Smoother chats.
 summary:
-  - The execution kernel runs in a JavaScript
-  - isolate, serve apps run durably on celld,
-  - and every 0.34 crate ships from one commit.
+  - Sandbox tools tighten their trust boundaries,
+  - chat turns can ask for input, and long
+  - work logs stay responsive.
 highlights:
-  - title: Kernel in an isolate
-    description: The engine's execution kernel runs inside a JavaScript isolate.
-    source: "#4024"
-  - title: Durable serve on celld
-    description: Serve apps snapshot and restore across process and node loss.
-    source: "#4019"
-  - title: Workers AI discovery
-    description: The Cloudflare driver lists Workers AI models.
-    source: "#4021"
+  - title: Fail-closed HTTP egress
+    description: Empty DNS pins cannot fall back to unrestricted HTTP access.
+    source: "#4058"
+  - title: Interactive questions
+    description: AskUser runs through interactive chat turns.
+    source: "#4044"
+  - title: Smoother work logs
+    description: Chat stays responsive with thousands of tool calls.
+    source: "#4040"
