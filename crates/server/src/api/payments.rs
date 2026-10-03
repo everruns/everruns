@@ -391,7 +391,19 @@ mod tests {
             AppState::new(
                 db.clone(),
                 Some(Arc::new(encryption)),
-                AuthState::builtin(AuthConfig::default(), db),
+                AuthState::builtin(AuthConfig::default(), db).with_feature_flag_policy(
+                    everruns_platform::FeatureFlagPolicy::from_env(
+                        everruns_core::DeploymentGrade::Prod,
+                    )
+                    .with_grade(
+                        "machine_payments",
+                        if machine_payments_enabled {
+                            everruns_platform::FeatureFlagGrade::Prod
+                        } else {
+                            everruns_platform::FeatureFlagGrade::Off
+                        },
+                    ),
+                ),
             ),
             machine_payments_enabled,
         )
