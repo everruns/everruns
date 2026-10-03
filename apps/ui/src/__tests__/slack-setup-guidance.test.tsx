@@ -1,90 +1,126 @@
-import { render, screen } from "@testing-library/react";
-import { SlackSetupGuidance } from "@/components/agents/integrations/slack-setup-guidance";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  SlackConnectionStatus,
+  SlackManualSetup,
+} from "@/components/agents/integrations/slack-setup-guidance";
+import { getSlackEndpointManifest } from "@/lib/api/agent-endpoints";
+import type { AgentEndpoint, SlackChannelConfig } from "@/lib/api/types";
 
-describe("SlackSetupGuidance", () => {
-  const baseProps = {
-    hasSlackConfig: true,
-    isPublished: false,
-    webhookVerified: false,
-    firstMessageReceived: false,
-    manifestRequestUrl: "https://example.com/api/v1/e/appchan-123/slack/events",
-    manifestLoading: false,
-    canCreateSlackApp: true,
-    agentSurfaceEnabled: false,
-    onCreateSlackApp: jest.fn(),
-    onConfigure: jest.fn(),
+jest.mock("@/lib/api/agent-endpoints", () => ({ getSlackEndpointManifest: jest.fn() }));
+const configured = {
+  session_strategy: "per_thread",
+  signing_secret_configured: true,
+  bot_token_configured: true,
+} satisfies SlackChannelConfig;
+function endpoint(
+  config: SlackChannelConfig = configured,
+  status: AgentEndpoint["status"] = "live",
+): AgentEndpoint {
+  return {
+    id: "endpoint_1",
+    channel_type: "slack",
+    channel_config: config,
+    enabled: true,
+    status,
+    created_at: "2026-10-03T00:00:00Z",
+    updated_at: "2026-10-03T00:00:00Z",
   };
+}
+function renderManual(value: AgentEndpoint) {
+  return render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <SlackManualSetup endpoint={value} />
+    </QueryClientProvider>,
+  );
+}
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it("keeps the setup checklist visible after publish", () => {
-    render(<SlackSetupGuidance {...baseProps} isPublished={true} />);
-
-    expect(screen.getByText("1. Publish the endpoint")).toBeInTheDocument();
-    expect(screen.getByText("2. Create a Slack app")).toBeInTheDocument();
-    expect(screen.getByText("3. Copy credentials back")).toBeInTheDocument();
-    expect(screen.getByText("4. Invite the bot and test")).toBeInTheDocument();
-  });
-
-  it("no longer asks the user to configure Event Subscriptions by hand", () => {
-    render(<SlackSetupGuidance {...baseProps} isPublished={true} hasSlackConfig={false} />);
-
-    expect(screen.queryByText(/Configure Event Subscriptions/)).not.toBeInTheDocument();
-    // The manifest carries the subscriptions, so the URL is shown as information
-    // rather than as something to paste into Slack.
-    expect(screen.getByText(baseProps.manifestRequestUrl)).toBeInTheDocument();
-  });
-
-  it("publishes before offering the manifest, and says why", () => {
-    render(<SlackSetupGuidance {...baseProps} isPublished={false} hasSlackConfig={false} />);
-
-    expect(screen.queryByRole("button", { name: "Create Slack app" })).not.toBeInTheDocument();
-    expect(screen.getByText(/Available once the endpoint is published/)).toBeInTheDocument();
-  });
-
-  it("shows create and configure actions once published", () => {
-    render(<SlackSetupGuidance {...baseProps} isPublished={true} hasSlackConfig={false} />);
-
-    expect(screen.getByRole("button", { name: "Create Slack app" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Configure" })).toBeInTheDocument();
-  });
-
-  it("offers the agent surface as an upgrade that needs a reinstall, not a config flip", () => {
-    render(<SlackSetupGuidance {...baseProps} isPublished={true} />);
-
-    expect(screen.getByText("Agent surface available")).toBeInTheDocument();
-    expect(screen.getByText(/reinstall it/)).toBeInTheDocument();
-    expect(screen.getByText(/assistant:write/)).toBeInTheDocument();
-  });
-
-  it("still flags the reinstall once the surface is enabled", () => {
-    render(<SlackSetupGuidance {...baseProps} isPublished={true} agentSurfaceEnabled={true} />);
-
-    expect(screen.getByText("Agent surface enabled")).toBeInTheDocument();
-    expect(screen.getByText(/still needs reinstalling/)).toBeInTheDocument();
-  });
-
-  it("does not mention the agent surface before Slack is configured at all", () => {
-    render(<SlackSetupGuidance {...baseProps} hasSlackConfig={false} />);
-
-    expect(screen.queryByText(/Agent surface/)).not.toBeInTheDocument();
-  });
-
-  it("disables app creation until PUBLIC_APP_URL is public and the server restarts", () => {
+describe("Slack connection guidance", () => {
+  beforeEach(() => jest.clearAllMocks());
+  it("removes completed setup steps and accepts signed messages without a URL challenge", () => {
     render(
-      <SlackSetupGuidance
-        {...baseProps}
-        isPublished={true}
-        hasSlackConfig={false}
-        manifestRequestUrl="http://localhost:9300/api/v1/e/appchan-123/slack/events"
-        canCreateSlackApp={false}
+      <SlackConnectionStatus
+        endpoint={endpoint({ ...configured, first_message_received_at: "2026-10-03T10:00:00Z" })}
       />,
     );
-
-    expect(screen.getByText(/PUBLIC_APP_URL/)).toBeInTheDocument();
-    expect(screen.getByText(/restart Everruns/)).toBeInTheDocument();
+    expect(screen.getByText("Message received")).toBeInTheDocument();
+    expect(screen.getByText(/A signed Slack message/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Publish the endpoint|Waiting for Slack|Invite the bot/),
+    ).not.toBeInTheDocument();
+  });
+  it("does not claim credentials alone establish a verified connection", () => {
+    render(<SlackConnectionStatus endpoint={endpoint()} />);
+    expect(screen.getByText("Credentials saved")).toBeInTheDocument();
+    expect(screen.getByText(/No Slack message received yet/)).toBeInTheDocument();
+  });
+  it("shows the remaining test action after URL verification", () => {
+    render(
+      <SlackConnectionStatus
+        endpoint={endpoint({ ...configured, webhook_verified_at: "2026-10-03T10:00:00Z" })}
+      />,
+    );
+    expect(screen.getByText("Request URL verified")).toBeInTheDocument();
+    expect(screen.getByText(/@mention it to test/)).toBeInTheDocument();
+  });
+  it("keeps publication separate from observed delivery", () => {
+    render(
+      <SlackConnectionStatus
+        endpoint={endpoint(
+          { ...configured, first_message_received_at: "2026-10-03T10:00:00Z" },
+          "draft",
+        )}
+      />,
+    );
+    expect(screen.getByText("Message received")).toBeInTheDocument();
+    expect(screen.getByText(/Publish this endpoint/)).toBeInTheDocument();
+  });
+  it("does not consider partial credentials configured", () => {
+    render(
+      <SlackConnectionStatus endpoint={endpoint({ ...configured, bot_token_configured: false })} />,
+    );
+    expect(screen.getByText("Not connected")).toBeInTheDocument();
+  });
+  it("keeps manual app creation behind publication", () => {
+    renderManual(endpoint({ session_strategy: "per_thread" }, "draft"));
+    expect(screen.getByText(/Publish this endpoint before creating/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create Slack app" })).not.toBeInTheDocument();
+    expect(getSlackEndpointManifest).not.toHaveBeenCalled();
+  });
+  it("opens the endpoint manifest only with a public HTTPS request URL", async () => {
+    const open = jest.spyOn(window, "open").mockImplementation(() => null);
+    (getSlackEndpointManifest as jest.Mock).mockResolvedValue({
+      manifest_yaml: 'event_subscriptions:\n  request_url: "https://example.com/slack/events"',
+      create_url: "https://api.slack.com/apps?new_app=1",
+    });
+    renderManual(endpoint({ session_strategy: "per_thread" }));
+    const create = screen.getByRole("button", { name: "Create Slack app" });
+    await waitFor(() => expect(create).toBeEnabled());
+    fireEvent.click(create);
+    expect(open).toHaveBeenCalledWith(
+      "https://api.slack.com/apps?new_app=1",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    open.mockRestore();
+  });
+  it("disables manual app creation on localhost", async () => {
+    (getSlackEndpointManifest as jest.Mock).mockResolvedValue({
+      manifest_yaml: 'event_subscriptions:\n  request_url: "http://localhost:9300/slack/events"',
+      create_url: "https://api.slack.com/apps?new_app=1",
+    });
+    renderManual(endpoint({ session_strategy: "per_thread" }));
+    await screen.findByText(/PUBLIC_APP_URL/);
     expect(screen.getByRole("button", { name: "Create Slack app" })).toBeDisabled();
+  });
+  it("shows a retry action when loading a manual manifest fails", async () => {
+    (getSlackEndpointManifest as jest.Mock).mockRejectedValue(new Error("unavailable"));
+    renderManual(endpoint());
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not load the Slack app manifest",
+    );
+    expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
   });
 });

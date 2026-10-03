@@ -43,7 +43,7 @@ into a chosen workspace on save, and receives a signed inbound event.
    connected workspace is shown with nothing to choose and **Configure manually** is collapsed.
 5. Keep the credentials empty and click **Save endpoint**.
 6. Verify Slack opens its consent screen with that workspace already selected.
-7. Approve the installation and verify the endpoint shows **Live in Slack** with an **Open in
+7. Approve the installation and verify the endpoint shows its Slack connection status with an **Open in
    Slack** link that opens the agent's app.
 8. Publish the endpoint, invite the bot to a channel, and send the test message.
 9. Connect the second workspace in Settings, add another Slack endpoint, and verify the form asks
@@ -51,9 +51,20 @@ into a chosen workspace on save, and receives a signed inbound event.
 10. Disconnect the first workspace and verify the confirmation says running agents keep working;
     then verify the first agent still answers in Slack.
 11. On a deployment without `SECRETS_ENCRYPTION_KEY`, add a Slack endpoint and verify the manual
-    fields start open and Settings says the deployment does not create Slack apps.
+    fields start collapsed and Settings says the deployment does not create Slack apps.
 12. Enter a manual signing secret before saving and verify Everruns saves the endpoint without
     starting Slack consent.
+
+13. Return to the agent’s **Integrations** tab and verify the collapsed Slack card has a chevron
+    and **Show configuration**. Expand it and verify connection status, conversation behavior,
+    and **Configure manually** appear together, with no separate **Set up** checklist.
+14. Change session strategy, collapse and reopen the card, and verify the unsaved selection remains.
+    Click **Save changes** and verify the setting survives reload; credentials, app identity, and
+    previously observed message delivery remain intact.
+15. Enable the Slack agent pane and verify the form explains the required manifest update and
+    reinstall. Save first, then open the updated manifest under **Configure manually**.
+16. As a user without agent management permission, expand the card and verify connection details
+    are visible without editable fields or save actions.
 
 ## Expected Result
 
@@ -62,8 +73,8 @@ into a chosen workspace on save, and receives a signed inbound event.
 - Saving a credential-free endpoint starts Slack consent on the chosen workspace without a second
   button, and the agent is visibly live afterwards with a link into Slack.
 - Disconnecting a workspace leaves agents already installed there working.
-- A deployment that does not provision Slack apps keeps the manual setup flow open.
+- A deployment that does not provision Slack apps keeps the manual setup flow available under **Configure manually**.
 - Entering a manual credential does not start or overwrite the one-click flow.
 - A failed install leaves the saved endpoint reachable with the failure reason and **Add to
   Slack** visible.
-- The inbound test message reaches the agent and the checklist records the first message.
+- The inbound test message reaches the agent and the connection status records **Message received**, even when no separate URL challenge was recorded.

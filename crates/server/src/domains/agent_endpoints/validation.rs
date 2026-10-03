@@ -551,6 +551,29 @@ pub(crate) fn merge_preserved_secret_fields(
 
     match channel_type {
         EndpointTransport::Slack => {
+            // Settings edits must not discard the app's install credentials or delivery evidence.
+            // THREAT[TM-SLACK-010]: a PATCH cannot invent or replace server-owned install metadata.
+            for key in [
+                "provisioned_app",
+                "webhook_verified_at",
+                "first_message_received_at",
+            ] {
+                out.remove(key);
+                if let Some(value) = existing.get(key) {
+                    out.insert(key.to_string(), value.clone());
+                }
+            }
+            for key in [
+                "agent_surface_enabled",
+                "tool_visibility",
+                "generic_tool_text",
+            ] {
+                if !out.contains_key(key)
+                    && let Some(value) = existing.get(key)
+                {
+                    out.insert(key.to_string(), value.clone());
+                }
+            }
             for key in ["signing_secret", "bot_token"] {
                 let should_preserve = out
                     .get(key)
@@ -686,6 +709,58 @@ fn merge_preserved_endpoint_auth_secrets(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn slack_settings_edits_preserve_connection_evidence_and_provisioning() {
+        let existing = json!({
+            "signing_secret": "saved-secret",
+            "bot_token": "saved-token",
+            "provisioned_app": { "app_id": "A123" },
+            "webhook_verified_at": "2026-10-03T10:00:00Z",
+            "first_message_received_at": "2026-10-03T10:01:00Z",
+            "agent_surface_enabled": true,
+            "tool_visibility": "none",
+            "generic_tool_text": "Working"
+        });
+        let mut edited = json!({ "session_strategy": "per_channel", "reply_mode": "all_messages" });
+        merge_preserved_secret_fields(EndpointTransport::Slack, &mut edited, &existing);
+        for key in [
+            "signing_secret",
+            "bot_token",
+            "provisioned_app",
+            "webhook_verified_at",
+            "first_message_received_at",
+            "agent_surface_enabled",
+            "tool_visibility",
+            "generic_tool_text",
+        ] {
+            assert_eq!(edited.get(key), existing.get(key), "lost {key}");
+        }
+        assert_eq!(edited["session_strategy"], "per_channel");
+    }
+
+    #[test]
+    fn slack_settings_cannot_replace_server_owned_connection_metadata() {
+        let existing = json!({
+            "provisioned_app": { "app_id": "A123" },
+            "first_message_received_at": "2026-10-03T10:01:00Z",
+            "agent_surface_enabled": true
+        });
+        let mut edited = json!({
+            "provisioned_app": { "app_id": "AOTHER" },
+            "first_message_received_at": "2026-10-03T11:00:00Z",
+            "webhook_verified_at": "2026-10-03T11:00:00Z",
+            "agent_surface_enabled": false
+        });
+        merge_preserved_secret_fields(EndpointTransport::Slack, &mut edited, &existing);
+        assert_eq!(edited["provisioned_app"], existing["provisioned_app"]);
+        assert_eq!(
+            edited["first_message_received_at"],
+            existing["first_message_received_at"]
+        );
+        assert!(edited.get("webhook_verified_at").is_none());
+        assert_eq!(edited["agent_surface_enabled"], false);
+    }
 
     #[test]
     fn rejects_bindings_unsupported_by_the_channel_transport() {
