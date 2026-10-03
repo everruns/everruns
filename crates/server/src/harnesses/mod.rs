@@ -102,7 +102,8 @@ mod tests {
 
     #[test]
     fn interactive_harnesses_expose_ask_user_and_describe_it() {
-        for definition in [generic::definition()] {
+        {
+            let definition = generic::definition();
             assert!(
                 definition
                     .capabilities
@@ -128,7 +129,8 @@ mod tests {
 
     #[test]
     fn ask_user_harnesses_also_expose_request_approval() {
-        for definition in [generic::definition()] {
+        {
+            let definition = generic::definition();
             let capabilities = definition
                 .capabilities
                 .iter()
