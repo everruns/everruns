@@ -106,6 +106,98 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
     );
 }
 
+/// Seed a live AG-UI endpoint whose inline `auth.mode` is `anonymous`.
+async fn seed_inline_anonymous_ag_ui_endpoint(
+    server: &TestServer,
+    mut channel_config: Value,
+) -> String {
+    let agent_id = create_llmsim_agent(server).await;
+    channel_config["auth"] = json!({ "mode": "anonymous" });
+    let app: App = serde_json::from_value(
+        server
+            .seed_app_endpoint(
+                &unique_id("Inline Anonymous AG-UI"),
+                &agent_id,
+                "ag_ui",
+                channel_config,
+            )
+            .await,
+    )
+    .expect("fixture App");
+    server
+        .set_app_endpoints_live(&app.public_id.to_string(), true)
+        .await;
+    app.channels[0].public_id.to_string()
+}
+
+// EVE-1177: inline `auth.mode = anonymous` is anonymous traffic, so the
+// `anonymous = false` lock must still deny unauthenticated callers.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_inline_anonymous_auth_respects_anonymous_false_lock() {
+    let server = TestServer::in_memory().await;
+    let channel_id =
+        seed_inline_anonymous_ag_ui_endpoint(&server, json!({ "anonymous": false })).await;
+
+    send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/ag-ui"),
+        &ag_ui_payload_without_messages(),
+        vec![],
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+}
+
+// EVE-1177: inline `auth.mode = anonymous` must not skip the shared token.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_inline_anonymous_auth_requires_shared_token() {
+    let server = TestServer::in_memory().await;
+    let channel_id = seed_inline_anonymous_ag_ui_endpoint(
+        &server,
+        json!({ "anonymous": true, "token": "inline-anon-token" }),
+    )
+    .await;
+    let path = format!("/v1/e/{channel_id}/ag-ui");
+
+    send_ag_ui_run_to_path(&server, &path, &ag_ui_payload_without_messages(), vec![])
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    send_ag_ui_run_to_path(
+        &server,
+        &path,
+        &ag_ui_payload_without_messages(),
+        vec![("authorization", "Bearer wrong-token")],
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
+    // Past auth, the request reaches AG-UI payload validation (400).
+    send_ag_ui_run_to_path(
+        &server,
+        &path,
+        &ag_ui_payload_without_messages(),
+        vec![("authorization", "Bearer inline-anon-token")],
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+}
+
+// Explicitly public endpoints with inline anonymous auth stay reachable.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_inline_anonymous_auth_allows_public_endpoint() {
+    let server = TestServer::in_memory().await;
+    let channel_id =
+        seed_inline_anonymous_ag_ui_endpoint(&server, json!({ "anonymous": true })).await;
+
+    send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/ag-ui"),
+        &ag_ui_payload_without_messages(),
+        vec![],
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+}
+
 fn unique_slug(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
