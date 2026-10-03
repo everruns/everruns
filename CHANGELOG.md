@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-03
+
+### Highlights
+
+- **Choose an Agent Environment** - Author named Bashkit or Daytona profiles and select the profile when starting a Chat or Playground session.
+- **Slack installation repair** - Add to Slack works for draft endpoints, requests declared bot scopes, and shows compact errors with retry.
+- **Session storage permissions** - Listing stored values or secret names requires session view; denied callers receive no private data.
+
+### What's Changed
+
+- fix(sessions): require session view to list storage ([#4099](https://github.com/everruns/everruns/pull/4099)) by [@chaliy](https://github.com/chaliy)
+
+- chore(models): prefer GPT-6.1 Sol over GPT-6 Sol ([#4100](https://github.com/everruns/everruns/pull/4100)) by [@chaliy](https://github.com/chaliy)
+- perf(release): poll exact sparse-index artifact visibility ([#4101](https://github.com/everruns/everruns/pull/4101)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): manage and select agent environments ([#4098](https://github.com/everruns/everruns/pull/4098)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): repair app installation and compact error handling ([#4075](https://github.com/everruns/everruns/pull/4075)) by [@chaliy](https://github.com/chaliy)
+- refactor(drivers): retire vendor shim crates ([#4072](https://github.com/everruns/everruns/pull/4072)) by [@chaliy](https://github.com/chaliy)
+
+![Compact Slack installation errors](https://github.com/user-attachments/assets/115d69b1-e0d3-4596-928b-bab3dff71d10)
+
+### Crate Releases
+
+All 44 published crates ship at the platform version 0.36.0.
+
+Retired after their deprecated 0.35.0 forwarding release:
+
+- `everruns-anthropic` → `everruns-drivers` (`anthropic`)
+- `everruns-bedrock` → `everruns-drivers` (`bedrock`)
+- `everruns-fireworks` → `everruns-drivers` (`fireworks`)
+- `everruns-gemini` → `everruns-drivers` (`gemini`)
+- `everruns-mai` → `everruns-drivers` (`mai`)
+- `everruns-meta` → `everruns-drivers` (`meta`)
+- `everruns-openai` → `everruns-drivers` (`openai`)
+- `everruns-openrouter` → `everruns-drivers` (`openrouter`)
+
+Published 0.35.0 shims remain available; no capability is removed.
+
 ## [0.35.0] - 2026-10-03
 
 ### Highlights
