@@ -1,5 +1,5 @@
 //! External provider package: implements the `ChatDriver` contract and driver
-//! registration against the provider SPI (`everruns-provider`) only — no
+//! registration against the provider SPI (`everruns-contracts`) only — no
 //! `everruns`, `everruns-core`, or `everruns-host` imports (EVE-874).
 
 use async_trait::async_trait;

@@ -1,7 +1,7 @@
 # OpenAI Decisions integration
 # Decision: its own crate, not a module of `everruns-openai`. The decision
 #   driver needs `everruns-core` (DecisionDriver, DecisionRequest), and the chat
-#   driver crate deliberately depends only on `everruns-provider`.
+#   driver crate deliberately depends only on `everruns-contracts`.
 # Decision: unpublished while the Decisions API is in limited preview and its
 #   wire shape is unconfirmed (EVE-1118). The endpoint answered our account with
 #   "Decision API is not enabled for this user" on 2026-09-30, so the request and

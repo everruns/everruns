@@ -7,7 +7,7 @@
 //! call-scoped cancellation. It deliberately depends on no engine, host, or
 //! async-runtime crate: hosts adapt [`Context`] onto their own runtime via
 //! the [`ProgressSink`] and [`CancellationSignal`] seams, and third-party
-//! capability crates can depend on `everruns-capability` alone.
+//! capability crates can depend on `everruns-contracts` alone.
 //!
 //! Application authors normally consume these types re-exported as
 //! `everruns::capability`.

@@ -5,7 +5,7 @@ package.
 
 - `drivers/` (`everruns-drivers`) holds every vendor driver as a feature-gated
   module over the neutral contracts in
-  [`everruns-provider`](../provider/README.md). A new vendor is a new module and
+  [`everruns-contracts`](../contracts/README.md). A new vendor is a new module and
   feature there, not a new crate.
 - `llmsim/` (`everruns-llmsim`) is the production-safe deterministic, offline
   implementation of the same provider contract. It stays its own crate because

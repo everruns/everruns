@@ -27,7 +27,7 @@ use everruns_core::CapabilityRegistry;
 let mut registry = CapabilityRegistry::new();
 register_portable_capabilities(&mut registry)?;
 
-# Ok::<(), everruns_capability::CapabilityError>(())
+# Ok::<(), everruns_contracts::capability::CapabilityError>(())
 ```
 
 The bundle contains policy, not environment integrations. It does not own a

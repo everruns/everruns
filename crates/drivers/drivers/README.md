@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-drivers` registers vendor drivers into a `DriverRegistry` from
-[`everruns-provider`](https://crates.io/crates/everruns-provider). Vendors whose
+[`everruns-contracts`](https://crates.io/crates/everruns-contracts). Vendors whose
 API is OpenAI-compatible wrap one of that crate's shared protocol drivers,
 `OpenAIProtocolChatDriver` (Chat Completions) or
 `OpenResponsesProtocolChatDriver` ([Open Responses](https://openresponses.org)),

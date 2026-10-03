@@ -250,7 +250,7 @@ pub use app::{
     EndpointTransport, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
     PublicChatChannelConfig, SlackReplyMode,
 };
-/// Endpoint ID. Lives in `everruns-provider` and keeps its `appchan_` wire
+/// Endpoint ID. Lives in `everruns-contracts` and keeps its `appchan_` wire
 /// prefix, which is stored in rows, tags, and third-party registrations.
 pub use everruns_contracts::typed_id::AgentEndpointId;
 // EVE-1131 dropped the App-era Rust aliases (`AppChannel`, `ChannelType`,
