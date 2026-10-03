@@ -93,10 +93,7 @@ impl From<&str> for MemoryScope {
 pub struct Memory {
     /// External identifier (`mem_<32-hex>`). Shown as `id` in API responses.
     #[serde(rename = "id")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(value_type = String, example = "mem_01933b5a000070008000000000000001")
-    )]
+    #[schema(value_type = String, example = "mem_01933b5a000070008000000000000001")]
     pub public_id: MemoryId,
     /// Internal UUID primary key. Used for FK references. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]
@@ -164,7 +161,7 @@ fn default_encoding() -> String {
     "text".to_string()
 }
 
-pub use crate::records::memory::{
+pub use everruns_capabilities::memory::{
     MemoryConfig, MemoryMountAccess, MemoryMountConfig, validate_memory_config,
     validate_mount_config_shape,
 };
@@ -179,175 +176,5 @@ mod tests {
         assert_eq!(MemoryStatus::from("archived").to_string(), "archived");
         assert_eq!(MemoryStatus::from("deleted").to_string(), "deleted");
         assert_eq!(MemoryStatus::from("unknown").to_string(), "active");
-    }
-
-    #[test]
-    fn access_default_is_readonly() {
-        let cfg: MemoryMountConfig = serde_json::from_str(
-            r#"{ "memory": "mem_00000000000000000000000000000001", "path": "/workspace/r" }"#,
-        )
-        .unwrap();
-        assert_eq!(cfg.mode, MemoryMountAccess::ReadOnly);
-    }
-
-    #[test]
-    fn validate_rejects_non_mem_prefix() {
-        let cfg = MemoryMountConfig {
-            memory: "agent_x".into(),
-            path: "/workspace/r".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_err());
-    }
-
-    #[test]
-    fn validate_rejects_path_outside_workspace() {
-        let cfg = MemoryMountConfig {
-            memory: "mem_00000000000000000000000000000001".into(),
-            path: "/etc/passwd".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_err());
-    }
-
-    #[test]
-    fn validate_rejects_workspace_prefix_lookalike() {
-        // /workspacefoo must NOT pass the /workspace boundary check.
-        let cfg = MemoryMountConfig {
-            memory: "mem_00000000000000000000000000000001".into(),
-            path: "/workspacefoo".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_err());
-    }
-
-    #[test]
-    fn validate_accepts_workspace_root() {
-        let cfg = MemoryMountConfig {
-            memory: "mem_00000000000000000000000000000001".into(),
-            path: "/workspace".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_ok());
-    }
-
-    #[test]
-    fn validate_rejects_invalid_hex_in_memory_id() {
-        // mem_-prefixed but not 32 lowercase hex chars must be rejected so
-        // structurally invalid IDs cannot reach the database.
-        let cfg = MemoryMountConfig {
-            memory: "mem_not-hex".into(),
-            path: "/workspace/r".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_err());
-    }
-
-    #[test]
-    fn validate_rejects_dotdot() {
-        let cfg = MemoryMountConfig {
-            memory: "mem_00000000000000000000000000000001".into(),
-            path: "/workspace/../etc".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_err());
-    }
-
-    #[test]
-    fn validate_rejects_double_slash() {
-        let cfg = MemoryMountConfig {
-            memory: "mem_00000000000000000000000000000001".into(),
-            path: "/workspace//data".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_err());
-    }
-
-    #[test]
-    fn validate_rejects_trailing_slash() {
-        let cfg = MemoryMountConfig {
-            memory: "mem_00000000000000000000000000000001".into(),
-            path: "/workspace/data/".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_err());
-    }
-
-    #[test]
-    fn validate_accepts_valid_mount() {
-        let cfg = MemoryMountConfig {
-            memory: "mem_00000000000000000000000000000001".into(),
-            path: "/workspace/research".into(),
-            mode: MemoryMountAccess::ReadOnly,
-        };
-        assert!(validate_mount_config_shape(&cfg).is_ok());
-    }
-
-    #[test]
-    fn config_validate_rejects_duplicate_paths() {
-        let cfg = MemoryConfig {
-            mounts: vec![
-                MemoryMountConfig {
-                    memory: "mem_00000000000000000000000000000001".into(),
-                    path: "/workspace/data".into(),
-                    mode: MemoryMountAccess::ReadOnly,
-                },
-                MemoryMountConfig {
-                    memory: "mem_00000000000000000000000000000002".into(),
-                    path: "/workspace/data".into(),
-                    mode: MemoryMountAccess::ReadWrite,
-                },
-            ],
-        };
-        let err = validate_memory_config(&cfg).unwrap_err();
-        assert!(err.contains("duplicate"));
-    }
-
-    #[test]
-    fn config_validate_rejects_overlapping_paths() {
-        let cfg = MemoryConfig {
-            mounts: vec![
-                MemoryMountConfig {
-                    memory: "mem_00000000000000000000000000000001".into(),
-                    path: "/workspace/data".into(),
-                    mode: MemoryMountAccess::ReadOnly,
-                },
-                MemoryMountConfig {
-                    memory: "mem_00000000000000000000000000000002".into(),
-                    path: "/workspace/data/sub".into(),
-                    mode: MemoryMountAccess::ReadWrite,
-                },
-            ],
-        };
-        let err = validate_memory_config(&cfg).unwrap_err();
-        assert!(err.contains("overlapping"));
-    }
-
-    #[test]
-    fn config_validate_accepts_distinct_paths() {
-        let cfg = MemoryConfig {
-            mounts: vec![
-                MemoryMountConfig {
-                    memory: "mem_00000000000000000000000000000001".into(),
-                    path: "/workspace/data".into(),
-                    mode: MemoryMountAccess::ReadOnly,
-                },
-                MemoryMountConfig {
-                    memory: "mem_00000000000000000000000000000002".into(),
-                    path: "/workspace/notes".into(),
-                    mode: MemoryMountAccess::ReadWrite,
-                },
-            ],
-        };
-        assert!(validate_memory_config(&cfg).is_ok());
-    }
-
-    #[test]
-    fn overlap_helper_does_not_match_unrelated_prefix() {
-        // /workspace/data and /workspace/datasets must NOT overlap.
-        assert!(!mount_paths_overlap(
-            "/workspace/data",
-            "/workspace/datasets"
-        ));
     }
 }

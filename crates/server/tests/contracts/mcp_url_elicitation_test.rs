@@ -9,8 +9,8 @@
 
 use crate::test_harness;
 
-use crate::records::{Agent, Session};
 use axum::http::{Method, StatusCode};
+use everruns_server::records::{Agent, Session};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

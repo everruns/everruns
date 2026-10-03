@@ -61,10 +61,7 @@ impl From<&str> for WorkspaceStatus {
 pub struct Workspace {
     /// External identifier (`wsp_<32-hex>`). Shown as `id` in API responses.
     #[serde(rename = "id")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(value_type = String, example = "wsp_01933b5a000070008000000000000001")
-    )]
+    #[schema(value_type = String, example = "wsp_01933b5a000070008000000000000001")]
     pub public_id: WorkspaceId,
     /// Internal UUID primary key. Used for FK references. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]

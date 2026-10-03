@@ -21,7 +21,7 @@ Self-hosted container-based agent execution via Docker Engine REST API. Provides
 
 The capability communicates with Docker Engine via its REST API (v1.47) using `reqwest`. Supports Unix socket, TCP, and TCP+TLS transports. No dependency on the `docker` CLI binary.
 
-See `crates/platform/src/container_sandbox/client.rs` for the full API client implementation.
+See `crates/capabilities/src/container_sandbox/client.rs` for the full API client implementation.
 
 ### State Management
 
@@ -29,7 +29,7 @@ Per-sandbox state (container ID, network ID, image, working directory) is stored
 
 Leased resources track container lifecycle with 20-minute lease duration. The leased resource scheduler handles cleanup of abandoned containers.
 
-See `crates/platform/src/container_sandbox/state.rs` for state serialization and lease management.
+See `crates/capabilities/src/container_sandbox/state.rs` for state serialization and lease management.
 
 ### Configuration
 
@@ -47,7 +47,7 @@ See `crates/platform/src/container_sandbox/state.rs` for state serialization and
 
 Environment variables `CONTAINER_SANDBOX_DOCKER_HOST` and `CONTAINER_SANDBOX_RUNTIME` provide deployment-level defaults. OSS works with plain Docker (runc) out of the box.
 
-See `crates/platform/src/container_sandbox/config.rs` for full configuration fields and defaults.
+See `crates/capabilities/src/container_sandbox/config.rs` for full configuration fields and defaults.
 
 ## Tools
 
@@ -62,7 +62,7 @@ See `crates/platform/src/container_sandbox/config.rs` for full configuration fie
 | `sandbox_list` | List active containers in current session |
 | `sandbox_manage` | Stop/start/remove container |
 
-See `crates/platform/src/container_sandbox/tools.rs` for full tool implementations including parameter schemas, return types, and error handling.
+See `crates/capabilities/src/container_sandbox/tools.rs` for full tool implementations including parameter schemas, return types, and error handling.
 
 ## Multi-Tenant Isolation (6 layers)
 
@@ -83,7 +83,7 @@ See `knowledge/security/threat-model.md#20-container-sandbox-tm-sandbox` for ful
 
 ### Platform-owned module, not integration
 
-Located at `crates/platform/src/container_sandbox/`, not `integrations/`. This
+Located at `crates/capabilities/src/container_sandbox/`, not `integrations/`. This
 is opt-in deployment infrastructure (self-hosted Docker), not an external SaaS
 service or a neutral execution-kernel concern.
 
@@ -119,4 +119,4 @@ crates/platform/
 
 ## Live API tests
 
-`crates/platform/tests/container_sandbox_live_api_test.rs` is the canonical live-test entrypoint. It is gated behind the `container-sandbox-live-tests` feature and expects an unauthenticated Docker daemon reachable through `CONTAINER_SANDBOX_DOCKER_HOST`. The dedicated workflow runs it against `docker:dind` when the platform module changes; the live sweep reruns it weekly and on demand.
+`crates/capabilities/tests/container_sandbox_live_api_test.rs` is the canonical live-test entrypoint. It is gated behind the `container-sandbox-live-tests` feature and expects an unauthenticated Docker daemon reachable through `CONTAINER_SANDBOX_DOCKER_HOST`. The dedicated workflow runs it against `docker:dind` when the platform module changes; the live sweep reruns it weekly and on demand.

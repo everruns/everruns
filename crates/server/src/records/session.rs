@@ -329,52 +329,37 @@ impl From<&str> for SessionParticipantRole {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SessionParticipant {
     /// Unique identifier for the participant row (format: part_{32-hex}).
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
+    #[schema(
             value_type = String,
             example = "part_01933b5a00007000800000000000001"
-        )
-    )]
+        )]
     pub id: SessionParticipantId,
     /// Session this participant belongs to.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
+    #[schema(
             value_type = String,
             example = "session_01933b5a00007000800000000000001"
-        )
-    )]
+        )]
     pub session_id: SessionId,
     pub kind: SessionParticipantKind,
     /// Present for agent participants.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
+    #[schema(
             value_type = Option<String>,
             example = "agent_01933b5a00007000800000000000001"
-        )
-    )]
+        )]
     pub agent_id: Option<AgentId>,
     /// Immutable agent version captured for an agent participant when known.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
+    #[schema(
             value_type = Option<String>,
             example = "agentver_01933b5a00007000800000000000001"
-        )
-    )]
+        )]
     pub agent_version_id: Option<AgentVersionId>,
     /// Principal that joined the session.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
+    #[schema(
             value_type = String,
             example = "principal_01933b5a000070008000000000000001"
-        )
-    )]
+        )]
     pub principal_id: PrincipalId,
     /// Human-readable name captured for this participant.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -424,10 +409,7 @@ pub struct Session {
     pub owner_principal_id: PrincipalId,
     /// Denormalized effective human owner of the owning principal lineage.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "550e8400-e29b-41d4-a716-446655440000")
-    )]
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub resolved_owner_user_id: Option<uuid::Uuid>,
     /// Owning principal summary.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -441,10 +423,7 @@ pub struct Session {
     pub title: Option<String>,
     /// Session objective visible to the runtime agent at system-prompt level.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "Investigate the queue latency regression")
-    )]
+    #[schema(example = "Investigate the queue latency regression")]
     pub goal: Option<String>,
     /// Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -452,17 +431,11 @@ pub struct Session {
     pub locale: Option<String>,
     /// Preview text from the first user message (truncated).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "Help me draft the Q3 marketing plan")
-    )]
+    #[schema(example = "Help me draft the Q3 marketing plan")]
     pub preview: Option<String>,
     /// Preview text from the last assistant response (truncated).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "Here is a Q3 plan covering the three pillars we discussed...")
-    )]
+    #[schema(example = "Here is a Q3 plan covering the three pillars we discussed...")]
     pub output_preview: Option<String>,
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
@@ -476,10 +449,7 @@ pub struct Session {
     /// Session-level capabilities (additive to agent capabilities).
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(value_type = Vec<crate::CapabilityRefSchema>)
-    )]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Client-side tools for this session (additive to agent tools).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -538,11 +508,8 @@ pub struct Session {
     /// always absent for chat threads and for deployments with no utility LLM,
     /// so a reader must have a fallback rather than treating this as required.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
-            example = "Ran the nightly report and failed posting it to Slack: channel_not_found."
-        )
+    #[schema(
+        example = "Ran the nightly report and failed posting it to Slack: channel_not_found."
     )]
     pub run_summary: Option<String>,
     /// Timestamp when the session was created.

@@ -6,8 +6,8 @@
 
 use crate::records::{AgentTriggerType, AgentVersionPolicy, TriggerEventFilter};
 use chrono::{DateTime, Utc};
-use everruns_capabilities::SessionBinding;
 use everruns_contracts::typed_id::AgentVersionId;
+use everruns_core::channel::SessionBinding;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;

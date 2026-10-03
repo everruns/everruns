@@ -600,10 +600,7 @@ pub struct EndpointAuthRequirements {
 /// Authentication config for one App endpoint/channel.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[schema(as = AppEndpointAuthConfig)]
-#[cfg_attr(
-    feature = "openapi",
-    schema(example = json!({"mode": "api_key", "requirements": {"audiences": ["everruns-api"], "scopes": ["app:invoke"]}}))
-)]
+#[schema(example = json!({"mode": "api_key", "requirements": {"audiences": ["everruns-api"], "scopes": ["app:invoke"]}}))]
 pub struct EndpointAuthConfig {
     pub mode: EndpointAuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -339,7 +339,7 @@ pub(crate) fn normalize_and_validate_channel_config(
 
 fn validate_session_binding(
     channel_type: &EndpointTransport,
-    binding: everruns_capabilities::SessionBinding,
+    binding: everruns_core::channel::SessionBinding,
 ) -> Result<(), CommandError> {
     if channel_type.allows_binding(binding) {
         Ok(())

@@ -1,92 +1,41 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-// EVE-872: hosted worker adapters project stored records into the same
+// EVE-872: hosted worker adapters project stored views into the same
 // canonical resolved execution snapshot as the Framework runtime, and the
-// projection is identical whether records arrive in-process (direct adapters)
+// projection is identical whether views arrive in-process (direct adapters)
 // or after a serialization round-trip (the gRPC adapter shape).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_capabilities::Harness;
 use everruns_contracts::error::Result as CoreResult;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::{AgentDefinition as Agent, HarnessDefinition as Harness};
 use everruns_core::{DEFAULT_ORG_ID, ExecutionSession, ResolvedExecutionSnapshot};
 use everruns_host::{RuntimeHostAdapter, SessionBuilder};
-// EVE-877: the hosted adapters transport the stored platform record; the
+// EVE-877: the hosted adapters transport the stored platform view; the
 // loading seam projects it into the portable execution definition.
-use everruns_capabilities::{Agent, AgentStatus};
 use everruns_worker::{WorkerAdapters, WorkerRuntimeHost, WorkerTurnContext};
 use uuid::Uuid;
 
-fn fixture_records() -> (Harness, Agent, ExecutionSession) {
+fn fixture_views() -> (Harness, Agent, ExecutionSession) {
     let harness_id = HarnessId::from_seed(872);
     let agent_id = AgentId::from_seed(872);
     let session_id = SessionId::from_seed(872);
 
-    // Stored (pre-merged) platform record, as transported by WorkerAdapters
+    // Portable execution view, as transported by WorkerAdapters
     // (EVE-881): the host itself only ever sees the projected definition.
     let harness = Harness {
-        id: harness_id,
         name: "hoster".into(),
-        display_name: None,
-        icon: None,
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
         system_prompt: Some("Harness instructions.".into()),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        parallel_tool_calls: None,
-        mcp_servers: Default::default(),
-        embedder_metadata: Default::default(),
-        is_built_in: false,
-        status: everruns_capabilities::HarnessStatus::Active,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        archived_at: None,
-        deleted_at: None,
+        ..Harness::default()
     };
     let agent = Agent {
-        service_virtual_user_id: None,
-
-        public_id: agent_id,
-        internal_id: agent_id.uuid(),
+        id: agent_id,
         name: "hosted-agent".into(),
-        display_name: None,
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
         system_prompt: "Agent instructions.".into(),
-        default_model_id: None,
-        harness_id,
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
         max_iterations: Some(9),
-        parallel_tool_calls: None,
-        environments: None,
-        tools: vec![],
-        mcp_servers: Default::default(),
-        status: AgentStatus::Active,
-        exposures_suspended: false,
-        exposed: false,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
+        ..Agent::new(agent_id, "hosted-agent", "Agent instructions.")
     };
     let session = SessionBuilder::new(harness_id)
         .id(session_id)
@@ -96,19 +45,31 @@ fn fixture_records() -> (Harness, Agent, ExecutionSession) {
     (harness, agent, session)
 }
 
-/// Direct-style adapter: hands the stored records to the host in-process.
+/// Direct-style adapter: hands the stored views to the host in-process.
 #[derive(Clone)]
 struct DirectMockAdapters {
     harness: Harness,
     agent: Agent,
     session: ExecutionSession,
+    load_failure: Option<&'static str>,
 }
 
-/// gRPC-style adapter: round-trips every record through serialization before
+/// gRPC-style adapter: round-trips every view through serialization before
 /// handing it to the host, standing in for the proto wire boundary.
 #[derive(Clone)]
 struct WireMockAdapters {
     inner: DirectMockAdapters,
+}
+
+impl DirectMockAdapters {
+    fn load_failure(&self) -> Option<&'static str> {
+        self.load_failure
+    }
+}
+impl WireMockAdapters {
+    fn load_failure(&self) -> Option<&'static str> {
+        self.inner.load_failure
+    }
 }
 
 fn wire_round_trip<T: serde::Serialize + serde::de::DeserializeOwned>(value: &T) -> T {
@@ -121,7 +82,10 @@ macro_rules! mock_worker_adapters {
         impl WorkerAdapters for $ty {
             async fn get_agent(&self, _org_id: i64, agent_id: Uuid) -> CoreResult<Option<Agent>> {
                 let agent = ($agent)(self);
-                Ok((agent.public_id.uuid() == agent_id).then_some(agent))
+                if let Some(error) = self.load_failure() {
+                    return Err(everruns_contracts::error::AgentLoopError::config(error));
+                }
+                Ok((agent.id.uuid() == agent_id).then_some(agent))
             }
             async fn get_harness(
                 &self,
@@ -129,7 +93,7 @@ macro_rules! mock_worker_adapters {
                 harness_id: Uuid,
             ) -> CoreResult<Option<Harness>> {
                 let harness = ($harness)(self);
-                Ok((harness.id.uuid() == harness_id).then_some(harness))
+                Ok((HarnessId::from_seed(872).uuid() == harness_id).then_some(harness))
             }
             async fn get_session(
                 &self,
@@ -438,11 +402,12 @@ mock_worker_adapters!(
 
 #[tokio::test]
 async fn direct_and_wire_adapters_project_the_same_snapshot() {
-    let (harness, agent, session) = fixture_records();
+    let (harness, agent, session) = fixture_views();
     let direct = DirectMockAdapters {
         harness: harness.clone(),
         agent: agent.clone(),
         session: session.clone(),
+        load_failure: None,
     };
     let wire = WireMockAdapters {
         inner: direct.clone(),
@@ -459,14 +424,8 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
 
     // The canonical projection is the reference: hosted adapters built from
     // equivalent configuration produce equivalent snapshots.
-    let reference = ResolvedExecutionSnapshot::project(
-        &harness
-            .execution_definition()
-            .expect("active harness projects"),
-        Some(&agent.execution_definition().expect("active agent projects")),
-        &session,
-    )
-    .expect("reference projection");
+    let reference = ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session)
+        .expect("reference projection");
 
     let direct_json = serde_json::to_value(&direct_inputs.snapshot).unwrap();
     let wire_json = serde_json::to_value(&wire_inputs.snapshot).unwrap();
@@ -480,6 +439,7 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
             harness,
             agent,
             session: session.clone(),
+            load_failure: None,
         },
     })
     .load_resolved_turn(DEFAULT_ORG_ID, session.id)
@@ -498,13 +458,13 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
 async fn worker_load_fails_for_archived_and_deleted_agents() {
     // EVE-877: lifecycle validation happens at the worker loading seam, before
     // the resolved snapshot is built and before host execution.
-    for status in [AgentStatus::Archived, AgentStatus::Deleted] {
-        let (harness, mut agent, session) = fixture_records();
-        agent.status = status.clone();
+    for status in ["archived", "deleted"] {
+        let (harness, agent, session) = fixture_views();
         let host = WorkerRuntimeHost::new(DirectMockAdapters {
             harness,
             agent,
             session: session.clone(),
+            load_failure: Some("agent is inactive and cannot execute turns"),
         });
         let error = host
             .load_resolved_turn(DEFAULT_ORG_ID, session.id)
@@ -518,15 +478,16 @@ async fn worker_load_fails_for_archived_and_deleted_agents() {
 }
 
 #[tokio::test]
-async fn worker_projection_fails_on_missing_records() {
-    let (harness, agent, mut session) = fixture_records();
+async fn worker_projection_fails_on_missing_views() {
+    let (harness, agent, mut session) = fixture_views();
     // ExecutionSession referencing a harness outside the adapter's org scope resolves
-    // to no records — the cross-tenant / missing shape.
+    // to no views — the cross-tenant / missing shape.
     session.harness_id = HarnessId::from_seed(999);
     let host = WorkerRuntimeHost::new(DirectMockAdapters {
         harness,
         agent,
         session: session.clone(),
+        load_failure: None,
     });
     assert!(
         host.load_resolved_turn(DEFAULT_ORG_ID, session.id)

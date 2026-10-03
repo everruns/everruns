@@ -37,7 +37,7 @@ pub(crate) mod contracts {
         pub(crate) use everruns_contracts::model::*;
     }
     pub(crate) mod provider {
-        pub(crate) use crate::records::provider::{Provider, ProviderStatus};
+        pub(crate) use crate::records::provider::ProviderStatus;
         pub(crate) use everruns_contracts::provider::*;
     }
 

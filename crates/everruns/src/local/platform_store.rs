@@ -14,11 +14,7 @@
 // from.
 
 use async_trait::async_trait;
-use everruns_capabilities::Agent;
-use everruns_capabilities::Harness;
 use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
-use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
-use everruns_capabilities::{Session, SessionParticipant};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionParticipantId;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};

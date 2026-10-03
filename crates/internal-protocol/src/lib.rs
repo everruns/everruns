@@ -96,7 +96,7 @@ pub fn uuid_to_proto_uuid(value: uuid::Uuid) -> proto::Uuid {
 /// Build a typed-id string (`<prefix>_<hex>`) from a proto Uuid, stripping the
 /// dashes the typed-id layer does not use. Centralizes the prefixed-id
 /// construction the proto↔schema conversions repeat (EVE-652).
-fn prefixed_id(prefix: &str, value: &proto::Uuid) -> String {
+pub fn prefixed_id(prefix: &str, value: &proto::Uuid) -> String {
     format!("{prefix}_{}", value.value.replace('-', ""))
 }
 

@@ -8,7 +8,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::provider::ProviderStatus;
 use everruns_contracts::DriverId;
 pub use everruns_contracts::model_profile_data::{
     CLEAR_AT_PARAMETER, CostTier, MID_CONVERSATION_SYSTEM_PARAMETER, Modality, ModelCost,

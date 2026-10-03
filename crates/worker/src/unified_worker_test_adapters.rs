@@ -20,14 +20,14 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _org_id: i64,
         _agent_id: Uuid,
-    ) -> CoreResult<Option<everruns_capabilities::Agent>> {
+    ) -> CoreResult<Option<everruns_core::AgentDefinition>> {
         unimplemented!()
     }
     async fn get_harness(
         &self,
         _org_id: i64,
         _harness_id: Uuid,
-    ) -> CoreResult<Option<everruns_capabilities::Harness>> {
+    ) -> CoreResult<Option<everruns_core::HarnessDefinition>> {
         unimplemented!()
     }
     async fn get_session(

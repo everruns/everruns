@@ -4,7 +4,6 @@
 // Decision: Used by external workers that connect to control-plane via gRPC
 
 use async_trait::async_trait;
-use everruns_capabilities::{Agent, Harness};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::model_spec::ModelSpec;
@@ -17,6 +16,7 @@ use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
+use everruns_core::{AgentDefinition, HarnessDefinition};
 use everruns_core::{
     EgressService, ExecutionSession, MessageHistory, MessageQuery, RuntimeMessage,
     UtilityLlmService,
@@ -110,17 +110,52 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // Agent Operations
     // =========================================================================
 
-    async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
+    async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<AgentDefinition>> {
         let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
-        store.fetch_agent_record(AgentId::from_uuid(agent_id)).await
+        everruns_core::execution_loading::AgentStore::get_agent(
+            &store,
+            AgentId::from_uuid(agent_id),
+        )
+        .await
     }
 
-    async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
+    async fn get_harness(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+    ) -> Result<Option<HarnessDefinition>> {
         let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
         // The server returns a single pre-merged stored record (EVE-881).
-        store
-            .fetch_harness_record(HarnessId::from_uuid(harness_id))
-            .await
+        everruns_core::execution_loading::HarnessStore::get_harness(
+            &store,
+            HarnessId::from_uuid(harness_id),
+        )
+        .await
+    }
+
+    async fn get_agent_blocker(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
+        everruns_core::execution_loading::AgentStore::get_agent_blocker(
+            &store,
+            AgentId::from_uuid(id),
+        )
+        .await
+    }
+    async fn get_harness_blocker(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
+        everruns_core::execution_loading::HarnessStore::get_harness_blocker(
+            &store,
+            HarnessId::from_uuid(id),
+        )
+        .await
     }
 
     // =========================================================================

@@ -32,7 +32,7 @@ use crate::records::{TriggerDeliveryStatus, TriggerEventFilter};
 use crate::storage::StorageBackend;
 use crate::storage::agent_trigger_deliveries::CreateAgentTriggerDeliveryRow;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
-use everruns_capabilities::SessionBinding;
+use everruns_core::channel::SessionBinding;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -342,17 +342,17 @@ pub(super) fn optional_filter(
 ///
 /// Before EVE-1005 this was enforced by the type system alone — triggers used
 /// `InvocationSessionMode`, which simply had no `per_thread` to express. Now
-/// that one `everruns_capabilities::SessionBinding` spans both worlds, the constraint has to be
+/// that one `everruns_core::channel::SessionBinding` spans both worlds, the constraint has to be
 /// checked rather than merely unrepresentable.
 pub(super) fn validate_trigger_binding(
-    binding: everruns_capabilities::SessionBinding,
+    binding: everruns_core::channel::SessionBinding,
     has_subject: bool,
 ) -> Result<(), crate::domains::common::CommandError> {
-    if binding == everruns_capabilities::SessionBinding::Thread && has_subject {
+    if binding == everruns_core::channel::SessionBinding::Thread && has_subject {
         return Ok(());
     }
     if binding.is_message_keyed() {
-        let hint = if binding == everruns_capabilities::SessionBinding::Thread {
+        let hint = if binding == everruns_core::channel::SessionBinding::Thread {
             " per_thread needs a subject_template to key sessions on."
         } else {
             ""
@@ -372,7 +372,7 @@ pub(super) fn validate_trigger_binding(
 /// Which session an event lands in.
 pub(super) struct TriggerSessionRoute<'a> {
     pub(super) trigger_id: everruns_contracts::typed_id::TriggerId,
-    pub(super) session_mode: everruns_capabilities::SessionBinding,
+    pub(super) session_mode: everruns_core::channel::SessionBinding,
     /// Event subject; with `per_thread` it keys one session per subject.
     pub(super) subject: Option<&'a str>,
     pub(super) source: crate::records::SessionSource,

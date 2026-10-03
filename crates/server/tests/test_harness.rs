@@ -170,10 +170,10 @@ impl TestServer {
         channel_type: &str,
         mut channel_config: Value,
     ) -> Value {
-        use crate::records::AgentEndpointId;
         use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
+        use everruns_server::records::AgentEndpointId;
         use everruns_server::storage::models::{
             CreateAppRow, CreateLegacyAliasEndpointRow, CreatePrincipalRow,
         };
@@ -312,9 +312,9 @@ impl TestServer {
         channel_type: &str,
         channel_config: Value,
     ) -> Value {
-        use crate::records::AgentEndpointId;
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
+        use everruns_server::records::AgentEndpointId;
         use everruns_server::storage::models::CreateLegacyAliasEndpointRow;
 
         let app = self
@@ -607,7 +607,7 @@ impl TestServer {
                 db.clone(),
                 encryption.clone(),
                 webhooks.clone(),
-                crate::records::FeatureFlags {
+                everruns_server::records::FeatureFlags {
                     mcp_events: true,
                     ..Default::default()
                 },
@@ -623,7 +623,7 @@ impl TestServer {
             event_delivery.clone(),
             vec![],
         ));
-        let mut feature_flags = crate::records::FeatureFlags::from_env(&grade);
+        let mut feature_flags = everruns_server::records::FeatureFlags::from_env(&grade);
         feature_flags.evals = true;
         feature_flags.observers = true;
         // System side of the experimental gates exercised by integration tests.

@@ -1,9 +1,9 @@
-use crate::records::Agent;
-use crate::records::Model;
-use crate::records::Session;
 use crate::support::*;
-use everruns_contracts::provider::Provider;
 use everruns_core::SessionFile;
+use everruns_server::records::Agent;
+use everruns_server::records::Model;
+use everruns_server::records::Session;
+use everruns_server::records::provider::Provider;
 use serde_json::{Value, json};
 
 #[tokio::test]

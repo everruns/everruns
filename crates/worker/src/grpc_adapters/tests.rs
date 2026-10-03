@@ -57,7 +57,7 @@ fn grpc_worker_adapter_parses_acts_as_and_defaults_old_servers() {
 }
 
 #[test]
-fn test_proto_harness_to_harness_preserves_metadata() {
+fn test_proto_harness_projects_execution_configuration() {
     let harness_id = Uuid::new_v4();
     let parent_id = Uuid::new_v4();
     let proto = proto::Harness {
@@ -83,19 +83,25 @@ fn test_proto_harness_to_harness_preserves_metadata() {
         ],
     };
 
-    let harness = proto_harness_to_harness(proto).expect("proto harness should convert");
+    let harness = proto_harness_to_definition(proto).expect("proto harness should convert");
 
-    assert_eq!(harness.id.uuid(), harness_id);
-    assert_eq!(
-        harness.parent_harness_id.map(|id| id.uuid()),
-        Some(parent_id)
-    );
-    assert_eq!(
-        harness.tags,
-        vec!["chat".to_string(), "built-in".to_string()]
-    );
+    assert_eq!(harness.name, "platform-chat");
+    assert_eq!(harness.system_prompt.as_deref(), Some("prompt"));
+    let projected = serde_json::to_value(&harness).unwrap();
+    for field in [
+        "id",
+        "parent_harness_id",
+        "tags",
+        "is_built_in",
+        "status",
+        "created_at",
+    ] {
+        assert!(
+            projected.get(field).is_none(),
+            "record field {field} leaked"
+        );
+    }
     assert_eq!(harness.capabilities[0].config_value()["name"], "resend");
-    assert!(harness.is_built_in);
 }
 
 #[test]

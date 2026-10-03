@@ -185,7 +185,7 @@ Capability implementations are composed explicitly by the selected host:
 └───────────────────────────┬─────────────────────────────┘
                             ↑ platform -> core
 ┌─────────────────────────────────────────────────────────┐
-│                  everruns-platform                      │
+│                  everruns-capabilities                      │
 │ Hosted knowledge/delegation/task/management impls       │
 │ + narrow stores + product registry composition          │
 └───────────────────────────┬─────────────────────────────┘
@@ -211,7 +211,7 @@ Capability implementations are composed explicitly by the selected host:
 - `everruns-host::runtime_capability_registry()` and
   `compose_runtime_capability_registry(base)` add feature-selected embedded
   integrations.
-- `everruns-platform::capabilities::hosted_capability_registry_for_grade()`
+- `everruns-capabilities::capabilities::hosted_capability_registry_for_grade()`
   composes the full portable policy catalog, hosted integration catalog, and
   hosted product/platform-management capabilities.
 - The API layer uses the hosted registry and converts it to response DTOs.
@@ -1350,8 +1350,8 @@ instead.
 
 ##### Design Decision: PlatformStore Trait
 
-The [`PlatformStore`](../../crates/platform/src/platform_store.rs) trait and its
-management capabilities live in `everruns-platform`. Its delegation operations
+The [`PlatformStore`](../../crates/capabilities/src/platform_store.rs) trait and its
+management capabilities live in `everruns-capabilities`. Its delegation operations
 consume portable agent and harness definitions, resolved harness configuration,
 execution session views, and participant correlation IDs. The existing narrow
 core delegate forwards these views without projecting hosted records.

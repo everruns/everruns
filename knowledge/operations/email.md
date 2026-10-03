@@ -23,7 +23,7 @@ Email is not an agent capability, public API, or UI surface. It is a host servic
 
 ## Core Contract
 
-`everruns-platform` owns the email abstraction (moved out of `everruns-core`
+`crates/server/src/records/email/` owns the email abstraction (moved out of `everruns-core`
 in EVE-879, email is a hosted product side effect, never consumed during a
 turn, so the execution kernel carries none of it):
 
@@ -56,7 +56,7 @@ At least one `to` recipient, a subject, and a valid template are required.
 
 Email sends use explicit templates. Callers select a template by constructing the matching `EmailTemplate` variant (or its `EmailMessage` constructor); there is no runtime template registry. Both templates accept a caller-supplied `text` and `html` body and require both to be non-empty.
 
-All templates share an app-styled HTML shell whose colors and shapes mirror `apps/ui/src/app/design-system.css` (grayscale surface, navy/gold brand accents, sharp 0px corners). Brand tokens are inlined as literals in `crates/platform/src/email/mod.rs` because email clients cannot load the app's webfont or CSS variables; keep them in sync if the palette changes.
+All templates share an app-styled HTML shell whose colors and shapes mirror `apps/ui/src/app/design-system.css` (grayscale surface, navy/gold brand accents, sharp 0px corners). Brand tokens are inlined as literals in `crates/server/src/records/email/mod.rs` because email clients cannot load the app's webfont or CSS variables; keep them in sync if the palette changes.
 
 - `EmailTemplate::Minimal(MinimalEmailTemplate)`
   - app-styled shell, but **unbranded**: no wordmark, logo, or footer link

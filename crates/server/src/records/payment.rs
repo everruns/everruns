@@ -115,18 +115,12 @@ pub struct PaymentAccount {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: PaymentAccountId,
     /// Owning organization's prefixed public identifier.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "org_01933b5a000070008000000000000001")
-    )]
+    #[schema(example = "org_01933b5a000070008000000000000001")]
     pub organization_id: String,
     /// Principal class that owns this account (user, virtual user, or organization).
     pub owner_type: PaymentOwnerType,
     /// Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "agent_01933b5a000070008000000000000001")
-    )]
+    #[schema(example = "agent_01933b5a000070008000000000000001")]
     pub owner_id: String,
     /// Settlement rail this account operates on.
     pub rail: PaymentRail,
@@ -134,10 +128,7 @@ pub struct PaymentAccount {
     #[schema(example = "Production USDC ops wallet")]
     pub label: String,
     /// Public address on the rail (chain address, account number, etc.). Optional; `None` until provisioning completes.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8")
-    )]
+    #[schema(example = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8")]
     pub public_address: Option<String>,
     /// Current lifecycle status of this account.
     pub status: PaymentStatus,
@@ -160,10 +151,7 @@ pub struct PaymentPolicy {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: PaymentPolicyId,
     /// Owning organization's prefixed public identifier.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "org_01933b5a000070008000000000000001")
-    )]
+    #[schema(example = "org_01933b5a000070008000000000000001")]
     pub organization_id: String,
     /// Payment account this policy authorizes spending from.
     pub payment_account_id: PaymentAccountId,
@@ -171,10 +159,7 @@ pub struct PaymentPolicy {
     #[schema(example = "virtual_user")]
     pub subject_type: String,
     /// Prefixed identifier of the bound subject.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "identity_01933b5a000070008000000000000001")
-    )]
+    #[schema(example = "identity_01933b5a000070008000000000000001")]
     pub subject_id: String,
     /// Capability IDs this policy permits paid calls for. Empty list means no capability gating.
     #[schema(example = json!(["paid_search", "paid_image_gen"]))]
@@ -217,18 +202,12 @@ pub struct PaymentAttempt {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: PaymentAttemptId,
     /// Owning organization's prefixed public identifier.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "org_01933b5a000070008000000000000001")
-    )]
+    #[schema(example = "org_01933b5a000070008000000000000001")]
     pub organization_id: String,
     /// Payment account that settled (or attempted to settle) this attempt. `None` if no account could be resolved.
     pub payment_account_id: Option<PaymentAccountId>,
     /// Session that initiated the paid call, if any.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "session_01933b5a000070008000000000000001")
-    )]
+    #[schema(example = "session_01933b5a000070008000000000000001")]
     pub session_id: Option<String>,
     /// Capability ID that originated this paid call.
     #[schema(example = "paid_search")]
@@ -245,26 +224,15 @@ pub struct PaymentAttempt {
     #[schema(example = "USD")]
     pub currency: String,
     /// Destination URL of the paid outbound call.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "https://api.example.com/v1/search")
-    )]
+    #[schema(example = "https://api.example.com/v1/search")]
     pub target_url: String,
     /// Stable hash of the outbound request used to detect replays. `None` when not applicable.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
-            example = "sha256:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"
-        )
-    )]
+    #[schema(example = "sha256:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a")]
     pub request_hash: Option<String>,
     /// Current lifecycle status of this attempt.
     pub status: PaymentStatus,
     /// Human-readable error message when `status` is `failed`; `None` otherwise.
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "rail.insufficient_funds: settled balance below minimum")
-    )]
+    #[schema(example = "rail.insufficient_funds: settled balance below minimum")]
     pub error_message: Option<String>,
     /// Rail-specific receipt payload (transaction id, block reference, signature, etc.).
     #[schema(example = json!({"tx_hash": "0x4a1c2b3d", "block": 18234567}))]

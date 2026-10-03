@@ -11,8 +11,8 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use crate::records::Agent;
-use crate::records::Session;
+use everruns_server::records::Agent;
+use everruns_server::records::Session;
 
 /// Helper: create an agent + session + populate files, return session ID
 async fn setup_session_with_files(server: &TestServer) -> String {

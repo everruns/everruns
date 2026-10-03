@@ -1970,7 +1970,7 @@ fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
 
 /// Turn context loaded in one batched gRPC call
 pub struct TurnContext {
-    pub agent: Option<Agent>,
+    pub agent: Option<AgentDefinition>,
     pub session: ExecutionSession,
     pub messages: Vec<RuntimeMessage>,
     pub model: Option<ModelSpec>,

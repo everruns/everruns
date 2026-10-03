@@ -9,9 +9,9 @@
 use crate::test_harness;
 use async_trait::async_trait;
 
-use crate::records::{Agent, Session};
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_server::records::{Agent, Session};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use std::sync::{
@@ -295,7 +295,7 @@ async fn an_answer_resumes_the_turn_with_the_validated_result() {
 async fn platform_chat_owner_can_answer_a_question() {
     let server = test_server().await;
     let session_id =
-        platform_chat_waiting_session(&server, crate::records::ANONYMOUS_USER_ID).await;
+        platform_chat_waiting_session(&server, everruns_server::records::ANONYMOUS_USER_ID).await;
     emit_question_card(&server, session_id, "toolu_owner").await;
 
     post_answer(

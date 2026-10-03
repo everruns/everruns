@@ -1,13 +1,13 @@
 //! API integration tests: sessions.
 
 use super::support::*;
-use crate::records::Agent;
-use crate::records::Harness;
-use crate::records::Session;
 use crate::test_harness;
 use axum::http::StatusCode;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use everruns_core::{SessionContextReport, SessionFile};
+use everruns_server::records::Agent;
+use everruns_server::records::Harness;
+use everruns_server::records::Session;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

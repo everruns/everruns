@@ -72,7 +72,7 @@ cargo build 2>&1 | grep -E "unresolved import|no .* in"
 Add whichever crates the table points you at:
 
 ```toml
-everruns-platform = "0.18"   # persisted records, hosted service contracts
+everruns-capabilities = "0.18"   # persisted records, hosted service contracts
 everruns-host     = "0.18"   # execution composition and host wiring
 everruns-provider = "0.18"   # provider SPI, typed IDs, sqlx impls
 everruns-capability = "0.18" # capability identity/configuration contract
@@ -259,8 +259,8 @@ application-facing `everruns::Model::simulated` and
 | 0.17 | 0.18 |
 |---|---|
 | `everruns-core/sqlx` | removed, use `everruns-provider` with `features = ["sqlx"]` |
-| `everruns-core/embedded-platform-docs` | removed, it gated nothing; use `everruns-platform/embedded-platform-docs` |
-| `everruns-platform/sqlx` | removed, it forwarded to core's and nothing enabled it |
+| `everruns-core/embedded-platform-docs` | removed, it gated nothing; use `everruns-capabilities/embedded-platform-docs` |
+| `everruns-capabilities/sqlx` | removed, it forwarded to core's and nothing enabled it |
 | `everruns-core/llm-tests` | removed, use the `everruns-llm-tests` package for live provider tests |
 
 `everruns-core` now has an empty default feature set. OpenAPI derives remain

@@ -1630,7 +1630,7 @@ impl ResourceUrlable for everruns_core::Skill {
     }
 }
 
-impl ResourceUrlable for everruns_contracts::provider::Provider {
+impl ResourceUrlable for crate::records::provider::Provider {
     fn api_path() -> &'static str {
         "v1/providers"
     }

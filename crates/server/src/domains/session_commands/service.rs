@@ -24,7 +24,7 @@ use everruns_core::command::{
 use everruns_core::execution_loading::AgentStore;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
 use everruns_host::StoreCommandHost;
-use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
+use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -240,7 +240,7 @@ impl SessionCommandService {
         // status-agnostic platform surfaces, so they read the record rather
         // than the execution-validated definition (EVE-881).
         let harness = adapters
-            .get_harness(org_id, session.harness_id.uuid())
+            .get_harness_impl(org_id, session.harness_id.uuid())
             .await?
             .ok_or(ResourceNotFoundError::new("Harness"))?;
         let agent = match session.agent_id {

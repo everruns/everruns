@@ -21,7 +21,8 @@ RUNTIME_HANDLES = {
     # This is the external Cursor service's status, not an Everruns agent row.
     'integrations/cursor/src/client.rs': {'AgentStatus'},
 }
-DECLARATION = re.compile(r'\bpub(?:\([^)]*\))?\s+(?:struct|enum|type)\s+(\w+)\b')
+PUBLIC_DECLARATION = re.compile(r'\bpub(?:\([^)]*\))?\s+(?:struct|enum|type)\s+(\w+)\b')
+DECLARATION = re.compile(r'\b(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|type)\s+(\w+)\b')
 SERVER_REFERENCE = re.compile(r'\beverruns_server\s*::\s*records\b')
 ROW = re.compile(r'\bpub\s+struct\s+(Model|Provider)\b[^;{]*\{([^}]+)\}', re.S)
 
@@ -35,7 +36,7 @@ def violations(root: Path) -> list[str]:
     record_names = {
         match[1]
         for source in (root / 'crates/server/src/records').rglob('*.rs')
-        for match in DECLARATION.finditer(source.read_text())
+        for match in PUBLIC_DECLARATION.finditer(source.read_text())
     }
     failures: list[str] = []
     for package in metadata['packages']:

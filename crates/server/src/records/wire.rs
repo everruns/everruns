@@ -1,18 +1,13 @@
 //! Server-edge mapping between control-plane records and internal transport DTOs.
-use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_internal_protocol::{
     ConversionError, datetime_to_proto_timestamp, encode_capability_configs, json_to_proto_struct,
-    proto, proto_struct_to_json, proto_timestamp_to_datetime, proto_uuid_to_uuid,
-    uuid_to_proto_uuid,
+    prefixed_id, proto, proto_struct_to_json, proto_timestamp_to_datetime, uuid_to_proto_uuid,
 };
-fn prefixed_id(prefix: &str, value: &proto::Uuid) -> String {
-    format!("{prefix}_{}", value.value.replace('-', ""))
-}
 
 /// Convert proto Agent to the stored platform Agent record using JSON.
 ///
-/// EVE-877: the stored record lives in `everruns-capabilities`; the proto shape is
-/// unchanged. Both endpoints of this wire (server, worker) are platform-side.
+/// The server owns record conversion. Workers project the unchanged transport
+/// directly into portable execution definitions.
 pub fn proto_agent_to_schema(
     value: proto::Agent,
 ) -> Result<crate::records::Agent, ConversionError> {
