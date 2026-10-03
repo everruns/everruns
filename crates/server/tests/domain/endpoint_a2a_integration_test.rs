@@ -368,6 +368,33 @@ fn outbound_delegation_config(
     json!({ "agents": [agent] })
 }
 
+/// `allow_local_urls` is honored only under `DEPLOYMENT_GRADE=dev`
+/// (TM-AGENT-024), and the A2A provider reads the grade from the process
+/// environment. Scope the dev grade to each test that uses it so the rest of the binary keeps
+/// its own grade; CI runs this suite with `--test-threads=1`.
+struct DevGradeGuard(Option<std::ffi::OsString>);
+
+impl DevGradeGuard {
+    fn set() -> Self {
+        let previous = std::env::var_os("DEPLOYMENT_GRADE");
+        // SAFETY: tests in this binary that touch the environment run serially.
+        unsafe { std::env::set_var("DEPLOYMENT_GRADE", "dev") };
+        Self(previous)
+    }
+}
+
+impl Drop for DevGradeGuard {
+    fn drop(&mut self) {
+        // SAFETY: see `DevGradeGuard::set`.
+        unsafe {
+            match self.0.take() {
+                Some(value) => std::env::set_var("DEPLOYMENT_GRADE", value),
+                None => std::env::remove_var("DEPLOYMENT_GRADE"),
+            }
+        }
+    }
+}
+
 async fn spawn_background_against_local_a2a(config: Value) -> (Arc<TestStorageStore>, Value) {
     let capability = A2aAgentDelegationCapability;
     // EVE-885: delegation providers expose their tool through the neutral
@@ -1455,6 +1482,7 @@ async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
     let (_server, endpoint, api_key, _app_id, _channel_id) =
         create_published_served_a2a_app().await;
     let discovery_base_url = spawn_agent_card_server(a2a_agent_card(&endpoint)).await;
+    let _dev_grade = DevGradeGuard::set();
     let config = outbound_delegation_config(&endpoint, &api_key, Some(&discovery_base_url));
 
     let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
@@ -1493,6 +1521,7 @@ async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
 async fn outbound_a2a_delegation_reaches_local_app_with_inline_card() {
     let (_server, endpoint, api_key, _app_id, _channel_id) =
         create_published_served_a2a_app().await;
+    let _dev_grade = DevGradeGuard::set();
     let config = outbound_delegation_config(&endpoint, &api_key, None);
 
     let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
