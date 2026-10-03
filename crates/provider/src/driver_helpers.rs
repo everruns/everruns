@@ -60,7 +60,33 @@ const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 /// resolved IP is private/internal. Combined with redirects disabled, this keeps
 /// these clients from reaching `169.254.169.254`/loopback/RFC1918 regardless of
 /// what the configured URL or a 3xx `Location` later points at.
-struct SsrfGuardResolver;
+///
+/// Public so other direct (non-egress) clients, such as the server's blocking
+/// Git smart-HTTP fetcher (EVE-1178), install the same guard instead of a copy.
+/// reqwest connects only to the addresses this returns, so the check and the
+/// connection see the same answer. IP-literal hosts never reach a resolver;
+/// callers must still reject those statically with
+/// [`crate::url_validation::validate_safe_url`].
+#[derive(Clone, Default)]
+pub struct SsrfGuardResolver {
+    /// Resolver whose answers are guarded; `None` uses the system resolver.
+    upstream: Option<Arc<dyn Resolve>>,
+}
+
+impl SsrfGuardResolver {
+    /// Guard the system resolver's answers.
+    pub fn system() -> Self {
+        Self::default()
+    }
+
+    /// Guard another resolver's answers. Tests use this to simulate a hostname
+    /// that resolves publicly at registration and privately at request time.
+    pub fn wrapping(upstream: Arc<dyn Resolve>) -> Self {
+        Self {
+            upstream: Some(upstream),
+        }
+    }
+}
 
 /// Boxed error type expected by reqwest's [`Resolving`] future. reqwest's own
 /// `BoxError` alias is crate-private, so we spell it out here.
@@ -69,29 +95,36 @@ type DnsBoxError = Box<dyn std::error::Error + Send + Sync>;
 impl Resolve for SsrfGuardResolver {
     fn resolve(&self, name: Name) -> Resolving {
         let host = name.as_str().to_string();
+        let upstream = self.upstream.clone();
         Box::pin(async move {
-            // hyper strips the port before resolving; resolve with port 0 and let
-            // reqwest apply the URL's actual port. We only inspect the IPs here.
-            let lookup = tokio::time::timeout(
-                DNS_LOOKUP_TIMEOUT,
-                tokio::net::lookup_host(format!("{host}:0")),
-            )
-            .await
-            .map_err(|_| -> DnsBoxError {
-                Box::new(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "DNS lookup timed out",
-                ))
-            })?
-            .map_err(|e| -> DnsBoxError { Box::new(e) })?;
+            let addrs: Vec<std::net::SocketAddr> = match upstream {
+                Some(upstream) => upstream.resolve(name).await?.collect(),
+                None => {
+                    // hyper strips the port before resolving; resolve with port 0
+                    // and let reqwest apply the URL's actual port. We only inspect
+                    // the IPs here.
+                    tokio::time::timeout(
+                        DNS_LOOKUP_TIMEOUT,
+                        tokio::net::lookup_host(format!("{host}:0")),
+                    )
+                    .await
+                    .map_err(|_| -> DnsBoxError {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "DNS lookup timed out",
+                        ))
+                    })?
+                    .map_err(|e| -> DnsBoxError { Box::new(e) })?
+                    .collect()
+                }
+            };
 
-            let addrs: Vec<std::net::SocketAddr> = lookup.collect();
             for addr in &addrs {
                 if is_blocked_ip(addr.ip()) {
                     tracing::warn!(
                         host = %host,
                         resolved_ip = %addr.ip(),
-                        "Provider HTTP client blocked: hostname resolves to private/internal address"
+                        "HTTP client blocked: hostname resolves to private/internal address"
                     );
                     return Err(Box::new(std::io::Error::other(format!(
                         "host {host} resolves to blocked address {} (private/internal)",
@@ -110,7 +143,7 @@ impl Resolve for SsrfGuardResolver {
 fn harden_builder(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     builder
         .redirect(reqwest::redirect::Policy::none())
-        .dns_resolver(Arc::new(SsrfGuardResolver))
+        .dns_resolver(Arc::new(SsrfGuardResolver::system()))
 }
 
 /// Process-wide HTTP client shared by all streaming chat drivers.
@@ -578,7 +611,7 @@ mod tests {
             "192.168.1.1",
             "172.16.0.1",
         ] {
-            let error = match SsrfGuardResolver
+            let error = match SsrfGuardResolver::system()
                 .resolve(Name::from_str(host).unwrap())
                 .await
             {
@@ -590,7 +623,7 @@ mod tests {
                 format!("host {host} resolves to blocked address {host} (private/internal)")
             );
         }
-        let addresses: Vec<_> = SsrfGuardResolver
+        let addresses: Vec<_> = SsrfGuardResolver::system()
             .resolve(Name::from_str("1.1.1.1").unwrap())
             .await
             .unwrap()
