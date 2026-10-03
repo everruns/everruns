@@ -1462,6 +1462,9 @@ jobs:
       # test file is either run here or explicitly allowlisted.
       - name: Run domain integration tests
         if: ${{ matrix.shard == 'domain' }}
+        env:
+          # Local A2A fixtures opt into loopback; production rejection stays unit-tested.
+          DEPLOYMENT_GRADE: dev
         run: |
           cargo test -p everruns-server \
             --test domain \
