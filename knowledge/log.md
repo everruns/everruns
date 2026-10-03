@@ -2,17 +2,15 @@
 
 ## 2026-10-03
 
-<<<<<<< HEAD
 * **Agent page Test chat.** The gold masthead CTA starts an interactive chat
   thread (`source: chat` → `/chats/{id}`) instead of opening a read-only
   session recording. See [Agent Page](ui/agent-page.md).
-=======
+
 * **A2A outbound SSRF hardening.** External A2A delegation DNS-pins discovery
   and every AgentCard interface URL, disables redirects, keeps the merged
   network ACL, and rejects `allow_local_urls` outside `DEPLOYMENT_GRADE=dev`
   (EVE-1173). See [A2A Capability](integrations/a2a-capability.md) and
   TM-AGENT-024.
->>>>>>> 1f84ca20c (fix(platform): enforce runtime network policy for A2A delegation — Fixes EVE-1173)
 
 * **Sandbox secret forgery closed.** Capability-owned sandbox secret prefixes
   (`container_sandbox:`, `daytona_sandbox:`, `e2b_sandbox:`, `deno_sandbox:`,
