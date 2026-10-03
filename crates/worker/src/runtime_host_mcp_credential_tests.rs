@@ -90,7 +90,7 @@ fn authorization_of(connection: &McpConnection) -> Option<String> {
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
             .map(|(_, v)| v.clone()),
-        // `McpEndpoint::Stdio` exists only when `everruns-mcp/stdio` is
+        // `McpEndpoint::Stdio` exists only when `everruns-core/mcp-stdio` is
         // enabled, which a workspace-wide `--all-features` build does. The
         // arm must therefore compile both with and without it, so the
         // wildcard stays and the lint is silenced rather than cfg-gated on
