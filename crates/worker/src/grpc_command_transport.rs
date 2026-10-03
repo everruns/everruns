@@ -9,9 +9,9 @@
 use crate::grpc_adapters::{
     COMMAND_API_VERSION_V1, GrpcAdapter, grpc_missing_field, grpc_status_to_error, uuid_to_proto,
 };
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::SessionId;
 use everruns_internal_protocol::proto;
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::typed_id::SessionId;
 
 impl GrpcAdapter {
     /// The org this adapter speaks for, or an error naming the surface that

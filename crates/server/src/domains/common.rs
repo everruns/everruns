@@ -10,11 +10,11 @@ use crate::kernel_imports::{
 use crate::storage::StorageBackend;
 use axum::Json;
 use axum::http::StatusCode;
+use everruns_contracts::typed_id::SessionId;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
 use everruns_durable::WorkflowEventStore;
 use everruns_platform::FeatureFlags;
-use everruns_provider::typed_id::SessionId;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::future::Future;

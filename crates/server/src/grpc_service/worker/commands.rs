@@ -86,7 +86,7 @@ impl WorkerServiceImpl {
         // relationship rather than on identity: the session's private
         // user-memory mount. See `session_files::queries::verify_session`.
         if let Some(session) = req.acting_for_session_id.as_ref() {
-            ctx = ctx.acting_for_session(everruns_provider::typed_id::SessionId::from_uuid(
+            ctx = ctx.acting_for_session(everruns_contracts::typed_id::SessionId::from_uuid(
                 parse_uuid(Some(session))?,
             ));
         }
