@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AskUserToolCall, type AskUserArguments } from "@/components/chat/ask-user-tool-call";
 import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
 import type { Event, ToolCompletedData } from "@/lib/api/types";
@@ -247,6 +247,23 @@ describe("AskUserToolCall", () => {
     );
     expect(screen.getByText("Questions declined")).toBeInTheDocument();
     expect(fireEvent.keyDown(document, { code: "Digit2", metaKey: true })).toBe(true);
+  });
+
+  it("does not restore held badges after a failed submission", async () => {
+    let rejectSubmission!: (error: Error) => void;
+    submitQuestionAnswers.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectSubmission = reject;
+      }),
+    );
+    const { container } = renderCard();
+    fireEvent.keyDown(document, { key: "Meta", metaKey: true });
+    expect(container.querySelectorAll("kbd")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.keyUp(document, { key: "Meta" });
+    await act(async () => rejectSubmission(new Error("Network error")));
+    expect(screen.getByText("Could not record your answer. Try again.")).toBeInTheDocument();
+    expect(container.querySelectorAll("kbd")).toHaveLength(0);
   });
 
   it("shows option descriptions, selection mode, recommendation, and the named countdown", () => {

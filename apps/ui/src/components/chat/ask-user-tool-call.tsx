@@ -384,6 +384,7 @@ export function AskUserToolCall({
   };
 
   const submit = async (outcome: "answered" | "declined") => {
+    setShortcutHeld(false);
     setStatus("submitting");
     setError(null);
     const answers = outcome === "answered" ? request.questions.map(answerFor) : [];
