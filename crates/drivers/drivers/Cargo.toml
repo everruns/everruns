@@ -5,9 +5,8 @@
 # crates.io name; a module costs none of those. Vendors with their own wire
 # types (anthropic, gemini, bedrock) keep them in their module, and heavy
 # dependencies (bedrock's AWS SDK) sit behind that vendor's feature, so a
-# consumer still compiles only the vendors it names. The per-vendor crates
-# (everruns-anthropic, everruns-openai, ...) were folded in here and survive one
-# release as deprecated shims that re-export these modules.
+# consumer still compiles only the vendors it names. The former vendor packages
+# shipped deprecated compatibility shims in 0.35 and then retired.
 #
 # everruns-llmsim stays its own crate: its `host` feature depends on
 # everruns-host, which depends on the openrouter driver here, so folding it in

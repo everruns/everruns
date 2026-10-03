@@ -962,12 +962,7 @@ jobs:
             llm-core)
           # Driver suites include local HTTP contracts. Credentialed live cases
           # are explicitly ignored; ordinary cargo test never executes them.
-          # The per-vendor packages are deprecated shims over everruns-drivers;
-          # running them checks the re-exports and their migration doctests.
-          cargo test -p everruns-drivers -p everruns-anthropic -p everruns-openai \
-            -p everruns-gemini -p everruns-bedrock -p everruns-fireworks \
-            -p everruns-mai -p everruns-meta -p everruns-openrouter \
-            -p everruns-internal-protocol --all-features
+          cargo test -p everruns-drivers -p everruns-internal-protocol --all-features
           # Core: run the WHOLE suite (lib + integration + doctests), not just
           # --lib, so integration tests aren't silently skipped. Pure (llmsim-based,
           # no credentials or network). The `everruns` facade runs in facade-cli.

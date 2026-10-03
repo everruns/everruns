@@ -55,20 +55,13 @@ if grep -qE '^(llmsim|everruns-llmsim|everruns-host|everruns-test-support) ' <<<
   FAILED=1
 fi
 
-# 3. Provider-only crates: shipped dependency tree free of simulation/fixtures.
+# 3. Provider-only builds enable every vendor feature; the shipped dependency
+#    tree remains free of simulation/fixtures.
 PROVIDER_CRATES=(
-  everruns-openai
-  everruns-anthropic
-  everruns-openrouter
-  everruns-gemini
-  everruns-bedrock
-  everruns-mai
-  everruns-fireworks
-  everruns-meta
   everruns-drivers
 )
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
+  tree=$(guard_cargo_tree -p "$crate" --all-features --edges normal --prefix none)
   if grep -qE '^(llmsim|everruns-llmsim|everruns-test-support) ' <<<"$tree"; then
     echo "$crate must not ship simulator or test-support crates in its normal dependency tree:"
     grep -E '^(llmsim|everruns-llmsim|everruns-test-support) ' <<<"$tree"

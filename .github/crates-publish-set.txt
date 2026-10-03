@@ -5,9 +5,7 @@
 # crates.io and the CARGO_REGISTRY_TOKEN may create it.
 everruns
 everruns-ag-ui
-everruns-anthropic
 everruns-ard
-everruns-bedrock
 everruns-builtins
 everruns-capability
 everruns-cli
@@ -16,8 +14,6 @@ everruns-core
 everruns-drivers
 everruns-durable
 everruns-engine
-everruns-fireworks
-everruns-gemini
 everruns-host
 everruns-integrations-bashkit
 everruns-integrations-brave-search
@@ -40,12 +36,8 @@ everruns-integrations-typesafe
 everruns-integrations-web-fetch
 everruns-llmsim
 everruns-macros
-everruns-mai
 everruns-mcp
-everruns-meta
 everruns-model-profiles
-everruns-openai
-everruns-openrouter
 everruns-platform
 everruns-provider
 everruns-serve

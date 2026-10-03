@@ -115,7 +115,7 @@ and drivers through contract traits and registries, and ships with none attached
 
 | Today | Target | How |
 |---|---|---|
-| `everruns-anthropic`, `-bedrock`, `-fireworks`, `-gemini`, `-mai`, `-meta`, `-openai`, `-openrouter` | `everruns-drivers` features | done (#4035); shims ship in 0.35 |
+| `everruns-anthropic`, `-bedrock`, `-fireworks`, `-gemini`, `-mai`, `-meta`, `-openai`, `-openrouter` | `everruns-drivers` features | drivers merged (#4035); shims retired after their 0.35 release |
 | `everruns-provider`, `everruns-capability`, `everruns-model-profiles` | `everruns-contracts` | merge, shim |
 | `everruns-platform` connector, session sandbox, vector store, knowledge store, SQL database, sandbox checkpoint traits | `everruns-contracts` | move |
 | `everruns-platform` capabilities and container sandbox | `everruns-capabilities` | rename, shim `everruns-platform` |

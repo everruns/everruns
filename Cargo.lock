@@ -2386,14 +2386,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-anthropic"
-version = "0.34.2"
-dependencies = [
- "everruns-drivers",
- "everruns-provider",
-]
-
-[[package]]
 name = "everruns-ard"
 version = "0.34.2"
 dependencies = [
@@ -2420,14 +2412,6 @@ dependencies = [
  "everruns-example-demo",
  "tempfile",
  "tokio",
-]
-
-[[package]]
-name = "everruns-bedrock"
-version = "0.34.2"
-dependencies = [
- "everruns-drivers",
- "everruns-provider",
 ]
 
 [[package]]
@@ -2657,14 +2641,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-fireworks"
-version = "0.34.2"
-dependencies = [
- "everruns-drivers",
- "everruns-provider",
-]
-
-[[package]]
 name = "everruns-foreman-agent"
 version = "0.1.0"
 dependencies = [
@@ -2707,14 +2683,6 @@ dependencies = [
  "everruns-drivers",
  "everruns-example-demo",
  "tokio",
-]
-
-[[package]]
-name = "everruns-gemini"
-version = "0.34.2"
-dependencies = [
- "everruns-drivers",
- "everruns-provider",
 ]
 
 [[package]]
@@ -3245,14 +3213,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-mai"
-version = "0.34.2"
-dependencies = [
- "everruns-drivers",
- "everruns-provider",
-]
-
-[[package]]
 name = "everruns-mcp"
 version = "0.34.2"
 dependencies = [
@@ -3277,36 +3237,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-meta"
-version = "0.34.2"
-dependencies = [
- "everruns-drivers",
- "everruns-provider",
-]
-
-[[package]]
 name = "everruns-model-profiles"
 version = "0.34.2"
 dependencies = [
  "serde",
  "serde_json",
  "utoipa",
-]
-
-[[package]]
-name = "everruns-openai"
-version = "0.34.2"
-dependencies = [
- "everruns-drivers",
- "everruns-provider",
-]
-
-[[package]]
-name = "everruns-openrouter"
-version = "0.34.2"
-dependencies = [
- "everruns-drivers",
- "everruns-provider",
 ]
 
 [[package]]

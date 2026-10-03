@@ -128,20 +128,13 @@ if matches=$(grep -rnE 'everruns_platform::|use[[:space:]]+everruns_platform' cr
   FAILED=1
 fi
 
-# 3. Provider-only crates: shipped dependency tree free of platform records.
+# 3. Provider-only builds enable every vendor feature; the shipped dependency
+#    tree remains free of platform records.
 PROVIDER_CRATES=(
-  everruns-openai
-  everruns-anthropic
-  everruns-openrouter
-  everruns-gemini
-  everruns-bedrock
-  everruns-mai
-  everruns-fireworks
-  everruns-meta
   everruns-drivers
 )
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
+  tree=$(guard_cargo_tree -p "$crate" --all-features --edges normal --prefix none)
   if echo "$tree" | grep -qE '^everruns-platform '; then
     echo "$crate must not ship everruns-platform in its normal dependency tree:"
     echo "$tree" | grep -E '^everruns-platform '

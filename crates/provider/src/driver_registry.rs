@@ -10,7 +10,7 @@
 // IMPORTANT: API keys must be provided from the database. The registry does NOT read
 // from environment variables. Keys should be decrypted and passed via ProviderConfig.
 //
-// Design: Dependency inversion - provider crates (everruns-anthropic, everruns-openai)
+// Design: Dependency inversion - vendor modules in everruns-drivers
 // depend on core and register their drivers at startup. Core has no knowledge of
 // specific provider implementations.
 
@@ -1252,7 +1252,7 @@ fn default_credential_schema(id: &DriverId) -> CredentialFormSchema {
 
 /// Registry for LLM drivers
 ///
-/// Enables dependency inversion: provider crates (everruns-anthropic, everruns-openai)
+/// Enables dependency inversion: vendor modules in everruns-drivers
 /// register their drivers at startup. The core has no direct knowledge of implementations.
 ///
 /// # Example
