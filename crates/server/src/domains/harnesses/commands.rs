@@ -872,6 +872,7 @@ pub struct PreviewHarness {
 
 #[derive(Debug, serde::Serialize)]
 pub struct HarnessPreview {
+    pub features: Vec<String>,
     pub system_prompt: String,
     pub tools: Vec<ToolDefinition>,
 }
@@ -930,11 +931,12 @@ impl Command for PreviewHarness {
         )
         .await
         .map_err(classify_anyhow)?;
-        let (system_prompt, mut tools) = ctx
+        let preview = ctx
             .capability_service
-            .preview(ctx.org_id(), &system_prompt, &capabilities)
+            .preview_with_features(ctx.org_id(), &system_prompt, &capabilities)
             .await
             .map_err(classify_anyhow)?;
+        let mut tools = preview.tools;
         tools.extend(
             crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
                 &ctx.db,
@@ -948,7 +950,8 @@ impl Command for PreviewHarness {
             .map_err(classify_anyhow)?,
         );
         Ok(HarnessPreview {
-            system_prompt,
+            system_prompt: preview.system_prompt,
+            features: preview.features,
             tools,
         })
     }

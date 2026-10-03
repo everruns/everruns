@@ -185,6 +185,8 @@ pub struct PreviewHarnessRequest {
 /// Preview response showing merged prompt and tools
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct HarnessPreviewResponse {
+    /// Session features from effective capabilities and their dependencies.
+    pub features: Vec<String>,
     pub system_prompt: String,
     #[schema(value_type = Vec<Object>)]
     pub tools: Vec<ToolDefinition>,

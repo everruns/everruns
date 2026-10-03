@@ -416,6 +416,26 @@
               }
             }
           },
+          "403": {
+            "description": "Harness view permission required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Harness not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal server error",
             "content": {
@@ -19039,17 +19059,33 @@
         "type": "object",
         "description": "Response showing the final agent shape after applying capabilities",
         "required": [
+          "features",
+          "initial_files",
           "system_prompt",
           "tools",
           "findings"
         ],
         "properties": {
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Session features from effective capabilities and their dependencies."
+          },
           "findings": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Finding"
             },
             "description": "Advisory findings from built-in checks (knowledge/evaluation/agent-checks.md)"
+          },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Effective starter files after merging the harness and agent."
           },
           "system_prompt": {
             "type": "string",
@@ -26959,10 +26995,18 @@
         "type": "object",
         "description": "Preview response showing merged prompt and tools",
         "required": [
+          "features",
           "system_prompt",
           "tools"
         ],
         "properties": {
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Session features from effective capabilities and their dependencies."
+          },
           "system_prompt": {
             "type": "string"
           },
@@ -36478,6 +36522,24 @@
                 "ref": "test_math"
               }
             ]
+          },
+          "harness_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/harnessId",
+                "description": "Harness to layer beneath this draft. Omit to preview the agent layer alone."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Draft starter files; agent paths override inherited harness files."
           },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
