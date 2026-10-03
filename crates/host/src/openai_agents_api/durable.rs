@@ -48,6 +48,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use everruns_core::RuntimeMessage;
 use everruns_core::agents_api_store::{
     AgentsApiCheckpoint, AgentsApiLease, AgentsApiStore, AgentsApiTurnCheckpoint, InputOutbox,
     ItemCorrelation, ItemKind, ItemState, OutboxState, ParkReason, PolicyStop, ReplacedMessage,
@@ -58,11 +59,9 @@ use everruns_core::events::correlation::{
 };
 use everruns_core::events::{
     EventContext, EventRequest, ModelMetadata, OutputMessageCompletedData, OutputMessageDeltaData,
-    OutputMessageStartedData, TokenUsage, ToolCompletedData, ToolDefinitionSummary,
-    ToolStartedData,
+    OutputMessageStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use everruns_core::output_guardrail::TrippedGuardrail;
-use everruns_core::{ContentPart, RuntimeMessage, mcp_tool_name};
 use everruns_provider::execution_phase::ExecutionPhase;
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
@@ -78,7 +77,7 @@ mod settle;
 use super::{
     AgentsApiClient, AgentsApiError, AgentsApiEventStream, AgentsApiSessionConfig,
     FunctionCallAction, build_create_input, build_message_input, build_tool_result_input,
-    is_subagent_event, message_item_text, provider_output_text, usage_from,
+    is_subagent_event, message_item_text, usage_from,
 };
 
 /// Metadata keys written on the provider session for adoption after an
@@ -358,7 +357,6 @@ fn store_error(error: impl std::fmt::Display) -> AgentsApiError {
 /// as completed.
 enum Recorded {
     Message(MessageId),
-    ToolResult(String),
     /// An event the log cannot be searched for (accounting, hosted calls,
     /// reasoning summaries, compaction). After a crash between the save and
     /// the emit it counts as recorded: a lost record beats a doubled debit.
@@ -932,12 +930,6 @@ impl Run<'_> {
         let session_id = self.request.session_id;
         match recorded {
             Recorded::Message(id) => self.driver.ledger.has_message(session_id, *id).await,
-            Recorded::ToolResult(call_id) => Ok(self
-                .driver
-                .ledger
-                .tool_result(session_id, call_id)
-                .await?
-                .is_some()),
             Recorded::Unverifiable => Ok(true),
         }
     }
@@ -1030,7 +1022,6 @@ impl Run<'_> {
                 }
                 Ok(())
             }
-            Some("mcp_call") => self.apply_mcp_call(item_id, item, status).await,
             Some("reasoning") => self.apply_reasoning(item_id, item, status).await,
             Some("compaction") => self.apply_compaction(item_id, item, status).await,
             Some(kind) if observe::is_hosted_call(kind) => {
@@ -1182,99 +1173,6 @@ impl Run<'_> {
             ItemKind::FunctionCall,
             &local_id,
             Recorded::Message(message_id),
-            vec![event],
-        )
-        .await
-    }
-
-    async fn apply_mcp_call(
-        &mut self,
-        item_id: &str,
-        item: &Value,
-        status: Option<&str>,
-    ) -> Result<(), AgentsApiError> {
-        let server_label = item
-            .get("server_label")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let source_name = item.get("name").and_then(Value::as_str).unwrap_or_default();
-        let tool_name = mcp_tool_name(server_label, source_name);
-        let display_name = format!("{server_label}: {source_name}");
-        let call = ToolCall {
-            id: item_id.to_string(),
-            name: tool_name.clone(),
-            arguments: super::arguments_value(item),
-        };
-        let call_key = format!("mcp:{item_id}");
-        if self.turn().items.get(&call_key).map(|item| item.state) != Some(ItemState::Completed) {
-            let local_id = match self.turn().items.get(&call_key) {
-                Some(item) => item.local_id.clone(),
-                None => MessageId::new().to_string(),
-            };
-            let message_id = parse_message_id(&local_id)?;
-            let message =
-                RuntimeMessage::assistant_with_tools("", vec![call.clone()]).with_id(message_id);
-            let events = vec![
-                self.event(
-                    Some(item_id),
-                    OutputMessageCompletedData::new(message).with_metadata(ModelMetadata {
-                        model: self.model(),
-                        model_id: None,
-                        provider_id: None,
-                    }),
-                ),
-                self.event(
-                    Some(item_id),
-                    ToolStartedData {
-                        tool_call: call.clone(),
-                        tool_call_fingerprint: None,
-                        display_name: Some(display_name.clone()),
-                        narration: None,
-                    },
-                ),
-            ];
-            self.complete(
-                &call_key,
-                ItemKind::McpCall,
-                &local_id,
-                Recorded::Message(message_id),
-                events,
-            )
-            .await?;
-        }
-        let error = item.get("error").filter(|error| !error.is_null());
-        let failed = status == Some("failed") || error.is_some();
-        if !failed && status != Some("completed") {
-            return Ok(());
-        }
-        let duration_ms = item.get("duration_ms").and_then(Value::as_u64);
-        let data = if failed {
-            // A failed call reports its cause in `output`, with `error` null.
-            let message = error
-                .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
-                .unwrap_or_else(|| provider_output_text(item));
-            ToolCompletedData::failure(
-                item_id.to_string(),
-                tool_name,
-                "error".to_string(),
-                message,
-                duration_ms,
-            )
-        } else {
-            ToolCompletedData::success(
-                item_id.to_string(),
-                tool_name,
-                vec![ContentPart::text(provider_output_text(item))],
-                duration_ms,
-            )
-        }
-        .with_display_name(Some(display_name));
-        let event = self.event(Some(item_id), data);
-        self.complete(
-            &format!("mcp-result:{item_id}"),
-            ItemKind::McpCall,
-            item_id,
-            Recorded::ToolResult(item_id.to_string()),
             vec![event],
         )
         .await

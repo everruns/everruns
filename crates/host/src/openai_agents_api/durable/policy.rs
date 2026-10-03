@@ -153,10 +153,18 @@ impl Run<'_> {
             .turn()
             .items
             .keys()
-            .filter(|key| {
-                key.starts_with("call:") || key.starts_with("mcp:") || key.starts_with("hosted:")
+            .filter_map(|key| {
+                if key.starts_with("call:") {
+                    Some(key.as_str())
+                } else {
+                    // A pre-upgrade MCP start and its hosted lifecycle refer
+                    // to the same provider item, so count that item once.
+                    key.strip_prefix("mcp:")
+                        .or_else(|| key.strip_prefix("hosted:"))
+                }
             })
-            .count();
+            .collect::<std::collections::HashSet<_>>()
+            .len();
         u32::try_from(count).unwrap_or(u32::MAX)
     }
 

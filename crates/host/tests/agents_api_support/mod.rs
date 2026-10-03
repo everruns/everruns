@@ -763,6 +763,17 @@ impl TestLedger {
             unique.len(),
             "duplicate tool results: {results:#?}"
         );
+        let hosted = self.of_type("tool.hosted_call");
+        let lifecycles: Vec<_> = hosted
+            .iter()
+            .map(|call| (call["call_id"].to_string(), call["status"].to_string()))
+            .collect();
+        let unique: HashSet<_> = lifecycles.iter().collect();
+        assert_eq!(
+            lifecycles.len(),
+            unique.len(),
+            "duplicate hosted lifecycle: {hosted:#?}"
+        );
     }
 
     pub fn texts(&self) -> Vec<String> {
@@ -1122,8 +1133,8 @@ pub fn assert_completed(outcome: &AgentsApiTurnOutcome) {
     }
 }
 
-/// The record one turn must leave: commentary, function call, MCP call, and
-/// final answer messages, plus one result per tool, each exactly once.
+/// One turn leaves commentary, a client function call, and a final answer;
+/// the function has an Act result, while MCP has a hosted lifecycle.
 pub fn assert_turn_record(ledger: &TestLedger, turns: usize) {
     ledger.assert_each_record_once();
     let texts = ledger.texts();
@@ -1141,6 +1152,12 @@ pub fn assert_turn_record(ledger: &TestLedger, turns: usize) {
             .count(),
         turns
     );
-    assert_eq!(ledger.of_type("output.message.completed").len(), 4 * turns);
-    assert_eq!(ledger.of_type("tool.completed").len(), 2 * turns);
+    assert_eq!(ledger.of_type("output.message.completed").len(), 3 * turns);
+    assert_eq!(ledger.of_type("tool.completed").len(), turns);
+    let mcp: Vec<_> = ledger
+        .of_type("tool.hosted_call")
+        .into_iter()
+        .filter(|call| call["tool_name"] == "mcp_docs__search_openai_docs")
+        .collect();
+    assert_eq!(mcp.len(), 2 * turns);
 }

@@ -6,7 +6,8 @@
 //! - **Subagent turns** become `tool.hosted_call` records named `subagent`.
 //!   Their own items never enter the root transcript, and their terminal
 //!   events never end the root turn.
-//! - **Provider-run tools** (OpenAI-hosted calls) become `tool.hosted_call`.
+//! - **Provider-run tools** (MCP and OpenAI-hosted calls) become
+//!   `tool.hosted_call`, never Act's tool messages or results.
 //! - **Reasoning** becomes `reason.item` with the provider-curated summary
 //!   only; hidden reasoning and encrypted context never leave the item.
 //! - **Managed compaction** becomes `context.compacted` with the provider as
@@ -20,7 +21,7 @@
 //! today (EVE-1124); these mappings stay so lifting a refusal does not leave
 //! the work invisible or unbilled.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use everruns_core::agents_api_store::{ItemKind, ItemState};
 use everruns_core::events::correlation::PROVIDER_SUBAGENT_ID;
@@ -28,6 +29,7 @@ use everruns_core::events::{
     CompactionTrigger, ContextCompactedData, EventData, EventRequest, HostedToolCallData,
     LlmCostComponent, LlmGenerationData, ReasonItemData, TokenUsage,
 };
+use everruns_core::mcp_tool_name;
 use everruns_provider::DriverId;
 use everruns_provider::model_profiles::estimate_cost_usd;
 use everruns_provider::openai_hosted_tools::{hosted_call_price_usd, hosted_call_tool};
@@ -48,7 +50,7 @@ const OPENAI_CONTAINER: &str = "openai_hosted";
 /// A provider item a provider-run tool produced. Everruns only sends client
 /// functions, so any other `*_call` item ran inside the managed harness.
 pub(super) fn is_hosted_call(kind: &str) -> bool {
-    kind.ends_with("_call") && !matches!(kind, "function_call" | "mcp_call")
+    kind.ends_with("_call") && kind != "function_call"
 }
 
 fn hosted_tool_name(kind: &str) -> String {
@@ -205,11 +207,38 @@ impl Run<'_> {
         item: &Value,
         status: Option<&str>,
     ) -> Result<(), AgentsApiError> {
-        let tool = hosted_tool_name(kind);
-        let summary = item
-            .pointer("/action/query")
-            .and_then(Value::as_str)
-            .map(str::to_string);
+        // Earlier checkpoints already projected MCP as Act records. Do not
+        // project a completed item again when a worker resumes after upgrade.
+        if kind == "mcp_call"
+            && self
+                .turn()
+                .items
+                .get(&format!("mcp-result:{item_id}"))
+                .map(|item| item.state)
+                == Some(ItemState::Completed)
+        {
+            return Ok(());
+        }
+        let (tool, summary) = if kind == "mcp_call" {
+            let server = item
+                .get("server_label")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let name = item.get("name").and_then(Value::as_str).unwrap_or_default();
+            // Provider MCP bypasses Act. Its arguments, outputs, and errors
+            // are untrusted payloads; record only identity and a fixed summary.
+            (
+                mcp_tool_name(server, name),
+                Some("Provider-run MCP call".to_string()),
+            )
+        } else {
+            (
+                hosted_tool_name(kind),
+                item.pointer("/action/query")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            )
+        };
         let start_summary = summary.clone();
         self.open(
             &format!("hosted:{item_id}"),
@@ -218,6 +247,12 @@ impl Run<'_> {
             |run, _| vec![run.hosted_event(item_id, &tool, "in_progress", start_summary)],
         )
         .await?;
+        let status =
+            if kind == "mcp_call" && item.get("error").is_some_and(|error| !error.is_null()) {
+                Some("failed")
+            } else {
+                status
+            };
         let terminal = match status {
             Some("completed") => "completed",
             Some("failed" | "incomplete" | "cancelled") => "failed",
@@ -523,10 +558,26 @@ impl Run<'_> {
     /// Hosted calls of this turn that ended, by provider item type.
     fn hosted_counts(&self) -> BTreeMap<String, u32> {
         let mut counts = BTreeMap::new();
+        let mut mcp = BTreeSet::new();
         for (key, item) in &self.turn().items {
-            if key.starts_with("hosted-done:") && item.state == ItemState::Completed {
-                *counts.entry(item.local_id.clone()).or_insert(0) += 1;
+            if item.state != ItemState::Completed {
+                continue;
             }
+            if let Some(item_id) = key.strip_prefix("hosted-done:") {
+                if item.local_id == "mcp_call" {
+                    mcp.insert(item_id);
+                } else {
+                    *counts.entry(item.local_id.clone()).or_insert(0) += 1;
+                }
+            } else if let Some(item_id) = key.strip_prefix("mcp-result:") {
+                mcp.insert(item_id);
+            }
+        }
+        if !mcp.is_empty() {
+            counts.insert(
+                "mcp_call".to_string(),
+                u32::try_from(mcp.len()).unwrap_or(u32::MAX),
+            );
         }
         counts
     }
@@ -683,7 +734,7 @@ mod tests {
         assert!(is_hosted_call("web_search_call"));
         assert!(is_hosted_call("code_interpreter_call"));
         assert!(!is_hosted_call("function_call"));
-        assert!(!is_hosted_call("mcp_call"));
+        assert!(is_hosted_call("mcp_call"));
         assert!(!is_hosted_call("function_call_output"));
         assert_eq!(hosted_tool_name("web_search_call"), "web_search");
         assert_eq!(
