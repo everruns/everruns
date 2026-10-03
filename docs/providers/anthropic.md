@@ -42,8 +42,9 @@ once with a lower limit if a stale profile causes the provider to reject it.
 Thinking counts toward `max_tokens`. When you set `max_tokens` yourself, Everruns
 preserves it as a hard limit on all generated tokens, including thinking. When
 the limit cannot accommodate thinking, the driver omits thinking rather than
-exceed the limit, so the whole allowance goes to the visible answer and a small
-limit returns a short answer rather than an empty one.
+exceed the limit. Models where thinking cannot be disabled instead reject an
+incompatible small limit, because omission would silently re-enable the
+provider's default thinking and could leave no visible answer.
 
 Claude models that always think (Opus 5.5, Fable 5.x) always get an explicit
 effort: the model's default when you choose none, and `low` when you choose

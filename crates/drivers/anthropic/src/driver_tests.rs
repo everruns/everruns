@@ -419,6 +419,43 @@ async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
     }
 }
 
+#[tokio::test]
+async fn small_caps_reject_models_where_thinking_cannot_be_disabled() {
+    use everruns_provider::{Provider, StaticHeaderAuth};
+    use wiremock::MockServer;
+
+    for model in [
+        "claude-fable-5",
+        "claude-fable-5-1",
+        "claude-opus-5-5",
+        "claude-opus-5-5-20260901",
+    ] {
+        let server = MockServer::builder().start().await;
+        let provider = Provider::new("test", AnthropicChatDriver::new())
+            .base_url(format!("{}/v1", server.uri()))
+            .auth(StaticHeaderAuth::new("x-api-key", "synthetic-key"));
+        let mut config = contract_config(model, Some(64));
+        config.reasoning_effort = Some(ReasoningEffort::Low);
+
+        let error = match provider
+            .chat_completion_stream(vec![Message::text(MessageRole::User, "hello")], &config)
+            .await
+        {
+            Ok(_) => panic!("an always-thinking model must reject an incompatible cap"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("thinking cannot be disabled"),
+            "{model}: {error}"
+        );
+        assert!(
+            server.received_requests().await.unwrap().is_empty(),
+            "{model}"
+        );
+    }
+}
+
 #[test]
 fn cache_markers_preserve_system_text_and_target_stable_message_blocks() {
     for (text, enabled, expected) in [

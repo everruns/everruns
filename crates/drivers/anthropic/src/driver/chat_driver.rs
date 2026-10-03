@@ -157,6 +157,18 @@ impl ChatDriver for AnthropicChatDriver {
         };
         let (thinking, output_config) = if thinking_fits {
             (thinking, output_config)
+        } else if crate::effort::thinking_always_on(wire_model) {
+            // Omitting these fields does not disable thinking on this family. A
+            // small hard cap would therefore be consumed by implicit reasoning,
+            // potentially leaving no visible response for security-sensitive
+            // callers such as guardrails. Reject the incompatible request rather
+            // than silently changing its effort or token limit.
+            return Err(AgentLoopError::config(format!(
+                "Anthropic model {wire_model} cannot satisfy max_tokens={} because thinking cannot be disabled",
+                config
+                    .max_tokens
+                    .expect("thinking fit is only checked for an explicit cap")
+            )));
         } else {
             tracing::warn!(
                 model = %config.model,
