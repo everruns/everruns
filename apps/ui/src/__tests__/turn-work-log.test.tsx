@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { TurnWorkLog } from "@/components/chat/turn-work-log";
+import { TurnWorkLog, WORK_LOG_PAGE_SIZE, WorkLogEntries } from "@/components/chat/turn-work-log";
 
 describe("TurnWorkLog", () => {
   afterEach(() => {
@@ -110,7 +110,38 @@ describe("TurnWorkLog", () => {
 
     const attention = screen.getByText("Approve this tool call");
     expect(attention.closest("[aria-hidden='true']")).toBeNull();
-    expect(screen.getByText("Hidden detail").closest("[aria-hidden='true']")).not.toBeNull();
+    expect(screen.queryByText("Hidden detail")).not.toBeInTheDocument();
+  });
+
+  it("does not build the body until opened", () => {
+    const renderBody = jest.fn(() => <div>Tool rows</div>);
+    render(
+      <TurnWorkLog label="Working" isActive>
+        {renderBody}
+      </TurnWorkLog>,
+    );
+
+    expect(renderBody).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /working/i }));
+    expect(renderBody).toHaveBeenCalled();
+    expect(screen.getByText("Tool rows")).toBeInTheDocument();
+  });
+
+  it("unmounts the body once the collapse transition ends", () => {
+    render(
+      <TurnWorkLog label="Worked for 2s" isActive={false}>
+        <div>Tool rows</div>
+      </TurnWorkLog>,
+    );
+    const button = screen.getByRole("button", { name: /worked for 2s/i });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(screen.getByText("Tool rows")).toBeInTheDocument();
+
+    const body = document.getElementById(button.getAttribute("aria-controls") ?? "");
+    fireEvent.transitionEnd(body as HTMLElement);
+    expect(screen.queryByText("Tool rows")).not.toBeInTheDocument();
   });
 
   it("counts elapsed time while the turn runs", () => {
@@ -130,5 +161,30 @@ describe("TurnWorkLog", () => {
     });
 
     expect(screen.getByRole("button", { name: /working for 15s/i })).toBeInTheDocument();
+  });
+});
+
+describe("WorkLogEntries", () => {
+  const entries = (count: number) =>
+    Array.from({ length: count }, (_, index) => <div key={index}>{`step ${index}`}</div>);
+
+  it("shows only the newest page and reveals earlier steps on demand", () => {
+    render(<WorkLogEntries entries={entries(WORK_LOG_PAGE_SIZE + 50)} />);
+
+    expect(screen.queryByText("step 49")).not.toBeInTheDocument();
+    expect(screen.getByText("step 50")).toBeInTheDocument();
+    expect(screen.getByText(`step ${WORK_LOG_PAGE_SIZE + 49}`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /show 50 earlier steps/i }));
+
+    expect(screen.getByText("step 0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /earlier steps/i })).not.toBeInTheDocument();
+  });
+
+  it("renders short logs in full without the control", () => {
+    render(<WorkLogEntries entries={entries(3)} />);
+
+    expect(screen.getByText("step 0")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

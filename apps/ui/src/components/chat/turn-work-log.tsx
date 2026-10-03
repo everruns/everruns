@@ -8,6 +8,10 @@
  * - Errors stay discoverable while collapsed through the header's error count.
  * - `attention` renders outside the collapsible body, so cards that need the
  *   user (approvals, ask_user, connection setup) are never hidden by the fold.
+ * - The body mounts only while open (and through the collapse transition). A
+ *   turn can carry thousands of tool calls; rendering them folded made every
+ *   streamed event re-render the whole hidden log. Pass `children` as a
+ *   function so the folded log does not even build the elements.
  */
 "use client";
 
@@ -30,7 +34,7 @@ interface TurnWorkLogProps {
   errorCount?: number;
   /** Content that must stay visible regardless of the fold. */
   attention?: ReactNode;
-  children: ReactNode;
+  children: ReactNode | (() => ReactNode);
 }
 
 function useElapsedMs(startedAtMs: number | undefined, isActive: boolean): number | null {
@@ -57,6 +61,8 @@ export function TurnWorkLog({
 }: TurnWorkLogProps) {
   const { locale, t } = useLocale();
   const [expanded, setExpanded] = useState(false);
+  // True from the first open until the collapse transition finishes.
+  const [bodyMounted, setBodyMounted] = useState(false);
   const bodyId = useId();
   const elapsedMs = useElapsedMs(startedAtMs, isActive);
 
@@ -75,7 +81,10 @@ export function TurnWorkLog({
         type="button"
         aria-expanded={expanded}
         aria-controls={bodyId}
-        onClick={() => setExpanded((current) => !current)}
+        onClick={() => {
+          if (!expanded) setBodyMounted(true);
+          setExpanded(!expanded);
+        }}
         className="group flex w-full min-w-0 items-center gap-2 pt-2 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <span className="flex min-h-5 min-w-5 items-center justify-center">
@@ -122,15 +131,55 @@ export function TurnWorkLog({
         id={bodyId}
         aria-hidden={!expanded}
         inert={!expanded}
+        onTransitionEnd={(event) => {
+          if (event.target === event.currentTarget && !expanded) setBodyMounted(false);
+        }}
         className={cn(
           "grid transition-all duration-200 ease-out",
           expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="ml-7 space-y-3 pb-1">{children}</div>
+          {(expanded || bodyMounted) && (
+            <div className="ml-7 space-y-3 pb-1">
+              {typeof children === "function" ? children() : children}
+            </div>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Newest entries shown when a work log opens; older ones load in pages. */
+export const WORK_LOG_PAGE_SIZE = 200;
+
+interface WorkLogEntriesProps {
+  entries: ReactNode[];
+}
+
+/**
+ * Renders the newest `WORK_LOG_PAGE_SIZE` entries of an opened work log, with
+ * a control that reveals earlier ones a page at a time. Keeps a turn with
+ * thousands of tool calls cheap to open and to update while it streams.
+ */
+export function WorkLogEntries({ entries }: WorkLogEntriesProps) {
+  const { t } = useLocale();
+  const [visibleCount, setVisibleCount] = useState(WORK_LOG_PAGE_SIZE);
+  const hiddenCount = Math.max(0, entries.length - visibleCount);
+
+  return (
+    <div className="space-y-3">
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setVisibleCount((current) => current + WORK_LOG_PAGE_SIZE * 5)}
+          className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+        >
+          {t("show_earlier_steps", { count: hiddenCount })}
+        </button>
+      )}
+      {hiddenCount > 0 ? entries.slice(hiddenCount) : entries}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { WORK_LOG_PAGE_SIZE } from "@/components/chat/turn-work-log";
 import type { Event } from "@/lib/api/types";
 
 jest.mock("streamdown", () => ({
@@ -122,6 +123,8 @@ describe("ChatMessageList work-log narration", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /working/i }));
+
     expect(screen.getAllByTestId("work-log-narration")).toHaveLength(2);
     expect(screen.getByText("Checked **configuration**")).toBeInTheDocument();
     expect(screen.getByText("Created [Hourly Dad Jokes](/agents/agent_123)")).toBeInTheDocument();
@@ -194,5 +197,66 @@ describe("ChatMessageList folded work log", () => {
 
     expect(screen.queryByTestId("work-log-status")).not.toBeInTheDocument();
     expect(screen.getByTestId("work-log-error-count")).toHaveTextContent("1 error");
+  });
+});
+
+describe("ChatMessageList work log at scale", () => {
+  // Structural budget for a turn with thousands of tool calls: folded, no tool
+  // row is mounted; opened, only the newest page is. Rendering every hidden
+  // row made each streamed event cost about a second at 3,000 calls.
+  it("keeps a 5,000-call turn cheap while folded and when opened", () => {
+    const callCount = 5000;
+    const chatEvents: Event[] = [];
+    for (let index = 0; index < callCount; index += 1) {
+      const context = { turn_id: "turn-1", exec_id: `exec-${index}` };
+      chatEvents.push(
+        {
+          ...event(`act-${index}`, "act.started", {
+            headline: `Editing module ${index}`,
+            tool_calls: [
+              { id: `call-${index}`, name: "edit_file", narration: `Editing module ${index}` },
+            ],
+          }),
+          context,
+        },
+        {
+          ...event(`done-${index}`, "tool.completed", {
+            tool_call_id: `call-${index}`,
+            tool_name: "edit_file",
+            success: true,
+            status: "success",
+            result: [{ type: "text", text: "ok" }],
+          }),
+          context,
+        },
+      );
+    }
+
+    render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={() => ""}
+        getToolCalls={() => []}
+      />,
+    );
+
+    // Only the header's status line mentions a step while folded.
+    expect(screen.getAllByText(/^Editing module/)).toHaveLength(1);
+    expect(screen.getByTestId("work-log-status")).toHaveTextContent("Editing module 4999");
+
+    fireEvent.click(screen.getByRole("button", { name: /working/i }));
+
+    // The newest page of rows, plus the status line.
+    expect(screen.getAllByText(/^Editing module/)).toHaveLength(WORK_LOG_PAGE_SIZE + 1);
+    expect(screen.queryByText("Editing module 0")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "show_earlier_steps" })).toBeInTheDocument();
   });
 });
