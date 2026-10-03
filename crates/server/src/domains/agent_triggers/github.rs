@@ -399,7 +399,7 @@ pub async fn dispatch_github_delivery(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_capabilities::SessionBinding;
+    use everruns_core::channel::SessionBinding;
 
     #[test]
     fn events_default_normalize_and_reject_garbage() {

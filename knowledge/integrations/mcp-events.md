@@ -134,7 +134,7 @@ covers the inbound callback: forged, stale, replayed or oversized deliveries.
 `crates/server/src/services/mcp_events.rs` (catalog, subscribe, verification,
 delivery, listener), `crates/server/src/api/mcp_endpoint/events.rs`
 (JSON-RPC), `crates/server/migrations/147_mcp_event_subscriptions.sql`, and
-the `mcp_events` flag in `crates/platform/src/feature_flags.rs`. Tests in
+the `mcp_events` flag in `crates/server/src/records/feature_flags.rs`. Tests in
 `crates/server/tests/domain/mcp_events_test.rs`.
 
 Inbound: `crates/server/src/domains/agent_triggers/mcp_event.rs` (config,

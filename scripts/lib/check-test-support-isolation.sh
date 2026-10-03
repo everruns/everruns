@@ -36,7 +36,7 @@ GUARDED_TREES=(
   crates/worker/src
   crates/core/src
   crates/host/src
-  crates/platform/src
+  crates/capabilities/src
   crates/everruns/src/local
   crates/cli/src
 )

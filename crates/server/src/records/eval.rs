@@ -341,10 +341,7 @@ pub enum Scorer {
     CitationJudged {
         /// Rubric override; a citation-faithfulness rubric is used when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(
-            feature = "openapi",
-            schema(example = "Score the fraction of cited claims supported by their source.")
-        )]
+        #[schema(example = "Score the fraction of cited claims supported by their source.")]
         rubric: Option<String>,
         /// Judge model; the org's default is used when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]

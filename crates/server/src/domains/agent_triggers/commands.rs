@@ -33,8 +33,8 @@ use crate::storage::models::{
     AgentRow, AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger,
 };
 use chrono::Utc;
-use everruns_capabilities::SessionBinding;
 use everruns_contracts::typed_id::{AgentId, SessionId, TriggerId};
+use everruns_core::channel::SessionBinding;
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,

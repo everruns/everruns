@@ -139,7 +139,7 @@ A per-platform `messaging/{platform}/` split (shared orchestration in
 `messaging/mod.rs`, one module per platform) is the intended layout once a
 second platform lands; until then Slack stays in these two files.
 
-Core abstraction types remain in `crates/core/src/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/platform/src/app.rs`. Each `AgentEndpoint` holds transport type and configuration, enabling multiple independent endpoints per agent.
+Core abstraction types remain in `crates/core/src/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/server/src/records/app.rs`. Each `AgentEndpoint` holds transport type and configuration, enabling multiple independent endpoints per agent.
 
 ## Concrete Implementations
 
@@ -181,7 +181,7 @@ The plumbing exists (`Capability::tools()` returns `Vec<Box<dyn Tool>>`), but no
 ## Files
 
 - `crates/core/src/channel.rs`, All types and traits defined here
-- `crates/platform/src/app.rs`, `SlackChannelConfig`, `session_strategy: SessionBinding`, `SlackReplyMode` (→ `ChannelReplyMode`)
+- `crates/server/src/records/app.rs`, `SlackChannelConfig`, `session_strategy: SessionBinding`, `SlackReplyMode` (→ `ChannelReplyMode`)
 - `crates/core/src/progress_reporting.rs`, Generalized tag handling, backward compat
 - `crates/core/src/lib.rs`, Module registration and re-exports
 - `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters

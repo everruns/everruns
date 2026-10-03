@@ -19,7 +19,6 @@
 
 use std::sync::Arc;
 
-use crate::records::FeatureFlags;
 use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{
@@ -42,6 +41,7 @@ use everruns_server::domains::session_tasks::{
     CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage,
 };
 use everruns_server::domains::sessions::CreateSession;
+use everruns_server::records::FeatureFlags;
 use everruns_server::services::CapabilityService;
 use everruns_server::storage::StorageBackend;
 use everruns_server::storage::models::{CreateAgentRow, CreateHarnessRow};

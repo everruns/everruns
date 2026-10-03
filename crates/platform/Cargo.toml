@@ -25,7 +25,7 @@ environment-capabilities = ["everruns-capabilities/environment-capabilities"]
 lua = ["everruns-capabilities/lua"]
 a2a = ["everruns-capabilities/a2a"]
 ag-ui = ["everruns-capabilities/ag-ui"]
-email-resend = ["everruns-capabilities/email-resend"]
+email-resend = []
 container-sandbox = ["everruns-capabilities/container-sandbox"]
 container-sandbox-live-tests = ["everruns-capabilities/container-sandbox-live-tests"]
 

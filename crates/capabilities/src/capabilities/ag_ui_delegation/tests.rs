@@ -130,13 +130,13 @@ fn spawn_tool(config: &Value) -> SpawnAgUiAgentTool {
     SpawnAgUiAgentTool::new(AgUiDelegationConfig::from_value(config).unwrap())
 }
 
-struct Harness {
+struct DelegationHarness {
     ctx: ToolContext,
     storage: Arc<InMemorySessionStorageStore>,
     registry: Arc<InMemorySessionTaskRegistry>,
 }
 
-fn harness() -> Harness {
+fn harness() -> DelegationHarness {
     let storage = Arc::new(InMemorySessionStorageStore::new());
     let registry = Arc::new(InMemorySessionTaskRegistry::default());
     let ctx = ToolContext::with_stores(
@@ -145,7 +145,7 @@ fn harness() -> Harness {
         storage.clone(),
     )
     .with_session_task_registry(registry.clone());
-    Harness {
+    DelegationHarness {
         ctx,
         storage,
         registry,

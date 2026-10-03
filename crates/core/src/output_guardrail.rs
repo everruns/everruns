@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-/// Provider-side definition of an output guardrail.
+/// TestGuardrail-side definition of an output guardrail.
 ///
 /// Contributed by capabilities via `Capability::output_guardrails()`. A single
 /// provider may serve multiple sessions concurrently; per-stream mutable
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn arming_skips_declined_providers_and_keeps_stream_state_independent() {
-        struct Provider {
+        struct TestGuardrail {
             id: &'static str,
             enabled: bool,
         }
@@ -445,7 +445,7 @@ mod tests {
             expected: String,
             checks: usize,
         }
-        impl OutputGuardrail for Provider {
+        impl OutputGuardrail for TestGuardrail {
             fn id(&self) -> &str {
                 self.id
             }
@@ -477,14 +477,14 @@ mod tests {
         let providers: Vec<(String, Arc<dyn OutputGuardrail>)> = vec![
             (
                 "skip-owner".into(),
-                Arc::new(Provider {
+                Arc::new(TestGuardrail {
                     id: "skip",
                     enabled: false,
                 }),
             ),
             (
                 "active-owner".into(),
-                Arc::new(Provider {
+                Arc::new(TestGuardrail {
                     id: "active",
                     enabled: true,
                 }),

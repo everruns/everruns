@@ -74,17 +74,16 @@ to contract types at its edge. A library crate sees only the runtime view: ids,
 `ExecutionSession`, the portable agent and harness definitions, and store traits phrased
 in those types.
 
-Today `everruns-platform` breaks this. `PlatformStore`
-([`crates/platform/src/platform_store.rs`](../../crates/platform/src/platform_store.rs))
-returns the server's `Agent`, `Harness`, and `Session` records, and the hosted
-capabilities (subagents, agent handoff, the platform tools) are written against it.
-That is why yolop overrides the subagents capability instead of using it. The fix is to
-phrase that store in runtime terms ("resolve this agent for a run") so the capabilities
-no longer need the records.
+`PlatformStore` ([source](../../crates/capabilities/src/platform_store.rs)) now
+returns portable execution views. The server resolves ownership, inheritance,
+versions and lifecycle at its edge. All persistence/API aggregates, including
+provider and model rows, live in [`server records`](../../crates/server/src/records/mod.rs).
+The worker receives portable definitions and neutral dependency blockers.
 
 [`check-agent-record-isolation.sh`](../../scripts/lib/check-agent-record-isolation.sh)
-already keeps the records out of the kernel crates. Once they move, the guard widens to
-"no published crate references them".
+derives the record vocabulary from the server owner and rejects declarations
+or imports elsewhere, including private worker code. Published crates cannot
+depend on the server. Negative fixtures prove each boundary.
 
 ### Only the server and durable touch a database
 
@@ -119,7 +118,7 @@ and drivers through contract traits and registries, and ships with none attached
 | `everruns-provider`, `everruns-capability`, `everruns-model-profiles` | `everruns-contracts` | merge, shim |
 | `everruns-platform` connector, session sandbox, vector store, knowledge store, SQL database, sandbox checkpoint traits | `everruns-contracts` | move |
 | `everruns-platform` capabilities and container sandbox | `everruns-capabilities` | rename, shim `everruns-platform` |
-| `everruns-platform` agent, harness, session, org, app, audit, payment, reporting, email, Slack, feature flags, eval, budget, triggers | `crates/server/` | move; `slack_action` goes to `everruns-internal-protocol`, which the worker already uses |
+| `everruns-platform` agent, harness, session, org, app, audit, payment, reporting, email, Slack, feature flags, eval, budget, triggers | `crates/server/` | move; neutral Slack action identity lives in contracts and is re-exported by internal protocol (avoids a published-to-private dependency) |
 | `everruns-engine`, `everruns-host`, `everruns-builtins`, `everruns-mcp`, `everruns-ag-ui` | `everruns-core` features | merge, shim |
 | A2A protocol client inside `everruns-platform`'s `a2a_delegation` capability | `everruns-core` `a2a` feature, beside MCP | move; the delegation capability stays in `everruns-capabilities` and calls it |
 | the worker's direct core, engine, and durable wiring | `everruns-durable-engine` | new, unpublished |
@@ -137,7 +136,7 @@ published name can land in any release.
    merged names.
 3. **Phrase `PlatformStore` in runtime terms.** No crate is renamed. The hosted
    capabilities stop seeing records, and yolop can drop its subagents override.
-   [`PlatformStore`](../../crates/platform/src/platform_store.rs) reuses the
+   [`PlatformStore`](../../crates/capabilities/src/platform_store.rs) reuses the
    existing portable definitions, resolved harness configuration, and
    `ExecutionSession`; server command adapters own record projection and
    authorization. The [external runtime host fixture](../../crates/everruns/tests/fixtures/external-consumer/platform-store/src/lib.rs)

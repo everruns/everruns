@@ -33,7 +33,7 @@ async fn test_session_connection_resolution_never_borrows_owner_or_other_user() 
             playground_user_id: None,
 
             trigger_id: None,
-            source: crate::records::SessionSource::Api,
+            source: everruns_server::records::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,

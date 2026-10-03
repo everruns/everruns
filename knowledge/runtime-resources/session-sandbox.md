@@ -62,7 +62,7 @@ profile. Direct capability configuration remains supported for existing data:
 
 ### Config contract
 
-See `crates/platform/src/session_sandbox.rs` for the full type definitions.
+See `crates/capabilities/src/session_sandbox.rs` for the full type definitions.
 
 - `provider`: required provider id
 - `auto_start`: best-effort sandbox start on session creation
@@ -94,17 +94,13 @@ control-plane Environment API rather than model-facing create/list/status tools.
 
 ### Platform
 
-`crates/platform/src/session_sandbox.rs` defines the compatibility and provider
-surface:
+`crates/contracts/src/session_sandbox.rs` owns the neutral configuration,
+provider interface, response values and provider registration.
+`crates/capabilities/src/session_sandbox.rs` owns lifecycle orchestration and
+state persistence through the runtime store interface. Hosted deployments keep
+logical and physical environment rows in server-owned PostgreSQL storage.
 
-- config, state, and response types
-- `SessionSandboxProvider` trait
-- provider plugin registration via `inventory`
-- state persistence helpers backed by first-class logical and physical rows on
-  hosted PostgreSQL deployments
-- generic create/resume/pause/delete/init/checkpoint helpers
-
-`crates/platform/src/capabilities/session_sandbox.rs` exposes the capability;
+`crates/capabilities/src/capabilities/session_sandbox.rs` exposes the capability;
 `environment_tools.rs` implements the stable tool vocabulary. Tool execution
 resolves the configured provider and delegates through the trait. After a
 completed shell or file mutation, the provider checkpoint is persisted before

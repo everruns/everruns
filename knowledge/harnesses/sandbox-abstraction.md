@@ -320,7 +320,7 @@ it to the collectable pool. Reconciliation only ever rejects the current
 checkpoint, only on a positive "not settled" answer from durable storage, and
 never on missing information — over-eager rollback discards real work, which is
 worse than the drift it would prevent. See
-`reconcile_session_sandbox_checkpoint` in `crates/platform/src/session_sandbox.rs`.
+`reconcile_session_sandbox_checkpoint` in `crates/capabilities/src/session_sandbox.rs`.
 
 All `bash` executions are treated as mutating because a shell command can alter
 arbitrary files, including when it exits non-zero. Generic write/edit/delete

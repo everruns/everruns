@@ -72,7 +72,7 @@ PROVIDER_CRATES=(
   everruns-meta
   everruns-drivers
 )
-FORBIDDEN_TREE='^(everruns-core|everruns-host|everruns-platform|everruns-server) '
+FORBIDDEN_TREE='^(everruns-core|everruns-host|everruns-platform|everruns-capabilities|everruns-server) '
 HEAVY_TREE='^(sqlx|utoipa|inventory|axum|tonic) '
 
 # Keep model drivers physically grouped without turning the directory into a
@@ -92,7 +92,7 @@ done
 
 # 1. No kernel/product imports anywhere in provider crates (tests included —
 #    dev-only coupling is exactly what EVE-874 removed).
-SOURCE_PATTERN='(everruns_core|everruns_host|everruns_platform|everruns_server)::'
+SOURCE_PATTERN='(everruns_core|everruns_host|everruns_platform|everruns_capabilities|everruns_server)::'
 if matches=$(grep -rnE "$SOURCE_PATTERN" "${PROVIDER_DIRS[@]}" --include='*.rs' 2>/dev/null); then
   echo "Provider protocol crates must not import core/host/platform/server (EVE-874):"
   echo "$matches"
@@ -135,13 +135,13 @@ done
 # Include optional/build/dev declarations: an integration test must not quietly
 # pull control-plane records back into a library host's dependency graph.
 for manifest in integrations/*/Cargo.toml crates/ard/Cargo.toml crates/turbopuffer/Cargo.toml; do
-  if matches=$(grep -nE '^[[:space:]]*everruns-platform[[:space:]]*[.=]' "$manifest"); then
+  if matches=$(grep -nE '^[[:space:]]*everruns-(platform|capabilities)[[:space:]]*[.=]' "$manifest"); then
     echo "$manifest must use everruns-contracts extension SPIs, never platform:"
     echo "$matches"
     FAILED=1
   fi
 done
-if matches=$(grep -rnE 'everruns_platform::' integrations crates/ard crates/turbopuffer --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE 'everruns_(platform|capabilities)::' integrations crates/ard crates/turbopuffer --include='*.rs' 2>/dev/null); then
   echo "Extension implementations must not reference platform records:"
   echo "$matches"
   FAILED=1
@@ -159,8 +159,8 @@ fi
 # `Bedrock::default_chain`) is ambient-credential resolution too: on a server
 # it would sign tenant calls with the host's own IAM identity.
 ENV_CREDENTIAL_PATTERN='(EnvCredentialProvider|provider_from_env|everruns_[a-z_]+(::[a-z_]+)?::from_env[[:space:]]*\(|default_chain[[:space:]]*\()'
-SERVER_DIRS=(crates/server/src crates/platform/src crates/worker/src)
-for manifest in crates/server/Cargo.toml crates/platform/Cargo.toml crates/worker/Cargo.toml; do
+SERVER_DIRS=(crates/server/src crates/capabilities/src crates/worker/src)
+for manifest in crates/server/Cargo.toml crates/capabilities/Cargo.toml crates/worker/Cargo.toml; do
   if matches=$(grep -nE 'default-credentials|everruns/bedrock' "$manifest" 2>/dev/null); then
     echo "$manifest must not enable the AWS default credential chain:"
     echo "$matches"

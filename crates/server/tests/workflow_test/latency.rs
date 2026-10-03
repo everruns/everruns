@@ -6,11 +6,11 @@
 //! user does (send, pause, send again) and reads the pickup delay straight from
 //! the session's event timestamps: `input.message` to `turn.started`.
 
-use crate::records::Model;
-use crate::records::{Agent, Session};
 use crate::support::*;
 use chrono::{DateTime, Utc};
-use everruns_contracts::provider::Provider;
+use everruns_server::records::Model;
+use everruns_server::records::provider::Provider;
+use everruns_server::records::{Agent, Session};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 

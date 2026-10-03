@@ -370,16 +370,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 everruns_contracts::error::AgentLoopError::harness_not_found(
                     context.session.harness_id,
                 )
-            })?
-            .execution_definition()?;
-        let agent_definition = context
-            .agent
-            .as_ref()
-            .map(|agent| agent.execution_definition())
-            .transpose()?;
+            })?;
+        let agent_definition = context.agent.as_ref();
         let snapshot = ResolvedExecutionSnapshot::project(
             &harness_definition,
-            agent_definition.as_ref(),
+            agent_definition,
             &context.session,
         )?;
         Ok(ResolvedTurnInputs {
@@ -1203,14 +1198,14 @@ mod mcp_credential_tests {
             &self,
             _org_id: i64,
             _agent_id: Uuid,
-        ) -> CoreResult<Option<everruns_capabilities::Agent>> {
+        ) -> CoreResult<Option<everruns_core::AgentDefinition>> {
             unimplemented!()
         }
         async fn get_harness(
             &self,
             _org_id: i64,
             _harness_id: Uuid,
-        ) -> CoreResult<Option<everruns_capabilities::Harness>> {
+        ) -> CoreResult<Option<everruns_core::HarnessDefinition>> {
             unimplemented!()
         }
         async fn get_session(

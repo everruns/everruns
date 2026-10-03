@@ -570,7 +570,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             crate::records::AgentTrigger,
             crate::records::AgentTriggerType,
             crate::records::ScheduleTriggerConfig,
-            everruns_capabilities::SessionBinding,
+            everruns_core::channel::SessionBinding,
             domains::agent_triggers::types::CreateAgentTriggerRequest,
             domains::agent_triggers::types::UpdateAgentTriggerRequest,
             domains::agent_triggers::types::AgentTriggerRun,

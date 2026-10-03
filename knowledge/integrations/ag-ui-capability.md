@@ -34,8 +34,8 @@ over A2A.
 
 ## Packaging
 
-`everruns-platform`'s `ag-ui` feature gates the
-[`ag_ui_delegation`](../../crates/platform/src/capabilities/ag_ui_delegation/mod.rs) module and
+`everruns-capabilities`'s `ag-ui` feature gates the
+[`ag_ui_delegation`](../../crates/capabilities/src/capabilities/ag_ui_delegation/mod.rs) module and
 its registration, and pulls in the `everruns-ag-ui` client. The product build
 (`everruns-server`, `everruns-worker`) enables it. Registration also sits behind the
 `agent_delegation` decision and org flag, like the other delegation capabilities.
@@ -69,7 +69,7 @@ for `external_a2a`.
 - `allow_local_urls` is the development escape hatch for local agents, as in A2A.
 
 The schema and its validation are in
-[`ag_ui_delegation/mod.rs`](../../crates/platform/src/capabilities/ag_ui_delegation/mod.rs).
+[`ag_ui_delegation/mod.rs`](../../crates/capabilities/src/capabilities/ag_ui_delegation/mod.rs).
 
 ## Runtime contract
 
@@ -115,7 +115,7 @@ The capability is `RiskLevel::High`, so only admins can assign it.
 
 ## Testing
 
-[`ag_ui_delegation/tests.rs`](../../crates/platform/src/capabilities/ag_ui_delegation/tests.rs)
+[`ag_ui_delegation/tests.rs`](../../crates/capabilities/src/capabilities/ag_ui_delegation/tests.rs)
 runs the capability against a local mock AG-UI agent: foreground and background runs, the
 generic task tools, interrupt and resume, cancel closing the stream, remote errors, HTTP
 errors, protocol violations, `result_schema`, the missing-secret and ACL refusals, and config validation.

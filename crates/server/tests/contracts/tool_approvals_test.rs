@@ -10,7 +10,6 @@
 
 use crate::test_harness;
 
-use crate::records::{Agent, Session};
 use async_trait::async_trait;
 use axum::http::StatusCode;
 use everruns_builtins::{DurableToolApprover, ToolApprovalCapability};
@@ -23,6 +22,7 @@ use everruns_core::session_services::SessionStorageStore;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
 use everruns_core::{Caller, Permission, PermissionResolver};
+use everruns_server::records::{Agent, Session};
 use everruns_server::storage::StorageBackend;
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};

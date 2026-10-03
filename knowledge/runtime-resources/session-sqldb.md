@@ -372,8 +372,8 @@ holds the paged SQLite backing store keyed by `(database_id, page_number)`.
 
 ## Implementation Status
 
-- [x] Portable types and async trait (`crates/platform/src/session_sqldb.rs`)
-- [x] Capability + 3 tools (`crates/platform/src/capabilities/session_sql_database.rs`)
+- [x] Portable types and async trait (`crates/contracts/src/session_sqldb.rs`)
+- [x] Capability + 3 tools (`crates/capabilities/src/capabilities/session_sql_database.rs`)
 - [x] In-memory backend (`crates/server/src/session_sqldb/memory.rs`)
 - [x] Async store wrapper (`crates/server/src/session_sqldb/store.rs`)
 - [x] Query executor with authorizer and limits (`crates/server/src/session_sqldb/executor.rs`)

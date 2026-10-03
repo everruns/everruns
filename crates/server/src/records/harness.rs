@@ -103,29 +103,20 @@ pub struct Harness {
     pub icon: Option<String>,
     /// Human-readable description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
-            example = "Default harness with file-system + secrets capabilities; safe baseline for new agents."
-        )
+    #[schema(
+        example = "Default harness with file-system + secrets capabilities; safe baseline for new agents."
     )]
     pub description: Option<String>,
     /// Optional Markdown intro rendered as an intro box at the top of a fresh
     /// Platform Chat thread. Images are allowed. The agent intro wins over
     /// the harness intro. Hidden once the user inputs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "I can triage incidents, dig through logs, and draft the update.")
-    )]
+    #[schema(example = "I can triage incidents, dig through logs, and draft the update.")]
     pub intro_markdown: Option<String>,
     /// Optional one-line description in simplified Markdown, shown below the
     /// chat title once the intro is hidden. The agent value wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "Knows your agents, harnesses, models, and runs.")
-    )]
+    #[schema(example = "Knows your agents, harnesses, models, and runs.")]
     pub short_description: Option<String>,
     /// Conversation starters for a fresh Platform Chat thread. The agent's
     /// starters win when non-empty, otherwise the harness's apply.
@@ -139,11 +130,8 @@ pub struct Harness {
     /// capability contributions. Empty/whitespace-only values normalize to
     /// `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(
-            example = "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
-        )
+    #[schema(
+        example = "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
     )]
     pub system_prompt: Option<String>,
     /// Optional parent harness that this harness inherits from.
@@ -161,10 +149,7 @@ pub struct Harness {
     pub tags: Vec<String>,
     /// Capabilities enabled for this harness with per-harness configuration.
     #[serde(default)]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(value_type = Vec<crate::CapabilityRefSchema>)
-    )]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this harness.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

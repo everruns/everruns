@@ -9,8 +9,8 @@ use axum::http::StatusCode;
 use serde_json::json;
 use test_harness::TestServer;
 
-use crate::records::eval::{Eval, EvalCase, EvalDatasetStatus};
 use everruns_contracts::typed_id::{EvalResultId, EvalRunId};
+use everruns_server::records::eval::{Eval, EvalCase, EvalDatasetStatus};
 use everruns_server::storage::models::{
     CreateEvalCaseResultRow, CreateEvalRunRow, UpdateEvalCaseResultRow,
 };
@@ -688,7 +688,7 @@ async fn await_dataset(
     eval_id: &str,
     run_id: &str,
     dataset_id: &str,
-) -> crate::records::eval::EvalRunDataset {
+) -> everruns_server::records::eval::EvalRunDataset {
     for _ in 0..100 {
         let ds = service
             .get_dataset(caller, eval_id, run_id, dataset_id)
@@ -799,7 +799,7 @@ async fn test_dataset_export_cross_org_returns_not_found() {
     // resolve for their org (`get_run` returns a not-found error), or the query
     // resolves to `Ok(None)`. Both map to 404 at the command layer.
     fn assert_not_reachable(
-        result: anyhow::Result<Option<crate::records::eval::EvalRunDataset>>,
+        result: anyhow::Result<Option<everruns_server::records::eval::EvalRunDataset>>,
         what: &str,
     ) {
         match result {

@@ -19,10 +19,7 @@ use crate::kernel_imports::{
     tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
 use crate::records::Harness;
-use crate::records::Harness;
 use crate::records::{Agent, AgentStatus};
-use crate::records::{Agent, AgentStatus};
-use crate::records::{Session, SessionParticipant, SessionStatus};
 use crate::records::{Session, SessionStatus};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
@@ -689,34 +686,45 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // Agent Operations
     // =========================================================================
 
-    async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
-        // Delegate to the private helper method
-        Self::get_harness_impl(self, org_id, harness_id).await
+    async fn get_harness(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::HarnessDefinition>> {
+        self.get_harness_impl(org_id, id)
+            .await?
+            .map(|h| h.execution_definition())
+            .transpose()
     }
-
-    async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
-        // Look up by public_id, then fetch capabilities using internal id from the row.
-        let public_id = AgentId::from_uuid(agent_id).to_string();
-        let row = self
-            .db
-            .get_agent_by_public_id(org_id, &public_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get agent: {}", e);
-                store_error("Failed to get agent")
-            })?;
-        match row {
-            Some(r) => {
-                let capabilities = self
-                    .db
-                    .get_agent_capabilities(r.id.uuid())
-                    .await
-                    .unwrap_or_default();
-                let capabilities = self.hydrate_capability_rows(org_id, capabilities).await?;
-                Ok(Some(Self::row_to_agent(r, capabilities)))
-            }
-            None => Ok(None),
-        }
+    async fn get_agent(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::AgentDefinition>> {
+        self.get_agent_record(org_id, id)
+            .await?
+            .map(|a| a.execution_definition())
+            .transpose()
+    }
+    async fn get_agent_blocker(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(match self.get_agent_record(org_id, id).await? {
+            Some(a) => a.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::AgentDeleted),
+        })
+    }
+    async fn get_harness_blocker(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(match self.get_harness_impl(org_id, id).await? {
+            Some(h) => h.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+        })
     }
 
     // =========================================================================
@@ -1076,7 +1084,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         {
             runtime_agent_id = session.agent_id;
             let mut agent = match session.agent_id {
-                Some(agent_id) => self.get_agent(org_id, agent_id.uuid()).await?,
+                Some(agent_id) => self.get_agent_record(org_id, agent_id.uuid()).await?,
                 None => None,
             };
             if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
@@ -1324,7 +1332,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         };
 
         Ok(TurnContext {
-            agent,
+            agent: agent.map(|a| a.execution_definition()).transpose()?,
             session: session.execution_session(),
             messages,
             model,
@@ -1803,7 +1811,36 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
 impl DirectWorkerAdapters {
     /// Get a harness by ID (direct DB access).
-    async fn get_harness_impl(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
+    async fn get_agent_record(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
+        // Look up by public_id, then fetch capabilities using internal id from the row.
+        let public_id = AgentId::from_uuid(agent_id).to_string();
+        let row = self
+            .db
+            .get_agent_by_public_id(org_id, &public_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get agent: {}", e);
+                store_error("Failed to get agent")
+            })?;
+        match row {
+            Some(r) => {
+                let capabilities = self
+                    .db
+                    .get_agent_capabilities(r.id.uuid())
+                    .await
+                    .unwrap_or_default();
+                let capabilities = self.hydrate_capability_rows(org_id, capabilities).await?;
+                Ok(Some(Self::row_to_agent(r, capabilities)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn get_harness_impl(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+    ) -> Result<Option<Harness>> {
         crate::harness_chain::resolve_effective_harness(&self.db, org_id, harness_id).await
     }
 

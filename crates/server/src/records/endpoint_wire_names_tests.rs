@@ -2,11 +2,11 @@
 //! component names and serde spellings are a public contract (third-party
 //! clients and the generated UI types key on them), so pin both here.
 
-use crate::{AgentEndpoint, EndpointTransport};
+use crate::records::{AgentEndpoint, EndpointTransport};
 
 #[test]
 fn renamed_endpoint_types_keep_app_era_openapi_names() {
-    use crate::{
+    use crate::records::{
         EndpointAuthConfig, EndpointAuthMode, EndpointAuthProviderConfig, EndpointAuthRequirements,
     };
     use utoipa::ToSchema;

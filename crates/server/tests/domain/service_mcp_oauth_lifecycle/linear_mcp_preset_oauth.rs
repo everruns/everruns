@@ -35,7 +35,7 @@ fn resolved_org(user_id: Uuid) -> ResolvedOrg {
         user_id: Some(user_id),
         role: OrgRole::Owner,
         is_platform_user: false,
-        feature_flags: crate::records::FeatureFlags::current(),
+        feature_flags: everruns_server::records::FeatureFlags::current(),
     }
 }
 
