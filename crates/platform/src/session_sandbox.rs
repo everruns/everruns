@@ -37,6 +37,9 @@ pub struct SessionSandboxConfig {
     /// Pause the sandbox after this much session inactivity.
     #[serde(default = "default_idle_timeout")]
     pub idle_pause_after_seconds: u64,
+    /// Whether the control plane should pause this sandbox when the timeout elapses.
+    #[serde(default = "default_true")]
+    pub idle_pause_enabled: bool,
     /// Provider-specific extra configuration.
     #[serde(default = "default_provider_config")]
     pub provider_config: Value,
@@ -51,6 +54,7 @@ impl Default for SessionSandboxConfig {
             provider: String::new(),
             auto_start: true,
             idle_pause_after_seconds: DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS,
+            idle_pause_enabled: true,
             provider_config: default_provider_config(),
             init: SessionSandboxInitConfig::default(),
         }
@@ -743,24 +747,19 @@ pub fn session_sandbox_tool_hints() -> ToolHints {
 fn default_true() -> bool {
     true
 }
-
 fn default_idle_timeout() -> u64 {
     DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS
 }
-
 fn default_provider_config() -> Value {
     json!({})
 }
-
 fn default_output_mode() -> String {
     // EVE-489: persistence-first default for exec-style sandbox tools.
     "auto".to_string()
 }
-
 fn now_rfc3339() -> String {
     Utc::now().to_rfc3339()
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -769,7 +768,6 @@ mod tests {
     use everruns_core::{session_services::SecretInfo, session_services::SessionStorageStore};
     use std::collections::HashMap;
     use std::sync::{Arc, LazyLock, Mutex};
-
     // `everruns-host` reserves this name from the user-facing secret_store, but
     // it cannot name the constant: host is a dependency of this crate, not the
     // other way round. Pin the two together here, where the constant is
@@ -781,7 +779,6 @@ mod tests {
             SESSION_SANDBOX_SECRET_NAME
         ));
     }
-
     #[derive(Clone, Default)]
     struct MemorySecrets {
         secrets: Arc<Mutex<HashMap<String, String>>>,
@@ -1143,6 +1140,7 @@ mod tests {
             provider: "core-test-session-sandbox".to_string(),
             auto_start: true,
             idle_pause_after_seconds: 180,
+            idle_pause_enabled: true,
             provider_config: json!({}),
             init: SessionSandboxInitConfig {
                 commands: commands.into_iter().map(ToString::to_string).collect(),
@@ -1472,6 +1470,7 @@ mod tests {
             provider: "revision-test-session-sandbox".to_string(),
             auto_start: true,
             idle_pause_after_seconds: 180,
+            idle_pause_enabled: true,
             provider_config: json!({}),
             init: SessionSandboxInitConfig { commands: vec![] },
         }
@@ -1888,6 +1887,7 @@ mod tests {
             provider: "rewind-test-session-sandbox".to_string(),
             auto_start: true,
             idle_pause_after_seconds: 180,
+            idle_pause_enabled: true,
             provider_config: json!({}),
             init: SessionSandboxInitConfig { commands: vec![] },
         }

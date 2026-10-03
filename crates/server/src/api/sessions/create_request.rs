@@ -71,6 +71,11 @@ pub struct CreateSessionRequest {
         example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}])
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Execution environment for this Session. Omit to inherit the Agent's
+    /// default profile, use `{ "use": "name" }` to select a named profile, or
+    /// inline a profile for a caller-authored one-off environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<EnvironmentSelection>,
     /// Client-side tools for this session (additive to agent tools).
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default, deserialize_with = "deserialize_client_side_tools")]

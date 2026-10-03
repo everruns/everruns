@@ -637,7 +637,6 @@ impl TestServer {
         feature_flags.knowledge = true;
         feature_flags.plugins = true;
         feature_flags.agent_delegation = true;
-        feature_flags.environments = true;
         feature_flags.mcp_events = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
@@ -655,9 +654,6 @@ impl TestServer {
             "agent_versions",
             "app_budgets",
             "mcp_events",
-            // Platform-managed: the platform enrols an org rather than the org
-            // opting itself in, and seeding the row here is that enrolment.
-            "environments",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))

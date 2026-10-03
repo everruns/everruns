@@ -79,6 +79,7 @@ impl SessionService {
             tags: overrides.tags.unwrap_or(parent.tags),
             model_id: overrides.model_id.or(parent.model_id),
             capabilities: parent.capabilities,
+            environment: None,
             tools: parent.tools,
             mcp_servers: parent.mcp_servers,
             system_prompt: overrides.system_prompt.or(parent.system_prompt),

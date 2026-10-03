@@ -106,6 +106,9 @@ impl SessionSandboxService {
         let Some(config) = self.config_for_session(session_id).await.ok().flatten() else {
             return;
         };
+        if !config.idle_pause_enabled {
+            return;
+        }
 
         let timeout = config.idle_pause_after_seconds;
         let service = self.clone();

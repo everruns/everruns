@@ -174,9 +174,11 @@ pub fn register_hosted_capabilities(
     registry.register(SessionCapability);
     registry.register(SessionStorageCapability);
     registry.register(SessionSqlDatabaseCapability);
-    if everruns_core::InternalFeatureFlags::from_env().session_sandbox {
-        registry.register(SessionSandboxCapability);
-    }
+    // The provider-neutral Environment profile selects this capability. Keep
+    // it registered even when no managed provider is configured so authored
+    // profiles get an honest availability error instead of a missing-capability
+    // failure. Concrete providers remain deployment-owned plugins.
+    registry.register(SessionSandboxCapability);
     registry.register(ResearchCapability);
     registry.register(MemoryCapability);
     registry.register(BackgroundExecutionCapability);

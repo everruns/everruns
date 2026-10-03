@@ -1236,6 +1236,7 @@ mod tests {
             provider: "daytona".to_string(),
             auto_start: true,
             idle_pause_after_seconds: 180,
+            idle_pause_enabled: true,
             provider_config: json!({
                 "recovery": { "enabled": true }
             }),

@@ -1804,11 +1804,7 @@ impl DirectWorkerAdapters {
         crate::harness_chain::resolve_effective_harness(&self.db, org_id, harness_id).await
     }
 
-    /// Build an Agent from a DB row and pre-loaded capability rows.
-    ///
-    /// Used by both `get_agent` (standalone) and `load_turn_context`
-    /// (where capabilities are loaded once and shared across consumers).
-    /// Convert an AgentRow + capability rows into an Agent domain object.
+    /// Convert an AgentRow plus pre-loaded capability rows into an Agent.
     fn row_to_agent(r: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
         Agent {
             service_virtual_user_id: None,
@@ -1833,6 +1829,9 @@ impl DirectWorkerAdapters {
             root_agent_id: r.root_agent_id,
             tags: r.tags,
             capabilities,
+            environments: r
+                .environments
+                .and_then(|value| serde_json::from_value(value).ok()),
             initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
             mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
             network_access: r

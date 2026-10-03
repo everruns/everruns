@@ -354,6 +354,7 @@ pub mod tests {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    environments: None,
                     tools: vec![],
                     mcp_servers: Default::default(),
                     status: AgentStatus::Active,

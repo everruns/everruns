@@ -35,9 +35,7 @@ pub fn normalize_email(email: &str) -> String {
     email.trim().to_lowercase()
 }
 
-// ============================================
 // Organization models
-// ============================================
 
 /// Organization row from database
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
@@ -553,6 +551,8 @@ pub struct AgentRow {
     /// Request-level parallel tool calling preference (EVE-598)
     #[sqlx(default)]
     pub parallel_tool_calls: Option<bool>,
+    #[sqlx(default)]
+    pub environments: Option<serde_json::Value>,
     /// Cumulative input tokens across all sessions
     #[sqlx(default)]
     pub total_input_tokens: i64,
@@ -678,6 +678,7 @@ pub struct CreateAgentRow {
     pub max_iterations: Option<i32>,
     /// Request-level parallel tool calling preference (EVE-598)
     pub parallel_tool_calls: Option<bool>,
+    pub environments: Option<serde_json::Value>,
     /// Platform-supplied agent. Only org bootstrap sets this; every API-facing
     /// creation path leaves it false.
     pub is_built_in: bool,
@@ -716,12 +717,11 @@ pub struct UpdateAgent {
     /// Request-level parallel tool calling preference (EVE-598).
     /// None = don't change, Some(None) = set to NULL, Some(Some(v)) = set to v
     pub parallel_tool_calls: Option<Option<bool>>,
+    pub environments: Option<Option<serde_json::Value>>,
 }
-
 // ============================================
 // Harness models (base configuration for sessions)
 // ============================================
-
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct HarnessRow {
     pub id: HarnessId,

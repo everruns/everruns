@@ -1107,6 +1107,31 @@
       ]
     },
     {
+      "category": "Sandboxes",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [
+        "managed_sandbox"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "session_sandbox",
+      "name": "Session Sandbox",
+      "status": "available",
+      "tools": [
+        "sandbox_exec",
+        "sandbox_manage",
+        "sandbox_read_file",
+        "sandbox_status",
+        "sandbox_write_file"
+      ]
+    },
+    {
       "category": "Core",
       "dependencies": [],
       "docs_slug": "session-schedules",

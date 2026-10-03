@@ -369,6 +369,7 @@ async fn test_live_session_sandbox_provider_flow() {
         provider: "daytona".to_string(),
         auto_start: true,
         idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
         provider_config: json!({
             "snapshot": "daytona-small",
             "workspace_path": "/home/daytona/workspace",
@@ -468,6 +469,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
         provider: "daytona".to_string(),
         auto_start: true,
         idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
         provider_config: json!({
             "snapshot": "daytona-small",
             "workspace_path": "/home/daytona/workspace",

@@ -9,6 +9,7 @@ pub mod check_rules;
 pub mod checks;
 pub mod commands;
 pub mod credentials;
+pub(crate) mod environment;
 pub mod health_check;
 pub mod preview;
 pub mod queries;

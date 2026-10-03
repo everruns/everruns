@@ -591,7 +591,6 @@ impl ServerAppBuilder {
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone())
             .with_db(db.clone())
             .with_system_feature_flags(feature_flags.clone());
-        let internal_feature_flags = everruns_core::InternalFeatureFlags::from_env();
         let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
 
@@ -650,53 +649,25 @@ impl ServerAppBuilder {
         }
         let session_sandbox_service: Option<
             Arc<crate::domains::session_sandbox::SessionSandboxService>,
-        > = if internal_feature_flags.session_sandbox {
-            match db.as_ref() {
-                crate::storage::StorageBackend::Postgres(database) => match &encryption {
-                    Some(enc) => {
-                        let storage_store: Arc<
-                            dyn everruns_core::session_services::SessionStorageStore,
-                        > = Arc::new(crate::storage::create_db_session_storage_store(
-                            database.clone(),
-                            enc.as_ref().clone(),
-                        ));
-                        let connection_resolver = Some(build_connection_resolver(
-                            &db,
-                            enc,
-                            &auth_config,
-                            host_composition.egress_service(),
-                        ));
-                        let service =
-                            Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
-                                db.clone(),
-                                storage_store,
-                                connection_resolver,
-                            ));
-                        event_listeners.push(Arc::new(
-                            crate::domains::session_sandbox::SessionSandboxEventListener::new(
-                                service.clone(),
-                            ),
-                        ));
-                        Some(service)
-                    }
-                    None => {
-                        tracing::warn!(
-                            "FEATURE_SESSION_SANDBOX is enabled but encryption is not configured; session_sandbox lifecycle is disabled"
-                        );
-                        None
-                    }
-                },
-                crate::storage::StorageBackend::InMemory(mem_db) => {
-                    let connection_resolver = optional_connection_resolver(
+        > = match db.as_ref() {
+            crate::storage::StorageBackend::Postgres(database) => match &encryption {
+                Some(enc) => {
+                    let storage_store: Arc<
+                        dyn everruns_core::session_services::SessionStorageStore,
+                    > = Arc::new(crate::storage::create_db_session_storage_store(
+                        database.clone(),
+                        enc.as_ref().clone(),
+                    ));
+                    let connection_resolver = Some(build_connection_resolver(
                         &db,
-                        &encryption,
+                        enc,
                         &auth_config,
                         host_composition.egress_service(),
-                    );
+                    ));
                     let service =
                         Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
                             db.clone(),
-                            mem_db.clone(),
+                            storage_store,
                             connection_resolver,
                         ));
                     event_listeners.push(Arc::new(
@@ -706,9 +677,33 @@ impl ServerAppBuilder {
                     ));
                     Some(service)
                 }
+                None => {
+                    tracing::warn!(
+                        "encryption is not configured; managed Environment lifecycle is disabled"
+                    );
+                    None
+                }
+            },
+            crate::storage::StorageBackend::InMemory(mem_db) => {
+                let connection_resolver = optional_connection_resolver(
+                    &db,
+                    &encryption,
+                    &auth_config,
+                    host_composition.egress_service(),
+                );
+                let service =
+                    Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
+                        db.clone(),
+                        mem_db.clone(),
+                        connection_resolver,
+                    ));
+                event_listeners.push(Arc::new(
+                    crate::domains::session_sandbox::SessionSandboxEventListener::new(
+                        service.clone(),
+                    ),
+                ));
+                Some(service)
             }
-        } else {
-            None
         };
         let notification_service: Option<Arc<crate::domains::notifications::NotificationService>> =
             if notifications_enabled {
@@ -1608,13 +1603,10 @@ impl ServerAppBuilder {
             tracing::info!("Observers disabled via feature flag");
         }
 
-        // Environments describe every session, including the ones with no
-        // sandbox at all, so they are not gated on the sandbox feature flag.
-        // They are gated on their own deployment flag while the view is still
-        // derived from capabilities rather than stored profiles.
-        if feature_flags.environments {
-            api_routes = api_routes.merge(api::environments::routes(environments_state));
-        }
+        // Every session has an Environment, including one with no compute.
+        // This is a core resource now that new sessions pin profiles; only the
+        // optional provider adapters remain deployment-gated.
+        api_routes = api_routes.merge(api::environments::routes(environments_state));
         if let Some(session_sandbox_state) = session_sandbox_state {
             api_routes = api_routes.merge(api::session_sandbox::routes(session_sandbox_state));
         }

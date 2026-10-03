@@ -3,6 +3,7 @@
 // See knowledge/harnesses/execution-environments.md for the model.
 
 pub mod commands;
+pub mod profiles;
 pub mod queries;
 pub mod resolve;
 

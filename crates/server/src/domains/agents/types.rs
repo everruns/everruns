@@ -7,7 +7,7 @@ use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers,
     everruns_provider::tool_types::ToolDefinition,
 };
-use everruns_platform::AgentStatus;
+use everruns_platform::{AgentStatus, EnvironmentSet};
 use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -81,6 +81,10 @@ pub struct CreateAgentRequest {
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Named execution environments this Agent offers. One profile must be
+    /// named by `default`; Sessions may inherit it or select another profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environments: Option<EnvironmentSet>,
     /// Starter files copied into each new session for this agent.
     #[serde(default)]
     #[schema(example = json!([{"path": "INSTRUCTIONS.md", "content": "Always respond in formal English.\n"}]))]
@@ -176,6 +180,13 @@ pub struct UpdateAgentRequest {
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     #[schema(value_type = Option<Vec<everruns_platform::CapabilityRefSchema>>)]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
+    /// Replace or clear the Agent's named execution environments.
+    #[serde(
+        default,
+        deserialize_with = "crate::api::common::deserialize_nullable_update_field"
+    )]
+    #[schema(value_type = Option<EnvironmentSet>)]
+    pub environments: everruns_durable::UpdateField<EnvironmentSet>,
     /// Starter files copied into each new session for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"path": "INSTRUCTIONS.md", "content": "Always respond in formal English.\n"}]))]

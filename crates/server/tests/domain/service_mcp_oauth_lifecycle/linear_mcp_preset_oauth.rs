@@ -109,6 +109,7 @@ async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )

@@ -35,9 +35,132 @@ pub struct PgSandboxCheckpointStore {
     pool: PgPool,
 }
 
+/// Durable logical Environment projection. Physical provider state remains in
+/// `sandbox_instances`; this record survives instance loss and replacement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnvironmentRecord {
+    pub id: Uuid,
+    pub session_id: SessionId,
+    pub provider: String,
+    pub profile_name: String,
+    pub profile: everruns_platform::ResolvedEnvironmentProfile,
+    pub desired_state: String,
+    pub observed_state: String,
+    pub generation: i64,
+    pub current_checkpoint_id: Option<Uuid>,
+    pub last_activity_at: Option<DateTime<Utc>>,
+}
+
 impl PgSandboxCheckpointStore {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// Pin the fully resolved Agent/session profile to its logical Environment.
+    /// Idempotent only for the same snapshot; a Session can never switch target.
+    pub async fn pin_environment(
+        &self,
+        session_id: SessionId,
+        profile_name: &str,
+        profile: &everruns_platform::ResolvedEnvironmentProfile,
+    ) -> Result<EnvironmentRecord, SandboxStateError> {
+        let provider = profile
+            .target
+            .provider
+            .clone()
+            .unwrap_or_else(|| profile.target.kind.as_str().to_string());
+        let snapshot = serde_json::to_value(profile).map_err(state_storage_error)?;
+        let inserted: Option<Uuid> = sqlx::query_scalar(
+            r#"
+            INSERT INTO sandboxes
+                (org_id, session_id, provider, profile_name, profile_snapshot)
+            SELECT s.org_id, s.id, $2, $3, $4
+            FROM sessions s
+            WHERE s.id = $1
+            ON CONFLICT (session_id) WHERE profile_snapshot IS NOT NULL DO UPDATE SET
+                provider = EXCLUDED.provider,
+                profile_name = EXCLUDED.profile_name,
+                profile_snapshot = EXCLUDED.profile_snapshot,
+                updated_at = NOW()
+            WHERE sandboxes.profile_snapshot IS NULL
+               OR (sandboxes.profile_name = EXCLUDED.profile_name
+                   AND sandboxes.profile_snapshot = EXCLUDED.profile_snapshot
+                   AND sandboxes.provider = EXCLUDED.provider)
+            RETURNING sandboxes.id
+            "#,
+        )
+        .bind(session_id)
+        .bind(&provider)
+        .bind(profile_name)
+        .bind(&snapshot)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(state_storage_error)?;
+
+        if inserted.is_none() {
+            return Err(SandboxStateError::Storage(
+                "session environment is already pinned to a different profile".to_string(),
+            ));
+        }
+        self.get_environment(session_id)
+            .await?
+            .ok_or_else(|| SandboxStateError::Storage("pinned environment disappeared".to_string()))
+    }
+
+    pub async fn get_environment(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<EnvironmentRecord>, SandboxStateError> {
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            id: Uuid,
+            session_id: SessionId,
+            provider: String,
+            profile_name: Option<String>,
+            profile_snapshot: Option<serde_json::Value>,
+            desired_state: String,
+            observed_state: String,
+            generation: i64,
+            current_checkpoint_id: Option<Uuid>,
+            last_activity_at: Option<DateTime<Utc>>,
+        }
+
+        let row: Option<Row> = sqlx::query_as(
+            r#"
+            SELECT id, session_id, provider, profile_name, profile_snapshot,
+                   desired_state, observed_state, generation,
+                   current_checkpoint_id, last_activity_at
+            FROM sandboxes
+            WHERE session_id = $1
+              AND profile_snapshot IS NOT NULL
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(state_storage_error)?;
+
+        row.map(|row| {
+            let snapshot = row.profile_snapshot.ok_or_else(|| {
+                SandboxStateError::Storage(
+                    "logical environment has no pinned profile snapshot".to_string(),
+                )
+            })?;
+            let profile = serde_json::from_value(snapshot).map_err(state_storage_error)?;
+            Ok(EnvironmentRecord {
+                id: row.id,
+                session_id: row.session_id,
+                provider: row.provider,
+                profile_name: row.profile_name.unwrap_or_else(|| "legacy".to_string()),
+                profile,
+                desired_state: row.desired_state,
+                observed_state: row.observed_state,
+                generation: row.generation,
+                current_checkpoint_id: row.current_checkpoint_id,
+                last_activity_at: row.last_activity_at,
+            })
+        })
+        .transpose()
     }
 }
 
@@ -94,6 +217,14 @@ fn parse_status(raw: &str) -> Result<SessionSandboxStatus, SandboxStateError> {
 fn status_str(status: SessionSandboxStatus) -> &'static str {
     match status {
         SessionSandboxStatus::Running => "running",
+        SessionSandboxStatus::Paused => "paused",
+        SessionSandboxStatus::Lost => "lost",
+    }
+}
+
+fn observed_state_str(status: SessionSandboxStatus) -> &'static str {
+    match status {
+        SessionSandboxStatus::Running => "ready",
         SessionSandboxStatus::Paused => "paused",
         SessionSandboxStatus::Lost => "lost",
     }
@@ -345,13 +476,20 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
         sqlx::query(
             r#"
             UPDATE sandboxes
-            SET generation = $2, current_instance_id = $3, updated_at = $4
+            SET generation = $2, current_instance_id = $3,
+                desired_state = CASE
+                    WHEN $4 = 'ready' THEN 'ready'
+                    WHEN $4 = 'paused' THEN 'paused'
+                    ELSE desired_state
+                END,
+                observed_state = $4, last_activity_at = $5, updated_at = $5
             WHERE id = $1
             "#,
         )
         .bind(sandbox_id)
         .bind(generation)
         .bind(instance_id)
+        .bind(observed_state_str(state.status))
         .bind(updated_at)
         .execute(&mut *tx)
         .await
@@ -371,15 +509,15 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
         expected: Option<&SandboxRef>,
     ) -> Result<bool, SandboxStateError> {
         let mut tx = self.pool.begin().await.map_err(state_storage_error)?;
-        let current: Option<(Uuid, i64)> = sqlx::query_as(
-            "SELECT id, generation FROM sandboxes WHERE session_id = $1 AND provider = $2 FOR UPDATE",
+        let current: Option<(Uuid, i64, Option<Uuid>, bool)> = sqlx::query_as(
+            "SELECT id, generation, current_instance_id, profile_snapshot IS NOT NULL FROM sandboxes WHERE session_id = $1 AND provider = $2 FOR UPDATE",
         )
         .bind(session_id)
         .bind(provider)
         .fetch_optional(&mut *tx)
         .await
         .map_err(state_storage_error)?;
-        let Some((sandbox_id, generation)) = current else {
+        let Some((sandbox_id, generation, current_instance_id, is_profiled)) = current else {
             tx.commit().await.map_err(state_storage_error)?;
             return Ok(false);
         };
@@ -407,22 +545,33 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
                 carried: 0,
             });
         }
-        sqlx::query(
-            "UPDATE sandboxes SET current_instance_id = NULL WHERE session_id = $1 AND provider = $2",
-        )
-        .bind(session_id)
-        .bind(provider)
-        .execute(&mut *tx)
-        .await
-        .map_err(state_storage_error)?;
-        let deleted = sqlx::query("DELETE FROM sandboxes WHERE session_id = $1 AND provider = $2")
-            .bind(session_id)
-            .bind(provider)
+        if let Some(instance_id) = current_instance_id {
+            sqlx::query(
+                "UPDATE sandbox_instances SET retired_at = NOW(), updated_at = NOW() WHERE id = $1",
+            )
+            .bind(instance_id)
             .execute(&mut *tx)
             .await
-            .map_err(state_storage_error)?
-            .rows_affected()
-            > 0;
+            .map_err(state_storage_error)?;
+        }
+        let deleted = if is_profiled {
+            sqlx::query(
+                "UPDATE sandboxes SET current_instance_id = NULL, desired_state = 'deleted', observed_state = 'deleted', updated_at = NOW() WHERE id = $1",
+            )
+            .bind(sandbox_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(state_storage_error)?;
+            true
+        } else {
+            sqlx::query("DELETE FROM sandboxes WHERE id = $1")
+                .bind(sandbox_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(state_storage_error)?
+                .rows_affected()
+                > 0
+        };
         tx.commit().await.map_err(state_storage_error)?;
         Ok(deleted)
     }

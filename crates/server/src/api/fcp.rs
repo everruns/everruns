@@ -849,6 +849,7 @@ async fn resolve_session(
                 tags: vec![app_tag, endpoint_tag],
                 model_id: None,
                 capabilities: vec![],
+                environment: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

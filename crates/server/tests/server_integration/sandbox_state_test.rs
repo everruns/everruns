@@ -8,6 +8,11 @@ use everruns_platform::sandbox_state::SandboxStateStore;
 use everruns_platform::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
+use everruns_platform::{
+    EnvironmentBootstrap, EnvironmentContainmentProfile, EnvironmentDurability,
+    EnvironmentLifecycle, EnvironmentNetworkPolicy, EnvironmentTargetProfile,
+    ResolvedEnvironmentProfile,
+};
 use everruns_server::storage::{Database, PgSandboxCheckpointStore, StorageBackend};
 
 use crate::repository_conformance_test::{create_test_principal, session_input};
@@ -148,4 +153,82 @@ async fn postgres_replaces_and_fences_physical_incarnations() {
             .expect("load after delete")
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn postgres_pins_profile_and_keeps_logical_environment_after_instance_deletion() {
+    let pool = PgPool::connect(&get_database_url())
+        .await
+        .expect("connect to PostgreSQL");
+    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let owner = create_test_principal(&backend, "profiled-environment").await;
+    let session = backend
+        .create_session(session_input(owner, "profiled-environment"))
+        .await
+        .expect("create session");
+    let profile = ResolvedEnvironmentProfile {
+        target: EnvironmentTargetProfile::managed("daytona"),
+        containment: EnvironmentContainmentProfile {
+            network: EnvironmentNetworkPolicy::Allow,
+            ..EnvironmentContainmentProfile::isolated()
+        },
+        durability: EnvironmentDurability::Checkpointed,
+        lifecycle: EnvironmentLifecycle::default(),
+        bootstrap: EnvironmentBootstrap::default(),
+    };
+
+    let pinned = backend
+        .pin_environment(session.id, "build", &profile)
+        .await
+        .expect("pin environment");
+    assert_eq!(pinned.profile_name, "build");
+    assert_eq!(pinned.profile, profile);
+    assert_eq!(pinned.observed_state, "absent");
+
+    let store = PgSandboxCheckpointStore::new(pool);
+    let now = Utc::now().to_rfc3339();
+    let state = SessionSandboxState {
+        sandbox: None,
+        provider: "daytona".to_string(),
+        status: SessionSandboxStatus::Running,
+        instance: SessionSandboxInstance {
+            external_id: "sb-profiled".to_string(),
+            display_name: None,
+            workspace_path: Some("/home/daytona/workspace".to_string()),
+            provider_state: json!({}),
+            metadata: json!({}),
+        },
+        init_completed_at: None,
+        last_init_error: None,
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    let sandbox_ref = store
+        .save_state(session.id, &state, None)
+        .await
+        .expect("attach physical instance");
+    assert_eq!(
+        backend
+            .get_environment(session.id)
+            .await
+            .expect("load environment")
+            .expect("environment exists")
+            .observed_state,
+        "ready"
+    );
+
+    assert!(
+        store
+            .delete_state(session.id, "daytona", Some(&sandbox_ref))
+            .await
+            .expect("delete physical instance")
+    );
+    let logical = backend
+        .get_environment(session.id)
+        .await
+        .expect("load retained environment")
+        .expect("logical environment survives");
+    assert_eq!(logical.id, pinned.id);
+    assert_eq!(logical.observed_state, "deleted");
+    assert_eq!(logical.desired_state, "deleted");
 }

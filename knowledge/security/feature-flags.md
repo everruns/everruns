@@ -42,7 +42,7 @@ System-level feature flags that control feature availability across the platform
 - **Deployment-only**: API-visible but absent from the org opt-in catalog, so it is on or off for
   the whole deployment and no org can differ (`machine_payments`).
 - **Platform-managed**: in the catalog and therefore org-scoped, so the platform can enable it for
-  one tenant and not another, but only a platform user may set it (`environments`). Marked
+  one tenant and not another, but only a platform user may set it (`openai_agents_api`). Marked
   `platform_managed: true` on the `FeatureFlagDefinition`. The tenant settings route omits these
   rows, the tenant `PATCH` refuses them in both directions, and
   `PATCH /v1/orgs/{org}/feature-flags/platform` is the only path that writes them. Use it when the
@@ -75,17 +75,13 @@ Current API-visible experimental flags include:
 - `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `ag_ui_delegation`, `agent_handoff`). Deployment disablement prevents registration; org-effective disablement removes them from API and Platform listings, assignment, and runtime tool construction. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
 - `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `knowledge/evaluation/online-evals.md`.
 - `public_chat`: gates the canonical endpoint routes and permanent App-shaped aliases, plus the isolated public web route. This is a deployment-level ingress gate; App-channel creation and the retired builder UI are not part of the flag contract. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
-- `environments`: gates the session environment surface, `GET /v1/sessions/{id}/environment` and
-  `GET /v1/environment-targets`, plus the Workspace-tab panel. **Platform-managed**: org-scoped, so
-  an operator enrols one tenant at a time, but the tenant cannot enrol itself. The deployment gate
-  defaults to on wherever sandboxes are already enabled (`FEATURE_SESSION_SANDBOX` or
-  `FEATURE_CONTAINER_SANDBOX`) and in dev, so turning sandboxes on does not need a second switch; an
-  explicit `FEATURE_ENVIRONMENTS=false` still wins. Deployment disablement leaves the routes
-  unmounted; without enrolment the commands return `feature_not_enabled`. Enrolment is a
-  platform-user action, reached from the super-admin console. See
-  `knowledge/harnesses/execution-environments.md`.
 - `webmcp`: gates browser-native tools exposed by the authenticated UI. The deployment gate also controls the `tools` Permissions Policy; org opt-in controls registration. Env var: `FEATURE_WEBMCP`. See `knowledge/ui/webmcp.md`.
 - `reports`: gates the Reports page, its sidebar entry, and saved-report global-search results. Off for every org until an admin opts in, so the page is hidden by default while it matures. UI-only: the reporting API, Platform/MCP reporting commands, and background aggregation stay available. Env var: `FEATURE_REPORTS`.
+
+`environments` is intentionally no longer a feature flag. Every session has an
+Environment resource, even when it has no compute, so its API and Workspace
+panel are core surfaces. Deployment flags still decide which optional compute
+providers are registered; they do not hide the provider-neutral resource.
 
 ## Architecture
 

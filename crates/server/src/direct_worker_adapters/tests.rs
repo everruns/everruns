@@ -190,6 +190,7 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                environments: None,
                 is_built_in: false,
             },
         )
@@ -687,6 +688,7 @@ async fn seed_agent(db: &StorageBackend) -> Uuid {
         max_iterations: None,
         network_access: None,
         parallel_tool_calls: None,
+        environments: None,
         is_built_in: false,
     };
     db.create_agent_with_id(everruns_core::DEFAULT_ORG_ID, id, create)

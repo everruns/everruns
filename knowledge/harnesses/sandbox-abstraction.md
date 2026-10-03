@@ -11,8 +11,10 @@ tags:
 
 # Sandbox abstraction: filesystem plus compute
 
-Status: active proposed architecture. Replaces the experimental `session_sandbox` direction and
-consolidates the provider-specific sandbox capabilities.
+Status: active implementation. Durable logical resources, physical incarnation
+state, generation fencing, checkpoint recovery, and pinned Agent Environment
+profiles are implemented. The remaining consolidation replaces provider-named
+model tools and duplicate coding harnesses with the stable Environment surface.
 
 ## Decision
 
