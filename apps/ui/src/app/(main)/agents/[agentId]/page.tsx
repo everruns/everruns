@@ -383,6 +383,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           : "Inherited",
     },
     {
+      id: "environments",
+      label: "Environments",
+      summary: draft.environments
+        ? `${Object.keys(draft.environments.profiles ?? {}).length} · default ${draft.environments.default}`
+        : "None",
+    },
+    {
       id: "usage",
       label: "Token usage",
       summary: agent.usage

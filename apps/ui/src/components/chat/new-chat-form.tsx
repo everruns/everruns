@@ -63,8 +63,22 @@ export function NewChatForm({
       : allHarnesses;
   const createSession = useCreateSession();
   const [selection, setSelection] = useState("");
+  const [environment, setEnvironment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const optionsLoading = agentsLoading || harnessesLoading;
+  const selectedAgent = selection.startsWith(AGENT_VALUE_PREFIX)
+    ? agents.find((agent) => agent.id === selection.slice(AGENT_VALUE_PREFIX.length))
+    : undefined;
+  const environmentProfiles = selectedAgent?.environments?.profiles ?? {};
+  const environmentNames = Object.keys(environmentProfiles);
+
+  const selectCounterpart = (value: string) => {
+    setSelection(value);
+    const agent = value.startsWith(AGENT_VALUE_PREFIX)
+      ? agents.find((candidate) => candidate.id === value.slice(AGENT_VALUE_PREFIX.length))
+      : undefined;
+    setEnvironment(agent?.environments?.default ?? "");
+  };
 
   const start = async () => {
     if (!selection) return;
@@ -78,6 +92,9 @@ export function NewChatForm({
       const session = await createSession.mutateAsync({
         request: {
           ...binding,
+          ...(selectedAgent?.environments && environment
+            ? { environment: { use: environment } }
+            : {}),
           source: surface,
           ...(surface === "playground"
             ? { playground_user_id: endUserId }
@@ -111,7 +128,7 @@ export function NewChatForm({
             : "flex flex-wrap items-center justify-center gap-2"
         }
       >
-        <Select value={selection} onValueChange={setSelection} disabled={optionsLoading}>
+        <Select value={selection} onValueChange={selectCounterpart} disabled={optionsLoading}>
           <SelectTrigger
             className={surface === "playground" ? "w-full" : "w-64"}
             aria-label="Chat counterpart"
@@ -143,6 +160,31 @@ export function NewChatForm({
             )}
           </SelectContent>
         </Select>
+        {selectedAgent?.environments && environmentNames.length > 0 ? (
+          <Select value={environment} onValueChange={setEnvironment}>
+            <SelectTrigger
+              className={surface === "playground" ? "w-full" : "w-56"}
+              aria-label="Environment"
+            >
+              <SelectValue placeholder="Pick an environment" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel>Runs in</SelectLabel>
+                {environmentNames.map((name) => {
+                  const profile = environmentProfiles[name];
+                  const target = profile.target.provider || profile.target.kind;
+                  return (
+                    <SelectItem key={name} value={name}>
+                      {name === selectedAgent.environments?.default ? `${name} (default)` : name} ·{" "}
+                      {target}
+                    </SelectItem>
+                  );
+                })}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        ) : null}
         {children}
         <Button
           onClick={start}
