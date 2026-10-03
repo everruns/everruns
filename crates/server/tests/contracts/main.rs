@@ -17,5 +17,6 @@ mod mcp_form_elicitation_test;
 mod mcp_url_consent_test;
 mod mcp_url_elicitation_test;
 mod question_answers_test;
+mod session_schedules_policy_test;
 mod sse_replay_test;
 mod tool_approvals_test;
