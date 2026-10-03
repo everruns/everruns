@@ -1506,7 +1506,6 @@ fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<AgentDefinitio
         system_prompt: proto_agent.system_prompt,
         default_model_id: default_model_id.map(Into::into),
         capabilities,
-        environments: None,
         initial_files: vec![],
         network_access: None,
         max_iterations: None,

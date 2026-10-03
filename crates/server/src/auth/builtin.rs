@@ -198,7 +198,7 @@ impl BuiltinAuthBackend {
         // THREAT[TM-AUTH-032]: anonymous-admin PATs minted under AUTH_MODE=none
         // must never authenticate after the deployment enables auth, even if a
         // seed pass has not yet deleted the row.
-        if token_row.user_id == everruns_platform::ANONYMOUS_USER_ID {
+        if token_row.user_id == crate::records::ANONYMOUS_USER_ID {
             return Err(AuthError::unauthorized("Invalid personal access token"));
         }
 
@@ -604,7 +604,7 @@ mod tests {
         #[tokio::test]
         async fn validate_personal_access_token_rejects_anonymous_user_tokens() {
             use crate::auth::config::AuthMode;
-            use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
+            use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 
             let db = Arc::new(StorageBackend::in_memory());
             db.create_user_with_id(

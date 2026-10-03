@@ -21,7 +21,7 @@ pub(super) async fn authorize_session(
         .ok_or_else(|| ErrorResponse::not_found("Session"))?;
     // Realtime transcripts bypass runtime invocation binding. Until that path
     // supports the fixed test subject, Playground uses the shared text composer.
-    if session.source == everruns_platform::SessionSource::Playground {
+    if session.source == crate::records::SessionSource::Playground {
         return Err(ErrorResponse::new("Voice is unavailable in Playground")
             .into_response(StatusCode::BAD_REQUEST));
     }

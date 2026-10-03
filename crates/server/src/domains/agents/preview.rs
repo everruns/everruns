@@ -23,7 +23,7 @@ pub struct PreviewAgent {
     pub initial_files: Vec<InitialFile>,
     pub system_prompt: Option<String>,
     #[serde(default)]
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,

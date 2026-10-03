@@ -4,11 +4,11 @@ use chrono::Utc;
 use serde_json::json;
 use sqlx::PgPool;
 
-use everruns_platform::sandbox_state::SandboxStateStore;
-use everruns_platform::session_sandbox::{
+use everruns_capabilities::sandbox_state::SandboxStateStore;
+use everruns_contracts::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
-use everruns_platform::{
+use everruns_server::records::{
     EnvironmentBootstrap, EnvironmentContainmentProfile, EnvironmentDurability,
     EnvironmentLifecycle, EnvironmentNetworkPolicy, EnvironmentTargetProfile,
     ResolvedEnvironmentProfile,
@@ -105,7 +105,7 @@ async fn postgres_replaces_and_fences_physical_incarnations() {
         .expect_err("a late response from the retired incarnation is fenced");
     assert!(matches!(
         stale,
-        everruns_platform::sandbox_state::SandboxStateError::StaleGeneration {
+        everruns_capabilities::sandbox_state::SandboxStateError::StaleGeneration {
             current: 2,
             carried: 1,
             ..

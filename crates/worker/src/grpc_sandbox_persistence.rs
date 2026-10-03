@@ -2,14 +2,14 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use everruns_contracts::typed_id::SessionId;
-use everruns_internal_protocol::proto;
-use everruns_platform::sandbox_checkpoint::{
+use everruns_capabilities::sandbox_checkpoint::{
     NewSandboxCheckpoint, SandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointStore,
     SandboxRef,
 };
-use everruns_platform::sandbox_state::{SandboxStateError, SandboxStateStore};
-use everruns_platform::session_sandbox::SessionSandboxState;
+use everruns_capabilities::sandbox_state::{SandboxStateError, SandboxStateStore};
+use everruns_capabilities::session_sandbox::SessionSandboxState;
+use everruns_contracts::typed_id::SessionId;
+use everruns_internal_protocol::proto;
 use serde_json::{Value, json};
 use uuid::Uuid;
 

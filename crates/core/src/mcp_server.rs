@@ -1,12 +1,7 @@
-// MCP Server domain types
-//
-// Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
-//
-// These types represent the MCP (Model Context Protocol) server configuration.
-// Used by both API and worker crates.
-//
-// Currently supports only HTTP (Streamable HTTP) transport.
-// MCP tool types follow the MCP specification for tool discovery and execution.
+//! Portable MCP transport, authentication, and scoped configuration values.
+//!
+//! HTTP transport is available to hosted runtimes; local hosts may also use
+//! stdio. Persisted MCP server records and their lifecycle live in the server.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

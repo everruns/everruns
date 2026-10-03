@@ -402,7 +402,7 @@ pub struct Session {
     pub virtual_user_id: Option<VirtualUserId>,
     /// Fixed end-user identity for a Playground conversation; independent of the resident service.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    #[schema(value_type = Option<String>)]
     pub playground_user_id: Option<VirtualUserId>,
     /// Owning principal for this session.
     #[schema(value_type = String, example = "principal_01933b5a000070008000000000000001")]

@@ -1,8 +1,7 @@
-// Skill domain types and SKILL.md parser
-//
-// Skills are portable instruction packages following the agentskills.io format.
-// A skill consists of a SKILL.md file (YAML frontmatter + markdown body)
-// with optional bundled scripts, references, and assets.
+//! Portable skill configuration and the SKILL.md parser.
+//!
+//! Skills contain instructions with optional scripts, references, and assets.
+//! Persisted skill records and their lifecycle live in the server.
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};

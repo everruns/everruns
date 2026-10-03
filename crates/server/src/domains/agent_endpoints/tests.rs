@@ -550,7 +550,7 @@ async fn live_endpoint_exposure_changes_require_dangerous_permission() {
     assert_eq!(stored.status, EndpointStatus::Live);
     assert_eq!(
         stored.auth.as_ref().map(|auth| auth.mode.clone()),
-        Some(everruns_platform::EndpointAuthMode::SharedSecret)
+        Some(crate::records::EndpointAuthMode::SharedSecret)
     );
 
     // Re-saving a live endpoint without changing it (secrets omitted or shown
