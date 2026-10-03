@@ -9,8 +9,8 @@ use super::*;
 use crate::worker_adapters::WorkerAdapters;
 use everruns_contracts::error::Result as CoreResult;
 use everruns_contracts::typed_id::SessionId as CoreSessionId;
-use everruns_core::McpServerActsAs;
-use everruns_core::connection_services::UserConnectionResolver;
+use crate::core::McpServerActsAs;
+use crate::core::connection_services::UserConnectionResolver;
 use std::collections::HashMap;
 use std::sync::Mutex as StdMutex;
 
@@ -61,7 +61,7 @@ impl UserConnectionResolver for RecordingResolver {
 
 fn server_info(
     acts_as: McpServerActsAs,
-    auth_mode: everruns_core::McpServerAuthMode,
+    auth_mode: crate::core::McpServerAuthMode,
     api_key: Option<&str>,
     headers: &[(&str, &str)],
 ) -> crate::mcp_executor::McpServerInfo {
@@ -70,7 +70,7 @@ fn server_info(
         name: "linear".to_string(),
         url: "https://mcp.linear.app/mcp".to_string(),
         auth_mode,
-        protocol_mode: everruns_core::McpProtocolMode::Auto,
+        protocol_mode: crate::core::McpProtocolMode::Auto,
         elicitation_policy: Default::default(),
         oauth_provider_id: Some(format!("mcp_oauth_{}", Uuid::new_v4())),
         acts_as,
@@ -112,7 +112,7 @@ async fn resolve_with(
     let worker_resolver = WorkerMcpResolver {
         input_message_id: None,
         adapters,
-        org_id: everruns_core::DEFAULT_ORG_ID,
+        org_id: crate::core::DEFAULT_ORG_ID,
         session_id: Uuid::new_v4(),
         agent_id: Some(AgentId::from_seed(7)),
     };
@@ -134,7 +134,7 @@ fn hosted_resolver(
             info,
             resolver: Arc::new(resolver),
         },
-        org_id: everruns_core::DEFAULT_ORG_ID,
+        org_id: crate::core::DEFAULT_ORG_ID,
         session_id: Uuid::new_v4(),
         agent_id: Some(AgentId::from_seed(7)),
     }
@@ -150,7 +150,7 @@ async fn hosted_mcp_factory_scopes_credentials_to_the_current_input() {
     let host = WorkerRuntimeHost::new(StubAdapters {
         info: server_info(
             McpServerActsAs::User,
-            everruns_core::McpServerAuthMode::OAuth,
+            crate::core::McpServerAuthMode::OAuth,
             None,
             &[],
         ),
@@ -158,7 +158,7 @@ async fn hosted_mcp_factory_scopes_credentials_to_the_current_input() {
     });
     let hosted = host
         .hosted_mcp_resolver(
-            everruns_core::DEFAULT_ORG_ID,
+            crate::core::DEFAULT_ORG_ID,
             SessionId::new(),
             Some(AgentId::from_seed(7)),
             input,
@@ -181,7 +181,7 @@ async fn hosted_mcp_factory_scopes_credentials_to_the_current_input() {
 #[tokio::test]
 async fn hosted_mcp_resolution_uses_the_same_credentials() {
     use everruns_contracts::hosted_mcp::HostedMcpResolver;
-    let oauth = everruns_core::McpServerAuthMode::OAuth;
+    let oauth = crate::core::McpServerAuthMode::OAuth;
     let connected = hosted_resolver(
         server_info(McpServerActsAs::User, oauth.clone(), None, &[]),
         RecordingResolver {
@@ -211,7 +211,7 @@ async fn hosted_mcp_resolution_uses_the_same_credentials() {
 async fn an_acting_identity_routes_through_the_acts_as_lookup_not_the_legacy_one() {
     for acts_as in [McpServerActsAs::Service, McpServerActsAs::User] {
         let (connection, resolver) = resolve_with(
-            server_info(acts_as, everruns_core::McpServerAuthMode::OAuth, None, &[]),
+            server_info(acts_as, crate::core::McpServerAuthMode::OAuth, None, &[]),
             RecordingResolver {
                 acts_as_token: Some("scoped-token".to_string()),
                 legacy_token: Some("fallback-token".to_string()),
@@ -240,7 +240,7 @@ async fn an_attachment_without_an_acting_identity_never_uses_personal_credential
     let (connection, resolver) = resolve_with(
         server_info(
             McpServerActsAs::None,
-            everruns_core::McpServerAuthMode::OAuth,
+            crate::core::McpServerAuthMode::OAuth,
             None,
             &[],
         ),
@@ -264,7 +264,7 @@ async fn an_attachment_without_an_acting_identity_never_uses_personal_credential
 async fn a_missing_grant_becomes_connection_required_never_an_unauthenticated_call() {
     for acts_as in [McpServerActsAs::Service, McpServerActsAs::User] {
         let (connection, _resolver) = resolve_with(
-            server_info(acts_as, everruns_core::McpServerAuthMode::OAuth, None, &[]),
+            server_info(acts_as, crate::core::McpServerAuthMode::OAuth, None, &[]),
             RecordingResolver {
                 acts_as_token: None,
                 legacy_token: Some("fallback-token".to_string()),
@@ -306,7 +306,7 @@ async fn an_unscoped_missing_grant_keeps_the_provider_only_shape_without_private
     let (connection, resolver) = resolve_with(
         server_info(
             McpServerActsAs::None,
-            everruns_core::McpServerAuthMode::OAuth,
+            crate::core::McpServerAuthMode::OAuth,
             None,
             &[],
         ),
@@ -333,7 +333,7 @@ async fn an_agentless_service_missing_grant_is_rejected() {
     let adapters = StubAdapters {
         info: server_info(
             McpServerActsAs::Service,
-            everruns_core::McpServerAuthMode::OAuth,
+            crate::core::McpServerAuthMode::OAuth,
             None,
             &[],
         ),
@@ -342,7 +342,7 @@ async fn an_agentless_service_missing_grant_is_rejected() {
     let result = WorkerMcpResolver {
         input_message_id: None,
         adapters,
-        org_id: everruns_core::DEFAULT_ORG_ID,
+        org_id: crate::core::DEFAULT_ORG_ID,
         session_id: Uuid::new_v4(),
         agent_id: None,
     }
@@ -366,7 +366,7 @@ async fn a_resolver_error_fails_closed_rather_than_calling_unauthenticated() {
     // would happily accept.
     for acts_as in [McpServerActsAs::Service, McpServerActsAs::User] {
         let (connection, resolver) = resolve_with(
-            server_info(acts_as, everruns_core::McpServerAuthMode::OAuth, None, &[]),
+            server_info(acts_as, crate::core::McpServerAuthMode::OAuth, None, &[]),
             RecordingResolver {
                 acts_as_token: Some("scoped-token".to_string()),
                 legacy_token: Some("fallback-token".to_string()),
@@ -394,7 +394,7 @@ async fn a_literal_authorization_header_is_never_overwritten_by_a_resolved_token
     let (connection, resolver) = resolve_with(
         server_info(
             McpServerActsAs::None,
-            everruns_core::McpServerAuthMode::OAuth,
+            crate::core::McpServerAuthMode::OAuth,
             None,
             &[("Authorization", "Bearer literal-header")],
         ),
@@ -426,21 +426,21 @@ impl WorkerAdapters for StubAdapters {
         &self,
         _org_id: i64,
         _agent_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::AgentDefinition>> {
+    ) -> CoreResult<Option<crate::core::AgentDefinition>> {
         unimplemented!()
     }
     async fn get_harness(
         &self,
         _org_id: i64,
         _harness_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::HarnessDefinition>> {
+    ) -> CoreResult<Option<crate::core::HarnessDefinition>> {
         unimplemented!()
     }
     async fn get_session(
         &self,
         _org_id: i64,
         _session_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::ExecutionSession>> {
+    ) -> CoreResult<Option<crate::core::ExecutionSession>> {
         unimplemented!()
     }
     async fn set_session_status(
@@ -456,26 +456,26 @@ impl WorkerAdapters for StubAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _title: String,
-    ) -> CoreResult<everruns_core::ExecutionSession> {
+    ) -> CoreResult<crate::core::ExecutionSession> {
         unimplemented!()
     }
     async fn get_message(
         &self,
         _session_id: Uuid,
         _message_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::RuntimeMessage>> {
+    ) -> CoreResult<Option<crate::core::RuntimeMessage>> {
         unimplemented!()
     }
     async fn load_messages(
         &self,
         _session_id: Uuid,
-    ) -> CoreResult<Vec<everruns_core::RuntimeMessage>> {
+    ) -> CoreResult<Vec<crate::core::RuntimeMessage>> {
         unimplemented!()
     }
     async fn emit_event(
         &self,
-        _request: everruns_core::events::EventRequest,
-    ) -> CoreResult<everruns_core::events::Event> {
+        _request: crate::core::events::EventRequest,
+    ) -> CoreResult<crate::core::events::Event> {
         unimplemented!()
     }
     async fn get_model_spec(
@@ -502,21 +502,21 @@ impl WorkerAdapters for StubAdapters {
         &self,
         _org_id: i64,
         _image_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::image_services::ResolvedImage>> {
+    ) -> CoreResult<Option<crate::core::image_services::ResolvedImage>> {
         unimplemented!()
     }
     async fn resolve_images_batch(
         &self,
         _org_id: i64,
         _image_ids: &[Uuid],
-    ) -> CoreResult<HashMap<Uuid, everruns_core::image_services::ResolvedImage>> {
+    ) -> CoreResult<HashMap<Uuid, crate::core::image_services::ResolvedImage>> {
         unimplemented!()
     }
     async fn resolve_files_batch(
         &self,
         _org_id: i64,
         _file_ids: &[Uuid],
-    ) -> CoreResult<HashMap<Uuid, everruns_core::file_services::ResolvedFile>> {
+    ) -> CoreResult<HashMap<Uuid, crate::core::file_services::ResolvedFile>> {
         unimplemented!()
     }
     async fn read_file(
@@ -524,7 +524,7 @@ impl WorkerAdapters for StubAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _path: &str,
-    ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
+    ) -> CoreResult<Option<crate::core::session_file::SessionFile>> {
         unimplemented!()
     }
     async fn write_file(
@@ -534,7 +534,7 @@ impl WorkerAdapters for StubAdapters {
         _path: &str,
         _content: &str,
         _encoding: &str,
-    ) -> CoreResult<everruns_core::session_file::SessionFile> {
+    ) -> CoreResult<crate::core::session_file::SessionFile> {
         unimplemented!()
     }
     async fn delete_file(
@@ -551,7 +551,7 @@ impl WorkerAdapters for StubAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _path: &str,
-    ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
+    ) -> CoreResult<Vec<crate::core::session_file::FileInfo>> {
         unimplemented!()
     }
     async fn stat_file(
@@ -559,7 +559,7 @@ impl WorkerAdapters for StubAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _path: &str,
-    ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
+    ) -> CoreResult<Option<crate::core::session_file::FileStat>> {
         unimplemented!()
     }
     async fn grep_files(
@@ -568,7 +568,7 @@ impl WorkerAdapters for StubAdapters {
         _session_id: Uuid,
         _pattern: &str,
         _path_pattern: Option<&str>,
-    ) -> CoreResult<Vec<everruns_core::session_file::GrepMatch>> {
+    ) -> CoreResult<Vec<crate::core::session_file::GrepMatch>> {
         unimplemented!()
     }
     async fn create_directory(
@@ -576,7 +576,7 @@ impl WorkerAdapters for StubAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _path: &str,
-    ) -> CoreResult<everruns_core::session_file::FileInfo> {
+    ) -> CoreResult<crate::core::session_file::FileInfo> {
         unimplemented!()
     }
     async fn get_mcp_server_by_prefix(
@@ -614,7 +614,7 @@ impl WorkerAdapters for StubAdapters {
         &self,
         _limit: u32,
         _stale_after_seconds: u32,
-    ) -> CoreResult<Vec<everruns_core::leased_resource::LeasedResource>> {
+    ) -> CoreResult<Vec<crate::core::leased_resource::LeasedResource>> {
         unimplemented!()
     }
     async fn mark_leased_resource_released(
@@ -648,7 +648,7 @@ impl WorkerAdapters for StubAdapters {
         unimplemented!()
     }
 
-    fn capability_registry(&self) -> everruns_core::capabilities::CapabilityRegistry {
+    fn capability_registry(&self) -> crate::core::capabilities::CapabilityRegistry {
         unimplemented!()
     }
     fn driver_registry(&self) -> everruns_contracts::DriverRegistry {
@@ -663,31 +663,31 @@ impl WorkerAdapters for StubAdapters {
     fn storage_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
         unimplemented!()
     }
 
     fn storage_store_unscoped(
         &self,
-    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
-        self.storage_store(everruns_core::DEFAULT_ORG_ID)
+    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
+        self.storage_store(crate::core::DEFAULT_ORG_ID)
     }
     fn image_artifact_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn everruns_core::image_services::ImageArtifactStore> {
+    ) -> Arc<dyn crate::core::image_services::ImageArtifactStore> {
         unimplemented!()
     }
     fn provider_credential_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn everruns_core::connection_services::ProviderCredentialStore> {
+    ) -> Arc<dyn crate::core::connection_services::ProviderCredentialStore> {
         unimplemented!()
     }
-    fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
+    fn utility_llm_service(&self) -> Option<Arc<dyn crate::core::UtilityLlmService>> {
         unimplemented!()
     }
-    fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
+    fn egress_service(&self) -> Option<Arc<dyn crate::core::EgressService>> {
         unimplemented!()
     }
     fn platform_store(
@@ -699,23 +699,23 @@ impl WorkerAdapters for StubAdapters {
     }
     fn connection_resolver(
         &self,
-    ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
+    ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
         self.resolver.clone()
     }
     fn leased_resource_store(
         &self,
-    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
+    ) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
         unimplemented!()
     }
     fn schedule_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
+    ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
         unimplemented!()
     }
     fn reaper_session_task_registry(
         &self,
-    ) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
+    ) -> Arc<dyn crate::core::session_task::SessionTaskRegistry> {
         unimplemented!()
     }
 }

@@ -16,13 +16,13 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use everruns_contracts::typed_id::SessionId;
-use everruns_core::mcp::{
+use crate::core::session_services::SessionStorageStore;
+use crate::mcp::{
     ElicitationConsentStore, FormAnswerStore, GrantedConsent, StoredConsent, StoredFormAnswer,
     consent_storage_key, form_answer_storage_key,
 };
-use everruns_core::session_services::SessionStorageStore;
+use async_trait::async_trait;
+use everruns_contracts::typed_id::SessionId;
 
 /// Session-storage-backed [`ElicitationConsentStore`] for one session.
 pub struct SessionElicitationConsents {
@@ -98,10 +98,10 @@ impl FormAnswerStore for SessionElicitationConsents {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::session_services::{KeyInfo, SecretInfo};
+    use crate::core::tool_context::ToolContext;
+    use crate::core::tools::{Tool, ToolExecutionResult};
     use everruns_contracts::error::Result as CoreResult;
-    use everruns_core::session_services::{KeyInfo, SecretInfo};
-    use everruns_core::tool_context::ToolContext;
-    use everruns_core::tools::{Tool, ToolExecutionResult};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -267,7 +267,7 @@ mod tests {
             "deploys",
             "release",
             "fingerprint",
-            everruns_core::mcp::FormAnswerAction::Decline,
+            crate::mcp::FormAnswerAction::Decline,
             Default::default(),
             chrono::Utc::now(),
         );
@@ -310,7 +310,7 @@ mod tests {
         value: &str,
     ) -> ToolExecutionResult {
         let context = ToolContext::with_storage_store(session_id, storage);
-        everruns_core::host::KvStoreTool
+        crate::host::KvStoreTool
             .execute_with_context(
                 serde_json::json!({"operation": "set", "key": key, "value": value}),
                 &context,
@@ -355,7 +355,7 @@ mod tests {
             "deploys",
             "release",
             "fingerprint",
-            everruns_core::mcp::FormAnswerAction::Accept,
+            crate::mcp::FormAnswerAction::Accept,
             Default::default(),
             chrono::Utc::now(),
         );

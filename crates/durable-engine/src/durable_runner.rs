@@ -1,6 +1,6 @@
 // Durable execution engine runner adapters.
-// Decision: everruns-worker owns durable orchestration and maps runtime turn state onto the durable engine.
-// Decision: everruns-host remains durable-agnostic and only exports generic turn strategy/state.
+// Decision: everruns-durable-engine owns durable orchestration and maps runtime turn state onto the durable engine.
+// Decision: Core host remains durable-agnostic and only exports generic turn strategy/state.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -97,7 +97,7 @@ pub struct DirectDurableStore {
 }
 
 impl DirectDurableStore {
-    pub fn new(pool: sqlx::PgPool) -> Self {
+    pub fn new(pool: everruns_durable::PostgresPool) -> Self {
         Self {
             store: PostgresWorkflowEventStore::new(pool),
         }
@@ -562,7 +562,7 @@ impl DurableRunner {
         })
     }
 
-    pub fn new_with_pool(pool: sqlx::PgPool) -> Self {
+    pub fn new_with_pool(pool: everruns_durable::PostgresPool) -> Self {
         info!("Initializing durable runner (direct DB mode)");
         let store = DirectDurableStore::new(pool);
         Self {
@@ -572,7 +572,7 @@ impl DurableRunner {
     }
 
     pub fn new_with_pool_and_task_notifier(
-        pool: sqlx::PgPool,
+        pool: everruns_durable::PostgresPool,
         task_notifier: Arc<dyn DurableTaskNotifier>,
     ) -> Self {
         info!("Initializing durable runner (direct DB mode with task notifier)");

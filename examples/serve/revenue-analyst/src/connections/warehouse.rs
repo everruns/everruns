@@ -4,6 +4,7 @@
 
 use std::sync::Mutex;
 
+use everruns_durable::sqlite as rusqlite;
 use rusqlite::Connection;
 use rusqlite::types::ValueRef;
 use serve::prelude::*;
@@ -32,7 +33,7 @@ impl Rows {
 
 impl Warehouse {
     fn seeded() -> Result<Self> {
-        let conn = Connection::open_in_memory()?;
+        let conn = rusqlite::open_in_memory()?;
         conn.execute_batch(
             "CREATE TABLE orders (id INTEGER PRIMARY KEY, placed_at TEXT NOT NULL, amount_cents INTEGER NOT NULL);
              CREATE TABLE refunds (order_id INTEGER NOT NULL, refunded_at TEXT NOT NULL, amount_cents INTEGER NOT NULL);

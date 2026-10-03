@@ -9,6 +9,16 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## Embedded SQLite ownership
+
+`everruns::local::SqliteDb` retains its shared callback API, including callbacks
+typed as `&rusqlite::Connection`, `rusqlite::params!`, and `OptionalExtension`.
+Connections now open through `everruns-durable`'s optional `sqlite` feature.
+Framework applications keep the same local stores and schemas; no data migration
+is needed. Hosts opening independent handles should use
+`everruns_durable::sqlite::open` or `open_in_memory`. To add application tables to
+the Framework database, retain `SqliteDb` and use its `with_conn` callbacks.
+
 ## Consolidated execution modules
 
 `everruns-core` now owns the execution, host, built-in, MCP, AG-UI, and A2A
@@ -35,6 +45,7 @@ injects the Bashkit factory when its `bashkit` feature is enabled.
 Utility-model bootstrap configuration now lives in `everruns::utility_llm`
 behind `utility-llm`. A2A protocol and outbound client APIs are available from
 `everruns_core::a2a` with the `a2a` feature.
+
 
 ## Runtime store migration
 

@@ -8,27 +8,27 @@
 //
 // This allows a single Worker implementation to work with either backend.
 
-use async_trait::async_trait;
-use everruns_contracts::error::Result;
-use everruns_contracts::typed_id::{
-    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
-};
-use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::events::{Event, EventRequest};
-use everruns_core::leased_resource::LeasedResource;
-use everruns_core::session_file::{
+use crate::core::capabilities::CapabilityRegistry;
+use crate::core::events::{Event, EventRequest};
+use crate::core::leased_resource::LeasedResource;
+use crate::core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
-use everruns_core::{
+use crate::core::{
     AgentDefinition, EgressService, ExecutionSession, HarnessDefinition, MessageHistory,
     MessageQuery, RuntimeMessage, UtilityLlmService,
 };
-use everruns_core::{
+use crate::core::{
     connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
     file_services::FileResolver, file_services::ResolvedFile, image_services::ImageArtifactStore,
     image_services::ImageResolver, image_services::ResolvedImage,
     session_services::LeasedResourceStore, tool_execution::BudgetChecker,
     tool_execution::PaymentAuthority,
+};
+use async_trait::async_trait;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::{
+    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 // The server projects management records into portable definitions and neutral
 // lifecycle blockers before they cross this worker boundary.
@@ -66,23 +66,23 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         org_id: i64,
         agent_id: Uuid,
-    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+    ) -> Result<Option<crate::core::DependencyBlocker>> {
         Ok(self
             .get_agent(org_id, agent_id)
             .await?
             .is_none()
-            .then_some(everruns_core::DependencyBlocker::AgentDeleted))
+            .then_some(crate::core::DependencyBlocker::AgentDeleted))
     }
     async fn get_harness_blocker(
         &self,
         org_id: i64,
         harness_id: Uuid,
-    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+    ) -> Result<Option<crate::core::DependencyBlocker>> {
         Ok(self
             .get_harness(org_id, harness_id)
             .await?
             .is_none()
-            .then_some(everruns_core::DependencyBlocker::HarnessDeleted))
+            .then_some(crate::core::DependencyBlocker::HarnessDeleted))
     }
 
     // =========================================================================
@@ -276,7 +276,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         let matches = self
             .grep_files(org_id, session_id, pattern, options.path_pattern.as_deref())
             .await?;
-        Ok(everruns_core::session_file::bound_grep_matches(
+        Ok(crate::core::session_file::bound_grep_matches(
             matches, options,
         ))
     }
@@ -345,17 +345,17 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     fn native_async_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+    ) -> Option<Arc<dyn crate::core::native_async_store::NativeAsyncStore>> {
         None
     }
 
-    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
+    fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
         None
     }
 
     fn compaction_checkpoint_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+    ) -> Option<Arc<dyn crate::core::CompactionCheckpointStore>> {
         None
     }
 
@@ -403,7 +403,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn storage_store(
         &self,
         org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore>;
+    ) -> Arc<dyn crate::core::session_services::SessionStorageStore>;
 
     /// The same store for background sweepers that run across every org.
     ///
@@ -412,9 +412,8 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// is no org to scope them by. They are named apart from `storage_store`
     /// rather than handed an invented org, so the org-less trust context is
     /// visible at the call site instead of buried in a default.
-    fn storage_store_unscoped(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore>;
+    fn storage_store_unscoped(&self)
+    -> Arc<dyn crate::core::session_services::SessionStorageStore>;
 
     /// Get the image artifact store for tool-side image persistence.
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore>;
@@ -427,7 +426,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the system decisions for capability internals that ask typed
     /// questions. Defaults to none, which makes dependent checks fail open.
-    fn decisions(&self) -> Option<Arc<dyn everruns_core::DecisionsService>> {
+    fn decisions(&self) -> Option<Arc<dyn crate::core::DecisionsService>> {
         None
     }
 
@@ -445,7 +444,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the user connection resolver for lazy token lookup.
     fn connection_resolver(
         &self,
-    ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver>;
+    ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver>;
 
     /// Get the Knowledge Index search service for the `search_index` tool,
     /// scoped to the given org. Returns None when retrieval is not available
@@ -465,7 +464,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// without the registry RPC — follow-up work).
     fn session_resource_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::session_services::SessionResourceRegistry>> {
+    ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
         None
     }
 
@@ -474,7 +473,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// without the task RPCs — follow-up work).
     fn session_task_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+    ) -> Option<Arc<dyn crate::core::session_task::SessionTaskRegistry>> {
         None
     }
 
@@ -483,7 +482,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn schedule_store(
         &self,
         org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore>;
+    ) -> Arc<dyn crate::core::session_services::SessionScheduleStore>;
 
     /// Get the budget checker for the current turn, if available.
     ///
@@ -523,7 +522,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn outbound_tool_rate_limiter(
         &self,
         _org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>> {
+    ) -> Option<Arc<dyn crate::core::tool_execution::OutboundToolRateLimiter>> {
         None
     }
 
@@ -531,7 +530,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Default: `None` (no durable idempotency — suitable for dev/test environments).
     fn durable_tool_result_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
+    ) -> Option<Arc<dyn crate::core::durability::DurableToolResultStore>> {
         None
     }
 
@@ -539,7 +538,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Default: `None` (no spawn dedup — suitable for dev/test environments).
     fn subagent_spawn_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
+    ) -> Option<Arc<dyn crate::core::delegation_services::SubagentSpawnStore>> {
         None
     }
 
@@ -550,7 +549,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Stream-liveness heartbeater for the Reason activity (EVE-531).
     /// Default: `None` (no heartbeats sent — durable workers supply one).
-    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::durability::StreamHeartbeater>> {
+    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
         None
     }
 
@@ -629,7 +628,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Must include an event emitter so task.updated events fire on reap.
     fn reaper_session_task_registry(
         &self,
-    ) -> std::sync::Arc<dyn everruns_core::session_task::SessionTaskRegistry>;
+    ) -> std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry>;
 
     /// Prune a bounded batch of terminal session tasks (succeeded/failed/
     /// canceled) whose `finished_at` is older than `ttl`, removing their
@@ -734,28 +733,28 @@ impl<A: WorkerAdapters> OrgAdapter<A> {
 // --- Org-scoped trait impls ---
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::execution_loading::AgentStore for OrgAdapter<A> {
+impl<A: WorkerAdapters> crate::core::execution_loading::AgentStore for OrgAdapter<A> {
     async fn get_agent(&self, id: AgentId) -> Result<Option<AgentDefinition>> {
         self.adapters.get_agent(self.org_id, id.uuid()).await
     }
     async fn get_agent_blocker(
         &self,
         id: AgentId,
-    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+    ) -> Result<Option<crate::core::DependencyBlocker>> {
         self.adapters
             .get_agent_blocker(self.org_id, id.uuid())
             .await
     }
 }
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::execution_loading::HarnessStore for OrgAdapter<A> {
+impl<A: WorkerAdapters> crate::core::execution_loading::HarnessStore for OrgAdapter<A> {
     async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>> {
         self.adapters.get_harness(self.org_id, id.uuid()).await
     }
     async fn get_harness_blocker(
         &self,
         id: HarnessId,
-    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+    ) -> Result<Option<crate::core::DependencyBlocker>> {
         self.adapters
             .get_harness_blocker(self.org_id, id.uuid())
             .await
@@ -763,7 +762,7 @@ impl<A: WorkerAdapters> everruns_core::execution_loading::HarnessStore for OrgAd
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::execution_loading::SessionStore for OrgAdapter<A> {
+impl<A: WorkerAdapters> crate::core::execution_loading::SessionStore for OrgAdapter<A> {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         self.adapters
             .get_session(self.org_id, session_id.uuid())
@@ -785,7 +784,7 @@ impl<A: WorkerAdapters> everruns_capabilities::SessionMutator for OrgAdapter<A> 
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::provider_resolution::ProviderStore for OrgAdapter<A> {
+impl<A: WorkerAdapters> crate::core::provider_resolution::ProviderStore for OrgAdapter<A> {
     async fn get_model_spec(&self, model_id: ModelId) -> Result<Option<ModelSpec>> {
         self.adapters
             .get_model_spec(self.org_id, model_id.uuid())
@@ -825,7 +824,7 @@ impl<A: WorkerAdapters> FileResolver for OrgAdapter<A> {
 // --- Session-scoped trait impls ---
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::MessageRetriever for SessionAdapter<A> {
+impl<A: WorkerAdapters> crate::core::MessageRetriever for SessionAdapter<A> {
     async fn get(
         &self,
         session_id: SessionId,
@@ -840,23 +839,20 @@ impl<A: WorkerAdapters> everruns_core::MessageRetriever for SessionAdapter<A> {
         self.adapters.load_messages(session_id.uuid()).await
     }
 
-    async fn load_filtered(
-        &self,
-        query: everruns_core::MessageQuery,
-    ) -> Result<Vec<RuntimeMessage>> {
+    async fn load_filtered(&self, query: crate::core::MessageQuery) -> Result<Vec<RuntimeMessage>> {
         Ok(self.adapters.load_message_history(query).await?.messages)
     }
 
     async fn load_filtered_history(
         &self,
-        query: everruns_core::MessageQuery,
-    ) -> Result<everruns_core::MessageHistory> {
+        query: crate::core::MessageQuery,
+    ) -> Result<crate::core::MessageHistory> {
         self.adapters.load_message_history(query).await
     }
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::event_emitter::EventEmitter for SessionAdapter<A> {
+impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdapter<A> {
     async fn emit(&self, mut request: EventRequest) -> Result<Event> {
         if let Some(extra) = &self.event_metadata {
             let mut metadata = request
@@ -874,7 +870,7 @@ impl<A: WorkerAdapters> everruns_core::event_emitter::EventEmitter for SessionAd
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::session_files::SessionFileSystem for SessionAdapter<A> {
+impl<A: WorkerAdapters> crate::core::session_files::SessionFileSystem for SessionAdapter<A> {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let org_id = self.require_org("read_file")?;
         self.adapters

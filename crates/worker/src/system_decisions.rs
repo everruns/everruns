@@ -24,8 +24,8 @@
 
 use std::sync::Arc;
 
-use everruns_core::host::{DecisionDriverRegistry, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
-use everruns_core::{DecisionsService, DisabledDecisionsService, UtilityLlmService};
+use crate::core::{DecisionsService, DisabledDecisionsService, UtilityLlmService};
+use crate::host::{DecisionDriverRegistry, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
 use everruns_integrations_openai_decisions::{OPENAI_DECISION_DRIVER_ID, OpenAIDecisions};
 use everruns_integrations_typesafe::{SystemDecisionsConfig, TYPESAFE_DECISION_DRIVER_ID};
 
@@ -162,11 +162,11 @@ fn env_value(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::{DecisionQuestion, DecisionRequest, DisabledUtilityLlmService};
     use everruns_contracts::driver_registry::{
         LlmCompletionMetadata, LlmResponse, LlmResponseStream,
     };
     use everruns_contracts::error::Result;
-    use everruns_core::{DecisionQuestion, DecisionRequest, DisabledUtilityLlmService};
 
     /// A utility model that answers yes to everything.
     struct YesModel;
@@ -179,7 +179,7 @@ mod tests {
 
         async fn chat_completion(
             &self,
-            _request: everruns_core::UtilityLlmRequest,
+            _request: crate::core::UtilityLlmRequest,
         ) -> Result<LlmResponse> {
             Ok(LlmResponse {
                 text: r#"{"answers": {"q1": "yes"}}"#.to_string(),
@@ -191,7 +191,7 @@ mod tests {
 
         async fn chat_completion_stream(
             &self,
-            _request: everruns_core::UtilityLlmRequest,
+            _request: crate::core::UtilityLlmRequest,
         ) -> Result<LlmResponseStream> {
             unreachable!()
         }

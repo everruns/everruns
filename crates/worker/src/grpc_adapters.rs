@@ -9,19 +9,15 @@
 // These implementations use the internal-protocol gRPC client to communicate
 // with the control-plane service (the API server's gRPC endpoint).
 
-use async_trait::async_trait;
-use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::model_spec::ModelSpec;
-use everruns_contracts::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
-use everruns_core::connection_services::ProviderCredentials;
-use everruns_core::events::{Event, EventRequest};
-use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
-use everruns_core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
-use everruns_core::{
+use crate::core::connection_services::ProviderCredentials;
+use crate::core::events::{Event, EventRequest};
+use crate::core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
+use crate::core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
+use crate::core::{
     AgentDefinition, ExecutionSession, HarnessDefinition, MessageFilter, RuntimeMessage,
     RuntimeMessageRole,
 };
-use everruns_core::{
+use crate::core::{
     connection_services::ProviderCredentialStore, event_emitter::EventEmitter,
     execution_loading::AgentStore, execution_loading::HarnessStore,
     execution_loading::SessionStore, file_services::ResolvedFile,
@@ -29,6 +25,10 @@ use everruns_core::{
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
     provider_resolution::ProviderStore, session_services::LeasedResourceStore,
 };
+use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 // EVE-1158: PlatformStore receives only portable execution views projected
 // by the server; session lifecycle uses the neutral SessionExecutionState.
 // EVE-877: the stored Agent record moved to `everruns-platform`; the gRPC wire
@@ -624,7 +624,7 @@ pub struct GrpcAdapter {
     /// there is no org to carry. Surfaces that reach the org-scoped command
     /// transport require `Some`, and say so rather than inventing a default.
     org_id: Option<i64>,
-    proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
+    proactive_compaction_attempts: Arc<crate::core::ProactiveCompactionAttemptTracker>,
 }
 
 impl GrpcAdapter {
@@ -635,7 +635,7 @@ impl GrpcAdapter {
             input_message_id: None,
             mcp_server_prefix: None,
             proactive_compaction_attempts: Arc::new(
-                everruns_core::ProactiveCompactionAttemptTracker::default(),
+                crate::core::ProactiveCompactionAttemptTracker::default(),
             ),
         }
     }
@@ -1142,14 +1142,14 @@ impl MessageRetriever for GrpcAdapter {
 
     async fn load_filtered(
         &self,
-        query: everruns_core::message_filter::MessageQuery,
+        query: crate::core::message_filter::MessageQuery,
     ) -> Result<Vec<RuntimeMessage>> {
         Ok(self.load_filtered_history(query).await?.messages)
     }
 
     async fn load_filtered_history(
         &self,
-        query: everruns_core::message_filter::MessageQuery,
+        query: crate::core::message_filter::MessageQuery,
     ) -> Result<MessageHistory> {
         let simple_window_query =
             query.filters.is_empty() && query.offset.is_none() && query.limit.is_some();
@@ -1256,13 +1256,13 @@ impl GrpcAdapter {
 }
 
 #[async_trait]
-impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
+impl crate::core::CompactionCheckpointStore for GrpcAdapter {
     async fn get_latest(
         &self,
         session_id: SessionId,
         provider_type: &str,
         model: &str,
-    ) -> Result<Option<everruns_core::CompactionCheckpoint>> {
+    ) -> Result<Option<crate::core::CompactionCheckpoint>> {
         let mut client = self.client.inner.lock().await;
         let response = client
             .get_compaction_checkpoint(proto::GetCompactionCheckpointRequest {
@@ -1276,7 +1276,7 @@ impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
         response
             .checkpoint
             .map(|checkpoint| {
-                Ok(everruns_core::CompactionCheckpoint {
+                Ok(crate::core::CompactionCheckpoint {
                     id: proto_uuid_to_uuid(checkpoint.id.as_ref())?,
                     session_id: proto_uuid_to_uuid(checkpoint.session_id.as_ref())?.into(),
                     source_sequence: checkpoint.source_sequence,
@@ -1291,7 +1291,7 @@ impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
             .transpose()
     }
 
-    async fn install(&self, checkpoint: everruns_core::CompactionCheckpoint) -> Result<bool> {
+    async fn install(&self, checkpoint: crate::core::CompactionCheckpoint) -> Result<bool> {
         let mut client = self.client.inner.lock().await;
         let payload_json = serde_json::to_vec(&checkpoint.payload)
             .map_err(|error| AgentLoopError::store(error.to_string()))?;
@@ -1318,7 +1318,7 @@ impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
         session_id: SessionId,
         provider_type: &str,
         model: &str,
-    ) -> Result<Option<everruns_core::ProactiveCompactionAttempt>> {
+    ) -> Result<Option<crate::core::ProactiveCompactionAttempt>> {
         Ok(self
             .proactive_compaction_attempts
             .get(session_id, provider_type, model)
@@ -1330,7 +1330,7 @@ impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
         session_id: SessionId,
         provider_type: &str,
         model: &str,
-        attempt: everruns_core::ProactiveCompactionAttempt,
+        attempt: crate::core::ProactiveCompactionAttempt,
     ) -> Result<()> {
         self.proactive_compaction_attempts
             .record(session_id, provider_type, model, attempt)
@@ -1348,11 +1348,11 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<RuntimeMessage>
         .as_ref()
         .map(proto_list_to_json)
         .unwrap_or_else(|| serde_json::Value::Array(vec![]));
-    let content: Vec<everruns_core::ContentPart> = serde_json::from_value(content_json)
+    let content: Vec<crate::core::ContentPart> = serde_json::from_value(content_json)
         .map_err(|e| AgentLoopError::store(format!("Failed to parse message content: {}", e)))?;
 
     // Convert prost Struct to Controls
-    let controls: Option<everruns_core::Controls> = proto_msg
+    let controls: Option<crate::core::Controls> = proto_msg
         .controls
         .as_ref()
         .map(|s| serde_json::from_value(proto_struct_to_json(s)))
@@ -1368,12 +1368,12 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<RuntimeMessage>
         .map_err(|e| AgentLoopError::store(format!("Failed to parse message metadata: {}", e)))?;
 
     let role = match proto_msg.role.to_lowercase().as_str() {
-        "system" => everruns_core::RuntimeMessageRole::System,
-        "user" => everruns_core::RuntimeMessageRole::User,
+        "system" => crate::core::RuntimeMessageRole::System,
+        "user" => crate::core::RuntimeMessageRole::User,
         // Map both "assistant" (legacy) and "agent" to Agent role
-        "assistant" | "agent" => everruns_core::RuntimeMessageRole::Agent,
-        "tool_result" => everruns_core::RuntimeMessageRole::ToolResult,
-        _ => everruns_core::RuntimeMessageRole::User,
+        "assistant" | "agent" => crate::core::RuntimeMessageRole::Agent,
+        "tool_result" => crate::core::RuntimeMessageRole::ToolResult,
+        _ => crate::core::RuntimeMessageRole::User,
     };
 
     Ok(RuntimeMessage {
@@ -1422,14 +1422,14 @@ impl AgentStore for GrpcOrgAdapter {
     async fn get_agent_blocker(
         &self,
         agent_id: AgentId,
-    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+    ) -> Result<Option<crate::core::DependencyBlocker>> {
         Ok(match self.fetch_agent_record(agent_id).await? {
             Some(agent) => match agent.status.to_lowercase().as_str() {
-                "archived" => Some(everruns_core::DependencyBlocker::AgentArchived),
-                "deleted" => Some(everruns_core::DependencyBlocker::AgentDeleted),
+                "archived" => Some(crate::core::DependencyBlocker::AgentArchived),
+                "deleted" => Some(crate::core::DependencyBlocker::AgentDeleted),
                 _ => None,
             },
-            None => Some(everruns_core::DependencyBlocker::AgentDeleted),
+            None => Some(crate::core::DependencyBlocker::AgentDeleted),
         })
     }
 }
@@ -1537,14 +1537,14 @@ impl HarnessStore for GrpcOrgAdapter {
     async fn get_harness_blocker(
         &self,
         harness_id: everruns_contracts::typed_id::HarnessId,
-    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+    ) -> Result<Option<crate::core::DependencyBlocker>> {
         Ok(match self.fetch_harness_record(harness_id).await? {
             Some(harness) => match harness.status.to_lowercase().as_str() {
-                "archived" => Some(everruns_core::DependencyBlocker::HarnessArchived),
-                "deleted" => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+                "archived" => Some(crate::core::DependencyBlocker::HarnessArchived),
+                "deleted" => Some(crate::core::DependencyBlocker::HarnessDeleted),
                 _ => None,
             },
-            None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+            None => Some(crate::core::DependencyBlocker::HarnessDeleted),
         })
     }
 }
@@ -1687,7 +1687,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<ExecutionSe
         .and_then(|json| serde_json::from_str(json).ok());
 
     let status =
-        everruns_core::SessionExecutionState::from(proto_session.status.to_lowercase().as_str());
+        crate::core::SessionExecutionState::from(proto_session.status.to_lowercase().as_str());
 
     // Parse capabilities from proto if present
     let capabilities = proto_session
@@ -1949,7 +1949,7 @@ impl GrpcAdapter {
     }
 }
 
-/// Convert everruns_core::EventRequest to proto::EventRequest
+/// Convert crate::core::EventRequest to proto::EventRequest
 fn core_event_request_to_proto(request: &EventRequest) -> Result<proto::EventRequest> {
     // Use the typed event conversion from internal-protocol
     Ok(everruns_internal_protocol::schema_event_request_to_proto(
@@ -1957,7 +1957,7 @@ fn core_event_request_to_proto(request: &EventRequest) -> Result<proto::EventReq
     ))
 }
 
-/// Convert proto::Event to everruns_core::Event
+/// Convert proto::Event to crate::core::Event
 fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
     everruns_internal_protocol::proto_event_to_schema(proto_event)
         .map_err(|e| AgentLoopError::store(format!("Failed to convert proto event: {}", e)))
@@ -2079,7 +2079,7 @@ fn proto_mcp_tool_def_to_tool_definition(
 // ImageResolver implementation
 // ============================================================================
 
-use everruns_core::{file_services::FileResolver, image_services::ImageResolver};
+use crate::core::{file_services::FileResolver, image_services::ImageResolver};
 use std::collections::HashMap;
 
 impl GrpcOrgAdapter {
@@ -2307,14 +2307,14 @@ impl LeasedResourceStore for GrpcAdapter {
 
 fn proto_session_resource_to_schema(
     e: proto::SessionResourceEntryProto,
-) -> Result<everruns_core::SessionResourceEntry> {
+) -> Result<crate::core::SessionResourceEntry> {
     let session_id = proto_uuid_to_uuid(e.session_id.as_ref())?;
-    Ok(everruns_core::SessionResourceEntry {
+    Ok(crate::core::SessionResourceEntry {
         resource_id: e.resource_id,
         session_id: SessionId::from_uuid(session_id),
         kind: e.kind,
         display_name: e.display_name,
-        status: everruns_core::SessionResourceStatus::from(e.status.as_str()),
+        status: crate::core::SessionResourceStatus::from(e.status.as_str()),
         metadata: e
             .metadata
             .as_ref()
@@ -2326,11 +2326,11 @@ fn proto_session_resource_to_schema(
 }
 
 #[async_trait]
-impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
+impl crate::core::session_services::SessionResourceRegistry for GrpcAdapter {
     async fn register(
         &self,
-        entry: everruns_core::RegisterSessionResource,
-    ) -> Result<everruns_core::SessionResourceEntry> {
+        entry: crate::core::RegisterSessionResource,
+    ) -> Result<crate::core::SessionResourceEntry> {
         let mut client = self.client.inner.lock().await;
         let response = client
             .register_session_resource(proto::RegisterSessionResourceRequest {
@@ -2355,8 +2355,8 @@ impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
         &self,
         session_id: SessionId,
         resource_id: &str,
-        status: everruns_core::SessionResourceStatus,
-    ) -> Result<Option<everruns_core::SessionResourceEntry>> {
+        status: crate::core::SessionResourceStatus,
+    ) -> Result<Option<crate::core::SessionResourceEntry>> {
         let mut client = self.client.inner.lock().await;
         let response = client
             .update_session_resource_status(proto::UpdateSessionResourceStatusRequest {
@@ -2378,7 +2378,7 @@ impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
         &self,
         session_id: SessionId,
         resource_id: &str,
-    ) -> Result<Option<everruns_core::SessionResourceEntry>> {
+    ) -> Result<Option<crate::core::SessionResourceEntry>> {
         // Emulate via list — no dedicated GetSessionResource RPC yet.
         let entries = self.list(session_id, None).await?;
         Ok(entries.into_iter().find(|e| e.resource_id == resource_id))
@@ -2387,8 +2387,8 @@ impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
     async fn list(
         &self,
         session_id: SessionId,
-        filter: Option<&everruns_core::SessionResourceFilter>,
-    ) -> Result<Vec<everruns_core::SessionResourceEntry>> {
+        filter: Option<&crate::core::SessionResourceFilter>,
+    ) -> Result<Vec<crate::core::SessionResourceEntry>> {
         let mut client = self.client.inner.lock().await;
         let response = client
             .list_session_resources(proto::ListSessionResourcesRequest {
@@ -2481,9 +2481,9 @@ fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<Leas
 
 fn proto_schedule_to_schema(
     s: proto::SessionScheduleProto,
-) -> Result<everruns_core::session_schedule::SessionSchedule> {
+) -> Result<crate::core::session_schedule::SessionSchedule> {
+    use crate::core::session_schedule::{ScheduleType, SessionSchedule};
     use everruns_contracts::typed_id::{ScheduleId, SessionId};
-    use everruns_core::session_schedule::{ScheduleType, SessionSchedule};
 
     let id_uuid = proto_uuid_to_uuid(s.id.as_ref())?;
     let session_uuid = proto_uuid_to_uuid(s.session_id.as_ref())?;
@@ -2526,7 +2526,7 @@ fn proto_schedule_to_schema(
 }
 
 #[async_trait]
-impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
+impl crate::core::session_services::SessionScheduleStore for GrpcOrgAdapter {
     async fn create_schedule(
         &self,
         session_id: everruns_contracts::typed_id::SessionId,
@@ -2534,7 +2534,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
         cron_expression: Option<String>,
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
         timezone: String,
-    ) -> Result<everruns_core::session_schedule::SessionSchedule> {
+    ) -> Result<crate::core::session_schedule::SessionSchedule> {
         let mut client = self.client.inner.lock().await;
         let request = proto::CreateSessionScheduleRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2563,8 +2563,8 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
         timezone: String,
     ) -> std::result::Result<
-        everruns_core::session_schedule::SessionSchedule,
-        everruns_core::session_schedule::ScheduleLimitError,
+        crate::core::session_schedule::SessionSchedule,
+        crate::core::session_schedule::ScheduleLimitError,
     > {
         let mut client = self.client.inner.lock().await;
         let request = proto::CreateSessionScheduleRequest {
@@ -2583,29 +2583,29 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
                     status.code(),
                     tonic::Code::ResourceExhausted | tonic::Code::InvalidArgument
                 ) {
-                    everruns_core::session_schedule::ScheduleLimitError::Rejected(
+                    crate::core::session_schedule::ScheduleLimitError::Rejected(
                         status.message().to_string(),
                     )
                 } else {
-                    everruns_core::session_schedule::ScheduleLimitError::Store(
-                        grpc_status_to_error(status),
-                    )
+                    crate::core::session_schedule::ScheduleLimitError::Store(grpc_status_to_error(
+                        status,
+                    ))
                 }
             })?;
         let proto_schedule = response.into_inner().schedule.ok_or_else(|| {
-            everruns_core::session_schedule::ScheduleLimitError::Store(grpc_missing_field(
+            crate::core::session_schedule::ScheduleLimitError::Store(grpc_missing_field(
                 "No schedule in response",
             ))
         })?;
         proto_schedule_to_schema(proto_schedule)
-            .map_err(everruns_core::session_schedule::ScheduleLimitError::Store)
+            .map_err(crate::core::session_schedule::ScheduleLimitError::Store)
     }
 
     async fn cancel_schedule(
         &self,
         session_id: everruns_contracts::typed_id::SessionId,
         schedule_id: everruns_contracts::typed_id::ScheduleId,
-    ) -> Result<everruns_core::session_schedule::SessionSchedule> {
+    ) -> Result<crate::core::session_schedule::SessionSchedule> {
         let mut client = self.client.inner.lock().await;
         let request = proto::CancelSessionScheduleRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2626,7 +2626,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
     async fn list_schedules(
         &self,
         session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Result<Vec<everruns_core::session_schedule::SessionSchedule>> {
+    ) -> Result<Vec<crate::core::session_schedule::SessionSchedule>> {
         let mut client = self.client.inner.lock().await;
         let request = proto::ListSessionSchedulesRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2722,7 +2722,7 @@ impl GrpcOutboundToolRateLimiter {
 }
 
 #[async_trait]
-impl everruns_core::tool_execution::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
+impl crate::core::tool_execution::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
     async fn check_org(&self, org_id: &everruns_contracts::typed_id::OrgId) -> bool {
         let mut client = self.client.inner.lock().await;
         let request = proto::CheckOutboundToolRateLimitRequest {
@@ -2748,11 +2748,11 @@ impl everruns_core::tool_execution::OutboundToolRateLimiter for GrpcOutboundTool
 // ============================================================================
 
 #[async_trait]
-impl everruns_core::tool_execution::BudgetChecker for GrpcBudgetChecker {
+impl crate::core::tool_execution::BudgetChecker for GrpcBudgetChecker {
     async fn check_budgets(
         &self,
         session_id: &str,
-    ) -> everruns_contracts::error::Result<everruns_core::budget::BudgetToolResponse> {
+    ) -> everruns_contracts::error::Result<crate::core::budget::BudgetToolResponse> {
         let mut client = self.client.inner.lock().await;
         let request = proto::CheckBudgetsForSessionRequest {
             org_id: self.org_id,
@@ -2764,12 +2764,12 @@ impl everruns_core::tool_execution::BudgetChecker for GrpcBudgetChecker {
             .await
             .map_err(grpc_status_to_error)?;
         let resp = response.into_inner();
-        Ok(everruns_core::budget::BudgetToolResponse {
+        Ok(crate::core::budget::BudgetToolResponse {
             status: resp.status,
             budgets: resp
                 .budgets
                 .into_iter()
-                .map(|b| everruns_core::budget::BudgetSummary {
+                .map(|b| crate::core::budget::BudgetSummary {
                     currency: b.currency,
                     limit: b.limit,
                     balance: b.balance,
@@ -2784,12 +2784,12 @@ impl everruns_core::tool_execution::BudgetChecker for GrpcBudgetChecker {
 }
 
 #[async_trait]
-impl everruns_core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
+impl crate::core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
     async fn execute_machine_payment(
         &self,
         session_id: SessionId,
-        request: everruns_core::payment::MachinePaymentRequest,
-    ) -> everruns_contracts::error::Result<everruns_core::payment::MachinePaymentResponse> {
+        request: crate::core::payment::MachinePaymentRequest,
+    ) -> everruns_contracts::error::Result<crate::core::payment::MachinePaymentResponse> {
         let mut client = self.client.inner.lock().await;
         let proto_request = proto::ExecuteMachinePaymentRequest {
             org_id: self.org_id,
@@ -2844,7 +2844,7 @@ impl everruns_core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
             .map(everruns_internal_protocol::proto_value_to_json)
             .unwrap_or_else(|| serde_json::json!({}));
 
-        Ok(everruns_core::payment::MachinePaymentResponse {
+        Ok(crate::core::payment::MachinePaymentResponse {
             attempt_id,
             amount_usd: response.amount_usd,
             rail,
@@ -2855,11 +2855,11 @@ impl everruns_core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
 }
 
 #[async_trait]
-impl everruns_core::delegation_services::SessionCreationAuthority for GrpcSessionCreationAuthority {
+impl crate::core::delegation_services::SessionCreationAuthority for GrpcSessionCreationAuthority {
     fn for_execution(
         &self,
         id: Uuid,
-    ) -> Option<Arc<dyn everruns_core::delegation_services::SessionCreationAuthority>> {
+    ) -> Option<Arc<dyn crate::core::delegation_services::SessionCreationAuthority>> {
         let mut bound = self.clone();
         bound.input_message_id = Some(id);
         Some(Arc::new(bound))
@@ -2900,21 +2900,22 @@ impl everruns_core::delegation_services::SessionCreationAuthority for GrpcSessio
 // defined once in everruns-core; the proto↔core conversions live in
 // everruns-internal-protocol.
 
-fn decode_task(proto: proto::SessionTaskProto) -> Result<everruns_core::SessionTask> {
+fn decode_task(proto: proto::SessionTaskProto) -> Result<crate::core::SessionTask> {
     everruns_internal_protocol::proto_to_session_task(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid session task payload: {e}")))
 }
-fn decode_task_message(proto: proto::TaskMessageProto) -> Result<everruns_core::TaskMessage> {
+
+fn decode_task_message(proto: proto::TaskMessageProto) -> Result<crate::core::TaskMessage> {
     everruns_internal_protocol::proto_to_task_message(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid task message payload: {e}")))
 }
 
 #[async_trait]
-impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
+impl crate::core::session_task::SessionTaskRegistry for GrpcAdapter {
     async fn create(
         &self,
-        input: everruns_core::CreateSessionTask,
-    ) -> Result<everruns_core::SessionTask> {
+        input: crate::core::CreateSessionTask,
+    ) -> Result<crate::core::SessionTask> {
         let create = everruns_internal_protocol::create_session_task_to_proto(&input);
         let mut client = self.client.inner.lock().await;
         let response = client
@@ -2934,8 +2935,8 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         &self,
         session_id: SessionId,
         task_id: &str,
-        update: everruns_core::SessionTaskUpdate,
-    ) -> Result<Option<everruns_core::SessionTask>> {
+        update: crate::core::SessionTaskUpdate,
+    ) -> Result<Option<crate::core::SessionTask>> {
         let update = everruns_internal_protocol::session_task_update_to_proto(&update);
         let mut client = self.client.inner.lock().await;
         let response = client
@@ -2953,7 +2954,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         &self,
         session_id: SessionId,
         task_id: &str,
-    ) -> Result<Option<everruns_core::SessionTask>> {
+    ) -> Result<Option<crate::core::SessionTask>> {
         let mut client = self.client.inner.lock().await;
         let response = client
             .get_session_task(proto::GetSessionTaskRequest {
@@ -2968,8 +2969,8 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
     async fn list(
         &self,
         session_id: SessionId,
-        filter: Option<&everruns_core::SessionTaskFilter>,
-    ) -> Result<Vec<everruns_core::SessionTask>> {
+        filter: Option<&crate::core::SessionTaskFilter>,
+    ) -> Result<Vec<crate::core::SessionTask>> {
         let mut client = self.client.inner.lock().await;
         let response = client
             .list_session_tasks(proto::ListSessionTasksRequest {
@@ -2991,7 +2992,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         &self,
         session_id: SessionId,
         task_id: &str,
-    ) -> Result<Option<everruns_core::SessionTask>> {
+    ) -> Result<Option<crate::core::SessionTask>> {
         let mut client = self.client.inner.lock().await;
         let response = client
             .request_cancel_session_task(proto::RequestCancelSessionTaskRequest {
@@ -3007,8 +3008,8 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         &self,
         session_id: SessionId,
         task_id: &str,
-        message: everruns_core::NewTaskMessage,
-    ) -> Result<everruns_core::TaskMessage> {
+        message: crate::core::NewTaskMessage,
+    ) -> Result<crate::core::TaskMessage> {
         let message = everruns_internal_protocol::new_task_message_to_proto(&message);
         let mut client = self.client.inner.lock().await;
         let response = client
@@ -3032,7 +3033,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         task_id: &str,
         limit: Option<u32>,
         _after_id: Option<&str>,
-    ) -> Result<Vec<everruns_core::TaskMessage>> {
+    ) -> Result<Vec<crate::core::TaskMessage>> {
         let mut client = self.client.inner.lock().await;
         let response = client
             .list_session_task_messages(proto::ListSessionTaskMessagesRequest {

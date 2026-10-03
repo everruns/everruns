@@ -96,7 +96,7 @@ mcp-stdio = ["mcp", "everruns-core/mcp-stdio"]
 # message store here.
 local = [
     "dep:everruns-capabilities",
-    "dep:rusqlite",
+    "dep:everruns-durable",
     "dep:libc",
     "dep:chrono",
     "dep:chrono-tz",
@@ -187,7 +187,7 @@ tokio-util = { version = "0.7", default-features = false }
 everruns-macros = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
-rusqlite = { version = "0.39", features = ["bundled"], optional = true }
+everruns-durable = { workspace = true, features = ["sqlite"], optional = true }
 libc = { version = "0.2", optional = true }
 chrono = { workspace = true, optional = true }
 chrono-tz = { version = "0.10", optional = true }
@@ -200,6 +200,8 @@ tracing.workspace = true
 everruns-core = { workspace = true, default-features = false, features = ["host"] }
 [dev-dependencies]
 chrono.workspace = true
+# Verifies existing embedding callbacks keep their SQLite query type identity.
+rusqlite = { version = "0.39", features = ["bundled"] }
 # Version-less path dev-dependencies: stripped on publish, so these test-only
 # edges do not force the facade to package before same-cycle sibling releases
 # (e.g. everruns-test-support) reach crates.io.

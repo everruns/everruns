@@ -734,7 +734,15 @@ Worker resolves model and provider
     → provider dropped with the bounded execution context
 ```
 
-Workers never have direct database access or encryption keys. Credentials do
+Workers never have direct database access or encryption keys. The private
+durable-engine entry owns turn/workflow wiring and reaches PostgreSQL through
+durable's store API. Database-driver isolation checks normal, build, optional,
+and renamed dependency edges; embedded hosts also open SQLite through durable,
+while retaining their existing schemas and shared query handles. Contracts'
+optional typed-id SQLx codecs grant no connection ownership. See
+[`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh)
+and [`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh).
+Credentials do
 not enter model records, internal model DTOs, events, logs, or serializable
 runtime values.
 

@@ -12,12 +12,12 @@
 //! private `/memory/user` rules in one place; the RPCs re-implemented the first
 //! two and skipped the third.
 
+use crate::core::session_files::SessionFileSystem;
+use crate::core::{FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile};
 use crate::grpc_adapters::GrpcAdapter;
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::session_files::SessionFileSystem;
-use everruns_core::{FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile};
 use everruns_internal_protocol::proto;
 use serde_json::{Value, json};
 

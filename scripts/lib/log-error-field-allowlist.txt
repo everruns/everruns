@@ -47,5 +47,4 @@ crates/server/src/notification_notifications.rs
 crates/server/src/services/usage_tracking.rs
 crates/server/src/storage/message_store.rs
 crates/server/src/task_notifications.rs
-crates/worker/src/grpc_durable_store.rs
 crates/worker/src/unified_worker.rs
