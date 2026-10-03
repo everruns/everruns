@@ -377,8 +377,6 @@ everruns_core::computer_use::ScrollDirection::Down	variant
 everruns_core::computer_use::ScrollDirection::Left	variant
 everruns_core::computer_use::ScrollDirection::Right	variant
 everruns_core::computer_use::ScrollDirection::Up	variant
-everruns_core::computer_use::action_requires_approval	function
-everruns_core::computer_use::computer_call_requires_approval	function
 everruns_core::computer_use::parse_key_combo	function
 everruns_core::computer_use::parse_modifiers	function
 everruns_core::config	module
