@@ -247,25 +247,13 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .await
         .unwrap();
     if opted_in {
+        // Restoring the legacy session mounts already ensures the shared namespace.
         let memory = db
-            .create_memory(
-                org_id,
-                CreateMemoryRow {
-                    public_id: everruns_contracts::typed_id::MemoryId::new().to_string(),
-                    name: "platform-chat-shared".to_string(),
-                    description: None,
-                    scope: "org".to_string(),
-                    owner_agent_id: None,
-                    owner_user_id: None,
-                    source_type: "manual".to_string(),
-                    source_config: json!({}),
-                    is_readonly: false,
-                    sync_status: "idle".to_string(),
-                    owner_principal_id: None,
-                    resolved_owner_user_id: None,
-                },
-            )
+            .list_memories(org_id, None, false)
             .await
+            .unwrap()
+            .into_iter()
+            .find(|m| m.name == "platform-chat-shared")
             .unwrap();
         db.create_memory_file(
             memory.id,

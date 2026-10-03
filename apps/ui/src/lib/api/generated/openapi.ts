@@ -7219,8 +7219,7 @@ export interface components {
       initial_files?: components["schemas"]["InitialFile"][];
       /**
        * @deprecated
-       * @description Markdown intro shown as an intro box on a fresh Platform Chat thread.
-       *     Images are allowed. The agent intro wins. Hidden once the user inputs.
+       * @description Deprecated: configure conversation presentation on the Agent instead.
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
@@ -7239,16 +7238,13 @@ export interface components {
       parent_harness_id?: string | null;
       /**
        * @deprecated
-       * @description One-line description in simplified Markdown, shown below the chat title
-       *     once the intro is hidden. The agent value wins.
+       * @description Deprecated: configure conversation presentation on the Agent instead.
        * @example Triage incidents, dig through logs, draft the update.
        */
       short_description?: string | null;
       /**
        * @deprecated
-       * @description Conversation starters for a fresh Platform Chat thread. Selecting one
-       *     inserts its text into the composer. Deprecated: configure the Agent instead. The agent starters win when
-       *     non-empty. `icon` reuses the harness icon name set.
+       * @description Deprecated: configure conversation presentation on the Agent instead.
        */
       starters?: components["schemas"]["ConversationStarter"][];
       /**
@@ -18742,8 +18738,7 @@ export interface components {
       initial_files?: components["schemas"]["InitialFile"][] | null;
       /**
        * @deprecated
-       * @description Markdown intro shown as an intro box on a fresh Platform Chat thread.
-       *     Outer `None` leaves unchanged; inner `None` clears.
+       * @description Deprecated: configure conversation presentation on the Agent instead.
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
@@ -18758,15 +18753,13 @@ export interface components {
       parent_harness_id?: string | null;
       /**
        * @deprecated
-       * @description One-line description in simplified Markdown. Outer `None` leaves
-       *     unchanged; inner `None` clears.
+       * @description Deprecated: configure conversation presentation on the Agent instead.
        * @example Triage incidents, dig through logs, draft the update.
        */
       short_description?: string | null;
       /**
        * @deprecated
-       * @description Conversation starters; omit to leave unchanged, send empty to clear.
-       *     `icon` reuses the harness icon name set.
+       * @description Deprecated: configure conversation presentation on the Agent instead.
        */
       starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: components["schemas"]["HarnessStatus"] | null;

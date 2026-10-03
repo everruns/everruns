@@ -151,7 +151,7 @@ pub(crate) async fn resolve_manifest_starters(
     state: &SlackState,
     app: &crate::api::endpoint_ingress::IngressContext,
 ) -> Vec<ConversationStarter> {
-    let agent_starters = match app.agent_id.as_ref() {
+    match app.agent_id.as_ref() {
         Some(agent_id) => {
             match crate::domains::agents::queries::get_by_public_id(
                 &state.db,
@@ -169,9 +169,7 @@ pub(crate) async fn resolve_manifest_starters(
             }
         }
         None => Vec::new(),
-    };
-
-    agent_starters
+    }
 }
 
 /// Build the YAML manifest for a Slack app.

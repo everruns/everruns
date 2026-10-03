@@ -8,10 +8,12 @@ impl SessionService {
             .db
             .get_session(caller.org_id, SessionId::from_uuid(id))
             .await?
+            && row.tags.iter().any(|t| t == PLATFORM_CHAT_STARTER_TAG)
         {
-            if row.tags.iter().any(|t| t == PLATFORM_CHAT_STARTER_TAG) {
-                return Err(BadRequestError::new("The permanent Chat cannot be renamed, archived, unpinned, deleted, or reassigned").into());
-            }
+            return Err(BadRequestError::new(
+                "The permanent Chat cannot be renamed, archived, unpinned, deleted, or reassigned",
+            )
+            .into());
         }
         Ok(())
     }

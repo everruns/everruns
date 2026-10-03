@@ -322,11 +322,20 @@ impl Database {
     }
 
     pub async fn delete_organization(&self, org_id: i64) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        // Required-initializer rollback must also remove the newly provisioned
+        // operator Agent. Other authored resources retain their FK protection.
+        sqlx::query(
+            "DELETE FROM agents WHERE org_id = $1 AND is_built_in AND name = 'platform-chat'",
+        )
+        .bind(org_id)
+        .execute(&mut *tx)
+        .await?;
         let result = sqlx::query("DELETE FROM organizations WHERE org_id = $1")
             .bind(org_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
-
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
