@@ -95,6 +95,27 @@ pub(super) fn filter_response_text(
     text
 }
 
+/// Curated reasoning summary for `reason.item`, after capability-owned response
+/// filters (e.g. stripping echoed `[time …]` / `<facts>` / degenerate time
+/// lines). Plain chain-of-thought text is never published here.
+pub(super) fn filtered_reasoning_summary(
+    item: &everruns_provider::reasoning::ReasoningContentPart,
+    registry: &CapabilityRegistry,
+    configs: &[crate::CapabilityRef],
+) -> Vec<String> {
+    item.display_text()
+        .filter(|_| {
+            !matches!(
+                item.text,
+                Some(everruns_provider::reasoning::ReasoningText::Plain { .. })
+            )
+        })
+        .map(|text| filter_response_text(registry, configs, text))
+        .filter(|text| !text.trim().is_empty())
+        .into_iter()
+        .collect()
+}
+
 fn is_dynamic_error_placeholder(text: &str) -> bool {
     (text.starts_with("Budget exhausted.") && text.ends_with("Increase the budget to continue."))
         || (text.starts_with("Budget paused.")
