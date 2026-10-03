@@ -54,7 +54,33 @@ Errors from public endpoints are sanitized so they do not expose internal state,
 
 ## AG-UI
 
-An AG-UI endpoint lets a client that speaks the [AG-UI protocol](https://docs.ag-ui.com/) run the Agent and stream its events. The endpoint accepts AG-UI `RunAgentInput` and streams AG-UI events over SSE.
+An AG-UI endpoint lets a client that speaks the [AG-UI protocol](https://docs.ag-ui.com/) run the Agent and stream its events. The endpoint accepts AG-UI `RunAgentInput` and streams AG-UI 1.0 events over SSE. Public Chat uses the same protocol.
+
+### Upgrade a pre-1.0 client
+
+Use a 1.0-compatible AG-UI client for existing endpoints as well as new ones. The reasoning event names changed:
+
+| Pre-1.0 event | AG-UI 1.0 event |
+|---|---|
+| `THINKING_START` | `REASONING_START` |
+| `THINKING_TEXT_MESSAGE_START` | `REASONING_MESSAGE_START` |
+| `THINKING_TEXT_MESSAGE_CONTENT` | `REASONING_MESSAGE_CONTENT` |
+| `THINKING_TEXT_MESSAGE_END` | `REASONING_MESSAGE_END` |
+| `THINKING_END` | `REASONING_END` |
+
+Custom handlers must recognize the new names to render reasoning. This is a breaking wire change for clients that require `THINKING_*`; the endpoint does not translate events back to that vocabulary. Text messages still use `TEXT_MESSAGE_*`.
+
+With npm `@ag-ui/core` 1.0, import validation schemas from `@ag-ui/core/schemas`:
+
+```ts
+import { EventSchemas, RunAgentInputSchema } from "@ag-ui/core/schemas";
+```
+
+Send `protocolVersion: "1.0"` in the run request to receive the version in `RUN_STARTED`. Omitting it suppresses that response field; it does not select the old protocol. Open text and reasoning messages and reasoning spans close before a terminal event. Cancelled runs finish with `outcome: { type: "cancelled" }`.
+
+Subagent events and their activity snapshots are available when the endpoint enables `subagents_visible`. This setting defaults to off and stays off for Public Chat.
+
+### Visibility and access
 
 AG-UI endpoints are public client surfaces, so they expose less than the Agent's own event stream:
 
