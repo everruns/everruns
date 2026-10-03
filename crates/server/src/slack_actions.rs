@@ -326,6 +326,10 @@ async fn add_reaction(
                 already_reacted: true,
             })
         }
+        Err(error) if error.code() == Some("missing_scope") => Err(SlackActionError::Rejected(
+            "missing_scope: reconnect the Slack app and approve reactions:write to add reactions"
+                .to_string(),
+        )),
         Err(error) => Err(error.into()),
     }
 }
@@ -1082,6 +1086,8 @@ mod tests {
             }
         ));
     }
+
+    mod reaction_tests;
 
     #[tokio::test]
     async fn an_alternate_channel_is_rejected_without_a_slack_request() {

@@ -280,6 +280,7 @@ pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
 pub(crate) fn slack_bot_scopes(agent_surface_enabled: bool) -> Vec<&'static str> {
     let mut scopes = vec![
         "chat:write",
+        "reactions:write",
         "channels:history",
         "groups:history",
         "im:history",

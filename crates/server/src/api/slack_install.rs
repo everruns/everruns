@@ -1103,6 +1103,7 @@ mod tests {
             assert_eq!(params["team"], "T1");
             let scopes: Vec<_> = params["scope"].split(',').collect();
             assert!(scopes.contains(&"chat:write"));
+            assert!(scopes.contains(&"reactions:write"));
             assert_eq!(scopes.contains(&"assistant:write"), agent_surface_enabled);
 
             let yaml = super::super::slack_events::build_manifest_yaml(
