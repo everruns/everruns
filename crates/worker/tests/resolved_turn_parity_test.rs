@@ -455,26 +455,23 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
 }
 
 #[tokio::test]
-async fn worker_load_fails_for_archived_and_deleted_agents() {
-    // EVE-877: lifecycle validation happens at the worker loading seam, before
-    // the resolved snapshot is built and before host execution.
-    for status in ["archived", "deleted"] {
-        let (harness, agent, session) = fixture_views();
-        let host = WorkerRuntimeHost::new(DirectMockAdapters {
-            harness,
-            agent,
-            session: session.clone(),
-            load_failure: Some("agent is inactive and cannot execute turns"),
-        });
-        let error = host
-            .load_resolved_turn(DEFAULT_ORG_ID, session.id)
-            .await
-            .expect_err("inactive agent must fail the loading seam");
-        assert!(
-            error.to_string().contains("cannot execute turns"),
-            "unexpected error for {status:?}: {error}"
-        );
-    }
+async fn worker_load_propagates_control_plane_projection_errors() {
+    let (harness, agent, session) = fixture_views();
+    let host = WorkerRuntimeHost::new(DirectMockAdapters {
+        harness,
+        agent,
+        session: session.clone(),
+        load_failure: Some("control-plane projection refused execution"),
+    });
+    let error = host
+        .load_resolved_turn(DEFAULT_ORG_ID, session.id)
+        .await
+        .expect_err("projection refusal must stop snapshot loading");
+    assert!(
+        error
+            .to_string()
+            .contains("control-plane projection refused execution")
+    );
 }
 
 #[tokio::test]

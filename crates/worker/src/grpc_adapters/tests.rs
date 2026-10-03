@@ -278,3 +278,52 @@ fn test_grpc_command_error_to_error_not_found() {
     assert!(matches!(err, AgentLoopError::MessageStore(_)));
     assert!(err.to_string().contains("Harness not found"));
 }
+
+#[test]
+fn agent_transport_projection_enforces_lifecycle_before_execution() {
+    for status in ["archived", "deleted", "ArChIvEd", "DeLeTeD"] {
+        let value = proto::Agent {
+            id: Some(uuid_to_proto(Uuid::new_v4())),
+            status: status.into(),
+            ..Default::default()
+        };
+        let error = proto_agent_to_definition(value).expect_err("inactive agent must be rejected");
+        assert!(error.to_string().contains("cannot execute turns"));
+    }
+    for status in ["active", "ACTIVE", "unknown-legacy-status"] {
+        let value = proto::Agent {
+            id: Some(uuid_to_proto(Uuid::new_v4())),
+            status: status.into(),
+            ..Default::default()
+        };
+        assert!(
+            proto_agent_to_definition(value).is_ok(),
+            "legacy status {status} must keep its active fallback"
+        );
+    }
+}
+
+#[test]
+fn harness_transport_projection_enforces_lifecycle_before_execution() {
+    for status in ["archived", "deleted", "ArChIvEd", "DeLeTeD"] {
+        let value = proto::Harness {
+            id: Some(uuid_to_proto(Uuid::new_v4())),
+            status: status.into(),
+            ..Default::default()
+        };
+        let error =
+            proto_harness_to_definition(value).expect_err("inactive harness must be rejected");
+        assert!(error.to_string().contains("cannot execute turns"));
+    }
+    for status in ["active", "ACTIVE", "unknown-legacy-status"] {
+        let value = proto::Harness {
+            id: Some(uuid_to_proto(Uuid::new_v4())),
+            status: status.into(),
+            ..Default::default()
+        };
+        assert!(
+            proto_harness_to_definition(value).is_ok(),
+            "legacy status {status} must keep its active fallback"
+        );
+    }
+}
