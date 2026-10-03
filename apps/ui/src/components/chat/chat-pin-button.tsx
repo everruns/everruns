@@ -4,6 +4,7 @@ import { Pin, PinOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePinSession, useUnpinSession } from "@/hooks/use-sessions";
 import { cn } from "@/lib/utils";
+import { PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 
 export function ChatPinButton({
@@ -11,7 +12,7 @@ export function ChatPinButton({
   showLabel = false,
   className,
 }: {
-  session: Pick<Session, "id" | "is_pinned">;
+  session: Pick<Session, "id" | "is_pinned"> & Partial<Pick<Session, "tags">>;
   showLabel?: boolean;
   className?: string;
 }) {
@@ -21,6 +22,7 @@ export function ChatPinButton({
   const isPending = pinSession.isPending || unpinSession.isPending;
   const label = isPinned ? "Unpin chat" : "Pin chat";
 
+  if (session.tags?.includes(PLATFORM_CHAT_STARTER_TAG)) return null;
   return (
     <Button
       type="button"

@@ -60,7 +60,7 @@ export type NavigationSection = {
 };
 
 export const defaultChatsNavigation: NavigationItem[] = [
-  { name: "Chats", href: "/chats", icon: MessageCircle },
+  { name: "Chat", href: "/chats", icon: MessageCircle, exact: true },
 ];
 
 export const defaultOperationalNavigation: NavigationItem[] = [

@@ -2,6 +2,7 @@
 // Request types double as catalog entries and auto-register with inventory.
 
 use super::environment as environment_profiles;
+use super::managed::{check_high_risk_caps, validate_managed_name};
 use super::preview::PreviewAgent;
 use super::queries as q;
 use super::types::{
@@ -12,7 +13,7 @@ use super::types::{
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers,
+    AgentCapabilityConfig, InitialFile, Policy, ScopedMcpServers,
     contracts::tool_types::ToolDefinition,
 };
 use crate::max_iterations;
@@ -30,28 +31,6 @@ use crate::api::validation::{
 };
 
 const MAX_AUTO_SNAPSHOTS_PER_AGENT: i64 = 50;
-
-async fn check_high_risk_caps(
-    ctx: &Ctx,
-    caps: &[AgentCapabilityConfig],
-) -> Result<(), CommandError> {
-    if caps.is_empty() || ctx.caller.role.has_permission(OrgRole::Admin) {
-        return Ok(());
-    }
-    let refs: Vec<&str> = caps.iter().map(|c| c.capability_id()).collect();
-    let high = ctx
-        .capability_service
-        .high_risk_ids_for_org(ctx.org_id(), &refs)
-        .await
-        .map_err(classify_anyhow)?;
-    if !high.is_empty() {
-        return Err(CommandError::forbidden(format!(
-            "Admin role required to assign high-risk capabilities: {}",
-            high.join(", ")
-        )));
-    }
-    Ok(())
-}
 
 async fn normalize_capability_refs(
     ctx: &Ctx,
@@ -236,6 +215,7 @@ impl Command for CreateAgent {
 
         // Validate
         validate_name("Agent", &req.name)?;
+        validate_managed_name(&req.name)?;
         validate_create_limits(&req)?;
         environment_profiles::validate(req.environments.as_ref())?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
@@ -589,6 +569,7 @@ impl Command for UpdateAgentCmd {
 
         if let Some(ref name) = req.name {
             validate_name("Agent", name)?;
+            validate_managed_name(name)?;
         }
         validate_update_limits(&req)?;
         environment_profiles::validate_update(&req.environments)?;
@@ -920,6 +901,7 @@ impl Command for UpsertAgent {
 
         // Validate (same checks as CreateAgent)
         validate_name("Agent", &req.name)?;
+        validate_managed_name(&req.name)?;
         validate_create_limits(&req)?;
         environment_profiles::validate(req.environments.as_ref())?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
@@ -1798,6 +1780,7 @@ impl Command for RollbackAgentVersion {
             ));
         }
         let restored = q::version_to_agent(&current, &version);
+        validate_managed_name(&restored.name)?;
         check_high_risk_caps(ctx, &restored.capabilities).await?;
         let restored_harness_id =
             resolve_update_harness_id(ctx, Some(restored.harness_id), None).await?;
@@ -1980,6 +1963,7 @@ impl Command for ForkAgentVersion {
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         validate_name("Agent", &self.req.name)?;
+        validate_managed_name(&self.req.name)?;
         q::ensure_name_available(&ctx.db, ctx.org_id(), &self.req.name, None).await?;
         let source = resolve_agent(ctx, &self.agent_id).await?;
         let version = resolve_agent_version(ctx, self.version_id).await?;

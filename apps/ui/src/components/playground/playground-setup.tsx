@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Users, FlaskConical } from "lucide-react";
 import { NewChatForm } from "@/components/chat/new-chat-form";
 import { VirtualUserSelect } from "@/components/virtual-user/virtual-user-select";
@@ -20,6 +21,7 @@ import {
 } from "@/components/layout/page-layout";
 
 export function PlaygroundSetup() {
+  const searchParams = useSearchParams();
   const { currentOrg } = useOrg();
   return <Setup key={currentOrg?.public_id} />;
 }
@@ -44,7 +46,7 @@ function Setup() {
         <PageMain>
           <div className="border bg-card p-6">
             <div className="max-w-lg">
-              <NewChatForm surface="playground" endUserId={subject}>
+              <NewChatForm surface="playground" endUserId={subject} initialAgentId={searchParams.get("agent") ?? undefined}>
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">Talk as</p>
                   <VirtualUserSelect

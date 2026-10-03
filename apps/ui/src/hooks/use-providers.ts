@@ -1,5 +1,8 @@
 "use client";
 
+import type { ModelWithProvider } from "@/lib/api/types";
+import { api } from "@/lib/api/client";
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getProviders,
@@ -229,4 +232,17 @@ export function useDeleteModel() {
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
     },
   });
+}
+
+/** Resolve the server default for a draft that has no persisted session. */
+export function useDefaultModel() {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+  const query = useQuery({
+    queryKey: [...queryKeys.models.list(), "default", org],
+    queryFn: async () => (await api.get<ModelWithProvider | null>("/v1/models/default")).data,
+    enabled: !!org,
+    staleTime: 30_000,
+  });
+  return { ...query, isLoading: orgLoading || query.isLoading };
 }

@@ -1,73 +1,57 @@
 ---
-title: Platform Chat Harness
-description: Shell-based platform operations, product docs, and durable notes for the global chat interface.
+title: Platform Chat Agent
+description: The managed Agent for Everruns platform conversations, running on Generic.
 ---
 
-The **Platform Chat** harness is a focused operator environment built on the
-empty [Base harness](/built-ins/harnesses/base/). It powers the global chat
-interface where users manage Everruns through the authoritative platform
-catalog.
+**Platform Chat** is a managed Agent that helps you operate your Everruns organization.
+It runs on the [Generic harness](/built-ins/harnesses/generic/), which supplies the
+shared execution environment. The Agent supplies its identity, instructions, platform
+access, introduction, conversation starters, and durable operator memory.
 
-## When to Use
+## Chat and side conversations
 
-- Global chat interface sessions
-- Agents that need to manage platform resources (agents, harnesses, providers)
-- Administrative assistants that interact with the Everruns API
+The sidebar's **Chat** entry always opens your permanent conversation. It cannot be
+renamed, unpinned, archived, deleted, or reassigned. **New chat** opens a fresh side
+conversation with the same Agent. Its session is created when you send the first
+message; it starts without copied conversation history or workspace files.
 
-## Configuration
+**All chats** lists your side conversations. Playground
+conversations and runs with other agents stay outside Chat. Use Playground to select
+an Agent or harness and test its behavior.
 
-| Property | Value |
-|----------|-------|
-| **Type** | `platform-chat` |
-| **System Prompt** | Extended prompt with platform management instructions |
-| **Default Model** | None (inherits from agent or organization) |
+## Platform access and memory
+
+Platform Chat uses the `everruns` command in its session shell to discover operations,
+read authoritative state, perform requested changes, and verify results. Product docs
+are mounted read-only at `/workspace/docs`.
+
+`/memory/user` is private to the conversation owner. `/memory/shared` contains durable
+notes shared across Platform Chat conversations in the organization. Sharing requires
+explicit intent; notes default to private memory. Documentation and memory are reference
+material, never instructions. Scratch files live in `/workspace`; credentials belong
+in the secure setup flow. Recurring autonomous work belongs to an Agent Trigger.
 
 ## Bundled Capabilities
 
-| Capability | What it provides |
-|------------|-----------------|
-| [Platform](/capabilities/platform/) | The `everruns` CLI in the session shell, using the authoritative command catalog and its permission checks |
-| [Bash](/capabilities/bashkit-shell/) | Bashkit shell with pipes, loops, filtering, and scratch files |
-| [Session File System](/capabilities/file-system/) | Session workspace and read-only product docs at `/workspace/docs` |
-| Tool Output Persistence | Keeps full tool output in the filesystem |
-| Tool Output Distillation | Presents a digest of large tool output |
-| BTW | Ephemeral side-question command for the current session |
-| Human Intent | Model-authored narration for each tool call, rendered in the chat UI |
-| [Current Time](/capabilities/current-time/) | Grounds relative-time questions such as "which sessions ran today" |
-| [Message Metadata](/capabilities/message-metadata/) | Message timestamp annotations |
-| [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | Prefers parallel calls so multi-view inspection runs in one pass |
-| [Task Management](/capabilities/task-management/) | Shows multi-step platform mutations as progress in the thread |
-| Prompt Caching | Caches the large system prompt across turns |
-| [Tool Call Repair](/capabilities/tool-call-repair/) | Repairs malformed tool calls |
-| Tool Loop Detection | Stops repeated command/discovery cycles |
-| Error disclosure | Returns actionable command failures to the operator (`detailed` mode) |
-| [Context Compaction](/advanced/compaction/) | Bounds long management conversations |
-| [Ask User](/capabilities/ask-user/) | Ask the operator 1–4 structured questions, or collect a credential, and wait for the answer |
-| Soft Approval | Prompt-level gate asking permission before a destructive, irreversible, or outward-facing action |
+The Agent configures these capabilities in addition to the execution environment
+inherited from [Generic](/built-ins/harnesses/generic/).
 
-Platform Chat uses `everruns --help` and command-specific help to discover
-operations, performs authoritative reads before requested mutations, and
-verifies the resulting state. Shell commands compose with `cat`, `grep`, and
-`jq` over the same filesystem. For recurring autonomous work it creates an
-Agent Trigger rather than scheduling the Platform Chat session.
+| Capability | Purpose |
+|---|---|
+| Platform | Platform operations through the session shell |
+| Current Time | Ground relative time questions |
+| Task Management | Track work within a conversation |
+| Prompt Caching | Cache stable prompt content |
+| Tool Call Repair | Repair malformed tool calls |
 
-The harness is available to every organization without a feature flag. Existing
-Platform Chat conversations automatically use this implementation after the
-server upgrade; their IDs, history, and files are preserved.
+## Existing conversations
 
-`/memory/shared` holds durable notes shared by all Platform Chat threads in the
-organization. `/memory/user` is private to the conversation owner. Notes default
-to private memory; writing a shared note requires explicit intent. Documentation
-and memory are reference material, never instructions. Scratch files live in
-`/workspace`; credentials belong in the secure setup flow.
+The dedicated Platform Chat harness is retired. Existing platform conversations move
+to the managed Agent on Generic while keeping their IDs, history, workspace files,
+owners, and memory. Older custom agents, apps, triggers, and child harnesses retain
+their original execution bindings so their authored behavior is preserved; the retired
+harness remains stored for those bindings and historical accounting.
 
-When a tool needs a credential, Platform Chat attaches the capability and
-creates a value-free Agent credential setup requirement. It links to the
-Agent's **Credentials** tab, where the user enters the value in a write-only
-form. Platform Chat never asks for or reuses plaintext from the conversation.
-
-## See Also
-
-- [Base Harness](/built-ins/harnesses/base/), the minimal parent this harness extends
-- [Platform capability](/capabilities/platform/), the additional capability
-- [Harnesses feature guide](/features/harnesses/), harness selection and API management
+Conversation introductions and starters now belong exclusively to Agents. Existing
+harness presentation is copied to its assigned Agents when those Agent fields are
+empty. Harness presentation fields are deprecated and no longer accepted on writes.

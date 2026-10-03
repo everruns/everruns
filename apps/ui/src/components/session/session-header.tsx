@@ -236,11 +236,13 @@ function SessionRecordingActions({
   agentId,
   sessionTitle,
   sessionTags,
+  platformChat,
 }: {
   sessionId: string;
   agentId?: string;
   sessionTitle: string | null;
   sessionTags: string[];
+  platformChat: boolean;
 }) {
   const { locale } = useLocale();
   const notificationsContext = useOptionalNotificationsContext();
@@ -251,6 +253,8 @@ function SessionRecordingActions({
         sessionId={sessionId}
         sessionTitle={sessionTitle}
         sessionTags={sessionTags}
+        agentId={agentId}
+        platformChat={platformChat}
       />
 
       {agentId && (
@@ -405,6 +409,7 @@ export function SessionHeader({
             agentId={agent && agentId ? agentId : undefined}
             sessionTitle={session.title ?? null}
             sessionTags={session.tags ?? []}
+            platformChat={agent?.name === "platform-chat"}
           />
         </div>
       </div>

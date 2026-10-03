@@ -1,10 +1,14 @@
 // Sessions domain — commands, queries, and types.
 
 pub mod commands;
+mod ensure_platform_chat;
+pub use ensure_platform_chat::EnsurePlatformChat;
 pub mod limits;
 #[cfg(test)]
 mod list_filters_tests;
 pub(crate) mod platform_chat_starter;
+#[cfg(test)]
+mod platform_chat_tests;
 pub(crate) mod playground;
 #[cfg(test)]
 mod playground_tests;
@@ -20,14 +24,18 @@ pub(crate) async fn platform_chat_owner_matches_session(
     caller: &everruns_core::Caller,
     session: &everruns_platform::Session,
 ) -> anyhow::Result<bool> {
-    let harness = db
-        .get_harness(caller.org_id, session.harness_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("session harness not found"))?;
+    let agent = match session.agent_id {
+        Some(id) => {
+            db.get_agent_by_public_id(caller.org_id, &id.to_string())
+                .await?
+        }
+        None => None,
+    };
+
     Ok(platform_chat_owner_matches(
         caller,
         session,
-        harness.is_built_in && harness.name == "platform-chat",
+        agent.is_some_and(|a| a.is_built_in && a.name == crate::platform_chat_agent::NAME),
     ))
 }
 

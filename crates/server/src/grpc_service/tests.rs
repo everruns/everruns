@@ -4,11 +4,9 @@ use tonic::service::Interceptor;
 // Env-var-mutating tests must not run in parallel.
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const EXAMPLE_TOKEN: &str = "YExample0";
-
 pub(crate) async fn test_worker_service() -> WorkerServiceImpl {
     test_worker_service_with_runner(None).await
 }
-
 async fn test_worker_service_with_runner(
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
 ) -> WorkerServiceImpl {
@@ -19,14 +17,11 @@ async fn test_worker_service_with_runner(
         EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
             .expect("valid test encryption key"),
     ));
-
     crate::seed::seed_all(&db, grade, &crate::seed::SeedAuthContext::default())
         .await
         .expect("seed test data");
-
     let event_service =
         EventService::with_listeners(db.clone(), crate::EventDelivery::in_memory(), vec![]);
-
     WorkerServiceImpl::new(event_service, db, encryption, runner, host_composition)
 }
 
@@ -355,7 +350,8 @@ async fn test_execute_command_lists_seeded_harnesses() {
         .filter_map(|h| h.get("name").and_then(|name| name.as_str()))
         .collect();
 
-    assert!(names.contains(&"platform-chat"));
+    assert!(names.contains(&"generic"));
+    assert!(!names.contains(&"platform-chat"));
 }
 
 #[tokio::test]

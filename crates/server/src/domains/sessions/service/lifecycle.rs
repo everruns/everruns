@@ -3,12 +3,31 @@
 use super::*;
 
 impl SessionService {
+    async fn ensure_mutable_thread(&self, caller: &Caller, id: Uuid) -> Result<()> {
+        if let Some(row) = self
+            .db
+            .get_session(caller.org_id, SessionId::from_uuid(id))
+            .await?
+        {
+            if row.tags.iter().any(|t| t == PLATFORM_CHAT_STARTER_TAG) {
+                return Err(BadRequestError::new("The permanent Chat cannot be renamed, archived, unpinned, deleted, or reassigned").into());
+            }
+        }
+        Ok(())
+    }
+
     pub async fn update(
         &self,
         caller: &Caller,
         id: Uuid,
         req: UpdateSessionRequest,
     ) -> Result<Option<Session>> {
+        if req.title.is_some()
+            || req.tags.is_some()
+            || !matches!(req.virtual_user_id, UpdateField::Unchanged)
+        {
+            self.ensure_mutable_thread(caller, id).await?;
+        }
         if !caller.is_internal
             && req.tags.as_ref().is_some_and(|tags| {
                 tags.iter().any(|tag| {
@@ -156,6 +175,7 @@ impl SessionService {
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        self.ensure_mutable_thread(caller, id).await?;
         // session_end lifecycle hooks fire before eviction so the hook command
         // can still read the session VFS. Advisory: failures never block the
         // delete. Resolve the session's capability list first (best-effort).
@@ -209,6 +229,7 @@ impl SessionService {
     /// Archive a session: it stays readable and its history intact, but drops
     /// out of default list results. Idempotent.
     pub async fn archive(&self, caller: &Caller, session_id: Uuid) -> Result<bool> {
+        self.ensure_mutable_thread(caller, session_id).await?;
         Ok(self
             .db
             .set_session_archived(caller.org_id, SessionId::from_uuid(session_id), true)
@@ -228,6 +249,7 @@ impl SessionService {
     /// Unpin a session for a user in the caller's current org.
     /// Authorization is enforced at `Command::run` via `UnpinSession::policy`.
     pub async fn unpin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
+        self.ensure_mutable_thread(caller, session_id).await?;
         self.db
             .unpin_session(
                 self.db

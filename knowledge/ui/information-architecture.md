@@ -94,26 +94,21 @@ See [source and binding policy](../../crates/server/src/domains/sessions/playgro
 
 ## Surface contracts
 
-* **Chats is the unconditional landing route.** It is core functionality, requires no feature
-  opt-in, is the first thing in the sidebar, and is the default destination for every user with no
-  other intent. A fresh organization can open Chats and start a thread without configuration.
-* **Every user starts with a pinned Platform Chat thread.** "Requires no configuration" is
-  not enough if the landing route is an empty list and a counterpart picker: the app creates a
-  thread bound to the built-in `platform-chat` harness on first entry, pins it so it stays at the
-  top, and ends onboarding there. It is an ordinary session, adopted rather than duplicated when
-  one already exists, and never recreated once archived — archiving is the user saying they do
-  not want it. The starter carries a dedicated tag with a database uniqueness constraint per
-  organization and owner. The browser's existence check is only a convenience; it cannot decide
-  uniqueness across tabs, retries, and stale caches. Existing untagged threads are adopted by
-  the migration before that constraint is installed. The server also recognizes the starter
-  request shape from older browser bundles and marks it before insertion. Empty, pinned duplicate
-  starters are archived during migration; chats with any activity remain available.
-* **A thread is bound to exactly one counterpart.** The counterpart may be an Agent or a Harness,
-  so users can talk to a configured runtime without creating an otherwise-empty Agent. Switching
-  counterparts starts a new thread rather than re-pointing an existing one; the transcript is only
-  meaningful against the counterpart that produced it.
+* **Chat is the unconditional landing route.** It directly opens the user's permanent
+  Platform Chat conversation. The permanent conversation cannot be renamed, unpinned,
+  archived, deleted, or reassigned. Server resolution and database uniqueness arbitrate
+  concurrent tabs and retries; an existing conversation is always adopted.
+* **Chat has one managed Agent on Generic.** The Agent owns identity, platform access,
+  instructions, introduction, and starters. No Agent or harness picker appears in Chat.
+  New chat opens an empty draft and creates a fresh side conversation on first send,
+  with the same Agent and owner. Durable private/shared memory remains available;
+  conversation history and workspace files are not copied.
+* **Chat history lists side conversations only.** Source, managed Agent, owner, and the
+  permanent-conversation exclusion are applied before pagination. Playground conversations
+  and arbitrary Agent runs remain in their respective surfaces. Existing recording URLs
+  remain inspectable through Sessions.
 * **The nav's thread list is bounded.** Live threads in the nav mean the nav is never the
-  same twice, so the Chats entry lists only the few most recently active threads and hands
+  same twice, so the Chat entry lists only the few most recently active threads and hands
   the rest to the all-threads page. It also holds its order steady while the pointer is
   inside it, so an arriving turn cannot re-sort a row out from under a click.
 * **Archiving is how a thread leaves the list without leaving existence.** Threads accumulate,

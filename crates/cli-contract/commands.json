@@ -5444,6 +5444,18 @@
     ]
   },
   {
+    "wire_name": "get_default_model",
+    "path": [
+      "models",
+      "default"
+    ],
+    "verb": "get",
+    "description": "Get the effective organization default model.",
+    "method": "GET",
+    "http_path": "/v1/models/default",
+    "args": []
+  },
+  {
     "wire_name": "delete_model",
     "path": [
       "models"
@@ -7980,6 +7992,13 @@
         "help": "Case-insensitive title substring match."
       },
       {
+        "field": "side_chats_only",
+        "long": "side-chats-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Exclude the permanent Chat from side-conversation pagination."
+      },
+      {
         "field": "source",
         "long": "source",
         "kind": "string",
@@ -8554,6 +8573,13 @@
         "help": "Case-insensitive title substring match."
       },
       {
+        "field": "side_chats_only",
+        "long": "side-chats-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Exclude the permanent Chat from side-conversation pagination."
+      },
+      {
         "field": "source",
         "long": "source",
         "kind": "string",
@@ -8801,6 +8827,18 @@
         "command": "everruns sessions pin ses_01h9"
       }
     ]
+  },
+  {
+    "wire_name": "ensure_platform_chat",
+    "path": [
+      "sessions",
+      "platform-chat"
+    ],
+    "verb": "ensure",
+    "description": "Open the current user's permanent platform conversation",
+    "method": "POST",
+    "http_path": "/v1/sessions/platform-chat",
+    "args": []
   },
   {
     "wire_name": "list_session_resources",

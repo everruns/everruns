@@ -337,7 +337,7 @@ impl SessionService {
             .await?;
         }
 
-        self.ensure_shared_harness_memory(org_id, context.harness_id)
+        self.ensure_shared_memory(org_id, context.agent_id, context.harness_id)
             .await?;
 
         Ok(())
@@ -349,11 +349,21 @@ impl SessionService {
     /// Org-scoped and keyed by a reserved name, so `UNIQUE(org_id, name)` on
     /// live rows is the whole uniqueness story: no new scope, no migration, and
     /// no id a built-in harness definition would have to know.
-    pub(crate) async fn ensure_shared_harness_memory(
+    pub(crate) async fn ensure_shared_memory(
         &self,
         org_id: i64,
+        agent_id: Option<AgentId>,
         harness_id: Option<HarnessId>,
     ) -> Result<()> {
+        if crate::platform_chat_agent::is_platform_chat(&self.db, org_id, agent_id).await? {
+            crate::domains::session_files::memory_mounts::ensure_shared_memory(
+                &self.db,
+                org_id,
+                crate::domains::session_files::memory_mounts::PLATFORM_CHAT_SHARED_MEMORY_NAME,
+            )
+            .await?;
+            return Ok(());
+        }
         let Some(harness_id) = harness_id else {
             return Ok(());
         };

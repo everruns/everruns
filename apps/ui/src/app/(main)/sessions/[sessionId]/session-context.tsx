@@ -126,11 +126,18 @@ export function useSessionContext() {
 
 interface SessionProviderProps {
   sessionId: string;
+  draftAgent?: Agent;
+  draftModel?: ModelWithProvider;
   children: ReactNode;
 }
 
 // Session provider that derives agentId from the session (for org-level routes)
-export function SessionProvider({ sessionId, children }: SessionProviderProps) {
+export function SessionProvider({
+  sessionId,
+  children,
+  draftAgent,
+  draftModel,
+}: SessionProviderProps) {
   const pathname = usePathname();
   const { currentOrg } = useOrg();
   const webmcp = useWebMcp();
@@ -141,10 +148,11 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const { data: session, isLoading: sessionLoading } = useSession(sessionId);
 
   // Derive agentId from session (convert null to undefined)
-  const agentId = session?.agent_id ?? undefined;
+  const agentId = session?.agent_id ?? draftAgent?.id ?? undefined;
 
   // Fetch agent using derived agentId
-  const { data: agent } = useAgent(agentId ?? "");
+  const { data: loadedAgent, isLoading: agentLoading } = useAgent(agentId ?? "");
+  const agent = loadedAgent ?? draftAgent;
 
   // Track if user has sent a message and is waiting for response
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
@@ -319,7 +327,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const isChatSurface =
     !!session &&
     isChatThread(session) &&
-    (pathname === "/chat" || pathname === `/chats/${sessionId}`);
+    (pathname === "/chat" || pathname === "/chats" || pathname === `/chats/${sessionId}`);
   const canSendWebMcpMessage = effectiveStatus === "idle" || effectiveStatus === "started";
 
   const sendMessageTool = useMemo<WebMcpToolDefinition>(
@@ -701,14 +709,14 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     agent,
     session,
     events,
-    llmModel,
+    llmModel: llmModel ?? draftModel,
     chatEvents,
     toolResultsMap,
     toolProgressMap,
     toolOutputMap,
-    sessionLoading,
-    llmModelLoading,
-    eventsLoading,
+    sessionLoading: !!sessionId && (sessionLoading || (!!agentId && agentLoading)),
+    llmModelLoading: !!sessionId && llmModelLoading,
+    eventsLoading: !!sessionId && eventsLoading,
     effectiveStatus,
     liveUsage,
     isActive,

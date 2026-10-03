@@ -34,19 +34,27 @@ impl WorkspaceFileService {
                 harness_id,
             )
             .await?;
-            if let Some(name) = harness
-                .as_ref()
-                .and_then(|harness| memory_mounts::shared_memory_name_for_harness(&harness.name))
-            {
+            if let Some(name) = self.memory_mounts.shared_memory_name(&session).await? {
                 memory_mounts::ensure_shared_memory(&self.db, session.org_id, &name).await?;
                 self.memory_mounts.evict(&workspace_id);
             }
-            if harness.is_some_and(|harness| {
-                harness
-                    .capabilities
+            let agent_has_platform = match session.agent_id {
+                Some(id) => self
+                    .db
+                    .get_agent_capabilities(id.uuid())
+                    .await?
                     .iter()
-                    .any(|cap| cap.capability_id() == "platform")
-            }) {
+                    .any(|cap| cap.capability_id == "platform"),
+                None => false,
+            };
+            if agent_has_platform
+                || harness.is_some_and(|harness| {
+                    harness
+                        .capabilities
+                        .iter()
+                        .any(|cap| cap.capability_id() == "platform")
+                })
+            {
                 use everruns_core::Capability;
                 let capability = everruns_platform::capabilities::platform::PlatformCapability;
                 for mount in capability.mounts() {

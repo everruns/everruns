@@ -105,6 +105,31 @@ impl StorageBackend {
         dispatch!(self, list_child_harnesses, org_id, parent_id)
     }
 
+    pub async fn get_platform_chat_starter_id(
+        &self,
+        org_id: i64,
+        user_id: uuid::Uuid,
+    ) -> Result<Option<everruns_contracts::typed_id::SessionId>> {
+        dispatch!(self, get_platform_chat_starter_id, org_id, user_id)
+    }
+
+    pub async fn ensure_platform_chat_agent_id(
+        &self,
+        org_id: i64,
+        generic: everruns_contracts::typed_id::HarnessId,
+    ) -> Result<everruns_contracts::typed_id::AgentId> {
+        dispatch!(self, ensure_platform_chat_agent_id, org_id, generic)
+    }
+
+    pub async fn migrate_platform_chat_agent(
+        &self,
+        org_id: i64,
+        agent: everruns_contracts::typed_id::AgentId,
+        generic: everruns_contracts::typed_id::HarnessId,
+    ) -> Result<()> {
+        dispatch!(self, migrate_platform_chat_agent, org_id, agent, generic)
+    }
+
     pub async fn consolidate_platform_chat(&self, org_id: i64) -> Result<bool> {
         dispatch!(self, consolidate_platform_chat, org_id)
     }

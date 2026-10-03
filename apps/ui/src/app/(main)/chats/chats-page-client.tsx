@@ -11,7 +11,7 @@ import { MessageCircle, Plus, Sparkles } from "lucide-react";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
 import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
-import { NewChatForm } from "@/components/chat/new-chat-form";
+
 import {
   NO_INTELLIGENCE_DESCRIPTION,
   NO_INTELLIGENCE_TITLE,
@@ -19,6 +19,8 @@ import {
 } from "@/components/chat/no-intelligence-notice";
 import { EmptyState, PageContainer, PageMasthead } from "@/components/layout";
 import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArchiveFilter } from "@/components/archive-filter";
 import { useAgents, useHarnesses } from "@/hooks";
@@ -78,7 +80,14 @@ export default function ChatsPageClient() {
   // so "show all chats" is one click from any state of this page, including
   // the empty one.
   const [showArchived, setShowArchived] = useState(false);
-  const { threads, isLoading } = useChatThreads({ includeArchived: showArchived });
+  const [offset, setOffset] = useState(0);
+  const [search, setSearch] = useState("");
+  const { threads, isLoading, total } = useChatThreads({
+    includeArchived: showArchived,
+    offset,
+    limit: 20,
+    search,
+  });
   const { data: agents = [] } = useAgents();
   const { data: harnesses = [] } = useHarnesses();
   // The empty state is this page's only centred message, so when the org has no
@@ -89,7 +98,6 @@ export default function ChatsPageClient() {
   const noIntelligence = !intelligence.isLoading && !intelligence.available;
   // Hold the starting state open once the user commits, so the new thread landing
   // in the list cannot unmount the form mid-navigation.
-  const [starting, setStarting] = useState(false);
   // Same counterpart rule as the thread header: the agent when there is one,
   // otherwise the harness the thread is bound to.
   const agentNameById = new Map(agents.map((agent) => [agent.id, getDisplayName(agent)]));
@@ -104,11 +112,17 @@ export default function ChatsPageClient() {
     <PageContainer>
       <PageMasthead
         icon={<MessageCircle />}
-        title="Chats"
-        description="Conversations with agents and harnesses. Each thread is an ordinary session you can open, share, and re-read."
+        title="All chats"
+        description="Your side conversations for managing Everruns."
         actions={
           <>
-            <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
+            <ArchiveFilter
+              showArchived={showArchived}
+              onShowArchivedChange={(value) => {
+                setOffset(0);
+                setShowArchived(value);
+              }}
+            />
             <Link href="/chats/new" className={buttonVariants()}>
               <Plus className="size-4" />
               New chat
@@ -117,14 +131,24 @@ export default function ChatsPageClient() {
         }
       />
 
-      <div className="mt-6 space-y-2">
+      <Input
+        aria-label="Search chats"
+        placeholder="Search chats..."
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setOffset(0);
+        }}
+        className="mt-6"
+      />
+      <div className="mt-4 space-y-2">
         {isLoading &&
           Array.from({ length: 3 }, (_, index) => (
             <Skeleton key={index} className="h-[58px] w-full" />
           ))}
 
         {!isLoading &&
-          (threads.length === 0 || starting) &&
+          threads.length === 0 &&
           (noIntelligence ? (
             <EmptyState
               icon={<Sparkles />}
@@ -135,16 +159,35 @@ export default function ChatsPageClient() {
           ) : (
             <EmptyState
               icon={<MessageCircle />}
-              title="No chats yet"
-              description="Pick an agent or harness and start talking. The thread is saved as a session you can come back to."
-              action={<NewChatForm onStartingChange={setStarting} />}
+              title="No side chats yet"
+              description="Start a fresh conversation with your Everruns assistant."
+              action={
+                <Link href="/chats/new" className={buttonVariants()}>
+                  New chat
+                </Link>
+              }
             />
           ))}
 
-        {!starting &&
-          threads.map((thread) => (
-            <ThreadRow key={thread.id} thread={thread} counterpart={counterpartOf(thread)} />
-          ))}
+        {threads.map((thread) => (
+          <ThreadRow key={thread.id} thread={thread} counterpart={counterpartOf(thread)} />
+        ))}
+      </div>
+      <div className="mt-4 flex gap-2">
+        <Button
+          variant="outline"
+          disabled={offset === 0}
+          onClick={() => setOffset(Math.max(0, offset - 20))}
+        >
+          Previous
+        </Button>
+        <Button
+          variant="outline"
+          disabled={offset + 20 >= (total ?? 0)}
+          onClick={() => setOffset(offset + 20)}
+        >
+          Next
+        </Button>
       </div>
     </PageContainer>
   );

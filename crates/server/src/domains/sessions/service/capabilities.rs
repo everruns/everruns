@@ -152,6 +152,26 @@ impl SessionService {
             return Ok(());
         }
 
+        // THREAT[TM-AGENT-017]: Members can use the fixed managed assistant, but
+        // cannot assign new high-risk capabilities. Every platform operation still
+        // runs under their own caller and permission resolver.
+        if caller.user_id.is_some()
+            && session_capabilities.is_empty()
+            && crate::platform_chat_agent::is_platform_chat(
+                &self.db,
+                org_id,
+                agent_id.map(AgentId::from_uuid),
+            )
+            .await?
+            && self
+                .db
+                .get_harness(org_id, HarnessId::from_uuid(harness_id))
+                .await?
+                .is_some_and(|h| h.is_built_in && h.name == "generic")
+        {
+            return Ok(());
+        }
+
         let mut capability_ids = self
             .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
             .await?;

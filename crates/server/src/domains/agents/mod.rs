@@ -11,6 +11,7 @@ pub mod commands;
 pub mod credentials;
 pub(crate) mod environment;
 pub mod health_check;
+mod managed;
 pub mod preview;
 pub mod queries;
 pub mod types;

@@ -1198,7 +1198,7 @@ async fn built_in_agents_do_not_count_toward_limit() {
     let mut ctx = ctx_with_role(db.clone(), OrgRole::Owner);
     ctx.resource_limits.max_agents_per_org = 1;
 
-    seed_built_in_agent(&db, &ctx, "platform-chat").await;
+    seed_built_in_agent(&db, &ctx, "managed-test").await;
 
     // The built-in must not consume the cap, so a user agent still fits.
     CreateAgent(basic_agent_request("mine"))

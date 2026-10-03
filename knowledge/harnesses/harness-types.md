@@ -49,14 +49,17 @@ Two categories of code-defined harnesses exist:
 
 | Category | What it is | Where it lives | Adoption |
 |----------|-----------|----------------|----------|
-| **Default built-ins** | Platform-essential harnesses provisioned automatically into every org with `is_built_in = true`. | `crates/server/src/harnesses/{base,generic,platform_chat}.rs`, collected by `built_in_harnesses()`. | Created on org initialization. Read-only by default. |
+| **Default built-ins** | Platform-essential harnesses provisioned automatically into every org with `is_built_in = true`. | [built-in definitions](../../crates/server/src/harnesses/mod.rs). | Created on org initialization. Read-only by default. |
 | **Harness examples** | Adoptable templates the user opts into when needed. Shown in the UI gallery. | `crates/server/src/harnesses/examples.rs` (catalogue) plus the per-harness module file (e.g. `data_analyst.rs`). | Listed via `GET /v1/harness-examples`; adopted via `POST /v1/harnesses/import?from-example={name}`, which creates a normal `is_built_in = false` row that the user can edit. |
 
 **Default built-ins are the minimum required for the platform to function:**
 
 - `base`, required as a fallback parent for sessions without an explicit harness.
 - `generic`, required as the default parent harness referenced by examples and most user harnesses.
-- `platform-chat`, required by the global chat path (singleton per-user session pattern).
+
+Platform Chat is a [managed Agent](../../crates/server/src/platform_chat_agent.rs) on Generic.
+Conversational presentation belongs to Agents; harnesses supply execution behavior.
+Legacy harness presentation is migrated to assigned Agents and rejected on new writes.
 
 **Harness examples** today: `coding` and `data-analyst`. Examples whose required capabilities are not registered for the deployment are filtered out of `/v1/harness-examples` automatically, mirroring the agent examples behaviour. The `coding` example is provider-neutral; an Agent Environment profile chooses Bashkit, Daytona, or another target.
 

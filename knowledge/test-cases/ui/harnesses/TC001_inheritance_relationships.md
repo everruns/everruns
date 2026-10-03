@@ -17,7 +17,7 @@ declared capabilities from inherited effective configuration in grid and list la
 
 ## Preconditions
 
-- DB-backed stack is running with the built-in `base`, `generic`, and `platform-chat` harnesses
+- DB-backed stack is running with the built-in `base` and `generic` harnesses
 - A custom child of `platform-chat` exists with a long display name and a locally declared capability
 
 ## Test Data

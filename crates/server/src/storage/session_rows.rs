@@ -145,6 +145,7 @@ pub enum SessionListOrder {
 /// different population than the page it annotates.
 #[derive(Debug, Clone, Default)]
 pub struct SessionListFilters {
+    pub side_chats_only: bool,
     pub playground_user_id: Option<VirtualUserId>,
     pub archived_only: bool,
     pub agent_id: Option<AgentId>,

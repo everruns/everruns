@@ -27,9 +27,28 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .await
         .unwrap();
     let canonical = db
-        .get_harness_by_name(org_id, "platform-chat")
+        .create_harness(
+            org_id,
+            CreateHarnessRow {
+                name: "platform-chat".into(),
+                display_name: Some("Platform Chat".into()),
+                icon: None,
+                description: None,
+                intro_markdown: Some("Legacy intro".into()),
+                short_description: None,
+                starters: json!([]),
+                system_prompt: Some("Legacy prompt".into()),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: json!([]),
+                mcp_servers: json!({}),
+                network_access: None,
+                embedder_metadata: json!({}),
+                is_built_in: true,
+            },
+        )
         .await
-        .unwrap()
         .unwrap();
     db.update_harness(
         org_id,
@@ -270,18 +289,25 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .unwrap()
         .unwrap();
     assert_eq!(upgraded.id, canonical.id);
+    assert_eq!(upgraded.status, "archived");
+    let managed = db
+        .get_agent_by_name(org_id, "platform-chat")
+        .await
+        .unwrap()
+        .unwrap();
+    let generic = db
+        .get_harness_by_name(org_id, "generic")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(managed.harness_id, generic.id);
     assert!(
-        upgraded
+        managed
             .system_prompt
-            .unwrap()
             .contains("everruns <noun> <verb> --flags")
     );
-    assert!(!upgraded.intro_markdown.unwrap().contains("v2"));
-    let caps = db
-        .get_harness_capabilities(canonical.id.uuid())
-        .await
-        .unwrap();
-    assert!(caps.iter().any(|cap| cap.capability_id == "bashkit_shell"));
+    assert!(managed.is_built_in);
+    let caps = db.get_agent_capabilities(managed.id.uuid()).await.unwrap();
     assert!(
         caps.iter()
             .any(|cap| cap.capability_id == "platform" && cap.config == json!({"surface":"shell"}))
@@ -306,7 +332,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             .unwrap()
             .unwrap()
             .harness_id,
-        Some(canonical.id)
+        Some(generic.id)
     );
     assert_eq!(
         db.get_session(org_id, preview_session.id)
@@ -314,7 +340,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             .unwrap()
             .unwrap()
             .harness_id,
-        Some(canonical.id)
+        Some(generic.id)
     );
     assert_eq!(
         db.get_agent(org_id, agent.id)

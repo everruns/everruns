@@ -301,7 +301,7 @@ mod tests {
 
         let bash = BashTool::default();
         let harness = serde_json::json!({
-            "system_prompt": crate::harnesses::platform_chat::system_prompt(),
+            "system_prompt": crate::platform_chat_agent::system_prompt(),
             "tools": [
                 {
                     "name": bash.name(),

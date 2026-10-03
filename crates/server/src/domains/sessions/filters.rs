@@ -4,6 +4,9 @@ use super::*;
 /// counts that annotate it can never describe different populations (EVE-852).
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct SessionFilterArgs {
+    /// Exclude the permanent Chat from side-conversation pagination.
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    pub side_chats_only: Option<bool>,
     /// Agent's prefixed public identifier.
     pub agent_id: Option<AgentId>,
     /// Fixed Playground end-user identity.
@@ -102,6 +105,7 @@ impl SessionFilterArgs {
 
         Ok(Some(crate::storage::SessionListFilters {
             include_archived: self.include_archived.unwrap_or(false),
+            side_chats_only: self.side_chats_only.unwrap_or(false),
             archived_only: self.archived_only.unwrap_or(false),
             playground_user_id: self.playground_user_id,
             agent_id,

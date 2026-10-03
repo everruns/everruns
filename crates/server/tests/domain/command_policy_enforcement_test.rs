@@ -836,7 +836,7 @@ async fn dispatch_blocks_built_in_agent_mutation() {
         caller_with_role(OrgRole::Owner),
         Arc::new(DefaultPermissionResolver),
     );
-    let agent_id = seed_agent(&ctx, "platform-chat").await;
+    let agent_id = seed_agent(&ctx, "managed-test").await;
     let row = ctx
         .db
         .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())

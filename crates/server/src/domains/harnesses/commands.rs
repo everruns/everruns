@@ -44,6 +44,11 @@ const SYSTEM_LLM_METADATA_KEYS: &[&str] = &[
 const MAX_EMBEDDER_METADATA_KEYS: usize = MAX_METADATA_KEYS - SYSTEM_LLM_METADATA_KEYS.len();
 
 fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError> {
+    if req.intro_markdown.is_some() || req.short_description.is_some() || !req.starters.is_empty() {
+        return Err(CommandError::bad_request(
+            "Harness conversation presentation is deprecated; configure the Agent intro, description, and starters",
+        ));
+    }
     if req.name.len() > MAX_AGENT_NAME_BYTES
         || req
             .display_name
@@ -74,6 +79,11 @@ fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError
 }
 
 fn validate_update_limits(req: &UpdateHarnessRequest) -> Result<(), CommandError> {
+    if req.intro_markdown.is_some() || req.short_description.is_some() || req.starters.is_some() {
+        return Err(CommandError::bad_request(
+            "Harness conversation presentation is deprecated; configure the Agent intro, description, and starters",
+        ));
+    }
     if req
         .display_name
         .as_ref()
@@ -1079,7 +1089,7 @@ mod tests {
     }
 
     #[test]
-    fn update_accepts_clearing_platform_chat_content() {
+    fn update_rejects_deprecated_presentation() {
         let req = UpdateHarnessRequest {
             name: None,
             display_name: None,
@@ -1101,7 +1111,7 @@ mod tests {
             embedder_metadata: None,
             status: None,
         };
-        assert!(validate_update_limits(&req).is_ok());
+        assert!(validate_update_limits(&req).is_err());
     }
 
     fn update_request_with_metadata(

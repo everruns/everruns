@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, ExternalLink, MessageCircle, Pencil } from "lucide-react";
+import { PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { PageMasthead } from "@/components/layout/page-layout";
 import { cn } from "@/lib/utils";
@@ -156,6 +157,7 @@ export function ChatThreadHeader({
   // The intro box shows on a fresh thread; once the user inputs it hides and
   // the header takes over with the short description, animated below.
   const { chatEvents } = useSessionContext();
+  const permanent = session.tags.includes(PLATFORM_CHAT_STARTER_TAG);
   const introVisible = !!platformIntro && chatEvents.length === 0;
   const showDescription = !!platformDescription && !introVisible;
   const actions = (
@@ -202,7 +204,11 @@ export function ChatThreadHeader({
       <AgentAvatar name={counterpart} />
       <div className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-center gap-2">
-          <ThreadTitle session={session} title={title} />
+          {permanent ? (
+            <span className="text-base font-semibold">Chat</span>
+          ) : (
+            <ThreadTitle session={session} title={title} />
+          )}
           {session.archived_at && (
             <span className="flex-none border border-border/70 px-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
               Archived
@@ -228,7 +234,29 @@ export function ChatThreadHeader({
           </span>
         ) : null}
       </div>
+<<<<<<< HEAD
       <div className="ml-auto flex items-center gap-2">{actions}</div>
+=======
+      <div className="ml-auto flex items-center gap-2">
+        {!permanent && (
+          <>
+            <ChatPinButton session={session} showLabel />
+            <ChatArchiveButton session={session} showLabel />
+          </>
+        )}
+        <ShareButton />
+        <LinkButton
+          href={`/sessions/${session.id}/transcript`}
+          variant="outline"
+          size="sm"
+          aria-label="Open session"
+          className="max-sm:w-7 max-sm:px-0"
+        >
+          <ExternalLink className="size-4" />
+          <span className="max-sm:hidden">Open session</span>
+        </LinkButton>
+      </div>
+>>>>>>> a31abd11e (feat(chat): manage platform conversations with a built-in Agent)
     </div>
   );
 }

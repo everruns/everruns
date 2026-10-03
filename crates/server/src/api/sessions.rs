@@ -1,7 +1,10 @@
 // Session CRUD HTTP routes
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 // Policy enforcement happens at the service layer via #[policy] macro.
-
+use super::common::{
+    ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
+    deserialize_nullable_update_field, impl_auth_state,
+};
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
@@ -27,6 +30,7 @@ use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::typed_id::{
     AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
 };
+use everruns_durable::UpdateField;
 use everruns_host::HostComposition;
 use everruns_platform::BuiltInHarnessRole;
 use everruns_platform::{
@@ -34,20 +38,12 @@ use everruns_platform::{
     SessionParticipantRole,
 };
 use everruns_worker::AgentRunner;
-
-use super::common::{
-    ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
-    deserialize_nullable_update_field, impl_auth_state,
-};
-use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
-
 #[path = "sessions/create_request.rs"]
 mod create_request;
 pub use create_request::CreateSessionRequest;
-
 /// Request to fork a session (knowledge/runtime-resources/forking-sessions.md). Every field is
 /// optional; omitted fields inherit the parent session's value. Title defaults
 /// to "{parent title} (fork)" when omitted.
@@ -81,7 +77,6 @@ pub struct ForkSessionRequest {
     #[serde(default)]
     pub system_prompt: Option<String>,
 }
-
 // Trust boundary (client-side tools deprecation rollout): the `tools` field
 // on session/agent create/update requests is documented as carrying only
 // `client_side` definitions executed by the client, not the server. Pre-#1525
@@ -236,6 +231,12 @@ pub struct AddSessionParticipantRequest {
 /// Query parameters for listing sessions with pagination.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListSessionsQuery {
+    /// Exclude the permanent Chat from side-conversation pages.
+    #[serde(
+        default,
+        deserialize_with = "crate::domains::common::deserialize_opt_bool_lenient"
+    )]
+    pub side_chats_only: Option<bool>,
     /// Filter by the fixed Playground end-user identity.
     #[param(value_type = Option<String>)]
     pub playground_user_id: Option<VirtualUserId>,
@@ -286,6 +287,12 @@ pub struct ListSessionsQuery {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct SessionFacetsQuery {
+    /// Exclude the permanent Chat from side-conversation pages.
+    #[serde(
+        default,
+        deserialize_with = "crate::domains::common::deserialize_opt_bool_lenient"
+    )]
+    pub side_chats_only: Option<bool>,
     /// Filter by the fixed Playground end-user identity.
     #[param(value_type = Option<String>)]
     pub playground_user_id: Option<VirtualUserId>,
@@ -432,6 +439,7 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         // Config endpoint (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/config", get(session_config))
+        .route("/v1/sessions/platform-chat", post(ensure_platform_chat))
         // Global chat session (must be before /{session_id} to avoid conflict)
         // Session facets (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/facets", get(get_session_facets))
@@ -634,6 +642,7 @@ pub async fn list_sessions(
     let page = ListSessions {
         filters: SessionFilterArgs {
             agent_id: query.agent_id,
+            side_chats_only: query.side_chats_only,
             playground_user_id: query.playground_user_id,
             archived_only: query.archived_only,
             search: query.search,
@@ -677,6 +686,7 @@ pub async fn get_session_facets(
         GetSessionFacets {
             filters: SessionFilterArgs {
                 agent_id: query.agent_id,
+                side_chats_only: query.side_chats_only,
                 playground_user_id: query.playground_user_id,
                 archived_only: query.archived_only,
                 search: query.search,
@@ -1472,4 +1482,16 @@ mod tests {
         .unwrap();
         assert_eq!(harness_id, requested);
     }
+}
+
+#[utoipa::path(post, path = "/v1/sessions/platform-chat", responses((status = 200, description = "Permanent platform conversation", body = WithUrls<Session>)), tag = "sessions")]
+pub async fn ensure_platform_chat(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> Result<Json<WithUrls<Session>>, (StatusCode, Json<ErrorResponse>)> {
+    let session = crate::domains::sessions::EnsurePlatformChat {}
+        .run(&state.ctx(&org))
+        .await?;
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(session)))
 }

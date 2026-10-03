@@ -13,6 +13,7 @@ import { Archive, ArchiveRestore } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useArchiveSession, useUnarchiveSession } from "@/hooks/use-sessions";
 import { cn } from "@/lib/utils";
+import { PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 
 export function ChatArchiveButton({
@@ -20,7 +21,7 @@ export function ChatArchiveButton({
   showLabel = false,
   className,
 }: {
-  session: Pick<Session, "id" | "archived_at">;
+  session: Pick<Session, "id" | "archived_at"> & Partial<Pick<Session, "tags">>;
   showLabel?: boolean;
   className?: string;
 }) {
@@ -30,6 +31,7 @@ export function ChatArchiveButton({
   const isPending = archiveSession.isPending || unarchiveSession.isPending;
   const label = isArchived ? "Unarchive chat" : "Archive chat";
 
+  if (session.tags?.includes(PLATFORM_CHAT_STARTER_TAG)) return null;
   return (
     <Button
       type="button"

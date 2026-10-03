@@ -124,11 +124,14 @@ impl SessionFilterSql {
             None => String::new(),
         };
 
-        let (search_predicate, search_patterns) = build_search_sql(
+        let (mut search_predicate, search_patterns) = build_search_sql(
             filters.search.as_deref(),
             "LOWER(COALESCE(title, ''))",
             param_idx,
         );
+        if filters.side_chats_only {
+            search_predicate.push_str(" AND NOT 'platform-chat-starter' = ANY(tags)");
+        }
         param_idx += search_patterns.len();
 
         // `mine` resolves against the effective human owner so a session an

@@ -2664,7 +2664,7 @@ mod tests {
     // --- Agent seeding regression ---
 
     #[tokio::test]
-    async fn test_seed_all_does_not_create_agents() {
+    async fn test_seed_all_creates_only_the_managed_platform_agent() {
         // Agents should NOT be auto-seeded; they live as examples and are adopted on demand.
         let db = make_db();
         seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
@@ -2680,10 +2680,9 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(
-            agents.is_empty(),
-            "seed_all should not create agents; they are adopted from examples"
-        );
+        assert_eq!(agents.len(), 1);
+        assert!(agents[0].is_built_in);
+        assert_eq!(agents[0].name, "platform-chat");
     }
 
     // --- Provider upsert ---

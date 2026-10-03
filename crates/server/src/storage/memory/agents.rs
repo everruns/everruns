@@ -9,6 +9,172 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
+    pub async fn get_platform_chat_starter_id(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<Option<everruns_contracts::typed_id::SessionId>> {
+        Ok(self
+            .sessions
+            .read()
+            .values()
+            .find(|s| {
+                s.org_id == org_id
+                    && s.resolved_owner_user_id == Some(user_id)
+                    && s.tags.iter().any(|t| t == "platform-chat-starter")
+            })
+            .map(|s| s.id))
+    }
+
+    pub async fn ensure_platform_chat_agent_id(
+        &self,
+        org_id: i64,
+        generic: everruns_contracts::typed_id::HarnessId,
+    ) -> Result<AgentId> {
+        let mut agents = self.agents.write();
+        if let Some(id) = agents
+            .values()
+            .find(|a| a.org_id == org_id && a.name == "platform-chat" && a.status != "deleted")
+            .map(|a| a.id)
+        {
+            let row = agents.get_mut(&id).expect("matched Agent");
+            if row.is_built_in {
+                return Ok(row.id);
+            }
+            row.name = format!(
+                "platform-chat-custom-{}",
+                &row.id.uuid().simple().to_string()[..12]
+            );
+        }
+        let id = AgentId::new();
+        // Hold the map across allocation to arbitrate concurrent org initialization.
+        let input = crate::platform_chat_agent::definition(generic, id);
+        let now = Self::now();
+        let row = AgentRow {
+            id,
+            public_id: input.public_id,
+            org_id,
+            name: input.name,
+            display_name: input.display_name,
+            description: input.description,
+            intro_markdown: input.intro_markdown,
+            short_description: input.short_description,
+            starters: input.starters,
+            system_prompt: input.system_prompt,
+            default_model_id: None,
+            harness_id: generic,
+            harness_source: "explicit".into(),
+            virtual_user_id: None,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
+            tags: input.tags,
+            initial_files: input.initial_files,
+            tools: input.tools,
+            mcp_servers: input.mcp_servers,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            environments: None,
+            status: "active".into(),
+            exposures_suspended: false,
+            is_built_in: true,
+            created_at: now,
+            updated_at: now,
+            archived_at: None,
+            deleted_at: None,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_cache_read_tokens: 0,
+            total_cache_creation_tokens: 0,
+            total_actual_cost_usd: 0.0,
+            total_estimated_cost_usd: 0.0,
+            total_cost_usd: 0.0,
+        };
+        agents.insert(id, row);
+        Ok(id)
+    }
+
+    pub async fn migrate_platform_chat_agent(
+        &self,
+        org_id: i64,
+        agent: AgentId,
+        generic: everruns_contracts::typed_id::HarnessId,
+    ) -> Result<()> {
+        let old: Vec<_> = self
+            .harnesses
+            .read()
+            .values()
+            .filter(|h| {
+                h.org_id == org_id
+                    && h.is_built_in
+                    && matches!(h.name.as_str(), "platform-chat" | "platform-chat-v2")
+            })
+            .map(|h| h.id)
+            .collect();
+        for row in self
+            .sessions
+            .write()
+            .values_mut()
+            .filter(|s| s.org_id == org_id)
+        {
+            if row.agent_id.is_none()
+                && row.harness_id.is_some_and(|h| old.contains(&h))
+                && row.source != "playground"
+            {
+                row.agent_id = Some(agent);
+                row.harness_id = Some(generic);
+                if row.tags.iter().any(|t| t == "chat" || t == "global-chat") {
+                    row.source = "chat".into();
+                }
+            }
+            if row.agent_id == Some(agent) && row.tags.iter().any(|t| t == "platform-chat-starter")
+            {
+                row.archived_at = None;
+            }
+        }
+        // Embedded storage has no SQL migrations; perform the same presentation backfill.
+        for row in self
+            .agents
+            .write()
+            .values_mut()
+            .filter(|a| a.org_id == org_id && a.id != agent)
+        {
+            if let Some(h) = self.harnesses.read().get(&row.harness_id) {
+                if row.intro_markdown.as_deref().is_none_or(str::is_empty) {
+                    row.intro_markdown.clone_from(&h.intro_markdown);
+                }
+                if row.short_description.as_deref().is_none_or(str::is_empty) {
+                    row.short_description.clone_from(&h.short_description);
+                }
+                if row.starters == serde_json::json!([]) {
+                    row.starters.clone_from(&h.starters);
+                }
+            }
+        }
+        for h in self
+            .harnesses
+            .write()
+            .values_mut()
+            .filter(|h| h.org_id == org_id)
+        {
+            h.intro_markdown = None;
+            h.short_description = None;
+            h.starters = serde_json::json!([]);
+        }
+        for h in self
+            .harnesses
+            .write()
+            .values_mut()
+            .filter(|h| old.contains(&h.id) && h.status == "active")
+        {
+            h.status = "archived".into();
+            h.archived_at = Some(Self::now());
+        }
+        Ok(())
+    }
+
     // ============================================
     // Agents
     // ============================================
@@ -79,6 +245,9 @@ impl InMemoryDatabase {
             if existing.name == input.name
                 && existing.display_name == input.display_name
                 && existing.description == input.description
+                && existing.intro_markdown == input.intro_markdown
+                && existing.short_description == input.short_description
+                && existing.starters == input.starters
                 && existing.system_prompt == input.system_prompt
                 && existing.harness_id == input.harness_id
                 && existing.tags == input.tags

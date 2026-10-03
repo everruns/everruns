@@ -433,14 +433,8 @@ impl McpEventsService {
     }
 
     async fn is_platform_chat(&self, session: &crate::storage::SessionRow) -> anyhow::Result<bool> {
-        let Some(harness_id) = session.harness_id else {
-            return Ok(false);
-        };
-        Ok(self
-            .db
-            .get_harness(session.org_id, harness_id)
-            .await?
-            .is_some_and(|harness| harness.is_built_in && harness.name == "platform-chat"))
+        crate::platform_chat_agent::is_platform_chat(&self.db, session.org_id, session.agent_id)
+            .await
     }
 
     async fn subscriber_may_view(

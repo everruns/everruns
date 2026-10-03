@@ -10,6 +10,45 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 impl Database {
+    pub async fn get_platform_chat_starter_id(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<Option<everruns_contracts::typed_id::SessionId>> {
+        let id: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM sessions WHERE org_id = $1 AND 'platform-chat-starter' = ANY(tags) AND owner_principal_id IN (SELECT p.id FROM principals p JOIN virtual_user_bindings b ON b.org_id = p.org_id AND b.virtual_user_id = p.subject_id WHERE p.kind = 'virtual_user' AND b.management_user_id = $2) LIMIT 1")
+            .bind(org_id).bind(user_id).fetch_optional(&self.pool).await?;
+        Ok(id.map(|(id,)| everruns_contracts::typed_id::SessionId::from_uuid(id)))
+    }
+
+    pub async fn ensure_platform_chat_agent_id(
+        &self,
+        org_id: i64,
+        generic: everruns_contracts::typed_id::HarnessId,
+    ) -> Result<AgentId> {
+        let id = AgentId::new();
+        let (uuid,): (Uuid,) = sqlx::query_as("INSERT INTO agents (id, public_id, org_id, name, system_prompt, harness_id, is_built_in) VALUES ($1, $2, $3, 'platform-chat', '', $4, true) ON CONFLICT (org_id, name) WHERE status != 'deleted' DO UPDATE SET name = EXCLUDED.name WHERE agents.is_built_in RETURNING id")
+            .bind(id.uuid()).bind(id.to_string()).bind(org_id).bind(generic.uuid()).fetch_one(&self.pool).await?;
+        Ok(AgentId::from_uuid(uuid))
+    }
+
+    pub async fn migrate_platform_chat_agent(
+        &self,
+        org_id: i64,
+        agent: AgentId,
+        generic: everruns_contracts::typed_id::HarnessId,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("UPDATE sessions s SET agent_id = $2, harness_id = $3, source = CASE WHEN s.tags && ARRAY['chat','global-chat']::text[] THEN 'chat' ELSE s.source END FROM harnesses h WHERE s.org_id = $1 AND h.id = s.harness_id AND h.is_built_in AND h.name IN ('platform-chat','platform-chat-v2') AND s.agent_id IS NULL AND s.source != 'playground'")
+            .bind(org_id).bind(agent.uuid()).bind(generic.uuid()).execute(&mut *tx).await?;
+        sqlx::query("UPDATE sessions SET archived_at = NULL WHERE org_id = $1 AND agent_id = $2 AND 'platform-chat-starter' = ANY(tags) AND archived_at IS NOT NULL")
+            .bind(org_id).bind(agent.uuid()).execute(&mut *tx).await?;
+        // Retain the stored harness for historical accounting and any custom bindings.
+        sqlx::query("UPDATE harnesses SET status = 'archived', archived_at = COALESCE(archived_at, NOW()) WHERE org_id = $1 AND is_built_in AND name IN ('platform-chat','platform-chat-v2') AND status = 'active'")
+            .bind(org_id).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     // ============================================
     // Agents (configuration for agentic loop)
     // ============================================
