@@ -726,7 +726,7 @@ async fn slack_response_policies_are_available_without_feature_enrollment() {
         assert_eq!(endpoint.channel_config["response_policy"], policy);
         let reset = UpdateAgentChannelCmd {
             agent_id: agent_id.clone(),
-            endpoint_id: endpoint.public_id.to_string(),
+            channel_id: endpoint.public_id.to_string(),
             req: UpdateAgentChannelRequest {
                 channel_config: Some(json!({"response_policy": "all_messages"})),
                 ..Default::default()

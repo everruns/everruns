@@ -23,7 +23,7 @@ async fn missing_message_is_actionable_and_exact_timestamp_succeeds() {
         .await;
     let fixture = Fixture::new();
     let (app_id, endpoint_id, _) = fixture
-        .seed_app_with_endpoint(ORG, "slack", "xoxb-endpoint-secret")
+        .seed_app_with_channel(ORG, "slack", "xoxb-endpoint-secret")
         .await;
     let session_id = fixture
         .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
