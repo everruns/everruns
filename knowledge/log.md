@@ -2,6 +2,11 @@
 
 ## 2026-10-02
 
+* **Agents API live conformance passed.** With the OpenAI organization funded,
+  `live_conformance_one_client_function_and_one_allowed_mcp_tool` completed a
+  turn with one client function and one allowed MCP tool (EVE-1144). See
+  [OpenAI Agents API Runtime](execution/openai-agents-api-runtime.md#live-validation).
+
 * **Memory model moves into knowledge.** The design note on how the
   per-session Workspace and the durable org Memory tiers relate left the public docs Advanced group
   and is now [Memory Model](runtime-resources/memory-model.md). The user-facing
