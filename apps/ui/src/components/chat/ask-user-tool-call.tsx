@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, CircleQuestionMark, Clock3, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -208,6 +208,21 @@ function CompletedAnswer({ result }: { result: AskUserResult }) {
   );
 }
 
+function optionShortcut(number: number) {
+  return number <= 9 ? `Meta+${number} Control+${number}` : undefined;
+}
+
+function OptionNumber({ number, modifier }: { number: number; modifier: string }) {
+  return (
+    <kbd
+      aria-hidden="true"
+      className="inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap border border-border bg-muted px-1.5 font-mono text-[11px] font-medium tabular-nums text-muted-foreground"
+    >
+      {modifier}+{number}
+    </kbd>
+  );
+}
+
 export function AskUserToolCall({
   sessionId,
   toolCallId,
@@ -223,6 +238,9 @@ export function AskUserToolCall({
   const [submittedResult, setSubmittedResult] = useState<AskUserResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [shortcutModifier, setShortcutModifier] = useState("Ctrl");
+  const [shortcutHeld, setShortcutHeld] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const labelPrefix = useId();
   const { nudgeAt, expiresAt } = useMemo(
     () => deadlines(request, requestedAt),
@@ -234,6 +252,56 @@ export function AskUserToolCall({
   const existingResult = parseResult(existingToolResult);
   const completedResult = submittedResult ?? existingResult;
   const isClosed = existingToolResult != null || completedResult != null;
+
+  useEffect(() => {
+    setShortcutModifier(/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl");
+  }, []);
+
+  useEffect(() => {
+    if (isClosed || secret || status === "submitting") return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const blocked = target?.closest(
+        '[role="dialog"], [role="alertdialog"], input[type="password"]',
+      );
+      const form = formRef.current;
+      // One pending card owns a shortcut: the focused card, or the first one
+      // when typing in the composer. Never change several questions at once.
+      const activeCard =
+        target?.closest("[data-ask-user-card]") ?? document.querySelector("[data-ask-user-card]");
+      const active = !!form && activeCard === form && !blocked;
+      const modifierHeld = event.metaKey !== event.ctrlKey && !event.altKey && !event.shiftKey;
+      setShortcutHeld(active && modifierHeld);
+      if (!active || !modifierHeld || event.defaultPrevented || event.repeat || event.isComposing)
+        return;
+      const number = /^Digit([1-9])$/.exec(event.code)?.[1];
+      if (!number) return;
+      const question =
+        target?.closest("[data-ask-user-question]") ??
+        form?.querySelector("[data-ask-user-question]");
+      const input = question?.querySelectorAll<HTMLInputElement>(
+        'input[type="radio"], input[type="checkbox"]',
+      )[Number(number) - 1];
+      if (!input || input.disabled) return;
+      event.preventDefault();
+      input.click();
+      input.focus();
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!event.metaKey && !event.ctrlKey) setShortcutHeld(false);
+    };
+    const clearShortcut = () => setShortcutHeld(false);
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", clearShortcut);
+    document.addEventListener("visibilitychange", clearShortcut);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", clearShortcut);
+      document.removeEventListener("visibilitychange", clearShortcut);
+    };
+  }, [isClosed, secret, status]);
 
   useEffect(() => {
     if (isClosed) return;
@@ -316,6 +384,7 @@ export function AskUserToolCall({
   };
 
   const submit = async (outcome: "answered" | "declined") => {
+    setShortcutHeld(false);
     setStatus("submitting");
     setError(null);
     const answers = outcome === "answered" ? request.questions.map(answerFor) : [];
@@ -341,6 +410,8 @@ export function AskUserToolCall({
 
   return (
     <form
+      ref={formRef}
+      data-ask-user-card
       className="border border-border bg-muted/40"
       onSubmit={(event) => {
         event.preventDefault();
@@ -381,7 +452,12 @@ export function AskUserToolCall({
           const inputName = `ask-user-${toolCallId}-${question.id}`;
           const labelId = `${labelPrefix}-question-${questionIndex}`;
           return (
-            <fieldset key={question.id} aria-labelledby={labelId} className="space-y-3 px-4 py-4">
+            <fieldset
+              key={question.id}
+              data-ask-user-question
+              aria-labelledby={labelId}
+              className="space-y-3 px-4 py-4"
+            >
               <div className="flex w-full items-center gap-2">
                 <Badge variant="outline">{question.header}</Badge>
                 {question.multi_select && (
@@ -409,7 +485,7 @@ export function AskUserToolCall({
                 />
               ) : (
                 <div className="space-y-2">
-                  {(question.options ?? []).map((option) => {
+                  {(question.options ?? []).map((option, optionIndex) => {
                     const checked = selection.selected.includes(option.label);
                     return (
                       <label
@@ -422,6 +498,7 @@ export function AskUserToolCall({
                           value={option.label}
                           checked={checked}
                           disabled={status === "submitting"}
+                          aria-keyshortcuts={optionShortcut(optionIndex + 1)}
                           onChange={() => selectOption(question, option.label)}
                           className="mt-1 h-4 w-4 accent-primary"
                         />
@@ -438,6 +515,9 @@ export function AskUserToolCall({
                             {option.description}
                           </span>
                         </span>
+                        {shortcutHeld && status === "idle" && optionIndex < 9 && (
+                          <OptionNumber number={optionIndex + 1} modifier={shortcutModifier} />
+                        )}
                       </label>
                     );
                   })}
@@ -451,10 +531,21 @@ export function AskUserToolCall({
                           value="other"
                           checked={selection.otherSelected}
                           disabled={status === "submitting"}
+                          aria-keyshortcuts={optionShortcut((question.options?.length ?? 0) + 1)}
                           onChange={() => selectOther(question)}
                           className="h-4 w-4 accent-primary"
                         />
                         Other
+                        {shortcutHeld &&
+                          status === "idle" &&
+                          (question.options?.length ?? 0) < 9 && (
+                            <span className="ml-auto">
+                              <OptionNumber
+                                number={(question.options?.length ?? 0) + 1}
+                                modifier={shortcutModifier}
+                              />
+                            </span>
+                          )}
                       </label>
                       {selection.otherSelected && (
                         <Input
@@ -484,6 +575,11 @@ export function AskUserToolCall({
       </div>
 
       <div className="border-t border-border px-4 py-3">
+        {request.questions.some((question) => question.kind !== "text") && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            Hold {shortcutModifier} to show option shortcuts (1–9).
+          </p>
+        )}
         {showCountdown && (
           <p className="mb-3 flex items-center gap-1.5 text-xs text-warning">
             <Clock3 className="h-3.5 w-3.5" />

@@ -408,7 +408,6 @@ mod tests {
     fn all_flags() -> everruns_platform::FeatureFlags {
         everruns_platform::FeatureFlags {
             notifications: true,
-            platform_chat_v2: true,
             evals: true,
             skills: true,
             memory: true,
@@ -434,7 +433,6 @@ mod tests {
             arguments,
             &everruns_platform::FeatureFlags {
                 notifications: true,
-                platform_chat_v2: true,
                 evals: true,
                 skills: true,
                 memory: true,

@@ -1,74 +1,55 @@
-# deepsec
+# DeepSec
 
-This directory holds the [deepsec](https://www.npmjs.com/package/deepsec)
-config for the parent repo. Checked into git so teammates inherit
-project context (auth shape, threat model, custom matchers); generated
-scan output is gitignored.
-
-Currently configured project: `everruns` (target: `..`).
+This directory holds the [DeepSec](https://www.npmjs.com/package/deepsec)
+workspace for Everruns (target: `..`). The config, threat model, and generated
+matchers are checked in; scan state and credentials stay local.
 
 ## Setup
 
-1. `pnpm install` — installs deepsec.
-2. Add an AI Gateway / Anthropic / OpenAI token to `.env.local`. If
-   you already have `claude` or `codex` CLI logged in on this
-   machine, you can skip the token for non-sandbox runs (`process` /
-   `revalidate` / `triage`); deepsec auto-detects and reuses the
-   subscription. See
-   `node_modules/deepsec/dist/docs/vercel-setup.md` after install.
-3. Open the parent repo in your coding agent (Claude Code, Cursor, …)
-   and have it follow `data/everruns/SETUP.md` to fill in
-   `data/everruns/INFO.md`.
-
-## Daily commands
+The configured agent is Codex with `gpt-5.6-sol` at `xhigh` reasoning. The model
+route uses the machine's Codex login, so check `codex login status` first.
 
 ```bash
-pnpm deepsec scan
-pnpm deepsec process     --concurrency 5
-pnpm deepsec revalidate  --concurrency 5                  # cuts FP rate
-pnpm deepsec export      --format md-dir --out ./findings
+cd .deepsec
+pnpm install
+pnpm deepsec setup --project-id everruns --agent codex --model-auth local --yes
 ```
 
-`--project-id` is auto-resolved while there's only one project in
-`deepsec.config.ts`. Once you've added a second project, pass
-`--project-id everruns` (or whichever id you want) explicitly.
+Setup inventories HTTP, RPC, queue, cron, CLI, webhook, and agent-tool entry
+points; checks matcher coverage; generates scoped matchers when needed; and
+starts the AI investigation. It saves checkpoints under `data/everruns/setup/`
+and resumes from the first incomplete phase. Review changes to
+`generated-matchers.ts` and `data/everruns/INFO.md` before committing them.
 
-`scan` is free (regex only). `process` is the AI stage (≈$0.30/file
-on Opus by default). Run state goes to `data/everruns/`.
+For another credential route, follow
+`node_modules/deepsec/dist/docs/vercel-setup.md`. Keep keys in the process
+environment or ignored `.env.local`, never in this config.
+
+## Subsequent scans
+
+```bash
+pnpm deepsec setup --project-id everruns --status --output json
+pnpm deepsec scan --project-id everruns
+pnpm deepsec process --project-id everruns --concurrency 5
+pnpm deepsec revalidate --project-id everruns --concurrency 5
+pnpm deepsec report --project-id everruns
+pnpm deepsec export --project-id everruns --format md-dir --out ./findings
+```
+
+`scan` is local pattern matching. `process` uses Codex and resumes pending files
+after interruption. The project currently prioritizes UI, server, core,
+worker, host, and integrations; priority changes processing order, not the
+scan's repository scope.
 
 ## Adding another project
 
-To scan another codebase from this same `.deepsec/`:
-
 ```bash
-pnpm deepsec init-project ../some-other-package   # path relative to .deepsec/
+pnpm deepsec init-project ../some-other-package
+pnpm deepsec setup --project-id some-other-package
 ```
 
-Appends an entry to `deepsec.config.ts` and writes
-`data/<id>/{INFO.md,SETUP.md,project.json}`. Open the new SETUP.md
-in your agent to fill in INFO.md.
+## Reference
 
-## Layout
-
-```
-deepsec.config.ts        Project list (one entry per scanned repo)
-data/everruns/
-  INFO.md                Repo context — checked into git, hand-curated
-  SETUP.md               Agent setup prompt — checked in, deletable
-  project.json           Generated (gitignored)
-  files/                 One JSON per scanned source file (gitignored)
-  runs/                  Run metadata (gitignored)
-  reports/               Generated markdown reports (gitignored)
-AGENTS.md                Pointer for coding agents
-.env.local               Tokens (gitignored)
-```
-
-## Docs
-
-After `pnpm install`:
-
-- Skill: `node_modules/deepsec/SKILL.md`
-- Full docs: `node_modules/deepsec/dist/docs/{getting-started,configuration,models,writing-matchers,plugins,architecture,data-layout,vercel-setup,faq}.md`
-
-Or browse on
-[GitHub](https://github.com/vercel-labs/deepsec/tree/main/docs).
+- `node_modules/deepsec/SKILL.md` — bundled agent instructions
+- `node_modules/deepsec/dist/docs/` — commands, configuration, models,
+  matchers, and data layout for the installed version

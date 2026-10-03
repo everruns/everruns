@@ -13,7 +13,7 @@
 //! definition for the native one, turns each native call back into a call of
 //! the `computer` tool, and replays results in the native shape. Execution never
 //! changes: the agent loop still runs every action through the same tool, the
-//! same approval gate and the same budget.
+//! same soft-approval policy and the same budget.
 //!
 //! Decision: unlike [`crate::openai_hosted_tools`], the option is a request, not
 //! a requirement. Every other driver ignores it and the function tool keeps

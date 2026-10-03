@@ -32,9 +32,9 @@
 //!
 //! Security: screen contents are untrusted input (prompt injection is the main
 //! risk). The capability prompt says so, the tool declares itself
-//! `open_world` so interactive approval gates treat it as outward-facing, and
-//! [`action_requires_approval`] names the actions that commit input for hosts
-//! that gate per action. See `knowledge/execution/computer-use.md`.
+//! `open_world` so interactive approval gates treat it as outward-facing.
+//! Approval itself is by soft approval only: no per-call hard gate (EVE-1133
+//! decision). See `knowledge/execution/computer-use.md`.
 
 use std::fmt;
 
@@ -471,27 +471,6 @@ pub fn parse_key_combo(text: &str) -> Result<KeyCombo, String> {
     })
 }
 
-/// Whether an action commits input and should pass a per-action approval
-/// gate: entering text, pressing Enter (submits forms), and leaving the
-/// current page. Pointer moves, scrolls, waits, and screenshots do not.
-///
-/// Clicks are deliberately not gated: gating every click makes computer use
-/// unusable, and the dangerous click (Buy, Send) is covered by the system
-/// prompt's stop-and-ask rule plus soft approval. Hosts that want stricter
-/// behavior gate the whole tool, which declares itself `open_world`.
-pub fn action_requires_approval(action: &ComputerAction) -> bool {
-    match action {
-        ComputerAction::Type { .. } | ComputerAction::Navigate { .. } => true,
-        ComputerAction::Key { text, .. } => parse_key_combo(text).is_ok_and(|combo| {
-            matches!(
-                combo.key.to_ascii_lowercase().as_str(),
-                "return" | "enter" | "kp_enter"
-            )
-        }),
-        _ => false,
-    }
-}
-
 /// The parsed arguments of one `computer` call: a single action (the
 /// function tool and Anthropic's toolset) or an ordered batch (OpenAI's
 /// native `computer_call`, which carries `actions: [...]`).
@@ -531,22 +510,6 @@ impl ComputerCall {
             Self::Batch(actions) => actions,
         }
     }
-}
-
-/// Whether a `computer` call must pass the hard per-call approval gate
-/// (TM-TOOL-008): any of its actions commits input
-/// ([`action_requires_approval`]), or the provider attached safety checks
-/// (OpenAI's `pending_safety_checks`) that a person has to acknowledge.
-/// Arguments that do not parse are not gated: the tool rejects them without
-/// touching the display.
-pub fn computer_call_requires_approval(arguments: &Value) -> bool {
-    let flagged_checks = arguments
-        .get(everruns_provider::openai_computer::PENDING_SAFETY_CHECKS_KEY)
-        .and_then(Value::as_array)
-        .is_some_and(|checks| !checks.is_empty());
-    flagged_checks
-        || ComputerCall::from_arguments(arguments)
-            .is_ok_and(|call| call.actions().iter().any(action_requires_approval))
 }
 
 /// A captured frame.

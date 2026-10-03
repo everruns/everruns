@@ -1,19 +1,19 @@
 version: 0.35.0
 date: 2026-10-03
 headline:
-  - Safer tools.
-  - Smoother chats.
+  - Platform Chat.
+  - For every org.
 summary:
-  - Sandbox tools tighten their trust boundaries,
-  - chat turns can ask for input, and long
-  - work logs stay responsive.
+  - Shell-powered chat reaches every organization,
+  - agents can ask questions mid-turn, and
+  - sandbox HTTP egress fails closed.
 highlights:
-  - title: Fail-closed HTTP egress
-    description: Empty DNS pins cannot fall back to unrestricted HTTP access.
-    source: "#4058"
+  - title: Platform Chat for all
+    description: The shell-powered harness becomes the default for every organization.
+    source: "#4060"
   - title: Interactive questions
     description: AskUser runs through interactive chat turns.
     source: "#4044"
-  - title: Smoother work logs
-    description: Chat stays responsive with thousands of tool calls.
-    source: "#4040"
+  - title: Fail-closed HTTP egress
+    description: Empty DNS pins cannot fall back to unrestricted HTTP access.
+    source: "#4058"

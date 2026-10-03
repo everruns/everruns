@@ -67,6 +67,7 @@ impl Run<'_> {
             .policy_stop
             .clone()
             .ok_or_else(|| AgentsApiError::Store("no policy stop".into()))?;
+        self.close_runtime_policy_calls().await?;
         let outcome = match &stop.replaced {
             Some(replaced) => {
                 let events = self.replacement_events(&stop, replaced);
@@ -97,6 +98,7 @@ impl Run<'_> {
             "Agents API: Everruns policy stopped the remote turn"
         );
         self.send_cancel().await;
+        self.recover_policy_root().await?;
         // The stopped provider turn still spent tokens; bill them (or record
         // the amount as unknown) once.
         let final_text =

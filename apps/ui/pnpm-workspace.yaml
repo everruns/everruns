@@ -5,10 +5,10 @@ overrides:
   # on the 0.0.x line it was tested against.
   '@openuidev/react-headless>@ag-ui/core': 0.0.59
   '@babel/core': 7.29.6
-  brace-expansion@1: 1.1.18
-  brace-expansion@2: 2.1.4
-  dompurify: 3.4.13
-  fast-uri: 3.1.6
+  brace-expansion@1: 1.1.21
+  brace-expansion@2: 2.1.7
+  dompurify: 3.4.16
+  fast-uri: 3.1.8
   js-yaml: 4.3.2
   mermaid: 11.16.1
   nanoid: 3.3.18
@@ -32,17 +32,20 @@ minimumReleaseAgeStrict: true
 # maxTotalMergeKeys does not bound CPU for empty merge sources, so 4.3.1, pinned
 # here for CVE-2026-59870, is still inside the advisory; transitive dev-dep via
 # jest).
-# fast-uri 3.1.6 supersedes the earlier 3.1.5 pin (GHSA-v2hh-gcrm-f6hx — host
-# confusion via literal IPv6). Four further advisories landed against every 3.x
-# up to and including 3.1.5, all reached transitively through @rjsf/utils:
-# GHSA-5jgf-p345-68v8 and GHSA-jqff-g426-hqxp (host confusion via skipped IDN
-# processing and via percent-encoded scheme normalization), GHSA-f65p-4m7j-42xc
-# and GHSA-fph4-wmhf-6fwf (SSRF via repeated hostname percent-decoding). 3.1.6
-# is the only patched release for all four. Staying on the 3.x line keeps the
+# fast-uri 3.1.8 supersedes the 3.1.6 pin (GHSA-v2hh-gcrm-f6hx — host
+# confusion via literal IPv6 — plus GHSA-5jgf-p345-68v8, GHSA-jqff-g426-hqxp,
+# GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf). Three further advisories landed
+# against 3.1.6, all reached transitively through @rjsf/utils:
+# GHSA-58mr-gqgx-xq4g (host confusion via an unclosed bracket in the URI
+# authority), GHSA-qw65-cvwx-89v3 (authority injection via an unvalidated port
+# in serialize), and GHSA-hrr3-gc8f-f4qj (inconsistent host case normalization
+# via percent-encoded octets). 3.1.8 is the only patched 3.x release for all
+# seven. Staying on the 3.x line keeps the
 # override inside the range its dependents declare; 4.x is outside every
 # advisory but is a major bump this pin does not need to take.
-# brace-expansion 1.1.18 / 2.1.4 (GHSA-mh99-v99m-4gvg
-# — DoS via unbounded expansion, transitive dev-dep via jest/openapi-typescript),
+# brace-expansion 1.1.21 / 2.1.7 (GHSA-q2hr-2g5m-vwhr
+# — quadratic-time expansion of the `{a},b}` rewrite causing CPU DoS,
+# transitive dev-dep via jest/openapi-typescript),
 # dompurify 3.4.13 (IN_PLACE hook removal leaves a detached executable subtree —
 # XSS, via @streamdown/mermaid > mermaid), mermaid 11.16.1 (prototype pollution
 # in the config APIs and in architecture diagrams, CSS injection into sibling

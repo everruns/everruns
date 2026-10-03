@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Safer sandbox tools** - HTTP egress fails closed on empty DNS pins, and forged session secrets cannot redirect Docker tools ([#4058](https://github.com/everruns/everruns/pull/4058), [#4061](https://github.com/everruns/everruns/pull/4061)).
 - **Interactive questions in chat** - AskUser runs through interactive turns so agents can ask for input while working ([#4044](https://github.com/everruns/everruns/pull/4044)).
-- **Smoother chat work logs** - work logs stay folded while the agent works and remain responsive with thousands of tool calls ([#4039](https://github.com/everruns/everruns/pull/4039), [#4040](https://github.com/everruns/everruns/pull/4040)).
+- **Platform Chat for every organization** - the shell-powered Platform Chat harness becomes the default for every organization ([#4060](https://github.com/everruns/everruns/pull/4060)).
 
 ### What's Changed
 
@@ -50,6 +50,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(bashkit): fail closed on empty HTTP egress DNS pins ([#4058](https://github.com/everruns/everruns/pull/4058)) by [@chaliy](https://github.com/chaliy)
 - fix(preview): include inherited harness tools and session features ([#4055](https://github.com/everruns/everruns/pull/4055)) by [@chaliy](https://github.com/chaliy)
 - fix(openai): normalize hosted tool-search namespaces — Fixes EVE-1164 ([#4052](https://github.com/everruns/everruns/pull/4052)) by [@chaliy](https://github.com/chaliy)
+
+- feat(chat): reveal AskUser shortcuts while holding Command ([#4062](https://github.com/everruns/everruns/pull/4062)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump pinned transitive deps to patched versions ([#4063](https://github.com/everruns/everruns/pull/4063)) by [@chaliy](https://github.com/chaliy)
+- fix(computer-use): drop hard per-call approval gate, soft approvals only ([#4064](https://github.com/everruns/everruns/pull/4064)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): start test chat from agent page masthead ([#4049](https://github.com/everruns/everruns/pull/4049)) by [@chaliy](https://github.com/chaliy)
+- chore(deepsec): upgrade and configure Codex scanning ([#4071](https://github.com/everruns/everruns/pull/4071)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): promote shell-based Platform Chat for every organization ([#4060](https://github.com/everruns/everruns/pull/4060)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): retarget flaky GPT-5.4 tool_search cases to Terra ([#4070](https://github.com/everruns/everruns/pull/4070)) by [@chaliy](https://github.com/chaliy)
+- fix(host): enforce Agents API provider tool policy ([#4067](https://github.com/everruns/everruns/pull/4067)) by [@chaliy](https://github.com/chaliy)
+- fix(platform): enforce runtime network policy for A2A delegation ([#4068](https://github.com/everruns/everruns/pull/4068)) by [@chaliy](https://github.com/chaliy)
 
 ### Crate Releases
 
