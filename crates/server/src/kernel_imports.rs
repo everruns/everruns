@@ -46,3 +46,8 @@ pub(crate) mod contracts {
         typed_id, url_validation, user_facing_error,
     };
 }
+
+pub(crate) use crate::records::{
+    McpServer, McpServerStatus, Skill, SkillSourceType, SkillStatus, SkillUsage, VirtualUser,
+    VirtualUserStatus,
+};

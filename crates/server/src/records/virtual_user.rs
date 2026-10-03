@@ -8,15 +8,13 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::principal::PrincipalSummary;
-use crate::typed_id::VirtualUserId;
+use everruns_contracts::typed_id::VirtualUserId;
+use everruns_core::principal::PrincipalSummary;
 
-#[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
 /// Virtual user lifecycle status.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum VirtualUserStatus {
     /// Available for runtime execution.
@@ -48,8 +46,7 @@ impl From<&str> for VirtualUserStatus {
 }
 
 /// VirtualUser is a durable virtual principal.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum VirtualUserUsage {
     /// A person using agents within an organization.
@@ -80,15 +77,14 @@ impl TryFrom<&str> for VirtualUserUsage {
 }
 
 /// Organization-scoped runtime account with its own profile and connections.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct VirtualUser {
     /// External identifier (identity_<32-hex>). Shown as `id` in API.
     #[serde(rename = "id")]
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "identity_01933b5a000070008000000000000001"))]
+    #[schema(value_type = String, example = "identity_01933b5a000070008000000000000001")]
     pub id: VirtualUserId,
     /// Organization that owns the runtime account.
-    #[cfg_attr(feature = "openapi", schema(example = "org_example"))]
+    #[schema(example = "org_example")]
     pub organization_id: String,
     /// Immutable runtime account purpose.
     pub usage: VirtualUserUsage,

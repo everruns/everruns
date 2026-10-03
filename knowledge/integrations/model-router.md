@@ -261,7 +261,7 @@ The first PR delivering this spec lands:
   if a binding-site needs to surface them externally.
 * Migration `026_model_routers.sql` (tables `model_routers`,
   `model_router_routes`, `model_router_candidates`).
-* `crates/core/src/model_router.rs`, entity types, strategy enum, candidate
+* `crates/server/src/records/model_router.rs`, entity types, strategy enum, candidate
   shape, structural validation (route key format, strategy parse, candidate
   must reference a model, weight non-negative).
 * CHANGELOG entry.

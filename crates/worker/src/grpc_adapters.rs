@@ -38,7 +38,7 @@ use everruns_internal_protocol::{
     WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
     proto_struct_to_json,
 };
-// EVE-881: the stored Harness record likewise lives in `everruns-capabilities`;
+// EVE-881: the stored Harness record lives only in `crates/server/src/records`;
 // the gRPC wire carries the pre-merged record between server and worker.
 use std::sync::Arc;
 use tokio::sync::Mutex;

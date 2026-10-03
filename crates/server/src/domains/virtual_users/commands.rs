@@ -98,7 +98,7 @@ inventory::submit! { CommandDescriptor::of::<CreateVirtualUser>() }
 pub struct ListVirtualUsers {
     /// Immutable account purpose filter.
     #[schema(example = "service")]
-    pub usage: Option<everruns_core::VirtualUserUsage>,
+    pub usage: Option<crate::records::VirtualUserUsage>,
     /// Search runtime names and descriptions.
     #[schema(example = "Alex")]
     pub search: Option<String>,
