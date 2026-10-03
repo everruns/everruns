@@ -2,6 +2,12 @@
 
 ## 2026-10-03
 
+* **Session storage reads require session view.** Listing key/value entries
+  or secret names now evaluates `SESSION_VIEW` before the store is read, so a
+  same-org caller a custom resolver denies cannot see plaintext values or
+  secret names (EVE-1180). Writes stay on `SESSION_MANAGE`. See
+  [Threat Model](security/threat-model.md) TM-AUTHZ-023.
+
 * **Image provider egress.** `gpt_image_gen` sends generation and edit
   requests through the host egress boundary with DNS pinning, the session
   network ACL, and no redirects, so an org-configured base URL cannot reach
