@@ -2,6 +2,12 @@
 
 ## 2026-10-03
 
+* **Untrusted host shell no longer trusts a program name.** `rg --pre` and the
+  other options that start a program ask for approval, including when
+  containment is already `danger-full-access`. `git status` asks unless the
+  command disables repository fsmonitor and hooks. See
+  [Threat Model](security/threat-model.md) TM-BASH-028.
+
 * **Agent page Test chat.** The gold masthead CTA starts an interactive chat
   thread (`source: chat` → `/chats/{id}`) instead of opening a read-only
   session recording. See [Agent Page](ui/agent-page.md).

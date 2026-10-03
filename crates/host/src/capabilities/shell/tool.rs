@@ -265,6 +265,8 @@ impl BashTool {
         let gate = Self::approval_gate(context);
         let sandbox = crate::containment::provider(self.config.sandbox_options());
 
+        // THREAT[TM-BASH-028]: a shell that is already danger-full-access still
+        // has to ask. The read-only shape is the only path that skips the gate.
         if self.config.approval == ApprovalPolicy::Untrusted
             && !policy::is_trusted_read_only(command)
         {
@@ -683,5 +685,166 @@ mod tests {
     async fn a_tool_call_without_session_context_is_refused() {
         let result = BashTool::default().execute(json!({"command": "ls"})).await;
         assert!(format!("{result:?}").contains("session context"));
+    }
+
+    /// `rg --pre` runs a workspace file. Under Untrusted that has to ask even
+    /// when containment is already danger-full-access, which is the
+    /// configuration where the gate is the only boundary.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_rg_preprocessor_is_approval_gated_under_untrusted_full_access() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::Mutex;
+
+        use async_trait::async_trait;
+        use everruns_core::session_files::SessionFileSystem;
+        use everruns_core::tools::Tool;
+        use everruns_provider::typed_id::SessionId;
+
+        use crate::RealDiskFileStore;
+
+        struct RecordingGate {
+            allow: bool,
+            requests: Mutex<Vec<ShellApprovalRequest>>,
+        }
+
+        #[async_trait]
+        impl ShellApprovalGate for RecordingGate {
+            async fn approve(&self, request: ShellApprovalRequest) -> bool {
+                self.requests.lock().expect("approval log").push(request);
+                self.allow
+            }
+        }
+
+        fn workspace() -> tempfile::TempDir {
+            let dir = tempfile::tempdir().expect("temp workspace");
+            let payload = dir.path().join("payload");
+            let marker = dir.path().join("ran");
+            std::fs::write(
+                &payload,
+                format!(
+                    "#!/bin/sh\necho executed > '{}'\ncat \"$1\"\n",
+                    marker.display()
+                ),
+            )
+            .expect("payload");
+            std::fs::set_permissions(&payload, std::fs::Permissions::from_mode(0o755))
+                .expect("payload mode");
+            std::fs::write(dir.path().join("note.txt"), "hello\n").expect("note");
+            dir
+        }
+
+        fn tool() -> BashTool {
+            BashTool::new(HostShellConfig {
+                containment: ContainmentMode::FullAccess,
+                approval: ApprovalPolicy::Untrusted,
+                ..HostShellConfig::default()
+            })
+        }
+
+        fn context(dir: &std::path::Path, gate: Option<Arc<RecordingGate>>) -> ToolContext {
+            let store: Arc<dyn SessionFileSystem> =
+                Arc::new(RealDiskFileStore::new(dir).expect("store"));
+            let mut context = ToolContext::with_file_store(SessionId::new(), store);
+            if let Some(gate) = gate {
+                context
+                    .extensions
+                    .insert(Arc::new(HostShellApproval::new(gate)));
+            }
+            context
+        }
+
+        let command = "rg --pre ./payload hello .";
+
+        let denied_dir = workspace();
+        let denying = Arc::new(RecordingGate {
+            allow: false,
+            requests: Mutex::new(Vec::new()),
+        });
+        let denied = tool()
+            .execute_with_context(
+                json!({"command": command}),
+                &context(denied_dir.path(), Some(denying.clone())),
+            )
+            .await;
+        let denied = denied.into_tool_result("call", "bash");
+        let message = denied.error.expect("preprocessor must be refused");
+        assert!(
+            message.contains("not approved"),
+            "expected an approval refusal, got {message}"
+        );
+        assert!(!denied_dir.path().join("ran").exists());
+        let requests = denying.requests.lock().expect("approval log");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].command, command);
+        assert!(!requests[0].full_access);
+        drop(requests);
+
+        let unattended = workspace();
+        let refused = tool()
+            .execute_with_context(
+                json!({"command": command}),
+                &context(unattended.path(), None),
+            )
+            .await;
+        let refused = refused.into_tool_result("call", "bash");
+        assert!(
+            refused
+                .error
+                .as_deref()
+                .is_some_and(|message| message.contains("not approved"))
+        );
+        assert!(!unattended.path().join("ran").exists());
+
+        let allowed_dir = workspace();
+        let allowing = Arc::new(RecordingGate {
+            allow: true,
+            requests: Mutex::new(Vec::new()),
+        });
+        let allowed = tool()
+            .execute_with_context(
+                json!({"command": command}),
+                &context(allowed_dir.path(), Some(allowing.clone())),
+            )
+            .await;
+        assert!(
+            allowed.is_success(),
+            "an approved preprocessor should run, got {allowed:?}"
+        );
+        assert!(
+            allowed_dir.path().join("ran").exists(),
+            "approval must be what lets the preprocessor execute"
+        );
+        assert_eq!(allowing.requests.lock().expect("approval log").len(), 1);
+
+        let read_only = workspace();
+        let quiet = Arc::new(RecordingGate {
+            allow: false,
+            requests: Mutex::new(Vec::new()),
+        });
+        let listed = tool()
+            .execute_with_context(
+                json!({"command": "pwd"}),
+                &context(read_only.path(), Some(quiet.clone())),
+            )
+            .await;
+        assert!(listed.is_success(), "pwd stays usable, got {listed:?}");
+        assert!(
+            quiet.requests.lock().expect("approval log").is_empty(),
+            "a safe command must not ask"
+        );
+
+        let searched = tool()
+            .execute_with_context(
+                json!({"command": "rg --no-config hello note.txt"}),
+                &context(read_only.path(), Some(quiet.clone())),
+            )
+            .await;
+        assert!(
+            searched.is_success(),
+            "ordinary rg stays usable, got {searched:?}"
+        );
+        assert!(quiet.requests.lock().expect("approval log").is_empty());
+        assert!(!read_only.path().join("ran").exists());
     }
 }
