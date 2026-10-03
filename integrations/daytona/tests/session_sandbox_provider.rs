@@ -586,7 +586,7 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
             &config,
             &instance,
             "/home/daytona/main.rs",
-            "fn main() {}\n",
+            b"fn main() {}\n",
         )
         .await
         .unwrap();

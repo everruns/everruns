@@ -1,7 +1,6 @@
-//! The one coding prompt the `coding-*` harnesses share (EVE-1042).
+//! The provider-neutral coding harness prompt (EVE-1042).
 //!
-//! Before this, `coding-container`, `coding-daytona` and
-//! `coding-session-sandbox` each carried their own copy of roughly a hundred
+//! Before this, the provider-specific coding harnesses each carried a copy of roughly a hundred
 //! near-identical lines. The copies differed in two ways, and both were reasons
 //! not to have copies at all:
 //!
@@ -10,8 +9,7 @@
 //!   the environment; it did, and it drifted further with every provider change.
 //!   That half is now derived from the bound target by
 //!   [`everruns_host::environment_preamble`], so it cannot.
-//! - **Provider tool names.** `sandbox_exec` against `daytona_exec`,
-//!   `sandbox_read_file` against `daytona_read_file`. Naming a tool in prompt
+//! - **Provider tool names.** Naming a tool in prompt
 //!   text duplicates what the tool schemas already say and goes stale the moment
 //!   a harness is bound to another target. The tool list is the tool list.
 //!
@@ -39,9 +37,9 @@ Do coding work on the execution environment described above — reading code, \
 editing files, running builds, tests, linters, git, installing dependencies, \
 running dev servers.
 
-Use session files only for notes, configuration, artifacts, and anything the \
-user wants to keep beyond the life of that environment. If nothing recovers the \
-environment's filesystem, that is the only place results survive.
+Treat `/workspace` as the single working filesystem. The selected Environment \
+defines its durability and recovery guarantees; do not invent a second copy of \
+the working tree.
 
 ## Code quality
 

@@ -27,7 +27,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 
 | Capability | ID | Tools |
 |---|---|---|
-| [File System](/capabilities/file-system/) | `session_file_system` | 8 |
+| [File System](/capabilities/file-system/) | `session_file_system` | 10 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
@@ -62,7 +62,7 @@ Cloud and container sandbox environments for isolated code execution.
 
 | Capability | ID | Tools |
 |---|---|---|
-| Session Sandbox | `session_sandbox` | 5 |
+| Managed Environment | `session_sandbox` | 6 |
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
 | Deno Sandboxes | `deno` | 6 |
@@ -275,7 +275,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Host Shell](/capabilities/host-shell/) | [File System](/capabilities/file-system/) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
-| Session Sandbox | [Storage](/capabilities/session-storage/) |
+| Managed Environment | [Storage](/capabilities/session-storage/) |
 | [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
 | [Daytona](/capabilities/daytona/) | [Storage](/capabilities/session-storage/) |
 | Deno Sandboxes | Storage |

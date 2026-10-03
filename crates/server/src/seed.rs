@@ -59,7 +59,6 @@ mod seed_ids {
     pub const PYTHON_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000104);
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
-    pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
     pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
     pub const DENO_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000110);
     pub const SPRITES_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000111);
@@ -73,8 +72,6 @@ mod seed_ids {
     pub const TASK_ORCHESTRATOR_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010e);
     pub const KNOWLEDGE_BASE_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000112);
-    pub const SESSION_SANDBOX_CODER_AGENT: Uuid =
-        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000113);
     pub const IMAGE_STUDIO_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000114);
     pub const CURSOR_AGENT_MANAGER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000115);
     pub const GUARDED_BASH_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000116);
@@ -650,71 +647,6 @@ When users provide data (CSV, JSON, or raw values):
             SeedCapability::new("stateless_todo_list"),
             SeedCapability::new("openui"),
             SeedCapability::new("data_knowledge"),
-        ],
-        dev_only: false,
-    },
-    SeedAgent {
-        id: seed_ids::DAYTONA_CODER_AGENT,
-        name: "daytona-coder",
-        display_name: "Daytona Coder",
-        description: "A coding agent that runs code in cloud sandboxes powered by Daytona",
-        system_prompt: r#"You are a Daytona Coder Agent. You run code in cloud sandboxes powered by Daytona.
-
-Just call sandbox tools directly — the API key is resolved automatically from Settings > Connections or session secrets.
-
-Workflow:
-1. Create sandbox: `daytona_create_sandbox` (working directory: /home/daytona)
-2. Clone repos: `daytona_git_clone` (clones to /home/daytona/owner/repo)
-3. Write code / install deps: `daytona_write_file`, `daytona_exec`
-4. Read results: `daytona_read_file`
-5. Save results: `daytona_download_workspace`
-6. Clean up: `daytona_manage_sandbox` action="delete"
-
-You can run multiple sandboxes in parallel for different tasks.
-Always delete sandboxes when done."#,
-        tags: &["coding", "cloud", "sandbox", "daytona", "demo", "seed"],
-        capabilities: &[
-            SeedCapability::new("daytona"),
-            SeedCapability::new("session_storage"),
-            SeedCapability::new("session_file_system"),
-        ],
-        dev_only: false,
-    },
-    SeedAgent {
-        id: seed_ids::SESSION_SANDBOX_CODER_AGENT,
-        name: "session-sandbox-coder",
-        display_name: "Session Sandbox Coder",
-        description: "A coding agent that uses one managed session-owned sandbox backed by Daytona",
-        system_prompt: r#"You are a Session Sandbox Coder Agent. This session owns one managed sandbox.
-
-Use the provider-neutral sandbox tools for coding work:
-1. Inspect the current environment with `sandbox_status` if needed
-2. Read/search code with `sandbox_read_file` or `sandbox_exec`
-3. Edit code with `sandbox_write_file` or shell-based edits via `sandbox_exec`
-4. Run tests/builds with `sandbox_exec`
-5. Pause or delete the environment only when needed via `sandbox_manage`
-
-The sandbox auto-starts for the session, pauses after idle time, and resumes automatically on the next sandbox tool call.
-Do not use raw provider tools when the managed sandbox tools can handle the task."#,
-        tags: &["coding", "sandbox", "managed", "daytona", "demo", "seed"],
-        capabilities: &[
-            SeedCapability::with_config("session_sandbox", || {
-                serde_json::json!({
-                    "provider": "daytona",
-                    "auto_start": true,
-                    "idle_pause_after_seconds": 180,
-                    "provider_config": {
-                        "size": "small",
-                        "workspace_path": "/home/daytona/workspace",
-                        "recovery": {
-                            "enabled": true,
-                            "volume_name": "everruns-recovery"
-                        }
-                    }
-                })
-            }),
-            SeedCapability::new("session_storage"),
-            SeedCapability::new("session_file_system"),
         ],
         dev_only: false,
     },
@@ -2392,25 +2324,17 @@ mod tests {
     }
 
     #[test]
-    fn test_coding_container_example_capabilities_are_registered_when_flag_enabled() {
-        let _lock = lock_env();
-        let _env_guard =
-            EnvVarGuard::capture(&["FEATURE_CONTAINER_SANDBOX", "FEATURE_DOCKER_CAPABILITY"]);
-        unsafe { std::env::set_var("FEATURE_CONTAINER_SANDBOX", "true") };
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-
+    fn test_provider_neutral_coding_example_capabilities_are_registered() {
         let registry =
             crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
 
-        // Container example is always present in the example catalogue but its
-        // capabilities only appear in `/v1/harness-examples` when registered.
-        let example = crate::harnesses::find_harness_example("coding-container")
-            .expect("coding-container should exist in the example catalogue");
+        let example = crate::harnesses::find_harness_example("coding")
+            .expect("coding should exist in the example catalogue");
 
         for cap in &example.definition.capabilities {
             assert!(
                 registry.has(cap.capability_id()),
-                "Capability '{}' referenced by Coding (Container) example must be registered",
+                "Capability '{}' referenced by Coding example must be registered",
                 cap.capability_id()
             );
         }
@@ -2427,21 +2351,20 @@ mod tests {
         let registry =
             crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
 
-        // The Coding (Container) example is filtered out of `/v1/harness-examples`
-        // when its `container_sandbox` capability isn't registered. We assert
-        // the registry-level fact that powers the filter.
+        // Container execution remains feature-gated even though provider
+        // selection no longer creates a provider-specific coding harness.
         assert!(
             !registry.has("container_sandbox"),
             "container_sandbox capability should not be registered when feature flag is off"
         );
 
-        // Defensive: built-in list never contains coding-container by default.
+        // Provider-specific coding harnesses remain released legacy rows only.
         let built_in_harnesses = built_in_harnesses();
         assert!(
             built_in_harnesses
                 .iter()
-                .all(|h| h.name != "coding-container"),
-            "Coding (Container) is no longer a default built-in"
+                .all(|h| !h.name.starts_with("coding-")),
+            "provider-specific coding harnesses are no longer default built-ins"
         );
     }
 

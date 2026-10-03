@@ -24889,6 +24889,51 @@
           }
         }
       },
+      "EnvironmentLifecycleData": {
+        "type": "object",
+        "description": "Non-secret lifecycle details for a managed Environment incarnation.",
+        "required": [
+          "provider",
+          "previous_instance_id",
+          "process_state_lost"
+        ],
+        "properties": {
+          "current_instance_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement physical resource. Present only on `environment.recovered`."
+          },
+          "environment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable logical Environment identifier, when hosted persistence is available."
+          },
+          "generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Current incarnation fence, when hosted persistence is available."
+          },
+          "previous_instance_id": {
+            "type": "string",
+            "description": "Physical provider resource that was lost or replaced."
+          },
+          "process_state_lost": {
+            "type": "boolean",
+            "description": "Provider process state is ephemeral and is not restored across replacement."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Compute provider selected by the Environment profile."
+          }
+        }
+      },
       "EnvironmentNetworkPolicy": {
         "oneOf": [
           {
@@ -25440,6 +25485,12 @@
           },
           {
             "$ref": "#/components/schemas/SessionModelChangedData"
+          },
+          {
+            "$ref": "#/components/schemas/EnvironmentLifecycleData"
+          },
+          {
+            "$ref": "#/components/schemas/EnvironmentLifecycleData"
           },
           {
             "$ref": "#/components/schemas/SessionTaskEventData"

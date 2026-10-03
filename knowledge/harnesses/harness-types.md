@@ -58,13 +58,13 @@ Two categories of code-defined harnesses exist:
 - `generic`, required as the default parent harness referenced by examples and most user harnesses.
 - `platform-chat`, required by the global chat path (singleton per-user session pattern).
 
-**Harness examples** today: `coding-daytona`, `coding-container`, `data-analyst`. Examples whose required capabilities are not registered for the deployment (for example, `coding-container` when the `container_sandbox` plugin is disabled) are filtered out of `/v1/harness-examples` automatically, mirroring the agent examples behaviour.
+**Harness examples** today: `coding` and `data-analyst`. Examples whose required capabilities are not registered for the deployment are filtered out of `/v1/harness-examples` automatically, mirroring the agent examples behaviour. The `coding` example is provider-neutral; an Agent Environment profile chooses Bashkit, Daytona, or another target.
 
 **Why the split:** specialised harnesses like `data-analyst` were previously installed into every org by default, polluting fresh installs and creating reconciliation churn for orgs that never used them. Moving them to examples keeps fresh orgs lean while making the same templates discoverable from the UI gallery on demand.
 
 ### Migration of legacy built-in rows
 
-Existing orgs that already had `data-analyst`, `coding-daytona`, or `coding-container` provisioned as `is_built_in = true` keep those rows during reconciliation. The reconciliation step demotes them to regular org-owned harnesses (`is_built_in = false`) so existing sessions and agents that reference them keep working, while users gain the ability to edit, archive, or delete them like any custom harness. The demotion is idempotent and only flips the `is_built_in` flag, no data is rewritten and no UUIDs change.
+Existing orgs that already had `data-analyst`, `coding-daytona`, `coding-container`, or `coding-session-sandbox` provisioned as `is_built_in = true` keep those rows during reconciliation. The reconciliation step demotes them to regular org-owned harnesses (`is_built_in = false`) so existing sessions and agents that reference them keep working, while users gain the ability to edit, archive, or delete them like any custom harness. The demotion is idempotent and only flips the `is_built_in` flag; no data is rewritten and no UUIDs change.
 
 ## Built-in Harness Types
 
@@ -225,16 +225,11 @@ Cross-session learning uses the agent memory mounted at `/memory/agent` with the
 - Agents that learn from corrections across sessions
 - Analytics workflows with curated knowledge bases
 
-### Coding (Daytona)
+### Coding
 
-Coding harness with Daytona cloud sandboxes (real filesystem, full process execution, git integration) plus GitHub Scout subagents for repository exploration. Inherits from Generic. Visible only when the `daytona` capability plugin is registered (the OSS deployment registers it whenever the integration is built in). See `crates/server/src/harnesses/coding_daytona.rs`.
-
-### Coding (Container)
-
-Coding harness backed by self-hosted Docker container sandboxes plus GitHub Scout subagents for repository exploration. Inherits from Generic. Visible only when the `container_sandbox` capability plugin is registered (gated by the `FEATURE_CONTAINER_SANDBOX` flag). See `crates/server/src/harnesses/coding_container.rs` for the harness definition and the [container sandbox specification](../runtime-resources/container-sandbox.md) for the underlying capability.
+Provider-neutral coding behavior plus GitHub Scout subagents for repository exploration. Inherits from Generic. The Agent version's Environment profiles choose the execution target without changing the harness prompt or the stable `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep` vocabulary. See `crates/server/src/harnesses/coding.rs` and [Coding Harness](coding-harness.md).
 
 ## Future Harness Types
 
 The harness type system is designed for extension. Planned additions:
 - **Research**: Web fetch, todo list, file system for research workflows
-- **Code**: Docker/sandbox execution with file system for coding tasks

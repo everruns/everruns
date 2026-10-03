@@ -47,7 +47,7 @@ Status: **tooling ready**: loader, runner, scorer scripts in `evals/swe-bench/`
 
 ### 2. ~~Tool resolution: agent capabilities override harness~~, IRRELEVANT
 
-Using the built-in `coding-daytona` harness (which extends `generic` with the `daytona` capability) removes the need for a custom agent. No custom agent needed at all.
+Using the `coding` harness with a managed Daytona Environment profile removes the need for a provider-specific harness. No custom harness is needed.
 
 ### 3. ~~Sandbox Python version~~, BYPASSED via external scoring
 

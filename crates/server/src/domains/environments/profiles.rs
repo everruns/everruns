@@ -271,7 +271,11 @@ pub fn apply_environment_to_capabilities(
 
     let mut result = capabilities
         .iter()
-        .filter(|capability| !COMPUTE_CAPABILITY_IDS.contains(&capability.id()))
+        .filter(|capability| {
+            !(COMPUTE_CAPABILITY_IDS.contains(&capability.id())
+                || environment.target.kind == EnvironmentTargetKind::Managed
+                    && capability.id() == "session_file_system")
+        })
         .cloned()
         .collect::<Vec<_>>();
     result.push(capability_for_environment(environment));
@@ -585,6 +589,24 @@ mod tests {
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "bashkit_shell"]
+        );
+    }
+
+    #[test]
+    fn managed_profile_replaces_the_session_filesystem_tool_surface() {
+        let resolved =
+            resolve_profile(&profile(EnvironmentTargetProfile::managed("daytona"))).unwrap();
+        let capabilities = vec![
+            CapabilityRef::new("session_file_system"),
+            CapabilityRef::new("bashkit_shell"),
+            CapabilityRef::new("current_time"),
+        ];
+
+        let mapped = apply_environment_to_capabilities(&capabilities, Some(&resolved));
+
+        assert_eq!(
+            mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
+            vec!["current_time", "session_sandbox"]
         );
     }
 

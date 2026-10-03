@@ -3004,6 +3004,7 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
+ "globset",
  "hex",
  "regex",
  "serde_json",

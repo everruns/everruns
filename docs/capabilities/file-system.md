@@ -71,6 +71,29 @@ Search file contents with regex patterns.
 | `pattern` | string | yes | Regex pattern |
 | `path` | string | no | Directory to search (default: `/workspace`) |
 
+### `glob`
+
+List files recursively under `/workspace` whose relative paths match a glob.
+Results are sorted and bounded.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pattern` | string | yes | Glob relative to `/workspace` |
+| `limit` | integer | no | Maximum matches, from 1 to 1000 (default: 200) |
+
+### `grep`
+
+Search UTF-8 files recursively under `/workspace` with a Rust regular
+expression. This is the provider-neutral search name used by managed
+Environments; `grep_files` remains available for existing file-system agents.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `pattern` | string | yes | Rust regular expression |
+| `glob` | string | no | Restrict searched files with a glob |
+| `offset` | integer | no | Skip this many matches (default: 0) |
+| `limit` | integer | no | Maximum matches, from 1 to 1000 (default: 200) |
+
 ### `delete_file`
 
 Delete a file or directory.

@@ -10,6 +10,7 @@ use crate::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 // Split out of one 5300-line file; every item keeps its visibility, so the module's public surface is unchanged.
 mod compaction_data;
 pub mod correlation;
+mod environment_data;
 mod file_voice_data;
 mod llm_data;
 mod message_data;
@@ -19,6 +20,7 @@ mod turn_data;
 mod usage;
 
 pub use compaction_data::*;
+pub use environment_data::*;
 pub use file_voice_data::*;
 pub use llm_data::*;
 pub use message_data::*;
@@ -114,6 +116,12 @@ pub const SESSION_TITLE_UPDATED: &str = "session.title.updated";
 /// leaving readers to infer it from `llm.generation`.
 pub const SESSION_MODEL_CHANGED: &str = "session.model.changed";
 
+// Managed Environment lifecycle events
+/// The current physical Environment instance disappeared and will be replaced.
+pub const ENVIRONMENT_INSTANCE_LOST: &str = "environment.instance_lost";
+/// A managed Environment resumed on a replacement physical instance.
+pub const ENVIRONMENT_RECOVERED: &str = "environment.recovered";
+
 // Schedule events
 pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
 
@@ -191,6 +199,8 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SESSION_IDLED,
     SESSION_TITLE_UPDATED,
     SESSION_MODEL_CHANGED,
+    ENVIRONMENT_INSTANCE_LOST,
+    ENVIRONMENT_RECOVERED,
     SCHEDULE_TRIGGERED,
     CONTEXT_COMPACTING,
     CONTEXT_COMPACTED,
@@ -639,6 +649,10 @@ pub enum EventData {
     SessionTitleUpdated(SessionTitleUpdatedData),
     SessionModelChanged(SessionModelChangedData),
 
+    // Managed Environment lifecycle events
+    EnvironmentInstanceLost(EnvironmentLifecycleData),
+    EnvironmentRecovered(EnvironmentLifecycleData),
+
     // Session task lifecycle events (full snapshots)
     TaskCreated(SessionTaskEventData),
     TaskUpdated(SessionTaskEventData),
@@ -859,6 +873,10 @@ event_data_kinds! {
     SessionIdled(SessionIdledData) = SESSION_IDLED,
     SessionTitleUpdated(SessionTitleUpdatedData) = SESSION_TITLE_UPDATED,
     SessionModelChanged(SessionModelChangedData) = SESSION_MODEL_CHANGED,
+
+    // Managed Environment lifecycle events
+    EnvironmentInstanceLost(EnvironmentLifecycleData) = ENVIRONMENT_INSTANCE_LOST,
+    EnvironmentRecovered(EnvironmentLifecycleData) = ENVIRONMENT_RECOVERED,
 
     // Context compaction events
     ContextCompacting(ContextCompactingData) = CONTEXT_COMPACTING,

@@ -407,7 +407,7 @@ async fn test_live_session_sandbox_provider_flow() {
             &config,
             &instance,
             "/home/daytona/live-session-sandbox.txt",
-            "provider-flow\n",
+            b"provider-flow\n",
         )
         .await
         .expect("managed session sandbox write failed");
@@ -494,7 +494,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
             &config,
             &instance,
             "/home/daytona/workspace/recovery-marker.txt",
-            "survived\n",
+            b"survived\n",
         )
         .await
         .expect("recovery marker write failed");

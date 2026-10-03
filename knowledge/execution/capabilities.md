@@ -303,7 +303,7 @@ the registry and its tools never register. Session creation therefore rejects
 requests whose effective capability set (harness chain + agent + session) names
 a **built-in** capability that is not available in this deployment, rather than
 silently dropping its tools and degrading into a different execution environment
-(e.g. a `coding-container` session quietly running in the bash workspace). The
+(e.g. a custom container harness quietly running in the Bashkit workspace). The
 check runs in `SessionService::create` and only applies to plain built-in
 references; namespaced refs (`declarative:`, `plugin:`, `skill:`, `mcp:`) resolve
 from org data and are validated separately.

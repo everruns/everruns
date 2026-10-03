@@ -1098,6 +1098,8 @@
       "tools": [
         "delete_file",
         "edit_file",
+        "glob",
+        "grep",
         "grep_files",
         "list_directory",
         "read_file",
@@ -1121,14 +1123,15 @@
         "dev"
       ],
       "id": "session_sandbox",
-      "name": "Session Sandbox",
+      "name": "Managed Environment",
       "status": "available",
       "tools": [
-        "sandbox_exec",
-        "sandbox_manage",
-        "sandbox_read_file",
-        "sandbox_status",
-        "sandbox_write_file"
+        "bash",
+        "edit_file",
+        "glob",
+        "grep",
+        "read_file",
+        "write_file"
       ]
     },
     {

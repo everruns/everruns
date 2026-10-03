@@ -61,6 +61,13 @@ impl WorkerService for WorkerServiceImpl {
         self.handle_install_compaction_checkpoint(request).await
     }
 
+    async fn sandbox_persistence(
+        &self,
+        request: Request<proto::SandboxPersistenceRequest>,
+    ) -> Result<Response<proto::SandboxPersistenceResponse>, Status> {
+        self.handle_sandbox_persistence(request).await
+    }
+
     async fn add_message(
         &self,
         request: Request<AddMessageRequest>,
