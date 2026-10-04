@@ -5,7 +5,7 @@
 // The system prompt is the page (wide left pane); a narrow config column holds
 // the primary settings and a quiet "More" list whose rows open side sheets.
 // Edit mode is page-level and in place: the same panes turn writable, the
-// header swaps Test chat for Save changes / Discard, and one Save sends the
+// header swaps Test in Playground for Save changes / Discard, and one Save sends the
 // whole draft so a prompt edit and the capability change that goes with it
 // land together. The old /edit route redirects here with `?mode=edit`.
 //
@@ -13,7 +13,7 @@
 // Credentials are configuration (config column sheets); Versions and the old
 // danger zone live in the header overflow menu.
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -36,7 +36,6 @@ import {
   useAgentStats,
   useCapabilities,
   useCopyAgent,
-  useCreateSession,
   useDeleteAgent,
   useDestroyAgent,
   useExportAgent,
@@ -106,7 +105,6 @@ import {
   getEntityStatusBadgeVariant,
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
-import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useWebMcp } from "@/providers/webmcp-context";
@@ -151,7 +149,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { data: mcpAttachments } = useAgentMcpAttachments(agentId);
   const { data: credentials } = useAgentCredentials(agentId);
   const { data: latestHealth } = useLatestHealthCheckRun(agentId);
-  const createSession = useCreateSession();
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
   const destroyAgent = useDestroyAgent();
@@ -159,8 +156,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const copyAgent = useCopyAgent();
   const { can } = usePolicies("agents");
   const webmcp = useWebMcp();
-  // THREAT[TM-WEB-017]: reject concurrent non-idempotent browser-agent mutations.
-  const webMcpSessionPendingRef = useRef(false);
 
   const draft = useAgentDraft(agent);
   const readOnly = isReadOnlyStatus(agent?.status);
@@ -231,82 +226,38 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     }
   };
 
-  // Same create shape as NewChatForm: interactive threads live under /chats;
-  // /sessions is the read-only recording surface.
-  const createAgentChat = useCallback(
-    async (title?: string) => {
-      // Agent-first: omit the harness so the server derives it from the agent's
-      // own harness (falling back to the org default only when the agent has none).
-      const session = await createSession.mutateAsync({
-        request: {
-          agent_id: agentId,
-          source: "chat",
-          tags: [CHAT_THREAD_TAG],
-          ...(title ? { title } : {}),
-        },
-      });
-      router.push(`/chats/${session.id}`);
-      return session;
-    },
-    [agentId, createSession, router],
-  );
+  const playgroundPath = `/playground/new?agent=${encodeURIComponent(agentId)}`;
+  const handleTestAgent = () => router.push(playgroundPath);
 
-  const handleTestChat = async () => {
-    try {
-      await createAgentChat();
-    } catch (error) {
-      console.error("Failed to start test chat:", error);
-    }
-  };
-
-  const startChatTool = useMemo<WebMcpToolDefinition>(
+  const openPlaygroundTool = useMemo<WebMcpToolDefinition>(
     () => ({
-      name: "everruns_start_session",
-      description: "Start a test chat with the agent displayed on this Everruns page.",
+      name: "everruns_open_playground",
+      description: "Open Playground with the agent displayed on this Everruns page selected.",
       inputSchema: {
         type: "object",
-        properties: {
-          title: { type: "string", description: "Optional chat title." },
-        },
+        properties: {},
         additionalProperties: false,
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-      execute: async (input) => {
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      execute: async () => {
         webmcp.assertBinding(webmcp.bindingToken);
         if (!agent || agent.id !== agentId || agent.status !== "active") {
           throw new DOMException("The bound agent is no longer active", "AbortError");
         }
-        if (webMcpSessionPendingRef.current || createSession.isPending) {
-          throw new Error("A chat is already being started");
-        }
-        const rawTitle = input.title;
-        if (rawTitle !== undefined && typeof rawTitle !== "string") {
-          throw new TypeError("title must be a string");
-        }
-        const title = typeof rawTitle === "string" ? rawTitle.trim().slice(0, 200) : undefined;
         await webmcp.requestApproval({
-          title: "Start a test chat?",
-          description: `Start a test chat with ${getDisplayName(agent)}${title ? ` titled “${title}”` : ""}. This may lead to billable model usage when a message is sent.`,
-          confirmLabel: "Start chat",
+          title: "Open this agent in Playground?",
+          description: `Open Playground with ${getDisplayName(agent)} selected. No session, sandbox, or model usage starts until you confirm the Playground setup.`,
+          confirmLabel: "Open Playground",
         });
         webmcp.assertBinding(webmcp.bindingToken);
-        webMcpSessionPendingRef.current = true;
-        try {
-          const session = await createAgentChat(title || undefined);
-          return {
-            created: true,
-            session_id: session.id,
-            path: `/chats/${session.id}`,
-          };
-        } finally {
-          webMcpSessionPendingRef.current = false;
-        }
+        router.push(playgroundPath);
+        return { opened: true, path: playgroundPath };
       },
     }),
-    [agent, agentId, createAgentChat, createSession.isPending, webmcp],
+    [agent, agentId, playgroundPath, router, webmcp],
   );
 
-  useWebMcpTool(startChatTool, {
+  useWebMcpTool(openPlaygroundTool, {
     enabled: agent?.status === "active",
     scopeKey: agent?.id,
   });
@@ -505,13 +456,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         </Button>
       )}
       {overflowMenu}
-      <Button
-        variant="accent"
-        onClick={handleTestChat}
-        disabled={createSession.isPending || !isActive}
-      >
+      <Button variant="accent" onClick={handleTestAgent} disabled={!isActive}>
         <MessageCircle className="size-4" />
-        {createSession.isPending ? "Starting..." : "Test chat"}
+        Test in Playground
       </Button>
     </>
   );

@@ -50,14 +50,6 @@ jest.mock("@/hooks/use-intelligence", () => ({
   useIntelligenceStatus: () => intelligenceStatus,
 }));
 
-jest.mock("@/components/chat/new-chat-form", () => ({
-  NewChatForm: ({ onStartingChange }: { onStartingChange?: (starting: boolean) => void }) => (
-    <button type="button" onClick={() => onStartingChange?.(true)}>
-      new-chat-form
-    </button>
-  ),
-}));
-
 jest.mock("@/components/chat/chat-panel", () => ({
   ChatPanel: (props: { replyToLabel?: string }) => <div>chat-panel:{props.replyToLabel}</div>,
 }));
@@ -115,10 +107,8 @@ describe("Chats surface", () => {
     render(<ChatsPageClient />);
 
     expect(screen.getByText("No intelligence available")).toBeInTheDocument();
-    // One centred message: "No side chats yet / pick an agent and start talking"
-    // would be advice that cannot work.
+    // One centred message replaces the ordinary empty state.
     expect(screen.queryByText("No side chats yet")).not.toBeInTheDocument();
-    expect(screen.queryByText("new-chat-form")).not.toBeInTheDocument();
   });
 
   it("lists threads, linking each to its thread route", () => {

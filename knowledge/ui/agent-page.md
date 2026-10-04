@@ -51,7 +51,8 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   `?tab=versions` links open the matching sheet.
 - **Checks sit next to what they check.** In edit mode prompt findings render under the prompt
   editor; the behavioral health check is a More row.
-- **Button tiers.** Gold is only **Test chat**. It creates an interactive chat thread
-  (`source: chat`, `/chats/{id}`), not a read-only session recording. In edit mode navy
-  Save changes replaces it, with Discard beside it, and the header states that changes
-  apply to new sessions only.
+- **Button tiers.** Gold is only **Test in Playground**. It opens Playground setup with the Agent
+  selected; no session or Environment starts until the operator confirms the setup. Personal
+  Chats remain bound to the managed Platform Chat Agent. In edit mode navy Save changes replaces
+  the action, with Discard beside it, and the header states that changes apply to new sessions
+  only.

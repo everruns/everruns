@@ -28,8 +28,8 @@ sandbox is deleted.
 
 1. Open the Agent, select **More > Environments**, add a Daytona profile named
    `build`, make it the default, and save the Agent.
-2. Open **Chats > New chat**, select the Agent, verify `build · daytona` is
-   selected under **Environment**, and start the chat.
+2. Press **Test in Playground**, verify the Agent and `build · daytona`
+   Environment are selected, choose a virtual user, and start the Playground chat.
 3. Ask it to create `/workspace/recovery-proof.txt` with a unique sentence and
    read the file back.
 4. Verify the transcript uses `write_file`, `read_file`, and/or `bash`, with no

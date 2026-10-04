@@ -352,6 +352,10 @@ A session inherits the default, names one of the profiles, or inlines its own.
 That is the whole selection mechanism, and it keeps the model's tool schema
 fixed for the life of a session.
 
+In the first-party UI, this choice belongs to **Playground** setup. Personal
+**Chats** use the managed Platform Chat Agent and its fixed runtime; they do not
+offer an Agent, harness, or Environment selector.
+
 The rejected alternative is worth recording, because it is the obvious next
 request. Give the model one control tool, `use_environment { name }`, argument
 constrained to that map, and an agent that hits `cargo build` inside Bashkit can

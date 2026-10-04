@@ -1,18 +1,18 @@
 ---
 type: Test Case
-title: "TC001: Agent Chat - Multi-turn Conversation"
-description: "Verify that a user can open a direct chat session with an agent, send a message, wait for the full streamed response, then send a follow-up message in the same session and receive a contextual response."
+title: "TC001: Agent Playground Chat - Multi-turn Conversation"
+description: "Verify that a user can test an Agent in Playground, send a message, wait for the full streamed response, then send a follow-up message in the same session and receive a contextual response."
 tags:
   - everruns
   - test-case
   - ui
   - agent-chat
 ---
-# TC001: Agent Chat - Multi-turn Conversation
+# TC001: Agent Playground Chat - Multi-turn Conversation
 
 ## Description
 
-Verify that a user can open a direct chat session with an agent, send a message, wait for the full streamed response, then send a follow-up message in the same session and receive a contextual response.
+Verify that a user can test an Agent in Playground, send a message, wait for the full streamed response, then send a follow-up message in the same session and receive a contextual response.
 
 ## Preconditions
 
@@ -32,8 +32,9 @@ Verify that a user can open a direct chat session with an agent, send a message,
 
 1. Navigate to the Agents page (`/agents`)
 2. Click on the "Dad Jokes" agent card (display name shown prominently, slug `dad-jokes` in monospace underneath) to open its detail page
-3. Press **Test chat** on the agent page to open an interactive chat thread for this agent
-4. Send turn 1 message
+3. Press **Test in Playground** on the Agent page and verify the Agent is preselected
+4. Choose the virtual user and Environment, then start the Playground chat and send turn 1
+   message
 5. Wait for the full streamed response to complete (spinner/typing indicator disappears, message fully rendered)
 6. Verify the response is a dad joke related to time of day
 7. Send turn 2 message in the same session

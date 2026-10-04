@@ -35,7 +35,7 @@ when the app content area narrows.
 1. Open the agent detail page at the wide desktop viewport.
 2. Confirm the action cluster is right-aligned beside the title, description, badges, and metadata.
 3. Resize to the compact desktop and tablet viewports. Confirm the agent header keeps `Edit`,
-   `More actions`, and `Test chat` visible and contained. Open the overflow menu and confirm
+   `More actions`, and `Test in Playground` visible and contained. Open the overflow menu and confirm
    Copy, Export, Observe this agent, Version history, and Archive agent are available.
 4. Resize to the mobile viewport. Confirm the same three actions stay inside the masthead without
    horizontal scroll. Open `More actions`, close it with Escape, and confirm focus returns to the
