@@ -280,16 +280,13 @@ pub fn routes(state: SlackInstallState) -> Router {
             "/v1/channels/{channel_id}/slack/install",
             post(begin_install),
         )
-        .route(
-            "/v1/channels/{channel_id}/slack/install",
-            post(begin_install),
-        )
+        .route("/v1/e/{channel_id}/slack/install", post(begin_install))
         .route(
             "/v1/channels/{channel_id}/slack/oauth/callback",
             get(finish_install),
         )
         .route(
-            "/v1/channels/{channel_id}/slack/oauth/callback",
+            "/v1/e/{channel_id}/slack/oauth/callback",
             get(finish_install),
         )
         .with_state(state)
