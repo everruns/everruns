@@ -102,7 +102,7 @@ export interface CreateAgentRequest {
   /** Conversation starters (agent wins when non-empty). */
   starters?: ConversationStarter[];
   system_prompt: string;
-  /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to default to the org's built-in `generic` harness. */
+  /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to use the organization default (Conversation for new organizations). */
   harness_id?: string;
   /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
   harness_name?: string;

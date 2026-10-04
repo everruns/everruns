@@ -30,6 +30,7 @@ import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { isHarnessDeprecated } from "@/lib/harness-deprecation";
 import type { CreateSessionRequest } from "@/lib/api/types";
 
 const AGENT_VALUE_PREFIX = "agent:";
@@ -48,12 +49,19 @@ export function NewPlaygroundChatForm({
   const { data: allAgents = [], isLoading: agentsLoading } = useAgents();
   const agents = allAgents.filter((a) => !(a.name === "platform-chat"));
   const { data: allHarnesses = [], isLoading: harnessesLoading } = useHarnesses();
-  const harnesses = allHarnesses.filter(
+  const availableHarnesses = allHarnesses.filter(
     (h) => !h.is_built_in || !h.name.startsWith("platform-chat"),
   );
   const createSession = useCreateSession();
   const [selection, setSelection] = useState(
     initialAgentId ? `${AGENT_VALUE_PREFIX}${initialAgentId}` : "",
+  );
+  const [showDeprecated, setShowDeprecated] = useState(false);
+  const harnesses = availableHarnesses.filter(
+    (harness) =>
+      showDeprecated ||
+      selection === `${HARNESS_VALUE_PREFIX}${harness.name}` ||
+      !isHarnessDeprecated(harness),
   );
   const [environment, setEnvironment] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +105,7 @@ export function NewPlaygroundChatForm({
     }
   };
 
-  if (!optionsLoading && agents.length === 0 && harnesses.length === 0) {
+  if (!optionsLoading && agents.length === 0 && availableHarnesses.length === 0) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
@@ -118,6 +126,16 @@ export function NewPlaygroundChatForm({
             />
           </SelectTrigger>
           <SelectContent>
+            {availableHarnesses.some(isHarnessDeprecated) && (
+              <button
+                type="button"
+                className="w-full px-2 py-1.5 text-left text-sm text-muted-foreground"
+                onClick={() => setShowDeprecated((shown) => !shown)}
+                aria-pressed={showDeprecated}
+              >
+                {showDeprecated ? "Hide deprecated" : "Show deprecated"}
+              </button>
+            )}
             {harnesses.length > 0 && (
               <SelectGroup>
                 <SelectLabel>Harnesses</SelectLabel>

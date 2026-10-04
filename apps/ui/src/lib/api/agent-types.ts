@@ -56,7 +56,7 @@ export interface Agent {
    */
   starters?: ConversationStarter[];
   system_prompt: string;
-  /** Base execution harness this agent runs on. Required; defaults to the org's built-in `generic` harness. */
+  /** Base execution harness this agent runs on. Required; defaults to the organization default (Conversation for new organizations). */
   harness_id: string;
   default_model_id: string | null;
   default_version_id?: string | null;
