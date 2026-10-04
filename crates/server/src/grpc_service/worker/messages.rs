@@ -146,7 +146,7 @@ impl WorkerServiceImpl {
         }
 
         // Convert to proto types
-        use everruns_internal_protocol::schema_session_to_proto;
+        use crate::records::wire::schema_session_to_proto;
 
         let proto_agent = agent.as_ref().map(schema_agent_to_proto);
         let proto_harness = harness.as_ref().map(schema_harness_to_proto);

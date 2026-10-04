@@ -1,9 +1,9 @@
 //! Turning Slack files and attachments into agent input, plus session naming.
 
+use crate::records::{SlackChannelConfig, SlackReplyMode};
 use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::channel::{SessionBinding, build_session_routing_tag, resolve_session_binding};
 use everruns_core::channel_messaging::sync_slack_reply_mode_tags;
-use crate::records::{SlackChannelConfig, SlackReplyMode};
 use std::collections::HashMap;
 
 use crate::api::messages::InputContentPart;

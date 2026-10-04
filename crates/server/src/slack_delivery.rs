@@ -21,9 +21,9 @@ use everruns_core::channel::{
 };
 mod message_receipts;
 mod recovery_endpoint;
-use everruns_core::events;
 use crate::records::SlackReplyMode;
 use crate::records::exposure::{PublicToolVisibility, public_tool_activity_text};
+use everruns_core::events;
 use message_receipts::channel_message_was_delivered;
 use std::collections::HashMap;
 use std::sync::Arc;

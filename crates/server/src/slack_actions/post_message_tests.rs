@@ -1,6 +1,8 @@
 use super::tests::Fixture;
 use super::*;
 use crate::storage::models::CreateEventRow;
+use everruns_capabilities::channel_message_sender::SlackChannelMessageSender;
+use everruns_contracts::slack_action::SlackActionInvoker;
 use everruns_contracts::typed_id::MessageId;
 use everruns_core::{
     channel_messaging::{ChannelMessageSenderExt, ChannelPostMessageTool},
@@ -8,8 +10,6 @@ use everruns_core::{
     tool_context::ToolContext,
     tools::{Tool, ToolExecutionResult},
 };
-use everruns_capabilities::{channel_message_sender::SlackChannelMessageSender};
-use everruns_contracts::{slack_action::SlackActionInvoker};
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path},

@@ -8,8 +8,8 @@
 //! ```
 
 pub mod background_run;
-pub mod channel_message_sender;
 pub mod capabilities;
+pub mod channel_message_sender;
 pub mod connector;
 #[cfg(feature = "container-sandbox")]
 pub mod container_sandbox;

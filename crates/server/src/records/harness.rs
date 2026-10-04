@@ -32,8 +32,7 @@ use utoipa::ToSchema;
 /// - `active`: Harness is available for use
 /// - `archived`: Harness is hidden from listings and cannot be modified or assigned
 /// - `deleted`: Harness is a tombstone kept only for historical references
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[schema(example = "active")]
 #[serde(rename_all = "lowercase")]
 pub enum HarnessStatus {
@@ -69,8 +68,7 @@ impl From<&str> for HarnessStatus {
 /// Selecting one inserts its text into the composer. `icon` reuses the
 /// harness icon name set (`HarnessIcon`); unknown names fall back to the
 /// default glyph.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct ConversationStarter {
     /// Optional icon name from the harness icon set.
@@ -84,8 +82,7 @@ pub struct ConversationStarter {
 
 /// Harness configuration for sessions.
 /// A harness defines the base behavior and capabilities that apply to all sessions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Harness {
     /// Unique identifier for the harness (format: harness_{32-hex}).
     #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
@@ -107,20 +104,17 @@ pub struct Harness {
     /// Human-readable description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(
-            example = "Default harness with file-system + secrets capabilities; safe baseline for new agents."
-        )
-    ]
+        example = "Default harness with file-system + secrets capabilities; safe baseline for new agents."
+    )]
     pub description: Option<String>,
     /// Legacy storage value migrated to Agent presentation; omitted from public responses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = "I can triage incidents, dig through logs, and draft the update.")
-    ]
+    #[schema(example = "I can triage incidents, dig through logs, and draft the update.")]
     #[serde(skip)]
     pub intro_markdown: Option<String>,
     /// Legacy description migrated to the Agent; omitted from public responses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = "Knows your agents, harnesses, models, and runs.")
-    ]
+    #[schema(example = "Knows your agents, harnesses, models, and runs.")]
     #[serde(skip)]
     pub short_description: Option<String>,
     /// Legacy starters migrated to the Agent; omitted from public responses.
@@ -136,9 +130,8 @@ pub struct Harness {
     /// `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(
-            example = "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
-        )
-    ]
+        example = "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
+    )]
     pub system_prompt: Option<String>,
     /// Optional parent harness that this harness inherits from.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -155,7 +148,7 @@ pub struct Harness {
     pub tags: Vec<String>,
     /// Capabilities enabled for this harness with per-harness configuration.
     #[serde(default)]
-    #[schema(value_type = Vec<crate::CapabilityRefSchema>)
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)
     ]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this harness.

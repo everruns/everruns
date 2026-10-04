@@ -431,7 +431,7 @@ struct AuthorizedA2a {
     org_id: i64,
     app_public_id: String,
     channel_public_id: crate::records::AgentChannelId,
-    session_mode: everruns_capabilities::SessionBinding,
+    session_mode: everruns_core::channel::SessionBinding,
 }
 
 async fn authenticate_request(

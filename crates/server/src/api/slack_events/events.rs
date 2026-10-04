@@ -1,5 +1,7 @@
 //! Inbound event routing: parse, scope, dispatch, and message processing.
 
+use crate::records::{ChannelType, SlackChannelConfig, SlackReplyMode};
+use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use axum::{
     Extension, Json,
     body::Bytes,
@@ -12,8 +14,6 @@ use everruns_core::channel::{
     InboundAttachment, InboundChannelEvent, SessionBinding, ThreadContext,
 };
 use everruns_core::channel_messaging::sync_slack_reply_mode_tags;
-use crate::records::{ChannelType, SlackChannelConfig, SlackReplyMode};
-use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use std::collections::HashMap;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
