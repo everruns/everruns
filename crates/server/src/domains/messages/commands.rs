@@ -1,7 +1,7 @@
 use super::queries as q;
 use crate::api::messages::{Message, MessageRole};
 use crate::domains::common::*;
-use crate::domains::messages::CreateMessageContext;
+use crate::domains::messages::{CreateMessageContext, CreateMessagePrefetch};
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use everruns_contracts::typed_id::{AgentId, SessionId, SessionParticipantId};
 
@@ -65,12 +65,13 @@ impl Command for CreateMessage {
             .map_err(|_| CommandError::bad_request("Invalid message controls"))?;
 
         let session_id = q::parse_session_id(&self.session_id)?;
-        let session = q::session_service(ctx)?
-            .get(&ctx.caller, session_id.uuid(), None)
+        let loaded = q::session_service(ctx)?
+            .get_for_send(&ctx.caller, session_id.uuid())
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
-        require_platform_chat_owner(ctx, &session).await?;
+        require_platform_chat_owner(ctx, &loaded)?;
+        let session = &loaded.session;
         let (runtime_subject_principal_id, event_metadata) = if let Some(subject) =
             session.playground_user_id
         {
@@ -93,8 +94,14 @@ impl Command for CreateMessage {
         )
         .await?;
 
+        // The session's own agent row is reusable only when it is the
+        // responder; an addressed participant is checked fresh.
+        let responder = loaded
+            .agent
+            .clone()
+            .filter(|agent| responder_agent_id.is_some_and(|id| id.to_string() == agent.public_id));
         q::message_service(ctx)?
-            .create(
+            .create_with(
                 CreateMessageContext {
                     runtime_subject_principal_id,
                     org_id: ctx.org_id(),
@@ -106,6 +113,10 @@ impl Command for CreateMessage {
                     request_id: self.request_id,
                 },
                 req,
+                CreateMessagePrefetch {
+                    session: Some(loaded.row.clone()),
+                    responder,
+                },
             )
             .await
             .map_err(classify_anyhow)
@@ -114,14 +125,20 @@ impl Command for CreateMessage {
 
 inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
 
-async fn require_platform_chat_owner(
+fn require_platform_chat_owner(
     ctx: &Ctx,
-    session: &crate::records::Session,
+    loaded: &crate::domains::sessions::service::SessionForSend,
 ) -> Result<(), CommandError> {
-    if !crate::domains::sessions::platform_chat_owner_matches_session(&ctx.db, &ctx.caller, session)
-        .await
-        .map_err(classify_anyhow)?
-    {
+    // The agent row comes from the session load, so this check costs no read.
+    let is_platform_chat = loaded
+        .agent
+        .as_ref()
+        .is_some_and(|agent| agent.is_built_in && agent.name == crate::platform_chat_agent::NAME);
+    if !crate::domains::sessions::platform_chat_owner_matches(
+        &ctx.caller,
+        &loaded.session,
+        is_platform_chat,
+    ) {
         return Err(CommandError::forbidden(
             "Only the Platform Chat session owner can create messages",
         ));
@@ -652,7 +669,7 @@ mod tests {
     async fn platform_chat_owner_fixture(
         caller_user_id: Uuid,
         owner_user_id: Uuid,
-    ) -> (Ctx, crate::records::Session) {
+    ) -> (Ctx, crate::domains::sessions::service::SessionForSend) {
         let db = Arc::new(StorageBackend::in_memory());
         let harness = db
             .create_harness(
@@ -727,7 +744,7 @@ mod tests {
         };
         let service = SessionService::new(db.clone());
         let session = service
-            .get(&caller, row.id.uuid(), None)
+            .get_for_send(&caller, row.id.uuid())
             .await
             .expect("get Platform Chat session")
             .expect("Platform Chat session exists");
@@ -739,7 +756,6 @@ mod tests {
         let (ctx, session) = platform_chat_owner_fixture(Uuid::new_v4(), Uuid::new_v4()).await;
 
         let err = require_platform_chat_owner(&ctx, &session)
-            .await
             .expect_err("another org member must not drive the owner's Platform Chat");
 
         assert_eq!(err.status().as_u16(), 403);
@@ -750,9 +766,7 @@ mod tests {
         let owner_user_id = Uuid::new_v4();
         let (ctx, session) = platform_chat_owner_fixture(owner_user_id, owner_user_id).await;
 
-        require_platform_chat_owner(&ctx, &session)
-            .await
-            .expect("owner may drive their Platform Chat");
+        require_platform_chat_owner(&ctx, &session).expect("owner may drive their Platform Chat");
     }
 
     async fn wait_for_runner_calls(runner: &RecordingRunner, expected_len: usize) {
@@ -787,6 +801,84 @@ mod tests {
                     .parse()
                     .expect("host public id")
             )]
+        );
+    }
+
+    #[tokio::test]
+    async fn interactive_send_stamps_the_sender_participant_on_input_message() {
+        let fixture = setup_routing_fixture().await;
+        let db = fixture.ctx.db.clone();
+        let user = db
+            .create_user(crate::storage::models::CreateUserRow {
+                email: "send-participant@example.com".to_string(),
+                name: "Send Participant".to_string(),
+                avatar_url: None,
+                external_id: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: Some("test".to_string()),
+                auth_provider_id: None,
+            })
+            .await
+            .expect("create user");
+        db.ensure_membership(user.id, DEFAULT_ORG_ID, "member")
+            .await
+            .expect("add membership");
+        let caller = Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: everruns_core::organization::org_public_id_from_internal(DEFAULT_ORG_ID),
+            user_id: Some(user.id),
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
+        };
+        let runner: Arc<dyn AgentRunner> = Arc::new(RecordingRunner::default());
+        let ctx = Ctx::minimal_for_test(caller, db.clone(), None)
+            .with_session_service(Arc::new(SessionService::new(db.clone())))
+            .with_message_service(Arc::new(crate::domains::messages::MessageService::new(
+                db.clone(),
+                runner,
+                false,
+                EventDelivery::in_memory(),
+            )));
+
+        create_message_command(fixture.session.id, None)
+            .execute(&ctx)
+            .await
+            .expect("create message");
+
+        let participant = db
+            .list_session_participants(DEFAULT_ORG_ID, fixture.session.id)
+            .await
+            .expect("list participants")
+            .into_iter()
+            .find(|row| {
+                row.kind == SessionParticipantKind::User.to_string()
+                    && row.id != fixture.user_participant.id
+                    && row.left_at.is_none()
+            })
+            .expect("sender joined as a participant");
+        let events = db
+            .list_events(
+                fixture.session.id,
+                None,
+                None,
+                &["input.message".to_string()],
+                &[],
+                None,
+                None,
+            )
+            .await
+            .expect("list events");
+        let metadata = events
+            .last()
+            .and_then(|event| event.metadata.clone())
+            .expect("input.message metadata");
+        assert_eq!(
+            metadata.get("participant_id").and_then(|v| v.as_str()),
+            Some(participant.id.to_string().as_str()),
+            "the send path supplies the participant it just upserted"
         );
     }
 

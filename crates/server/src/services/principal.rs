@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::storage::{
     StorageBackend,
-    models::{CreatePrincipalRow, PrincipalRow, UpdatePrincipalRow},
+    models::{CreatePrincipalRow, PrincipalRow, UpdatePrincipalRow, VirtualUserRow},
 };
 
 const MAX_PRINCIPAL_DEPTH: usize = 8;
@@ -113,11 +113,26 @@ impl PrincipalService {
         user_id: Uuid,
     ) -> Result<PrincipalRow> {
         let v = self.db.default_virtual_user(org_id, user_id).await?;
+        self.ensure_default_virtual_user_principal_for(org_id, user_id, &v)
+            .await
+    }
+
+    /// [`Self::ensure_default_virtual_user_principal`] for a caller that
+    /// already resolved `default_virtual_user(org_id, user_id)` in this request.
+    pub async fn ensure_default_virtual_user_principal_for(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        v: &VirtualUserRow,
+    ) -> Result<PrincipalRow> {
         if v.status != "active" {
             return Err(anyhow!("Runtime account is not active"));
         }
+        if v.org_id != org_id {
+            return Err(anyhow!("Runtime account belongs to another organization"));
+        }
         let parent = self.ensure_user_principal(org_id, user_id).await?;
-        self.ensure_virtual_user_principal(org_id, v.id, parent.id)
+        self.ensure_virtual_user_principal_under(org_id, v, &parent)
             .await
     }
 
@@ -176,12 +191,23 @@ impl PrincipalService {
             .get_principal(org_id, parent_principal_id)
             .await?
             .ok_or_else(|| anyhow!("Parent principal not found"))?;
-        let resolved_user_id = self.resolve_user_from_lineage(org_id, &parent).await?;
         let identity = self
             .db
             .get_virtual_user(org_id, virtual_user_id)
             .await?
             .ok_or_else(|| anyhow!("Agent identity not found"))?;
+        self.ensure_virtual_user_principal_under(org_id, &identity, &parent)
+            .await
+    }
+
+    async fn ensure_virtual_user_principal_under(
+        &self,
+        org_id: i64,
+        identity: &VirtualUserRow,
+        parent: &PrincipalRow,
+    ) -> Result<PrincipalRow> {
+        let virtual_user_id = identity.id;
+        let resolved_user_id = self.resolve_user_from_lineage(org_id, parent).await?;
 
         let metadata = json!({
             "name": identity.name,
@@ -197,6 +223,10 @@ impl PrincipalService {
             .get_principal_by_subject(org_id, "virtual_user", virtual_user_id.uuid())
             .await?
         {
+            // Sending a message runs this every time; write only on change.
+            if existing.metadata == metadata && existing.status == identity.status {
+                return Ok(existing);
+            }
             return self
                 .db
                 .update_principal(
