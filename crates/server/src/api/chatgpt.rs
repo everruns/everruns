@@ -16,27 +16,46 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
+/// Personal ChatGPT connection state, without access or refresh credentials.
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct ConnectionStatus {
+    /// Connection state: disconnected, connecting, connected, scope_required, or error.
+    #[schema(example = "disconnected")]
     pub status: String,
+    /// Verified account email, present after a successful sign-in.
+    #[schema(example = "user@example.com")]
     pub email: Option<String>,
+    /// Installation identifier to pass unchanged to the local login helper.
+    #[schema(example = "urn:uuid:00000000-0000-0000-0000-000000000001")]
     pub host_id: String,
+    /// Safe connection error or reconnect guidance, when applicable.
+    #[schema(example = "ChatGPT sign-in did not complete. Retry sign-in.")]
     pub error: Option<String>,
     /// Non-secret host registration, containing the issuing client and verified subject.
-    #[schema(value_type = Option<Object>)]
+    #[schema(value_type = Option<Object>, example = json!({"client_id":"app_example","subject":"example-subject","email":"user@example.com"}))]
     pub registration: Option<ChatGptRegistration>,
+    /// Everruns user who owns and may manage this personal connection.
+    #[schema(example = "00000000-0000-0000-0000-000000000001")]
     pub owner_user_id: Option<String>,
 }
+/// Browser destination for a newly created, bounded loopback login attempt.
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct LoginResponse {
+    /// Open this returned URL unchanged; it contains the attempt's PKCE, state, and nonce.
+    #[schema(example = "https://auth.openai.com/oauth/authorize?client_id=app_example")]
     pub authorize_url: String,
 }
+/// Private credential handoff emitted by the local login helper for this installation.
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct ImportedConnection {
     /// Credential document emitted by the local helper; accepted only after ID-token validation.
-    #[schema(value_type = Object)]
+    #[schema(value_type = Object, example = json!({"access_token":"LOCAL_HELPER_ACCESS_TOKEN","refresh_token":"LOCAL_HELPER_REFRESH_TOKEN","client_id":"app_example","open_source":{"id_token":"LOCAL_HELPER_ID_TOKEN","scopes":[oauth::PLAN_SCOPE],"subject":"example-subject"}}))]
     pub auth: CodexAuth,
+    /// Nonce from the same helper document, bound to its signed ID token.
+    #[schema(example = "nonce-from-the-local-helper")]
     pub nonce: String,
+    /// Installation identifier from the setup document downloaded for this provider.
+    #[schema(example = "urn:uuid:00000000-0000-0000-0000-000000000001")]
     pub host_id: String,
 }
 static ATTEMPTS: OnceLock<
@@ -63,6 +82,10 @@ async fn row(
         .ok_or_else(|| ErrorResponse::not_found("Provider"))?;
     Ok(row)
 }
+/// Read the owner's personal ChatGPT connection.
+///
+/// Returns connection state and non-secret installation metadata. Another user's
+/// provider is hidden even from organization administrators.
 #[utoipa::path(
     get,
     path = "/v1/providers/{provider_id}/chatgpt",
@@ -94,6 +117,10 @@ pub async fn status(
             .and_then(|v| serde_json::from_value(v).ok()),
     }))
 }
+/// Start a personal ChatGPT sign-in.
+///
+/// Creates a bounded loopback callback listener and returns the authorization URL.
+/// Requires deployment enablement, organization opt-in, encryption, and exact ownership.
 #[utoipa::path(
     post,
     path = "/v1/providers/{provider_id}/chatgpt/login",
@@ -314,6 +341,10 @@ async fn save_connection(
         .await?;
     Ok(())
 }
+/// Disconnect the owner's ChatGPT account.
+///
+/// Cancels pending sign-in and revokes a stored grant before clearing credentials.
+/// A failed revocation retains credentials so the owner can retry.
 #[utoipa::path(
     delete,
     path = "/v1/providers/{provider_id}/chatgpt",
@@ -343,6 +374,10 @@ pub async fn disconnect(
     chatgpt::disconnect(&store).await.map_err(|_|ErrorResponse::new("Revocation was not confirmed. The connection was retained. Retry or disconnect the app in ChatGPT settings.").into_response(StatusCode::BAD_GATEWAY))?;
     Ok(Json(json!({"disconnected":true})))
 }
+/// Import a private login-helper document.
+///
+/// Verifies installation, signed identity, nonce, issuing client, and account binding
+/// before persisting credentials. Only the provider's owner may import the document.
 #[utoipa::path(
     post,
     path = "/v1/providers/{provider_id}/chatgpt/import",
