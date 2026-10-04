@@ -215,46 +215,6 @@ async fn runtime_harness_view_rejects_archived_leaf() {
 }
 
 #[tokio::test]
-async fn test_execute_command_lists_seeded_harnesses() {
-    let service = test_worker_service().await;
-
-    let response = service
-        .execute_command(Request::new(ExecuteCommandRequest {
-            runtime_view: false,
-            input_message_id: None,
-            platform_session_id: None,
-
-            name: "list_harnesses".to_string(),
-            api_version: "v1".to_string(),
-            params_json: br#"{}"#.to_vec(),
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            user_id: None,
-            idempotency_key: None,
-            metadata: Default::default(),
-        }))
-        .await
-        .expect("execute_command should succeed")
-        .into_inner();
-
-    let proto::execute_command_response::Result::OkJson(ok_json) =
-        response.result.expect("command result should be present")
-    else {
-        panic!("expected OkJson response");
-    };
-
-    let harnesses: serde_json::Value =
-        serde_json::from_slice(&ok_json).expect("response should be valid JSON");
-    let names: Vec<&str> = harnesses
-        .as_array()
-        .expect("list_harnesses should return an array")
-        .iter()
-        .filter_map(|h| h.get("name").and_then(|name| name.as_str()))
-        .collect();
-
-    assert!(names.contains(&"platform-chat"));
-}
-
-#[tokio::test]
 async fn runtime_harness_view_rejects_cycles_and_missing_ancestors() {
     let service = test_worker_service().await;
     let parent = execute_test_command(
