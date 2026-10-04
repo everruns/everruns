@@ -64,7 +64,10 @@ describe("SidebarChatThreads", () => {
       "href",
       "/chats/history",
     );
-    expect(screen.getByRole("link", { name: /New chat/ })).toHaveAttribute("href", "/chats/new");
+    expect(screen.getByRole("link", { name: "New side chat" })).toHaveAttribute(
+      "href",
+      "/chats/new",
+    );
   });
 
   it("keeps the way out to all chats even with no threads", () => {

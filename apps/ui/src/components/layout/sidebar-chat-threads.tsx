@@ -85,7 +85,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
         className={cn(rowClass, "border-l-transparent text-muted-foreground hover:text-foreground")}
       >
         <Plus className="size-3.5 shrink-0" />
-        New chat
+        New side chat
       </Link>
 
       {/* Always offered, even with nothing above it: the all-chats page is the

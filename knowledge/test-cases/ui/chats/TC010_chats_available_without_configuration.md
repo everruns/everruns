@@ -22,7 +22,7 @@ Verify that Chat works in a fresh organization without feature configuration or 
 ## Steps
 
 1. Sign in to a fresh organization and open `/chats`.
-2. Confirm **Chat**, **New chat**, and **All chats** are available in the sidebar.
+2. Confirm **Chat**, **New side chat**, and **All chats** are available in the sidebar.
 3. Open `/chats/new`, send a message with an available model, and open the resulting side conversation.
 4. Open `/chats/history` and confirm that conversation appears.
 

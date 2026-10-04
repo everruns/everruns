@@ -39,22 +39,35 @@ function NavLink({
     <Link
       href={item.href}
       prefetch={false}
+      aria-current={isActive ? "page" : undefined}
       onMouseEnter={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
       onFocus={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
       className={cn(
         // The active item tracks the route commit. A color transition keeps
         // painting after the page is already on screen, which reads as the
         // sidebar redrawing once the page has loaded.
-        "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] font-medium leading-5",
-        isActive
-          ? "border-l-primary bg-primary/5 font-semibold text-foreground"
-          : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card/80 hover:text-foreground",
+        "flex items-center gap-2.5 text-[13px] font-medium leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        item.prominent
+          ? cn(
+              // Chat is an always-available destination, not a label for its side conversations.
+              "mx-2.5 mb-1 border px-2.5 py-2 font-semibold text-foreground",
+              isActive
+                ? "border-primary/40 bg-primary/5"
+                : "border-border bg-card hover:border-primary/40 hover:bg-primary/5",
+            )
+          : cn(
+              "border-l-2 px-3 py-1.5",
+              isActive
+                ? "border-l-primary bg-primary/5 font-semibold text-foreground"
+                : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card/80 hover:text-foreground",
+            ),
       )}
     >
       <item.icon className="icon-sharp h-4 w-4 shrink-0 stroke-[2.15]" />
       {item.name}
       {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
       {item.experimental && !item.warningTooltip && <ExperimentalBadge />}
+      {item.prominent && <ChevronRight className="ml-auto h-4 w-4 shrink-0" aria-hidden="true" />}
     </Link>
   );
 }
