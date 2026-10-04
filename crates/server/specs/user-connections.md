@@ -228,12 +228,19 @@ Start GitHub App installation flow. Redirects to `https://github.com/apps/{slug}
 
 #### GET /v1/user/connections/github/callback
 
-GitHub App installation callback. Receives `installation_id`, verifies it, stores it, redirects to UI.
+GitHub App installation callback. Receives `installation_id`, proves the GitHub user completing setup can access it, stores it, redirects to UI.
 
 **Query params (from GitHub):**
-- `installation_id`: The numeric installation ID
+- `installation_id`: The numeric installation ID (absent on the return from the authorization hop)
 - `setup_action`: `install` or `update`
-- `state`: CSRF token (if passed during redirect)
+- `state`: setup state issued before the redirect (required, single use)
+- `code`: GitHub user-authorization code
+
+**Ownership proof:** `installation_id` is a guessable integer, so it is only a claim. The callback
+stores it only after exchanging `code` for a user-to-server token and finding the installation in
+that GitHub user's `GET /user/installations`. When the install redirect carries no `code`, the
+callback binds the claimed installation to a fresh single-use state and redirects through
+`/login/oauth/authorize`; GitHub returns already-authorized users without a prompt.
 
 ### Environment Variables
 
@@ -243,6 +250,8 @@ GitHub App installation callback. Receives `installation_id`, verifies it, store
 | `GITHUB_APP_PRIVATE_KEY` | PEM-encoded RSA private key for JWT signing |
 | `GITHUB_APP_SLUG` | App slug for installation URL (default: `everruns`) |
 | `GITHUB_APP_SETUP_URL` | Post-install callback URL (default: `{AUTH_BASE_URL}/v1/user/connections/github/callback`) |
+| `GITHUB_APP_CLIENT_ID` | The App's OAuth client ID. Required: setup fails closed without it |
+| `GITHUB_APP_CLIENT_SECRET` | The App's OAuth client secret. Required: setup fails closed without it |
 
 ### GitHub App Setup
 
@@ -255,19 +264,21 @@ Create a GitHub App:
    |-------|-------|
    | **GitHub App name** | `Everruns` (or `Everruns (Dev)` for local) |
    | **Homepage URL** | `https://everruns.com` |
-   | **Callback URL** | _(leave blank, not used, we use installation flow, not OAuth)_ |
+   | **Callback URL** | Same as the Setup URL (used by the user-authorization step) |
+   | **Request user authorization (OAuth) during installation** | Optional; checked saves one redirect |
    | **Setup URL** (Post installation) | `https://<domain>/api/v1/user/connections/github/callback` |
    | **Redirect on update** | Checked |
    | **Webhook → Active** | Unchecked |
    | **Repository permissions** | `Contents: Read & write` (or `Read-only` for clone-only) |
    | **Where can this be installed?** | `Any account` |
 
-   > **Setup URL vs Callback URL:** The Callback URL is for OAuth user-authorization flow, we don't use it. The Setup URL is where GitHub redirects after a user **installs** the app on their repos. The server receives the `installation_id` there, verifies it, stores it, then redirects to the UI.
+   > **Setup URL vs Callback URL:** The Setup URL is where GitHub redirects after a user **installs** the app. The Callback URL is where GitHub returns after user authorization; the server uses that user-to-server token only to prove the user can access the installation, then discards it. Both point at the same endpoint.
 
 3. After creation:
    - Copy **App ID** → `GITHUB_APP_ID`
    - Note the **slug** from the URL → `GITHUB_APP_SLUG`
    - Generate a **private key** (.pem file) → `GITHUB_APP_PRIVATE_KEY`
+   - Copy **Client ID** → `GITHUB_APP_CLIENT_ID`, generate a **client secret** → `GITHUB_APP_CLIENT_SECRET`
    - `GITHUB_APP_PRIVATE_KEY` supports literal `\n` in env vars (auto-converted at startup)
 
 #### Dev App: Everruns (Dev)
@@ -278,7 +289,7 @@ Pre-configured for local development: <https://github.com/settings/apps/everruns
 |-------|-------|
 | **GitHub App name** | `Everruns (Dev)` |
 | **Homepage URL** | `http://localhost:9300` |
-| **Callback URL** | _(leave blank)_ |
+| **Callback URL** | `http://localhost:9300/api/v1/user/connections/github/callback` |
 | **Setup URL** (Post installation) | `http://localhost:9300/api/v1/user/connections/github/callback` |
 | **Redirect on update** | Checked |
 | **Webhook → Active** | Unchecked |
@@ -286,6 +297,7 @@ Pre-configured for local development: <https://github.com/settings/apps/everruns
 ### Security
 
 - No long-lived tokens stored for GitHub (only `installation_id`, which is not a secret)
+- An `installation_id` is linked only after a GitHub user-to-server token proves the user completing setup can access it (TM-GITHUB-005)
 - Installation tokens are minted on demand with 1h TTL
 - App private key stored as server-side env var, never in database
 - Token never returned in API responses

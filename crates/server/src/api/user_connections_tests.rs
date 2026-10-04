@@ -646,6 +646,7 @@ fn github_setup_validates_the_canonical_pending_state() {
         virtual_user_id: Some(VirtualUserId::new().to_string()),
         popup: false,
         code_verifier: String::new(),
+        github_installation_id: None,
     };
     let jar = CookieJar::new().add(Cookie::new(
         oauth_state_cookie_name("github"),
@@ -815,4 +816,423 @@ async fn oauth_egress_blocks_localhost_hostname_before_send() {
     .await;
     let (status, _) = result.expect_err("localhost must be blocked");
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+// EVE-1193: a valid Everruns setup state must not let one user claim a GitHub
+// App installation that their GitHub account cannot access.
+mod github_installation_ownership {
+    use super::*;
+    use crate::auth::config::GitHubConnectionConfig;
+    use crate::github_apps::GitHubEndpoints;
+    use wiremock::matchers::{body_partial_json, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const VICTIM_INSTALLATION: i64 = 4242;
+    const ATTACKER_INSTALLATION: i64 = 1717;
+
+    async fn github_state(github: &MockServer) -> AppState {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = Arc::new(EncryptionService::new(TEST_KEY, &[]).unwrap());
+        let auth_config = AuthConfig {
+            github_connection: Some(GitHubConnectionConfig {
+                app_id: "99".into(),
+                private_key: std::fs::read_to_string(format!(
+                    "{}/tests/fixtures/test-server-key.pem",
+                    env!("CARGO_MANIFEST_DIR")
+                ))
+                .unwrap(),
+                app_slug: "everruns-test".into(),
+                setup_url: "https://everruns.example/api/v1/user/connections/github/callback"
+                    .into(),
+                client_id: Some("Iv1.test".into()),
+                client_secret: Some("client-secret".into()),
+                endpoints: GitHubEndpoints {
+                    api_url: github.uri(),
+                    web_url: github.uri(),
+                },
+            }),
+            ..AuthConfig::default()
+        };
+        let auth = AuthState::builtin(auth_config.clone(), db.clone());
+        let mcp_service = Arc::new(McpServerService::with_egress_service(
+            db.clone(),
+            Some(encryption.clone()),
+            Arc::new(FakeOAuthEgress),
+        ));
+        AppState::new(
+            db,
+            Some(encryption),
+            auth,
+            auth_config,
+            ConnectorRegistry::new(),
+            mcp_service,
+        )
+    }
+
+    /// GitHub as seen by the App JWT (both installations exist) and by each
+    /// GitHub user's token (each user can only access their own installation).
+    async fn mock_github(github: &MockServer) {
+        for id in [VICTIM_INSTALLATION, ATTACKER_INSTALLATION] {
+            Mock::given(method("GET"))
+                .and(path(format!("/app/installations/{id}")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "id": id,
+                    "account": { "id": id * 10, "login": format!("account-{id}") },
+                    "permissions": { "contents": "read" }
+                })))
+                .mount(github)
+                .await;
+        }
+        for (code, token, installation) in [
+            ("attacker-code", "attacker-token", ATTACKER_INSTALLATION),
+            ("owner-code", "owner-token", VICTIM_INSTALLATION),
+        ] {
+            Mock::given(method("POST"))
+                .and(path("/login/oauth/access_token"))
+                .and(body_partial_json(serde_json::json!({
+                    "client_id": "Iv1.test",
+                    "client_secret": "client-secret",
+                    "code": code
+                })))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "access_token": token,
+                    "token_type": "bearer"
+                })))
+                .mount(github)
+                .await;
+            Mock::given(method("GET"))
+                .and(path("/user/installations"))
+                .and(header("authorization", format!("Bearer {token}").as_str()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "total_count": 1,
+                    "installations": [{ "id": installation }]
+                })))
+                .mount(github)
+                .await;
+        }
+        Mock::given(method("POST"))
+            .and(path("/login/oauth/access_token"))
+            .and(body_partial_json(
+                serde_json::json!({ "code": "expired-code" }),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "error": "bad_verification_code"
+            })))
+            .mount(github)
+            .await;
+    }
+
+    async fn member(state: &AppState) -> ResolvedOrg {
+        let user_id = Uuid::now_v7();
+        state
+            .db
+            .create_user_with_id(
+                user_id,
+                crate::storage::models::CreateUserRow {
+                    email: format!("{user_id}@example.com"),
+                    name: "Member".into(),
+                    avatar_url: None,
+                    roles: vec![],
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        state
+            .db
+            .add_organization_member(everruns_core::DEFAULT_ORG_ID, user_id, "owner")
+            .await
+            .unwrap();
+        test_org(user_id)
+    }
+
+    async fn target_of(state: &AppState, org: &ResolvedOrg) -> Uuid {
+        state
+            .db
+            .default_virtual_user(org.org_id, org.user_id.unwrap())
+            .await
+            .unwrap()
+            .id
+            .uuid()
+    }
+
+    /// Start setup as `org`'s user; returns the state cookie jar and value.
+    async fn begin(state: &AppState, org: &ResolvedOrg) -> (CookieJar, String) {
+        let (jar, _) = github_authorize_inner(
+            state.clone(),
+            OAuthAuthority {
+                org_id: org.org_id,
+                caller: None,
+                target_id: target_of(state, org).await,
+                management_user_id: org.user_id,
+                runtime_credential: None,
+            },
+            CookieJar::new(),
+            None,
+        )
+        .await
+        .unwrap();
+        let setup_state = pending_state(&jar, "github").state;
+        (jar, setup_state)
+    }
+
+    async fn callback(
+        state: &AppState,
+        org: &ResolvedOrg,
+        jar: CookieJar,
+        setup_state: &str,
+        installation_id: Option<i64>,
+        code: Option<&str>,
+    ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+        github_callback(
+            State(state.clone()),
+            Ok(org.clone()),
+            jar,
+            Query(GitHubInstallationCallbackQuery {
+                installation_id,
+                setup_action: installation_id.map(|_| "install".to_string()),
+                state: Some(setup_state.to_string()),
+                code: code.map(str::to_string),
+            }),
+        )
+        .await
+    }
+
+    fn location(redirect: Redirect) -> String {
+        redirect
+            .into_response()
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
+    async fn linked_owner(state: &AppState, installation_id: i64) -> Option<Uuid> {
+        state
+            .db
+            .get_user_id_by_installation_id("github", installation_id)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn valid_state_cannot_claim_an_installation_the_github_user_cannot_access() {
+        let github = MockServer::start().await;
+        mock_github(&github).await;
+        let state = github_state(&github).await;
+        let attacker = member(&state).await;
+
+        // GitHub authorized the attacker during installation, but the
+        // attacker's GitHub account cannot access the victim installation.
+        let (jar, setup_state) = begin(&state, &attacker).await;
+        let error = callback(
+            &state,
+            &attacker,
+            jar,
+            &setup_state,
+            Some(VICTIM_INSTALLATION),
+            Some("attacker-code"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(linked_owner(&state, VICTIM_INSTALLATION).await, None);
+
+        // Without a code the callback detours through user authorization;
+        // the forged installation still fails the ownership proof.
+        let (jar, setup_state) = begin(&state, &attacker).await;
+        let (jar, redirect) = callback(
+            &state,
+            &attacker,
+            jar,
+            &setup_state,
+            Some(VICTIM_INSTALLATION),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(location(redirect).starts_with(&format!(
+            "{}/login/oauth/authorize?client_id=Iv1.test&state=",
+            github.uri()
+        )));
+        assert_eq!(linked_owner(&state, VICTIM_INSTALLATION).await, None);
+        let authorize_state = pending_state(&jar, "github").state;
+        assert_ne!(authorize_state, setup_state);
+        let error = callback(
+            &state,
+            &attacker,
+            jar,
+            &authorize_state,
+            None,
+            Some("attacker-code"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(linked_owner(&state, VICTIM_INSTALLATION).await, None);
+    }
+
+    #[tokio::test]
+    async fn installation_owner_connects_through_either_flow() {
+        let github = MockServer::start().await;
+        mock_github(&github).await;
+        let state = github_state(&github).await;
+        let owner = member(&state).await;
+        let owner_target = target_of(&state, &owner).await;
+
+        // Authorization hop: install callback first, then the user code.
+        let (jar, setup_state) = begin(&state, &owner).await;
+        let (jar, _) = callback(
+            &state,
+            &owner,
+            jar,
+            &setup_state,
+            Some(VICTIM_INSTALLATION),
+            None,
+        )
+        .await
+        .unwrap();
+        let authorize_state = pending_state(&jar, "github").state;
+        let (_, redirect) = callback(
+            &state,
+            &owner,
+            jar,
+            &authorize_state,
+            None,
+            Some("owner-code"),
+        )
+        .await
+        .unwrap();
+        assert!(location(redirect).ends_with("/settings/connections?connected=github"));
+        assert_eq!(
+            linked_owner(&state, VICTIM_INSTALLATION).await,
+            Some(owner_target)
+        );
+
+        // "Request user authorization during installation": one redirect
+        // carries both the installation and the code. Reconnecting is allowed.
+        let (jar, setup_state) = begin(&state, &owner).await;
+        let _ = callback(
+            &state,
+            &owner,
+            jar,
+            &setup_state,
+            Some(VICTIM_INSTALLATION),
+            Some("owner-code"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            linked_owner(&state, VICTIM_INSTALLATION).await,
+            Some(owner_target)
+        );
+    }
+
+    #[tokio::test]
+    async fn authorized_state_is_bound_to_its_installation_and_single_use() {
+        let github = MockServer::start().await;
+        mock_github(&github).await;
+        let state = github_state(&github).await;
+        let owner = member(&state).await;
+
+        let (jar, setup_state) = begin(&state, &owner).await;
+        let (jar, _) = callback(
+            &state,
+            &owner,
+            jar,
+            &setup_state,
+            Some(ATTACKER_INSTALLATION),
+            None,
+        )
+        .await
+        .unwrap();
+        let authorize_state = pending_state(&jar, "github").state;
+        // Swapping the installation on the way back is rejected...
+        let error = callback(
+            &state,
+            &owner,
+            jar.clone(),
+            &authorize_state,
+            Some(VICTIM_INSTALLATION),
+            Some("owner-code"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        // ...and the state cannot be replayed afterwards.
+        let error = callback(
+            &state,
+            &owner,
+            jar,
+            &authorize_state,
+            None,
+            Some("owner-code"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(linked_owner(&state, VICTIM_INSTALLATION).await, None);
+
+        // A rejected or expired code proves nothing.
+        let (jar, setup_state) = begin(&state, &owner).await;
+        let error = callback(
+            &state,
+            &owner,
+            jar,
+            &setup_state,
+            Some(VICTIM_INSTALLATION),
+            Some("expired-code"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(linked_owner(&state, VICTIM_INSTALLATION).await, None);
+    }
+
+    #[tokio::test]
+    async fn linked_installation_stays_with_its_first_everruns_owner() {
+        let github = MockServer::start().await;
+        mock_github(&github).await;
+        let state = github_state(&github).await;
+        let owner = member(&state).await;
+        let owner_target = target_of(&state, &owner).await;
+        // A second Everruns user whose GitHub account can also access the
+        // installation (e.g. a fellow org admin).
+        let colleague = member(&state).await;
+
+        let (jar, setup_state) = begin(&state, &owner).await;
+        let _ = callback(
+            &state,
+            &owner,
+            jar,
+            &setup_state,
+            Some(VICTIM_INSTALLATION),
+            Some("owner-code"),
+        )
+        .await
+        .unwrap();
+
+        let (jar, setup_state) = begin(&state, &colleague).await;
+        let error = callback(
+            &state,
+            &colleague,
+            jar,
+            &setup_state,
+            Some(VICTIM_INSTALLATION),
+            Some("owner-code"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.0, StatusCode::CONFLICT);
+        assert_eq!(
+            linked_owner(&state, VICTIM_INSTALLATION).await,
+            Some(owner_target)
+        );
+    }
 }

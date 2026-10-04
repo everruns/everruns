@@ -234,10 +234,15 @@ pub struct ApiKeyConnectionRequest {
 /// GitHub App installation callback query params
 #[derive(Debug, Deserialize)]
 pub struct GitHubInstallationCallbackQuery {
-    pub installation_id: i64,
+    /// Absent on the return from the user-authorization hop, and when an org
+    /// owner still has to approve a requested installation.
+    pub installation_id: Option<i64>,
     #[allow(dead_code)]
     pub setup_action: Option<String>,
     pub state: Option<String>,
+    /// User-authorization code, present when GitHub authorized the user
+    /// during installation or after the explicit authorization hop.
+    pub code: Option<String>,
 }
 
 /// Browser setup options. The canonical target is selected by the authorized resource path.
@@ -289,6 +294,11 @@ struct PendingOAuthState {
     virtual_user_id: Option<String>,
     popup: bool,
     code_verifier: String,
+    /// GitHub App setup only: the installation GitHub reported before the
+    /// user-authorization hop. A claim until a user-to-server token proves
+    /// access to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    github_installation_id: Option<i64>,
 }
 
 // ============================================================================
@@ -905,6 +915,7 @@ async fn authorize_connection_inner(
         agent_id,
         popup,
         code_verifier,
+        github_installation_id: None,
     };
     register_pending_setup(&state, &pending).await?;
     let cookie = Cookie::build((
@@ -1272,8 +1283,7 @@ async fn github_authorize_inner(
     let service = GitHubAppService::new(config);
 
     // Generate state for CSRF protection
-    let bytes: [u8; 16] = rand::rng().random();
-    let install_state = hex::encode(bytes);
+    let install_state = new_setup_state();
     let pending = PendingOAuthState {
         state: install_state.clone(),
         org_id: authority.org_id,
@@ -1290,12 +1300,27 @@ async fn github_authorize_inner(
         virtual_user_id: Some(VirtualUserId::from_uuid(authority.target_id).to_string()),
         popup: false,
         code_verifier: String::new(),
+        github_installation_id: None,
     };
     register_pending_setup(&state, &pending).await?;
-    let state_cookie = Cookie::build((
+    let jar = jar.add(github_setup_cookie(&pending)?);
+
+    let auth_url = service.installation_url(&install_state);
+    Ok((jar, Redirect::to(&auth_url.url)))
+}
+
+fn new_setup_state() -> String {
+    let bytes: [u8; 16] = rand::rng().random();
+    hex::encode(bytes)
+}
+
+fn github_setup_cookie(
+    pending: &PendingOAuthState,
+) -> Result<Cookie<'static>, (StatusCode, String)> {
+    Ok(Cookie::build((
         oauth_state_cookie_name("github"),
         URL_SAFE_NO_PAD.encode(
-            serde_json::to_vec(&pending)
+            serde_json::to_vec(pending)
                 .map_err(|e| sanitized_internal_error("GitHub setup", &e))?,
         ),
     ))
@@ -1304,18 +1329,14 @@ async fn github_authorize_inner(
     .secure(true)
     .same_site(SameSite::Lax)
     .max_age(time::Duration::minutes(10))
-    .build();
-    let jar = jar.add(state_cookie);
-
-    let auth_url = service.installation_url(&install_state);
-    Ok((jar, Redirect::to(&auth_url.url)))
+    .build())
 }
 
 /// GET /v1/user/connections/github/callback — GitHub App installation callback
 ///
 /// After user installs the GitHub App on their repos, GitHub redirects here
-/// with the installation_id. We verify the installation and store the ID.
-/// Validates CSRF state from cookie before proceeding.
+/// with the installation_id. Validates the single-use setup state, proves the
+/// GitHub user completing setup can access the installation, and stores it.
 pub async fn github_callback(
     State(state): State<AppState>,
     org: Result<ResolvedOrg, crate::auth::middleware::AuthError>,
@@ -1339,9 +1360,75 @@ pub async fn github_callback(
 
     let service = GitHubAppService::new(config);
 
+    // The authorization hop's state carries the installation GitHub reported
+    // first; the return leg may not swap it for another.
+    let installation_id = match (pending.github_installation_id, query.installation_id) {
+        (Some(bound), Some(claimed)) if bound != claimed => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "GitHub installation changed during setup; restart setup".to_string(),
+            ));
+        }
+        (Some(id), _) | (None, Some(id)) => id,
+        (None, None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "GitHub did not report an installation. If an organization owner must approve \
+                 it, connect again after approval"
+                    .to_string(),
+            ));
+        }
+    };
+
+    // THREAT[TM-GITHUB-005]: a valid setup state proves who started setup, not
+    // that their GitHub account can access `installation_id`. Without a user
+    // authorization code yet, bind the claim to a fresh single-use state and
+    // send the browser through GitHub user authorization.
+    let Some(code) = query.code.as_deref() else {
+        if pending.github_installation_id.is_some() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "GitHub user authorization did not complete; restart setup".to_string(),
+            ));
+        }
+        let authorize = PendingOAuthState {
+            state: new_setup_state(),
+            github_installation_id: Some(installation_id),
+            ..pending
+        };
+        let url = service
+            .user_authorization_url(&authorize.state)
+            .map_err(|e| sanitized_internal_error("GitHub setup", &e))?;
+        register_pending_setup(&state, &authorize).await?;
+        let jar = jar.add(github_setup_cookie(&authorize)?);
+        return Ok((jar, Redirect::to(&url)));
+    };
+
+    let can_access = service
+        .user_can_access_installation(code, installation_id)
+        .await
+        .map_err(|e| {
+            tracing::warn!("GitHub user authorization failed: {}", e);
+            (
+                StatusCode::BAD_REQUEST,
+                "GitHub user authorization failed; restart setup".to_string(),
+            )
+        })?;
+    if !can_access {
+        tracing::warn!(
+            user_id = %auth.target_id,
+            installation_id,
+            "GitHub user cannot access the claimed installation"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Your GitHub account cannot access this GitHub App installation".to_string(),
+        ));
+    }
+
     // Verify the installation exists and get account details
     let result = service
-        .verify_installation(query.installation_id)
+        .verify_installation(installation_id)
         .await
         .map_err(|e| {
             tracing::error!("GitHub App installation verification failed: {}", e);

@@ -324,7 +324,14 @@ pub struct GitHubAppService {
     app_id: String,
     private_key: String,
     app_slug: String,
+    setup_url: String,
+    client_id: Option<String>,
+    client_secret: Option<String>,
+    endpoints: crate::github_apps::GitHubEndpoints,
 }
+
+/// Upper bound on `/user/installations` pages scanned (100 per page).
+const MAX_USER_INSTALLATION_PAGES: u32 = 10;
 
 impl GitHubAppService {
     pub fn new(config: &GitHubConnectionConfig) -> Self {
@@ -332,17 +339,36 @@ impl GitHubAppService {
             app_id: config.app_id.clone(),
             private_key: config.private_key.clone(),
             app_slug: config.app_slug.clone(),
+            setup_url: config.setup_url.clone(),
+            client_id: config.client_id.clone(),
+            client_secret: config.client_secret.clone(),
+            endpoints: config.endpoints.clone(),
         }
+    }
+
+    fn api_url(&self, path: &str) -> String {
+        format!("{}{path}", self.endpoints.api_url.trim_end_matches('/'))
+    }
+
+    fn web_url(&self, path: &str) -> String {
+        format!("{}{path}", self.endpoints.web_url.trim_end_matches('/'))
+    }
+
+    fn http_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .unwrap_or_default()
     }
 
     /// Generate URL for GitHub App installation.
     /// User clicks this to install the app on their repos.
     pub fn installation_url(&self, state: &str) -> OAuthAuthorizationUrl {
-        let url = format!(
-            "https://github.com/apps/{}/installations/new?state={}",
+        let url = self.web_url(&format!(
+            "/apps/{}/installations/new?state={}",
             self.app_slug,
             urlencoding::encode(state)
-        );
+        ));
         OAuthAuthorizationUrl {
             url,
             state: state.to_string(),
@@ -379,9 +405,7 @@ impl GitHubAppService {
         let client = reqwest::Client::new();
 
         let response = client
-            .get(format!(
-                "https://api.github.com/app/installations/{installation_id}"
-            ))
+            .get(self.api_url(&format!("/app/installations/{installation_id}")))
             .header("Authorization", format!("Bearer {jwt}"))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "Everruns")
@@ -430,9 +454,9 @@ impl GitHubAppService {
         let client = reqwest::Client::new();
 
         let response = client
-            .post(format!(
-                "https://api.github.com/app/installations/{installation_id}/access_tokens"
-            ))
+            .post(self.api_url(&format!(
+                "/app/installations/{installation_id}/access_tokens"
+            )))
             .header("Authorization", format!("Bearer {jwt}"))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "Everruns")
@@ -456,6 +480,123 @@ impl GitHubAppService {
 
         Ok(token_response.token)
     }
+
+    fn client_credentials(&self) -> Result<(&str, &str)> {
+        match (self.client_id.as_deref(), self.client_secret.as_deref()) {
+            (Some(id), Some(secret)) => Ok((id, secret)),
+            _ => anyhow::bail!(
+                "GitHub App user authorization requires GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET"
+            ),
+        }
+    }
+
+    /// URL that asks the signed-in GitHub user to authorize this App, so the
+    /// callback receives a `code` bound to that GitHub user. Already-authorized
+    /// users are sent straight back without a prompt.
+    pub fn user_authorization_url(&self, state: &str) -> Result<String> {
+        let (client_id, _) = self.client_credentials()?;
+        Ok(self.web_url(&format!(
+            "/login/oauth/authorize?client_id={}&state={}&redirect_uri={}",
+            urlencoding::encode(client_id),
+            urlencoding::encode(state),
+            urlencoding::encode(&self.setup_url)
+        )))
+    }
+
+    /// Prove that the GitHub user who produced `code` can access
+    /// `installation_id`.
+    ///
+    /// THREAT[TM-GITHUB-005]: installation IDs are guessable integers and the
+    /// install callback is a browser redirect, so `installation_id` in the
+    /// query is only a claim. GitHub lists an installation under
+    /// `GET /user/installations` only for users who can access it, which makes
+    /// the user-to-server token the ownership proof.
+    pub async fn user_can_access_installation(
+        &self,
+        code: &str,
+        installation_id: i64,
+    ) -> Result<bool> {
+        let token = self.exchange_user_code(code).await?;
+        let client = Self::http_client();
+        for page in 1..=MAX_USER_INSTALLATION_PAGES {
+            let response = client
+                .get(self.api_url(&format!("/user/installations?per_page=100&page={page}")))
+                .bearer_auth(&token)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "Everruns")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .send()
+                .await
+                .context("Failed to list GitHub user installations")?;
+            if !response.status().is_success() {
+                anyhow::bail!(
+                    "GitHub API returned {} listing user installations",
+                    response.status()
+                );
+            }
+            let body: GitHubUserInstallations = response
+                .json()
+                .await
+                .context("Failed to parse user installations response")?;
+            if body.installations.iter().any(|i| i.id == installation_id) {
+                return Ok(true);
+            }
+            if body.installations.len() < 100 {
+                break;
+            }
+        }
+        Ok(false)
+    }
+
+    /// Exchange a user-authorization `code` for a user-to-server token.
+    async fn exchange_user_code(&self, code: &str) -> Result<String> {
+        let (client_id, client_secret) = self.client_credentials()?;
+        let response = Self::http_client()
+            .post(self.web_url("/login/oauth/access_token"))
+            .header("Accept", "application/json")
+            .header("User-Agent", "Everruns")
+            .json(&serde_json::json!({
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+            }))
+            .send()
+            .await
+            .context("Failed to exchange GitHub user authorization code")?;
+        if !response.status().is_success() {
+            anyhow::bail!(
+                "GitHub returned {} exchanging user authorization code",
+                response.status()
+            );
+        }
+        // GitHub reports a bad or expired code as 200 with an `error` field.
+        let body: GitHubUserTokenResponse = response
+            .json()
+            .await
+            .context("Failed to parse GitHub user token response")?;
+        body.access_token.ok_or_else(|| {
+            anyhow::anyhow!(
+                "GitHub rejected the user authorization code: {}",
+                body.error.unwrap_or_else(|| "no access token".into())
+            )
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubUserInstallations {
+    installations: Vec<GitHubUserInstallation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubUserInstallation {
+    id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubUserTokenResponse {
+    access_token: Option<String>,
+    error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -505,6 +646,31 @@ mod tests {
         assert_eq!(OAuthProvider::parse("github"), Some(OAuthProvider::GitHub));
         assert_eq!(OAuthProvider::parse("GITHUB"), Some(OAuthProvider::GitHub));
         assert_eq!(OAuthProvider::parse("invalid"), None);
+    }
+
+    #[test]
+    fn github_user_authorization_fails_closed_without_client_credentials() {
+        let mut config = GitHubConnectionConfig {
+            app_id: "1".into(),
+            private_key: String::new(),
+            app_slug: "everruns".into(),
+            setup_url: "https://everruns.example/api/v1/user/connections/github/callback".into(),
+            client_id: Some("Iv1.abc".into()),
+            client_secret: None,
+            endpoints: Default::default(),
+        };
+        assert!(
+            GitHubAppService::new(&config)
+                .user_authorization_url("s")
+                .is_err()
+        );
+        config.client_secret = Some("secret".into());
+        assert_eq!(
+            GitHubAppService::new(&config)
+                .user_authorization_url("s 1")
+                .unwrap(),
+            "https://github.com/login/oauth/authorize?client_id=Iv1.abc&state=s%201&redirect_uri=https%3A%2F%2Feverruns.example%2Fapi%2Fv1%2Fuser%2Fconnections%2Fgithub%2Fcallback"
+        );
     }
 
     #[test]
