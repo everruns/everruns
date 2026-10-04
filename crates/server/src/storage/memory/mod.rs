@@ -139,6 +139,7 @@ struct WaitingTurnResolutionState {
 
 /// All data is stored in memory and lost on restart
 pub struct InMemoryDatabase {
+    pub(super) decision_defaults: RwLock<HashMap<i64, Uuid>>,
     /// Serializes event allocation and insertion to mirror a database transaction.
     event_write_lock: tokio::sync::Mutex<()>,
     /// Mirrors PostgreSQL's per-endpoint Slack provisioning lock in dev mode.
@@ -341,6 +342,7 @@ impl Default for InMemoryDatabase {
         );
 
         Self {
+            decision_defaults: RwLock::new(HashMap::new()),
             event_write_lock: tokio::sync::Mutex::new(()),
             slack_install_lock: tokio::sync::Mutex::new(()),
             organizations: RwLock::new(organizations),

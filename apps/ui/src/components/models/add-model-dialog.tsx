@@ -20,10 +20,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useCreateModel } from "@/hooks/use-providers";
+import { useCreateModel, useProvidersConfig } from "@/hooks/use-providers";
 import type { CreateModelRequest, Provider } from "@/lib/api/types";
 
-type ModelType = "chat" | "embeddings";
+type ModelType = "chat" | "embeddings" | "decisions";
+import { ModelProfileSelect } from "./model-profile-select";
 
 export function AddModelDialog({
   providers,
@@ -40,13 +41,27 @@ export function AddModelDialog({
   const [modelType, setModelType] = useState<ModelType>("chat");
   const [enabled, setEnabled] = useState(true);
 
+  const [profileKey, setProfileKey] = useState<string | undefined>();
+  const { data: providerConfig } = useProvidersConfig();
   const createModel = useCreateModel(providerId);
   const selectedProvider = providers.find((provider) => provider.id === providerId);
+
+  const services =
+    providerConfig?.drivers?.find((driver) => driver.driver === selectedProvider?.provider_type)
+      ?.services ??
+    (selectedProvider?.provider_type === "openai"
+      ? ["chat", "embeddings"]
+      : selectedProvider?.provider_type === "typesafe"
+        ? ["decisions"]
+        : selectedProvider?.provider_type === "openrouter"
+          ? ["chat", "decisions"]
+          : ["chat"]);
 
   const handleProviderChange = (nextProviderId: string) => {
     setProviderId(nextProviderId);
     const nextProvider = providers.find((provider) => provider.id === nextProviderId);
-    if (nextProvider?.provider_type !== "openai") setModelType("chat");
+    setModelType(nextProvider?.provider_type === "typesafe" ? "decisions" : "chat");
+    setProfileKey(undefined);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,7 +69,9 @@ export function AddModelDialog({
     const data: CreateModelRequest = {
       model_id: modelId,
       display_name: displayName,
-      capabilities: modelType === "embeddings" ? ["embeddings"] : [],
+      capabilities: [modelType],
+      service: modelType,
+      profile_key: profileKey,
       enabled,
     };
     await createModel.mutateAsync(data);
@@ -63,6 +80,7 @@ export function AddModelDialog({
     setModelId("");
     setDisplayName("");
     setModelType("chat");
+    setProfileKey(undefined);
     setEnabled(true);
   };
 
@@ -91,23 +109,56 @@ export function AddModelDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="model-type">Model type</Label>
-            <Select value={modelType} onValueChange={(value) => setModelType(value as ModelType)}>
+            <Select
+              value={modelType}
+              onValueChange={(value) => {
+                setModelType(value as ModelType);
+                setProfileKey(undefined);
+              }}
+            >
               <SelectTrigger id="model-type" className="w-full">
-                <SelectValue>{modelType === "embeddings" ? "Embeddings" : "Chat"}</SelectValue>
+                <SelectValue>
+                  {modelType === "embeddings"
+                    ? "Embeddings"
+                    : modelType === "decisions"
+                      ? "Decisions"
+                      : "Chat"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="chat">Chat</SelectItem>
-                {selectedProvider?.provider_type === "openai" && (
-                  <SelectItem value="embeddings">Embeddings</SelectItem>
-                )}
+                {services
+                  .filter((service) => ["chat", "embeddings", "decisions"].includes(service))
+                  .map((service) => (
+                    <SelectItem key={service} value={service}>
+                      {service === "chat"
+                        ? "Chat"
+                        : service === "decisions"
+                          ? "Decisions"
+                          : "Embeddings"}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
-            {providerId && selectedProvider?.provider_type !== "openai" && (
-              <p className="text-xs text-muted-foreground">
-                This provider does not currently support embedding models.
-              </p>
-            )}
           </div>
+          {providerId && (
+            <ModelProfileSelect
+              providerId={providerId}
+              service={modelType}
+              value={profileKey}
+              onChange={(profile) => {
+                setProfileKey(profile?.key);
+                if (profile) {
+                  const canonical = profile.key.split("/").slice(1).join("/");
+                  setModelId(
+                    modelType === "decisions" && selectedProvider?.provider_type === "openrouter"
+                      ? `typesafe/${canonical === "jev-1.13.0" ? "jev-1.13" : canonical}`
+                      : canonical,
+                  );
+                  setDisplayName(profile.profile.name);
+                }
+              }}
+            />
+          )}
           <div className="space-y-2">
             <Label htmlFor="model-id">Model ID</Label>
             <Input

@@ -301,6 +301,7 @@ async fn registry_replacement_changes_factory_and_preserves_other_descriptors() 
     assert!(registry.registered_providers().is_empty());
     registry.register(DriverId::LlmSim, |_| Box::new(FixtureDriver("first")));
     registry.register_descriptor(DriverDescriptor {
+        provider: None,
         display_name: "OpenAI custom".into(),
         services: vec![ServiceKind::Chat, ServiceKind::Realtime],
         ..DriverDescriptor::chat_only(DriverId::OpenAI, |_| Box::new(FixtureDriver("other")))
@@ -435,6 +436,7 @@ fn registry_distinguishes_missing_driver_from_missing_chat_service() {
         matches!(registry.create_chat_driver(&ProviderConfig::new(DriverId::Anthropic)), Err(AgentLoopError::DriverNotRegistered(id)) if id == "anthropic")
     );
     registry.register_descriptor(DriverDescriptor {
+        provider: None,
         id: DriverId::external("embeddings-only"),
         display_name: "Embeddings Only".into(),
         services: vec![ServiceKind::Embeddings],

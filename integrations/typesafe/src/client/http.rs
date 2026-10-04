@@ -54,9 +54,8 @@ impl RetryPolicy {
 /// Cloning shares the underlying connection pool.
 #[derive(Clone)]
 pub struct TypeSafeAIClient {
-    http: reqwest::Client,
-    api_key: String,
-    endpoint: String,
+    http: Option<reqwest::Client>,
+    endpoint: everruns_contracts::ProviderEndpoint,
     retry: RetryPolicy,
 }
 
@@ -65,7 +64,6 @@ impl std::fmt::Debug for TypeSafeAIClient {
     /// debug output.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TypeSafeAIClient")
-            .field("endpoint", &self.endpoint)
             .field("retry", &self.retry)
             .finish_non_exhaustive()
     }
@@ -100,8 +98,8 @@ impl TypeSafeAIClient {
     /// Ask every question in `evaluation` in one round trip.
     ///
     /// ```no_run
-    /// # async fn run() -> Result<(), everruns_integrations_typesafe::Error> {
-    /// use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeAIClient};
+    /// # async fn run() -> Result<(), everruns_integrations_typesafe::client::Error> {
+    /// use everruns_integrations_typesafe::client::{Evaluation, Question, TypeSafeAIClient};
     ///
     /// let client = TypeSafeAIClient::from_env()?;
     /// let judgment = client
@@ -145,12 +143,28 @@ impl TypeSafeAIClient {
     }
 
     async fn send_once(&self, body: &Value) -> Result<Judgment> {
-        let response = self
+        let bytes = serde_json::to_vec(body)
+            .map_err(|_| Error::InvalidRequest("Invalid decision request".into()))?;
+        let url = self
+            .endpoint
+            .url("systemone")
+            .ok_or_else(|| Error::InvalidRequest("Missing endpoint".into()))?;
+        let resolved = self
+            .endpoint
+            .resolve("POST", &url, &bytes)
+            .await
+            .map_err(|_| Error::Transport("Authentication failed".into()))?;
+        let mut outgoing = self
             .http
-            .post(&self.endpoint)
-            .bearer_auth(&self.api_key)
-            .header("Content-Type", "application/json")
-            .json(body)
+            .as_ref()
+            .ok_or_else(|| Error::Transport("HTTP transport unavailable".into()))?
+            .post(&resolved.url)
+            .header("Content-Type", "application/json");
+        for (name, value) in resolved.headers {
+            outgoing = outgoing.header(name, value);
+        }
+        let mut response = outgoing
+            .body(bytes)
             .send()
             .await
             .map_err(|e| Error::Transport(sanitize_transport(&e)))?;
@@ -161,10 +175,19 @@ impl TypeSafeAIClient {
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.trim().parse::<u64>().ok());
-        let text = response
-            .text()
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
-            .map_err(|e| Error::Transport(sanitize_transport(&e)))?;
+            .map_err(|e| Error::Transport(sanitize_transport(&e)))?
+        {
+            if bytes.len().saturating_add(chunk.len()) > 2 * 1024 * 1024 {
+                return Err(Error::Decode("Decision response exceeds size limit".into()));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let text = String::from_utf8(bytes)
+            .map_err(|_| Error::Decode("Invalid response encoding".into()))?;
 
         if !(200..300).contains(&status) {
             return Err(Error::Api {
@@ -212,16 +235,20 @@ impl TypeSafeAIClientBuilder {
 
     /// Build the client.
     pub fn build(self) -> TypeSafeAIClient {
-        let http = self.http.unwrap_or_else(|| {
+        let http = self.http.map(Some).unwrap_or_else(|| {
             reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
                 .timeout(self.timeout)
                 .build()
-                .unwrap_or_default()
+                .ok()
         });
         TypeSafeAIClient {
             http,
-            api_key: self.api_key,
-            endpoint: format!("{}/v1/systemone", self.base_url.trim_end_matches('/')),
+            endpoint: everruns_contracts::Provider::services("typesafe")
+                .base_url(format!("{}/v1", self.base_url.trim_end_matches('/')))
+                .auth(everruns_contracts::BearerAuth::new(self.api_key))
+                .endpoint()
+                .clone(),
             retry: self.retry,
         }
     }
@@ -292,7 +319,10 @@ mod tests {
         let client = TypeSafeAIClient::builder("k")
             .base_url("http://host/")
             .build();
-        assert_eq!(client.endpoint, "http://host/v1/systemone");
+        assert_eq!(
+            client.endpoint.url("systemone").unwrap(),
+            "http://host/v1/systemone"
+        );
     }
 
     #[test]

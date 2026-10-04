@@ -53,6 +53,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Alibaba Qwen3.7 Max — flagship Qwen model.
@@ -94,6 +95,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Microsoft MAI-1-preview — Microsoft's first end-to-end in-house
@@ -128,6 +130,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Microsoft MAI-Code-1-Flash — Microsoft's in-house, latency-optimized
@@ -164,6 +167,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // MiniMax-M3 — flagship MiniMax model. Source: models.dev (minimax
@@ -205,6 +209,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Moonshot Kimi K2 Thinking — flagship Kimi reasoning model.
@@ -246,6 +251,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Moonshot Kimi K3 — flagship multimodal Kimi model with a 1M-token
@@ -291,6 +297,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // xAI Grok 4.3 — flagship Grok model. Source: models.dev (xai provider).
@@ -338,6 +345,7 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         _ => None,

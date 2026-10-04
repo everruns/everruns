@@ -49,3 +49,5 @@ pub use provider_resolver::{ProviderResolverService, ResolvedModel};
 pub use run_summary::RunSummaryService;
 pub use turn_latency::TurnLatencyListener;
 pub use usage_tracking::UsageTrackingListener;
+
+pub mod model_catalog;

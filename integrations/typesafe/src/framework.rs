@@ -17,10 +17,22 @@ use crate::{JevCapability, evaluate, evaluate::EvaluateInput};
 /// The client retains the credential privately; it never enters capability
 /// config or metadata. Cloned agents reuse the HTTP connection pool.
 pub struct Jev {
-    client: TypeSafeAIClient,
+    service: std::sync::Arc<dyn everruns_core::DecisionsService>,
+    model: everruns_contracts::ModelSpec,
 }
 
 impl Jev {
+    /// Use the same authenticated account as other model services.
+    pub fn with_provider(
+        provider: everruns_contracts::Provider,
+        model: everruns_contracts::ModelSpec,
+    ) -> Self {
+        Self {
+            service: std::sync::Arc::new(provider),
+            model,
+        }
+    }
+
     /// Configure an application-owned API key.
     pub fn new(api_key: impl Into<String>) -> Self {
         Self::with_client(TypeSafeAIClient::new(api_key.into()))
@@ -33,7 +45,10 @@ impl Jev {
 
     /// Supply a client, including a trusted custom endpoint for tests.
     pub fn with_client(client: TypeSafeAIClient) -> Self {
-        Self { client }
+        Self {
+            service: std::sync::Arc::new(crate::TypeSafeAI::with_client(client)),
+            model: everruns_contracts::ModelSpec::on("typesafe", crate::client::DEFAULT_MODEL),
+        }
     }
 }
 
@@ -68,8 +83,15 @@ impl Handler for Jev {
         input: EvaluateInput,
         _context: definition::Context,
     ) -> Result<Value, Self::Error> {
-        evaluate::evaluate(&self.client, input)
+        let mut request = crate::bound::decision_request(input, &self.model.model)
+            .map_err(|error| definition::Error::user("jev_decision_failed", error))?;
+        request.provider = Some(self.model.provider.clone());
+        let outcome = self
+            .service
+            .evaluate(request.clone())
             .await
+            .map_err(|error| definition::Error::user("jev_decision_failed", error.to_string()))?;
+        crate::bound::render_outcome(outcome, &request)
             .map_err(|error| definition::Error::user("jev_decision_failed", error))
     }
 }

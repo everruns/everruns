@@ -6,6 +6,8 @@ import type { Provider } from "@/lib/api/types";
 const mutateAsync = jest.fn().mockResolvedValue({});
 
 jest.mock("@/hooks/use-providers", () => ({
+  useProvidersConfig: () => ({ data: undefined }),
+  useModelProfiles: () => ({ data: [] }),
   useCreateModel: () => ({ mutateAsync, isPending: false }),
 }));
 
@@ -119,6 +121,8 @@ describe("AddModelDialog", () => {
         model_id: "text-embedding-3-small",
         display_name: "Text Embedding 3 Small",
         capabilities: ["embeddings"],
+        service: "embeddings",
+        profile_key: undefined,
         enabled: true,
       }),
     );

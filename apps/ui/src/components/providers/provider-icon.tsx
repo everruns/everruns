@@ -1,4 +1,4 @@
-import { Server } from "lucide-react";
+import { Server, Scale } from "lucide-react";
 import type { DriverId } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -192,6 +192,7 @@ const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: num
   chatgpt: OpenAiIcon,
   "openai-codex": OpenAiIcon,
   openrouter: OpenRouterIcon,
+  typesafe: ({ size }) => <Scale size={size} />,
   azure_openai: AzureOpenAiIcon,
   openai_completions: OpenAiIcon,
   anthropic: AnthropicIcon,
@@ -209,6 +210,7 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
   chatgpt: "ChatGPT plan",
   "openai-codex": "Codex",
   openrouter: "OpenRouter",
+  typesafe: "TypeSafe",
   azure_openai: "Azure OpenAI",
   openai_completions: "OpenAI (Completions)",
   anthropic: "Anthropic",
@@ -227,6 +229,7 @@ const PROVIDER_DESCRIPTIONS: Record<DriverId, string> = {
   chatgpt: "Use your ChatGPT plan. Personal to you, with no API key.",
   "openai-codex": "Codex models with ChatGPT authentication.",
   openrouter: "One key for a large multi-vendor model catalog.",
+  typesafe: "Calibrated Jev judgments via System One.",
   azure_openai: "OpenAI models deployed in your Azure resource.",
   openai_completions: "OpenAI-compatible Chat Completions endpoints.",
   anthropic: "Claude models with extended thinking.",

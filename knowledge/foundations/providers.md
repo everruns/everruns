@@ -490,3 +490,13 @@ installation, signature, nonce, issuing client, and subject. See the
 Yolop consumes the same driver package and credential types. Its settings
 adapter supplies a cross-process lease and an atomic compare-and-save so an
 external login/logout cannot be overwritten by an in-flight refresh.
+
+## Decision model services
+
+The same runtime provider may expose chat, decisions and embeddings using one authentication owner.
+Decision protocol contracts live in contracts and concrete implementations in the existing drivers
+crate. Tenant catalog rows persist their service and canonical profile identity at writes; model
+namespaces are opaque during runtime account selection. See [Decision Service](../operations/decisions-service.md)
+for authority, policy and accounting, and [catalog source](../../crates/server/src/services/model_catalog.rs)
+for assignment. The decision default is an exact model selection, independent of the chat default
+and deployment utility decisions.

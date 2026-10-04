@@ -324,3 +324,12 @@ See `crates/server/src/storage/models.rs` for the `UserConnectionRow` type.
 | How are capabilities applied? | Resolved at API/service layer, merged into RuntimeAgent |
 | Where are API keys stored? | Encrypted in database, decrypted at runtime |
 | Environment variables for API keys? | `DEFAULT_OPENAI_API_KEY` and `DEFAULT_ANTHROPIC_API_KEY` as fallbacks |
+
+### Decision catalog
+
+Provider-bound model rows carry persisted service and profile identity. Curated profiles are shared
+across equivalent provider offerings; custom/discovered identities are account-scoped. Preferences
+and synchronization preserve identity. Existing rows are backfilled once. See
+[assignment](../../crates/server/src/services/model_catalog.rs),
+[migration](../../crates/server/migrations/170_decision_catalog.sql) and
+[Decision Service](../operations/decisions-service.md).

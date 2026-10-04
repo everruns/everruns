@@ -11,6 +11,33 @@ impl StorageBackend {
         id: Uuid,
         input: CreateModelRow,
     ) -> Result<Option<ModelRow>> {
+        let mut input = input;
+        if let Some(provider) = self.get_provider(org_id, input.provider_id.uuid()).await?
+            && input
+                .provider_metadata
+                .as_ref()
+                .and_then(|m| m.get(crate::services::model_catalog::BINDING))
+                .is_none()
+        {
+            input.provider_metadata = Some(crate::services::model_catalog::assign(
+                &provider.provider_type,
+                &input.model_id,
+                &input.capabilities,
+                None,
+                None,
+                input.provider_metadata,
+            )?);
+        }
+        if let Some(service) = input
+            .provider_metadata
+            .as_ref()
+            .map(|metadata| crate::services::model_catalog::service(Some(metadata)))
+        {
+            let tag = service.to_string();
+            if !input.capabilities.contains(&tag) {
+                input.capabilities.push(tag);
+            }
+        }
         dispatch!(self, create_model_with_id, org_id, id, input)
     }
 

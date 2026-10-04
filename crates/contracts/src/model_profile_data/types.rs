@@ -16,11 +16,15 @@ pub const CLEAR_AT_PARAMETER: &str = "clear_at";
 /// Declared in code by each driver, never stored in the database. Only `Chat`
 /// has a driver trait today; the set is additive and new kinds gain factories
 /// on `DriverDescriptor` when their first consumer lands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceKind {
     /// Chat completion (`ChatDriver`).
+    #[default]
     Chat,
+    /// Typed decisions over application state.
+    Decisions,
     /// Text embeddings (planned: knowledge-base hybrid retrieval).
     Embeddings,
     /// Realtime voice sessions (server-side adapter using provider credentials).
@@ -35,6 +39,7 @@ impl std::fmt::Display for ServiceKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             ServiceKind::Chat => "chat",
+            ServiceKind::Decisions => "decisions",
             ServiceKind::Embeddings => "embeddings",
             ServiceKind::Realtime => "realtime",
             ServiceKind::Images => "images",
@@ -356,6 +361,7 @@ pub enum ModelVendor {
     Meta,
     MiniMax,
     Moonshot,
+    TypeSafe,
     XAi,
     LlmSim,
 }
@@ -375,10 +381,23 @@ impl ModelVendor {
             ModelVendor::Meta => "meta",
             ModelVendor::MiniMax => "minimax",
             ModelVendor::Moonshot => "moonshot",
+            ModelVendor::TypeSafe => "typesafe",
             ModelVendor::XAi => "xai",
             ModelVendor::LlmSim => "llmsim",
         }
     }
+}
+
+/// Typed decision semantics and serving-independent limits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct DecisionModelProfile {
+    pub primitives: Vec<String>,
+    pub calibrated: bool,
+    pub max_choice_options: Option<usize>,
+    pub max_score_levels: Option<usize>,
+    pub state_tokens: Option<usize>,
+    pub request_tokens: Option<usize>,
 }
 
 /// LLM Model Profile describing model capabilities
@@ -456,6 +475,9 @@ pub struct ModelProfile {
     /// surfaces that do not opt in remain disabled.
     #[serde(default)]
     pub supports_server_compaction: bool,
+    /// Typed semantics when this profile describes a decision model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decisions: Option<DecisionModelProfile>,
 }
 
 impl ModelProfile {
@@ -464,6 +486,38 @@ impl ModelProfile {
         self.supported_parameters
             .iter()
             .any(|value| value == parameter)
+    }
+}
+
+impl ModelProfile {
+    /// Minimal metadata for a declared service with otherwise unknown capabilities.
+    pub fn minimal(name: impl Into<String>) -> Self {
+        let name = name.into();
+        Self {
+            name: name.clone(),
+            family: name.clone(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: false,
+            reasoning: false,
+            temperature: false,
+            knowledge: None,
+            tool_call: false,
+            structured_output: false,
+            open_weights: false,
+            cost: None,
+            limits: None,
+            modalities: None,
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+            supports_server_compaction: false,
+            decisions: None,
+        }
     }
 }
 

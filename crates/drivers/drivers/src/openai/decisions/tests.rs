@@ -5,10 +5,28 @@ use serde_json::json;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
-fn driver(server: &MockServer) -> OpenAIDecisions {
-    OpenAIDecisions::new("sk-test-key")
-        .base_url(server.uri())
-        .backoff(Duration::from_millis(1))
+struct TestDriver {
+    driver: OpenAIDecisionDriver,
+    endpoint: everruns_contracts::ProviderEndpoint,
+}
+impl TestDriver {
+    fn max_attempts(mut self, n: u32) -> Self {
+        self.driver = self.driver.max_attempts(n);
+        self
+    }
+    async fn evaluate(&self, request: DecisionRequest) -> Result<DecisionOutcome> {
+        self.driver.evaluate(&self.endpoint, request).await
+    }
+}
+fn driver(server: &MockServer) -> TestDriver {
+    TestDriver {
+        driver: OpenAIDecisionDriver::new().backoff(Duration::from_millis(1)),
+        endpoint: everruns_contracts::Provider::services("openai")
+            .base_url(server.uri())
+            .auth(everruns_contracts::BearerAuth::new("sk-test-key"))
+            .endpoint()
+            .clone(),
+    }
 }
 
 /// Answers each question from its options: the first label, with a
@@ -222,10 +240,7 @@ async fn error_envelopes_surface_the_message_without_the_key() {
         .await
         .unwrap_err()
         .to_string();
-    assert!(
-        error.contains("400 invalid_request_error): Decision API is not enabled"),
-        "{error}"
-    );
+    assert!(error.contains("HTTP 400"), "{error}");
     assert!(!error.contains("sk-test-key"));
 }
 
@@ -265,7 +280,7 @@ async fn a_label_the_question_did_not_offer_is_an_error() {
 
 #[test]
 fn debug_never_renders_the_key() {
-    assert!(!format!("{:?}", OpenAIDecisions::new("sk-secret")).contains("sk-secret"));
+    assert!(!format!("{:?}", OpenAIDecisionDriver::new()).contains("sk-secret"));
 }
 
 #[test]

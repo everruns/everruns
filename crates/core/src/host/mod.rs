@@ -107,10 +107,7 @@ pub use file_store_decorators::{
 pub use capabilities::{
     compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
 };
-pub use decisions::{
-    DecisionDriverRegistry, DecisionRouter, DecisionRoutingError, LLM_DECISION_DRIVER_ID,
-    LlmDecisionDriver,
-};
+pub use decisions::{DecisionRouter, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
 pub use in_memory::{
     InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
     InMemoryProviderStore, InMemorySessionFileStore, InMemorySessionFileSystemFactory,

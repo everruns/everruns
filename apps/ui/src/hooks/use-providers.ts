@@ -246,3 +246,40 @@ export function useDefaultModel() {
   });
   return { ...query, isLoading: orgLoading || query.isLoading };
 }
+
+export function useModelProfiles(
+  providerId?: string,
+  service?: import("@/lib/api/types").ModelService,
+) {
+  const { currentOrg } = useOrg();
+  return useQuery({
+    queryKey: ["model-profiles", currentOrg?.public_id, providerId, service],
+    enabled: !!currentOrg && !!providerId,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (providerId) params.set("provider_id", providerId);
+      if (service) params.set("service", service);
+      return (
+        await api.get<
+          import("@/lib/api/types").ListResponse<import("@/lib/api/types").ModelProfileResponse>
+        >(`/v1/model-profiles?${params}`)
+      ).data.data;
+    },
+  });
+}
+export function useDecisionDefault() {
+  const { currentOrg } = useOrg();
+  const client = useQueryClient();
+  const query = useQuery({
+    queryKey: ["decision-default", currentOrg?.public_id],
+    enabled: !!currentOrg,
+    queryFn: async () =>
+      (await api.get<ModelWithProvider | null>("/v1/models/decision-default")).data,
+  });
+  const mutation = useMutation({
+    mutationFn: async (model_id: string | null) =>
+      (await api.put("/v1/models/decision-default", { model_id })).data,
+    onSuccess: () => client.invalidateQueries({ queryKey: ["decision-default"] }),
+  });
+  return { ...query, setDefault: mutation };
+}

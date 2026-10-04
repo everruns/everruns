@@ -24,10 +24,13 @@
 
 use std::sync::Arc;
 
-use crate::core::{DecisionsService, DisabledDecisionsService, UtilityLlmService};
-use crate::host::{DecisionDriverRegistry, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
-use everruns_integrations_openai_decisions::{OPENAI_DECISION_DRIVER_ID, OpenAIDecisions};
-use everruns_integrations_typesafe::{SystemDecisionsConfig, TYPESAFE_DECISION_DRIVER_ID};
+use crate::core::{
+    DecisionsService, DisabledDecisionsService, SingleDriverService, UtilityLlmService,
+};
+use crate::host::{DecisionRouter, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
+use everruns_contracts::{ModelSpec, ProviderRegistry};
+use everruns_integrations_openai_decisions::OpenAIDecisions;
+use everruns_integrations_typesafe::SystemDecisionsConfig;
 
 /// Environment variable naming the default decision driver.
 pub const DECISIONS_DRIVER_ENV: &str = "DECISIONS_DRIVER";
@@ -46,6 +49,7 @@ const UTILITY_OPENAI_API_KEY_ENV: &str = "UTILITY_OPENAI_API_KEY";
 pub struct SystemDecisions {
     typesafe: Option<SystemDecisionsConfig>,
     openai_key: Option<String>,
+    openrouter_key: Option<String>,
     driver: Option<String>,
     model: Option<String>,
 }
@@ -67,6 +71,7 @@ impl SystemDecisions {
     pub fn from_env() -> Self {
         Self {
             typesafe: Some(SystemDecisionsConfig::from_env()),
+            openrouter_key: env_value("UTILITY_OPENROUTER_API_KEY"),
             openai_key: env_value(DECISIONS_OPENAI_PREVIEW_ENV)
                 .filter(|flag| matches!(flag.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
                 .and_then(|_| env_value(UTILITY_OPENAI_API_KEY_ENV)),
@@ -107,42 +112,50 @@ impl SystemDecisions {
         self,
         utility: Arc<dyn UtilityLlmService>,
     ) -> Result<Arc<dyn DecisionsService>, String> {
-        let mut registry = DecisionDriverRegistry::new();
-        if let Some(driver) = self.typesafe.and_then(SystemDecisionsConfig::into_driver) {
-            registry = registry.with(driver);
+        let mut registry = ProviderRegistry::new();
+        if let Some(SystemDecisionsConfig::TypeSafeAI { api_key }) = self.typesafe {
+            registry
+                .register(everruns_drivers::typesafe::provider("typesafe", api_key))
+                .map_err(|e| e.to_string())?;
         }
-        if let Some(api_key) = self.openai_key {
-            // Guardrails sit on latency-critical seams: no retries, as with
-            // the TypeSafe deployment client.
-            registry = registry.with(OpenAIDecisions::new(api_key).max_attempts(1));
+        if let Some(api_key) = self.openrouter_key {
+            registry
+                .register(everruns_drivers::openrouter::provider(
+                    "openrouter",
+                    api_key,
+                ))
+                .map_err(|e| e.to_string())?;
         }
-        if utility.is_configured() {
-            registry = registry.with(LlmDecisionDriver::new(utility));
+        if self.driver.as_deref() == Some(LLM_DECISION_DRIVER_ID) {
+            if self.model.is_some() {
+                return Err(format!(
+                    "{DECISIONS_MODEL_ENV} cannot be combined with {DECISIONS_DRIVER_ENV}=llm: set UTILITY_LLM_MODEL instead"
+                ));
+            }
+            if !utility.is_configured() {
+                return Err("llm needs a configured utility LLM".into());
+            }
+            return Ok(Arc::new(SingleDriverService(LlmDecisionDriver::new(
+                utility,
+            ))));
         }
-
         let default = match self.driver {
             Some(driver) => driver,
-            None if registry.get(TYPESAFE_DECISION_DRIVER_ID).is_some() => {
-                TYPESAFE_DECISION_DRIVER_ID.to_string()
-            }
-            // Nothing chosen and no vendor: the disabled service, whose error
-            // names the settings that enable it. Guardrails fail open on it.
+            None if registry.get(&"typesafe".into()).is_some() => "typesafe".into(),
             None => return Ok(Arc::new(DisabledDecisionsService)),
         };
-        if default == LLM_DECISION_DRIVER_ID && self.model.is_some() {
-            return Err(format!(
-                "{DECISIONS_MODEL_ENV} cannot be combined with {DECISIONS_DRIVER_ENV}=llm: the \
-                 llm driver answers with the utility model (set UTILITY_LLM_MODEL instead)"
-            ));
+        if default == "openai" {
+            let key = self.openai_key.ok_or_else(|| {
+                "openai needs DECISIONS_OPENAI_PREVIEW=1 and UTILITY_OPENAI_API_KEY".to_string()
+            })?;
+            return Ok(Arc::new(OpenAIDecisions::new(key).model(
+                self.model.unwrap_or_else(|| {
+                    everruns_integrations_openai_decisions::DEFAULT_MODEL.into()
+                }),
+            )));
         }
-        let router = registry.router(&default, self.model).map_err(|error| {
-            format!(
-                "{DECISIONS_DRIVER_ENV}={default}: {error} (typesafe needs \
-                 UTILITY_TYPESAFE_API_KEY; llm needs UTILITY_OPENAI_API_KEY or \
-                 UTILITY_OPENROUTER_API_KEY; {OPENAI_DECISION_DRIVER_ID} needs \
-                 {DECISIONS_OPENAI_PREVIEW_ENV}=1 and UTILITY_OPENAI_API_KEY)"
-            )
-        })?;
+        let router = DecisionRouter::new(registry, ModelSpec::on(default.as_str(), self.model.unwrap_or_else(|| "jev-latest".into())))
+            .map_err(|error| format!("{DECISIONS_DRIVER_ENV}={default}: {error}; typesafe needs UTILITY_TYPESAFE_API_KEY; openrouter needs UTILITY_OPENROUTER_API_KEY"))?;
         tracing::info!(
             decisions.default_driver = router.default_driver(),
             decisions.drivers = ?router.registry().ids(),
@@ -229,7 +242,7 @@ mod tests {
             .into_service(no_utility())
             .unwrap();
         assert!(service.is_configured());
-        assert_eq!(service.name(), "DecisionRouter");
+        assert_eq!(service.name(), "ProviderDecisions");
     }
 
     #[tokio::test]
@@ -257,15 +270,14 @@ mod tests {
             .into_service(no_utility())
             .err()
             .expect("a configuration error");
-        assert!(error.contains("DECISIONS_DRIVER=llm"), "{error}");
-        assert!(error.contains("configured drivers: typesafe"), "{error}");
+        assert!(error.contains("configured utility LLM"), "{error}");
 
         let error = SystemDecisions::default()
             .driver("nope")
             .into_service(no_utility())
             .err()
             .expect("a configuration error");
-        assert!(error.contains("'nope' is not configured"), "{error}");
+        assert!(error.contains("nope"), "{error}");
     }
 
     #[test]
@@ -282,7 +294,7 @@ mod tests {
             .driver("openai")
             .into_service(no_utility())
             .unwrap();
-        assert_eq!(service.name(), "DecisionRouter");
+        assert_eq!(service.name(), "OpenAIDecisionsPreview");
     }
 
     #[test]

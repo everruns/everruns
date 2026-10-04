@@ -1113,6 +1113,7 @@ message GetDefaultProviderCredentialsRequest {
     // tool-side lookup by provider type.
     string provider_id = 3;
     optional Uuid session_id = 4;
+    optional string decision_model_id = 6;
 }
 
 message GetDefaultProviderCredentialsResponse {
@@ -1124,6 +1125,7 @@ message GetDefaultProviderCredentialsResponse {
     // the JSON of ProviderRequestOptions. Empty when the connection configures
     // none, so an older worker simply sends no options.
     string request_options_json = 5;
+    string decision_binding_json = 6;
 }
 
 

@@ -87,7 +87,11 @@ impl DecisionDriver for LlmDecisionDriver {
             .with_max_questions(MAX_QUESTIONS)
     }
 
-    async fn evaluate(&self, request: DecisionRequest) -> Result<DecisionOutcome> {
+    async fn evaluate(
+        &self,
+        _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        request: DecisionRequest,
+    ) -> Result<DecisionOutcome> {
         if let Some(model) = &request.model {
             return Err(AgentLoopError::llm(format!(
                 "the llm decision driver answers with the deployment's utility model and \
@@ -126,6 +130,7 @@ impl DecisionDriver for LlmDecisionDriver {
                 output_tokens: u64::from(metadata.completion_tokens.unwrap_or(0)),
             },
             calibrated: false,
+            attribution: None,
         })
     }
 }
@@ -365,7 +370,7 @@ mod tests {
             "```json\n{\"answers\": {\"q1\": \"Yes\", \"q2\": \"security\", \"q3\": 2}}\n```",
         );
         let outcome = LlmDecisionDriver::new(service.clone())
-            .evaluate(request())
+            .evaluate(&everruns_contracts::ProviderEndpoint::default(), request())
             .await
             .unwrap();
         assert!(!outcome.calibrated);
@@ -422,7 +427,7 @@ mod tests {
             ),
         ] {
             let error = LlmDecisionDriver::new(Scripted::new(reply))
-                .evaluate(request())
+                .evaluate(&everruns_contracts::ProviderEndpoint::default(), request())
                 .await
                 .unwrap_err();
             assert!(error.to_string().contains(why), "{reply}: {error}");
@@ -456,7 +461,10 @@ mod tests {
     #[tokio::test]
     async fn a_named_model_or_a_disabled_utility_service_is_refused() {
         let error = LlmDecisionDriver::new(Scripted::new("{}"))
-            .evaluate(request().model("jev-latest"))
+            .evaluate(
+                &everruns_contracts::ProviderEndpoint::default(),
+                request().model("jev-latest"),
+            )
             .await
             .unwrap_err();
         assert!(
@@ -465,7 +473,7 @@ mod tests {
         );
 
         let error = LlmDecisionDriver::new(Arc::new(DisabledUtilityLlmService))
-            .evaluate(request())
+            .evaluate(&everruns_contracts::ProviderEndpoint::default(), request())
             .await
             .unwrap_err();
         assert!(

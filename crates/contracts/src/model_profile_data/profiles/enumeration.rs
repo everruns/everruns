@@ -6,7 +6,8 @@ use crate::model_profile_data::{ModelProfile, ModelVendor, ServiceKind};
 /// `model_id` is the canonical lookup id, not necessarily a provider's request
 /// id. `aliases` contains the other accepted lookup ids (including gateway
 /// spellings); live discovery remains authoritative for request ids/availability.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ModelProfileEntry {
     pub model_id: String,
     pub aliases: Vec<String>,

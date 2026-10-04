@@ -1,13 +1,6 @@
-# TypeSafe Integration
-# Decision: One crate, not two. The vendor client, the capability and its tool,
-#   the connector catalog entry, and the classifier that backs guardrail
-#   `jev` checks all live here. A separate client crate would have to sit below
-#   `everruns-host` for the service to use it; keeping the service here instead
-#   lets the platform wire it from above, which is the direction that already
-#   works (server and worker depend on integrations, never the reverse).
-# Decision: API key resolved via user connections (connection_resolver), with a
-#   session-secret fallback, same contract as brave-search. The deployment-owned
-#   `UTILITY_TYPESAFE_API_KEY` that backs guardrails is a separate credential.
+# TypeSafe hosted capability, Framework helper and connector.
+# The credential-free System One protocol lives in everruns-drivers. This crate
+# retains the application client convenience over provider-owned authentication.
 
 [package]
 name = "everruns-integrations-typesafe"
@@ -27,11 +20,13 @@ categories = ["api-bindings", "development-tools"]
 [dependencies]
 everruns-contracts = { workspace = true, default-features = false, features = ["definition"] }
 everruns-core.workspace = true
+everruns-drivers = { workspace = true, features = ["typesafe", "openrouter"] }
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 inventory = { workspace = true, optional = true }
 
 async-trait.workspace = true
+futures.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 serde.workspace = true
 serde_json.workspace = true

@@ -1,5 +1,6 @@
 "use client";
 
+import { modelService } from "@/lib/model-capabilities";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +94,7 @@ export function ModelRow({
               <EntityIdentity value={model.id} truncate={false}>
                 {model.display_name}
               </EntityIdentity>
+              <Badge variant="outline">{modelService(model)}</Badge>
               {model.enabled && (
                 <Badge
                   variant="outline"
@@ -100,6 +102,12 @@ export function ModelRow({
                 >
                   Enabled
                 </Badge>
+              )}
+              {profile?.decisions && (
+                <span className="text-xs text-muted-foreground">
+                  {profile.decisions.calibrated ? "Calibrated" : "Uncalibrated"} ·{" "}
+                  {profile.decisions.primitives.join(", ")}
+                </span>
               )}
               {profile && (
                 <Badge

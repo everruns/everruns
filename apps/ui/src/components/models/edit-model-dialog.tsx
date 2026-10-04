@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ModelProfileSelect } from "./model-profile-select";
+import { modelService } from "@/lib/model-capabilities";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import type { ModelWithProvider, Provider, UpdateModelRequest } from "@/lib/api/types";
 
@@ -40,6 +42,7 @@ export function EditModelDialog({
   const [modelId, setModelId] = useState(model.model_id);
   const [displayName, setDisplayName] = useState(model.display_name);
   const [enabled, setEnabled] = useState(model.enabled);
+  const [profileKey, setProfileKey] = useState(model.profile_key);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -48,6 +51,7 @@ export function EditModelDialog({
     setModelId(model.model_id);
     setDisplayName(model.display_name);
     setEnabled(model.enabled);
+    setProfileKey(model.profile_key);
   }, [model, open]);
 
   const selectedProvider = useMemo(
@@ -64,6 +68,8 @@ export function EditModelDialog({
         model_id: modelId.trim(),
         display_name: displayName.trim(),
         enabled,
+        service: modelService(model),
+        profile_key: profileKey,
       });
       if (succeeded) onOpenChange(false);
     } finally {
@@ -105,6 +111,12 @@ export function EditModelDialog({
               </SelectContent>
             </Select>
           </div>
+          <ModelProfileSelect
+            providerId={providerId}
+            service={modelService(model)}
+            value={profileKey}
+            onChange={(profile) => setProfileKey(profile?.key)}
+          />
           <div className="space-y-2">
             <Label htmlFor={`edit-model-id-${model.id}`}>Model ID</Label>
             <Input

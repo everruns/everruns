@@ -72,7 +72,7 @@ pub async fn check_credentials(
     config.api_key = Some(api_key);
     config.base_url = base_url;
 
-    let driver = match registry.create_chat_driver(&config) {
+    let driver = match registry.create_provider(&config) {
         Ok(driver) => driver,
         Err(e) => {
             tracing::debug!(error = %e, "Credential check: no driver for provider type");
@@ -80,10 +80,7 @@ pub async fn check_credentials(
         }
     };
 
-    match driver
-        .list_models(&everruns_contracts::runtime_provider::ProviderEndpoint::default())
-        .await
-    {
+    match driver.list_models().await {
         Ok(Some(models)) => CredentialCheckResult::Valid {
             models: models.len(),
         },

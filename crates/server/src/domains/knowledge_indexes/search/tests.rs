@@ -69,6 +69,7 @@ fn test_driver_registry() -> Arc<DriverRegistry> {
         base_url_env: None,
         oauth: None,
         chat: None,
+        provider: None,
         embeddings: Some(Arc::new(|_config| {
             Box::new(DeterministicEmbeddingsDriver) as BoxedEmbeddingsDriver
         })),

@@ -82,6 +82,8 @@ impl ModelService {
             id: row.id,
             provider_id: row.provider_id,
             model_id: row.model_id.clone(),
+            profile_key: crate::services::model_catalog::key(row.provider_metadata.as_ref()),
+            service: crate::services::model_catalog::service(row.provider_metadata.as_ref()),
             display_name: row.display_name.clone(),
             capabilities,
             enabled: row.enabled,
@@ -97,36 +99,39 @@ impl ModelService {
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
         let provider_type: DriverId = row.provider_type.parse().unwrap_or(DriverId::OpenAI);
 
-        // Look up hardcoded profile, then try discovered profile from provider_metadata.
-        // Hardcoded profiles take precedence; discovered provider catalog data fills gaps.
-        let hardcoded = get_model_profile(&provider_type, &row.model_id);
-        let profile = if hardcoded.is_some() {
-            // Merge: hardcoded base with discovered limits/capabilities as fallback
-            let discovered = Self::extract_discovered_profile(row);
-            match (hardcoded, discovered) {
-                (Some(h), Some(d)) => Some(Self::merge_profiles(h, d)),
-                (Some(h), None) => Some(h),
-                _ => unreachable!(),
-            }
-        } else {
-            // No hardcoded profile — use discovered if available
-            Self::extract_discovered_profile(row)
+        let key = crate::services::model_catalog::key(row.provider_metadata.as_ref());
+        let stored = everruns_contracts::model_profile_data::profile_entries_for_provider(
+            &row.provider_type,
+        )
+        .into_iter()
+        .find(|e| e.key == key)
+        .map(|e| e.profile)
+        .or_else(|| crate::services::model_catalog::profile(row.provider_metadata.as_ref()));
+        let discovered = Self::extract_discovered_profile(row);
+        let profile = match (stored, discovered) {
+            (Some(curated), Some(discovered)) => Some(Self::merge_profiles(curated, discovered)),
+            (curated, discovered) => curated.or(discovered),
         };
 
         // A model is healthy when its provider is active and has an API key
         // configured. This will likely grow to include live reachability
         // checks; keep the derivation in one place.
-        let healthy = row.provider_status == "active" && row.provider_api_key_set;
+        let healthy = row.provider_status == "active"
+            && (row.provider_api_key_set || provider_type == DriverId::LlmSim);
 
         // Vendor/brand tag from the model registry (drives UI branding),
         // independent of the configured provider type.
-        let model_vendor =
-            everruns_contracts::model_profiles::get_model_vendor(&provider_type, &row.model_id);
+        let model_vendor = everruns_contracts::model_profile_data::all_profile_entries()
+            .into_iter()
+            .find(|entry| entry.key == key)
+            .map(|entry| entry.vendor);
 
         ModelWithProvider {
             id: row.id,
             provider_id: row.provider_id,
             model_id: row.model_id.clone(),
+            profile_key: crate::services::model_catalog::key(row.provider_metadata.as_ref()),
+            service: crate::services::model_catalog::service(row.provider_metadata.as_ref()),
             display_name: row.display_name.clone(),
             capabilities,
             enabled: row.enabled,
@@ -184,6 +189,7 @@ impl ModelService {
             },
             supports_phases: hardcoded.supports_phases,
             supports_server_compaction: hardcoded.supports_server_compaction,
+            decisions: hardcoded.decisions,
         }
     }
 }

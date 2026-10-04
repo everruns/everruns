@@ -24,6 +24,7 @@ const MAX_STATE_BYTES: usize = 32_768;
 const MAX_INSTRUCTIONS_LEN: usize = 2_000;
 /// Hard cap on options/levels for one question.
 const MAX_CRITERIA: usize = 20;
+const MAX_SCORE_LEVELS: usize = 10;
 
 /// Input to the `jev_decision` tool.
 #[derive(Debug, Deserialize)]
@@ -116,7 +117,7 @@ pub(crate) fn schema() -> Value {
                             "type": "array",
                             "items": {"type": "string"},
                             "minItems": 2,
-                            "maxItems": MAX_CRITERIA,
+                            "maxItems": MAX_SCORE_LEVELS,
                             "description": "score only: ordered level descriptions, lowest first. Each must describe a concrete situation and stand on its own."
                         }
                     }
@@ -165,13 +166,13 @@ pub(crate) fn build_evaluation(input: EvaluateInput) -> Result<Evaluation, Strin
             ));
         }
         let built = match question.kind.as_str() {
-            "noul" => {
-                let mut built = Question::noul(question.instructions);
-                if let (Some(yes), Some(no)) = (&question.yes, &question.no) {
-                    built = built.criteria(yes, no);
-                }
-                built
-            }
+            "noul" => Question::Noul {
+                instructions: question.instructions.into(),
+                criteria: Some(crate::client::NoulCriteria {
+                    yes: question.yes,
+                    no: question.no,
+                }),
+            },
             "choice" => {
                 let options = question.options.ok_or_else(|| {
                     format!("choice question '{id}' requires an `options` object")
@@ -203,9 +204,9 @@ pub(crate) fn build_evaluation(input: EvaluateInput) -> Result<Evaluation, Strin
                         levels.len()
                     ));
                 }
-                if levels.len() > MAX_CRITERIA {
+                if levels.len() > MAX_SCORE_LEVELS {
                     return Err(format!(
-                        "score question '{id}' has {} levels, over the {MAX_CRITERIA} limit",
+                        "score question '{id}' has {} levels, over the {MAX_SCORE_LEVELS} limit",
                         levels.len()
                     ));
                 }
@@ -217,6 +218,9 @@ pub(crate) fn build_evaluation(input: EvaluateInput) -> Result<Evaluation, Strin
                 ));
             }
         };
+        if evaluation.questions.contains_key(&id) {
+            return Err(format!("Duplicate question id: {id}"));
+        }
         evaluation = evaluation.ask(id, built);
     }
     Ok(evaluation)

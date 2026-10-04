@@ -26,7 +26,7 @@ split and the marking convention so later changes stay deliberate.
 * **Alpha** may break without a major bump. Applies to the decisions
   surface: `crates/everruns/src/decisions.rs` and its `everruns-core`
   re-exports in `crates/everruns/src/lib.rs`, including the decision-driver
-  types (`DecisionDriver`, `DecisionDriverRegistry`, `DecisionRouter`). Adding
+  types (`DecisionDriver`, `DecisionRouter`). Adding
   `DecisionOutcome::calibrated` (EVE-1117) was such a break: struct-literal
   outcomes had to name it; and to the model-catalog
   surface: `crates/everruns/src/models.rs` and its profile re-exports; and to

@@ -91,5 +91,6 @@ pub(super) fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
         supported_parameters: Vec::new(),
         supports_phases: true,
         supports_server_compaction: false,
+        decisions: None,
     })
 }

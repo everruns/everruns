@@ -1,25 +1,13 @@
 //! Deployment-owned Jev decisions wiring.
 //!
-//! Core owns the neutral contract (`DecisionsService`); this module owns the
-//! vendor. Nothing above core learns that the decisions come from TypeSafe.
-//!
-//! It lives in this crate rather than in `everruns-host` so the vendor client
-//! needs only one home: the platform composes the service from above
-//! (`crates/server/src/platform.rs`, `crates/worker/src/platform.rs`), which is
-//! the direction that already works — server and worker depend on integrations,
-//! never the reverse.
+//! Contracts owns the neutral service; drivers owns the credential-free protocol.
+//! This application helper retains TypeSafe client conveniences. Host composition
+//! selects deployment credentials separately from tenant provider accounts.
 
-use std::collections::BTreeMap;
-
-use crate::client::{
-    Answer, Evaluation, Question, RetryPolicy, TypeSafeAIClient, question::DEFAULT_MODEL,
-};
+use crate::client::{RetryPolicy, TypeSafeAIClient, question::DEFAULT_MODEL};
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_core::{
-    DecisionAnswer, DecisionDriver, DecisionDriverCapabilities, DecisionOutcome, DecisionQuestion,
-    DecisionRequest, DecisionUsage, DecisionsService, NativePrimitives,
-};
+use everruns_core::{DecisionOutcome, DecisionRequest, DecisionsService};
 
 /// Environment variable used by the deployment-owned judgment client.
 ///
@@ -38,7 +26,7 @@ pub const UTILITY_TYPESAFE_API_KEY_ENV: &str = "UTILITY_TYPESAFE_API_KEY";
 /// models, and the type should not be the thing preventing that.
 pub const DECISIONS_MODEL: &str = DEFAULT_MODEL;
 
-/// Driver id for `DECISIONS_DRIVER` and `typesafe/...` routing.
+/// Provider driver id for explicit TypeSafe account selection.
 pub const TYPESAFE_DECISION_DRIVER_ID: &str = "typesafe";
 
 /// The TypeSafe provider, behind core's provider-neutral decisions.
@@ -118,138 +106,41 @@ impl TypeSafeAI {
     }
 }
 
-// The vendor answers all three primitives with calibrated distributions, and
-// owns every `jev-*` id, so a request naming one reaches it without a
-// `typesafe/` prefix.
-#[async_trait]
-impl DecisionDriver for TypeSafeAI {
-    fn id(&self) -> &str {
-        TYPESAFE_DECISION_DRIVER_ID
-    }
-
-    fn capabilities(&self) -> DecisionDriverCapabilities {
-        DecisionDriverCapabilities::new(NativePrimitives::ALL, true)
-    }
-
-    fn model_prefixes(&self) -> &[&str] {
-        &["jev-"]
-    }
-
-    async fn evaluate(&self, request: DecisionRequest) -> Result<DecisionOutcome> {
-        if request.is_empty() {
-            return Err(AgentLoopError::llm(
-                "decision request must carry at least one question",
-            ));
-        }
-        let mut evaluation = Evaluation::new(request.state.clone());
-        // The caller's model when they named one, this service's otherwise.
-        // Guardrails never name one, so the deployment stays on its default.
-        if let Some(model) = request.model.as_deref().or(self.model.as_deref()) {
-            evaluation = evaluation.model(model);
-        }
-        for (id, question) in &request.questions {
-            evaluation = evaluation.ask(id.clone(), to_vendor_question(question));
-        }
-
-        let judgment =
-            self.client.evaluate(evaluation).await.map_err(|error| {
-                AgentLoopError::llm(format!("decision request failed: {error}"))
-            })?;
-
-        Ok(DecisionOutcome {
-            model: judgment.model.clone(),
-            answers: judgment
-                .answers
-                .iter()
-                .map(|(id, answer)| (id.clone(), from_vendor_answer(answer)))
-                .collect(),
-            usage: DecisionUsage {
-                input_tokens: judgment.usage.input_tokens,
-                output_tokens: judgment.usage.output_tokens,
-            },
-            calibrated: true,
-        })
-    }
-}
-
-/// Embedders holding one TypeSafe key use it directly, with no registry:
-/// `Decisions::new("jev-latest", TypeSafeAI::from_env()?)`.
 #[async_trait]
 impl DecisionsService for TypeSafeAI {
     fn is_configured(&self) -> bool {
         true
     }
-
-    async fn evaluate(&self, request: DecisionRequest) -> Result<DecisionOutcome> {
-        DecisionDriver::evaluate(self, request).await
+    async fn evaluate(&self, mut request: DecisionRequest) -> Result<DecisionOutcome> {
+        if request
+            .provider
+            .as_ref()
+            .is_some_and(|key| key.as_str() != "typesafe")
+        {
+            return Err(AgentLoopError::llm(
+                "A single-account service cannot select another provider",
+            ));
+        }
+        request.model = request
+            .model
+            .or_else(|| self.model.clone())
+            .or_else(|| Some(DECISIONS_MODEL.into()));
+        let evaluation = everruns_drivers::systemone::evaluation(&request)?;
+        let judgment = self.client.evaluate(evaluation).await.map_err(|error| {
+            // Keep status actionable without copying a provider body into logs.
+            AgentLoopError::llm(match error.status() {
+                Some(status) => format!("TypeSafe decision request failed (HTTP {status})"),
+                None => "TypeSafe decision request failed".into(),
+            })
+        })?;
+        everruns_drivers::systemone::decode(
+            &request,
+            serde_json::to_value(judgment)
+                .map_err(|_| AgentLoopError::llm("Invalid decision response"))?,
+        )
     }
-
     fn name(&self) -> &'static str {
         "TypeSafeAI"
-    }
-}
-
-fn to_vendor_question(question: &DecisionQuestion) -> Question {
-    match question {
-        DecisionQuestion::Noul {
-            instructions,
-            yes,
-            no,
-        } => {
-            let built = Question::noul(instructions.as_str());
-            match (yes, no) {
-                (Some(yes), Some(no)) => built.criteria(yes, no),
-                _ => built,
-            }
-        }
-        DecisionQuestion::Choice {
-            instructions,
-            options,
-        } => Question::choice(
-            instructions.as_str(),
-            options.iter().map(|(option, rubric)| {
-                (
-                    option.clone(),
-                    rubric
-                        .as_ref()
-                        .map(|text| serde_json::Value::String(text.clone()))
-                        .unwrap_or(serde_json::Value::Null),
-                )
-            }),
-        ),
-        DecisionQuestion::Score {
-            instructions,
-            levels,
-        } => Question::score(instructions.as_str(), levels.clone()),
-    }
-}
-
-fn from_vendor_answer(answer: &Answer) -> DecisionAnswer {
-    match answer {
-        Answer::Noul(noul) => DecisionAnswer::Noul {
-            probability: noul.noul,
-        },
-        Answer::Choice(choice) => DecisionAnswer::Choice {
-            selected: choice.choice.clone(),
-            probabilities: choice.probabilities.clone(),
-            confidence: choice.confidence,
-        },
-        Answer::Score(score) => DecisionAnswer::Score {
-            score: score.score,
-            // Level keys arrive as strings; unparseable keys are dropped rather
-            // than defaulted, so a malformed level never reads as level 0.
-            probabilities: score
-                .probabilities
-                .iter()
-                .filter_map(|(level, probability)| {
-                    level
-                        .parse::<usize>()
-                        .ok()
-                        .map(|level| (level, *probability))
-                })
-                .collect::<BTreeMap<usize, f64>>(),
-            confidence: score.confidence,
-        },
     }
 }
 
@@ -306,122 +197,26 @@ impl SystemDecisionsConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn system_config_debug_redacts_api_key() {
-        let debug = format!(
-            "{:?}",
-            SystemDecisionsConfig::TypeSafeAI {
-                api_key: "ts-secret-value".to_string(),
-            }
+    fn secrets_are_redacted() {
+        assert!(!format!("{:?}", TypeSafeAI::new("secret-key")).contains("secret-key"));
+        assert!(
+            !format!(
+                "{:?}",
+                SystemDecisionsConfig::TypeSafeAI {
+                    api_key: "secret-key".into()
+                }
+            )
+            .contains("secret-key")
         );
-        assert!(debug.contains("<redacted>"));
-        assert!(!debug.contains("ts-secret-value"));
     }
-
-    #[test]
-    fn service_debug_never_renders_the_key() {
-        let service = TypeSafeAI::new("ts-secret-value");
-        assert!(!format!("{service:?}").contains("ts-secret-value"));
-    }
-
-    #[test]
-    fn questions_translate_to_the_vendor_shape() {
-        let noul = to_vendor_question(&DecisionQuestion::Noul {
-            instructions: "Is it urgent?".to_string(),
-            yes: Some("Time-sensitive".to_string()),
-            no: Some("No urgency".to_string()),
-        });
-        let wire = serde_json::to_value(&noul).expect("serializes");
-        assert_eq!(wire["type"], "noul");
-        assert_eq!(wire["criteria"]["true"], "Time-sensitive");
-
-        let choice = to_vendor_question(&DecisionQuestion::Choice {
-            instructions: "Which team?".to_string(),
-            options: vec![
-                ("billing".to_string(), Some("Money".to_string())),
-                ("technical".to_string(), None),
-            ],
-        });
-        let wire = serde_json::to_value(&choice).expect("serializes");
-        assert_eq!(wire["criteria"]["billing"], "Money");
-        assert_eq!(wire["criteria"]["technical"], serde_json::Value::Null);
-
-        let score = to_vendor_question(&DecisionQuestion::score("How bad?", ["Fine", "Bad"]));
-        let wire = serde_json::to_value(&score).expect("serializes");
-        assert_eq!(wire["criteria"][1], "Bad");
-    }
-
-    #[test]
-    fn score_answers_keep_their_distribution_and_drop_unparseable_levels() {
-        let answer: Answer = serde_json::from_value(serde_json::json!({
-            "type": "score",
-            "score": 1.5,
-            "legend": {"0": "Fine", "1": "Bad", "2": "Awful"},
-            "probabilities": {"0": 0.1, "1": 0.3, "2": 0.6, "oops": 0.9},
-            "confidence": 0.7
-        }))
-        .expect("answer");
-        let converted = from_vendor_answer(&answer);
-        // Summed float mass, so compare with a tolerance rather than exactly.
-        let tail = converted
-            .probability_at_or_above(1)
-            .expect("a score answer");
-        assert!((tail - 0.9).abs() < 1e-9, "{tail}");
-        assert_eq!(converted.confidence(), Some(0.7));
-        let DecisionAnswer::Score { probabilities, .. } = &converted else {
-            panic!("expected a score answer");
-        };
-        assert_eq!(probabilities.len(), 3);
-    }
-
-    #[test]
-    fn noul_and_choice_answers_round_trip() {
-        let noul: Answer =
-            serde_json::from_value(serde_json::json!({"type": "noul", "noul": 0.92}))
-                .expect("answer");
-        assert_eq!(from_vendor_answer(&noul).probability_yes(), Some(0.92));
-
-        let choice: Answer = serde_json::from_value(serde_json::json!({
-            "type": "choice",
-            "choice": "technical",
-            "probabilities": {"billing": 0.1, "technical": 0.9},
-            "confidence": 0.8
-        }))
-        .expect("answer");
-        let DecisionAnswer::Choice {
-            selected,
-            probabilities,
-            confidence,
-        } = from_vendor_answer(&choice)
-        else {
-            panic!("expected a choice answer");
-        };
-        assert_eq!(selected, "technical");
-        assert_eq!(probabilities["technical"], 0.9);
-        assert_eq!(confidence, 0.8);
-    }
-
     #[tokio::test]
-    async fn empty_requests_are_rejected_before_any_round_trip() {
-        let service = TypeSafeAI::new("unused");
-        let error = DecisionsService::evaluate(&service, DecisionRequest::new("state"))
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("at least one question"));
-    }
-
-    #[test]
-    fn env_config_yields_a_driver_only_with_a_key() {
-        // Set/unset is process-global; assert the branch logic directly instead.
-        assert!(SystemDecisionsConfig::Disabled.into_driver().is_none());
-        let driver = SystemDecisionsConfig::TypeSafeAI {
-            api_key: "k".to_string(),
-        }
-        .into_driver()
-        .expect("a key yields a driver");
-        assert_eq!(DecisionDriver::id(&driver), "typesafe");
-        assert_eq!(driver.model_prefixes(), &["jev-"]);
-        assert!(driver.capabilities().calibrated);
+    async fn empty_request_is_rejected_locally() {
+        assert!(
+            TypeSafeAI::new("unused")
+                .evaluate(DecisionRequest::new("state"))
+                .await
+                .is_err()
+        );
     }
 }

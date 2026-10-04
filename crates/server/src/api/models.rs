@@ -76,6 +76,10 @@ pub struct CreateModelRequest {
     /// Human-readable display name for the model.
     #[schema(example = "GPT-4o")]
     pub display_name: String,
+    #[serde(default)]
+    pub service: Option<everruns_contracts::ServiceKind>,
+    #[serde(default)]
+    pub profile_key: Option<String>,
     /// List of capabilities this model supports (e.g., "chat", "vision", "tools").
     #[serde(default)]
     #[schema(example = json!(["chat", "vision", "tools"]))]
@@ -93,6 +97,8 @@ pub struct CreateModelRequest {
 /// Query parameters for filtering models list
 #[derive(Debug, Default, Deserialize, IntoParams)]
 pub struct ListModelsQuery {
+    /// Filter by typed model service.
+    pub service: Option<everruns_contracts::ServiceKind>,
     /// Filter by model source (manual, discovered, predefined)
     pub source: Option<ModelSource>,
     /// Include models that are stale (not seen in recent sync). Default: true
@@ -122,6 +128,8 @@ pub struct UpdateModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "GPT-4o Mini")]
     pub display_name: Option<String>,
+    pub service: Option<everruns_contracts::ServiceKind>,
+    pub profile_key: Option<String>,
     /// List of capabilities this model supports.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!(["chat", "tools"]))]
@@ -164,6 +172,8 @@ pub async fn create_model(
             provider_id,
             model_id: req.model_id,
             display_name: req.display_name,
+            service: req.service,
+            profile_key: req.profile_key,
             capabilities: req.capabilities,
             enabled: req.enabled,
             is_favorite: req.is_favorite,
@@ -188,12 +198,17 @@ pub async fn list_provider_models(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(provider_id): Path<String>,
+    Query(query): Query<ListModelsQuery>,
 ) -> ApiResult<ListResponse<WithUrls<Model>>> {
     let models = ListProviderModels { provider_id }
         .run(&state.ctx(&org))
         .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    let models: Vec<_> = models
+        .into_iter()
+        .filter(|model| query.service.is_none_or(|service| model.service == service))
+        .collect();
     Ok(Json(ListResponse::new(models).with_urls(&builder)))
 }
 
@@ -215,6 +230,7 @@ pub async fn list_all_models(
     Query(query): Query<ListModelsQuery>,
 ) -> ApiResult<ListResponse<WithUrls<ModelWithProvider>>> {
     let models = ListModels {
+        service: query.service,
         source: query.source,
         include_stale: query.include_stale,
         favorites_only: query.favorites_only,
@@ -276,6 +292,8 @@ pub async fn update_model(
             provider_id: req.provider_id,
             model_id: req.model_id,
             display_name: req.display_name,
+            service: req.service,
+            profile_key: req.profile_key,
             capabilities: req.capabilities,
             enabled: req.enabled,
             is_favorite: req.is_favorite,
@@ -344,8 +362,14 @@ pub async fn get_default_model(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/model-profiles", get(list_model_profiles))
+        .route("/v1/model-profiles/{*key}", get(get_model_profile))
         .route("/v1/models/config", get(model_config))
         .route("/v1/models/default", get(get_default_model))
+        .route(
+            "/v1/models/decision-default",
+            get(get_default_decision_model).put(set_default_decision_model),
+        )
         .route(
             "/v1/providers/{provider_id}/models",
             post(create_model).get(list_provider_models),
@@ -356,6 +380,141 @@ pub fn routes(state: AppState) -> Router {
             get(get_model).patch(update_model).delete(delete_model),
         )
         .with_state(state)
+}
+
+#[derive(Debug, serde::Serialize, ToSchema)]
+pub struct ModelProfileResponse {
+    pub key: String,
+    pub service: everruns_contracts::ServiceKind,
+    pub vendor: Option<everruns_contracts::model::ModelVendor>,
+    pub source: String,
+    pub profile: everruns_contracts::model::ModelProfile,
+}
+
+#[derive(Default, Deserialize, IntoParams)]
+pub struct ProfileQuery {
+    pub service: Option<everruns_contracts::ServiceKind>,
+    pub provider_id: Option<String>,
+}
+
+async fn profiles_for_caller(
+    org: &ResolvedOrg,
+    state: &AppState,
+    query: ProfileQuery,
+) -> ApiResult<Vec<ModelProfileResponse>> {
+    // THREAT[TM-TENANT-001]: discovered profiles come only from the caller's authorized model catalog.
+    let models = ListModels {
+        service: None,
+        source: None,
+        include_stale: true,
+        favorites_only: false,
+    }
+    .run(&state.ctx(org))
+    .await?;
+    let selected_provider = query.provider_id.clone();
+    let entries = if let Some(id) = query.provider_id {
+        let provider = state
+            .db
+            .get_provider(
+                org.org_id,
+                id.parse::<everruns_contracts::typed_id::ProviderId>()
+                    .map_err(|_| {
+                        ErrorResponse::new("Invalid provider ID")
+                            .into_response(StatusCode::BAD_REQUEST)
+                    })?
+                    .uuid(),
+            )
+            .await
+            .map_err(|_| {
+                ErrorResponse::new("Failed to read provider")
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        let provider = provider.ok_or_else(|| {
+            ErrorResponse::new("Provider not found").into_response(StatusCode::NOT_FOUND)
+        })?;
+        if !crate::services::chatgpt::visible(&provider.settings, &Caller::from(org)) {
+            return Err(
+                ErrorResponse::new("Provider not found").into_response(StatusCode::NOT_FOUND)
+            );
+        }
+        everruns_contracts::model_profile_data::profile_entries_for_provider(
+            &provider.provider_type,
+        )
+        .into_iter()
+        .filter(|entry| {
+            state
+                .service
+                .validate_model_service(&provider.provider_type, entry.service)
+                .is_ok()
+        })
+        .collect()
+    } else {
+        everruns_contracts::model_profile_data::all_profile_entries()
+    };
+    let mut profiles: Vec<_> = entries
+        .into_iter()
+        .map(|entry| ModelProfileResponse {
+            key: entry.key,
+            service: entry.service,
+            vendor: Some(entry.vendor),
+            source: "curated".into(),
+            profile: entry.profile,
+        })
+        .collect();
+    for model in models {
+        if selected_provider
+            .as_ref()
+            .is_some_and(|id| id != &model.provider_id.to_string())
+        {
+            continue;
+        }
+        if !model.profile_key.is_empty()
+            && !profiles
+                .iter()
+                .any(|profile| profile.key == model.profile_key)
+            && let Some(profile) = model.profile
+        {
+            profiles.push(ModelProfileResponse {
+                key: model.profile_key,
+                service: model.service,
+                vendor: model.model_vendor,
+                source: model.source.to_string(),
+                profile,
+            });
+        }
+    }
+    profiles.retain(|profile| {
+        query
+            .service
+            .is_none_or(|service| profile.service == service)
+    });
+    profiles.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(Json(profiles))
+}
+
+#[utoipa::path(get, path = "/v1/model-profiles", params(ProfileQuery), responses((status = 200, description = "Authorized model profiles", body = ListResponse<ModelProfileResponse>)), tag = "models")]
+pub async fn list_model_profiles(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Query(query): Query<ProfileQuery>,
+) -> ApiResult<ListResponse<ModelProfileResponse>> {
+    let Json(profiles) = profiles_for_caller(&org, &state, query).await?;
+    Ok(Json(ListResponse::new(profiles)))
+}
+
+#[utoipa::path(get, path = "/v1/model-profiles/{key}", params(("key" = String, Path)), responses((status = 200, description = "Model profile", body = ModelProfileResponse), (status = 404, description = "Unknown profile")), tag = "models")]
+pub async fn get_model_profile(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> ApiResult<ModelProfileResponse> {
+    let Json(profiles) = profiles_for_caller(&org, &state, ProfileQuery::default()).await?;
+    match profiles.into_iter().find(|profile| profile.key == key) {
+        Some(profile) => Ok(Json(profile)),
+        None => {
+            Err(ErrorResponse::new("Model profile not found").into_response(StatusCode::NOT_FOUND))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -378,4 +537,24 @@ mod tests {
     }
 
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
+}
+
+#[utoipa::path(get, path = "/v1/models/decision-default", responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
+pub async fn get_default_decision_model(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> ApiResult<Option<ModelWithProvider>> {
+    Ok(Json(
+        crate::domains::models::commands::GetDefaultDecisionModel {}
+            .run(&state.ctx(&org))
+            .await?,
+    ))
+}
+#[utoipa::path(put, path = "/v1/models/decision-default", request_body = crate::domains::models::commands::SetDefaultDecisionModel, responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
+pub async fn set_default_decision_model(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(req): Json<crate::domains::models::commands::SetDefaultDecisionModel>,
+) -> ApiResult<Option<ModelWithProvider>> {
+    Ok(Json(req.run(&state.ctx(&org)).await?))
 }

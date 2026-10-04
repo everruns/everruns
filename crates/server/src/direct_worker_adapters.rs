@@ -167,24 +167,6 @@ struct DirectProviderCredentialStore {
 }
 
 #[async_trait]
-impl ProviderCredentialStore for DirectProviderCredentialStore {
-    async fn get_default_provider_credentials(
-        &self,
-        provider_type: &str,
-    ) -> Result<Option<ProviderCredentials>> {
-        Ok(self
-            .provider_resolver
-            .resolve_provider_credentials(self.org_id, provider_type)
-            .await
-            .map_err(|e| store_error(format!("Failed to resolve provider credentials: {e}")))?
-            .map(|resolved| ProviderCredentials {
-                api_key: resolved.api_key,
-                base_url: resolved.base_url,
-            }))
-    }
-}
-
-#[async_trait]
 impl BudgetChecker for DirectBudgetChecker {
     async fn check_budgets(&self, session_id: &str) -> Result<BudgetToolResponse> {
         let all_budgets = self
@@ -2543,3 +2525,5 @@ mod platform_store;
 #[cfg(test)]
 #[path = "direct_worker_adapters/tests.rs"]
 mod tests;
+
+mod decision_models;

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Star } from "lucide-react";
 import { ModelIcon } from "@/components/models/model-icon";
 import {
@@ -11,12 +12,14 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ModelWithProvider } from "@/lib/api/types";
-import { isChatModel } from "@/lib/model-capabilities";
+import type { ModelWithProvider, ModelService } from "@/lib/api/types";
+import { matchesModelService } from "@/lib/model-capabilities";
 import { useModels, useUpdateModel } from "@/hooks/use-providers";
 import { useQueryClient } from "@tanstack/react-query";
 
-interface ModelPickerProps {
+export interface ModelPickerProps {
+  service?: ModelService;
+  requiredPrimitives?: string[];
   /** Optional ID for the select trigger */
   id?: string;
   /** Current selected model ID (empty string or "none" for no selection) */
@@ -41,6 +44,8 @@ interface ModelPickerProps {
  */
 export function ModelPicker({
   id,
+  service = "chat",
+  requiredPrimitives = [],
   value,
   onChange,
   placeholder = "Select a model",
@@ -52,7 +57,16 @@ export function ModelPicker({
 
   // Only show enabled models, sorted: favorites first, then by provider and name
   const sortedModels = [...models]
-    .filter((m) => m.enabled && isChatModel(m))
+    .filter(
+      (m) =>
+        m.enabled &&
+        m.healthy !== false &&
+        matchesModelService(m, service) &&
+        (service !== "decisions" || m.profile?.decisions?.calibrated === true) &&
+        requiredPrimitives.every((primitive) =>
+          m.profile?.decisions?.primitives.includes(primitive),
+        ),
+    )
     .sort((a, b) => {
       // Favorites first
       if (a.is_favorite !== b.is_favorite) {
@@ -68,40 +82,60 @@ export function ModelPicker({
       return a.display_name.localeCompare(b.display_name);
     });
 
-  const selectedModel = models.find((m) => m.id === value && isChatModel(m));
+  const selectedModel = models.find((m) => m.id === value);
 
   return (
-    <Select
-      value={value || "none"}
-      onValueChange={(val) => onChange(val === "none" ? "" : val)}
-      disabled={disabled || isLoading}
-    >
-      <SelectTrigger id={id} className={cn("w-full", className)}>
-        <SelectValue>
-          {(() => {
-            if (isLoading) return "Loading...";
-            if (!selectedModel) return placeholder;
-            return (
-              <div className="flex items-center gap-2">
-                <ModelIcon model={selectedModel} size="sm" showBackground={false} />
-                <span>
-                  {selectedModel.display_name} ({selectedModel.provider_name})
-                </span>
-                {selectedModel.is_favorite && (
-                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                )}
-              </div>
-            );
-          })()}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="none">{placeholder}</SelectItem>
-        {sortedModels.map((model) => (
-          <ModelSelectItem key={model.id} model={model} showFavoriteToggle={showFavoriteToggle} />
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="space-y-2">
+      <Select
+        value={value || "none"}
+        onValueChange={(val) => onChange(val === "none" ? "" : val)}
+        disabled={disabled || isLoading}
+      >
+        <SelectTrigger id={id} className={cn("w-full", className)}>
+          <SelectValue>
+            {(() => {
+              if (isLoading) return "Loading...";
+              if (!selectedModel) return placeholder;
+              return (
+                <div className="flex items-center gap-2">
+                  <ModelIcon model={selectedModel} size="sm" showBackground={false} />
+                  <span>
+                    {selectedModel.display_name} ({selectedModel.provider_name})
+                  </span>
+                  {selectedModel.is_favorite && (
+                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                  )}
+                </div>
+              );
+            })()}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">{placeholder}</SelectItem>
+          {sortedModels.map((model) => (
+            <ModelSelectItem key={model.id} model={model} showFavoriteToggle={showFavoriteToggle} />
+          ))}
+        </SelectContent>
+      </Select>
+      {!isLoading && sortedModels.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No configured {service} models.{" "}
+          <Link href="/models" className="text-primary underline">
+            Configure a model
+          </Link>
+          .
+        </p>
+      )}
+      {!isLoading &&
+        value &&
+        value !== "none" &&
+        !sortedModels.some((model) => model.id === value) && (
+          <p role="alert" className="text-xs text-destructive">
+            The configured model is unavailable or does not support {service}. Choose a model to
+            repair this setting.
+          </p>
+        )}
+    </div>
   );
 }
 
@@ -205,5 +239,15 @@ export function FavoriteToggle({ model, size = "default" }: FavoriteToggleProps)
         )}
       />
     </Button>
+  );
+}
+
+export function DecisionModelPicker(props: Omit<ModelPickerProps, "service">) {
+  return (
+    <ModelPicker
+      {...props}
+      service="decisions"
+      placeholder={props.placeholder ?? "Select a decision model"}
+    />
   );
 }

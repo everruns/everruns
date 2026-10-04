@@ -206,3 +206,6 @@ pub mod tools;
 
 /// Session-bound Slack effects; credentials stay with the control plane.
 pub mod slack_action;
+
+pub mod decision_driver;
+pub mod decisions;

@@ -13,6 +13,31 @@ impl WorkerServiceImpl {
         request: Request<GetDefaultProviderCredentialsRequest>,
     ) -> Result<Response<GetDefaultProviderCredentialsResponse>, Status> {
         let req = request.into_inner();
+        if let Some(model_id) = req.decision_model_id.as_deref() {
+            let session_id = req
+                .session_id
+                .as_ref()
+                .ok_or_else(|| Status::invalid_argument("Session is required"))?;
+            let binding = self
+                .provider_resolver_service
+                .resolve_decision_model(
+                    req.org_id,
+                    (!model_id.is_empty()).then_some(model_id),
+                    parse_uuid(Some(session_id))?,
+                )
+                .await
+                .map_err(|_| Status::failed_precondition("Decision model is unavailable"))?;
+            return Ok(Response::new(GetDefaultProviderCredentialsResponse {
+                found: binding.is_some(),
+                decision_binding_json: binding
+                    .map(|b| serde_json::to_string(&b))
+                    .transpose()
+                    .map_err(|_| Status::internal("Invalid binding"))?
+                    .unwrap_or_default(),
+                ..Default::default()
+            }));
+        }
+
         let resolved = if req.provider_id.is_empty() {
             self.provider_resolver_service
                 .resolve_provider_credentials(req.org_id, &req.provider_type)
@@ -68,6 +93,7 @@ impl WorkerServiceImpl {
                     serde_json::to_string(&request_options).unwrap_or_default()
                 };
                 GetDefaultProviderCredentialsResponse {
+                    decision_binding_json: String::new(),
                     found: true,
                     api_key: api_key.unwrap_or_default(),
                     base_url: base_url.unwrap_or_default(),
@@ -76,6 +102,7 @@ impl WorkerServiceImpl {
                 }
             }
             None => GetDefaultProviderCredentialsResponse {
+                decision_binding_json: String::new(),
                 found: false,
                 api_key: String::new(),
                 base_url: String::new(),

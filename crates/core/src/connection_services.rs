@@ -14,6 +14,17 @@ pub struct ProviderCredentials {
 
 #[async_trait]
 pub trait ProviderCredentialStore: Send + Sync {
+    /// Resolve a trusted catalog selection. Never falls back to another account.
+    async fn get_decision_model(
+        &self,
+        _model_id: Option<&str>,
+        _session_id: SessionId,
+    ) -> Result<Option<DecisionModelBinding>> {
+        Err(crate::error::AgentLoopError::store(
+            "Decision model resolution is unavailable",
+        ))
+    }
+
     /// Resolve default credentials for a provider type (for example `openai`).
     ///
     /// Implementations may apply environment fallbacks internally, but tools
@@ -128,4 +139,17 @@ pub trait UserConnectionResolver: Send + Sync {
     ) -> Result<Option<serde_json::Value>> {
         Ok(None)
     }
+}
+
+/// Resolved account material stays internal to the host boundary.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct DecisionModelBinding {
+    pub model_id: String,
+    pub provider_id: String,
+    pub provider_type: String,
+    pub model: String,
+    pub profile_key: String,
+    pub api_key: String,
+    pub base_url: Option<String>,
+    pub headers: std::collections::BTreeMap<String, String>,
 }

@@ -4,17 +4,17 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::{Error, Result};
+use crate::systemone::client::{Error, Result};
 
 /// One answer, matching the type of the question that produced it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Answer {
-    /// Answer to a [`crate::Question::noul`].
+    /// Answer to a [`crate::systemone::client::Question::noul`].
     Noul(NoulAnswer),
-    /// Answer to a [`crate::Question::choice`].
+    /// Answer to a [`crate::systemone::client::Question::choice`].
     Choice(ChoiceAnswer),
-    /// Answer to a [`crate::Question::score`].
+    /// Answer to a [`crate::systemone::client::Question::score`].
     Score(ScoreAnswer),
 }
 

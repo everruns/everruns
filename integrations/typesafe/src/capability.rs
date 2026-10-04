@@ -70,7 +70,24 @@ impl Capability for JevCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(JevDecisionTool)]
+        vec![Box::new(JevDecisionTool { model_id: None })]
+    }
+
+    fn config_schema(&self) -> Option<Value> {
+        Some(
+            serde_json::json!({"type":"object","additionalProperties":false,"properties":{"decision_model_id":{"type":"string","title":"Decision model","description":"Use a saved decision model and its provider account. Unset uses the organization decision default, or the legacy TypeSafe connection."}}}),
+        )
+    }
+    fn config_ui_schema(&self) -> Option<Value> {
+        Some(serde_json::json!({"decision_model_id":{"ui:widget":"DecisionModel"}}))
+    }
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(JevDecisionTool {
+            model_id: config
+                .get("decision_model_id")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        })]
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
@@ -125,7 +142,9 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
 }
 
 /// The `jev_decision` tool.
-pub struct JevDecisionTool;
+pub struct JevDecisionTool {
+    model_id: Option<String>,
+}
 
 #[async_trait]
 impl Tool for JevDecisionTool {
@@ -168,6 +187,29 @@ impl Tool for JevDecisionTool {
                 ));
             }
         };
+        if let Some(store) = &context.provider_credential_store {
+            match store
+                .get_decision_model(self.model_id.as_deref(), context.session_id)
+                .await
+            {
+                Ok(Some(binding)) => {
+                    return match crate::bound::evaluate(binding, input, context).await {
+                        Ok(value) => ToolExecutionResult::success(value),
+                        Err(error) => ToolExecutionResult::tool_error(error),
+                    };
+                }
+                Ok(None) if self.model_id.is_none() => {}
+                _ => {
+                    return ToolExecutionResult::tool_error(
+                        "The selected decision model is unavailable. Check Models and provider credentials.",
+                    );
+                }
+            }
+        } else if self.model_id.is_some() {
+            return ToolExecutionResult::tool_error(
+                "Decision model resolution requires a configured host",
+            );
+        }
         let api_key = match get_api_key(context).await {
             Ok(key) => key,
             Err(error) => return error,
@@ -303,14 +345,14 @@ mod tests {
 
     #[tokio::test]
     async fn execute_without_context_is_rejected() {
-        let result = JevDecisionTool.execute(json!({})).await;
+        let result = JevDecisionTool { model_id: None }.execute(json!({})).await;
         assert!(format!("{result:?}").contains("requires context"));
     }
 
     #[tokio::test]
     async fn malformed_arguments_never_reach_the_network() {
         let context = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
-        let result = JevDecisionTool
+        let result = JevDecisionTool { model_id: None }
             .execute_with_context(json!({"state": "x"}), &context)
             .await;
         assert!(
@@ -322,7 +364,7 @@ mod tests {
     #[tokio::test]
     async fn missing_credentials_explain_how_to_configure_them() {
         let context = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
-        let result = JevDecisionTool
+        let result = JevDecisionTool { model_id: None }
             .execute_with_context(
                 json!({
                     "state": "a joke",

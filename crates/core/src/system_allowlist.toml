@@ -78,6 +78,7 @@ allowed = [
     "*.groq.com",
     "*.openrouter.ai",
     "openrouter.ai",
+    "api.typesafe.ai",
     "*.replicate.com",
     "*.together.ai",
     "*.together.xyz",

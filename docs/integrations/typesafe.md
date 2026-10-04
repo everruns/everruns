@@ -1,6 +1,6 @@
 ---
 title: TypeSafe
-description: "Typed decision from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Requires a TypeSafe API key."
+description: "Typed decision from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Uses a configured TypeSafe or OpenRouter account."
 appliesTo: [framework, platform]
 ---
 
@@ -24,6 +24,21 @@ no JSON to parse out of a paragraph.
 - **Graded scores**: rate against ordered levels you write, with the probability of each level
 - **Confidence**: how concentrated the answer is, so the agent can escalate instead of guessing
 - **One call, many questions**: every question in a call is answered together over the same content
+
+## Use an existing OpenRouter account
+
+In **Models**, add or enable a **Decisions** model under your OpenRouter provider. Choose the
+**Jev 1.13** profile and the provider's model ID `typesafe/jev-1.13`. The same saved OpenRouter
+credential serves both chat and decisions. Direct TypeSafe uses `jev-1.13.0`.
+
+Set the organization decision default in Models, or select an exact model in the **Jev Decisions**
+capability settings. The tool uses that model's account. A disabled model or missing credential
+requires repairing the selection; it does not switch to another account. Decision calls honor
+session network restrictions and budgets, and appear in session usage.
+
+The model service filter keeps decisions out of chat selectors. Model profile details show
+calibrated primitives and serving limits. Existing TypeSafe connections and session secrets
+continue to work when no catalog selection or decision default is configured.
 
 ## Quick Start
 

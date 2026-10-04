@@ -275,6 +275,7 @@ impl GrpcClient {
         provider_type: &str,
     ) -> Result<Option<ProviderCredentials>> {
         let request = proto::GetDefaultProviderCredentialsRequest {
+            decision_model_id: None,
             org_id,
             provider_type: provider_type.to_string(),
             provider_id: String::new(),
@@ -313,6 +314,7 @@ impl GrpcClient {
         session_id: Option<SessionId>,
     ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         let request = proto::GetDefaultProviderCredentialsRequest {
+            decision_model_id: None,
             org_id,
             provider_type: String::new(),
             provider_id: provider_id.to_string(),
@@ -1738,18 +1740,6 @@ impl ImageArtifactStore for GrpcOrgAdapter {
     }
 }
 
-#[async_trait]
-impl ProviderCredentialStore for GrpcOrgAdapter {
-    async fn get_default_provider_credentials(
-        &self,
-        provider_type: &str,
-    ) -> Result<Option<ProviderCredentials>> {
-        self.client
-            .get_default_provider_credentials(self.org_id, provider_type)
-            .await
-    }
-}
-
 fn proto_model_to_model_spec(proto: proto::ResolvedModel) -> Result<ModelSpec> {
     // An empty provider_type is a corrupt/missing proto field; fail fast with
     // a clear store error rather than parsing it into an unusable External("").
@@ -2979,3 +2969,5 @@ mod journals;
 #[cfg(test)]
 #[path = "grpc_adapters/tests.rs"]
 mod tests;
+
+mod decision_models;

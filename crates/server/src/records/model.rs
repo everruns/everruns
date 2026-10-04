@@ -73,6 +73,10 @@ pub struct Model {
     pub provider_id: ProviderId,
     /// Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`).
     pub model_id: String,
+    /// Stable assigned profile identity.
+    pub profile_key: String,
+    /// The typed service selected by this model.
+    pub service: everruns_contracts::ServiceKind,
     /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: String,
     /// Capability tags supported by this model (e.g. `chat`, `tools`, `vision`).
@@ -101,6 +105,10 @@ pub struct ModelWithProvider {
     /// Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
     #[schema(example = "claude-sonnet-5-5")]
     pub model_id: String,
+    /// Stable assigned profile identity.
+    pub profile_key: String,
+    /// The typed service selected by this model.
+    pub service: everruns_contracts::ServiceKind,
     /// Human-readable display name.
     #[schema(example = "Claude Sonnet 5.5")]
     pub display_name: String,

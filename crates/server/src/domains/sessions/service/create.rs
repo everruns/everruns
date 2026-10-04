@@ -793,11 +793,13 @@ impl SessionService {
             return Ok(None);
         };
 
-        self.db
+        let model = self
+            .db
             .get_model(org_id, model_id.uuid())
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Model"))?;
 
+        crate::services::model_catalog::require_chat(model.provider_metadata.as_ref())?;
         Ok(Some(model_id))
     }
 }

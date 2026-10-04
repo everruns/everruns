@@ -262,8 +262,8 @@ provider behind its `typesafe` feature, the way it re-exports `OpenAI`, so one
 import reaches both halves without the vendor entering the default build.
 
 `Decisions::from_registry` is the multi-vendor form: a
-`DecisionDriverRegistry` plus the driver that answers anything naming no
-driver, the Framework's view of the platform's decision router. Routing and
+`ProviderRegistry` plus an explicit `ModelSpec`, the same account/model pair
+used for chat. Model names never select providers. Routing and
 the calibrated/uncalibrated distinction are recorded in
 [Decisions Service](../operations/decisions-service.md#decision-drivers);
 `Answers::is_calibrated` tells a caller when the numbers are one-hot labels
