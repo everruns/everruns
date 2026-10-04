@@ -76,7 +76,7 @@ the server keeps the old OpenAPI component names as aliases of the channel schem
 The storage rename requires a coordinated API/worker rollout; existing spending
 subjects convert without resetting balances, limits, or periods. The implementation
 and migration live in `crates/server/src/domains/agent_channels/` and
-`crates/server/migrations/165_agent_channels.sql`.
+`crates/server/migrations/166_agent_channels.sql`.
 
 ## Model
 
