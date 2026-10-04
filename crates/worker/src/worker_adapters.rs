@@ -98,7 +98,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         agent_id: Uuid,
     ) -> Result<(
         Result<Option<AgentDefinition>>,
-        Option<everruns_core::DependencyBlocker>,
+        Option<crate::core::DependencyBlocker>,
     )> {
         let blocker = self.get_agent_blocker(org_id, agent_id).await?;
         Ok((self.get_agent(org_id, agent_id).await, blocker))
@@ -111,7 +111,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         harness_id: Uuid,
     ) -> Result<(
         Result<Option<HarnessDefinition>>,
-        Option<everruns_core::DependencyBlocker>,
+        Option<crate::core::DependencyBlocker>,
     )> {
         let blocker = self.get_harness_blocker(org_id, harness_id).await?;
         Ok((self.get_harness(org_id, harness_id).await, blocker))

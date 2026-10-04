@@ -161,7 +161,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         agent_id: Uuid,
     ) -> Result<(
         Result<Option<AgentDefinition>>,
-        Option<everruns_core::DependencyBlocker>,
+        Option<crate::core::DependencyBlocker>,
     )> {
         GrpcOrgAdapter::new(self.client.clone(), org_id)
             .resolve_agent_read(AgentId::from_uuid(agent_id))
@@ -174,7 +174,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         harness_id: Uuid,
     ) -> Result<(
         Result<Option<HarnessDefinition>>,
-        Option<everruns_core::DependencyBlocker>,
+        Option<crate::core::DependencyBlocker>,
     )> {
         GrpcOrgAdapter::new(self.client.clone(), org_id)
             .resolve_harness_read(HarnessId::from_uuid(harness_id))
