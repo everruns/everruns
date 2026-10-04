@@ -152,11 +152,13 @@ memories get	--memory-id!
 memories list	--include-archived --search
 memories sync	--memory-id!
 memories update	--description --memory-id! --name --source
+models decision-default get	
+models decision-default set	--model-id
 models default get	
 models delete	--id!
 models get	--id!
-models list	--favorites-only --include-stale --source
-models update	--capabilities... --display-name --enabled --id! --is-favorite --model-id --provider-id
+models list	--favorites-only --include-stale --service --source
+models update	--capabilities... --display-name --enabled --id! --is-favorite --model-id --profile-key --provider-id --service
 notifications list	--limit
 notifications view mark	--notification-id!
 observers create	--description --match --name! --sampling-rate --scorers!
@@ -202,7 +204,7 @@ providers create	--api-key --base-url --name! --provider-type! --request-options
 providers delete	--id!
 providers get	--id!
 providers list	
-providers models create	--capabilities... --display-name! --enabled --is-favorite --model-id! --provider-id!
+providers models create	--capabilities... --display-name! --enabled --is-favorite --model-id! --profile-key --provider-id! --service
 providers models list	--provider-id!
 providers sync-models sync	--id!
 providers update	--api-key --base-url --id! --name --provider-type --request-options --status --trace
