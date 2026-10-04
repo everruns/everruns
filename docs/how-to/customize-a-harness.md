@@ -28,7 +28,7 @@ curl -X POST http://localhost:9300/api/v1/harnesses \
 
 Names follow `[a-z0-9]+(-[a-z0-9]+)*` (up to 64 characters, no consecutive hyphens) and are unique per organization. Use `name` in API calls; `display_name` is for the UI only.
 
-`system_prompt` is optional. Omit it when a harness exists only to bundle capabilities or MCP servers on top of a parent, the effective prompt is then composed from the parent harness, agent, session, and capabilities. For example, a capability-only harness that inherits its prompt from `generic`:
+`system_prompt` is optional. Omit it when a harness exists only to bundle capabilities or MCP servers on top of a parent, the effective prompt is then composed from the parent harness, agent, session, and capabilities. For example, a capability-only harness that inherits its prompt from `worker-base`:
 
 ```bash
 curl -X POST http://localhost:9300/api/v1/harnesses \

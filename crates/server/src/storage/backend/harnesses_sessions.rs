@@ -130,6 +130,14 @@ impl StorageBackend {
         dispatch!(self, migrate_platform_chat_agent, org_id, agent, generic)
     }
 
+    pub async fn migrate_generic_default(
+        &self,
+        org_id: i64,
+        conversation_id: HarnessId,
+    ) -> Result<bool> {
+        dispatch!(self, migrate_generic_default, org_id, conversation_id)
+    }
+
     pub async fn consolidate_platform_chat(&self, org_id: i64) -> Result<bool> {
         dispatch!(self, consolidate_platform_chat, org_id)
     }

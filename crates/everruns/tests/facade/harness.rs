@@ -214,3 +214,69 @@ async fn default_environment_negotiation_returns_typed_public_error() {
         "failed negotiation must not persist an environment binding"
     );
 }
+
+#[tokio::test]
+async fn conversation_preset_runs_a_minimal_framework_session() {
+    let agent = Agent::builder()
+        .instructions("Tell a dad joke.")
+        .model(Model::simulated("A fake noodle is an impasta."))
+        .build()
+        .unwrap();
+    let session = InMemoryEngine::new()
+        .create(agent)
+        .harness(Harness::conversation())
+        .start()
+        .await
+        .unwrap();
+    assert!(session.inspect().await.unwrap().tools.is_empty());
+    let result = session.send_and_wait("Tell me a joke").await.unwrap();
+    assert_eq!(result.response, "A fake noodle is an impasta.");
+    assert_eq!(result.tool_calls, 0);
+}
+
+#[cfg(feature = "bashkit")]
+#[tokio::test]
+async fn worker_base_preset_executes_bash_in_the_framework() {
+    use everruns::{LlmSimConfig, ToolCall};
+    let agent = Agent::builder().instructions("Write and read a working note.").model(Model::simulated_with_config(
+        LlmSimConfig::fixed("Note saved.").with_tool_call_sequence(vec![vec![ToolCall {
+            id: "call_note".into(), name: "bash".into(), arguments: json!({"commands": "echo remembered > /workspace/note.txt; cat /workspace/note.txt"}),
+        }], vec![]])
+    )).build().unwrap();
+    let session = InMemoryEngine::new()
+        .create(agent)
+        .harness(Harness::worker_base())
+        .start()
+        .await
+        .unwrap();
+    let turn = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        session.send_and_wait("Save a note"),
+    )
+    .await
+    .expect("scripted turn completes")
+    .unwrap();
+    assert_eq!(turn.response, "Note saved.");
+    assert_eq!(turn.tool_calls, 1);
+    let history = session.history().page().await.unwrap();
+    let result = history
+        .messages
+        .iter()
+        .flat_map(|message| &message.content)
+        .find_map(|part| match part {
+            everruns::ContentPart::ToolResult(result) if result.tool_call_id == "call_note" => {
+                Some(result)
+            }
+            _ => None,
+        })
+        .expect("persisted bash result");
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(
+        result
+            .result
+            .as_ref()
+            .unwrap()
+            .to_string()
+            .contains("remembered")
+    );
+}

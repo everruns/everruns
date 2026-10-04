@@ -198,8 +198,7 @@ agent actions from outside the model.
 
 Harnesses also compose capabilities that are settings rather than features:
 Human Intent, BTW, Error Disclosure, and Tool Output Persistence and
-Distillation. The
-[Generic](/built-ins/harnesses/generic/) and
+Distillation. The canonical [harness levels](/features/harnesses/) and
 [Platform Chat](/built-ins/harnesses/platform-chat/) harness pages describe them.
 
 ## Quick Start

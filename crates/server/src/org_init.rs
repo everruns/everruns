@@ -286,6 +286,23 @@ pub async fn initialize_org_harnesses_with_definitions(
             .filter(|h| h.is_built_in);
 
         if let Some(existing_row) = existing_row {
+            // Consume the legacy default marker before syncing Generic's tags.
+            // This makes the upgrade retryable and preserves a later explicit
+            // choice to use Generic as the organization default.
+            if harness.name == "generic"
+                && harnesses
+                    .iter()
+                    .any(|h| h.name == "conversation" && h.has_role(BuiltInHarnessRole::Default))
+            {
+                let conversation = db
+                    .get_harness_by_name(org_id, "conversation")
+                    .await?
+                    .filter(|h| h.is_built_in)
+                    .context("missing built-in Conversation during migration")?;
+                if db.migrate_generic_default(org_id, conversation.id).await? {
+                    result.updated += 1;
+                }
+            }
             match db
                 .create_harness_with_id(org_id, existing_row.id, input)
                 .await?
@@ -494,7 +511,12 @@ async fn sync_harness_capabilities(
     let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
     let desired_ids: Vec<&str> = desired.iter().map(|c| c.capability_id()).collect();
 
-    if current_ids == desired_ids {
+    if current_ids == desired_ids
+        && current
+            .iter()
+            .zip(desired)
+            .all(|(current, desired)| current.config == *desired.config_value())
+    {
         return Ok(false);
     }
 
@@ -582,10 +604,10 @@ mod tests {
             assert!(h.is_built_in, "Harness {} should be built-in", h.name);
         }
 
-        let generic_id = provisioned_harnesses
+        let conversation_id = provisioned_harnesses
             .iter()
-            .find(|h| h.name == "generic")
-            .expect("generic harness")
+            .find(|h| h.name == "conversation")
+            .expect("conversation harness")
             .id;
         let base_id = provisioned_harnesses
             .iter()
@@ -597,7 +619,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(settings.default_harness_id, Some(generic_id));
+        assert_eq!(settings.default_harness_id, Some(conversation_id));
         assert_eq!(settings.base_harness_id, Some(base_id));
 
         let chat = db
@@ -606,7 +628,14 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(chat.is_built_in);
-        assert_eq!(chat.harness_id, generic_id);
+        assert_eq!(
+            chat.harness_id,
+            db.get_harness_by_name(DEFAULT_ORG_ID, "generic")
+                .await
+                .unwrap()
+                .unwrap()
+                .id
+        );
         assert!(chat.system_prompt.contains("/memory/shared"));
         assert!(!chat.starters.as_array().unwrap().is_empty());
         let caps = db.get_agent_capabilities(chat.id.uuid()).await.unwrap();
@@ -654,14 +683,14 @@ mod tests {
             assert!(h.is_built_in);
         }
 
-        let generic_id = h_org2.iter().find(|h| h.name == "generic").unwrap().id;
+        let conversation_id = h_org2.iter().find(|h| h.name == "conversation").unwrap().id;
         let base_id = h_org2.iter().find(|h| h.name == "base").unwrap().id;
         let settings = db
             .get_organization_settings(org2.org_id)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(settings.default_harness_id, Some(generic_id));
+        assert_eq!(settings.default_harness_id, Some(conversation_id));
         assert_eq!(settings.base_harness_id, Some(base_id));
     }
 
@@ -924,3 +953,6 @@ mod tests {
             .await;
     }
 }
+
+#[cfg(test)]
+mod level_tests;

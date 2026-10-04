@@ -154,16 +154,6 @@ export interface UpdateAgentRequest {
   forked_from_sequence?: number | null;
 }
 
-/** Read-only agent example defined in code, adoptable as a real Agent */
-export interface AgentExample {
-  name: string;
-  display_name: string;
-  description: string;
-  tags: string[];
-  capabilities: AgentCapabilityConfig[];
-  dev_only: boolean;
-}
-
 export type FindingSeverity = "warning" | "info" | "suggestion";
 
 export type FindingCategory = "structure" | "completeness" | "effectiveness" | "safety" | "cost";

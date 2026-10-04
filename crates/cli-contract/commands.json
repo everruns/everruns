@@ -628,7 +628,7 @@
     "examples": [
       {
         "intent": "Create an agent on the organization's default harness",
-        "command": "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness generic"
+        "command": "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness conversation"
       }
     ]
   },

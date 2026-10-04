@@ -1,6 +1,6 @@
 //! Data Analyst harness.
 //!
-//! Inherits from Generic. Adds SQL databases, OpenUI
+//! Inherits from Worker Base. Adds SQL databases, OpenUI
 //! visualization, task tracking, and a structured analysis pipeline inspired
 //! by OpenAI's Kepler data agent and the open-source Dash project.
 //!
@@ -18,7 +18,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         SYSTEM_PROMPT,
     )
     .with_icon("bar-chart")
-    .with_parent_name("generic")
+    .with_parent_name("worker-base")
     .with_tags(["data", "sql", "analytics", "built-in"])
     .with_capabilities([
         BuiltInCapabilityDefinition::new("session_sql_database"),

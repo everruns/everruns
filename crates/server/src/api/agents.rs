@@ -1122,7 +1122,7 @@ async fn import_from_example(
         system_prompt: seed.system_prompt.to_string(),
         default_model_id: None,
         harness_id: None,
-        harness_name: None,
+        harness_name: Some(seed.harness_name.to_string()),
         tags: seed.tags.iter().map(|s| s.to_string()).collect(),
         capabilities,
         environments: None,

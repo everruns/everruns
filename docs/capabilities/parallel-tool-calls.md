@@ -76,7 +76,7 @@ When the capability is enabled without an explicit `mode`, the default is
 `prefer`. `none` is equivalent to not enabling the capability; it is useful to
 neutralize a preference inherited from a parent harness.
 
-The **Generic** harness and the built-in **coding** harnesses enable this
+The **Worker Base**, **Worker**, deprecated **Generic**, and **coding** harnesses enable this
 capability with `mode: "prefer"` by default.
 
 ## Precedence

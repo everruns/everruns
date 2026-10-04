@@ -28,6 +28,34 @@ before a session starts. Configure typed built-ins, code-defined packages, and
 dynamic references through the single `capability(...)` entrypoint; see
 [Configure and author capabilities](/framework/advanced-capabilities/).
 
+## Harness foundations
+
+Choose `Harness::base()` for zero capabilities, `conversation()` for dialogue,
+`worker_base()` for files and bash, or `worker()` for skills, long context,
+budgeting and task coordination. These constructors share the hosted platform's
+[preset definitions](/features/harnesses/).
+
+```rust
+# use everruns::{Agent, Engine, Harness, Model};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let agent = Agent::builder().instructions("Tell dad jokes.").model(Model::simulated("An impasta.")).build()?;
+let engine = Engine::new();
+let session = engine
+    .create(agent)
+    .harness(Harness::conversation())
+    .start()
+    .await?;
+let response = session.send_and_wait("Tell me a joke.").await?;
+# Ok(())
+# }
+```
+
+Enable optional host integrations for the tools your application needs. Worker
+[delegation requires host backends](/built-ins/harnesses/worker/); the default
+in-memory host does not supply them. `Harness::generic()` is deprecated and
+preserves its legacy capabilities. Sessions without a bound harness retain their
+existing empty foundation.
+
 ## Files and workspaces
 
 - `file(path, content)` seeds an editable file.

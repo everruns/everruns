@@ -27,6 +27,8 @@ pub struct AgentExample {
     pub display_name: String,
     /// Short description
     pub description: String,
+    /// Explicit harness selected when importing this example.
+    pub harness_name: String,
     /// Tags for categorization
     pub tags: Vec<String>,
     /// Capability IDs this example uses
@@ -94,6 +96,7 @@ fn seed_to_example(seed: &SeedAgent, setup: Option<&TemplateSetup>) -> AgentExam
         name: seed.name.to_string(),
         display_name: seed.display_name.to_string(),
         description: seed.description.to_string(),
+        harness_name: seed.harness_name.to_string(),
         tags: seed.tags.iter().map(|s| s.to_string()).collect(),
         capabilities: seed
             .capabilities
@@ -189,6 +192,7 @@ mod tests {
             .find(|e| e.name == "dad-jokes-agent")
             .unwrap();
         assert!(jokes.setup.is_none());
+        assert_eq!(jokes.harness_name, "conversation");
         let json = serde_json::to_value(jokes).unwrap();
         assert!(
             json.get("setup").is_none(),

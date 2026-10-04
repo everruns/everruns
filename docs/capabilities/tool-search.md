@@ -21,7 +21,7 @@ Four capabilities provide it:
 | `tool_search` | Client-side `tool_search` tool | Any model | Not applicable |
 
 Use `auto_tool_search` unless you know the model and want one mechanism
-explicitly. It is what the [Generic](/built-ins/harnesses/generic/) harness
+explicitly. It is what the [Worker](/built-ins/harnesses/worker/) harness
 uses. Do not combine `auto_tool_search` with any of the other three on the same
 agent; it already provides all three paths.
 

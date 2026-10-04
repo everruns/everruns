@@ -67,20 +67,20 @@ You can configure:
 
 Last resort. Drops the oldest messages to fit within the token budget. The system prompt and the most recent messages are always preserved. This is lossy, dropped messages cannot be recovered unless Infinity Context is enabled.
 
-## Generic Harness Defaults
+## Worker Harness Defaults
 
-The built-in **Generic** harness enables both `compaction` and `infinity_context` by default. Together they keep long sessions unbounded without manual configuration.
+The built-in **Worker** harness enables both `compaction` and `infinity_context` by default. Together they bound the active context while retaining older history without manual configuration.
 
-| Capability | Role | Default in Generic |
+| Capability | Role | Default in Worker |
 |---|---|---|
 | **Infinity Context** | Limits how many messages are loaded from the database into the prompt; provides `query_history` for retrieval | `context_budget_tokens: 100000`, `min_recent_messages: 10` |
 | **Context Compaction** | Reduces the size of messages that *are* in the prompt, masking tool outputs, summarizing, or trimming | `strategy: auto`, `proactive: true`, `budget_percent: 0.85` |
 
-The flow for a long-running Generic session:
+The flow for a long-running Worker session:
 
 ![Compaction Session Flow](../images/advanced/compaction-session-flow.svg)
 
-No configuration is needed, creating a session with the Generic harness gives you this behavior out of the box. To customize, override either capability's config on the agent or session level.
+No configuration is needed, creating a session with the Worker harness gives you this behavior out of the box. To customize, override either capability's config on the agent or session level.
 
 ## Configuration
 

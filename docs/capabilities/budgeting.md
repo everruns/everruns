@@ -9,7 +9,7 @@ appliesTo: [framework, platform, cloud]
 | **ID** | `budgeting` |
 | **Category** | Cost Control |
 | **Features** | `budgeting` |
-| **Included in** | Generic harness (default) |
+| **Included in** | Worker harness |
 | **Dependencies** | None |
 
 Makes an agent aware of its budget constraints. The agent receives budget information in its system prompt and can proactively check remaining balance before expensive operations.

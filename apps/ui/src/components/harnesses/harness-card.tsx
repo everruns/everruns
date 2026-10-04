@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { isHarnessDeprecated } from "@/lib/harness-deprecation";
 import { Badge } from "@/components/ui/badge";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { LinkButton } from "@/components/ui/button";
@@ -73,6 +74,7 @@ export function HarnessCard({
               Built-in
             </Badge>
           )}
+          {isHarnessDeprecated(harness) && <Badge variant="outline">Deprecated</Badge>}
           <EntityStatus status={harness.status} />
         </>
       }

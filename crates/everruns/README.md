@@ -177,6 +177,19 @@ integrations](https://docs.everruns.com/framework/capability-integrations/),
 and [authoring advanced
 capabilities](https://docs.everruns.com/framework/advanced-capabilities/).
 
+## Choose a reusable harness foundation
+
+`Harness::base()`, `Harness::conversation()`, `Harness::worker_base()` and
+`Harness::worker()` share the hosted platform's presets. Conversation provides
+context management; Worker Base adds files and bash; Worker adds skills,
+long-context support, budgeting and delegation. Enable optional host integrations
+for the tools your application uses.
+
+Bind and start one with
+`engine.create(agent).harness(Harness::conversation()).start().await?`.
+`Harness::generic()` is deprecated and preserves its legacy behavior. Sessions
+without a bound harness retain their existing empty foundation.
+
 ## Sessions that go beyond request/response
 
 Use `send_and_wait` for a simple turn. Use `send` when you want to subscribe to

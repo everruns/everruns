@@ -1,5 +1,6 @@
 "use client";
 
+import { harnessChoiceLabel } from "@/lib/harness-deprecation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,6 +88,9 @@ export function ExampleCard({
         )
       }
     >
+      <p className="mb-2 text-xs text-muted-foreground">
+        Harness: {harnessChoiceLabel(example.harness_name)}
+      </p>
       <EntityCardDescription>{example.description}</EntityCardDescription>
 
       {!preview && (

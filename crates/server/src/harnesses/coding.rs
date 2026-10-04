@@ -10,9 +10,9 @@ pub fn definition() -> BuiltInHarnessDefinition {
         super::coding_prompt::CODING_SYSTEM_PROMPT,
     )
     .with_icon("terminal")
-    .with_parent_name("generic")
+    .with_parent_name("worker-base")
     .with_tags(["coding", "environment", "built-in"])
-    .with_capabilities([BuiltInCapabilityDefinition::new("github_scout")])
+    .with_capabilities([BuiltInCapabilityDefinition::new("github_scout"), BuiltInCapabilityDefinition::new("session_tasks")])
 }
 
 #[cfg(test)]
@@ -28,7 +28,7 @@ mod tests {
             .map(|capability| capability.capability_id())
             .collect::<Vec<_>>();
 
-        assert_eq!(harness.parent_name.as_deref(), Some("generic"));
-        assert_eq!(capability_ids, vec!["github_scout"]);
+        assert_eq!(harness.parent_name.as_deref(), Some("worker-base"));
+        assert_eq!(capability_ids, vec!["github_scout", "session_tasks"]);
     }
 }

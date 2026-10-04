@@ -30,6 +30,14 @@ with `everruns_contracts::`, `everruns_capability::` with
 `everruns_contracts::capability::`, and `everruns_model_profiles::` with
 `everruns_contracts::model_profile_data::`.
 
+### Harness levels
+
+`Harness::base()`, `Harness::conversation()`, `Harness::worker_base()` and `Harness::worker()` share the same capability definitions as the hosted harnesses. `Harness::generic()` is deprecated; it keeps its previous capabilities instead of silently switching to Worker.
+
+Choose the smallest foundation and add agent-specific capabilities. Enable the required host integrations separately. Existing `engine.create(agent)` behavior is unchanged when no harness is bound.
+
+On the hosted platform, upgrades pin existing agents that inherited a Generic org default to Generic before selecting Conversation as the new default. Explicit bindings, sessions and custom defaults remain unchanged. The upgrade runs once; a later explicit choice to use Generic as the org default is respected.
+
 ## 0.18
 
 0.18 narrows `everruns-core` to the neutral execution kernel. Types that were persisted control-plane records, hosted service contracts, product composition or concrete integrations moved to the crate that owns them. The behaviour, the wire formats and the stored schema are unchanged, only the import paths.

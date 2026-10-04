@@ -46,7 +46,7 @@ Raise `min_overlap` for stricter, higher-precision attachment (fewer chips, each
 
 - **No answer rewrite**: the streamed answer is never changed; annotations attach to sentence spans after generation.
 - **Alignment is lexical**: a sentence that paraphrases a source heavily enough to fall below `min_overlap` will not be cited. This favors precision over recall.
-- **Enabled by default**: `citation_retrieval` is part of the generic (default) harness, so any agent with a retrieval feed gets citations automatically.
+- **Opt-in**: add `citation_retrieval` to a canonical harness to emit citations from a retrieval feed. Deprecated Generic includes it.
 - **Persistence**: annotations ride the message in the event log, so they survive reload, forking, and session export, no separate store.
 - **Org scoping**: sources are derived only from already-authorized retrieval results, so a citation can never reference a document the requesting org cannot read.
 

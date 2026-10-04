@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { useHarnesses } from "@/hooks";
 import type { Harness } from "@/lib/api/types";
+import { isHarnessDeprecated } from "@/lib/harness-deprecation";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
 interface HarnessSelectProps {
@@ -49,12 +50,18 @@ export function HarnessSelect({
   noneLabel = "None",
   excludeIds = [],
 }: HarnessSelectProps) {
+  const [showDeprecated, setShowDeprecated] = useState(false);
   const noneValue = "__none__";
   const purposeId = `${useId()}-purpose`;
   const { data: harnesses = [] } = useHarnesses();
   const filteredHarnesses = useMemo(
-    () => harnesses.filter((harness) => !excludeIds.includes(harness.id)),
-    [excludeIds, harnesses],
+    () =>
+      harnesses.filter(
+        (harness) =>
+          !excludeIds.includes(harness.id) &&
+          (showDeprecated || harness.id === value || !isHarnessDeprecated(harness)),
+      ),
+    [excludeIds, harnesses, showDeprecated, value],
   );
 
   const harnessMap = useMemo(() => {
@@ -88,6 +95,16 @@ export function HarnessSelect({
         </SelectTrigger>
         <SelectContent className="w-72">
           {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
+          {harnesses.some(isHarnessDeprecated) && (
+            <button
+              type="button"
+              className="w-full px-2 py-1.5 text-left text-sm text-muted-foreground"
+              onClick={() => setShowDeprecated((shown) => !shown)}
+              aria-pressed={showDeprecated}
+            >
+              {showDeprecated ? "Hide deprecated" : "Show deprecated"}
+            </button>
+          )}
           {filteredHarnesses.map((harness) => {
             const description = harness.description?.trim();
             return (
