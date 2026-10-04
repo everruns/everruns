@@ -8,6 +8,105 @@ use everruns_durable::UpdateField;
 use serde_json::json;
 
 #[tokio::test]
+async fn new_built_in_names_preserve_colliding_custom_harnesses() {
+    let db = StorageBackend::in_memory();
+    db.create_organization_with_id(
+        DEFAULT_ORG_ID,
+        CreateOrganizationRow {
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Custom collision".into(),
+            created_by: None,
+        },
+    )
+    .await
+    .unwrap();
+    let custom_input = |name: &str, parent_harness_id| CreateHarnessRow {
+        name: name.into(),
+        display_name: None,
+        icon: None,
+        description: Some("Keep this worker".into()),
+        intro_markdown: None,
+        short_description: None,
+        starters: json!([]),
+        system_prompt: Some("Custom instructions".into()),
+        parent_harness_id,
+        default_model_id: None,
+        tags: vec!["custom".into()],
+        initial_files: json!([]),
+        mcp_servers: json!({}),
+        is_built_in: false,
+        network_access: None,
+        embedder_metadata: json!({}),
+    };
+    let custom = db
+        .create_harness(DEFAULT_ORG_ID, custom_input("worker", None))
+        .await
+        .unwrap();
+    let child = db
+        .create_harness(DEFAULT_ORG_ID, custom_input("child", Some(custom.id)))
+        .await
+        .unwrap();
+    db.create_harness(DEFAULT_ORG_ID, custom_input("worker-custom", None))
+        .await
+        .unwrap();
+    db.set_harness_capabilities(
+        custom.id.uuid(),
+        vec![("current_time".into(), 0, json!({}))],
+    )
+    .await
+    .unwrap();
+    db.patch_organization_settings(
+        DEFAULT_ORG_ID,
+        UpdateOrganizationSettings {
+            default_harness_id: UpdateField::Set(custom.id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+    initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+    let preserved = db
+        .get_harness(DEFAULT_ORG_ID, custom.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(preserved.name, "worker-custom-2");
+    assert_eq!(preserved.display_name.as_deref(), Some("worker"));
+    assert_eq!(preserved.system_prompt, custom.system_prompt);
+    assert_eq!(preserved.tags, custom.tags);
+    assert!(!preserved.is_built_in);
+    assert_eq!(
+        db.get_harness_capabilities(custom.id.uuid()).await.unwrap()[0].capability_id,
+        "current_time"
+    );
+    assert_eq!(
+        db.get_harness(DEFAULT_ORG_ID, child.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .parent_harness_id,
+        Some(custom.id)
+    );
+    assert_eq!(
+        db.get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .unwrap()
+            .default_harness_id,
+        Some(custom.id)
+    );
+    let built_in = db
+        .get_harness_by_name(DEFAULT_ORG_ID, "worker")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(built_in.is_built_in);
+    assert_ne!(built_in.id, custom.id);
+}
+
+#[tokio::test]
 async fn upgrade_pins_inherited_agents_without_changing_legacy_tools() {
     let db = StorageBackend::in_memory();
     db.create_organization_with_id(

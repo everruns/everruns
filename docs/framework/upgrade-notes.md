@@ -38,6 +38,11 @@ Choose the smallest foundation and add agent-specific capabilities. Enable the r
 
 On the hosted platform, upgrades pin existing agents that inherited a Generic org default to Generic before selecting Conversation as the new default. Explicit bindings, sessions and custom defaults remain unchanged. The upgrade runs once; a later explicit choice to use Generic as the org default is respected.
 
+If a custom harness already uses a new built-in name, it keeps its ID, display name,
+configuration and bindings. Its addressable name becomes `<name>-custom`, with a
+numeric suffix if needed. Update API or CLI calls that select that custom harness
+by name; calls using its ID keep working.
+
 ## 0.18
 
 0.18 narrows `everruns-core` to the neutral execution kernel. Types that were persisted control-plane records, hosted service contracts, product composition or concrete integrations moved to the crate that owns them. The behaviour, the wire formats and the stored schema are unchanged, only the import paths.
