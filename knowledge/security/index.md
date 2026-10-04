@@ -2,6 +2,7 @@
 
 * [Authentication Specification](authentication.md) - Authentication modes and OAuth.
 * [Encryption Specification](encryption.md) - Envelope encryption for sensitive data.
+* [Session Secret Reads](session-secret-reads.md) - Why reading a session secret returns plaintext, and what that does and does not protect.
 * [Audit Logging](audit-logging.md) - Audit logging.
 * [Threat Model](threat-model.md) - Security threat model.
 * [Security Testing](security-testing.md) - Security testing process (threat-model tests, fail-rs, DeepSec, supply chain).

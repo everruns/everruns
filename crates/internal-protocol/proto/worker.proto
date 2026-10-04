@@ -223,9 +223,6 @@ service WorkerService {
     // Set a secret (encrypted at rest)
     rpc SessionStorageSetSecret(SessionStorageSetSecretRequest) returns (SessionStorageSetSecretResponse);
 
-    // Get a secret by name (decrypted)
-    rpc SessionStorageGetSecret(SessionStorageGetSecretRequest) returns (SessionStorageGetSecretResponse);
-
     // Delete a secret
     rpc SessionStorageDeleteSecret(SessionStorageDeleteSecretRequest) returns (SessionStorageDeleteSecretResponse);
 
@@ -1310,15 +1307,6 @@ message SessionStorageSetSecretRequest {
 }
 
 message SessionStorageSetSecretResponse {}
-
-message SessionStorageGetSecretRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionStorageGetSecretResponse {
-    optional string value = 1;
-}
 
 message SessionStorageDeleteSecretRequest {
     Uuid session_id = 1;

@@ -130,16 +130,44 @@ impl SessionStorageStore for GrpcAdapter {
         session_id: everruns_contracts::typed_id::SessionId,
         name: &str,
     ) -> Result<Option<String>> {
-        let mut client = self.client.inner.client();
-        let request = proto::SessionStorageGetSecretRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            name: name.to_string(),
-        };
-        let response = client
-            .session_storage_get_secret(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        Ok(response.into_inner().value)
+        // The one secret read that goes through the `session_storage` domain
+        // command instead of a bespoke RPC, so ownership verification, the
+        // reserved-name rule and decryption live in one place rather than
+        // being re-implemented server-side per transport. The value still
+        // crosses the wire in plaintext, exactly as the RPC sent it; see
+        // knowledge/security/session-secret-reads.md for what that does and
+        // does not protect.
+        let result = self
+            .execute_session_command(
+                "Session secrets",
+                "get_session_secret",
+                serde_json::json!({
+                    "session_id": session_id.to_string(),
+                    "name": name,
+                }),
+                None,
+            )
+            .await?;
+
+        match result {
+            Ok(value) => serde_json::from_value(value).map_err(|error| {
+                everruns_contracts::error::AgentLoopError::store(format!(
+                    "get_session_secret returned unexpected shape: {error}"
+                ))
+            }),
+            // A session or secret that is not there reads as absent, which is
+            // what every caller of this trait method already expects.
+            Err(error)
+                if proto::command_error::Kind::try_from(error.kind)
+                    == Ok(proto::command_error::Kind::NotFound) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(everruns_contracts::error::AgentLoopError::store(format!(
+                "read secret: {}",
+                error.message
+            ))),
+        }
     }
 
     async fn delete_secret(

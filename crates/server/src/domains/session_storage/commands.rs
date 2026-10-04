@@ -129,6 +129,78 @@ impl Command for ListSessionSecrets {
 inventory::submit! { CommandDescriptor::of::<ListSessionSecrets>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct GetSessionSecret {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+    /// Secret name, as reported by `list_session_secrets`.
+    pub name: String,
+}
+
+impl Command for GetSessionSecret {
+    type Output = Option<String>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "get_session_secret",
+            category: "session_storage",
+            description: "Read one decrypted session secret value for a session's own runtime.",
+            method: "GET",
+            // No HTTP route backs this path, deliberately: the REST surface
+            // offers list/set/delete and never hands a secret value back. The
+            // path is the identifier this command would occupy if that ever
+            // changed, and `exposed_to_scripting` keeps it off MCP meanwhile.
+            path: "/v1/sessions/{session_id}/storage/secrets/{name}/value",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        // THREAT[TM-AUTHZ-023]: this returns the credential itself, not
+        // metadata about it, so it takes the write tier rather than the
+        // SESSION_VIEW its sibling reads use. The worker reaches it as
+        // `Caller::internal`, which bypasses policy (TM-AUTHZ-002), so this is
+        // defence in depth for whatever caller arrives next rather than the
+        // control that matters today — that control is reachability, and it is
+        // enforced by having no route and no scripting exposure.
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Option<String>, CommandError> {
+        let session_id = q::parse_owned_session_id(&self.session_id)?;
+        q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+
+        // Internal names are invisible to every user-facing path, so reading one
+        // answers exactly as a missing secret does rather than confirming it
+        // exists.
+        if is_internal_session_secret_name(&self.name) {
+            return Ok(None);
+        }
+
+        let encryption = ctx.encryption.as_ref().ok_or_else(|| {
+            CommandError::bad_request(
+                "Encryption not configured. Set SECRETS_ENCRYPTION_KEY environment variable.",
+            )
+        })?;
+
+        let row = ctx
+            .db
+            .get_session_secret(session_id.uuid(), &self.name)
+            .await
+            .map_err(classify_anyhow)?;
+
+        match row {
+            Some(row) => Ok(Some(
+                encryption
+                    .decrypt_to_string(&row.value_encrypted)
+                    .map_err(CommandError::internal)?,
+            )),
+            None => Ok(None),
+        }
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<GetSessionSecret>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct BatchSetSessionSecrets {
     /// Session's prefixed public identifier.
     pub session_id: String,

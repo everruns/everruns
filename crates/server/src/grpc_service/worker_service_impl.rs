@@ -378,13 +378,6 @@ impl WorkerService for WorkerServiceImpl {
         self.handle_session_storage_set_secret(request).await
     }
 
-    async fn session_storage_get_secret(
-        &self,
-        request: Request<SessionStorageGetSecretRequest>,
-    ) -> Result<Response<SessionStorageGetSecretResponse>, Status> {
-        self.handle_session_storage_get_secret(request).await
-    }
-
     async fn session_storage_delete_secret(
         &self,
         request: Request<SessionStorageDeleteSecretRequest>,

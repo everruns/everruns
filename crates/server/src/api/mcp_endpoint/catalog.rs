@@ -28,6 +28,15 @@ fn excluded_from_read_only_query(name: &str) -> bool {
 }
 
 fn exposed_to_scripting(meta: &crate::domains::common::CommandMeta) -> bool {
+    // THREAT[TM-AUTHZ-023]: `get_session_secret` returns a decrypted credential
+    // rather than metadata about one. The REST surface deliberately offers no
+    // such read — it has list/set/delete only — so registering the command for
+    // the worker's command transport must not hand MCP scripting a way in that
+    // HTTP withholds. Every registered command reaches this catalog, so the
+    // exclusion has to be explicit.
+    if meta.name == "get_session_secret" {
+        return false;
+    }
     // Durable control-plane APIs are infrastructure internals. App schedule
     // channels expose their own user-facing commands instead.
     !meta.path.starts_with("/v1/durable/")
@@ -1364,5 +1373,41 @@ mod tests {
         assert!(excluded_from_read_only_query("preview_agent"));
         assert!(excluded_from_read_only_query("preview_harness"));
         assert!(!excluded_from_read_only_query("list_agents"));
+    }
+
+    /// THREAT[TM-AUTHZ-023]: registering `get_session_secret` for the worker's
+    /// command transport must not expose a secret value to MCP scripting, which
+    /// otherwise picks up every command in the inventory. The REST surface
+    /// offers list/set/delete and no value read, and this keeps the two
+    /// surfaces agreeing.
+    #[test]
+    fn scripting_excludes_the_secret_value_read_but_keeps_its_metadata_siblings() {
+        let by_name = |name: &str| {
+            inventory::iter::<crate::domains::common::CommandDescriptor>
+                .into_iter()
+                .map(|desc| (desc.meta)())
+                .find(|meta| meta.name == name)
+                .unwrap_or_else(|| panic!("{name} is registered"))
+        };
+
+        assert!(
+            !exposed_to_scripting(&by_name("get_session_secret")),
+            "a decrypted secret value must not be reachable from MCP scripting"
+        );
+        // The commands that only ever describe secrets stay available.
+        assert!(exposed_to_scripting(&by_name("list_session_secrets")));
+        assert!(exposed_to_scripting(&by_name("delete_session_secret")));
+    }
+
+    /// The exclusion above is the only thing keeping it out, so prove the
+    /// catalog itself agrees rather than trusting the predicate in isolation.
+    #[test]
+    fn built_toolsets_do_not_carry_the_secret_value_read() {
+        for mode in [ToolsetMode::Full, ToolsetMode::ReadOnly] {
+            assert!(
+                !INVENTORY_TOOL_DEFS.contains_key("get_session_secret"),
+                "inventory tool defs must omit get_session_secret ({mode:?})"
+            );
+        }
     }
 }

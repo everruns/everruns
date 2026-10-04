@@ -18,7 +18,10 @@ use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateSessionRow, UpsertSessionKeyValue, UpsertSessionSecret};
 
-use super::{BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage};
+use super::{
+    BatchSetSessionSecrets, DeleteSessionSecret, GetSessionSecret, ListSessionSecrets,
+    ListSessionStorage,
+};
 
 const PLAINTEXT: &str = "payroll-plaintext-9f3a";
 const USER_KEY: &str = "payroll";
@@ -240,4 +243,111 @@ fn storage_commands_declare_the_session_policies() {
         DeleteSessionSecret::policy().map(|policy| policy.id),
         Some(SESSION_MANAGE.id)
     );
+    // Reading a value is the credential-bearing read, so it sits on the write
+    // tier rather than the SESSION_VIEW its metadata siblings use.
+    assert_eq!(
+        GetSessionSecret::policy().map(|policy| policy.id),
+        Some(SESSION_MANAGE.id)
+    );
+}
+
+/// A denied caller must not reach a secret *value*, through the typed command or
+/// through dispatch, which is the path the worker's command transport uses.
+#[tokio::test]
+async fn denied_caller_cannot_read_a_secret_value() {
+    let (db, session_id) = seed().await;
+    let denied = ctx(db, Arc::new(DenySessionAccess));
+    let session_id = session_id.to_string();
+
+    let typed = GetSessionSecret {
+        session_id: session_id.clone(),
+        name: SECRET_NAME.to_string(),
+    }
+    .run(&denied)
+    .await
+    .expect_err("get_session_secret must require SESSION_MANAGE");
+    assert_forbidden(typed, "get secret");
+
+    let dispatched = dispatch(
+        "get_session_secret",
+        serde_json::json!({ "session_id": session_id, "name": SECRET_NAME }),
+        &denied,
+    )
+    .await
+    .expect_err("dispatch must require SESSION_MANAGE");
+    assert_forbidden(dispatched, "dispatch get secret");
+}
+
+/// Internal secrets are invisible to every user-facing path. Reading one must
+/// answer exactly as a missing secret does, rather than confirming it exists.
+#[tokio::test]
+async fn reserved_secret_names_read_as_absent() {
+    let (db, session_id) = seed().await;
+    let allowed = ctx(db, Arc::new(DefaultPermissionResolver));
+
+    let value = GetSessionSecret {
+        session_id: session_id.to_string(),
+        name: INTERNAL_SECRET.to_string(),
+    }
+    .run(&allowed)
+    .await
+    .expect("a reserved name is absent, not an error");
+    assert_eq!(value, None, "reserved secret names must not be readable");
+}
+
+/// The authorized read returns the decrypted value, and a name that was never
+/// stored reads as absent.
+#[tokio::test]
+async fn authorized_caller_reads_the_decrypted_value() {
+    let encryption = Arc::new(
+        crate::storage::encryption::EncryptionService::new(
+            "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            &[],
+        )
+        .expect("test encryption service"),
+    );
+
+    let db = Arc::new(StorageBackend::in_memory());
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            title: Some("secret read".to_string()),
+            ..Default::default()
+        })
+        .await
+        .expect("seed session");
+    db.upsert_session_secret(UpsertSessionSecret {
+        session_id: session.id,
+        name: SECRET_NAME.to_string(),
+        value_encrypted: encryption
+            .encrypt_string(PLAINTEXT)
+            .expect("encrypt test secret"),
+    })
+    .await
+    .expect("seed secret");
+
+    let allowed = Ctx::minimal(
+        owner(),
+        db,
+        Some(encryption),
+        Arc::new(DefaultPermissionResolver),
+    );
+
+    let value = GetSessionSecret {
+        session_id: session.id.to_string(),
+        name: SECRET_NAME.to_string(),
+    }
+    .run(&allowed)
+    .await
+    .expect("owner reads its own secret");
+    assert_eq!(value, Some(PLAINTEXT.to_string()));
+
+    let missing = GetSessionSecret {
+        session_id: session.id.to_string(),
+        name: "NEVER_STORED".to_string(),
+    }
+    .run(&allowed)
+    .await
+    .expect("a missing secret is absent, not an error");
+    assert_eq!(missing, None);
 }

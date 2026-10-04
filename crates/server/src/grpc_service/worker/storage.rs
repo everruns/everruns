@@ -131,25 +131,6 @@ impl WorkerServiceImpl {
         Ok(Response::new(SessionStorageSetSecretResponse {}))
     }
 
-    pub(crate) async fn handle_session_storage_get_secret(
-        &self,
-        request: Request<SessionStorageGetSecretRequest>,
-    ) -> Result<Response<SessionStorageGetSecretResponse>, Status> {
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.storage_store()?;
-
-        let value = store
-            .get_secret(session_id.into(), &req.name)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get secret: {}", e);
-                Status::internal("Failed to get secret")
-            })?;
-
-        Ok(Response::new(SessionStorageGetSecretResponse { value }))
-    }
-
     pub(crate) async fn handle_session_storage_delete_secret(
         &self,
         request: Request<SessionStorageDeleteSecretRequest>,

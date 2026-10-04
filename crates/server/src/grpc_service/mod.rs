@@ -203,8 +203,6 @@ use everruns_internal_protocol::proto::{
     SessionStorageDeleteSecretResponse,
     SessionStorageDeleteValueRequest,
     SessionStorageDeleteValueResponse,
-    SessionStorageGetSecretRequest,
-    SessionStorageGetSecretResponse,
     SessionStorageGetValueRequest,
     SessionStorageGetValueResponse,
     SessionStorageListKeysRequest,
