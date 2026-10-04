@@ -8,9 +8,8 @@
 // It unifies the two worker implementations into one, eliminating code duplication
 // while preserving the different deployment models (in-process vs external).
 
-use anyhow::Result;
-use everruns_contracts::typed_id::{ExecId, TurnId};
 use crate::core::ExecutionContext;
+use crate::durable::{ClaimedTask, TaskFailureOutcome, WorkerInfo, WorkflowStatus};
 use crate::engine::{ActInput, ActPlan, TurnPlan};
 use crate::host::{
     RuntimeSessionLifecycle, advance_host_execution,
@@ -18,7 +17,8 @@ use crate::host::{
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
 };
-use crate::durable::{ClaimedTask, TaskFailureOutcome, WorkerInfo, WorkflowStatus};
+use anyhow::Result;
+use everruns_contracts::typed_id::{ExecId, TurnId};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -1322,8 +1322,8 @@ mod tests {
 
     #[test]
     fn act_wire_input_uses_the_engine_checkpoint_as_its_only_resume_state() {
-        use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId};
         use crate::engine::{ActSchedulingFacts, TurnState, plan_after_reason};
+        use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId};
 
         let state = TurnState {
             org_id: 7,

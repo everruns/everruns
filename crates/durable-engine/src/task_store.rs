@@ -53,6 +53,22 @@ pub trait TaskStore: Send + Sync + 'static {
         output: serde_json::Value,
     ) -> Result<(), StoreError>;
 
+    /// Complete `task`, then consume its workflow's pending signals of type
+    /// `drain`. Returns how many were consumed, or `None` when this store did
+    /// not drain (the caller then consumes them itself). The gRPC store folds
+    /// both into one round trip; an in-process store gains nothing from it.
+    async fn complete_task_and_drain(
+        &self,
+        task: &ClaimedTask,
+        worker_id: &str,
+        output: serde_json::Value,
+        _drain: Option<&str>,
+    ) -> Result<Option<usize>, StoreError> {
+        self.complete_task_and_record(task, worker_id, output)
+            .await?;
+        Ok(None)
+    }
+
     async fn fail_task_and_record(
         &self,
         task: &ClaimedTask,
