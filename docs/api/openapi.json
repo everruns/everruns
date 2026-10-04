@@ -20318,27 +20318,35 @@
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Capability IDs this example uses"
+            "description": "Capability IDs this example uses",
+            "example": [
+              "current_time"
+            ]
           },
           "description": {
             "type": "string",
-            "description": "Short description"
+            "description": "Short description",
+            "example": "A friendly agent that tells dad jokes and knows what time it is."
           },
           "dev_only": {
             "type": "boolean",
-            "description": "Whether this example requires dev/experimental mode"
+            "description": "Whether this example requires dev/experimental mode",
+            "example": false
           },
           "display_name": {
             "type": "string",
-            "description": "Human-readable display name (e.g. \"Dad Jokes Agent\")"
+            "description": "Human-readable display name (e.g. \"Dad Jokes Agent\")",
+            "example": "Dad Jokes Agent"
           },
           "harness_name": {
             "type": "string",
-            "description": "Explicit harness selected when importing this example."
+            "description": "Explicit harness selected when importing this example.",
+            "example": "conversation"
           },
           "name": {
             "type": "string",
-            "description": "Name (e.g. \"dad-jokes-agent\")"
+            "description": "Name (e.g. \"dad-jokes-agent\")",
+            "example": "dad-jokes-agent"
           },
           "setup": {
             "oneOf": [
@@ -20356,7 +20364,11 @@
             "items": {
               "type": "string"
             },
-            "description": "Tags for categorization"
+            "description": "Tags for categorization",
+            "example": [
+              "humor",
+              "demo"
+            ]
           }
         }
       },
@@ -20373,22 +20385,34 @@
         ],
         "properties": {
           "capability": {
-            "type": "string"
+            "type": "string",
+            "description": "Capability whose configuration this option changes.",
+            "example": "github"
           },
           "config_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Boolean configuration property controlled by this option.",
+            "example": "allow_pull_requests"
           },
           "default": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Initial value shown during guided setup.",
+            "example": false
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Explains the effect of enabling this option.",
+            "example": "Let the scanner open draft pull requests for high-confidence fixes."
           },
           "key": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable setup option key.",
+            "example": "open_fix_pull_requests"
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable setup option label.",
+            "example": "Open fix pull requests"
           }
         }
       },
@@ -20405,25 +20429,31 @@
         "properties": {
           "connect_github": {
             "type": "boolean",
-            "description": "The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`)."
+            "description": "The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`).",
+            "example": true
           },
           "connections": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Other connection providers the agent's service account needs."
+            "description": "Other connection providers the agent's service account needs.",
+            "example": [
+              "daytona"
+            ]
           },
           "repository_placeholder": {
             "type": "string",
-            "description": "Text in `trigger` to replace with the picked `owner/repo`."
+            "description": "Text in `trigger` to replace with the picked `owner/repo`.",
+            "example": "${repository}"
           },
           "settings": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AgentExampleSetting"
             },
-            "description": "Yes/no choices, each stored as one capability config key."
+            "description": "Yes/no choices, each stored as one capability config key.",
+            "example": []
           },
           "trigger": {
             "type": "object",

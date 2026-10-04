@@ -5473,20 +5473,46 @@ export interface components {
     };
     /** @description A read-only agent example defined in code */
     AgentExample: {
-      /** @description Capability IDs this example uses */
+      /**
+       * @description Capability IDs this example uses
+       * @example [
+       *       "current_time"
+       *     ]
+       */
       capabilities: components["schemas"]["AgentCapabilityConfig"][];
-      /** @description Short description */
+      /**
+       * @description Short description
+       * @example A friendly agent that tells dad jokes and knows what time it is.
+       */
       description: string;
-      /** @description Whether this example requires dev/experimental mode */
+      /**
+       * @description Whether this example requires dev/experimental mode
+       * @example false
+       */
       dev_only: boolean;
-      /** @description Human-readable display name (e.g. "Dad Jokes Agent") */
+      /**
+       * @description Human-readable display name (e.g. "Dad Jokes Agent")
+       * @example Dad Jokes Agent
+       */
       display_name: string;
-      /** @description Explicit harness selected when importing this example. */
+      /**
+       * @description Explicit harness selected when importing this example.
+       * @example conversation
+       */
       harness_name: string;
-      /** @description Name (e.g. "dad-jokes-agent") */
+      /**
+       * @description Name (e.g. "dad-jokes-agent")
+       * @example dad-jokes-agent
+       */
       name: string;
       setup?: components["schemas"]["AgentExampleSetup"] | null;
-      /** @description Tags for categorization */
+      /**
+       * @description Tags for categorization
+       * @example [
+       *       "humor",
+       *       "demo"
+       *     ]
+       */
       tags: string[];
     };
     /**
@@ -5494,22 +5520,60 @@ export interface components {
      *     of the agent's `capability`.
      */
     AgentExampleSetting: {
+      /**
+       * @description Capability whose configuration this option changes.
+       * @example github
+       */
       capability: string;
+      /**
+       * @description Boolean configuration property controlled by this option.
+       * @example allow_pull_requests
+       */
       config_key: string;
+      /**
+       * @description Initial value shown during guided setup.
+       * @example false
+       */
       default: boolean;
+      /**
+       * @description Explains the effect of enabling this option.
+       * @example Let the scanner open draft pull requests for high-confidence fixes.
+       */
       description: string;
+      /**
+       * @description Stable setup option key.
+       * @example open_fix_pull_requests
+       */
       key: string;
+      /**
+       * @description Human-readable setup option label.
+       * @example Open fix pull requests
+       */
       label: string;
     };
     /** @description What the UI walks the user through after importing a template. */
     AgentExampleSetup: {
-      /** @description The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`). */
+      /**
+       * @description The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`).
+       * @example true
+       */
       connect_github: boolean;
-      /** @description Other connection providers the agent's service account needs. */
+      /**
+       * @description Other connection providers the agent's service account needs.
+       * @example [
+       *       "daytona"
+       *     ]
+       */
       connections: string[];
-      /** @description Text in `trigger` to replace with the picked `owner/repo`. */
+      /**
+       * @description Text in `trigger` to replace with the picked `owner/repo`.
+       * @example ${repository}
+       */
       repository_placeholder: string;
-      /** @description Yes/no choices, each stored as one capability config key. */
+      /**
+       * @description Yes/no choices, each stored as one capability config key.
+       * @example []
+       */
       settings: components["schemas"]["AgentExampleSetting"][];
       /**
        * @description Body for `POST /v1/agents/{agent_id}/triggers` once the placeholder is

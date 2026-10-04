@@ -13,6 +13,7 @@ use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::DeploymentGrade;
 use everruns_host::HostComposition;
 use serde::Serialize;
+use serde_json::json;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -22,19 +23,25 @@ use super::common::impl_auth_state;
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentExample {
     /// Name (e.g. "dad-jokes-agent")
+    #[schema(example = "dad-jokes-agent")]
     pub name: String,
     /// Human-readable display name (e.g. "Dad Jokes Agent")
+    #[schema(example = "Dad Jokes Agent")]
     pub display_name: String,
     /// Short description
+    #[schema(example = "A friendly agent that tells dad jokes and knows what time it is.")]
     pub description: String,
     /// Explicit harness selected when importing this example.
+    #[schema(example = "conversation")]
     pub harness_name: String,
     /// Tags for categorization
+    #[schema(example = json!(["humor", "demo"]))]
     pub tags: Vec<String>,
     /// Capability IDs this example uses
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>, example = json!(["current_time"]))]
     pub capabilities: Vec<everruns_contracts::CapabilityRef>,
     /// Whether this example requires dev/experimental mode
+    #[schema(example = false)]
     pub dev_only: bool,
     /// Guided setup to run after importing, for templates that need one.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -45,16 +52,20 @@ pub struct AgentExample {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentExampleSetup {
     /// The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`).
+    #[schema(example = true)]
     pub connect_github: bool,
     /// Other connection providers the agent's service account needs.
+    #[schema(example = json!(["daytona"]))]
     pub connections: Vec<String>,
     /// Text in `trigger` to replace with the picked `owner/repo`.
+    #[schema(example = "${repository}")]
     pub repository_placeholder: String,
     /// Body for `POST /v1/agents/{agent_id}/triggers` once the placeholder is
     /// replaced.
-    #[schema(value_type = Object)]
+    #[schema(value_type = Object, example = json!({"trigger_type": "schedule", "cron_expression": "0 6 * * 1", "timezone": "UTC", "session_mode": "session_per_invocation", "message": "Scan ${repository} on its default branch."}))]
     pub trigger: serde_json::Value,
     /// Yes/no choices, each stored as one capability config key.
+    #[schema(example = json!([]))]
     pub settings: Vec<AgentExampleSetting>,
 }
 
@@ -62,11 +73,23 @@ pub struct AgentExampleSetup {
 /// of the agent's `capability`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentExampleSetting {
+    /// Stable setup option key.
+    #[schema(example = "open_fix_pull_requests")]
     pub key: String,
+    /// Human-readable setup option label.
+    #[schema(example = "Open fix pull requests")]
     pub label: String,
+    /// Explains the effect of enabling this option.
+    #[schema(example = "Let the scanner open draft pull requests for high-confidence fixes.")]
     pub description: String,
+    /// Capability whose configuration this option changes.
+    #[schema(example = "github")]
     pub capability: String,
+    /// Boolean configuration property controlled by this option.
+    #[schema(example = "allow_pull_requests")]
     pub config_key: String,
+    /// Initial value shown during guided setup.
+    #[schema(example = false)]
     pub default: bool,
 }
 
@@ -102,7 +125,7 @@ fn seed_to_example(seed: &SeedAgent, setup: Option<&TemplateSetup>) -> AgentExam
             .capabilities
             .iter()
             .map(|cap| {
-                let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
+                let config = cap.config.map_or_else(|| json!({}), |f| f());
                 everruns_contracts::CapabilityRef::with_config(cap.id.to_string(), config)
             })
             .collect(),
