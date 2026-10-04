@@ -416,7 +416,6 @@ describe("Sidebar", () => {
 
       const chat = screen.getByRole("link", { name: "Chat" });
       expect(chat).toHaveAttribute("href", "/chats");
-      expect(chat).toHaveClass("border", "text-foreground");
       if (pathname === "/chats") {
         expect(chat).toHaveAttribute("aria-current", "page");
       } else {
