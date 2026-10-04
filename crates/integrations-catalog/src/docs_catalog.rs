@@ -50,7 +50,7 @@ fn describe(capability: &dyn Capability) -> Value {
         "category": info.category,
         "status": status_name(&info.status),
         "grades": [],
-        "feature_flag": null,
+        "feature_flag": everruns_platform::FeatureFlags::required_for_capability(capability.id()),
         "tools": tools,
         "dependencies": info.dependencies,
         "features": info.features,
