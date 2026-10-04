@@ -8973,7 +8973,7 @@ export interface components {
      * @description Rollout policy for one feature, independent of the running deployment grade.
      * @enum {string}
      */
-    FeatureFlagGrade: "dev" | "preview" | "adoption" | "prod" | "off";
+    FeatureFlagGrade: "dev" | "internal" | "adoption" | "prod" | "off";
     /**
      * @description Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
      *

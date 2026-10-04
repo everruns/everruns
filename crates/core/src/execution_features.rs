@@ -6,7 +6,7 @@ use crate::{DeploymentGrade, FeatureFlagGrade};
 // Registration defaults are shared with the hosted catalog: promoting a default
 // must change API availability and actual registry composition together.
 /// Default rollout grade for agent delegation.
-pub const AGENT_DELEGATION_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Dev;
+pub const AGENT_DELEGATION_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Adoption;
 /// Default rollout grade for Docker execution.
 pub const DOCKER_CAPABILITY_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Off;
 /// Default rollout grade for container sandboxes.
@@ -119,9 +119,10 @@ mod tests {
             "FEATURE_UNKNOWN",
         ];
         let cases = [
-            (None, [true, false, false, false]),
+            (None, [true; 4]),
             (Some("dev"), [true, false, false, false]),
-            (Some("preview"), [true; 4]),
+            (Some("internal"), [true; 4]),
+            (Some("preview"), [false; 4]),
             (Some("adoption"), [true; 4]),
             (Some("prod"), [true; 4]),
             (Some("off"), [false; 4]),

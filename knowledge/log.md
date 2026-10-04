@@ -2,6 +2,11 @@
 
 ## 2026-10-03
 
+* **Hosted feature enrolment names and defaults.** Internal features require
+  platform enrolment; adoption remains organisation opt-in. The seven features
+  already offered for SaaS opt-in now use adoption defaults, preserving that
+  behavior without enabling every organisation. See [Feature Flags](security/feature-flags.md).
+
 * **Paid CI coverage follows provider/model changes and a nightly sweep.**
   Ordinary Rust merges retain llmsim workflows without provider credentials.
   Scheduled and manual live coverage still runs only trusted main-branch code.
