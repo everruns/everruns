@@ -62,7 +62,7 @@ async fn missing_reaction_scope_explains_how_to_reconnect() {
         .await;
     let fixture = Fixture::new();
     let (app, endpoint, _) = fixture
-        .seed_app_with_endpoint(ORG, "slack", "test-token")
+        .seed_app_with_channel(ORG, "slack", "test-token")
         .await;
     let session = fixture
         .seed_session(ORG, Some(app), Some(endpoint), vec![])
