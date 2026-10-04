@@ -334,7 +334,8 @@ async fn test_post_message_wait_returns_completed_turn() {
         ))
         .json(&json!({
             "model_id": model_id,
-            "display_name": "LlmSim Wait Test Model"
+            "display_name": "LlmSim Wait Test Model",
+            "enabled": true
         }))
         .send()
         .await
