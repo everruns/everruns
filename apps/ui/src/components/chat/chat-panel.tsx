@@ -103,6 +103,8 @@ function parseSystemCommandInvocation(
 }
 
 export interface ChatPanelProps {
+  /** Resolved work retains its transcript; reopen explicitly before continuing. */
+  resolvedThread?: boolean;
   onDraftSubmit?: (
     text: string,
     images: Array<{ imageId: string; filename?: string }>,
@@ -130,6 +132,7 @@ export interface ChatPanelProps {
 }
 
 export function ChatPanel({
+  resolvedThread = false,
   replyToLabel,
   onDraftSubmit,
   showRunCards = false,
@@ -699,78 +702,86 @@ export function ChatPanel({
             <NoIntelligenceMessage canManage={intelligence.canManage} className="mb-3" />
           )}
 
-          <ChatComposer
-            commands={commands}
-            models={models}
-            inputValue={inputValue}
-            onInputChange={setInputValue}
-            onSubmit={submitMessage}
-            onCommandSelect={handleCommandSelect}
-            mentionOptions={mentionOptions}
-            selectedMention={selectedMention}
-            onMentionChange={(participant) => setAddressedParticipantId(participant?.id ?? null)}
-            pendingImages={pendingImages}
-            hasImages={hasImages}
-            removeImage={removeImage}
-            addFiles={addFiles}
-            pendingFiles={pendingFiles}
-            hasFiles={hasFiles}
-            removeFileAttachment={removeFileAttachment}
-            supportsPdf={supportsPdf}
-            isDraggingOver={isDraggingOver}
-            dropZoneProps={dropZoneProps}
-            handlePaste={handlePaste}
-            placeholder={
-              showPlatformIntro
-                ? !modelReady
-                  ? t("type_message_pick_model")
-                  : undefined
-                : replyToLabel
-                  ? t("reply_to", { name: replyToLabel })
-                  : undefined
-            }
-            selectedModelId={selectedModelId}
-            usingChatGptPlan={
-              selectedModel?.provider_type === "chatgpt" ||
-              (!selectedModelId && llmModel?.provider_type === "chatgpt")
-            }
-            recentModels={recentModels}
-            onModelChange={handleModelChange}
-            modelTriggerLabel={
-              showPlatformIntro && !modelReady ? t("choose_model") : modelTriggerLabel
-            }
-            defaultModelOptionLabel={defaultModelOptionLabel}
-            supportsReasoning={supportsReasoning}
-            reasoningEffort={reasoningEffort}
-            reasoningEffortConfig={reasoningEffortConfig}
-            defaultEffortName={defaultEffortName}
-            getReasoningEffortName={getReasoningEffortName}
-            onReasoningEffortChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
-            supportsVerbosity={supportsVerbosity}
-            verbosity={verbosity}
-            verbosityConfig={verbosityConfig}
-            defaultVerbosityName={defaultVerbosityName}
-            getVerbosityName={getVerbosityName}
-            onVerbosityChange={(value) => setVerbosity(value as typeof verbosity)}
-            isActive={isActive}
-            cancelCurrentTurn={cancelCurrentTurn}
-            canSubmit={canSubmit}
-            modelReady={modelReady}
-            modelLoading={modelLoading}
-            hideModelNotice={showPlatformIntro}
-            isUploading={isUploading}
-            sendPending={
-              draftSending ||
-              sendMessage.isPending ||
-              sendMessageWithImages.isPending ||
-              executeCommand.isPending
-            }
-            textareaRef={textareaRef}
-            voiceEnabled={voiceAvailable}
-            voiceActive={voiceState === "connected"}
-            voicePending={voiceState === "connecting"}
-            onToggleVoice={toggleVoice}
-          />
+          {resolvedThread ? (
+            <p className="border-t border-border p-4 text-sm text-muted-foreground">
+              This thread is resolved. Reopen it to continue.
+            </p>
+          ) : (
+            <ChatComposer
+              commands={commands}
+              models={models}
+              inputValue={inputValue}
+              onInputChange={setInputValue}
+              onSubmit={submitMessage}
+              onCommandSelect={handleCommandSelect}
+              mentionOptions={mentionOptions}
+              selectedMention={selectedMention}
+              onMentionChange={(participant) => setAddressedParticipantId(participant?.id ?? null)}
+              pendingImages={pendingImages}
+              hasImages={hasImages}
+              removeImage={removeImage}
+              addFiles={addFiles}
+              pendingFiles={pendingFiles}
+              hasFiles={hasFiles}
+              removeFileAttachment={removeFileAttachment}
+              supportsPdf={supportsPdf}
+              isDraggingOver={isDraggingOver}
+              dropZoneProps={dropZoneProps}
+              handlePaste={handlePaste}
+              placeholder={
+                showPlatformIntro
+                  ? !modelReady
+                    ? t("type_message_pick_model")
+                    : undefined
+                  : replyToLabel
+                    ? t("reply_to", { name: replyToLabel })
+                    : undefined
+              }
+              selectedModelId={selectedModelId}
+              usingChatGptPlan={
+                selectedModel?.provider_type === "chatgpt" ||
+                (!selectedModelId && llmModel?.provider_type === "chatgpt")
+              }
+              recentModels={recentModels}
+              onModelChange={handleModelChange}
+              modelTriggerLabel={
+                showPlatformIntro && !modelReady ? t("choose_model") : modelTriggerLabel
+              }
+              defaultModelOptionLabel={defaultModelOptionLabel}
+              supportsReasoning={supportsReasoning}
+              reasoningEffort={reasoningEffort}
+              reasoningEffortConfig={reasoningEffortConfig}
+              defaultEffortName={defaultEffortName}
+              getReasoningEffortName={getReasoningEffortName}
+              onReasoningEffortChange={(value) =>
+                setReasoningEffort(value as typeof reasoningEffort)
+              }
+              supportsVerbosity={supportsVerbosity}
+              verbosity={verbosity}
+              verbosityConfig={verbosityConfig}
+              defaultVerbosityName={defaultVerbosityName}
+              getVerbosityName={getVerbosityName}
+              onVerbosityChange={(value) => setVerbosity(value as typeof verbosity)}
+              isActive={isActive}
+              cancelCurrentTurn={cancelCurrentTurn}
+              canSubmit={canSubmit}
+              modelReady={modelReady}
+              modelLoading={modelLoading}
+              hideModelNotice={showPlatformIntro}
+              isUploading={isUploading}
+              sendPending={
+                draftSending ||
+                sendMessage.isPending ||
+                sendMessageWithImages.isPending ||
+                executeCommand.isPending
+              }
+              textareaRef={textareaRef}
+              voiceEnabled={voiceAvailable}
+              voiceActive={voiceState === "connected"}
+              voicePending={voiceState === "connecting"}
+              onToggleVoice={toggleVoice}
+            />
+          )}
         </div>
 
         {showParticipants && <SessionParticipantsRail sessionId={sessionId} />}

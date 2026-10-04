@@ -105,6 +105,7 @@ jest.mock("@/components/layout/notification-bell", () => ({
 
 // Mock feature flags provider
 const mockFeatureFlags = {
+  chat_threads: false,
   notifications: true,
   evals: true,
   skills: true,
@@ -150,6 +151,7 @@ describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
+      chat_threads: false,
       notifications: true,
       evals: true,
       skills: true,
@@ -189,6 +191,15 @@ describe("Sidebar", () => {
 
     expect(screen.getByText("Everruns")).toBeInTheDocument();
     expect(screen.getByAltText("Everruns")).toBeInTheDocument();
+  });
+
+  it("keeps only Chat in navigation when the organization adopts threads", () => {
+    mockFeatureFlags.chat_threads = true;
+    mockThreads.mockReturnValue([{ id: "side_1", title: "Side conversation" }]);
+    render(<Sidebar />);
+    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
+    expect(screen.queryByTestId("sidebar-chat-threads")).not.toBeInTheDocument();
+    expect(screen.queryByText("Side conversation")).not.toBeInTheDocument();
   });
 
   it("keeps search row focused on search only", () => {
