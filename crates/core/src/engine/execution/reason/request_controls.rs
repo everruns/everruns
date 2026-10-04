@@ -1,0 +1,143 @@
+use crate::engine::message::{RuntimeMessage, RuntimeMessageRole};
+use crate::engine::tool_context::ReasoningEffortHandle;
+use everruns_contracts::DriverId;
+
+pub(super) struct RequestControls {
+    pub(super) reasoning_effort: Option<everruns_contracts::ReasoningEffort>,
+    pub(super) speed: Option<String>,
+    pub(super) verbosity: Option<String>,
+}
+
+pub(super) fn resolve_request_controls(
+    messages: &[RuntimeMessage],
+    live_reasoning_effort: Option<&ReasoningEffortHandle>,
+    provider_type: &DriverId,
+    model: &str,
+) -> RequestControls {
+    let latest_user_controls = || {
+        messages
+            .iter()
+            .rev()
+            .find(|message| message.role == RuntimeMessageRole::User)
+            .and_then(|message| message.controls.as_ref())
+    };
+
+    let reasoning_effort = live_reasoning_effort
+        .and_then(ReasoningEffortHandle::get)
+        .or_else(|| {
+            latest_user_controls()
+                .and_then(|controls| controls.reasoning.as_ref())
+                .and_then(|reasoning| reasoning.effort)
+        })
+        .filter(|effort| {
+            if !effort.requests_reasoning() {
+                // Preserve an invalid explicit selection for provider validation.
+                // Dropping Astra's `none` here silently selects its default effort.
+                return crate::engine::model_profiles::get_model_profile(provider_type, model)
+                    .is_some_and(|profile| profile.family == "gpt-6-astra");
+            }
+            match crate::engine::model_profiles::get_model_profile(provider_type, model) {
+                Some(profile) if !profile.reasoning => {
+                    tracing::warn!(
+                        model,
+                        effort = effort.as_str(),
+                        "Stripping reasoning_effort: model does not support reasoning"
+                    );
+                    false
+                }
+                _ => true,
+            }
+        });
+
+    let speed = latest_user_controls()
+        .and_then(|controls| controls.speed.clone())
+        .filter(|speed| {
+            let Some(profile) =
+                crate::engine::model_profiles::get_model_profile(provider_type, model)
+            else {
+                return true;
+            };
+            let Some(speed_config) = profile.speed else {
+                tracing::warn!(
+                    model,
+                    speed,
+                    "Stripping speed: model does not support service tiers"
+                );
+                return false;
+            };
+            let supported = speed_config
+                .values
+                .iter()
+                .any(|value| value.value.matches_tier(speed));
+            if !supported {
+                tracing::warn!(
+                    model,
+                    speed,
+                    "Stripping speed: model does not support requested service tier"
+                );
+            }
+            supported
+        });
+
+    let verbosity = latest_user_controls()
+        .and_then(|controls| controls.verbosity.clone())
+        .filter(|verbosity| {
+            match crate::engine::model_profiles::get_model_profile(provider_type, model) {
+                Some(profile) if profile.verbosity.is_none() => {
+                    tracing::warn!(
+                        model,
+                        verbosity,
+                        "Stripping verbosity: model does not support verbosity control"
+                    );
+                    false
+                }
+                _ => true,
+            }
+        });
+
+    RequestControls {
+        reasoning_effort,
+        speed,
+        verbosity,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn astra_none_reaches_provider_validation() {
+        let mut message = RuntimeMessage::user("hello");
+        message.controls = Some(crate::engine::message::Controls {
+            reasoning: Some(crate::engine::message::ReasoningConfig {
+                effort: Some(everruns_contracts::ReasoningEffort::None),
+            }),
+            ..Default::default()
+        });
+        let controls = resolve_request_controls(&[message], None, &DriverId::OpenAI, "gpt-6-astra");
+        assert_eq!(
+            controls.reasoning_effort,
+            Some(everruns_contracts::ReasoningEffort::None)
+        );
+    }
+
+    #[test]
+    fn none_reasoning_effort_is_not_sent() {
+        let mut message = RuntimeMessage::user("hello");
+        message.controls = Some(crate::engine::message::Controls {
+            reasoning: Some(crate::engine::message::ReasoningConfig {
+                effort: Some(everruns_contracts::ReasoningEffort::None),
+            }),
+            ..Default::default()
+        });
+
+        let controls = resolve_request_controls(
+            &[message],
+            None,
+            &DriverId::external("unknown"),
+            "unknown-model",
+        );
+        assert!(controls.reasoning_effort.is_none());
+    }
+}

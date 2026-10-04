@@ -1,12 +1,12 @@
 //! External implementations of narrow core and host execution contracts.
 
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
-use everruns_host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
-use everruns_contracts::error::{AgentLoopError, Result};
 use std::sync::Arc;
 
 /// Minimal external observer proving event emission is independently implementable.
@@ -57,7 +57,7 @@ impl TurnContextResolver for ExternalTurnContextResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_engine::{ExecutionContext, InputAtomInput};
+    use everruns_core::engine::{ExecutionContext, InputAtomInput};
 
     fn assert_event_contract<T: EventEmitter>() {}
     fn assert_factory_contract<T: SessionFileSystemFactory>() {}
@@ -77,8 +77,8 @@ mod tests {
         assert!(!input.context.exec_id.uuid().is_nil());
         assert_eq!(ExternalSessionFileSystemFactory.name(), "external");
         assert!(
-            std::any::type_name::<everruns_host::StoreCommandHost>()
-                .contains("everruns_host::command_host::StoreCommandHost")
+            std::any::type_name::<everruns_core::host::StoreCommandHost>()
+                .contains("everruns_core::host::command_host::StoreCommandHost")
         );
     }
 }

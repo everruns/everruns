@@ -494,7 +494,7 @@ mod tests {
     use everruns_core::{session_services::SecretInfo, session_services::SessionStorageStore};
     use std::collections::HashMap;
     use std::sync::{Arc, LazyLock, Mutex};
-    // `everruns-host` reserves this name from the user-facing secret_store, but
+    // `everruns_core::host` reserves this name from the user-facing secret_store, but
     // it cannot name the constant: host is a dependency of this crate, not the
     // other way round. Pin the two together here, where the constant is
     // defined, so a rename cannot quietly reopen the write path that lets a

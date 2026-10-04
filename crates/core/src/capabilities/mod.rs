@@ -112,8 +112,8 @@ pub const OPENAI_AGENTS_API_RUNTIME_ID: &str = "openai_agents_api_runtime";
 /// against forged attachments) holds even when the `a2a` feature is compiled out.
 pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 /// KV key prefix for durable tool-approval decisions (EVE-1140). Owned by the
-/// `tool_approval` capability in `everruns-builtins`; defined here so the
-/// session-storage internal-prefix reservation holds without that crate.
+/// `tool_approval` capability in `everruns_core::builtins`; defined here so the
+/// session-storage internal-prefix reservation holds without enabling `builtins`.
 pub const TOOL_APPROVAL_KV_PREFIX: &str = "tool_approval/";
 /// KV key prefix for a person's consent to an MCP URL mode elicitation
 /// (EVE-1141). Owned by the MCP client crate; defined here so

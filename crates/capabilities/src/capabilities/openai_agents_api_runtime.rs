@@ -2,7 +2,7 @@
 //!
 //! A marker capability: it adds no tools or prompt. Its presence in a turn's
 //! resolved capabilities makes the host run the turn's loop through OpenAI's
-//! Agents API (`everruns_host::openai_agents_api`) instead of the native
+//! Agents API (`everruns_core::host::openai_agents_api`) instead of the native
 //! Reason loop. The platform strips it from the worker snapshot unless the org
 //! has the platform-managed `openai_agents_api` flag, so the default path is
 //! unchanged. See `knowledge/execution/openai-agents-api-runtime.md`.

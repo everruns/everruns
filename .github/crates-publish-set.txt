@@ -38,7 +38,6 @@ everruns-integrations-web-fetch
 everruns-llmsim
 everruns-macros
 everruns-mcp
-everruns-platform
 everruns-serve
 everruns-serve-agentcore
 everruns-serve-build

@@ -28,8 +28,8 @@ use super::{
     tool_session_send_message,
 };
 use crate::api::question_answers::{QuestionResolver, ResolveError, resolve_question_answers};
-use everruns_builtins::ask_user::AskUserStatus;
 use everruns_core::Caller;
+use everruns_core::builtins::ask_user::AskUserStatus;
 use serde_json::{Value, json};
 
 /// Extension capability key (SEP-2663). Advertised under

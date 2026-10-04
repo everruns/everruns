@@ -64,11 +64,11 @@ The public surface is split across the execution and host concerns:
 
 - `everruns_core::session_files::SessionFileSystem`, the read/write contract every
   filesystem-aware capability calls.
-- `everruns_host::SessionFileSystemFactory`, resolves the deployment's
+- `everruns_core::host::SessionFileSystemFactory`, resolves the deployment's
   chosen filesystem from host-provided dependencies.
 
 See `crates/core/src/session_files.rs` and
-`crates/host/src/session_file_system_factory.rs` for the full method signatures
+`crates/core/src/host/session_file_system_factory.rs` for the full method signatures
 and doc comments. The filesystem trait shape is intentionally small: an implementation
 supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
 `delete_file`, `list_directory`, `stat_file`, `grep_files`,
@@ -178,7 +178,7 @@ Guarantees:
 
 `MountFs` is a pure *virtual* router with no host knowledge. The only place that
 needs to translate the virtual namespace onto a real directory is the host-backed
-store, so that logic is private to `everruns_host::RealDiskFileStore`
+store, so that logic is private to `everruns_core::host::RealDiskFileStore`
 (`HostPathMap`), not a shared abstraction:
 
 - It maps a session path to an absolute host path, accepts host-absolute inputs
@@ -286,7 +286,7 @@ persisted. Input compatibility is not model-visible identity.
 Tests use `everruns_core::path_identity` helpers (`assert_model_visible_value`,
 `assert_no_forbidden_prefixes`, `assert_tool_result_paths_conform`) and the
 runtime integration suite in
-`crates/host/tests/integration/model_visible_path_identity_test.rs`. The harness
+`crates/everruns/tests/host/integration/model_visible_path_identity_test.rs`. The harness
 recursively scans serialized JSON for absolute path-like strings rather than
 enumerating field names, so new model-visible fields cannot bypass the check.
 
@@ -382,7 +382,7 @@ The default backend bundled with `InProcessRuntime`. Per-session isolation,
 auto-detects text/binary, suitable for tests and embedded use without disk
 state.
 
-Source: `crates/host/src/in_memory.rs`.
+Source: `crates/core/src/host/in_memory.rs`.
 
 ### `RealDiskFileStore`
 
@@ -417,11 +417,11 @@ Implementation notes:
   field is `i64`). Files larger than 9 EiB are not realistically reachable
   through this code path.
 
-Source: `crates/host/src/real_disk.rs`.
+Source: `crates/core/src/host/real_disk.rs`.
 
 ### Multi-root host filesystems
 
-`everruns-host` exposes `multi_root_file_system(root_set)` and teaches
+`everruns-core` (`host` feature) exposes `multi_root_file_system(root_set)` and teaches
 `RealDiskSessionFileSystemFactory` to read an optional
 `WorkspaceRootSet` from `SessionFileSystemFactoryContext::workspace_roots()`.
 When present, the factory builds a `MountFs` over one `RealDiskFileStore` per
@@ -528,9 +528,9 @@ endpoints.
 See the runnable examples for the full wiring against a real
 `InProcessRuntime`:
 
-- `crates/host/examples/real_disk_agent_instructions.rs`, proves
+- `crates/everruns/examples/advanced/real_disk_agent_instructions.rs`, proves
   `AgentInstructionsCapability` reads `AGENTS.md` from a real-disk root.
-- `crates/host/examples/real_disk_file_system_tools.rs`, proves the
+- `crates/everruns/examples/advanced/real_disk_file_system_tools.rs`, proves the
   `file_system` capability tools (`read_file`, `write_file`,
   `list_directory`) operate against a real-disk root.
 
@@ -609,21 +609,21 @@ APIs or the `SessionFileSystem` trait.
 - `crates/core/src/workspace_roots.rs`, `WorkspaceRootSet` and host-root
   resolver for multi-root host sessions
 - `crates/core/src/workspace_policy.rs`, portable `WorkspacePolicy`
-- `crates/host/src/real_disk.rs`, `RealDiskFileStore` + its private
+- `crates/core/src/host/real_disk.rs`, `RealDiskFileStore` + its private
   `HostPathMap` (virtual ⇄ host mapping; the only host-rooted backend)
 - `crates/core/src/session_files.rs`, `SessionFileSystem` trait
   (`display_path`/`display_root`/`resolve_path`)
 - `crates/core/src/session_file.rs`, `SessionFile`, `FileInfo`,
   `FileStat`, `GrepMatch`, `InitialFile`
-- `crates/host/src/backends.rs`, `HostBackends`
-- `crates/host/src/file_store_decorators.rs`, `PolicyFileStore`,
+- `crates/core/src/host/backends.rs`, `HostBackends`
+- `crates/core/src/host/file_store_decorators.rs`, `PolicyFileStore`,
   `WriteBlocklistFileStore`, its deprecated compatibility constant,
   `ApprovalGatingFileStore`, `FileApprovalGate`
-- `crates/host/src/in_memory.rs`, `InMemorySessionFileStore`
-- `crates/host/src/real_disk.rs`, `RealDiskFileStore`
-- `crates/host/examples/real_disk_agent_instructions.rs`, wiring
+- `crates/core/src/host/in_memory.rs`, `InMemorySessionFileStore`
+- `crates/core/src/host/real_disk.rs`, `RealDiskFileStore`
+- `crates/everruns/examples/advanced/real_disk_agent_instructions.rs`, wiring
   example for `AgentInstructionsCapability`
-- `crates/host/examples/real_disk_file_system_tools.rs`, wiring
+- `crates/everruns/examples/advanced/real_disk_file_system_tools.rs`, wiring
   example for `file_system` capability tools
 - `crates/server/src/storage/session_file_store.rs`, `DbSessionFileStore`
 - `knowledge/runtime-resources/workspace.md`, `/workspace` mount and session VFS

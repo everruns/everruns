@@ -54,9 +54,9 @@ This approach:
 - Is reliable to parse with a simple regex
 - Degrades gracefully (shows as a code block if rendering fails)
 
-## Module: `everruns_builtins::openui`
+## Module: `everruns_core::builtins::openui`
 
-Path: `crates/builtins/src/openui/`
+Path: `crates/core/src/builtins/openui/`
 
 Static Rust definitions of all OpenUI components and a prompt generator. No runtime parsing; the module only produces the system prompt text that instructs LLMs to generate OpenUI Lang.
 

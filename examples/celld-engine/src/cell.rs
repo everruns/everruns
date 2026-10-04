@@ -22,6 +22,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use everruns_contracts::driver_registry::ChatDriver;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::provider::DriverId;
+use everruns_contracts::runtime_provider::ProviderKey;
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
+use everruns_contracts::typed_id::{EventId, HarnessId, MessageId, SessionId, TurnId, WorkspaceId};
+use everruns_core::engine::{ActAtom, ActInput, ReasonAtom, ReasonInput};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
     Event, EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
@@ -33,13 +40,6 @@ use everruns_core::{
     ResolvedModelExecution, ResolvedTurnContextInput, RuntimeMessage, TurnContextRequest,
     TurnContextResolver, assemble_resolved_turn_context,
 };
-use everruns_engine::{ActAtom, ActInput, ReasonAtom, ReasonInput};
-use everruns_contracts::driver_registry::ChatDriver;
-use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::provider::DriverId;
-use everruns_contracts::runtime_provider::ProviderKey;
-use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
-use everruns_contracts::typed_id::{EventId, HarnessId, MessageId, SessionId, TurnId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 
 use crate::agent;
@@ -278,7 +278,7 @@ impl<S: Store + 'static> Cell<S> {
         turn: &Turn,
         context: ExecutionContext,
         emitter: Emitter<S>,
-    ) -> Result<everruns_engine::ReasonResult> {
+    ) -> Result<everruns_core::engine::ReasonResult> {
         let harness = agent::harness();
         let session = ExecutionSession::new(context.session_id, workspace_id(), harness_id());
         let snapshot = ResolvedExecutionSnapshot::project(&harness, None, &session)?;

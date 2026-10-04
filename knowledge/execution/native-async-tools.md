@@ -16,8 +16,8 @@ latest response. They do not produce the handles or synthetic user messages used
 by [background execution](background-execution.md).
 
 The `native_async_tools` capability explicitly selects tools for supported
-providers. The [normal host Reason activity](../../crates/host/src/native_async.rs)
-uses the [streaming coordinator](../../crates/engine/src/native_async.rs) for
+providers. The [normal host Reason activity](../../crates/core/src/host/native_async.rs)
+uses the [streaming coordinator](../../crates/core/src/engine/native_async.rs) for
 internal HTTP continuations. The distributed scheduler receives a final outcome
 only after all accepted outputs have provider receipts, including aggregate
 usage and internal call counts. No model defaults or existing background
@@ -99,7 +99,7 @@ fails closed.
 
 ## Integration and validation
 
-The [HTTP integration tests](../../crates/host/tests/integration/native_async_http.rs) exercise
+The [HTTP integration tests](../../crates/everruns/tests/host/integration/native_async_http.rs) exercise
 both custom-host composition and the normal Reason/Act runtime, including raw
 custom input, original-call outputs, transcript metadata, and completion gating.
 The [PostgreSQL conformance test](../../crates/server/tests/server_integration/repository_conformance_test.rs)

@@ -41,15 +41,15 @@ pub(crate) fn framework_capability_registry(
     let registry = {
         let mut registry = registry;
         if hosted_base {
-            everruns_builtins::register_portable_capabilities(&mut registry)
+            everruns_core::builtins::register_portable_capabilities(&mut registry)
                 .expect("portable built-in catalog must have unique capability IDs");
         } else {
-            everruns_builtins::register_runtime_capabilities(&mut registry)
+            everruns_core::builtins::register_runtime_capabilities(&mut registry)
                 .expect("portable runtime catalog must have unique capability IDs");
         }
         registry
     };
-    everruns_host::compose_runtime_capability_registry(registry)
+    crate::batteries::compose_runtime_capability_registry(registry)
 }
 
 pub(crate) fn validate_registered_capability_config(
@@ -67,7 +67,7 @@ pub(crate) fn validate_registered_capability_config(
     }
 
     #[cfg(feature = "builtins")]
-    if id == everruns_builtins::AUTO_TOOL_SEARCH_CAPABILITY_ID {
+    if id == everruns_core::builtins::AUTO_TOOL_SEARCH_CAPABILITY_ID {
         crate::agent::validate_tool_search_config(config).map_err(|reason| {
             BuildError::InvalidCapability {
                 id: id.to_string(),

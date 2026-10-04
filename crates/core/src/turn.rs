@@ -1,7 +1,7 @@
 //! Provider-neutral turn completion semantics.
 //!
-//! Turn execution state and transition logic live in `everruns-engine`. Core
-//! retains only the stable stop-reason value shared by events, APIs, hosts,
+//! Turn execution state and transition logic live behind core’s `engine` feature.
+//! The default kernel retains the stable stop-reason value shared by events, APIs, hosts,
 //! providers, and durable storage.
 
 use serde::{Deserialize, Serialize};

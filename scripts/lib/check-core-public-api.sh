@@ -7,6 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
+source "$SCRIPT_DIR/core-feature-modules.sh"
 
 SNAPSHOT="$PROJECT_ROOT/crates/core/public-api.txt"
 TOOLCHAIN="${CORE_API_TOOLCHAIN:-nightly}"
@@ -18,9 +19,9 @@ fail() {
   FAILED=1
 }
 
-if grep -R -n -E --include='*.rs' \
+if core_kernel_source_files | xargs grep -n -E \
   '^pub use (everruns_provider|everruns_capability|everruns_contracts|crate::(compact|driver_registry|error|execution_phase|llm_retry|model|model_profiles|model_spec|provider|runtime_provider|tool_types|typed_id))' \
-  crates/core/src | grep -v -F 'pub use everruns_contracts::tools::{ToolExecutionResult, ToolInternalError};'; then
+  | grep -v -F 'pub use everruns_contracts::tools::{ToolExecutionResult, ToolInternalError};'; then
   fail "everruns-core publicly re-exports a provider/capability compatibility owner"
 fi
 
@@ -38,13 +39,13 @@ if [ -e crates/core/src/atoms ]; then
   fail "everruns-core still contains atom execution implementation"
 fi
 
-if grep -R -n -E --include='*.rs' \
-  'pub (struct|trait) (ActAtom|InputAtom|ReasonAtom|Atom)\b' crates/core/src; then
+if core_kernel_source_files | grep -v '^crates/core/src/engine/' | xargs grep -n -E \
+  'pub (struct|trait) (ActAtom|InputAtom|ReasonAtom|Atom)\b'; then
   fail "everruns-core must expose contracts, not concrete atom executors"
 fi
 
 for engine_source in input.rs reason.rs act.rs act_hooks.rs tool_scheduler.rs; do
-  if [ ! -f "crates/engine/src/execution/$engine_source" ]; then
+  if [ ! -f "crates/core/src/engine/execution/$engine_source" ]; then
     fail "everruns-engine is missing execution kernel source: $engine_source"
   fi
 done
@@ -54,7 +55,7 @@ if grep -R -n -E --include='*.rs' 'everruns_core::atoms|crate::atoms' \
   fail "Rust consumers must use everruns-engine executors or concern-owned core contracts"
 fi
 
-if ! grep -q -E '^#!\[cfg_attr\(not\(test\), forbid\(unsafe_code\)\)\]' crates/core/src/lib.rs; then
+if ! grep -q -F '#![cfg_attr(not(any(test, feature = "host")), forbid(unsafe_code))]' crates/core/src/lib.rs; then
   fail "everruns-core must forbid unsafe code in the published library"
 fi
 if ! grep -q -E '^#!\[deny\(rustdoc::broken_intra_doc_links\)\]' crates/core/src/lib.rs; then

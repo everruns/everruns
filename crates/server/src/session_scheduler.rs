@@ -54,7 +54,7 @@ const ORPHAN_SWEEP_LIMIT: i64 = 50;
 /// being hard-coded into the core registry.
 pub(crate) fn monitor_probe_tool_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::with_monitor_probe_defaults();
-    everruns_builtins::register_monitor_tools(&mut registry);
+    everruns_core::builtins::register_monitor_tools(&mut registry);
     registry
 }
 

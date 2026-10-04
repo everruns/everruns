@@ -92,7 +92,7 @@ impl AppState {
         auth: AuthState,
         feature_flags: FeatureFlags,
         dependencies: AppDependencies,
-        host_composition: &everruns_host::HostComposition,
+        host_composition: &everruns_core::host::HostComposition,
         built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
     ) -> Self {
         let registry = Arc::new(DbSessionResourceRegistry::new(db.clone()));

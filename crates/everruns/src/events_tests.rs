@@ -11,7 +11,7 @@ use everruns_core::events::{
     ActStartedData, OutputMessageDeltaData, OutputMessageReplacedData, ReasonThinkingDeltaData,
     ToolStartedData, TurnCancelledData, TurnStartedData,
 };
-use everruns_host::{HostEventEmitter, InMemoryEventLog};
+use everruns_core::host::{HostEventEmitter, InMemoryEventLog};
 use serde_json::json;
 
 use super::{EventStreamError, FacadeEventBus, SessionEvent, SessionEventKind};

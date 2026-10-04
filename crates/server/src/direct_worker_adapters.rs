@@ -7,6 +7,15 @@ mod message_projection;
 // Decision: Used by in-process worker in DEV_MODE
 //
 // Implements GrpcWorkerAdapters' interface using storage, domains, and infra directly.
+use crate::domains::budgets::BudgetService;
+use crate::domains::mcp_servers::McpServerService;
+use crate::domains::mcp_servers::scoped_mcp::{
+    build_materialized_scoped_mcp_tool_definitions,
+    merge_effective_scoped_mcp_servers_with_capabilities,
+    resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
+};
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
 use crate::kernel_imports::{
     Caller, EgressRequest, EgressRequestKind, EgressService, RuntimeMessage, UtilityLlmService,
     contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
@@ -19,9 +28,13 @@ use crate::kernel_imports::{
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
     tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
+use crate::max_iterations;
 use crate::records::Harness;
 use crate::records::{Agent, AgentStatus};
 use crate::records::{Session, SessionStatus};
+use crate::services::{EventService, ProviderResolverService};
+use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
+use crate::storage::{EncryptionService, StorageBackend};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -35,32 +48,16 @@ use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
+use everruns_durable::WorkflowEventStore;
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
-
-use crate::domains::budgets::BudgetService;
-use crate::domains::mcp_servers::McpServerService;
-use crate::domains::mcp_servers::scoped_mcp::{
-    build_materialized_scoped_mcp_tool_definitions,
-    merge_effective_scoped_mcp_servers_with_capabilities,
-    resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
-};
-use crate::domains::messages::MessageService;
-use crate::domains::sessions::SessionService;
-use crate::max_iterations;
-use crate::services::{EventService, ProviderResolverService};
-use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
-use crate::storage::{EncryptionService, StorageBackend};
-use everruns_durable::WorkflowEventStore;
-
 // Helper to create store errors
 pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
 }
-
 /// Extract file name from path
 pub(crate) fn name_from_path(path: &str) -> String {
     if path == "/" {
@@ -290,7 +287,8 @@ pub struct DirectWorkerAdapters {
     vector_store: Option<Arc<dyn everruns_contracts::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
-    in_memory_compaction_checkpoint_store: Arc<everruns_host::InMemoryCompactionCheckpointStore>,
+    in_memory_compaction_checkpoint_store:
+        Arc<everruns_core::host::InMemoryCompactionCheckpointStore>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -331,7 +329,7 @@ impl DirectWorkerAdapters {
             runner: None,
             encryption: None,
             in_memory_compaction_checkpoint_store: Arc::new(
-                everruns_host::InMemoryCompactionCheckpointStore::default(),
+                everruns_core::host::InMemoryCompactionCheckpointStore::default(),
             ),
             proactive_compaction_attempts: Arc::new(
                 everruns_core::ProactiveCompactionAttemptTracker::default(),
@@ -1335,7 +1333,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 vec![]
             } else {
                 let egress = self.egress_service.clone().unwrap_or_else(|| {
-                    Arc::new(everruns_host::DirectEgressService::for_runtime_traffic_from_env())
+                    Arc::new(
+                        everruns_core::host::DirectEgressService::for_runtime_traffic_from_env(),
+                    )
                 });
                 match build_materialized_scoped_mcp_tool_definitions(
                     &self.db,
@@ -1912,8 +1912,8 @@ impl DirectWorkerAdapters {
         capability_rows: &[AgentCapabilityRow],
     ) -> Result<Vec<ToolDefinition>> {
         use everruns_contracts::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        use everruns_core::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
-        use everruns_mcp::parse_mcp_capability_id;
 
         let mut mcp_tools = Vec::new();
 

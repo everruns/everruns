@@ -67,11 +67,11 @@ other providers.
 
 - `InfinityContextFilterProvider` applies a bounded candidate load, trims the
   loaded history, and inserts a counted notice
-  (`crates/builtins/src/infinity_context.rs:296-366`).
+  (`crates/core/src/builtins/infinity_context.rs:296-366`).
 - `ExcludedNoticeTransform` renders the changing count
   (`crates/core/src/message_filter.rs:176-208`).
 - Host assembly applies those filters before it resolves the per-turn model
-  override (`crates/host/src/runtime_context.rs:242-274`).
+  override (`crates/core/src/host/runtime_context.rs:242-274`).
 - The Anthropic driver places later system messages in `messages` for selected
   models, but its two moving message-level cache markers still edit prior
   blocks (`crates/drivers/drivers/src/anthropic/driver_layout.rs:160-207`).
@@ -392,8 +392,8 @@ Implementation is complete only when all checks pass:
    metadata contains no prompt content.
 10. **Commands:** run:
     - `cargo test -p everruns-drivers --lib --all-features`
-    - `cargo test -p everruns-builtins infinity_context`
-    - `cargo test -p everruns-model-profiles`
+    - `cargo test -p everruns-core --features builtins infinity_context`
+    - `cargo test -p everruns-contracts`
     - `cargo test -p everruns-test-support --test reason_atom_test`
     - `just check-okf`
     - `just pre-push`

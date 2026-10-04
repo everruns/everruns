@@ -385,7 +385,7 @@ impl McpEventTriggers {
     pub fn shared(
         db: &Arc<StorageBackend>,
         encryption: &Option<Arc<EncryptionService>>,
-        host: &everruns_host::HostComposition,
+        host: &everruns_core::host::HostComposition,
         auth: &crate::auth::AuthState,
     ) -> Arc<Self> {
         Arc::new(Self::new(
@@ -878,10 +878,10 @@ impl Remote {
         method: &str,
         params: &Value,
     ) -> Result<Value, CommandError> {
-        everruns_mcp::http_request(egress, &self.url, &self.headers, None, method, params)
+        everruns_core::mcp::http_request(egress, &self.url, &self.headers, None, method, params)
             .await
             .map_err(|error| {
-                if let Some(rpc) = error.downcast_ref::<everruns_mcp::McpRpcError>() {
+                if let Some(rpc) = error.downcast_ref::<everruns_core::mcp::McpRpcError>() {
                     return CommandError::unprocessable(format!(
                         "MCP server rejected {method}: {}",
                         rpc.message

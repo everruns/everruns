@@ -160,8 +160,8 @@ impl everruns_contracts::ChatDriver for ReplayProjectionDriver {
 
 #[tokio::test]
 async fn response_and_tool_projections_preserve_native_replay_state() {
-    use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_core::execution_loading::SessionStore;
 
     let (
@@ -200,7 +200,8 @@ async fn response_and_tool_projections_preserve_native_replay_state() {
     capabilities.register(InfinityContextCapability);
     capabilities.register(ReplayProjectionCapability);
     let events = InMemoryEventEmitter::new();
-    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
+    let checkpoint_store =
+        Arc::new(everruns_core::host::InMemoryCompactionCheckpointStore::default());
     let result = reason_atom_with_stores(
         harness_store,
         agent_store,
@@ -384,8 +385,8 @@ impl everruns_contracts::driver_registry::ChatDriver for ProviderManagedCheckpoi
 
 #[tokio::test]
 async fn provider_managed_checkpoint_installs_after_completion_and_restores_on_restart() {
-    use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_core::execution_loading::SessionStore;
     let (
         harness_store,
@@ -435,7 +436,8 @@ async fn provider_managed_checkpoint_installs_after_completion_and_restores_on_r
     drivers.register(provider_type.clone(), move |_| Box::new(driver.clone()));
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(InfinityContextCapability);
-    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
+    let checkpoint_store =
+        Arc::new(everruns_core::host::InMemoryCompactionCheckpointStore::default());
     let execute = |event_emitter| {
         reason_atom_with_stores(
             harness_store.clone(),
@@ -732,8 +734,8 @@ async fn provider_managed_checkpoint_installs_after_completion_and_restores_on_r
 
 #[tokio::test]
 async fn corrupt_provider_checkpoint_rebuilds_from_full_raw_history() {
-    use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_core::execution_loading::SessionStore;
 
     let (
@@ -787,7 +789,8 @@ async fn corrupt_provider_checkpoint_rebuilds_from_full_raw_history() {
     drivers.register_external(provider_type.as_str(), move |_| Box::new(driver.clone()));
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(InfinityContextCapability);
-    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
+    let checkpoint_store =
+        Arc::new(everruns_core::host::InMemoryCompactionCheckpointStore::default());
     checkpoint_store
         .install(everruns_core::CompactionCheckpoint {
             id: Uuid::now_v7(),
@@ -877,20 +880,20 @@ impl everruns_contracts::ChatDriver for DynamicContextFallbackDriver {
 
 #[tokio::test]
 async fn changing_agents_and_channel_context_bypass_a_native_checkpoint() {
-    use everruns_builtins::{
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{
         AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability,
         CHANNEL_CONTEXT_CAPABILITY_ID, ChannelContextCapability, INFINITY_CONTEXT_CAPABILITY_ID,
         InfinityContextCapability,
     };
-    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::channel::{ChannelViewContext, ThreadContext, save_thread_context};
+    use everruns_core::engine::ReasonAtom;
     use everruns_core::execution_loading::SessionStore;
-    use everruns_core::message::ExternalActor;
-    use everruns_core::session_file::InitialFile;
-    use everruns_engine::ReasonAtom;
-    use everruns_host::{
+    use everruns_core::host::{
         InMemorySessionFileStore, InMemorySessionStorageStore, StoreTurnContextResolver,
     };
+    use everruns_core::message::ExternalActor;
+    use everruns_core::session_file::InitialFile;
 
     let (
         harness_store,
@@ -967,7 +970,8 @@ async fn changing_agents_and_channel_context_bypass_a_native_checkpoint() {
     capabilities.register(InfinityContextCapability);
     capabilities.register(AgentInstructionsCapability);
     capabilities.register(ChannelContextCapability);
-    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
+    let checkpoint_store =
+        Arc::new(everruns_core::host::InMemoryCompactionCheckpointStore::default());
     checkpoint_store
         .install(everruns_core::CompactionCheckpoint {
             id: Uuid::now_v7(),

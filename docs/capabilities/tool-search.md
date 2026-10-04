@@ -240,10 +240,10 @@ Measured on a representative 19-tool generic-agent surface (file, shell, web-fet
 
 Token figures use the ~4-chars-per-token rule of thumb for JSON. 18 of the 19 tools were deferred (`tool_search` keeps its schema). Net savings grow with tool count: an agent with dozens of MCP tools defers proportionally more.
 
-These numbers come from the `benchmark_prompt_size_reduction` test in `crates/builtins/src/tool_search.rs`, which also guards the reduction against regressions. Reproduce them with:
+These numbers come from the `benchmark_prompt_size_reduction` test in `crates/core/src/builtins/tool_search.rs`, which also guards the reduction against regressions. Reproduce them with:
 
 ```bash
-cargo test -p everruns-builtins --lib benchmark_prompt_size_reduction -- --nocapture
+cargo test -p everruns-core --features builtins --lib benchmark_prompt_size_reduction -- --nocapture
 ```
 
 The trade-off is one extra `tool_search` round-trip per deferred tool before its first use; for many-tool agents the upfront token savings dominate.

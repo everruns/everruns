@@ -14,13 +14,13 @@ tags:
 
 The public `docs/framework/` section is the canonical usage guide. It begins
 offline, teaches `everruns` as the primary crate, covers the coherent
-application lifecycle, and marks `everruns-host` as advanced host material.
+application lifecycle, and marks `everruns-core` (`host` feature) as advanced host material.
 The `everruns` README and rustdoc are concise entrances
 to that same path rather than independent architecture narratives.
 
 The public architecture guide names the concrete `everruns::Engine` as the
 application session owner and separately explains the lower-level
-`everruns-engine::Execution` host contract. It shows both immediate and durable
+`everruns_core::engine::Execution` host contract. It shows both immediate and durable
 execution converging on one turn kernel and distinguishes volatile, local
 crash-durable, and distributed Platform persistence.
 
@@ -36,9 +36,10 @@ would choose an example.
 
 At least one useful path must run without a network or provider credential.
 Example inventory and compilation are CI-protected so navigation cannot point
-at planned or unmerged programs. Host examples may remain beside
-`everruns-host`, but must be labeled as low-level rather than as the normal
-application entrypoint.
+at planned or unmerged programs. Advanced host examples live under
+[`crates/everruns/examples/advanced`](../../crates/everruns/examples/advanced)
+and select core host features plus facade batteries. Their label distinguishes
+them from the normal application entrypoint.
 
 ## Documentation integrity
 

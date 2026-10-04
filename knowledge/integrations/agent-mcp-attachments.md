@@ -220,7 +220,7 @@ survey, not a citation list.
   the attachment, visible in the UI, and not inferable from auth mechanics.
 - **Transport and auth mechanics are settled and we already implement them:**
   RFC 9728 protected-resource discovery, RFC 7591 dynamic registration, PKCE,
-  RFC 8707 resource-bound tokens (`crates/mcp/src/oauth/`). Nothing in this
+  RFC 8707 resource-bound tokens (`crates/core/src/mcp/oauth/`). Nothing in this
   decision needs new protocol work — it needs the grants to land in the right
   store and the UI to say which one.
 

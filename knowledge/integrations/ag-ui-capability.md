@@ -36,7 +36,7 @@ over A2A.
 
 `everruns-capabilities`'s `ag-ui` feature gates the
 [`ag_ui_delegation`](../../crates/capabilities/src/capabilities/ag_ui_delegation/mod.rs) module and
-its registration, and pulls in the `everruns-ag-ui` client. The product build
+its registration, and enables core’s `ag-ui-client` feature. The product build
 (`everruns-server`, `everruns-worker`) enables it. Registration also sits behind the
 `agent_delegation` decision and org flag, like the other delegation capabilities.
 

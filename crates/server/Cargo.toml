@@ -91,22 +91,18 @@ tar.workspace = true
 bashkit = { version = "0.18.1", default-features = false, features = ["scripted_tool", "jq", "tzdata", "aws-lc-rs"] }
 
 everruns-contracts = { workspace = true, default-features = false, features = ["http", "sqlx"] }
-everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines"] }
 # sqlx Postgres encode/decode for TypedId lives on everruns-contracts (EVE-888).
 # The kernel never used sqlx, so the server asks the crate that owns the impls.
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
-everruns-builtins = { workspace = true, features = ["ui-capabilities"] }
 everruns-capabilities = { path = "../capabilities", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
 # Observability exporters are enabled through everruns-host below; core retains
 # neutral event-listener contracts only.
-everruns-mcp = { path = "../mcp" }
 everruns-cli-contract.workspace = true
 everruns-integrations-catalog.workspace = true
 everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
 everruns-integrations-bashkit.workspace = true
 everruns-integrations-web-fetch.workspace = true
 rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
-everruns-host = { path = "../host", features = ["direct-egress", "utility-llm", "observability", "openai-agents-api"] }  # HostComposition and deployment-owned utility LLM/telemetry wiring
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }
@@ -117,9 +113,10 @@ image.workspace = true  # For image thumbnail generation
 tonic.workspace = true
 prost-types.workspace = true
 serde_urlencoded = "0.7.1"
-everruns-ag-ui = { workspace = true, features = ["core"] }
 url = "2"
 
+everruns-core = { path = "../core", features = ["ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities"], default-features = false }
+everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
 a2a.workspace = true
 a2a-client.workspace = true

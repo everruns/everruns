@@ -338,10 +338,8 @@ version = "0.39.0"
 dependencies = [
  "async-trait",
  "base64",
- "everruns-builtins",
  "everruns-contracts",
  "everruns-core",
- "everruns-host",
  "everruns-integrations-filesystem",
  "everruns-llmsim",
  "everruns-macros",
@@ -350,23 +348,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "everruns-builtins"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "chrono-tz",
- "everruns-contracts",
- "everruns-core",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
  "tracing",
  "uuid",
 ]
@@ -407,12 +388,16 @@ dependencies = [
  "async-trait",
  "base64",
  "chrono",
+ "chrono-tz",
  "cron",
  "everruns-contracts",
+ "fs2",
  "futures",
  "globset",
+ "ignore",
  "inventory",
  "jsonschema",
+ "libc",
  "rand 0.10.3",
  "regex",
  "serde",
@@ -427,50 +412,6 @@ dependencies = [
  "url",
  "uuid",
  "web-time",
-]
-
-[[package]]
-name = "everruns-engine"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "futures",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
- "web-time",
-]
-
-[[package]]
-name = "everruns-host"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-builtins",
- "everruns-contracts",
- "everruns-core",
- "everruns-engine",
- "everruns-integrations-filesystem",
- "fs2",
- "futures",
- "ignore",
- "libc",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]

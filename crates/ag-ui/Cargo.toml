@@ -1,10 +1,3 @@
-# AG-UI 1.0 wire types.
-#
-# Decision: our own crate instead of the community `ag-ui-core` (0.1.0, last
-# published 2025-08, pre-1.0 and not generated from the schema). The upstream
-# schema and fixture corpus are vendored under `spec/` (MIT, see
-# `spec/LICENSE`, commit in `spec/UPSTREAM_COMMIT`) and are the test suite.
-
 [package]
 name = "everruns-ag-ui"
 version.workspace = true
@@ -15,7 +8,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-ag-ui"
-description = "AG-UI 1.0 protocol types (events, run input, interrupts, capabilities)"
+description = "Deprecated shim: use everruns-core ag_ui module"
 readme = "README.md"
 keywords = ["agent", "ag-ui", "protocol", "llm", "sse"]
 categories = ["api-bindings", "web-programming"]
@@ -23,34 +16,14 @@ categories = ["api-bindings", "web-programming"]
 # schema ships because it is embedded.
 exclude = ["spec/1.0/fixtures", "spec/1.0/conformance", "tests"]
 
-[features]
-default = []
-# `projection`: map Everruns runtime events onto an AG-UI run.
-core = ["dep:everruns-core", "dep:everruns-contracts"]
-# `client`: an HTTP/SSE client for AG-UI agents. Off by default so the wire
-# types stay serde-only.
-client = ["dep:reqwest", "dep:futures-util"]
 
 [dependencies]
-serde.workspace = true
-serde_json.workspace = true
-everruns-core = { workspace = true, optional = true }
-everruns-contracts = { workspace = true, default-features = false, optional = true }
-reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls"] }
-futures-util = { workspace = true, optional = true }
+everruns-core = { workspace = true, default-features = false, features = ["ag-ui"] }
 
-[dev-dependencies]
-jsonschema = { version = "0.58.1", default-features = false }
-tokio = { workspace = true }
-futures-util = { workspace = true }
-
-[[test]]
-name = "projection"
-required-features = ["core"]
-
-[[test]]
-name = "client"
-required-features = ["client"]
+[features]
+default = []
+core = ["everruns-core/ag-ui-projection"]
+client = ["everruns-core/ag-ui-client"]
 
 [lints]
 workspace = true

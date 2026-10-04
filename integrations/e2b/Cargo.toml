@@ -44,10 +44,10 @@ protox = "0.9"
 prost.workspace = true
 
 [dev-dependencies]
-everruns-host.workspace = true
 wiremock = "0.6"
 tokio.workspace = true
 
+everruns-core = { workspace = true, default-features = false, features = ["host"] }
 [features]
 e2b-live-tests = []
 

@@ -1,11 +1,11 @@
 // Deterministic-simulator conveniences for the in-process host runtime builder.
 //
-// `everruns-host` stays free of simulation code: its builder exposes the
+// `everruns_core::host` stays free of simulation code: its builder exposes the
 // neutral provider seams, and this extension trait adapts an `LlmSimConfig`
 // into an `llmsim` provider on top of them.
 
 use crate::{LlmSimConfig, LlmSimDriver};
-use everruns_host::InProcessRuntimeBuilder;
+use everruns_core::host::InProcessRuntimeBuilder;
 
 /// Canonical provider name and model id used by simulated runtimes.
 pub const LLMSIM_PROVIDER: &str = "llmsim";

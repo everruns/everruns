@@ -150,7 +150,6 @@ dependencies = [
  "async-trait",
  "everruns-contracts",
  "everruns-core",
- "everruns-engine",
  "futures",
  "js-sys",
  "serde",
@@ -329,25 +328,6 @@ dependencies = [
  "toml",
  "tracing",
  "url",
- "uuid",
- "web-time",
-]
-
-[[package]]
-name = "everruns-engine"
-version = "0.39.0"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "futures",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tokio-util",
- "tracing",
  "uuid",
  "web-time",
 ]

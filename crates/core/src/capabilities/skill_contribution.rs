@@ -1,7 +1,7 @@
 //! Neutral skill-capability values shared by capability implementations.
 //!
 //! Concrete skill discovery and attachment capabilities live in
-//! `everruns-builtins`. Core retains the stable `skill:` identity namespace,
+//! `everruns_core::builtins`. Core retains the stable `skill:` identity namespace,
 //! mount contribution DTOs, and SKILL.md normalization used by declarative and
 //! custom capabilities.
 

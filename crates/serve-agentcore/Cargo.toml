@@ -43,7 +43,7 @@ anyhow.workspace = true
 axum = { workspace = true, features = ["ws"] }
 clap.workspace = true
 # `HostShell` for `[sandbox] kind = "microvm"`: the session's microVM is the boundary.
-everruns = { workspace = true, features = ["host-shell"] }
+everruns = { workspace = true, default-features = true, features = ["host-shell"] }
 futures-util.workspace = true
 # Only for `sqlite_for_session_storage`: the same bundled SQLite serve and
 # everruns link, so selecting its VFS reaches their connections.

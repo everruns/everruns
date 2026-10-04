@@ -9,6 +9,35 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## 0.40 (planned)
+
+### Consolidated execution modules
+
+The planned release moves the execution, host, built-in, MCP, AG-UI, and A2A
+modules into `everruns-core`. Its default features remain portable; opt into
+the modules your host uses. The five former packages will ship one deprecated
+forwarding release before removal in the next platform release. Existing behavior and protocol formats
+will be preserved. This step is gated on the complete 0.39 publication,
+including its deprecated `everruns-platform` shim, before that shim is removed.
+
+| Deprecated crate prefix | Canonical import | Core feature |
+|---|---|---|
+| `everruns_engine::` | `everruns_core::engine::` | `engine` |
+| `everruns_host::` | `everruns_core::host::` | `host` |
+| `everruns_builtins::` | `everruns_core::builtins::` | `builtins` |
+| `everruns_mcp::` | `everruns_core::mcp::` | `mcp` |
+| `everruns_ag_ui::` | `everruns_core::ag_ui::` | `ag-ui` |
+
+After upgrading, select concrete integrations on `everruns`, and use
+`everruns::batteries::runtime_capability_registry()` and
+`everruns::batteries::runtime_egress_service()` for the matching composition.
+The core host module accepts explicitly injected services. A custom shell hook
+host supplies a `BashHookDispatcherFactory` through `HostBackends`; the facade
+injects the Bashkit factory when its `bashkit` feature is enabled.
+Utility-model bootstrap configuration will live in `everruns::utility_llm`
+behind `utility-llm`. A2A protocol and outbound client APIs will be available from
+`everruns_core::a2a` with the `a2a` feature.
+
 ## 0.39
 
 ### Hosted capabilities and server records

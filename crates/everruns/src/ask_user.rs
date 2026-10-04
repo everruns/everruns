@@ -5,7 +5,7 @@
 //! the same request and outcome values through a client-side capability.
 
 pub use async_trait::async_trait;
-pub use everruns_builtins::{
+pub use everruns_core::builtins::{
     AskContext, AskUser, AskUserAnswer, AskUserAnsweredBy, AskUserOption, AskUserQuestion,
     AskUserQuestionKind, AskUserRequest, AskUserResult, AskUserStatus, DefaultsResponder,
     session_secret_ref,

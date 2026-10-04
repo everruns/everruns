@@ -17,7 +17,7 @@
 
 mod llm_test_matrix;
 
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use llm_test_matrix::*;
 
 use async_trait::async_trait;
@@ -26,13 +26,13 @@ use everruns_capabilities::capabilities::SubagentCapability;
 use everruns_capabilities::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::host::{
+    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, RuntimeSessionStore,
+    SessionBuilder,
+};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
 use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
-use everruns_host::{
-    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
-    RuntimeSessionStore, SessionBuilder,
-};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -161,7 +161,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         .build();
 
     let (model, provider_config) = model_config.into_parts();
-    let provider_store = Arc::new(everruns_host::InMemoryProviderStore::new());
+    let provider_store = Arc::new(everruns_core::host::InMemoryProviderStore::new());
     if let Some(provider_config) = provider_config {
         provider_store.set_provider_config(provider_config).await;
     }
@@ -181,7 +181,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
 
     let backends =
         backends.with_platform_store_factory(Arc::new(move |_org, _session| store.clone()));
-    let runtime = InProcessRuntimeBuilder::new()
+    let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
         .backends(backends)
         .with_session_task_registry(registry.clone())

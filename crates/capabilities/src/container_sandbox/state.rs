@@ -17,7 +17,7 @@ use super::client::DockerClient;
 
 /// Secret key prefix for sandbox state.
 ///
-/// Reserved from the user-facing `secret_store` in `everruns-host`. The host
+/// Reserved from the user-facing `secret_store` in `everruns_core::host`. The host
 /// cannot import this constant (crate layering), so the reservation string is
 /// duplicated there and pinned by
 /// `the_container_sandbox_secret_prefix_is_reserved_from_session_storage`.
@@ -270,7 +270,7 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    // `everruns-host` reserves this prefix from the user-facing secret_store,
+    // `everruns_core::host` reserves this prefix from the user-facing secret_store,
     // but it cannot name the constant: host is a dependency of this crate.
     // Pin the two together here so a rename cannot quietly reopen the write
     // path that lets a session forge another container's ID into its state.

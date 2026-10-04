@@ -2,12 +2,12 @@
 //!
 //! Hosted delegation capabilities drive child sessions — create, message,
 //! wait, read — through this narrow `everruns-core`-owned trait instead of the
-//! full hosted [`PlatformStore`](https://docs.rs/everruns-platform) seam. The
-//! platform crate implements it by forwarding runtime views from `PlatformStore`, so core owns
-//! only the execution contract while server/worker keep identical behavior.
+//! full hosted [`PlatformStore`](https://docs.rs/everruns-capabilities/latest/everruns_capabilities/trait.PlatformStore.html) seam. The
+//! capabilities crate implements it by forwarding runtime views from `PlatformStore`,
+//! so core owns only the execution contract while server/worker keep identical behavior.
 //!
 //! The request/message DTOs live here (not in `everruns-capabilities`) because the
-//! trait signature needs them and core cannot depend on platform.
+//! trait signature needs them and core cannot depend on the product crate.
 
 use crate::agent_definition::AgentDefinition;
 use crate::error::Result;

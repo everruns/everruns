@@ -226,7 +226,7 @@ The notice states how many earlier messages are hidden and points at `query_hist
 language rather than emphasis so the model does not call the tool for questions the visible
 context already answers. The exact text lives in `ExcludedNoticeTransform::infinity_context`
 (`crates/core/src/message_filter.rs`); `parse_excluded_notice_count`
-(`crates/builtins/src/infinity_context.rs`) must match it.
+(`crates/core/src/builtins/infinity_context.rs`) must match it.
 
 ### Query History Tool Schema
 

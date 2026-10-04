@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use async_trait::async_trait;
 use everruns_contracts::error::Result as CoreResult;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::host::{RuntimeHostAdapter, SessionBuilder};
 use everruns_core::{AgentDefinition as Agent, HarnessDefinition as Harness};
 use everruns_core::{DEFAULT_ORG_ID, ExecutionSession, ResolvedExecutionSnapshot};
-use everruns_host::{RuntimeHostAdapter, SessionBuilder};
 // EVE-877: the hosted adapters transport the stored platform view; the
 // loading seam projects it into the portable execution definition.
 use everruns_worker::{WorkerAdapters, WorkerRuntimeHost, WorkerTurnContext};

@@ -175,7 +175,7 @@ impl McpEventsService {
     pub fn shared(
         db: &Arc<StorageBackend>,
         encryption: &Option<Arc<EncryptionService>>,
-        host: &everruns_host::HostComposition,
+        host: &everruns_core::host::HostComposition,
         auth: &crate::auth::AuthState,
     ) -> Arc<Self> {
         let flags = auth.feature_flag_policy.clone();

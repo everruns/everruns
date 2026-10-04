@@ -18,11 +18,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::session_services::SessionStorageStore;
-use everruns_mcp::{
+use everruns_core::mcp::{
     ElicitationConsentStore, FormAnswerStore, GrantedConsent, StoredConsent, StoredFormAnswer,
     consent_storage_key, form_answer_storage_key,
 };
+use everruns_core::session_services::SessionStorageStore;
 
 /// Session-storage-backed [`ElicitationConsentStore`] for one session.
 pub struct SessionElicitationConsents {
@@ -267,7 +267,7 @@ mod tests {
             "deploys",
             "release",
             "fingerprint",
-            everruns_mcp::FormAnswerAction::Decline,
+            everruns_core::mcp::FormAnswerAction::Decline,
             Default::default(),
             chrono::Utc::now(),
         );
@@ -310,7 +310,7 @@ mod tests {
         value: &str,
     ) -> ToolExecutionResult {
         let context = ToolContext::with_storage_store(session_id, storage);
-        everruns_host::KvStoreTool
+        everruns_core::host::KvStoreTool
             .execute_with_context(
                 serde_json::json!({"operation": "set", "key": key, "value": value}),
                 &context,
@@ -355,7 +355,7 @@ mod tests {
             "deploys",
             "release",
             "fingerprint",
-            everruns_mcp::FormAnswerAction::Accept,
+            everruns_core::mcp::FormAnswerAction::Accept,
             Default::default(),
             chrono::Utc::now(),
         );

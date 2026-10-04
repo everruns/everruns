@@ -10,7 +10,7 @@ use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::EgressService;
 use everruns_core::connection_services::{ProviderCredentialStore, ProviderCredentials};
-use everruns_host::DirectEgressService;
+use everruns_core::host::DirectEgressService;
 use std::sync::{Arc, Mutex};
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
 

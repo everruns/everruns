@@ -13,8 +13,8 @@ use async_trait::async_trait;
 
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_core::mcp::{StoredConsent, consent_storage_key};
 use everruns_core::{Caller, Permission, PermissionResolver};
-use everruns_mcp::{StoredConsent, consent_storage_key};
 use everruns_server::records::{Agent, Session};
 use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use everruns_worker::AgentRunner;

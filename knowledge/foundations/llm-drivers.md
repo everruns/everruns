@@ -23,18 +23,17 @@ provider-owned endpoint into the protocol driver.
 
 Official vendor drivers are feature-gated modules of one crate,
 `everruns-drivers` ([`crates/drivers/drivers/`](../../crates/drivers/drivers/README.md)),
-over the neutral `everruns-provider` SPI. They were separate crates through
+over the neutral `everruns-contracts` SPI. They were separate crates through
 0.34.2; one crate means one publish, one version, and one place a host
-picks vendors by feature. The old per-vendor directories under
-[`crates/drivers/`](../../crates/drivers/README.md) hold deprecated shim crates
-for one release only. `everruns-llmsim` stays its own crate because its
-`host` feature depends on `everruns-host`, which depends on the drivers crate.
+picks vendors by feature. The former vendor packages shipped one deprecated
+forwarding release before source deletion. `everruns-llmsim` remains separate so hosts can select a
+deterministic driver independently of concrete vendor transports.
 
 ## Architecture
 
 ```mermaid
 graph TD
-    subgraph Provider [everruns-provider]
+    subgraph Provider [everruns-contracts]
         ChatDriver[ChatDriver Trait]
         Registry[ProviderRegistry]
         Errors[AgentLoopError]
@@ -129,7 +128,7 @@ by open `ProviderKey`. Official integration crates expose ready-made provider
 assemblies; downstream code may construct the same public `Provider` directly.
 
 `DriverDescriptor`/`DriverRegistry` remain as the hosted provider-management
-catalog and the host-facing surface for `everruns-host`. Descriptor factories
+catalog and the host-facing surface for `everruns-core` (`host` feature). Descriptor factories
 compose runtime providers and route into the same registry/execution path; they
 are not a second driver semantics layer.
 
@@ -387,7 +386,7 @@ A long `xhigh`/`max` reasoning call on the OpenAI driver runs with `background: 
 
 Policy lives in `crates/contracts/src/openresponses_protocol/background.rs`: on for `xhigh`/`max`, forced on or off by the `openai/background` driver option, and limited to OpenAI and Azure hosts (OpenRouter and custom gateways have no resume API). Background mode requires stored responses, so it is not zero-data-retention compatible: a 400 naming the background fields retries once in the foreground, and ZDR deployments can set the option to `false`.
 
-Re-attaching survives a worker restart (EVE-1134). A durable host passes a `BackgroundCallContext` (`crates/contracts/src/background_call.rs`) on `LlmCallConfig`: a journal for the response id and an explicit turn-cancel signal. The id is saved when `response.created` arrives, before the parser sees any event, into the turn's native-async checkpoint (`crates/host/src/background_call.rs`; each write takes and releases the turn lease, so no lease is held across the call). The durable retry of the same call re-attaches with `GET /responses/{id}?stream=true` from the first event, because its parser starts empty, instead of posting again. The record carries a fingerprint of the request (metadata excluded, since it holds per-attempt ids); a record for a different request is cancelled rather than resumed, and a record that can no longer be fetched falls back to posting. The record is cleared at the terminal event.
+Re-attaching survives a worker restart (EVE-1134). A durable host passes a `BackgroundCallContext` (`crates/contracts/src/background_call.rs`) on `LlmCallConfig`: a journal for the response id and an explicit turn-cancel signal. The id is saved when `response.created` arrives, before the parser sees any event, into the turn's native-async checkpoint (`crates/core/src/host/background_call.rs`; each write takes and releases the turn lease, so no lease is held across the call). The durable retry of the same call re-attaches with `GET /responses/{id}?stream=true` from the first event, because its parser starts empty, instead of posting again. The record carries a fingerprint of the request (metadata excluded, since it holds per-attempt ids); a record for a different request is cancelled rather than resumed, and a record that can no longer be fetched falls back to posting. The record is cleared at the terminal event.
 
 With a journal, dropping the stream no longer cancels the response: the drop may be a worker shutdown or a stall whose retry re-attaches. Cancellation is explicit instead: the worker heartbeat reports a cancelled workflow to the worker that still owns the task (see [durable execution](../operations/durable-execution-engine.md#task-heartbeat-cancellation)), and the driver sends `POST /responses/{id}/cancel` while it is still reading the stream. Ownership loss never cancels, because the next owner is re-attaching to that response. Without a journal (embedded hosts, or a journal write that fails) the in-process behaviour stays: an abandoned response is cancelled on drop.
 
@@ -541,7 +540,7 @@ re-executes a completed tool.
 | Meta Model API driver | `crates/drivers/drivers/src/meta/driver.rs` |
 | Cloudflare AI Gateway driver | `crates/drivers/drivers/src/cloudflare.rs` |
 | Vercel AI Gateway driver | `crates/drivers/drivers/src/vercel.rs` |
-| Error handling | `crates/engine/src/execution/reason.rs` |
+| Error handling | `crates/core/src/engine/execution/reason.rs` |
 
 ## OpenAI Driver Variants
 
@@ -637,7 +636,7 @@ rather than paginating on that number.
 Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry
 behind an OpenAI-compatible Chat Completions API. The `mai` module of
 `everruns-drivers` wraps the shared
-`OpenAIProtocolChatDriver` (from `everruns-provider`) and tags it with
+`OpenAIProtocolChatDriver` (from `everruns-contracts`) and tags it with
 `DriverId::Mai`. Model ids resolve
 to the Microsoft-vendor profiles in `crates/contracts/src/model_profile_data/profiles.rs` (the
 `MICROSOFT_MAI` surface).
@@ -972,7 +971,7 @@ stream that produced no tokens within its window, is treated the same way as an
 in-band transient error: before any output it is classified transient and routed
 through the same bounded retry path, re-issuing the identical request with no
 artificial history; after output, or once the retry budget is exhausted, it
-fails the turn. See `crates/engine/src/execution/reason.rs`.
+fails the turn. See `crates/core/src/engine/execution/reason.rs`.
 
 ### Rate Limit Header Support
 
@@ -1194,7 +1193,7 @@ gives; a driver opts in by naming what its vendor reads.
 
 Standalone/dev/CLI entrypoints opt in by constructing `EnvCredentialProvider` and
 passing it where credentials are needed, e.g.
-`everruns_host::InMemoryProviderStore::from_credential_provider(&registry, &EnvCredentialProvider)`,
+`everruns_core::host::InMemoryProviderStore::from_credential_provider(&registry, &EnvCredentialProvider)`,
 the in-memory dev store used by `just start-dev`. **The server path never
 constructs an `EnvCredentialProvider`.**
 

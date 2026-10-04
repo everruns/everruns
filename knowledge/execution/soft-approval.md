@@ -12,7 +12,7 @@ tags:
 # Soft Approval
 
 Status: implemented. Capability `soft_approval`, source
-`crates/builtins/src/soft_approval.rs`.
+`crates/core/src/builtins/soft_approval.rs`.
 
 ## Why
 
@@ -34,7 +34,7 @@ in the conversation.
 ### Levels
 
 One setting, `mode`, picks how cautious the agent is. The vocabulary is
-[`ApprovalMode`](../../crates/builtins/src/tool_approval.rs), shared with the
+[`ApprovalMode`](../../crates/core/src/builtins/tool_approval.rs), shared with the
 hard [`tool_approval`](capabilities.md#toolapproval) gate so a deployment tunes
 both layers with one word:
 
@@ -121,7 +121,7 @@ Two records, for two different questions.
 **The session event log** answers "what happened in this conversation": the
 ask and the grant appear in order, in context, and are readable from
 `/v1/sessions/{id}/events`. This is the only record a portable host
-(`everruns-builtins` alone, or a terminal agent) gets, and for a single-user
+(`everruns-core` (`builtins` feature) alone, or a terminal agent) gets, and for a single-user
 host it is sufficient.
 
 **The org audit log** (`audit_logs`, see [Audit Logging](../security/audit-logging.md))
@@ -147,7 +147,7 @@ Effective level = session or host override, else capability config, else
 `normal`.
 
 The durable level is the agent's capability config. The override is an
-[`ApprovalModeStore`](../../crates/builtins/src/soft_approval.rs); the default
+[`ApprovalModeStore`](../../crates/core/src/builtins/soft_approval.rs); the default
 implementation is per-session and in-memory, which is exactly as long-lived as
 the "be more careful for the rest of this conversation" it exists to hold. A
 host whose approval level is its own durable, cross-session setting (a terminal

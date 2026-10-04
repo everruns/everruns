@@ -35,7 +35,7 @@ anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
 # `HostShell` for `[sandbox] kind = "microvm"`: the container is the boundary.
-everruns = { workspace = true, features = ["host-shell"] }
+everruns = { workspace = true, default-features = true, features = ["host-shell"] }
 # Consistent copies of open SQLite databases (the online backup API), on the
 # same bundled SQLite serve and everruns link.
 rusqlite = { version = "0.39", features = ["bundled", "backup"] }

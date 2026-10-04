@@ -36,7 +36,7 @@ endpoint.
 - `HostComposition` carries the active service as part of the platform
   profile.
 - Runtime tool execution threads the service into `ToolContext`.
-- `everruns-host` owns the concrete implementation behind its optional
+- The `everruns` facade owns the concrete implementation behind its optional
   `utility-llm` feature (`utility-openai` remains as an alias of that feature);
   the utility LLM service remains the capability-facing typed API.
 - Utility LLM provider transport is host-owned. It does not route through
@@ -68,7 +68,7 @@ When no key is set, the service is disabled. Disabled deployments should call
 `is_configured()` before attempting optional utility work, or handle the
 configuration error returned by completion methods.
 
-The default server and worker platform profiles enable `everruns-host`'s
+The default server and worker platform profiles enable the facade’s
 `utility-llm` feature and resolve `SystemUtilityLlmConfig::from_env()` during
 platform construction. Embedders can bypass env-based setup by constructing a
 custom `HostComposition` and calling

@@ -68,15 +68,15 @@ impl AgentBuilder {
 /// The policy consults only the tools in `predicates`, by name, so built-in and
 /// capability tools are never gated by it.
 pub(super) fn approval_capability(
-    approver: Arc<dyn everruns_builtins::ToolApprover>,
+    approver: Arc<dyn everruns_core::builtins::ToolApprover>,
     predicates: HashMap<String, crate::tool::ApprovalPredicate>,
-) -> everruns_builtins::ToolApprovalCapability {
-    let policy: everruns_builtins::ToolApprovalPolicy = Arc::new(
+) -> everruns_core::builtins::ToolApprovalCapability {
+    let policy: everruns_core::builtins::ToolApprovalPolicy = Arc::new(
         move |call: &crate::ToolCall, _definition: &crate::ToolDefinition| {
             predicates
                 .get(&call.name)
                 .is_some_and(|predicate| predicate(&call.arguments))
         },
     );
-    everruns_builtins::ToolApprovalCapability::new(approver).with_policy(policy)
+    everruns_core::builtins::ToolApprovalCapability::new(approver).with_policy(policy)
 }

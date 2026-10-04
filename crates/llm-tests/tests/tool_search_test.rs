@@ -26,12 +26,12 @@ mod llm_test_matrix;
 use everruns_test_support::{TestMathCapability, TestWeatherCapability};
 use llm_test_matrix::*;
 
-use everruns_builtins::{
+use everruns_capabilities::capabilities::SessionCapability;
+use everruns_core::builtins::{
     AutoToolSearchCapability, ClaudeToolSearchCapability, CurrentTimeCapability,
     OpenAiToolSearchCapability, StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME,
     ToolSearchCapability,
 };
-use everruns_capabilities::capabilities::SessionCapability;
 use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_filesystem::FileSystemCapability;

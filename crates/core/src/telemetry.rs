@@ -10,9 +10,9 @@
 //
 // OpenTelemetry initialization (OTLP exporter wiring, tracing-subscriber
 // layers, TelemetryConfig/TelemetryGuard) and the span-producing listener live
-// behind `everruns-host/observability` (EVE-876) so core carries no OTel SDK,
-// exporter, or subscriber dependencies. Guard:
-// scripts/lib/check-observability-isolation.sh.
+// behind core’s opt-in `otel`/`braintrust` host features (EVE-876), leaving
+// the default kernel without OTel SDK, exporter, or subscriber dependencies.
+// Guard: scripts/lib/check-observability-isolation.sh.
 
 use crate::events::ToolDefinitionSummary;
 use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};

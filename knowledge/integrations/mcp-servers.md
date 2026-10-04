@@ -8,7 +8,7 @@ tags:
 ---
 # MCP Server Specification
 
-> Part of the [MCP spec family](mcp.md). This document covers MCP server registration, CRUD API, tool naming, discovery, and execution. For MCP-client support in the in-process runtime (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth), see [runtime-mcp.md](runtime-mcp.md).
+> Part of the [MCP spec family](mcp.md). This document covers MCP server registration, CRUD API, tool naming, discovery, and execution. For MCP-client support in the in-process runtime (shared core MCP module, HTTP + optional stdio transport, pluggable auth), see [runtime-mcp.md](runtime-mcp.md).
 
 ## Abstract
 
@@ -95,7 +95,7 @@ never crosses authorization contexts.
 
 A `2026-07-28` server may answer `tools/call` with
 `resultType: "input_required"` rather than a result. The client handles both
-shapes (`crates/mcp/src/http.rs::resolve_input_required`):
+shapes (`crates/core/src/mcp/http.rs::resolve_input_required`):
 
 - **No `inputRequests`**: the server only needs the round trip, having stashed
   context in `requestState`. Retry once, echoing `requestState` verbatim under a
@@ -121,7 +121,7 @@ ask the client for it. It sends a URL mode `elicitation/create` inside the MRTR
 out of band. Everruns' half:
 
 - **Declared only when answerable.** The host injects a
-  `UrlElicitationHandler` (`crates/mcp/src/elicitation.rs`); without one the
+  `UrlElicitationHandler` (`crates/core/src/mcp/elicitation.rs`); without one the
   client declares no `elicitation` capability and a compliant server cannot ask.
   Unattended runs inject nothing, so a background worker never stalls on a
   prompt nobody can answer.
@@ -146,7 +146,7 @@ handshake declares nothing regardless of host capabilities.
 
 A turn cannot block on a browser, so consent is collected across a pause rather
 than inside the call. The worker host injects `ConsentingUrlElicitations`
-(`crates/mcp/src/elicitation.rs`), which answers `accept` only when a human
+(`crates/core/src/mcp/elicitation.rs`), which answers `accept` only when a human
 already consented, and otherwise stands the elicitation down:
 
 1. **First call.** No consent is recorded, so the handler cancels and the
@@ -156,7 +156,7 @@ already consented, and otherwise stands the elicitation down:
    alongside the existing `credential_required` / `connection_required`
    affordances, never a transport failure.
 2. **Pause.** `UrlElicitationHook`
-   (`crates/engine/src/execution/act_hooks.rs`) recognises that payload, sets
+   (`crates/core/src/engine/execution/act_hooks.rs`) recognises that payload, sets
    `waiting_for_url_elicitation`, and emits a synthetic
    `confirm_url_elicitation` client-side tool call. The session parks in
    `waiting_for_tool_results`, reusing the client-side tool machinery
@@ -267,7 +267,7 @@ MCP-specific `-32002` onto the standard JSON-RPC `-32602`, so the client maps
 `-32002 → -32602` before surfacing or classifying an error
 (`normalize_mcp_error_code`).
 
-The negotiation engine lives in `everruns-mcp` (`protocol.rs` for the pure
+The negotiation engine lives in `everruns-core` (`mcp` feature) (`protocol.rs` for the pure
 pieces, `http.rs` for the egress-bound orchestration); see
 [runtime-mcp.md](runtime-mcp.md). Server-side adoption of `2026-07-28` on
 Everruns' own `/mcp` endpoint (accepting `_meta`/session-less requests, emitting
@@ -618,20 +618,20 @@ A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this 
 
 | Crate | Responsibility |
 |-------|----------------|
-| `everruns-core` | Neutral MCP wire/config types (`McpServer`, `McpToolDefinition`) and transport-independent tool-name helpers (`mcp_tool_name`, `parse_mcp_tool_name`, `is_mcp_tool`) |
-| `everruns-mcp` | MCP client transports plus virtual-capability IDs and adapter (`McpCapability`) |
-| `everruns-server` | API routes, gRPC services, database operations |
-| `everruns-worker` | Runtime adapter and scoped server resolution injected into `everruns-mcp` |
+| `everruns-core` | Neutral MCP wire/scoped config types (`ScopedMcpServer`, `McpToolDefinition`) and transport-independent tool-name helpers (`mcp_tool_name`, `parse_mcp_tool_name`, `is_mcp_tool`) |
+| `everruns-core` (`mcp` feature) | MCP client transports plus virtual-capability IDs and adapter (`McpCapability`) |
+| `everruns-server` | Control-plane `McpServer` records, API routes, gRPC services, database operations |
+| `everruns-worker` | Runtime adapter and scoped server resolution injected into `everruns-core` (`mcp` feature) |
 
 ### Key Components
 
-**McpToolExecutor** (`crates/mcp/src/executor.rs`):
+**McpToolExecutor** (`crates/core/src/mcp/executor.rs`):
 - Executes MCP tools by calling remote HTTP endpoints
 - Parses tool names to extract server prefix and original tool name
 - Caches server info for efficiency
 - Handles both plain JSON and SSE response formats
 
-**CompositeToolExecutor** (`crates/mcp/src/executor.rs`):
+**CompositeToolExecutor** (`crates/core/src/mcp/executor.rs`):
 - Routes tool calls to appropriate executor
 - MCP tools (prefixed with `mcp_`) → McpToolExecutor
 - Built-in tools → ToolRegistry

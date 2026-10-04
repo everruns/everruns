@@ -24,8 +24,8 @@
 
 use std::sync::Arc;
 
+use everruns_core::host::{DecisionDriverRegistry, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
 use everruns_core::{DecisionsService, DisabledDecisionsService, UtilityLlmService};
-use everruns_host::{DecisionDriverRegistry, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
 use everruns_integrations_openai_decisions::{OPENAI_DECISION_DRIVER_ID, OpenAIDecisions};
 use everruns_integrations_typesafe::{SystemDecisionsConfig, TYPESAFE_DECISION_DRIVER_ID};
 

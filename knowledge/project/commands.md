@@ -27,7 +27,7 @@ See `crates/core/src/command.rs` for `CommandDescriptor`, `CommandSource`, `Comm
 
 `Capability::commands()` returns `Vec<CommandDescriptor>` (default: empty). Capabilities that provide commands override this method. `Capability::execute_command()` executes a declared command; capabilities that declare commands must override it.
 
-See `crates/builtins/src/btw.rs` for the built-in `/btw` capability.
+See `crates/core/src/builtins/btw.rs` for the built-in `/btw` capability.
 
 ## Command Host (EVE-543)
 
@@ -52,7 +52,7 @@ Decisions:
 ### One implementation, three hosts
 
 Core provides only the credential-free `CommandHost` contract. The concrete
-`everruns_host::StoreCommandHost` is built from the host's store traits
+`everruns_core::host::StoreCommandHost` is built from the host's store traits
 (`HarnessStore`, `AgentStore`, `SessionStore`, `MessageRetriever`,
 `ProviderStore`, optional `ImageResolver`/`SessionFileSystem`) plus the
 capability and driver registries. It reuses host-owned `inspect_turn_context`

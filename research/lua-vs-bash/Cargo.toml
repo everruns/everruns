@@ -10,13 +10,13 @@ name = "lua-vs-bash"
 path = "src/main.rs"
 
 [dependencies]
-everruns-core = { path = "../../crates/core" }
 everruns-contracts = { path = "../../crates/contracts", default-features = false }
 everruns-llmsim = { path = "../../crates/drivers/llmsim" }
-everruns-host = { path = "../../crates/host", features = ["lua"] }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 everruns-integrations-lua = { path = "../../integrations/lua" }
 everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 anyhow = "1"
+everruns-core = { path = "../../crates/core", default-features = false, features = ["host"] }
+everruns = { path = "../../crates/everruns", default-features = false, features = ["lua"] }

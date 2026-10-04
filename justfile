@@ -77,7 +77,7 @@ test-unit:
     cargo test -p everruns-drivers --lib --all-features
     cargo test -p everruns-internal-protocol --lib --all-features
     cargo test -p everruns-core --lib --all-features
-    cargo test -p everruns-host --test integration -- --test-threads=1
+    cargo test -p everruns --all-features --test host -- --test-threads=1
     cargo test -p everruns-cli --test auth_integration_test --test chat_integration_test --test files_integration_test -- --test-threads=1
 
 # Run integration tests (requires PostgreSQL via start-infra or externally)

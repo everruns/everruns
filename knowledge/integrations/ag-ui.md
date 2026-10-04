@@ -43,17 +43,18 @@ the protocol migration.
 
 ## Pieces
 
-- **Wire types**: the published [`everruns-ag-ui`](../../crates/ag-ui) crate.
+- **Wire types**: [`everruns_core::ag_ui`](../../crates/core/src/ag_ui/mod.rs),
+  selected by core’s `ag-ui` feature.
   The upstream 1.0 JSON Schema and fixture corpus are vendored under
-  `crates/ag-ui/spec/1.0` and are the crate's test suite. Hand-written serde
+  `crates/core/src/ag_ui/spec/1.0` and are the crate's test suite. Hand-written serde
   types beat generated ones because the schema leans on `allOf` plus
   `unevaluatedProperties`, which generators turn into unidiomatic Rust.
-- **Projection**: `everruns_ag_ui::projection::Projector` (feature `core`)
+- **Projection**: `everruns_core::ag_ui::projection::Projector` (core feature `ag-ui-projection`)
   turns canonical runtime events into AG-UI events. It is transport-free so the
   server endpoint, the framework and `serve` share one projection.
-- **Consumer**: `everruns_ag_ui::consumer` decodes a producer's events,
+- **Consumer**: `everruns_core::ag_ui::consumer` decodes a producer's events,
   enforces the 1.0 consumer rules and assembles a `RunResult`;
-  `ResumeBuilder` answers interrupts. The HTTP/SSE `client` (feature `client`)
+  `ResumeBuilder` answers interrupts. The HTTP/SSE `client` (core feature `ag-ui-client`)
   feeds it. See [Consumer rules](#consumer-rules).
 - **Server adapter**: [`crates/server/src/api/ag_ui.rs`](../../crates/server/src/api/ag_ui.rs)
   validates input, runs the turn and feeds the session's events to the
@@ -107,7 +108,7 @@ errors visible), because the developer owns both ends.
   `resume_steerable_turn`), in memory, so a process exit leaves the calls
   unanswered. A plain client-side call pauses only when the session's
   `setup_connection` hint says the client answers pauses
-  (`everruns_engine::act_pauses_turn`), so the facade sets that hint while the
+  (`everruns_core::engine::act_pauses_turn`), so the facade sets that hint while the
   session has frontend tools. A run that sees the calls requested ends only
   once the turn has recorded the park, so the next run always finds it.
   Lifecycle turn-start handlers do not run again for the resumed half;
@@ -134,7 +135,8 @@ errors visible), because the developer owns both ends.
   operator. A process exit leaves a parked turn unfinished in the log;
   `Session::resume_interrupted_turn` runs its waiting calls again after a
   restart, so they park on the gate anew.
-- **HTTP handler, opt-in.** `ag-ui` adds only `everruns-ag-ui`; the
+- **HTTP handler, opt-in.** The facade’s `ag-ui` feature enables core’s
+  transport-free AG-UI types and projection; the
   `ag-ui-axum` feature adds `AgUiHandler` and `sse_response`
   ([`crates/everruns/src/ag_ui/handler.rs`](../../crates/everruns/src/ag_ui/handler.rs)),
   so a host on another server never compiles axum. The handler authorizes,
@@ -234,7 +236,7 @@ holds it to the rules rather than repairing its stream:
 
 The rules are ported from the reference TypeScript client and tested against
 upstream's client conformance corpus, vendored under
-`crates/ag-ui/spec/1.0/conformance` (`tests/conformance.rs`): every stream the
+`crates/core/src/ag_ui/spec/1.0/conformance` (`tests/conformance.rs`): every stream the
 corpus accepts is accepted and every one it rejects is rejected for the same
 reason. Its warning, reducer and request assertions describe the TypeScript
 client's own state handling and are not checked.

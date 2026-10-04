@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Runtime MCP Client Specification"
-description: "MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth."
+description: "MCP client in the in-process runtime: shared core MCP module, transport abstraction (HTTP + optional stdio), pluggable auth."
 tags:
   - everruns
   - integrations
@@ -18,9 +18,9 @@ tags:
 
 ## Abstract
 
-> **Status: implemented.** The `everruns-mcp` crate exists and the runtime
+> **Status: implemented.** Core’s `mcp` feature exposes the shared client; the runtime
 > builds `mcp_tool_definitions` from its scoped servers
-> (`crates/host/src/mcp.rs`, `crates/host/src/runtime.rs`). The paragraph
+> (`crates/core/src/host/mcp.rs`, `crates/core/src/host/runtime.rs`). The paragraph
 > below records the original problem state that motivated the extraction.
 
 The MCP client already works on the control plane: org-managed and scoped
@@ -61,9 +61,9 @@ The end goals for this work, and how the design meets each:
    trait so a CLI host can supply a static token / device-code flow while the
    server keeps its web OAuth.
 6. **No duplication.** The worker/server stop carrying their own copy of the
-   JSON-RPC client; they call `everruns-mcp`.
-7. **`everruns-mcp` crate.** Adopted (goal 7's optional crate is the right
-   boundary here).
+   JSON-RPC client; they call `everruns-core` (`mcp` feature).
+7. **Selectable MCP implementation.** The extracted client now lives behind
+   core’s `mcp` feature; `mcp-stdio` is a separate process-execution opt-in.
 8. **Acceptance: coding CLI.** `examples/coding-cli` exposes MCP via config and
    a `/mcp` affordance; an integration test drives a tool call end to end.
 9. **Integration tests.** The crate ships transport-level integration tests
@@ -71,21 +71,22 @@ The end goals for this work, and how the design meets each:
 
 ## Decisions
 
-### D1, New `everruns-mcp` crate
+### D1, Shared MCP module
 
-A workspace crate `crates/mcp` (`everruns-mcp`) owns the transport-agnostic MCP
-client and the MCP virtual-capability adapter/ID helpers. It depends on
-`everruns-core` for neutral wire, egress, tool, and invoker contracts. The
-caller injects its `EgressService`; `everruns-host` owns the default direct
-transport. Host, worker, and server depend on MCP only when it is selected.
+[`crates/core/src/mcp`](../../crates/core/src/mcp/mod.rs), behind the `mcp`
+feature, owns the transport-agnostic client and virtual-capability adapter. It
+uses the portable kernel’s wire, egress, tool, and invoker contracts. Callers
+inject an `EgressService`; core’s separate `direct-egress` feature supplies a
+concrete HTTP transport. Facade batteries select and wire these features for
+embedded applications. Host, worker, and server use one client implementation.
 
-What moves into `everruns-mcp` (deleted from `worker`/`server`):
+The extraction removed these duplicate implementations from worker/server:
 
-| Today | Moves to |
+| Former duplicate | Shared owner |
 |-------|----------|
-| `worker/src/mcp_executor.rs::call_mcp_tool`, `extract_json_from_response`, MCP-content → `ToolResult` conversion | `everruns-mcp` transport + result mapping |
-| `worker/src/mcp_executor.rs::{McpToolExecutor, CompositeToolExecutor}` | `everruns-mcp` executors (server resolution stays injectable) |
-| `server/.../mcp_servers/service.rs::fetch_mcp_tools` (tools/list) | `everruns-mcp` discovery |
+| `worker/src/mcp_executor.rs::call_mcp_tool`, `extract_json_from_response`, MCP-content → `ToolResult` conversion | `everruns-core` (`mcp` feature) transport + result mapping |
+| `worker/src/mcp_executor.rs::{McpToolExecutor, CompositeToolExecutor}` | `everruns-core` (`mcp` feature) executors (server resolution stays injectable) |
+| `server/.../mcp_servers/service.rs::fetch_mcp_tools` (tools/list) | `everruns-core` (`mcp` feature) discovery |
 
 The wire types (`McpToolCallRequest`, `McpToolsListRequest`, `McpContent`, the
 `McpError*` family, transport-independent tool-name helpers) **stay in `everruns-core`**: they are
@@ -94,20 +95,20 @@ no benefit (goal 6).
 
 ### D2, Transport abstraction; stdio behind a cargo feature
 
-Introduce a `McpTransport` trait in `everruns-mcp` with two methods
+Introduce a `McpTransport` trait in `everruns-core` (`mcp` feature) with two methods
 (`list_tools`, `call_tool`) that take a logical request and return parsed
 JSON-RPC results. Two implementations:
 
-- **`HttpTransport`** (default, always compiled): wraps the existing
+- **`HttpTransport`** (compiled with `mcp`): wraps the existing
   `EgressService` path, DNS-pinned SSRF validation
   (`validate_url_dns_pinned`), pinned-addr egress request, SSE-or-JSON
   response parsing. This is a straight lift of today's worker/server code, so
   hosted behavior is byte-for-byte unchanged.
-- **`StdioTransport`** (behind `#[cfg(feature = "stdio")]`): spawns a local
+- **`StdioTransport`** (behind `#[cfg(feature = "mcp-stdio")]`): spawns a local
   process and speaks newline-delimited JSON-RPC over stdin/stdout per the MCP
   stdio transport.
 
-**Hard-off mechanism.** `everruns-mcp`'s `stdio` cargo feature is **not**
+**Hard-off mechanism.** Core’s `mcp-stdio` feature is **not**
 enabled by `server` or `worker`. The transport selector returns a typed
 "transport not supported in this build" error for any non-HTTP `ScopedMcpServer`
 when the feature is absent, and `McpServerTransportType` gains a `Stdio` variant
@@ -125,7 +126,7 @@ validation.
 
 ### D3, Pluggable authentication (`McpAuthProvider`)
 
-Credential acquisition becomes a trait in `everruns-mcp`:
+Credential acquisition becomes a trait in `everruns-core` (`mcp` feature):
 
 ```text
 trait McpAuthProvider {
@@ -143,12 +144,12 @@ trait McpAuthProvider {
 - The **runtime/coding-CLI** provides simpler implementations: a static
   bearer/header provider, an env-var provider, and `OAuthAuthProvider`.
 
-The OAuth half is shared inside the MCP crate. `everruns_mcp::oauth::protocol`
-(moved out of core in EVE-879) owns the
+The OAuth half is shared inside the MCP module. `everruns_core::mcp::oauth::protocol`
+(extracted in EVE-879, now selected by core’s `mcp` feature) owns the
 protocol steps, RFC 9728 protected-resource discovery, RFC 8414/OpenID
 authorization-server metadata, RFC 7591 dynamic registration, PKCE, code
 exchange, refresh, and RFC 9207 issuer validation, with no browser, no
-listener, and no storage. `everruns_mcp::oauth` binds them to MCP: discovery
+listener, and no storage. `everruns_core::mcp::oauth` binds them to MCP: discovery
 starts at the *server* (its metadata names the issuer; absent that, its origin
 is the issuer), the token is bound to the server with a `resource` indicator
 (RFC 8707), and `prepare_login`/`complete_login` split the flow so the host
@@ -170,14 +171,14 @@ auth provider can.
 
 ### D4, Runtime wiring (discovery + execution)
 
-Two integration points in `crates/host`:
+Two integration points in `crates/core/src/host`:
 
 1. **Discovery**: replace `mcp_tool_definitions: vec![]`
    (`runtime.rs:524`). The runtime resolves effective scoped servers from the
    harness→agent→session overlay (reusing `merge_scoped_mcp_servers`, already
-   applied in `config_layer.rs`), runs `everruns-mcp` discovery for each server
+   applied in `config_layer.rs`), runs `everruns-core` (`mcp` feature) discovery for each server
    with `tool_discovery = true`, builds `McpCapability` tool definitions
-   (`crates/mcp/src/capability.rs`), and feeds them into
+   (`crates/core/src/mcp/capability.rs`), and feeds them into
    `ReasonInput.mcp_tool_definitions`. Discovery is **live** per turn (a
    `tools/list` per server), matching the control plane's scoped-server
    behavior, which keeps no persisted cache. A per-session TTL cache is a
@@ -194,7 +195,7 @@ Two integration points in `crates/host`:
 
 Both points hang off an optional adapter hook
 (`RuntimeHostAdapter::mcp_executor()` returning
-`Option<Arc<everruns_mcp::McpExecutor>>`),
+`Option<Arc<everruns_core::mcp::McpExecutor>>`),
 default `None`, so hosts that don't configure MCP pay nothing and behavior is
 unchanged.
 
@@ -214,14 +215,14 @@ leaves no persistent process to disconnect.
 
 ### D5, Reuse in worker/server (no duplication)
 
-`worker`/`server` switch their MCP call sites to `everruns-mcp`:
+`worker`/`server` switch their MCP call sites to `everruns-core` (`mcp` feature):
 
 - The worker supplies gRPC-backed server resolution (a `McpConnectionResolver`
-  over `get_mcp_server_by_prefix`) and builds an `everruns-mcp` `McpExecutor`
+  over `get_mcp_server_by_prefix`) and builds an `everruns-core` (`mcp` feature) `McpExecutor`
   from its `mcp_executor()` hook; MCP tools then register into the registry like
   any other host. Resolved credentials are baked into the connection headers, so
   the shared client needs no auth provider.
-- `build_scoped_mcp_tool_definitions` calls `everruns-mcp` discovery instead of
+- `build_scoped_mcp_tool_definitions` calls `everruns-core` (`mcp` feature) discovery instead of
   the local `fetch_mcp_tools`.
 
 The existing worker/server tests (SSRF blocks, SSE parsing, image extraction,
@@ -234,7 +235,7 @@ Configuration is **only** the existing scoped `mcpServers` overlay from
 [mcp-servers.md](mcp-servers.md), no new top-level surface (goal 4). Runtime
 embedders use the builder API that already exists
 (`HarnessBuilder`/`AgentBuilder`/`SessionBuilder::mcp_servers`,
-`crates/host/src/builders.rs`). Example, HTTP:
+`crates/core/src/host/builders.rs`). Example, HTTP:
 
 ```rust
 SessionBuilder::default().mcp_servers(serde_json::from_value(json!({
@@ -255,7 +256,7 @@ same shape) so users configure MCP the way every other MCP client expects.
 
 `examples/coding-cli` (`everruns-coding-cli`):
 
-- Enables `everruns-mcp`'s `stdio` feature.
+- Enables the facade’s `mcp-stdio` feature, forwarding to core’s `mcp-stdio`.
 - Loads `mcpServers` from workspace `.mcp.json` (and/or a `--mcp` flag) and
   passes them to the single-session builder.
 - Injects a static/env `McpAuthProvider` for authenticated servers.
@@ -265,9 +266,9 @@ same shape) so users configure MCP the way every other MCP client expects.
 
 ## Testing strategy (goal 9)
 
-- **`everruns-mcp` unit/integration**: against a `wiremock` HTTP MCP server,
+- **`everruns-core` (`mcp` feature) unit/integration**: against a `wiremock` HTTP MCP server,
   `tools/list`, `tools/call`, SSE vs plain JSON, image extraction, error
-  mapping, and SSRF blocks (localhost/private/metadata/IPv6). With `stdio`
+  mapping, and SSRF blocks (localhost/private/metadata/IPv6). With `mcp-stdio`
   enabled, a fixture echo MCP process exercises spawn/list/call/teardown.
 - **Auth**: a fake `McpAuthProvider` asserts the resolved header reaches the
   transport; the web-OAuth adapter retains its session-secret/connection tests.
@@ -293,6 +294,9 @@ same shape) so users configure MCP the way every other MCP client expects.
 
 ## Dismissed alternatives
 
+These record the original extraction decision. Core now admits optional MCP
+modules while the default kernel dependency graph remains portable.
+
 - **Put the client in `everruns-core`.** Rejected: pulls HTTP (and, with
   stdio, process-spawn) deps into the crate everything depends on.
 - **Runtime depends on `everruns-worker`.** Rejected: inverts the existing
@@ -308,13 +312,13 @@ same shape) so users configure MCP the way every other MCP client expects.
 
 | Concern | Location |
 |---------|----------|
-| New crate | `crates/mcp` (`everruns-mcp`) |
-| Transport trait + HTTP impl | `everruns-mcp` (lift from `worker/src/mcp_executor.rs`, `server/.../service.rs::fetch_mcp_tools`) |
-| stdio transport | `everruns-mcp`, `#[cfg(feature = "stdio")]` |
-| Auth provider trait | `everruns-mcp`; web-OAuth adapter in `server`/`worker` |
+| Shared module | `crates/core/src/mcp`, core feature `mcp` |
+| Transport trait + HTTP impl | `everruns-core` (`mcp` feature) (lift from `worker/src/mcp_executor.rs`, `server/.../service.rs::fetch_mcp_tools`) |
+| stdio transport | `everruns-core` (`mcp` feature), `#[cfg(feature = "mcp-stdio")]` |
+| Auth provider trait | `everruns-core` (`mcp` feature); web-OAuth adapter in `server`/`worker` |
 | Scoped types (`command`/`args`/`env`, `Stdio` variant) | `crates/core/src/mcp_server.rs` |
-| Runtime discovery | `crates/host/src/runtime.rs` (replace `vec![]`), `crates/host/src/mcp.rs` (live per-turn discovery) |
-| Runtime execution | `crates/host/src/host.rs::execute_act_activity` (composite executor) |
+| Runtime discovery | `crates/core/src/host/runtime.rs` (replace `vec![]`), `crates/core/src/host/mcp.rs` (live per-turn discovery) |
+| Runtime execution | `crates/core/src/host/runtime_host.rs::execute_act_activity` (composite executor) |
 | Adapter hook | `RuntimeHostAdapter::mcp_executor()` |
 | Coding CLI | `examples/coding-cli` (`.mcp.json`, `/mcp`, auth provider) |
 
@@ -322,7 +326,8 @@ same shape) so users configure MCP the way every other MCP client expects.
 
 Landed:
 
-- `everruns-mcp` crate: `McpTransport` (HTTP always-on; stdio behind `stdio`),
+- Core’s `mcp` module: `McpTransport` (HTTP with injected egress; stdio
+  behind `mcp-stdio`),
   `McpAuthProvider`, `McpClient`, `McpExecutor`/`CompositeToolExecutor`, and
   free `http_*` functions for `&dyn EgressService` callers.
 - Runtime (D4): `InProcessRuntime` discovers scoped MCP tools in
@@ -335,7 +340,7 @@ Landed:
   and org MCP-server create/update.
 - Dedup (D5/goal 6): the worker's local JSON-RPC client was removed (only
   `McpServerInfo` remains); the control plane's `fetch_mcp_tools` delegates to
-  `everruns-mcp::http_list_tools`.
+  `everruns_core::mcp::http_list_tools`.
 - Coding CLI (D8): reads `.mcp.json` (HTTP + stdio), wires servers into the
   session, adds a `/mcp` command.
 - Multi-era protocol negotiation (D9): the HTTP transport speaks legacy
@@ -345,13 +350,13 @@ Landed:
   tries stateless-first and falls back to the `initialize` handshake +
   `Mcp-Session-Id`, caching the verdict per server. Every request carries
   `_meta` (client info) and routable headers (`MCP-Protocol-Version`,
-  `Mcp-Method`, `Mcp-Name`). Pure pieces in `crates/mcp/src/protocol.rs`,
+  `Mcp-Method`, `Mcp-Name`). Pure pieces in `crates/core/src/mcp/protocol.rs`,
   orchestration in `http.rs`. Contract detail in
   [mcp-servers.md](mcp-servers.md) ("Multi-era protocol support").
 
 Remaining follow-up:
 
-- Wire hosted (worker) remote-MCP **execution** through `everruns-mcp` via a
+- Wire hosted (worker) remote-MCP **execution** through `everruns-core` (`mcp` feature) via a
   gRPC-backed `McpConnectionResolver` + web-OAuth `McpAuthProvider`. Discovery
   is shared today; execution still needs this adapter (the worker's old
   executor was already dead code).

@@ -8,50 +8,18 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-mcp"
-description = "Transport-agnostic MCP (Model Context Protocol) client for connecting tools to Everruns agents"
+description = "Deprecated shim: use everruns-core mcp module"
 readme = "README.md"
 keywords = ["mcp", "agent", "llm", "ai", "tools"]
 categories = ["api-bindings", "asynchronous"]
 
-[features]
-default = []
-# Local-process MCP transport (stdio). Intentionally NOT enabled by the hosted
-# server/worker builds — see knowledge/integrations/runtime-mcp.md (D2). Runtime and CLI hosts
-# opt in.
-stdio = []
 
 [dependencies]
-# Versioned workspace dep (not a bare path) so the crate is publishable.
-everruns-core.workspace = true
-everruns-contracts = { workspace = true, default-features = false }
-tokio.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-anyhow.workspace = true
-async-trait.workspace = true
-tracing.workspace = true
-# OAuth token expiry bookkeeping and issuer/origin parsing (src/oauth.rs).
-chrono.workspace = true
-url = "2"
-# OAuth 2.1 protocol client (src/oauth/protocol.rs, moved from core in
-# EVE-879): PKCE hashing, URL-safe randoms, token-request form encoding.
-base64.workspace = true
-sha2.workspace = true
-rand.workspace = true
-serde_urlencoded = "0.7"
-thiserror.workspace = true
-uuid.workspace = true
+everruns-core = { workspace = true, default-features = false, features = ["mcp"] }
 
-[dev-dependencies]
-wiremock = "0.6"
-tokio = { workspace = true }
-
-# Minimal MCP stdio server used only by the stdio integration test. Compiled
-# only when the `stdio` feature is enabled so it never ships in default builds.
-[[bin]]
-name = "mcp_stdio_echo"
-path = "src/bin/mcp_stdio_echo.rs"
-required-features = ["stdio"]
+[features]
+default = []
+stdio = ["everruns-core/mcp-stdio"]
 
 [lints]
 workspace = true

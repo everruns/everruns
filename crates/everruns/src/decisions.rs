@@ -60,7 +60,7 @@ use everruns_contracts::error::AgentLoopError;
 use everruns_core::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionsService,
 };
-use everruns_host::{DecisionDriverRegistry, DecisionRoutingError};
+use everruns_core::host::{DecisionDriverRegistry, DecisionRoutingError};
 
 /// Why a decision could not be made.
 ///

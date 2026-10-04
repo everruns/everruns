@@ -123,7 +123,7 @@ pub struct PhaseIds {
 }
 
 impl PhaseIds {
-    pub fn reason(input: &everruns_engine::ReasonInput) -> Option<Self> {
+    pub fn reason(input: &everruns_core::engine::ReasonInput) -> Option<Self> {
         let message_id = input.context.input_message_id.uuid();
         Some(Self {
             org_id: input.org_id,
@@ -134,7 +134,7 @@ impl PhaseIds {
         })
     }
 
-    pub fn act(input: &everruns_engine::ActInput) -> Option<Self> {
+    pub fn act(input: &everruns_core::engine::ActInput) -> Option<Self> {
         Some(Self {
             org_id: input.org_id?,
             session_id: input.context.session_id.uuid(),

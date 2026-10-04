@@ -17,7 +17,7 @@ use everruns_core::capabilities::{
     CapabilityRegistry, declarative_capability_id, is_declarative_capability, is_skill_capability,
     parse_declarative_capability_id, parse_skill_capability_id,
 };
-use everruns_mcp::{is_mcp_capability, parse_mcp_capability_id};
+use everruns_core::mcp::{is_mcp_capability, parse_mcp_capability_id};
 
 use crate::domains::common::CommandError;
 

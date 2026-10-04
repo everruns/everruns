@@ -5,25 +5,27 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_contracts::error::Result as CoreResult;
+use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use everruns_contracts::{model_spec::ModelSpec, provider::DriverId};
 use everruns_core::events::{Event, EventContext, EventRequest, InputMessageData};
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::message::RuntimeMessage;
-use everruns_core::{
-    execution_loading::AgentStore, execution_loading::HarnessStore, session_services::KeyInfo, provider_resolution::ProviderStore, session_services::SecretInfo, session_services::SessionStorageStore, execution_loading::SessionStore,
-};
-use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId};
-use everruns_core::{
-    AgentDefinition, CompactionCheckpoint, CompactionCheckpointStore, ExecutionSession,
-    ProactiveCompactionAttempt,
-};
-use everruns_contracts::{model_spec::ModelSpec, provider::DriverId};
-use everruns_host::{
+use everruns_core::host::SessionMutator;
+use everruns_core::host::{
     EventCursor, EventDurability, EventHistory, EventLog, EventLogError, EventPage, EventReadLimit,
     EventReadRequest, EventReader, EventSink, EventSinkError, HostBackends,
     InProcessRuntimeBuilder, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
     RuntimeSessionStore,
 };
-use everruns_host::SessionMutator;
+use everruns_core::message::RuntimeMessage;
+use everruns_core::{
+    AgentDefinition, CompactionCheckpoint, CompactionCheckpointStore, ExecutionSession,
+    ProactiveCompactionAttempt,
+};
+use everruns_core::{
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, provider_resolution::ProviderStore, session_services::KeyInfo,
+    session_services::SecretInfo, session_services::SessionStorageStore,
+};
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 use external_event_log::ExternalEventLog;
 
@@ -240,6 +242,7 @@ fn external_backends(log: Arc<ExternalEventLog>) -> HostBackends {
         connection_resolver: defaults.connection_resolver,
         session_task_registry: defaults.session_task_registry,
         schedule_store_factory: defaults.schedule_store_factory,
+        bash_hook_dispatcher_factory: defaults.bash_hook_dispatcher_factory,
         tool_context_extensions_factory: defaults.tool_context_extensions_factory,
         subagent_delegate_factory: defaults.subagent_delegate_factory,
         tool_augmentor: defaults.tool_augmentor,
@@ -413,7 +416,8 @@ fn cursor_and_page_construction_reject_inconsistent_positions() {
     ));
 
     // A page may not return events beyond the snapshot it claims.
-    let event: Event = input(session, "one").into_event(everruns_contracts::typed_id::EventId::new(), 5);
+    let event: Event =
+        input(session, "one").into_event(everruns_contracts::typed_id::EventId::new(), 5);
     assert!(matches!(
         EventPage::new(vec![event], None, 4).expect_err("sequence beyond snapshot"),
         EventLogError::InvalidRead { .. }
@@ -509,9 +513,9 @@ async fn the_external_log_serves_host_composition_and_message_projection() {
 
     // ... and the host's read-only projection rebuilds from it.
     let messages = EventHistory::new(log.clone())
-        .read_page(everruns_host::EventHistoryReadRequest::new(
+        .read_page(everruns_core::host::EventHistoryReadRequest::new(
             session_id,
-            everruns_host::EventHistoryReadLimit::new(16).expect("valid history limit"),
+            everruns_core::host::EventHistoryReadLimit::new(16).expect("valid history limit"),
         ))
         .await
         .expect("project history");

@@ -1,0 +1,1306 @@
+// Post-act hooks for ActAtom
+//
+// Decision: Hooks are pure functions that inspect ActResult and return
+// declarative PostActActions. ActAtom interprets them (event emission, etc).
+// This keeps hooks testable without mocking EventEmitter.
+//
+// Decision: Hooks set `waiting_for_tool_results` on ActResult so workers
+// see a single generic flag — they never need to know WHY the act paused.
+//
+// PostToolExecHook (EVE-222): async hooks that run after each individual tool
+// execution. Unlike PostActHook (runs once after all tools), these run per-tool
+// and can mutate the result (e.g. persist output to VFS, inject metadata).
+
+use crate::engine::events::{EventContext, EventRequest, ToolCallRequestedData};
+use crate::engine::tool_types::{
+    ASK_USER_TOOL_NAME, CONFIRM_URL_ELICITATION_TOOL, FORM_ELICITATION_CALL_ID_PREFIX,
+    FormElicitationRequired, MCP_ELICITATION_ARGUMENT, ToolApprovalRequired, ToolCall,
+    ToolDefinition, ToolResult, UrlElicitationRequired,
+};
+use crate::engine::{event_emitter::EventEmitter, tool_context::ToolContext};
+pub(crate) use crate::tool_hooks::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
+use async_trait::async_trait;
+use serde_json::json;
+use std::sync::Arc;
+use uuid::Uuid;
+
+use super::ExecutionContext;
+use super::act::ActResult;
+
+/// Run every registered `PreToolUseHook` against `tool_call`. Hooks chain
+/// sequentially; the first `Block` or `Defer` aborts the chain and is returned. If
+/// every hook returns `Continue`, the final (potentially mutated)
+/// `ToolCall` is returned.
+pub(super) async fn run_pre_tool_use_hooks(
+    hooks: &[Arc<dyn PreToolUseHook>],
+    mut tool_call: ToolCall,
+    tool_def: &ToolDefinition,
+    context: &ToolContext,
+) -> PreToolUseDecision {
+    for hook in hooks {
+        match hook.before_exec(tool_call.clone(), tool_def, context).await {
+            PreToolUseDecision::Continue(updated) => {
+                tool_call = updated;
+            }
+            stop @ (PreToolUseDecision::Block { .. } | PreToolUseDecision::Defer { .. }) => {
+                return stop;
+            }
+        }
+    }
+    PreToolUseDecision::Continue(tool_call)
+}
+
+/// Run the pre-tool-use chain and turn its decision into what ActAtom needs:
+/// the (possibly transformed) call, plus the result to record instead of
+/// running it when a hook blocked or deferred the call.
+///
+/// A deferral (hosted tool approval, EVE-1140) carries its own structured
+/// result, so post-act hooks can turn it into a pause and a replayed act
+/// settles to the same outcome.
+pub(super) async fn pre_tool_use_outcome(
+    hooks: &[Arc<dyn PreToolUseHook>],
+    tool_call: ToolCall,
+    tool_def: &ToolDefinition,
+    context: &ToolContext,
+) -> (ToolCall, Option<ToolResult>) {
+    if hooks.is_empty() {
+        return (tool_call, None);
+    }
+    match run_pre_tool_use_hooks(hooks, tool_call, tool_def, context).await {
+        PreToolUseDecision::Continue(updated) => (updated, None),
+        PreToolUseDecision::Block {
+            tool_call, reason, ..
+        } => {
+            tracing::warn!(
+                session_id = %context.session_id,
+                tool_call_id = %tool_call.id,
+                tool_name = %tool_call.name,
+                reason = %reason,
+                "ActAtom: pre_tool_use hook blocked execution"
+            );
+            let result = ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                result: None,
+                images: None,
+                error: Some(format!("blocked by pre_tool_use hook: {reason}")),
+                connection_required: None,
+                raw_output: None,
+            };
+            (tool_call, Some(result))
+        }
+        PreToolUseDecision::Defer {
+            tool_call,
+            mut result,
+        } => {
+            tracing::info!(
+                session_id = %context.session_id,
+                tool_call_id = %tool_call.id,
+                tool_name = %tool_call.name,
+                "ActAtom: pre_tool_use hook deferred execution"
+            );
+            result.tool_call_id = tool_call.id.clone();
+            (tool_call, Some(result))
+        }
+    }
+}
+
+/// Execute post-tool-exec hooks on a single tool result.
+///
+/// Runs capability-contributed hooks first, then final (infrastructure) hooks.
+pub(super) async fn run_post_tool_exec_hooks(
+    hooks: &[Arc<dyn PostToolExecHook>],
+    final_hooks: &[Arc<dyn PostToolExecHook>],
+    tool_call: &ToolCall,
+    tool_def: &ToolDefinition,
+    result: &mut ToolResult,
+    context: &ToolContext,
+) {
+    for hook in hooks {
+        hook.after_exec(tool_call, tool_def, result, context).await;
+    }
+    for hook in final_hooks {
+        hook.after_exec(tool_call, tool_def, result, context).await;
+    }
+}
+
+// ============================================================================
+// OutputHardLimitHook (EVE-225)
+// ============================================================================
+
+/// Maximum tool result size in bytes before truncation (64 KiB).
+///
+/// THREAT[TM-AGENT-012]: large results consume context window, increase cost,
+/// and expand the prompt injection surface.
+const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
+
+const TRUNCATION_SUFFIX: &str =
+    "\n\n[Output truncated — exceeded 64 KiB limit. Try quiet flags, pipes, or redirect to file.]";
+
+/// Infrastructure hook that enforces a hard 64 KiB ceiling on tool result text.
+///
+/// Always registered as a `final_post_tool_hook` in ActAtom — cannot be removed
+/// by capabilities. Runs after all capability-contributed hooks so that
+/// persistence hooks (EVE-222) can capture full output before truncation.
+///
+/// Head-truncation with UTF-8 safety: keeps the first N bytes (on a char
+/// boundary) and appends an LLM-actionable suffix.
+pub struct OutputHardLimitHook;
+
+impl OutputHardLimitHook {
+    /// Truncate `text` to `MAX_TOOL_RESULT_BYTES` with a UTF-8-safe cut.
+    fn truncate(text: String) -> String {
+        if text.len() <= MAX_TOOL_RESULT_BYTES {
+            return text;
+        }
+        let content_budget = MAX_TOOL_RESULT_BYTES.saturating_sub(TRUNCATION_SUFFIX.len());
+        let mut end = content_budget;
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let mut truncated = text[..end].to_string();
+        truncated.push_str(TRUNCATION_SUFFIX);
+        truncated
+    }
+}
+
+#[async_trait]
+impl PostToolExecHook for OutputHardLimitHook {
+    async fn after_exec(
+        &self,
+        tool_call: &ToolCall,
+        _tool_def: &ToolDefinition,
+        result: &mut ToolResult,
+        _context: &ToolContext,
+    ) {
+        // Truncate the result JSON value if it exceeds the limit.
+        if let Some(val) = result.result.take() {
+            match val {
+                serde_json::Value::String(s) => {
+                    let original_len = s.len();
+                    let truncated = Self::truncate(s);
+                    if truncated.len() < original_len {
+                        tracing::warn!(
+                            tool_name = %tool_call.name,
+                            tool_call_id = %tool_call.id,
+                            result_bytes = original_len,
+                            limit = MAX_TOOL_RESULT_BYTES,
+                            "Tool result exceeded hard limit, truncated"
+                        );
+                    }
+                    result.result = Some(serde_json::Value::String(truncated));
+                }
+                other => {
+                    // Non-string JSON: serialize, check size, convert to
+                    // truncated string if over limit.
+                    let serialized = serde_json::to_string(&other).unwrap_or_default();
+                    if serialized.len() > MAX_TOOL_RESULT_BYTES {
+                        tracing::warn!(
+                            tool_name = %tool_call.name,
+                            tool_call_id = %tool_call.id,
+                            result_bytes = serialized.len(),
+                            limit = MAX_TOOL_RESULT_BYTES,
+                            "Tool result exceeded hard limit, truncated"
+                        );
+                        let truncated = Self::truncate(serialized);
+                        result.result = Some(serde_json::Value::String(truncated));
+                    } else {
+                        result.result = Some(other);
+                    }
+                }
+            }
+        }
+
+        // Also cap error messages (unlikely to be huge, but defense in depth).
+        if let Some(err) = result.error.take() {
+            if err.len() > MAX_TOOL_RESULT_BYTES {
+                tracing::warn!(
+                    tool_name = %tool_call.name,
+                    tool_call_id = %tool_call.id,
+                    result_bytes = err.len(),
+                    limit = MAX_TOOL_RESULT_BYTES,
+                    "Tool error exceeded hard limit, truncated"
+                );
+            }
+            result.error = Some(Self::truncate(err));
+        }
+
+        // Cap native image payloads too. These bypass `result.result` JSON size
+        // checks and are appended directly as ContentPart::Image later. Enforce
+        // both a per-image ceiling (no single image larger than the budget) and
+        // a cumulative budget (many smaller images cannot blow past it either).
+        if let Some(images) = result.images.as_mut() {
+            let original_count = images.len();
+            let mut cumulative = 0usize;
+            images.retain(|img| {
+                let len = img.base64.len();
+                if len > MAX_TOOL_RESULT_BYTES {
+                    return false;
+                }
+                match cumulative.checked_add(len) {
+                    Some(total) if total <= MAX_TOOL_RESULT_BYTES => {
+                        cumulative = total;
+                        true
+                    }
+                    _ => false,
+                }
+            });
+            let dropped = original_count.saturating_sub(images.len());
+            if dropped > 0 {
+                tracing::warn!(
+                    tool_name = %tool_call.name,
+                    tool_call_id = %tool_call.id,
+                    dropped_images = dropped,
+                    kept_images = images.len(),
+                    kept_bytes = cumulative,
+                    limit = MAX_TOOL_RESULT_BYTES,
+                    "Tool images exceeded hard limit and were dropped"
+                );
+            }
+            if images.is_empty() {
+                result.images = None;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// PostActHook trait
+// ============================================================================
+
+/// Action a post-act hook wants ActAtom to perform.
+#[derive(Debug, Clone)]
+pub enum PostActAction {
+    /// Emit a `tool.call_requested` event with synthetic client-side tool calls.
+    EmitToolCallRequested {
+        tool_calls: Vec<ToolCall>,
+        tool_definitions: Vec<ToolDefinition>,
+    },
+}
+
+/// Hook that runs after ActAtom finishes executing tools.
+///
+/// Hooks inspect the completed results and may:
+/// - Set `waiting_for_tool_results` on `ActResult`
+/// - Return actions for ActAtom to execute (e.g. emit events)
+///
+/// Hooks are pure: they return declarative actions rather than
+/// touching the event emitter directly. This makes them trivially testable.
+pub trait PostActHook: Send + Sync {
+    /// Inspect completed results, optionally mutate the result and return actions.
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction>;
+}
+
+// ============================================================================
+// ConnectionSetupHook
+// ============================================================================
+
+/// Hook that detects tools requiring user connection setup and emits
+/// synthetic `setup_connection` tool calls so the client can prompt the user.
+///
+/// When any tool returns `connection_required`, this hook:
+/// 1. Sets `waiting_for_tool_results = true` on ActResult
+/// 2. Returns a `PostActAction::EmitToolCallRequested` with synthetic tool calls
+pub struct ConnectionSetupHook;
+
+impl PostActHook for ConnectionSetupHook {
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        _tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction> {
+        let connections: Vec<crate::engine::tool_types::ConnectionRequired> = result
+            .results
+            .iter()
+            .filter_map(|r| r.connection_required.clone())
+            .collect();
+        if connections.is_empty() {
+            return vec![];
+        }
+
+        result.waiting_for_tool_results = true;
+
+        let tool_calls: Vec<ToolCall> = connections
+            .iter()
+            .map(|required| {
+                let mut arguments = json!({ "provider": required.provider });
+                if let Some(subject) = required.subject {
+                    arguments["subject"] = json!(subject);
+                }
+                if let Some(setup_url) = required.setup_url.as_deref() {
+                    arguments["setup_url"] = json!(setup_url);
+                }
+                ToolCall {
+                    id: format!("setup_conn_{}", Uuid::now_v7()),
+                    name: "setup_connection".to_string(),
+                    arguments,
+                }
+            })
+            .collect();
+
+        vec![PostActAction::EmitToolCallRequested {
+            tool_calls,
+            tool_definitions: vec![],
+        }]
+    }
+}
+
+// ============================================================================
+// UrlElicitationHook
+// ============================================================================
+
+/// Hook that pauses the turn when an MCP tool stopped on a URL mode
+/// elicitation, and emits a synthetic `confirm_url_elicitation` call so the
+/// client can ask a human whether to open the URL.
+///
+/// The MCP client cannot answer such an elicitation on its own: the value the
+/// server wants is typed into someone's browser, not passed back through the
+/// client, and consent to open a link is a decision only a person can make.
+/// Pausing here is what turns "the model was handed a URL and mentions it in
+/// prose" into "the user is shown the domain and clicks".
+///
+/// The pause itself is still gated by the session's `setup_connection` hint
+/// (see `plan_after_act`): a client that cannot render the card keeps the old
+/// behaviour, where the elicitation is relayed to the user as an ordinary tool
+/// result and they re-run the tool themselves.
+pub struct UrlElicitationHook;
+
+impl PostActHook for UrlElicitationHook {
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        _tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction> {
+        let pending: Vec<UrlElicitationRequired> = result
+            .results
+            .iter()
+            .filter_map(|r| UrlElicitationRequired::from_tool_result(&r.result))
+            // A refusal is a finished decision. Asking again in a card would
+            // nag the user for something they just said no to.
+            .filter(|elicitation| !elicitation.declined)
+            .collect();
+
+        if pending.is_empty() {
+            return vec![];
+        }
+
+        result.waiting_for_tool_results = true;
+        result.waiting_for_url_elicitation = true;
+
+        let tool_calls: Vec<ToolCall> = pending
+            .iter()
+            .map(|elicitation| ToolCall {
+                id: format!("url_elicitation_{}", Uuid::now_v7()),
+                name: CONFIRM_URL_ELICITATION_TOOL.to_string(),
+                // The whole elicitation travels in the arguments so the card can
+                // show the server, its reason, and the full URL with the domain
+                // highlighted, without re-reading the tool result.
+                arguments: json!({
+                    "server": elicitation.server,
+                    "tool": elicitation.tool,
+                    "retry_tool": elicitation.retry_tool,
+                    "message": elicitation.message,
+                    "url": elicitation.url,
+                    "url_host": elicitation.url_host,
+                    "url_is_punycode": elicitation.url_is_punycode,
+                }),
+            })
+            .collect();
+
+        vec![PostActAction::EmitToolCallRequested {
+            tool_calls,
+            tool_definitions: vec![],
+        }]
+    }
+}
+
+/// Whether ActAtom executes `call` itself. Client-side tools wait for the
+/// client. So does a provider's remote MCP approval request: it has no tool
+/// definition, and a person answers it through the same tool-results path.
+/// Any other unknown tool goes to the server, which reports it.
+pub(super) fn runs_on_server(call: &ToolCall, tool_definitions: &[ToolDefinition]) -> bool {
+    match tool_definitions.iter().find(|td| td.name() == call.name) {
+        Some(td) => !matches!(td, ToolDefinition::ClientSide(_)),
+        None => call.name != everruns_contracts::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL,
+    }
+}
+
+// ============================================================================
+// FormElicitationHook
+// ============================================================================
+
+/// Seconds a person gets to answer an MCP server's form questions before the
+/// sweep declines on their behalf. Matches the `ask_user` default.
+const FORM_ELICITATION_TIMEOUT_SECONDS: i64 = 300;
+/// How long before the deadline the card starts warning. Matches `ask_user`.
+const FORM_ELICITATION_NUDGE_LEAD_SECONDS: i64 = 60;
+
+/// Hook that turns an MCP server's form mode elicitation into an `ask_user`
+/// question set the person answers in the usual card.
+///
+/// Spec: knowledge/integrations/mcp-form-elicitation.md.
+///
+/// Decision: the call is appended to `client_tool_calls` instead of being
+/// emitted here, so it rides the `ask_user` pause exactly: `ClientSideToolHook`
+/// emits it, the planner gates the pause on the `ask_user` hint, and a client
+/// that cannot draw a question gets the unattended resolution, which declines
+/// an elicitation rather than applying defaults (D5). Must run before
+/// `ClientSideToolHook`.
+///
+/// The call id carries [`FORM_ELICITATION_CALL_ID_PREFIX`] and the arguments
+/// carry [`MCP_ELICITATION_ARGUMENT`], which is how the answer path knows the
+/// questions are a server's and not the model's.
+pub struct FormElicitationHook;
+
+impl PostActHook for FormElicitationHook {
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        _tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction> {
+        let pending: Vec<FormElicitationRequired> = result
+            .results
+            .iter()
+            .filter_map(|r| FormElicitationRequired::from_tool_result(&r.result))
+            .collect();
+        if pending.is_empty() {
+            return vec![];
+        }
+
+        let asked_at = chrono::Utc::now();
+        let expires_at = asked_at + chrono::Duration::seconds(FORM_ELICITATION_TIMEOUT_SECONDS);
+        let nudge_at = expires_at - chrono::Duration::seconds(FORM_ELICITATION_NUDGE_LEAD_SECONDS);
+
+        for elicitation in pending {
+            result.client_tool_calls.push(ToolCall {
+                id: format!("{FORM_ELICITATION_CALL_ID_PREFIX}{}", Uuid::now_v7()),
+                name: ASK_USER_TOOL_NAME.to_string(),
+                arguments: json!({
+                    "questions": elicitation.questions,
+                    "timeout_seconds": FORM_ELICITATION_TIMEOUT_SECONDS,
+                    "asked_at": asked_at.to_rfc3339(),
+                    "nudge_at": nudge_at.to_rfc3339(),
+                    "expires_at": expires_at.to_rfc3339(),
+                    MCP_ELICITATION_ARGUMENT: {
+                        "server": elicitation.server,
+                        "tool": elicitation.tool,
+                        "retry_tool": elicitation.retry_tool,
+                        "message": elicitation.message,
+                        "fingerprint": elicitation.fingerprint,
+                    },
+                }),
+            });
+        }
+        vec![]
+    }
+}
+
+// ============================================================================
+// ToolApprovalPauseHook
+// ============================================================================
+
+/// Hook that parks the turn when a hard approval gate deferred a call.
+///
+/// Spec: knowledge/execution/tool-approval.md.
+///
+/// The `tool_approval` capability answers a gated call it has no decision for
+/// with a structured `tool_approval_required` result instead of running it.
+/// This hook turns each one into a synthetic `approve_tool_call` call a person
+/// answers through `POST /v1/sessions/{id}/tool-approvals`.
+///
+/// Decision: like `FormElicitationHook`, the call is appended to
+/// `client_tool_calls` rather than emitted here, so every pause in one act
+/// lands in a single `tool.call_requested` event and the answer surfaces read
+/// one batch. Must run before `ClientSideToolHook`. The planner holds the pause
+/// unconditionally (see `plan_after_act`): the gated call already failed
+/// closed, so a client with no card only delays the answer, it never lets the
+/// call through.
+pub struct ToolApprovalPauseHook;
+
+impl PostActHook for ToolApprovalPauseHook {
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        _tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction> {
+        let pending: Vec<ToolCall> = result
+            .results
+            .iter()
+            .filter_map(|r| ToolApprovalRequired::from_tool_result(&r.result))
+            .map(|request| request.request_call())
+            .collect();
+        for call in pending {
+            // A replayed act re-derives the same id; never queue it twice.
+            if !result.client_tool_calls.iter().any(|c| c.id == call.id) {
+                result.client_tool_calls.push(call);
+            }
+        }
+        vec![]
+    }
+}
+
+/// True when an act left a hard approval request pending.
+pub fn has_pending_tool_approval(client_tool_calls: &[ToolCall]) -> bool {
+    client_tool_calls
+        .iter()
+        .any(|call| call.name == crate::engine::tool_types::APPROVE_TOOL_CALL_TOOL)
+}
+
+// ============================================================================
+// ClientSideToolHook
+// ============================================================================
+
+/// Hook that handles client-side tool calls from the ReasonResult.
+///
+/// When ActAtom receives tool calls that include client-side tools,
+/// those tools are NOT executed (they're filtered out before execution).
+/// The pre-tool chain runs first; this hook emits `tool.call_requested`
+/// only for the calls that chain allowed, so the client can execute them.
+///
+/// This hook reads client-side tool calls stored on ActResult by ActAtom's
+/// partitioning logic, then emits the appropriate event.
+pub struct ClientSideToolHook;
+
+impl PostActHook for ClientSideToolHook {
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        _tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction> {
+        if result.client_tool_calls.is_empty() {
+            return vec![];
+        }
+
+        result.waiting_for_tool_results = true;
+
+        vec![PostActAction::EmitToolCallRequested {
+            tool_calls: result.client_tool_calls.clone(),
+            tool_definitions: result.client_tool_definitions.clone(),
+        }]
+    }
+}
+
+// ============================================================================
+// Hook execution helper
+// ============================================================================
+
+/// Execute all post-act hooks and apply their actions.
+///
+/// This is called by ActAtom after tool execution completes. It:
+/// 1. Runs each hook to collect actions
+/// 2. Emits events for each action
+pub(super) async fn run_post_act_hooks<E: EventEmitter>(
+    hooks: &[Box<dyn PostActHook>],
+    context: &ExecutionContext,
+    result: &mut ActResult,
+    tool_definitions: &[ToolDefinition],
+    event_emitter: &E,
+    locale: Option<&str>,
+) {
+    for hook in hooks {
+        let actions = hook.on_completed(result, tool_definitions);
+        for action in actions {
+            match action {
+                PostActAction::EmitToolCallRequested {
+                    tool_calls,
+                    tool_definitions: action_defs,
+                } => {
+                    let event = EventRequest::new(
+                        context.session_id,
+                        EventContext::from_execution_context(context),
+                        ToolCallRequestedData::with_definitions_and_locale(
+                            &tool_calls,
+                            &action_defs,
+                            locale,
+                        ),
+                    );
+                    if let Err(e) = event_emitter.emit(event).await {
+                        tracing::warn!(
+                            error = %e,
+                            "PostActHook: failed to emit tool.call_requested event"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn provider_approval_waits_for_the_client_but_other_unknown_tools_do_not() {
+        let call = |name: &str| ToolCall {
+            id: "c".into(),
+            name: name.into(),
+            arguments: json!({}),
+        };
+        let approval = everruns_contracts::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL;
+        assert!(!runs_on_server(&call(approval), &[]));
+        assert!(runs_on_server(&call("missing_tool"), &[]));
+    }
+
+    use super::*;
+    use crate::engine::execution::act::ToolCallResult;
+    use crate::engine::tool_types::{ConnectionRequired, ConnectionRequiredSubject, ToolResult};
+    use std::sync::Mutex;
+
+    fn make_tool_call_result(connection_required: Option<&str>) -> ToolCallResult {
+        ToolCallResult {
+            tool_call: ToolCall {
+                id: "call_1".to_string(),
+                name: "some_tool".to_string(),
+                arguments: json!({}),
+            },
+            result: ToolResult {
+                tool_call_id: "call_1".to_string(),
+                result: Some(json!({})),
+                images: None,
+                error: None,
+                connection_required: connection_required.map(ConnectionRequired::provider_only),
+                raw_output: None,
+            },
+            success: true,
+            status: "success".to_string(),
+            connection_required: connection_required.map(ConnectionRequired::provider_only),
+            determinism_fatal: None,
+        }
+    }
+
+    #[test]
+    fn test_connection_setup_hook_no_connections() {
+        let hook = ConnectionSetupHook;
+        let mut result = ActResult {
+            results: vec![make_tool_call_result(None)],
+            completed: true,
+            success_count: 1,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
+        };
+
+        let actions = hook.on_completed(&mut result, &[]);
+        assert!(actions.is_empty());
+        assert!(!result.waiting_for_tool_results);
+    }
+
+    #[test]
+    fn test_connection_setup_hook_with_connection() {
+        let hook = ConnectionSetupHook;
+        let mut result = ActResult {
+            results: vec![make_tool_call_result(Some("github"))],
+            completed: true,
+            success_count: 0,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
+        };
+
+        let actions = hook.on_completed(&mut result, &[]);
+        assert_eq!(actions.len(), 1);
+        assert!(result.waiting_for_tool_results);
+
+        match &actions[0] {
+            PostActAction::EmitToolCallRequested { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].name, "setup_connection");
+                assert_eq!(tool_calls[0].arguments["provider"], "github");
+            }
+        }
+    }
+
+    #[test]
+    fn connection_setup_hook_preserves_subject_and_setup_url() {
+        let required = ConnectionRequired::with_setup(
+            "mcp_oauth_linear",
+            ConnectionRequiredSubject::Agent,
+            "/agents/agent_123?tab=mcp",
+        );
+        let mut call_result = make_tool_call_result(None);
+        call_result.result.connection_required = Some(required.clone());
+        call_result.connection_required = Some(required);
+        let mut result = ActResult {
+            results: vec![call_result],
+            completed: true,
+            success_count: 0,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
+        };
+
+        let actions = ConnectionSetupHook.on_completed(&mut result, &[]);
+
+        match &actions[0] {
+            PostActAction::EmitToolCallRequested { tool_calls, .. } => {
+                assert_eq!(
+                    tool_calls[0].arguments,
+                    json!({
+                        "provider": "mcp_oauth_linear",
+                        "subject": "agent",
+                        "setup_url": "/agents/agent_123?tab=mcp",
+                    })
+                );
+            }
+        }
+    }
+
+    fn make_elicitation_result(declined: bool) -> ToolCallResult {
+        let payload = UrlElicitationRequired {
+            code: crate::engine::tool_types::URL_ELICITATION_REQUIRED_CODE.to_string(),
+            error: "needs a person".to_string(),
+            url: "https://pay.example.com/authorize/42".to_string(),
+            url_host: "pay.example.com".to_string(),
+            url_is_punycode: false,
+            server: "billing".to_string(),
+            tool: "charge".to_string(),
+            retry_tool: "mcp_billing_charge".to_string(),
+            message: "Authorize the charge".to_string(),
+            declined,
+        };
+        ToolCallResult {
+            tool_call: ToolCall {
+                id: "call_1".to_string(),
+                name: "mcp_billing_charge".to_string(),
+                arguments: json!({}),
+            },
+            result: ToolResult {
+                tool_call_id: "call_1".to_string(),
+                result: Some(serde_json::to_value(&payload).expect("serialize")),
+                images: None,
+                error: None,
+                connection_required: None,
+                raw_output: None,
+            },
+            success: true,
+            status: "success".to_string(),
+            connection_required: None,
+            determinism_fatal: None,
+        }
+    }
+
+    fn act_result(results: Vec<ToolCallResult>) -> ActResult {
+        ActResult {
+            results,
+            completed: true,
+            success_count: 1,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
+        }
+    }
+
+    #[test]
+    fn url_elicitation_hook_pauses_and_asks_for_consent() {
+        let mut result = act_result(vec![make_elicitation_result(false)]);
+
+        let actions = UrlElicitationHook.on_completed(&mut result, &[]);
+
+        assert!(
+            result.waiting_for_tool_results,
+            "the turn must hold while a human decides"
+        );
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            PostActAction::EmitToolCallRequested { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].name, CONFIRM_URL_ELICITATION_TOOL);
+                let arguments = &tool_calls[0].arguments;
+                // The card needs the full URL and the domain to highlight.
+                assert_eq!(arguments["url"], "https://pay.example.com/authorize/42");
+                assert_eq!(arguments["url_host"], "pay.example.com");
+                assert_eq!(arguments["server"], "billing");
+                assert_eq!(arguments["tool"], "charge");
+                assert_eq!(arguments["retry_tool"], "mcp_billing_charge");
+                assert_eq!(arguments["message"], "Authorize the charge");
+                assert_eq!(arguments["url_is_punycode"], false);
+            }
+        }
+    }
+
+    #[test]
+    fn url_elicitation_hook_does_not_re_ask_after_a_refusal() {
+        let mut result = act_result(vec![make_elicitation_result(true)]);
+
+        let actions = UrlElicitationHook.on_completed(&mut result, &[]);
+
+        assert!(actions.is_empty());
+        assert!(
+            !result.waiting_for_tool_results,
+            "a refusal is a decision; the turn continues"
+        );
+    }
+
+    #[test]
+    fn url_elicitation_hook_ignores_ordinary_results() {
+        let mut result = act_result(vec![make_tool_call_result(None)]);
+
+        let actions = UrlElicitationHook.on_completed(&mut result, &[]);
+
+        assert!(actions.is_empty());
+        assert!(!result.waiting_for_tool_results);
+    }
+
+    fn make_form_elicitation_result() -> ToolCallResult {
+        let payload = FormElicitationRequired {
+            code: crate::engine::tool_types::FORM_ELICITATION_REQUIRED_CODE.to_string(),
+            error: "The server needs answers".to_string(),
+            server: "deploys".to_string(),
+            tool: "release".to_string(),
+            retry_tool: "mcp_deploys_release".to_string(),
+            message: "Which environment?".to_string(),
+            questions: vec![json!({"kind": "choice", "id": "environment"})],
+            fingerprint: "abc123".to_string(),
+        };
+        let mut result = make_tool_call_result(None);
+        result.result.result = Some(serde_json::to_value(&payload).expect("serialize"));
+        result
+    }
+
+    #[test]
+    fn form_elicitation_hook_asks_through_the_ask_user_pause() {
+        let mut result = act_result(vec![make_form_elicitation_result()]);
+
+        let actions = FormElicitationHook.on_completed(&mut result, &[]);
+        assert!(actions.is_empty(), "ClientSideToolHook emits the call");
+        assert_eq!(result.client_tool_calls.len(), 1);
+        let call = &result.client_tool_calls[0];
+        assert_eq!(call.name, ASK_USER_TOOL_NAME);
+        assert!(call.id.starts_with(FORM_ELICITATION_CALL_ID_PREFIX));
+        let elicitation = &call.arguments[MCP_ELICITATION_ARGUMENT];
+        assert_eq!(elicitation["server"], "deploys");
+        assert_eq!(elicitation["tool"], "release");
+        assert_eq!(elicitation["retry_tool"], "mcp_deploys_release");
+        assert_eq!(elicitation["fingerprint"], "abc123");
+        assert_eq!(call.arguments["questions"][0]["id"], "environment");
+        assert!(call.arguments["expires_at"].is_string());
+
+        // The follow-on hook is what pauses the turn and emits the card.
+        let actions = ClientSideToolHook.on_completed(&mut result, &[]);
+        assert_eq!(actions.len(), 1);
+        assert!(result.waiting_for_tool_results);
+    }
+
+    #[test]
+    fn form_elicitation_hook_ignores_ordinary_results() {
+        let mut result = act_result(vec![make_tool_call_result(None)]);
+
+        FormElicitationHook.on_completed(&mut result, &[]);
+
+        assert!(result.client_tool_calls.is_empty());
+    }
+
+    #[test]
+    fn test_client_side_tool_hook_no_client_tools() {
+        let hook = ClientSideToolHook;
+        let mut result = ActResult {
+            results: vec![],
+            completed: true,
+            success_count: 0,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
+        };
+
+        let actions = hook.on_completed(&mut result, &[]);
+        assert!(actions.is_empty());
+        assert!(!result.waiting_for_tool_results);
+    }
+
+    #[test]
+    fn test_client_side_tool_hook_with_client_tools() {
+        let hook = ClientSideToolHook;
+        let client_call = ToolCall {
+            id: "call_client".to_string(),
+            name: "browser_click".to_string(),
+            arguments: json!({"selector": "#btn"}),
+        };
+
+        let mut result = ActResult {
+            results: vec![],
+            completed: true,
+            success_count: 0,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![client_call.clone()],
+            client_tool_definitions: vec![],
+        };
+
+        let actions = hook.on_completed(&mut result, &[]);
+        assert_eq!(actions.len(), 1);
+        assert!(result.waiting_for_tool_results);
+
+        match &actions[0] {
+            PostActAction::EmitToolCallRequested { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].name, "browser_click");
+            }
+        }
+    }
+
+    // ========================================================================
+    // OutputHardLimitHook tests (EVE-225)
+    // ========================================================================
+
+    use crate::engine::tool_context::ToolContext;
+    use crate::engine::typed_id::SessionId;
+
+    fn make_tool_call() -> ToolCall {
+        ToolCall {
+            id: "call_test".to_string(),
+            name: "test_tool".to_string(),
+            arguments: json!({}),
+        }
+    }
+
+    fn make_tool_def() -> ToolDefinition {
+        ToolDefinition::Builtin(crate::engine::tool_types::BuiltinTool {
+            name: "test_tool".to_string(),
+            display_name: None,
+            description: "test".to_string(),
+            parameters: json!({}),
+            policy: crate::engine::tool_types::ToolPolicy::Auto,
+            category: None,
+            deferrable: crate::engine::tool_types::DeferrablePolicy::Never,
+            hints: Default::default(),
+            full_parameters: None,
+        })
+    }
+
+    struct MarkerHook {
+        name: &'static str,
+        calls: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    #[async_trait]
+    impl PostToolExecHook for MarkerHook {
+        async fn after_exec(
+            &self,
+            _tool_call: &ToolCall,
+            _tool_def: &ToolDefinition,
+            result: &mut ToolResult,
+            _context: &ToolContext,
+        ) {
+            self.calls.lock().unwrap().push(self.name);
+            let value = result
+                .result
+                .take()
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            result.result = Some(json!(format!("{value}-{}", self.name)));
+        }
+    }
+
+    #[tokio::test]
+    async fn capability_hooks_run_before_runtime_final_hooks() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let capability_hooks: Vec<Arc<dyn PostToolExecHook>> = vec![Arc::new(MarkerHook {
+            name: "capability",
+            calls: Arc::clone(&calls),
+        })];
+        let final_hooks: Vec<Arc<dyn PostToolExecHook>> = vec![Arc::new(MarkerHook {
+            name: "final",
+            calls: Arc::clone(&calls),
+        })];
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!("start")),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        run_post_tool_exec_hooks(
+            &capability_hooks,
+            &final_hooks,
+            &make_tool_call(),
+            &make_tool_def(),
+            &mut result,
+            &ToolContext::new(SessionId::new()),
+        )
+        .await;
+
+        assert_eq!(*calls.lock().unwrap(), ["capability", "final"]);
+        assert_eq!(result.result, Some(json!("start-capability-final")));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_passthrough_small() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!("hello")),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+        assert_eq!(result.result, Some(json!("hello")));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_truncates_large_string() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let big = "x".repeat(MAX_TOOL_RESULT_BYTES + 1000);
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!(big)),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let text = result.result.unwrap();
+        let s = text.as_str().unwrap();
+        assert!(s.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(s.ends_with(TRUNCATION_SUFFIX));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_at_exact_limit() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let exact = "a".repeat(MAX_TOOL_RESULT_BYTES);
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!(exact)),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let text = result.result.unwrap();
+        let s = text.as_str().unwrap();
+        // Should NOT be truncated (equal to limit)
+        assert_eq!(s.len(), MAX_TOOL_RESULT_BYTES);
+        assert!(!s.contains("[Output truncated"));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_multibyte_boundary() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let ch = "€"; // 3 bytes
+        let count = MAX_TOOL_RESULT_BYTES / ch.len() + 1;
+        let big = ch.repeat(count);
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!(big)),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let text = result.result.unwrap();
+        let s = text.as_str().unwrap();
+        assert!(s.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(s.contains("[Output truncated"));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_truncates_error() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let big_err = "e".repeat(MAX_TOOL_RESULT_BYTES + 500);
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: None,
+            images: None,
+            error: Some(big_err),
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let err = result.error.unwrap();
+        assert!(err.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(err.ends_with(TRUNCATION_SUFFIX));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_non_string_json() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        // Small JSON object — should pass through
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!({"key": "value", "num": 42})),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        // Should remain as-is (small non-string JSON)
+        assert_eq!(result.result, Some(json!({"key": "value", "num": 42})));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_drops_oversized_images() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!({"ok": true})),
+            images: Some(vec![
+                everruns_contracts::ToolResultImage {
+                    base64: "a".repeat(32),
+                    media_type: "image/png".to_string(),
+                },
+                everruns_contracts::ToolResultImage {
+                    base64: "b".repeat(MAX_TOOL_RESULT_BYTES + 1),
+                    media_type: "image/png".to_string(),
+                },
+            ]),
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let images = result.images.unwrap();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].base64.len(), 32);
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_enforces_cumulative_image_budget() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+
+        // Each image is half the limit, so the third one tips the cumulative
+        // budget past MAX_TOOL_RESULT_BYTES and must be dropped.
+        let half = MAX_TOOL_RESULT_BYTES / 2;
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!({"ok": true})),
+            images: Some(vec![
+                everruns_contracts::ToolResultImage {
+                    base64: "a".repeat(half),
+                    media_type: "image/png".to_string(),
+                },
+                everruns_contracts::ToolResultImage {
+                    base64: "b".repeat(half),
+                    media_type: "image/png".to_string(),
+                },
+                everruns_contracts::ToolResultImage {
+                    base64: "c".repeat(half),
+                    media_type: "image/png".to_string(),
+                },
+            ]),
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let images = result.images.unwrap();
+        assert_eq!(
+            images.len(),
+            2,
+            "third image should be dropped by cumulative budget"
+        );
+        assert!(images.iter().all(|i| i.base64.len() == half));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_normalizes_empty_images_to_none() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!({"ok": true})),
+            images: Some(vec![everruns_contracts::ToolResultImage {
+                base64: "a".repeat(MAX_TOOL_RESULT_BYTES + 1),
+                media_type: "image/png".to_string(),
+            }]),
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        assert!(
+            result.images.is_none(),
+            "images vec emptied by retain should normalize to None"
+        );
+    }
+
+    #[test]
+    fn test_truncate_helper_short() {
+        let s = "hello".to_string();
+        assert_eq!(OutputHardLimitHook::truncate(s.clone()), s);
+    }
+
+    #[test]
+    fn test_truncate_helper_over() {
+        let s = "a".repeat(MAX_TOOL_RESULT_BYTES + 100);
+        let t = OutputHardLimitHook::truncate(s);
+        assert!(t.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(t.ends_with(TRUNCATION_SUFFIX));
+    }
+}

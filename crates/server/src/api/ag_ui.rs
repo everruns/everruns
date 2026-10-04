@@ -31,17 +31,17 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::Multipart;
-use everruns_ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure, public_text};
-use everruns_ag_ui::{
+use everruns_contracts::execution_phase::ExecutionPhase;
+use everruns_contracts::typed_id::ImageId;
+#[cfg(test)]
+use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
+use everruns_core::ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure, public_text};
+use everruns_core::ag_ui::{
     AssistantMessage as AgUiAssistantMessage, Event as AgUiEvent, Message as AgUiMessage,
     MessagesSnapshotEvent as AgUiMessagesSnapshotEvent, PROTOCOL_VERSION,
     RunAgentInput as AgUiRunAgentInput, RunErrorEvent as AgUiRunErrorEvent,
     RunStartedEvent as AgUiRunStartedEvent, ToolCall as AgUiToolCall,
 };
-use everruns_contracts::execution_phase::ExecutionPhase;
-use everruns_contracts::typed_id::ImageId;
-#[cfg(test)]
-use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use futures::{
     StreamExt,
@@ -345,7 +345,7 @@ async fn capabilities_channel(
     Path(channel_id): Path<String>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
-) -> Result<Json<everruns_ag_ui::AgentCapabilities>, Response> {
+) -> Result<Json<everruns_core::ag_ui::AgentCapabilities>, Response> {
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest {
         context,

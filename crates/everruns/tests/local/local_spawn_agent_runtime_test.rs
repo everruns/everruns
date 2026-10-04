@@ -26,7 +26,7 @@
 // parent sessions inside the same runtime so a background completion wake or
 // previous trigger in one transcript cannot steer the other target's turn.
 
-use everruns_host::HostComposition;
+use everruns_core::host::HostComposition;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -40,15 +40,15 @@ use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::provider::DriverId;
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::host::{
+    AgentBuilder, EventReadLimit, EventReadRequest, HarnessBuilder, HostBackends, InProcessRuntime,
+    InProcessRuntimeBuilder, RuntimeSessionStore, SessionBuilder,
+};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
     SessionTaskRegistry, SessionTaskState, TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT,
 };
 use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
-use everruns_host::{
-    AgentBuilder, EventReadLimit, EventReadRequest, HarnessBuilder, HostBackends, InProcessRuntime,
-    InProcessRuntimeBuilder, RuntimeSessionStore, SessionBuilder,
-};
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
 
@@ -101,16 +101,10 @@ impl LocalSessionRunner for RuntimeRunner {
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
-        // The child turn runs on its own task, as a real embedder's runner does,
-        // instead of nesting inside the parent's tool call: a foreground handoff
-        // nested on one stack overflows the 2 MiB test thread in debug builds.
-        let runtime = self.runtime()?.clone();
-        let content = content.to_string();
-        let result = tokio::spawn(async move { runtime.run_text_turn(session_id, &content).await })
-            .await
-            .map_err(|e| {
-                everruns_contracts::error::AgentLoopError::tool(format!("child turn panicked: {e}"))
-            })??;
+        // Foreground delegation polls a real child turn inside the parent's
+        // Act future on Tokio's default worker stack. Do not move it to a new
+        // task: that would hide regressions in nested engine future size.
+        let result = self.runtime()?.run_text_turn(session_id, content).await?;
         if result.success {
             Ok(())
         } else {

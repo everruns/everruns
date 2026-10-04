@@ -6,7 +6,7 @@ description: Understand Agent, Engine, Session, and how immediate and durable ex
 Everruns has one turn model and two ways to execute it. A library application
 uses the concrete `everruns::Engine` in its own process. The Everruns Platform
 uses server and worker services with durable checkpoints. Both paths converge
-on the same `everruns-engine` Input/Reason/Act state machine.
+on the same `everruns-core` (`engine` feature) Input/Reason/Act state machine.
 
 ![Framework execution architecture](./architecture.svg)
 
@@ -46,7 +46,7 @@ assert_eq!(resumed.session_id(), session_id);
 
 ## Two execution paths, one kernel
 
-The library path is immediate. `everruns::Engine` uses `everruns-host` to run
+The library path is immediate. `everruns::Engine` uses `everruns-core` (`host` feature) to run
 `InProcessExecution` in the caller's process. It can be entirely volatile or
 use the local profile for crash-durable canonical events.
 
@@ -55,7 +55,7 @@ workers resolve host services and effects, and advance a `DurableExecution`
 across phase boundaries persisted by the generic `everruns-durable` engine. PostgreSQL remains the
 source of recovery state.
 
-Neither path owns a private copy of the turn algorithm. `everruns-engine` owns
+Neither path owns a private copy of the turn algorithm. `everruns-core` (`engine` feature) owns
 the `Execution` contract, `TurnExecution` state, Input/Reason/Act atoms, phase
 ordering, and effect production. Immediate and durable adapters select where
 state lives and how work is scheduled.
@@ -79,10 +79,10 @@ Resume](/framework/sessions/#history-and-resume) for the exact application lifec
 Normal applications depend on `everruns`. `everruns::Engine` is concrete and is
 not implemented by applications. Provider integrations implement the open
 `ChatDriver` boundary, while canonical storage hosts can implement
-`EventLog`/`EventReader` through `everruns-host`.
+`EventLog`/`EventReader` through `everruns-core` (`host` feature).
 
 An application that is itself an execution host may compose
-`everruns-engine::Execution` with `everruns-host` or `everruns-durable`. That is
+`everruns_core::engine::Execution` with `everruns-core` (`host` feature) or `everruns-durable`. That is
 an advanced deployment boundary: preserve event ordering, workspace isolation,
 credential separation, cancellation, and committed effect semantics. Start
 with [Custom Backends](/framework/custom-backends/) before crossing it.

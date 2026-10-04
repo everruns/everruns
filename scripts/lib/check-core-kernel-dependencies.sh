@@ -11,6 +11,7 @@ cd "$PROJECT_ROOT"
 # Keeps cargo's stderr, so "the guard could not run" never looks like
 # "the guard found a violation". See guard-cargo.sh.
 source "$SCRIPT_DIR/guard-cargo.sh"
+source "$SCRIPT_DIR/core-feature-modules.sh"
 
 FAILED=0
 fail() { echo "$1"; FAILED=1; }
@@ -26,20 +27,35 @@ if printf '%s' "$CORE_PACKAGE" | jq -e '.features | has("llm-tests")' >/dev/null
   fail "everruns-core must not expose the dead llm-tests feature"
 fi
 
-EXPECTED_NORMAL='anyhow
+EXPECTED_NORMAL='a2a-client-lf
+a2a-lf
+anyhow
 async-trait
 base64
 chrono
+chrono-tz
 cron
+eventsource-stream
 everruns-contracts
+fs2
 futures
+futures-util
 globset
+ignore
 inventory
 jsonschema
+landlock
+libc
+opentelemetry
+opentelemetry-otlp
+opentelemetry_sdk
 rand
 regex
+reqwest
+seccompiler
 serde
 serde_json
+serde_urlencoded
 serde_yaml
 sha2
 thiserror
@@ -47,7 +63,10 @@ tokio
 tokio-util
 toml
 tracing
+tracing-opentelemetry
+tracing-subscriber
 tree-sitter
+tree-sitter-bash
 tree-sitter-python
 tree-sitter-rust
 tree-sitter-typescript
@@ -62,20 +81,39 @@ if [ "$ACTUAL_NORMAL" != "$EXPECTED_NORMAL" ]; then
 fi
 
 OPTIONAL=$(printf '%s' "$CORE_PACKAGE" | jq -r '.dependencies[] | select((.kind // "normal") == "normal" and .optional) | .name' | sort -u)
-EXPECTED_OPTIONAL='tree-sitter
+EXPECTED_OPTIONAL='a2a-client-lf
+a2a-lf
+chrono-tz
+eventsource-stream
+fs2
+futures-util
+ignore
+landlock
+libc
+opentelemetry
+opentelemetry-otlp
+opentelemetry_sdk
+reqwest
+seccompiler
+serde_urlencoded
+tracing-opentelemetry
+tracing-subscriber
+tree-sitter
+tree-sitter-bash
 tree-sitter-python
 tree-sitter-rust
 tree-sitter-typescript
 utoipa'
 if [ "$OPTIONAL" != "$EXPECTED_OPTIONAL" ]; then
-  fail "everruns-core optional dependency set changed; expected only OpenAPI and structural-outline opt-ins:"
+  fail "everruns-core optional dependency set changed; expected audited feature-owned implementations only:"
   diff -u <(printf '%s\n' "$EXPECTED_OPTIONAL") <(printf '%s\n' "$OPTIONAL") || true
 fi
 
 DEV_DEPENDENCIES=$(printf '%s' "$CORE_PACKAGE" | jq -r '.dependencies[] | select(.kind == "dev") | .name' | sort -u)
 EXPECTED_DEV='insta
 tempfile
-tokio'
+tokio
+wiremock'
 if [ "$DEV_DEPENDENCIES" != "$EXPECTED_DEV" ]; then
   fail "everruns-core dev dependency set changed; re-audit test-only dependencies:"
   diff -u <(printf '%s\n' "$EXPECTED_DEV") <(printf '%s\n' "$DEV_DEPENDENCIES") || true
@@ -89,14 +127,21 @@ if ! printf '%s' "$CORE_PACKAGE" | jq -e '.dependencies[] | select(.name == "eve
   fail "everruns-core must consume everruns-contracts with default features disabled"
 fi
 
+# Source exclusions are valid only while every relocated module has its
+# explicit feature gate. Removing a gate must fail before the tree scan.
+if ! assert_core_feature_module_gates
+then
+  fail "Relocated implementation module lost its opt-in feature gate"
+fi
+
 SOURCE_PATTERN='(rustls|reqwest|hyper|sqlx|opentelemetry|tracing_opentelemetry)::|tokio::(net|process)|OpenAIProtocolChatDriver|OpenResponsesProtocolChatDriver'
-if matches=$(grep -rnE "$SOURCE_PATTERN" crates/core/src --include='*.rs' 2>/dev/null); then
+if matches=$(core_kernel_source_files | xargs grep -nE "$SOURCE_PATTERN" 2>/dev/null); then
   fail "everruns-core sources reference concrete TLS/transport/database/exporter/runtime APIs:"
   echo "$matches"
 fi
 
 CORE_TREE=$(guard_cargo_tree -p everruns-core --edges normal,build --prefix none)
-FORBIDDEN_TREE='^(rustls|rustls-webpki|reqwest|hyper|hyper-util|hyper-rustls|h2|tower-http|eventsource-stream|sqlx|opentelemetry|opentelemetry_sdk|opentelemetry-otlp|opentelemetry-http|opentelemetry-proto|tracing-opentelemetry|tree-sitter|tree-sitter-rust|tree-sitter-typescript|tree-sitter-python|utoipa|mlua|bashkit|deno_core|wasmtime) '
+FORBIDDEN_TREE='^(a2a-lf|a2a-client-lf|fs2|ignore|chrono-tz|serde_urlencoded|rustls|rustls-webpki|reqwest|hyper|hyper-util|hyper-rustls|h2|tower-http|eventsource-stream|sqlx|opentelemetry|opentelemetry_sdk|opentelemetry-otlp|opentelemetry-http|opentelemetry-proto|tracing-opentelemetry|tree-sitter|tree-sitter-rust|tree-sitter-typescript|tree-sitter-python|utoipa|mlua|bashkit|deno_core|wasmtime) '
 if echo "$CORE_TREE" | grep -qE "$FORBIDDEN_TREE"; then
   fail "everruns-core default tree contains a forbidden implementation dependency:"
   echo "$CORE_TREE" | grep -E "$FORBIDDEN_TREE" | sort -u

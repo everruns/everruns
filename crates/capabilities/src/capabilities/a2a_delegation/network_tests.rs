@@ -62,7 +62,7 @@ async fn controlled_resolver_denies_private_answers_for_base_and_interface_urls(
         .mount(&server)
         .await;
 
-    let listen = reqwest::Url::parse(&server.uri()).unwrap();
+    let listen = url::Url::parse(&server.uri()).unwrap();
     let port = listen.port().unwrap();
     let blocked_answers = ["10.0.0.1", "127.0.0.1", "169.254.169.254", "fe80::1"];
 

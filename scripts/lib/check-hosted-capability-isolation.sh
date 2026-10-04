@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Architecture guard (EVE-885, extended by EVE-886): service-backed product
 # capabilities live in everruns-capabilities. Core owns only neutral capability/
-# tool/task/event/delegation contracts; portable policy implementations live in
-# builtins.
+# tool/task/event/delegation contracts and opt-in portable execution modules.
+# Outbound A2A protocol/client code is optional; product delegation stays hosted.
 
 set -euo pipefail
 
@@ -46,8 +46,14 @@ if matches=$(grep -rnE "$HOSTED_DEFINITION_PATTERN" crates/core/src --include='*
   FAILED=1
 fi
 
-if grep -qE '^(a2a|a2a-client)[[:space:]]*=' crates/core/Cargo.toml; then
-  echo "everruns-core must not declare outbound A2A implementation dependencies"
+# A2A wire/client APIs belong to the explicit core feature. They must never
+# become unconditional default dependencies.
+CORE_METADATA=$(cargo metadata --no-deps --format-version 1)
+if echo "$CORE_METADATA" | jq -e '
+  .packages[] | select(.name == "everruns-core") | .dependencies[] |
+  select((.name == "a2a-lf" or .name == "a2a-client-lf") and .optional == false)
+' >/dev/null; then
+  echo "Core A2A protocol/client dependencies must remain optional"
   FAILED=1
 fi
 
@@ -68,7 +74,7 @@ fi
 
 CORE_TREE=$(guard_cargo_tree -p everruns-core --edges normal,build --prefix none)
 if echo "$CORE_TREE" | grep -qE '^(a2a-lf|a2a-client-lf) '; then
-  echo "everruns-core must not ship the outbound A2A implementation subtree:"
+  echo "everruns-core default build must not ship the outbound A2A implementation subtree:"
   echo "$CORE_TREE" | grep -E '^(a2a-lf|a2a-client-lf) ' | sort -u
   FAILED=1
 fi
@@ -78,4 +84,4 @@ if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
 
-echo "Hosted capability isolation guard passed: hosted implementations stay in capabilities and core carries neutral contracts only."
+echo "Hosted capability isolation guard passed: hosted implementations stay in capabilities and default core stays free of outbound A2A transports."

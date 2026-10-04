@@ -14,8 +14,10 @@
 //!
 //! `everruns` is the primary Rust library in the
 //! [Everruns](https://everruns.com) ecosystem. Ordinary applications begin
-//! here; advanced execution hosts use `everruns` plus
-//! [`everruns-host`](https://docs.rs/everruns-host) and focused sibling crates.
+//! here; advanced execution hosts select the `host`, `engine`, `builtins`, MCP
+//! or AG-UI features of [`everruns-core`](https://docs.rs/everruns-core), with
+//! [`everruns-contracts`](https://docs.rs/everruns-contracts) for neutral extension
+//! types and `everruns::batteries` for concrete integration presets.
 //!
 //! # Example
 //!
@@ -98,7 +100,7 @@ pub use events::{
     SessionEvent, SessionEventKind,
 };
 #[cfg(feature = "builtins")]
-pub use everruns_builtins::{
+pub use everruns_core::builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
@@ -110,11 +112,11 @@ pub use everruns_core::decisions::{
     DecisionsService,
 };
 #[deprecated(note = "use WorkspaceBackend")]
-pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
+pub use everruns_core::host::WorkspaceBackend as WorkspaceProvider;
 #[deprecated(note = "use WorkspaceBackendId")]
-pub use everruns_host::WorkspaceBackendId as WorkspaceProviderId;
+pub use everruns_core::host::WorkspaceBackendId as WorkspaceProviderId;
 #[cfg(feature = "host-shell")]
-pub use everruns_host::capabilities::shell::{
+pub use everruns_core::host::capabilities::shell::{
     ApprovalPolicy, HostShell, HostShellApproval, ShellApprovalGate, ShellApprovalRequest,
 };
 /// The host shell capability, its approval policy, and the seam a host fills to
@@ -126,25 +128,25 @@ pub use everruns_host::capabilities::shell::{
 /// own routing flag, and names the same flag through
 /// [`SandboxLauncher::ReexecSelf`]. It never returns on success.
 #[cfg(feature = "host-shell")]
-pub use everruns_host::containment::worker::run_from_args as containment_worker;
+pub use everruns_core::host::containment::worker::run_from_args as containment_worker;
 /// Containment for the host shell: what a command may touch, and the boundary
 /// `HostCompute::contained` applies.
 #[cfg(feature = "host-shell")]
-pub use everruns_host::containment::{
+pub use everruns_core::host::containment::{
     ContainmentMode, SandboxLauncher, SandboxOptions, SandboxProvider,
     configure_stdio as configure_contained_stdio, danger_warning, network_access,
     provider as containment_provider,
 };
-pub use everruns_host::{
+pub use everruns_core::host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
     ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, HostBackends,
     NetworkPolicy,
 };
-pub use everruns_host::{
+pub use everruns_core::host::{
     DecisionDriverRegistry, DecisionRouter, DecisionRoutingError, LlmDecisionDriver,
 };
 #[cfg(feature = "host-compute")]
-pub use everruns_host::{HostCompute, HostComputeSession};
+pub use everruns_core::host::{HostCompute, HostComputeSession};
 #[cfg(feature = "bashkit")]
 pub use everruns_integrations_bashkit::BashkitShell;
 #[cfg(feature = "duckduckgo")]
@@ -266,8 +268,8 @@ pub use providers::openrouter::{OpenRouter, OpenRouterError};
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the
 // low-level host `AgentBuilder` at the facade root. Advanced hosts that need
-// the low-level builders depend on `everruns-host` directly.
-pub use everruns_host::{
+// the low-level builders select `everruns-core/host` and import its host module.
+pub use everruns_core::host::{
     Environment, EnvironmentBuilder, Workspace, WorkspaceBackend, WorkspaceBackendId,
     WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,
     WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadBuilder, WorkspaceHeadDescriptor,
@@ -405,3 +407,9 @@ pub mod prelude {
     pub use everruns_core::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole as MessageRole};
 }
+
+/// Default integration and driver wiring selected by Framework features.
+pub mod batteries;
+/// Deployment-owned utility LLM bootstrap wiring.
+#[cfg(feature = "utility-llm")]
+pub mod utility_llm;

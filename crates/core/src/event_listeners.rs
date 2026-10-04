@@ -90,7 +90,7 @@ impl EventListener for NoopEventListener {
 }
 
 // Note: `CompositeEventListener` (fan-out with panic isolation) lives in the
-// `everruns-host/observability` feature. Core keeps only the neutral
+// opt-in `otel`/`braintrust` host features. Default core keeps the neutral
 // listener contract and the no-op implementation.
 
 // ============================================================================

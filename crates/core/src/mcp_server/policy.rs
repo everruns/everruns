@@ -26,7 +26,7 @@ use utoipa::ToSchema;
 // naming outlived its meaning within one release.
 //
 // See knowledge/integrations/mcp-servers.md (Multi-era protocol support) and the negotiation
-// engine in `everruns-mcp` (`protocol.rs`).
+// engine in `everruns_core::mcp` (`protocol.rs`).
 
 /// MCP `2025-03-26` (stateful handshake). Oldest era the client speaks.
 pub const MCP_PROTOCOL_VERSION_2025_03: &str = "2025-03-26";

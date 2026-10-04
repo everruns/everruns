@@ -9,8 +9,8 @@ use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::StorageBackend;
 use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use chrono::Utc;
-use everruns_builtins::ask_user::{AskUserAnsweredBy, AskUserStatus};
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+use everruns_core::builtins::ask_user::{AskUserAnsweredBy, AskUserStatus};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
 };
@@ -193,15 +193,16 @@ async fn resolve_expired_question(
     // Free-form text and credentials have no default worth applying, so an
     // unanswered call containing either declines rather than claiming a value
     // nobody supplied.
-    let (status, answers) =
-        if everruns_builtins::ask_user::questions_have_no_default_answer(&pending.questions) {
-            (AskUserStatus::Declined, Vec::new())
-        } else {
-            (
-                AskUserStatus::TimedOut,
-                everruns_builtins::ask_user::declared_defaults(&pending.questions),
-            )
-        };
+    let (status, answers) = if everruns_core::builtins::ask_user::questions_have_no_default_answer(
+        &pending.questions,
+    ) {
+        (AskUserStatus::Declined, Vec::new())
+    } else {
+        (
+            AskUserStatus::TimedOut,
+            everruns_core::builtins::ask_user::declared_defaults(&pending.questions),
+        )
+    };
 
     let session_service = crate::domains::sessions::SessionService::new(db.clone());
     let resolver = crate::api::question_answers::QuestionResolver {

@@ -1,7 +1,7 @@
 // Dependency blocker detection
 //
 // The neutral reason value stays in core. Store-backed lifecycle probes live
-// in everruns-host.
+// in everruns_core::host.
 
 /// Reason why execution was blocked before it started.
 #[derive(Debug, Clone, Copy)]

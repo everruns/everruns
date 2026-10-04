@@ -75,7 +75,7 @@ Framework configuration.
 
 Durable conversation truth belongs to canonical events; history and context
 are projections of that record. Advanced hosts use `EventLog` and
-`EventHistory` from `everruns-host`, including `JsonlEventLog` when a local
+`EventHistory` from `everruns_core::host` (the `host` feature), including `JsonlEventLog` when a local
 append-only event log is appropriate. Framework applications continue sessions
 with `Engine::resume` and traverse bounded event-derived pages from
 `Session::history`.
