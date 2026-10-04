@@ -234,3 +234,15 @@ fn channels_keep_deprecated_route_and_schema_aliases() {
         assert_eq!(schemas[canonical], schemas[legacy]);
     }
 }
+
+#[test]
+fn channel_auth_example_survives_server_record_move() {
+    let spec = spec_value();
+    let schemas = &spec["components"]["schemas"];
+    let expected = serde_json::json!({
+        "mode": "api_key",
+        "requirements": {"audiences": ["everruns-api"], "scopes": ["app:invoke"]}
+    });
+    assert_eq!(schemas["ChannelAuthConfig"]["example"], expected);
+    assert_eq!(schemas["AppEndpointAuthConfig"]["example"], expected);
+}
