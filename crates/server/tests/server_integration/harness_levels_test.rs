@@ -3,8 +3,8 @@ use everruns_durable::UpdateField;
 use everruns_server::{
     org_init,
     storage::{
-        CreateAgentRow, CreateOrganizationRow, Database, StorageBackend, UpdateAgent,
-        UpdateOrganizationSettings,
+        CreateAgentRow, CreateHarnessRow, CreateOrganizationRow, Database, StorageBackend,
+        UpdateAgent, UpdateOrganizationSettings,
     },
 };
 use serde_json::json;
@@ -23,9 +23,44 @@ async fn test_harness_levels_upgrade_pins_legacy_agents_atomically() {
         })
         .await
         .unwrap();
+    // A pre-upgrade custom Worker must survive SQL name uniqueness too.
+    let custom_worker = backend
+        .create_harness(
+            org.org_id,
+            CreateHarnessRow {
+                name: "worker".into(),
+                display_name: Some("My Worker".into()),
+                icon: None,
+                description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: json!([]),
+                system_prompt: Some("Keep these instructions".into()),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec!["custom".into()],
+                initial_files: json!([]),
+                mcp_servers: json!({}),
+                is_built_in: false,
+                network_access: None,
+                embedder_metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap();
     org_init::initialize_org_harnesses(&backend, org.org_id)
         .await
         .unwrap();
+    let preserved = backend
+        .get_harness(org.org_id, custom_worker.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(preserved.name, "worker-custom");
+    assert_eq!(preserved.display_name, custom_worker.display_name);
+    assert_eq!(preserved.system_prompt, custom_worker.system_prompt);
+    assert_eq!(preserved.tags, custom_worker.tags);
+    assert!(!preserved.is_built_in);
     let generic = backend
         .get_harness_by_name(org.org_id, "generic")
         .await

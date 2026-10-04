@@ -58,6 +58,9 @@ For the design rationale (why three configuration layers exist), see [Concepts](
 
 Conversation is the default. Generic remains active for existing bindings and explicit legacy references; selectors hide it until you choose Show deprecated. See the [Built-in harnesses reference](/built-ins/harnesses/base/) for the exact capability bundle each one ships with.
 
+For existing organizations, the [harness upgrade notes](/framework/upgrade-notes/#harness-levels)
+describe preservation of Generic bindings and handling of custom name collisions.
+
 [Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent with an explicit legacy Generic binding. Introductions and conversation starters belong to Agents; harnesses describe reusable execution behavior.
 
 ## Naming
