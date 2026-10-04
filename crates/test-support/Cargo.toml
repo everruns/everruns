@@ -44,7 +44,7 @@ fixtures = ["dep:everruns-capabilities"]
 host = ["dep:everruns-host", "sim", "everruns-llmsim/host"]
 
 [dependencies]
-everruns-core = { path = "../core", version = "0.38.0", default-features = false }
+everruns-core = { path = "../core", version = "0.39.0", default-features = false }
 everruns-engine.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
 everruns-llmsim = { workspace = true, optional = true }
