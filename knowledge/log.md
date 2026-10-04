@@ -2,6 +2,12 @@
 
 ## 2026-10-04
 
+* **Client-side tools pass server pre-tool policy.** Approval, guardrail, and
+  user hooks run before a client execution request, including mixed batches. A
+  denial is a tool result and is absent from the request; an allowed call keeps
+  the hook's arguments. See [Client-Side Tools](execution/client-side-tools.md)
+  and [Threat Model](security/threat-model.md) TM-CLIENT-005.
+
 * **Playground list is dense rows.** The library groups the current page by day,
   agent, or none, filters by agent, and opens a chat from the row. Agent and
   virtual-user chips still link to their pages. See

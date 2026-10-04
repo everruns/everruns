@@ -63,7 +63,7 @@ The normal lifecycle is:
 
 1. a client configures an agent or session with client-side definitions;
 2. the model requests one or more of those tools;
-3. Everruns emits the typed client-tool request event;
+3. Everruns runs the configured pre-tool policy chain, then emits the typed client-tool request event for each call the chain allowed;
 4. the session enters the waiting-for-tool-results state;
 5. the client executes every requested call and submits correlated results;
 6. Everruns records tool completion events, restores active execution, and
@@ -170,6 +170,7 @@ or tested against OpenAPI.
 
 ## Security invariants
 
+- Configured server pre-tool hooks run before a client execution request, for a client-only batch and for a batch mixed with server tools. A denied or deferred call is a tool result and is absent from the request event. An allowed call keeps arguments the chain transformed. A client-side check is an additional defense, not the enforcement of those hooks.
 - Session authorization applies to event streaming and result submission.
 - Client-side definitions never select server code.
 - Clients preserve pending tool-call IDs; the server gates submission by

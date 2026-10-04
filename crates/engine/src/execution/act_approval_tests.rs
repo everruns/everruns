@@ -3,6 +3,7 @@
 
 use super::tests::ArgumentEchoTool;
 use super::*;
+use crate::tool_context::ToolContext;
 use crate::tools::ToolRegistry;
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use async_trait::async_trait;
