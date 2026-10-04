@@ -441,6 +441,17 @@ impl Command for UpdateMcpServerCmd {
             None
         };
 
+        if let Some(message) = super::retained_credentials_retarget_error(
+            &existing_row.url,
+            existing_row.api_key_set,
+            &existing_row.headers,
+            req.url.as_deref(),
+            api_key_encrypted.is_none(),
+            req.headers.is_none(),
+        ) {
+            return Err(CommandError::bad_request(message));
+        }
+
         let input = UpdateMcpServer {
             name: req.name,
             description: req.description,
@@ -674,5 +685,276 @@ mod oauth_authority_tests {
         for name in ["docs", "Docs API", "docs-api", "_docs"] {
             validate_mcp_name(name).unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod credential_origin_tests {
+    //! EVE-1192: stored API keys and headers are bound to the origin they were
+    //! issued for. A URL-only PATCH must not carry them to a new host.
+    use super::*;
+    use crate::kernel_imports::{
+        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole,
+    };
+    use crate::services::CapabilityService;
+    use crate::storage::{EncryptionService, StorageBackend};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    const ORIGINAL_URL: &str = "https://original.example/mcp";
+    const SECRET: &str = "sk-admin-secret";
+
+    fn test_ctx(db: Arc<StorageBackend>, encryption: Arc<EncryptionService>) -> Ctx {
+        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
+        Ctx::new(
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                user_id: Some(Uuid::nil()),
+                role: OrgRole::Member,
+                is_platform_user: false,
+                is_internal: false,
+            },
+            db,
+            capability_service,
+            Some(encryption),
+            Arc::new(DefaultPermissionResolver),
+        )
+    }
+
+    fn test_encryption() -> Arc<EncryptionService> {
+        Arc::new(
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
+                .unwrap(),
+        )
+    }
+
+    /// Seed a server the way an administrator would: API key plus a secret header.
+    async fn seed(
+        db: &StorageBackend,
+        encryption: &EncryptionService,
+        auth_mode: McpServerAuthMode,
+        with_key: bool,
+        headers: &[(&str, &str)],
+    ) -> Uuid {
+        let settings = McpServerSettings {
+            auth_mode,
+            ..Default::default()
+        };
+        let headers: HashMap<String, String> = headers
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        db.create_mcp_server(
+            DEFAULT_ORG_ID,
+            CreateMcpServerRow {
+                name: "secured".into(),
+                description: None,
+                url: ORIGINAL_URL.into(),
+                transport_type: "streamable_http".into(),
+                api_key_encrypted: with_key.then(|| encryption.encrypt_string(SECRET).unwrap()),
+                headers: Some(serde_json::to_value(headers).unwrap()),
+                settings: Some(serde_json::to_value(settings).unwrap()),
+            },
+        )
+        .await
+        .unwrap()
+        .id
+        .uuid()
+    }
+
+    async fn patch(
+        ctx: &Ctx,
+        id: Uuid,
+        body: serde_json::Value,
+    ) -> Result<McpServer, CommandError> {
+        UpdateMcpServerCmd {
+            id: McpServerId::from_uuid(id).to_string(),
+            req: serde_json::from_value(body).unwrap(),
+        }
+        .execute(ctx)
+        .await
+    }
+
+    async fn stored(db: &StorageBackend, id: Uuid) -> crate::storage::models::McpServerRow {
+        db.get_mcp_server(DEFAULT_ORG_ID, id)
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn url_only_patch_to_new_origin_rejects_retained_api_key() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let enc = test_encryption();
+        let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
+        let ctx = test_ctx(db.clone(), enc.clone());
+
+        let err = patch(
+            &ctx,
+            id,
+            serde_json::json!({"url": "https://attacker.example/mcp"}),
+        )
+        .await
+        .expect_err("retained API key must not follow a new origin");
+        assert!(err.to_string().contains("api_key"), "{err}");
+
+        let row = stored(&db, id).await;
+        assert_eq!(row.url, ORIGINAL_URL);
+        assert_eq!(
+            enc.decrypt_to_string(row.api_key_encrypted.as_deref().unwrap())
+                .unwrap(),
+            SECRET
+        );
+    }
+
+    #[tokio::test]
+    async fn url_only_patch_to_new_origin_rejects_retained_headers() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let enc = test_encryption();
+        let id = seed(
+            &db,
+            &enc,
+            McpServerAuthMode::None,
+            false,
+            &[("Authorization", "Bearer admin-secret")],
+        )
+        .await;
+        let ctx = test_ctx(db.clone(), enc);
+
+        let err = patch(
+            &ctx,
+            id,
+            serde_json::json!({"url": "https://attacker.example/mcp"}),
+        )
+        .await
+        .expect_err("retained headers must not follow a new origin");
+        assert!(err.to_string().contains("headers"), "{err}");
+        assert_eq!(stored(&db, id).await.url, ORIGINAL_URL);
+    }
+
+    #[tokio::test]
+    async fn port_and_scheme_changes_count_as_new_origin() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let enc = test_encryption();
+        let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
+        let ctx = test_ctx(db.clone(), enc);
+
+        for url in [
+            "https://original.example:8443/mcp",
+            "http://original.example/mcp",
+            "https://evil.original.example/mcp",
+        ] {
+            assert!(
+                patch(&ctx, id, serde_json::json!({"url": url}))
+                    .await
+                    .is_err(),
+                "{url}"
+            );
+        }
+        assert_eq!(stored(&db, id).await.url, ORIGINAL_URL);
+    }
+
+    #[tokio::test]
+    async fn same_origin_edit_keeps_credentials() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let enc = test_encryption();
+        let id = seed(
+            &db,
+            &enc,
+            McpServerAuthMode::ApiKey,
+            true,
+            &[("X-Tenant", "t1")],
+        )
+        .await;
+        let ctx = test_ctx(db.clone(), enc.clone());
+
+        patch(
+            &ctx,
+            id,
+            serde_json::json!({"url": "https://ORIGINAL.example:443/v2/mcp", "name": "renamed"}),
+        )
+        .await
+        .expect("same-origin path change keeps credentials");
+
+        let row = stored(&db, id).await;
+        assert_eq!(row.url, "https://ORIGINAL.example:443/v2/mcp");
+        assert_eq!(
+            enc.decrypt_to_string(row.api_key_encrypted.as_deref().unwrap())
+                .unwrap(),
+            SECRET
+        );
+        assert_eq!(row.headers, serde_json::json!({"X-Tenant": "t1"}));
+    }
+
+    #[tokio::test]
+    async fn new_origin_with_fresh_credentials_is_allowed() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let enc = test_encryption();
+        let id = seed(
+            &db,
+            &enc,
+            McpServerAuthMode::ApiKey,
+            true,
+            &[("X-Tenant", "t1")],
+        )
+        .await;
+        let ctx = test_ctx(db.clone(), enc.clone());
+
+        patch(
+            &ctx,
+            id,
+            serde_json::json!({
+                "url": "https://new.example/mcp",
+                "api_key": "sk-new",
+                "headers": {}
+            }),
+        )
+        .await
+        .expect("re-supplied credentials may move to a new origin");
+
+        let row = stored(&db, id).await;
+        assert_eq!(row.url, "https://new.example/mcp");
+        assert_eq!(
+            enc.decrypt_to_string(row.api_key_encrypted.as_deref().unwrap())
+                .unwrap(),
+            "sk-new"
+        );
+        assert_eq!(row.headers, serde_json::json!({}));
+    }
+
+    #[tokio::test]
+    async fn new_origin_switching_away_from_api_key_clears_key() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let enc = test_encryption();
+        let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
+        let ctx = test_ctx(db.clone(), enc);
+
+        let server = patch(
+            &ctx,
+            id,
+            serde_json::json!({"url": "https://new.example/mcp", "auth_mode": "none"}),
+        )
+        .await
+        .expect("dropping the key while moving is safe");
+        assert!(!server.api_key_set);
+    }
+
+    #[tokio::test]
+    async fn credential_free_server_can_move_origin() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let enc = test_encryption();
+        let id = seed(&db, &enc, McpServerAuthMode::None, false, &[]).await;
+        let ctx = test_ctx(db.clone(), enc);
+
+        patch(
+            &ctx,
+            id,
+            serde_json::json!({"url": "https://new.example/mcp"}),
+        )
+        .await
+        .expect("nothing to leak");
+        assert_eq!(stored(&db, id).await.url, "https://new.example/mcp");
     }
 }
