@@ -557,8 +557,8 @@ pub fn has_pending_tool_approval(client_tool_calls: &[ToolCall]) -> bool {
 ///
 /// When ActAtom receives tool calls that include client-side tools,
 /// those tools are NOT executed (they're filtered out before execution).
-/// Instead, this hook emits `tool.call_requested` events so the client
-/// can execute them and return results.
+/// The pre-tool chain runs first; this hook emits `tool.call_requested`
+/// only for the calls that chain allowed, so the client can execute them.
 ///
 /// This hook reads client-side tool calls stored on ActResult by ActAtom's
 /// partitioning logic, then emits the appropriate event.

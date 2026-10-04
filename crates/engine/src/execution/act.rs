@@ -58,7 +58,7 @@ use crate::typed_id::{AgentId, HarnessId};
 use crate::{
     durability::DurableToolResultStore, durability::ToolCallClaimResult,
     event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::SessionStore,
-    session_files::SessionFileSystem, tool_context::ToolContext, tool_execution::ToolExecutor,
+    session_files::SessionFileSystem, tool_execution::ToolExecutor,
 };
 use uuid::Uuid;
 
@@ -232,11 +232,11 @@ where
     /// Post-tool-exec hooks (capability-contributed): run after each individual
     /// tool execution. Capabilities register these via `post_tool_exec_hooks()`.
     post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
-    /// Pre-tool-use hooks (capability-contributed): run before each individual
-    /// tool execution. Capabilities wire these in via the user-hooks
-    /// adapter chain (see `crate::hook_adapter`). Hooks can mutate the
-    /// `ToolCall` (returning `Continue`) or refuse execution
-    /// (returning `Block`).
+    /// Pre-tool-use hooks (capability-contributed): run before each server tool
+    /// execution and before a client-side call is emitted. Capabilities wire
+    /// these in via the user-hooks adapter chain (see `crate::hook_adapter`).
+    /// Hooks can mutate the `ToolCall` (returning `Continue`) or refuse it
+    /// (returning `Block` or `Defer`).
     pre_tool_hooks: Vec<Arc<dyn act_hooks::PreToolUseHook>>,
     /// Tool-call hooks (capability-contributed): inspect model-authored tool
     /// calls for UI narration and transform calls before actual execution.
@@ -609,23 +609,22 @@ where
             .map(|tool_call| self.transform_tool_call_for_execution(tool_call))
             .collect();
 
-        let client_tool_definitions: Vec<_> = if client_tool_calls.is_empty() {
-            vec![]
-        } else {
-            tool_definitions
-                .iter()
-                .filter(|td| {
-                    if let ToolDefinition::ClientSide(ct) = td {
-                        client_tool_calls.iter().any(|tc| tc.name == ct.name)
-                    } else {
-                        false
-                    }
-                })
-                .cloned()
-                .collect()
-        };
+        // THREAT[TM-CLIENT-005]: gate client calls before any execution request.
+        let (client_tool_calls, client_tool_definitions, client_policy_results) =
+            client_policy::apply_pre_tool_policy(
+                self,
+                &context,
+                client_tool_calls,
+                &tool_definitions,
+                network_access.as_ref(),
+                locale.as_deref(),
+            )
+            .await;
 
-        if server_tool_calls.is_empty() && client_tool_calls.is_empty() {
+        if server_tool_calls.is_empty()
+            && client_tool_calls.is_empty()
+            && client_policy_results.is_empty()
+        {
             return Ok(ActResult {
                 results: vec![],
                 completed: true,
@@ -639,14 +638,19 @@ where
             });
         }
 
-        // If only client-side tools (no server-side), skip tool execution entirely.
-        // Just run hooks to emit tool.call_requested.
+        // No server tools. Post-act hooks emit tool.call_requested only for
+        // client calls the pre-tool chain allowed.
         if server_tool_calls.is_empty() {
+            let success_count = client_policy_results
+                .iter()
+                .filter(|result| result.success)
+                .count() as u32;
+            let error_count = client_policy_results.len() as u32 - success_count;
             let mut result = ActResult {
-                results: vec![],
+                results: client_policy_results,
                 completed: true,
-                success_count: 0,
-                error_count: 0,
+                success_count,
+                error_count,
                 waiting_for_tool_results: false,
                 waiting_for_url_elicitation: false,
                 blocked: false,
@@ -798,9 +802,15 @@ where
             })
             .await;
 
-        // Count successes and errors
-        let success_count = results.iter().filter(|r| r.success).count() as u32;
-        let error_count = results.iter().filter(|r| !r.success).count() as u32;
+        // Count successes and errors, including client calls already settled
+        // by the pre-tool chain. Those never reach the server scheduler.
+        let policy_success = client_policy_results
+            .iter()
+            .filter(|result| result.success)
+            .count() as u32;
+        let policy_errors = client_policy_results.len() as u32 - policy_success;
+        let success_count = results.iter().filter(|r| r.success).count() as u32 + policy_success;
+        let error_count = results.iter().filter(|r| !r.success).count() as u32 + policy_errors;
 
         // Calculate act phase duration
         let act_duration_ms = act_start.elapsed().as_millis() as u64;
@@ -866,6 +876,8 @@ where
             )));
         }
 
+        let mut results = results;
+        results.extend(client_policy_results);
         let mut act_result = ActResult {
             results,
             completed: true,
@@ -1507,72 +1519,19 @@ where
             };
         };
 
-        // Execute the tool (always with context so tools can emit progress events)
-        let mut tool_context =
-            ToolContext::from_services(context.session_id, &self.context_services);
-        if let Some(resolver) = tool_context.connection_resolver.as_ref()
-            && let Some(bound) = resolver.for_execution(context.input_message_id.uuid())
-        {
-            tool_context.connection_resolver = Some(bound);
-        }
-
-        if let Some(scope) =
-            tool_context.extension::<everruns_core::tool_context::ExecutionServicesExt>()
-        {
-            scope
-                .0
-                .bind(&mut tool_context, context.input_message_id.uuid());
-        }
-        if let Some(invoker) = tool_context.mcp_invoker.as_ref()
-            && let Some(bound) = invoker.for_execution(context.input_message_id.uuid())
-        {
-            tool_context.mcp_invoker = Some(bound);
-        }
-        if let Some(authority) = tool_context.session_creation_authority.as_ref()
-            && let Some(bound) = authority.for_execution(context.input_message_id.uuid())
-        {
-            tool_context.session_creation_authority = Some(bound);
-        }
-        // Key file I/O by the attached workspace when known: pin the file store
-        // to the workspace so shared-workspace sessions address the workspace's
-        // files, not the session's own keyspace. For the default 1:1 case this
-        // is a transparent pass-through.
-        if let Some(workspace_id) = context.workspace_id {
-            tool_context.workspace_id = workspace_id;
-            if let Some(store) = tool_context.file_store.take() {
-                tool_context.file_store = Some(
-                    crate::session_files::WorkspaceScopedFileSystem::wrap(store, workspace_id),
-                );
-            }
-        }
-        // Resolve model paths through the mount resolver (EVE-660): `/workspace`
-        // is a mount + cwd, not a per-store prefix. Applied over the
-        // workspace-keyed store so resolution sits above re-keying.
-        if let Some(store) = tool_context.file_store.take() {
-            tool_context.file_store = Some(crate::mount_fs::MountFs::wrap_if_needed(store));
-        }
-        tool_context.visible_tool_names = Some(visible_tool_names.clone());
-        // Input network_access (per-session, merged from harness+agent+session) takes precedence
-        tool_context.network_access = network_access
-            .cloned()
-            .or_else(|| self.context_services.network_access.clone());
-        // Provide event emitter + context so tools can emit tool.progress events
-        if tool_context.event_emitter.is_none() {
-            tool_context.event_emitter =
-                Some(Arc::new(self.event_emitter.clone()) as Arc<dyn EventEmitter>);
-        }
-        tool_context.bind_to_turn(event_context.clone());
-        tool_context.tool_call_id = Some(tool_call.id.clone());
-
-        // Cooperative cancellation for this call. The guard fires when this
-        // future is dropped — which is what a cancelled turn looks like from
-        // here — and also on normal return, so the contract a tool sees is
-        // simply "this call is over". Work the tool leaves running (a child
-        // process, a detached watcher) can hold a clone and die with the call
-        // instead of outliving it; dropping the future alone cannot tell it
-        // anything, because a dropped future is never polled again.
-        let call_cancellation = tokio_util::sync::CancellationToken::new();
-        tool_context.cancellation = Some(call_cancellation.clone());
+        // Same context the client-side pre-tool gate uses, so a hook sees one
+        // session whether this process runs the tool or the client does.
+        // The guard fires when this future is dropped — a cancelled turn — and
+        // on normal return. Work the tool leaves running can hold a clone and
+        // die with the call; a dropped future is never polled again.
+        let (tool_context, call_cancellation) = client_policy::tool_context_for_call(
+            self,
+            context,
+            &event_context,
+            &tool_call.id,
+            network_access,
+            &visible_tool_names,
+        );
         let _cancel_on_call_end = call_cancellation.drop_guard();
 
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
@@ -1846,6 +1805,9 @@ where
 // Tests
 // ============================================================================
 
+#[path = "act_client_policy.rs"]
+mod client_policy;
+
 #[cfg(test)]
 #[path = "act_tests.rs"]
 mod tests;
@@ -1853,3 +1815,7 @@ mod tests;
 #[cfg(test)]
 #[path = "act_approval_tests.rs"]
 mod approval_tests;
+
+#[cfg(test)]
+#[path = "act_client_policy_tests.rs"]
+mod client_policy_tests;

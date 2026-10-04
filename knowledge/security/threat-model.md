@@ -1428,7 +1428,7 @@ before the E2B API call, and storage lookups remain scoped by session_id.
 
 ## 19. Client-Side Tools (TM-CLIENT)
 
-Client-side tools pause server execution and wait for client to submit results via API. Attack surface includes tool call ID spoofing and timeout abuse.
+Client-side tools pause server execution and wait for client to submit results via API. Attack surface includes tool call ID spoofing, timeout abuse, and a server policy that never sees the call before the client is asked to run it.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
@@ -1436,6 +1436,7 @@ Client-side tools pause server execution and wait for client to submit results v
 | TM-CLIENT-002 | Tool result size explosion | Medium | Per-result size capped at 100 KB | MITIGATED |
 | TM-CLIENT-003 | Client timeout abuse | Low | Default 5 min timeout; session transitions to failed state on expiry | MITIGATED |
 | TM-CLIENT-004 | Client-side tool shadowing of MCP guardrail endpoints | High | Session and agent `tools[]` deserialization rejects `client_side` definitions whose names use the reserved `mcp_` prefix before runtime tool deduplication, preventing user-authored metadata from replacing worker-executable MCP tool definitions that `ScopedMcpToolInvoker` relies on for guardrail scope checks. AG-UI frontend tools are refused under the prefix the same way, on the server and in the Framework's `Session::ag_ui`. | MITIGATED |
+| TM-CLIENT-005 | Server approval or guardrail policy skipped for a client-side tool | High | ActAtom runs the configured pre-tool chain on client-side calls, including mixed batches, before it emits `tool.call_requested` (`crates/engine/src/execution/act_client_policy.rs`). A block or defer is stored as a tool result and left out of that request. A call the chain allows keeps the hook's transformed arguments. Client-side checks stay an additional defense and are not what enforces the server's hooks. | MITIGATED |
 
 ## 20. Brave Search (TM-LLM)
 
