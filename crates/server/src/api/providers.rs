@@ -500,6 +500,7 @@ pub struct DriverCredentialInfo {
     pub credential_schema: everruns_contracts::credential_schema::CredentialFormSchema,
     /// Whether the driver declares an interactive "Connect with …" OAuth flow.
     pub supports_oauth: bool,
+    pub services: Vec<everruns_contracts::ServiceKind>,
 }
 
 /// Provider resource config: caller policies plus the credential schemas the UI
@@ -550,6 +551,7 @@ pub async fn provider_config(
                 driver: id.to_string(),
                 credential_schema: descriptor.credential_schema.clone(),
                 supports_oauth: descriptor.oauth.is_some(),
+                services: descriptor.services.clone(),
             })
         })
         .collect();

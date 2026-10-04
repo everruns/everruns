@@ -126,6 +126,13 @@ pub fn register_drivers(registry: &mut DriverRegistry) {
     openai::register_driver(registry);
     #[cfg(feature = "openrouter")]
     openrouter::register_driver(registry);
+    #[cfg(feature = "typesafe")]
+    typesafe::register_driver(registry);
     #[cfg(feature = "vercel")]
     vercel::register_driver(registry);
 }
+
+#[cfg(any(feature = "typesafe", feature = "openrouter"))]
+pub mod systemone;
+#[cfg(feature = "typesafe")]
+pub mod typesafe;

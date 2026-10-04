@@ -909,6 +909,9 @@ impl DriverOAuthConfig {
     }
 }
 
+/// Factory composing typed services over a single authenticated account.
+pub type ProviderFactory = Arc<dyn Fn(&DriverConfig) -> crate::Provider + Send + Sync>;
+
 /// A registered provider driver: identity, declared services, the credential
 /// shape its providers must supply, and per-service factories.
 ///
@@ -943,6 +946,8 @@ pub struct DriverDescriptor {
     pub chat: Option<DriverFactory>,
     /// Embeddings service factory. `None` for drivers that do not support embeddings.
     pub embeddings: Option<EmbeddingsDriverFactory>,
+    /// Composes all typed services over one authenticated provider.
+    pub provider: Option<ProviderFactory>,
 }
 
 impl DriverDescriptor {
@@ -963,6 +968,7 @@ impl DriverDescriptor {
             oauth: None,
             chat: Some(Arc::new(factory)),
             embeddings: None,
+            provider: None,
             id,
         }
     }
@@ -1184,7 +1190,11 @@ impl DriverRegistry {
 
         // Create the driver using the factory
         let driver_config = DriverConfig::from_provider_config(config);
-        let driver = factory(&driver_config);
+        let driver = if let Some(provider) = &descriptor.provider {
+            provider(&driver_config).into_boxed_driver()
+        } else {
+            factory(&driver_config)
+        };
         let mut credential_fields = driver_config.credentials.clone();
         if let Some(serde_json::Value::Object(extra)) = &driver_config.metadata.extra {
             for (name, value) in extra {
@@ -1252,6 +1262,39 @@ impl DriverRegistry {
         self.providers.ids()
     }
 
+    /// Compose the selected account with its typed model services.
+    pub fn create_provider(&self, config: &ProviderConfig) -> Result<crate::Provider> {
+        if let Some(provider) = self.providers.get(&config.provider) {
+            return Ok((*provider).clone());
+        }
+        let descriptor = self.descriptor(&config.provider_type).ok_or_else(|| {
+            AgentLoopError::driver_not_registered(config.provider_type.to_string())
+        })?;
+        let headers = config.request_options.headers.clone();
+        let config = DriverConfig::from_provider_config(config);
+        let errors = descriptor.credential_schema.validate(&config.credentials);
+        if !errors.is_empty() {
+            return Err(AgentLoopError::Configuration(
+                "Provider credentials are required. Configure provider settings.".into(),
+            ));
+        }
+        if let Some(factory) = &descriptor.provider {
+            let mut provider = factory(&config);
+            for header in &headers {
+                provider = provider.header(&header.name, &header.value);
+            }
+            return Ok(provider);
+        }
+        let factory = descriptor
+            .chat
+            .as_ref()
+            .ok_or_else(|| AgentLoopError::Configuration("Provider has no model service".into()))?;
+        Ok(
+            crate::Provider::from_driver(config.provider.clone(), factory(&config).into())
+                .with_driver_id(config.provider_type.clone()),
+        )
+    }
+
     /// Create an embeddings driver based on configuration.
     ///
     /// API keys must be provided in the config for real providers. Exception:
@@ -1263,6 +1306,18 @@ impl DriverRegistry {
         &self,
         config: &ProviderConfig,
     ) -> std::result::Result<BoxedEmbeddingsDriver, EmbeddingsDriverError> {
+        if let Some(provider) = self.providers.get(&config.provider) {
+            return (*provider).clone().into_embeddings_driver();
+        }
+        if self
+            .descriptor(&config.provider_type)
+            .is_some_and(|d| d.provider.is_some())
+        {
+            return self
+                .create_provider(config)
+                .map_err(|e| EmbeddingsDriverError::Provider(e.to_string()))?
+                .into_embeddings_driver();
+        }
         let requires_api_key = config.provider_type != DriverId::LlmSim;
         if requires_api_key && config.api_key.is_none() {
             return Err(EmbeddingsDriverError::Provider(

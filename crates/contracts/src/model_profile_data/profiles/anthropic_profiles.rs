@@ -52,6 +52,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude Fable 5 (previous Fable release; still served, below Fable 5.1)
@@ -101,6 +102,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude Opus 5.5 (current Opus; successor to Opus 5 at a lower price)
@@ -149,6 +151,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude Opus 5 (previous Opus; below Opus 5.5, above Opus 4.8)
@@ -197,6 +200,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude 4.8 series
@@ -243,6 +247,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude 4.7 series
@@ -287,6 +292,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude 4.6 series
@@ -328,6 +334,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // 1M-context twins of the base profiles above. Same pricing and
@@ -403,6 +410,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude Sonnet 5
@@ -451,6 +459,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         "claude-sonnet-4-6" => Some(ModelProfile {
@@ -490,6 +499,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude 4.5 series
@@ -530,6 +540,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         "claude-haiku-4-5" => Some(ModelProfile {
@@ -569,6 +580,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Claude 4 series
@@ -609,6 +621,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         _ => None,

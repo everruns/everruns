@@ -1849,9 +1849,9 @@ impl AnthropicModelInfo {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
-            // Discovery cannot prove the direct-endpoint and family contract.
-            // Curated direct Anthropic profiles opt in explicitly.
+            // Only curated direct Anthropic profiles can prove server compaction.
             supports_server_compaction: false,
+            decisions: None,
         }
     }
 

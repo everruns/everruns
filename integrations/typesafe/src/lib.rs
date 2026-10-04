@@ -91,3 +91,5 @@ pub const CAPABILITY_ID: &str = "jev";
 pub const TYPESAFE_API_KEY_SECRET: &str = client::API_KEY_ENV;
 /// Connection provider id for the hosted connector catalog.
 pub const TYPESAFE_CONNECTION_PROVIDER: &str = "typesafe";
+
+mod bound;

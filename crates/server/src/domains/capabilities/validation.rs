@@ -116,6 +116,45 @@ pub async fn validate_capability_refs(
             .into());
         }
 
+        if cap_id == "jev"
+            && let Some(id) = cap.config_value().get("decision_model_id")
+        {
+            let id = id
+                .as_str()
+                .ok_or_else(|| BadRequestError::new("Decision model ID must be a string"))?
+                .parse::<everruns_contracts::typed_id::ModelId>()
+                .map_err(|_| BadRequestError::new("Invalid decision model ID"))?;
+            let model = db
+                .get_model(org_id, id.uuid())
+                .await?
+                .ok_or_else(|| ResourceNotFoundError::new("Decision model"))?;
+            if !model.enabled
+                || crate::services::model_catalog::service(model.provider_metadata.as_ref())
+                    != everruns_contracts::ServiceKind::Decisions
+                || crate::services::model_catalog::profile(model.provider_metadata.as_ref())
+                    .and_then(|p| p.decisions)
+                    .is_none_or(|p| {
+                        !p.calibrated
+                            || ["noul", "choice", "score"]
+                                .iter()
+                                .any(|required| !p.primitives.iter().any(|p| p == required))
+                    })
+            {
+                return Err(
+                    BadRequestError::new("Enabled calibrated Jev decision model required").into(),
+                );
+            }
+            let provider = db
+                .get_provider(org_id, model.provider_id.uuid())
+                .await?
+                .ok_or_else(|| ResourceNotFoundError::new("Provider"))?;
+            if provider.status != "active" || provider.api_key_encrypted.is_none() {
+                return Err(BadRequestError::new(
+                    "Decision provider must be active and configured",
+                )
+                .into());
+            }
+        }
         if is_mcp_capability(cap_id) {
             let uuid = parse_mcp_capability_id(cap_id)
                 .ok_or_else(|| anyhow::anyhow!("Invalid MCP capability reference: {cap_id}"))?;

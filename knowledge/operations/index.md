@@ -16,6 +16,7 @@
 * [Email Sending](email.md) - Internal email delivery abstraction.
 * [Egress Service](egress.md) - Host-owned outbound network boundary and future gateway.
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.
-* [Decisions Service](decisions-service.md) - Internal typed-decisions for capability internals.
+* [Decisions Service](decisions-service.md) - Provider-bound decisions and separate utility authority.
+* [OpenRouter Decisions Proposal](openrouter-decisions-proposal.md) - Provider service and catalog design.
 * [Voice Sessions](voice.md) - Voice Sessions.
 * [Session Counts](session-counts.md) - Denormalized session counters and the reads they exist to keep cheap.

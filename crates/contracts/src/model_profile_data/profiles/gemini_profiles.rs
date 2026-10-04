@@ -56,6 +56,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Gemini 3.5 Flash — current-gen Flash. Source: models.dev (google
@@ -105,6 +106,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         // Gemini 3.1 Flash Lite — low-latency, high-volume tier. Source:
@@ -153,6 +155,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         "gemini-2.5-pro" => Some(ModelProfile {
@@ -197,6 +200,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         "gemini-2.5-flash" => Some(ModelProfile {
@@ -241,6 +245,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         "gemini-2.0-flash" => Some(ModelProfile {
@@ -285,6 +290,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
 
         _ => None,

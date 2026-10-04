@@ -20,6 +20,7 @@ const legacyTypesPaths = [
   "mcp-server-types.ts",
   "runtime-account-types.ts",
   "provider-driver-types.ts",
+  "model-types.ts",
 ].map((file) => resolve(uiRoot, "src/lib/api", file));
 // OpenAPI schemas still carrying App-era component names whose hand-maintained
 // UI type was renamed (EVE-1131). Only the `OpenApi*` alias is emitted for them,

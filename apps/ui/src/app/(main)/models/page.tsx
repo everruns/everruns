@@ -1,4 +1,6 @@
 "use client";
+import { DecisionModelPicker } from "@/components/models/model-picker";
+import { useDecisionDefault } from "@/hooks/use-providers";
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -37,7 +39,7 @@ import { ApiError } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import { pluralize } from "@/lib/formatting";
 import type { ModelWithProvider } from "@/lib/api/types";
-import { isChatModel } from "@/lib/model-capabilities";
+import { isChatModel, matchesModelService } from "@/lib/model-capabilities";
 
 // The operator-readable half of a failed action. `ApiError` already carries the
 // server's Problem Details message; anything else falls back to its own text,
@@ -69,6 +71,7 @@ export default function ModelsPage() {
   const { data: org } = useOrganization();
   const updateOrg = useUpdateOrganization();
   const deleteModel = useDeleteModel();
+  const decisionDefault = useDecisionDefault();
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
   // Every action on this page can fail against the API. Without somewhere to
@@ -76,6 +79,7 @@ export default function ModelsPage() {
   // on screen, and noise in Sentry (EVE-954).
   const [actionError, setActionError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [service, setService] = useState<string>("all");
   const selectedProviderId = searchParams.get("provider");
   const selectedProvider = useMemo(
     () =>
@@ -93,15 +97,20 @@ export default function ModelsPage() {
   );
   const filteredModels = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return providerFilteredModels;
-    return providerFilteredModels.filter((model) => {
+    const serviceModels = providerFilteredModels.filter(
+      (model) =>
+        service === "all" ||
+        matchesModelService(model, service as import("@/lib/api/types").ModelService),
+    );
+    if (!query) return serviceModels;
+    return serviceModels.filter((model) => {
       const haystack = [model.display_name, model.model_id, model.provider_name]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [providerFilteredModels, search]);
+  }, [providerFilteredModels, search, service]);
 
   const { enabledModels, availableModels } = useMemo(() => {
     const enabled = filteredModels.filter((m) => m.enabled).sort(compareByRecency);
@@ -221,6 +230,34 @@ export default function ModelsPage() {
       )}
 
       <PageControlStrip className="flex flex-wrap items-center gap-3">
+        <Select value={service} onValueChange={setService}>
+          <SelectTrigger aria-label="Model service" className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {["all", "chat", "decisions", "embeddings", "realtime", "images", "rerank"].map(
+              (service) => (
+                <SelectItem key={service} value={service}>
+                  {service === "all" ? "All services" : service[0].toUpperCase() + service.slice(1)}
+                </SelectItem>
+              ),
+            )}
+          </SelectContent>
+        </Select>
+        <div className="space-y-2">
+          <span className="text-sm font-medium">Default decision model</span>
+          <DecisionModelPicker
+            value={decisionDefault.data?.id ?? ""}
+            onChange={(value) =>
+              void runAction("Failed to set the default decision model", () =>
+                decisionDefault.setDefault
+                  .mutateAsync(value === "none" || !value ? null : value)
+                  .then(() => {}),
+              )
+            }
+            disabled={decisionDefault.setDefault.isPending}
+          />
+        </div>
         <SearchInput
           placeholder="Search models…"
           value={search}

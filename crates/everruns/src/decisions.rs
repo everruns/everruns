@@ -57,10 +57,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::{ModelSpec, ProviderRegistry};
 use everruns_core::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionsService,
 };
-use everruns_core::host::{DecisionDriverRegistry, DecisionRoutingError};
+use everruns_core::host::DecisionRouter;
 
 /// Why a decision could not be made.
 ///
@@ -178,27 +179,13 @@ impl Decisions {
         }
     }
 
-    /// Route across several decision drivers, with `default_driver` answering
-    /// whatever names no driver of its own.
-    ///
-    /// The model is left to routing: a call naming `jev-latest` reaches the
-    /// driver that owns `jev-*`, `openai/<model>` reaches the `openai` driver,
-    /// and a call naming none reaches `default_driver` with its own default.
-    /// [`Decision::model`] still picks one per call. A default that is not
-    /// registered is an error here rather than on the first call.
-    ///
-    /// ```
-    /// # use everruns::{DecisionDriverRegistry, Decisions};
-    /// let error = Decisions::from_registry(DecisionDriverRegistry::new(), "typesafe")
-    ///     .unwrap_err();
-    /// assert!(error.to_string().contains("'typesafe' is not configured"));
-    /// ```
+    /// Select a decision model through the existing authenticated provider registry.
     pub fn from_registry(
-        registry: DecisionDriverRegistry,
-        default_driver: &str,
-    ) -> Result<Self, DecisionRoutingError> {
+        registry: ProviderRegistry,
+        model: ModelSpec,
+    ) -> Result<Self, everruns_contracts::error::AgentLoopError> {
         Ok(Self {
-            service: Some(Arc::new(registry.router(default_driver, None)?)),
+            service: Some(Arc::new(DecisionRouter::new(registry, model)?)),
             model: None,
         })
     }

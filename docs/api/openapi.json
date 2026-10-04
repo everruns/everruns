@@ -10877,6 +10877,91 @@
         }
       }
     },
+    "/v1/model-profiles": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "description": "List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider.",
+        "operationId": "list_model_profiles",
+        "parameters": [
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Return only profiles for this service.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceKind"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "provider_id",
+            "in": "query",
+            "description": "Prefixed provider account ID used to restrict available profiles.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized model profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_ModelProfileResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/model-profiles/{key}": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "description": "Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication.",
+        "operationId": "get_model_profile",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Model profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelProfileResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown profile"
+          }
+        }
+      }
+    },
     "/v1/models": {
       "get": {
         "tags": [
@@ -10885,6 +10970,22 @@
         "summary": "List all models across all providers",
         "operationId": "list_all_models",
         "parameters": [
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Filter by typed model service.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceKind"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
           {
             "name": "source",
             "in": "query",
@@ -10948,6 +11049,70 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models/decision-default": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "description": "Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.",
+        "operationId": "get_default_decision_model",
+        "responses": {
+          "200": {
+            "description": "Selected decision model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ModelWithProvider"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "models"
+        ],
+        "description": "Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default.",
+        "operationId": "set_default_decision_model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultDecisionModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Selected decision model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ModelWithProvider"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             }
@@ -25709,6 +25874,24 @@
             "type": "string",
             "description": "The model identifier used by the provider's API (e.g., \"gpt-5.6-sol\", \"claude-opus-5\").",
             "example": "gpt-5.2"
+          },
+          "profile_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable curated profile key; omitted values infer a provider-specific binding."
+          },
+          "service": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ServiceKind",
+                "description": "Selected service; omitted values infer it from the profile or capabilities."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -26672,6 +26855,59 @@
           }
         }
       },
+      "DecisionModelProfile": {
+        "type": "object",
+        "description": "Typed decision semantics and serving-independent limits.",
+        "required": [
+          "primitives",
+          "calibrated"
+        ],
+        "properties": {
+          "calibrated": {
+            "type": "boolean",
+            "description": "Whether returned probabilities are calibrated native decision measurements."
+          },
+          "max_choice_options": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum options in one choice question, when known.",
+            "minimum": 0
+          },
+          "max_score_levels": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum levels in one score question, when known.",
+            "minimum": 0
+          },
+          "primitives": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Native primitive names supported by this profile (noul, choice or score)."
+          },
+          "request_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum token count for the complete request, when known.",
+            "minimum": 0
+          },
+          "state_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum token count for the evaluated state, when known.",
+            "minimum": 0
+          }
+        }
+      },
       "DeclarativeCapability": {
         "type": "object",
         "description": "Persisted, org-scoped declarative capability — a YAML/JSON-defined\nbundle of skills, files, and tool defs that an agent or harness can\nreference by `capability_id` or name.",
@@ -26934,7 +27170,8 @@
         "required": [
           "driver",
           "credential_schema",
-          "supports_oauth"
+          "supports_oauth",
+          "services"
         ],
         "properties": {
           "credential_schema": {
@@ -26944,6 +27181,12 @@
           "driver": {
             "type": "string",
             "description": "Driver id (e.g. `openai`, `bedrock`, `mai`)."
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceKind"
+            }
           },
           "supports_oauth": {
             "type": "boolean",
@@ -33185,6 +33428,58 @@
           }
         }
       },
+      "ListResponse_ModelProfileResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Read-only model behavior, independent from the credentials of a serving account.",
+              "required": [
+                "key",
+                "service",
+                "source",
+                "profile"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "Stable profile identity, including a vendor or custom-account namespace."
+                },
+                "profile": {
+                  "$ref": "#/components/schemas/ModelProfile",
+                  "description": "Capabilities, decision semantics, limits and pricing for this model."
+                },
+                "service": {
+                  "$ref": "#/components/schemas/ServiceKind",
+                  "description": "Model service described by the profile."
+                },
+                "source": {
+                  "type": "string",
+                  "description": "Profile origin: curated, discovered, predefined or manual."
+                },
+                "vendor": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ModelVendor",
+                      "description": "Model developer, when known; this may differ from the serving provider."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_MyInvitationResponse": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -34129,6 +34424,8 @@
                     "id",
                     "provider_id",
                     "model_id",
+                    "profile_key",
+                    "service",
                     "display_name",
                     "capabilities",
                     "is_favorite",
@@ -34171,10 +34468,18 @@
                       "type": "string",
                       "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`)."
                     },
+                    "profile_key": {
+                      "type": "string",
+                      "description": "Stable assigned profile identity."
+                    },
                     "provider_id": {
                       "type": "string",
                       "description": "Owning provider's prefixed public identifier.",
                       "example": "provider_01933b5a00007000800000000000001"
+                    },
+                    "service": {
+                      "$ref": "#/components/schemas/ServiceKind",
+                      "description": "The typed service selected by this model."
                     },
                     "source": {
                       "$ref": "#/components/schemas/ModelSource",
@@ -34241,6 +34546,8 @@
                     "id",
                     "provider_id",
                     "model_id",
+                    "profile_key",
+                    "service",
                     "display_name",
                     "capabilities",
                     "is_favorite",
@@ -34324,6 +34631,10 @@
                         }
                       ]
                     },
+                    "profile_key": {
+                      "type": "string",
+                      "description": "Stable assigned profile identity."
+                    },
                     "provider_id": {
                       "type": "string",
                       "description": "Owning provider's prefixed public identifier.",
@@ -34337,6 +34648,10 @@
                     "provider_type": {
                       "$ref": "#/components/schemas/DriverId",
                       "description": "Joined provider implementation type."
+                    },
+                    "service": {
+                      "$ref": "#/components/schemas/ServiceKind",
+                      "description": "The typed service selected by this model."
                     },
                     "source": {
                       "$ref": "#/components/schemas/ModelSource",
@@ -36680,6 +36995,8 @@
           "id",
           "provider_id",
           "model_id",
+          "profile_key",
+          "service",
           "display_name",
           "capabilities",
           "is_favorite",
@@ -36722,10 +37039,18 @@
             "type": "string",
             "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`)."
           },
+          "profile_key": {
+            "type": "string",
+            "description": "Stable assigned profile identity."
+          },
           "provider_id": {
             "type": "string",
             "description": "Owning provider's prefixed public identifier.",
             "example": "provider_01933b5a00007000800000000000001"
+          },
+          "service": {
+            "$ref": "#/components/schemas/ServiceKind",
+            "description": "The typed service selected by this model."
           },
           "source": {
             "$ref": "#/components/schemas/ModelSource",
@@ -36899,6 +37224,17 @@
               }
             ]
           },
+          "decisions": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionModelProfile",
+                "description": "Typed semantics when this profile describes a decision model."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -37031,6 +37367,45 @@
           }
         }
       },
+      "ModelProfileResponse": {
+        "type": "object",
+        "description": "Read-only model behavior, independent from the credentials of a serving account.",
+        "required": [
+          "key",
+          "service",
+          "source",
+          "profile"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Stable profile identity, including a vendor or custom-account namespace."
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ModelProfile",
+            "description": "Capabilities, decision semantics, limits and pricing for this model."
+          },
+          "service": {
+            "$ref": "#/components/schemas/ServiceKind",
+            "description": "Model service described by the profile."
+          },
+          "source": {
+            "type": "string",
+            "description": "Profile origin: curated, discovered, predefined or manual."
+          },
+          "vendor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelVendor",
+                "description": "Model developer, when known; this may differ from the serving provider."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "ModelSource": {
         "type": "string",
         "description": "How the model was added to the system",
@@ -37054,6 +37429,7 @@
           "meta",
           "minimax",
           "moonshot",
+          "typesafe",
           "xai",
           "llmsim"
         ]
@@ -37065,6 +37441,8 @@
           "id",
           "provider_id",
           "model_id",
+          "profile_key",
+          "service",
           "display_name",
           "capabilities",
           "is_favorite",
@@ -37148,6 +37526,10 @@
               }
             ]
           },
+          "profile_key": {
+            "type": "string",
+            "description": "Stable assigned profile identity."
+          },
           "provider_id": {
             "type": "string",
             "description": "Owning provider's prefixed public identifier.",
@@ -37161,6 +37543,10 @@
           "provider_type": {
             "$ref": "#/components/schemas/DriverId",
             "description": "Joined provider implementation type."
+          },
+          "service": {
+            "$ref": "#/components/schemas/ServiceKind",
+            "description": "The typed service selected by this model."
           },
           "source": {
             "$ref": "#/components/schemas/ModelSource",
@@ -41957,6 +42343,18 @@
           }
         }
       },
+      "ServiceKind": {
+        "type": "string",
+        "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
+        "enum": [
+          "chat",
+          "decisions",
+          "embeddings",
+          "realtime",
+          "images",
+          "rerank"
+        ]
+      },
       "Session": {
         "type": "object",
         "description": "Session - instance of agentic loop execution.\nA session represents a single conversation with an agent.",
@@ -43339,6 +43737,19 @@
             "type": "string",
             "description": "Agent version's prefixed public identifier.",
             "example": "agentver_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "SetDefaultDecisionModel": {
+        "type": "object",
+        "description": "Select or clear the organization decision default.",
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Prefixed saved model ID; omit or pass null to clear the default."
           }
         }
       },
@@ -46596,6 +47007,13 @@
             "description": "The model identifier used by the provider's API.",
             "example": "gpt-5.4-mini"
           },
+          "profile_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Explicitly reassign the stable profile; preference-only edits preserve it."
+          },
           "provider_id": {
             "type": [
               "string",
@@ -46603,6 +47021,17 @@
             ],
             "description": "Provider that owns this model.",
             "example": "provider_019df670b5af7db7a5685a4ad18a544a"
+          },
+          "service": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ServiceKind",
+                "description": "Change the selected service; it must match the assigned profile."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -49322,6 +49751,8 @@
               "id",
               "provider_id",
               "model_id",
+              "profile_key",
+              "service",
               "display_name",
               "capabilities",
               "is_favorite",
@@ -49364,10 +49795,18 @@
                 "type": "string",
                 "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`)."
               },
+              "profile_key": {
+                "type": "string",
+                "description": "Stable assigned profile identity."
+              },
               "provider_id": {
                 "type": "string",
                 "description": "Owning provider's prefixed public identifier.",
                 "example": "provider_01933b5a00007000800000000000001"
+              },
+              "service": {
+                "$ref": "#/components/schemas/ServiceKind",
+                "description": "The typed service selected by this model."
               },
               "source": {
                 "$ref": "#/components/schemas/ModelSource",
@@ -49421,6 +49860,8 @@
               "id",
               "provider_id",
               "model_id",
+              "profile_key",
+              "service",
               "display_name",
               "capabilities",
               "is_favorite",
@@ -49504,6 +49945,10 @@
                   }
                 ]
               },
+              "profile_key": {
+                "type": "string",
+                "description": "Stable assigned profile identity."
+              },
               "provider_id": {
                 "type": "string",
                 "description": "Owning provider's prefixed public identifier.",
@@ -49517,6 +49962,10 @@
               "provider_type": {
                 "$ref": "#/components/schemas/DriverId",
                 "description": "Joined provider implementation type."
+              },
+              "service": {
+                "$ref": "#/components/schemas/ServiceKind",
+                "description": "The typed service selected by this model."
               },
               "source": {
                 "$ref": "#/components/schemas/ModelSource",

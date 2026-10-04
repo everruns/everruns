@@ -31,6 +31,7 @@ pub fn provider(
     api_key: impl Into<String>,
 ) -> Provider {
     Provider::new(id, OpenRouterChatDriver::new())
+        .with_decisions(crate::systemone::OpenRouterDecisionDriver::default())
         .base_url("https://openrouter.ai/api/v1")
         .auth(BearerAuth::new(api_key))
 }
@@ -202,6 +203,21 @@ fn is_openrouter_api_url(api_url: &str) -> bool {
 /// that declares its own environment variables.
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
+        services: vec![
+            everruns_contracts::ServiceKind::Chat,
+            everruns_contracts::ServiceKind::Decisions,
+        ],
+        provider: Some(Arc::new(|config| {
+            let account = provider(
+                config.provider.clone(),
+                config.api_key.clone().unwrap_or_default(),
+            );
+            let account = match &config.base_url {
+                Some(url) => account.base_url(url),
+                None => account,
+            };
+            account.with_driver_id(DriverId::OpenRouter)
+        })),
         display_name: "OpenRouter".into(),
         credential_schema: CredentialFormSchema::api_key(
             "OPENROUTER_API_KEY",
@@ -270,7 +286,10 @@ mod tests {
         let mut registry = DriverRegistry::new();
         register_driver(&mut registry);
         let descriptor = registry.descriptor(&DriverId::OpenRouter).unwrap();
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
+        assert_eq!(
+            descriptor.services,
+            vec![ServiceKind::Chat, ServiceKind::Decisions]
+        );
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
         assert_eq!(
             provider("default", "synthetic-key")

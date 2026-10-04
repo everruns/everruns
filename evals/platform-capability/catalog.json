@@ -5129,6 +5129,20 @@
     "cli": null,
     "description": "Create a new model for a provider.",
     "input_schema": {
+      "$defs": {
+        "ServiceKind": {
+          "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
+          "enum": [
+            "chat",
+            "decisions",
+            "embeddings",
+            "realtime",
+            "images",
+            "rerank"
+          ],
+          "type": "string"
+        }
+      },
       "properties": {
         "capabilities": {
           "items": {
@@ -5151,9 +5165,25 @@
           "description": "LLM model's prefixed public identifier.",
           "type": "string"
         },
+        "profile_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "provider_id": {
           "description": "LLM provider's prefixed public identifier.",
           "type": "string"
+        },
+        "service": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ServiceKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -9509,6 +9539,21 @@
   {
     "category": "models",
     "cli": null,
+    "description": "Get the selected decision model.",
+    "input_schema": {
+      "description": "Read or change the organization's explicit decision model selection.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_default_decision_model",
+    "output_shape": "unknown",
+    "path": "/v1/models/decision-default",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "models",
+    "cli": null,
     "description": "Get the effective organization default model.",
     "input_schema": {
       "description": "Resolve the organization's default without creating a session.",
@@ -12169,6 +12214,18 @@
           ],
           "example": "predefined",
           "type": "string"
+        },
+        "ServiceKind": {
+          "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
+          "enum": [
+            "chat",
+            "decisions",
+            "embeddings",
+            "realtime",
+            "images",
+            "rerank"
+          ],
+          "type": "string"
         }
       },
       "properties": {
@@ -12177,6 +12234,16 @@
         },
         "include_stale": {
           "type": "boolean"
+        },
+        "service": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ServiceKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "source": {
           "oneOf": [
@@ -14839,6 +14906,30 @@
     "name": "set_default_agent_version",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/versions/default",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "models",
+    "cli": null,
+    "description": "Set the selected decision model.",
+    "input_schema": {
+      "description": "Select or clear the organization decision default.",
+      "properties": {
+        "model_id": {
+          "description": "Prefixed saved model ID; omit or pass null to clear the default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_default_decision_model",
+    "output_shape": "unknown",
+    "path": "/v1/models/decision-default",
     "positional_arg": null,
     "read_only": false
   },
@@ -18777,6 +18868,20 @@
     "cli": null,
     "description": "Update a model.",
     "input_schema": {
+      "$defs": {
+        "ServiceKind": {
+          "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
+          "enum": [
+            "chat",
+            "decisions",
+            "embeddings",
+            "realtime",
+            "images",
+            "rerank"
+          ],
+          "type": "string"
+        }
+      },
       "properties": {
         "capabilities": {
           "items": {
@@ -18818,11 +18923,29 @@
             "null"
           ]
         },
+        "profile_key": {
+          "description": "Explicitly reassign the stable profile; preference-only edits preserve it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "provider_id": {
           "description": "LLM provider's prefixed public identifier.",
           "type": [
             "string",
             "null"
+          ]
+        },
+        "service": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ServiceKind",
+              "description": "Change the selected service; it must match the assigned profile."
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },

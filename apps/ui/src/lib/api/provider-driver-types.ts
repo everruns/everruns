@@ -12,6 +12,7 @@ export type DriverId =
   | "chatgpt"
   | "openai-codex"
   | "openrouter"
+  | "typesafe"
   | "azure_openai"
   | "openai_completions"
   | "anthropic"

@@ -34,6 +34,7 @@ pub fn provider(
     api_key: impl Into<String>,
 ) -> Provider {
     Provider::new(id, OpenAIChatDriver::new())
+        .with_embeddings(crate::openai::embeddings::OpenAIEmbeddingsDriver::new())
         .base_url("https://api.openai.com/v1")
         .auth(BearerAuth::new(api_key))
 }
@@ -539,6 +540,19 @@ pub fn descriptor() -> DriverDescriptor {
     });
     DriverDescriptor {
         display_name: "OpenAI".into(),
+        provider: Some(std::sync::Arc::new(|config| {
+            provider(
+                config.provider.clone(),
+                config.api_key.clone().unwrap_or_default(),
+            )
+            .base_url(
+                config
+                    .base_url
+                    .as_deref()
+                    .unwrap_or("https://api.openai.com/v1"),
+            )
+            .with_driver_id(DriverId::OpenAI)
+        })),
         services: vec![
             ServiceKind::Chat,
             ServiceKind::Realtime,

@@ -1,5 +1,6 @@
 "use client";
 
+import { DecisionModelPicker } from "@/components/models/model-picker";
 import Form from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
 import type {
@@ -165,7 +166,19 @@ function cleanConfig(value: unknown): Record<string, unknown> {
   );
 }
 
+function DecisionModelWidget(props: WidgetProps) {
+  return (
+    <DecisionModelPicker
+      value={props.value || ""}
+      onChange={(value) => props.onChange(value === "none" || !value ? undefined : value)}
+      disabled={props.disabled}
+      requiredPrimitives={["noul", "choice", "score"]}
+    />
+  );
+}
+
 const CAPABILITY_CONFIG_WIDGETS = {
+  DecisionModel: DecisionModelWidget,
   CheckboxWidget,
   EmailWidget: TextWidget,
   PasswordWidget: TextWidget,

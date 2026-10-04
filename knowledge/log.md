@@ -2,6 +2,8 @@
 
 ## 2026-10-04
 
+* **Decision models share provider authentication.** Direct TypeSafe and OpenRouter use the same neutral System One contract. Tenant models retain service/profile identity, support an explicit decision default, and bind Jev through host credential, egress, budget and usage boundaries. Utility guardrails remain deployment-owned. See [Decision Service](operations/decisions-service.md).
+
 * **MCP server card version is the platform release.** The card's `version` and
   `serverInfo.version`, and the server info on `initialize` and `server/discover`,
   are the running package version. A release tag updates them; they are not a

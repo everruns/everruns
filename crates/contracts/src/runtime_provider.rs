@@ -286,7 +286,9 @@ fn redacted_url(value: &str) -> String {
 #[derive(Clone)]
 pub struct RuntimeProvider {
     id: ProviderKey,
-    driver: Arc<dyn ChatDriver>,
+    driver: Option<Arc<dyn ChatDriver>>,
+    decisions: Option<Arc<dyn crate::decision_driver::DecisionDriver>>,
+    embeddings: Option<Arc<dyn crate::driver_registry::EmbeddingsDriver>>,
     endpoint: ProviderEndpoint,
     // Which driver kind this assembly speaks, for lookups that are about the
     // vendor rather than this configured instance (model profiles, catalog
@@ -307,7 +309,9 @@ impl RuntimeProvider {
     pub fn from_driver(id: impl Into<ProviderKey>, driver: Arc<dyn ChatDriver>) -> Self {
         Self {
             id: id.into(),
-            driver,
+            driver: Some(driver),
+            decisions: None,
+            embeddings: None,
             endpoint: ProviderEndpoint::default(),
             driver_id: None,
         }
@@ -354,8 +358,89 @@ impl RuntimeProvider {
             .unwrap_or_else(|| crate::provider::DriverId::external(self.id.as_str()))
     }
 
-    pub fn driver(&self) -> &Arc<dyn ChatDriver> {
-        &self.driver
+    pub fn driver(&self) -> Result<&Arc<dyn ChatDriver>> {
+        self.driver
+            .as_ref()
+            .ok_or_else(|| self.unsupported_service("chat"))
+    }
+
+    fn unsupported_service(&self, service: &str) -> crate::error::AgentLoopError {
+        crate::error::AgentLoopError::Configuration(format!(
+            "Provider '{}' does not implement the {service} service",
+            self.id
+        ))
+    }
+
+    /// Construct a provider whose services are supplied by typed builders.
+    pub fn services(id: impl Into<ProviderKey>) -> Self {
+        Self {
+            id: id.into(),
+            driver: None,
+            decisions: None,
+            embeddings: None,
+            endpoint: ProviderEndpoint::default(),
+            driver_id: None,
+        }
+    }
+
+    pub fn with_decisions(
+        mut self,
+        driver: impl crate::decision_driver::DecisionDriver + 'static,
+    ) -> Self {
+        self.decisions = Some(Arc::new(driver));
+        self
+    }
+
+    pub fn with_embeddings(
+        mut self,
+        driver: impl crate::driver_registry::EmbeddingsDriver + 'static,
+    ) -> Self {
+        self.embeddings = Some(Arc::new(driver));
+        self
+    }
+
+    pub fn supports_service(&self, service: crate::ServiceKind) -> bool {
+        match service {
+            crate::ServiceKind::Chat => self.driver.is_some(),
+            crate::ServiceKind::Decisions => self.decisions.is_some(),
+            crate::ServiceKind::Embeddings => self.embeddings.is_some(),
+            _ => false,
+        }
+    }
+
+    pub async fn evaluate_decisions(
+        &self,
+        request: crate::decisions::DecisionRequest,
+    ) -> Result<crate::decisions::DecisionOutcome> {
+        if request.provider.as_ref().is_some_and(|key| key != &self.id) {
+            return Err(crate::error::AgentLoopError::Configuration(
+                "A bound provider cannot select another account".into(),
+            ));
+        }
+        let driver = self
+            .decisions
+            .as_ref()
+            .ok_or_else(|| self.unsupported_service("decisions"))?;
+        driver.capabilities().check(driver.id(), &request)?;
+        driver
+            .evaluate(&self.endpoint, request)
+            .await
+            .map_err(|error| error.with_provider(self.id.as_str()))
+    }
+
+    pub async fn embed(
+        &self,
+        request: crate::driver_registry::EmbedRequest,
+    ) -> std::result::Result<
+        crate::driver_registry::EmbedResponse,
+        crate::driver_registry::EmbeddingsDriverError,
+    > {
+        let driver = self.embeddings.as_ref().ok_or_else(|| {
+            crate::driver_registry::EmbeddingsDriverError::Provider(
+                self.unsupported_service("embeddings").to_string(),
+            )
+        })?;
+        driver.embed(&self.endpoint, request).await
     }
 
     pub fn endpoint(&self) -> &ProviderEndpoint {
@@ -365,7 +450,8 @@ impl RuntimeProvider {
     /// A requested response format this driver cannot enforce is a
     /// configuration error, never a silently unconstrained reply (EVE-1116).
     fn check_response_format(&self, config: &crate::driver_registry::LlmCallConfig) -> Result<()> {
-        if config.response_format.is_some() && !self.driver.supports_response_format(&config.model)
+        if config.response_format.is_some()
+            && !self.driver()?.supports_response_format(&config.model)
         {
             return Err(crate::error::AgentLoopError::Configuration(format!(
                 "Structured output (response_format) is not supported by provider '{}' for model '{}'",
@@ -388,7 +474,7 @@ impl RuntimeProvider {
         // the stream then gets.
         let (stream, spent) = crate::turn_collector::connect_within(
             &limits,
-            self.driver
+            self.driver()?
                 .chat_completion_stream(&self.endpoint, messages, config),
         )
         .await
@@ -413,14 +499,16 @@ impl RuntimeProvider {
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
         self.check_response_format(config)?;
-        self.driver
+        self.driver()?
             .chat_completion(&self.endpoint, messages, config)
             .await
             .map_err(|error| error.with_provider(self.id.as_str()))
     }
 
     pub fn supports_native_non_streaming(&self) -> bool {
-        self.driver.supports_native_non_streaming()
+        self.driver
+            .as_ref()
+            .is_some_and(|driver| driver.supports_native_non_streaming())
     }
 
     pub async fn chat_completion_non_streaming(
@@ -440,7 +528,7 @@ impl RuntimeProvider {
                     .into_response(),
             );
         }
-        self.driver
+        self.driver()?
             .chat_completion_non_streaming(&self.endpoint, messages, config)
             .await
             .map_err(|error| error.with_provider(self.id.as_str()))
@@ -449,7 +537,10 @@ impl RuntimeProvider {
     pub async fn list_models(
         &self,
     ) -> Result<Option<Vec<crate::driver_registry::DiscoveredModel>>> {
-        self.driver
+        let Some(driver) = &self.driver else {
+            return Ok(None);
+        };
+        driver
             .list_models(&self.endpoint)
             .await
             .map_err(|error| error.with_provider(self.id.as_str()))
@@ -475,6 +566,20 @@ impl RuntimeProvider {
 
     pub fn into_boxed_driver(self) -> BoxedChatDriver {
         Box::new(ProviderBoundDriver(self))
+    }
+
+    pub fn into_embeddings_driver(
+        self,
+    ) -> std::result::Result<
+        crate::driver_registry::BoxedEmbeddingsDriver,
+        crate::driver_registry::EmbeddingsDriverError,
+    > {
+        if self.embeddings.is_none() {
+            return Err(crate::driver_registry::EmbeddingsDriverError::Provider(
+                "Provider does not support embeddings".into(),
+            ));
+        }
+        Ok(Box::new(ProviderOwnedEmbeddingsDriver(self)))
     }
 
     pub fn bind_embeddings(
@@ -539,11 +644,14 @@ impl ChatDriver for ProviderBoundDriver {
         let driver = self
             .0
             .driver
+            .as_ref()?
             .native_async_driver(model, tools, continuation)?;
         Some(Arc::new(ProviderBoundDriver(RuntimeProvider {
             id: self.0.id.clone(),
             endpoint: self.0.endpoint.clone(),
-            driver,
+            driver: Some(driver),
+            decisions: self.0.decisions.clone(),
+            embeddings: self.0.embeddings.clone(),
             driver_id: self.0.driver_id.clone(),
         })))
     }
@@ -577,23 +685,43 @@ impl ChatDriver for ProviderBoundDriver {
     }
 
     fn supports_compact(&self) -> bool {
-        self.0.driver.supports_compact()
+        self.0
+            .driver
+            .as_ref()
+            .map(|driver| driver.supports_compact())
+            .unwrap_or(false)
     }
 
     fn supports_stateful_responses(&self) -> bool {
-        self.0.driver.supports_stateful_responses()
+        self.0
+            .driver
+            .as_ref()
+            .map(|driver| driver.supports_stateful_responses())
+            .unwrap_or(false)
     }
 
     fn effective_context_window(&self, model: &str) -> Option<usize> {
-        self.0.driver.effective_context_window(model)
+        self.0
+            .driver
+            .as_ref()
+            .map(|driver| driver.effective_context_window(model))
+            .unwrap_or(None)
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
-        self.0.driver.supports_parallel_tool_calls(model)
+        self.0
+            .driver
+            .as_ref()
+            .map(|driver| driver.supports_parallel_tool_calls(model))
+            .unwrap_or(false)
     }
 
     fn supports_response_format(&self, model: &str) -> bool {
-        self.0.driver.supports_response_format(model)
+        self.0
+            .driver
+            .as_ref()
+            .map(|driver| driver.supports_response_format(model))
+            .unwrap_or(false)
     }
 
     fn provider_managed_reduction_option(
@@ -602,9 +730,11 @@ impl ChatDriver for ProviderBoundDriver {
         model: &str,
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
-        self.0
-            .driver
-            .provider_managed_reduction_option(self.0.endpoint(), model, budget_tokens)
+        self.0.driver.as_ref()?.provider_managed_reduction_option(
+            self.0.endpoint(),
+            model,
+            budget_tokens,
+        )
     }
 
     fn provider_managed_reduction_fallback_reason(
@@ -614,6 +744,7 @@ impl ChatDriver for ProviderBoundDriver {
     ) -> Option<&'static str> {
         self.0
             .driver
+            .as_ref()?
             .provider_managed_reduction_fallback_reason(self.0.endpoint(), config)
     }
 
@@ -621,7 +752,11 @@ impl ChatDriver for ProviderBoundDriver {
         &self,
         context: &crate::driver_registry::ProviderOpaqueContext,
     ) -> bool {
-        self.0.driver.validate_provider_opaque_context(context)
+        self.0
+            .driver
+            .as_ref()
+            .map(|driver| driver.validate_provider_opaque_context(context))
+            .unwrap_or(false)
     }
 
     async fn compact(
@@ -630,7 +765,7 @@ impl ChatDriver for ProviderBoundDriver {
         request: crate::compact::CompactRequest,
     ) -> Result<Option<crate::compact::CompactResponse>> {
         self.0
-            .driver
+            .driver()?
             .compact(self.0.endpoint(), request)
             .await
             .map_err(|error| error.with_provider(self.0.id.as_str()))
@@ -688,6 +823,46 @@ impl fmt::Debug for RuntimeProviderRegistry {
         f.debug_struct("ProviderRegistry")
             .field("providers", &self.ids())
             .finish()
+    }
+}
+
+#[async_trait]
+impl crate::decisions::DecisionsService for RuntimeProvider {
+    fn is_configured(&self) -> bool {
+        self.decisions.is_some()
+    }
+    async fn evaluate(
+        &self,
+        request: crate::decisions::DecisionRequest,
+    ) -> Result<crate::decisions::DecisionOutcome> {
+        if request
+            .provider
+            .as_ref()
+            .is_some_and(|provider| provider != &self.id)
+        {
+            return Err(crate::error::AgentLoopError::Configuration(
+                "A bound provider cannot select another account".into(),
+            ));
+        }
+        self.evaluate_decisions(request).await
+    }
+    fn name(&self) -> &'static str {
+        "ProviderDecisions"
+    }
+}
+
+struct ProviderOwnedEmbeddingsDriver(RuntimeProvider);
+#[async_trait]
+impl crate::driver_registry::EmbeddingsDriver for ProviderOwnedEmbeddingsDriver {
+    async fn embed(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        request: crate::driver_registry::EmbedRequest,
+    ) -> std::result::Result<
+        crate::driver_registry::EmbedResponse,
+        crate::driver_registry::EmbeddingsDriverError,
+    > {
+        self.0.embed(request).await
     }
 }
 
@@ -1058,7 +1233,10 @@ mod tests {
             .header("x-service", "second")
             .auth(BearerAuth::new("second-key"));
 
-        assert!(Arc::ptr_eq(first.driver(), second.driver()));
+        assert!(Arc::ptr_eq(
+            first.driver().unwrap(),
+            second.driver().unwrap()
+        ));
         let first_request = first
             .endpoint()
             .resolve("POST", first.endpoint().url("chat").unwrap(), b"{}")
@@ -1214,3 +1392,7 @@ mod tests {
         assert_eq!(error.message, "provider 'customer-gateway': stream failed");
     }
 }
+
+#[cfg(test)]
+#[path = "runtime_provider_service_tests.rs"]
+mod service_tests;

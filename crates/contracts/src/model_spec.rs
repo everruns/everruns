@@ -101,7 +101,10 @@ mod tests {
             .unwrap();
         assert_eq!(east.id().as_str(), "east");
         assert_eq!(west.id().as_str(), "west");
-        assert!(std::sync::Arc::ptr_eq(east.driver(), west.driver()));
+        assert!(std::sync::Arc::ptr_eq(
+            east.driver().unwrap(),
+            west.driver().unwrap()
+        ));
         let error = ModelSpec::on(" Missing ", "shared-model")
             .resolve_provider(&registry)
             .unwrap_err();

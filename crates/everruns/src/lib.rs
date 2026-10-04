@@ -146,9 +146,7 @@ pub use everruns_core::host::{
     ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, HostBackends,
     NetworkPolicy,
 };
-pub use everruns_core::host::{
-    DecisionDriverRegistry, DecisionRouter, DecisionRoutingError, LlmDecisionDriver,
-};
+pub use everruns_core::host::{DecisionRouter, LlmDecisionDriver};
 #[cfg(feature = "host-compute")]
 pub use everruns_core::host::{HostCompute, HostComputeSession};
 #[cfg(feature = "bashkit")]

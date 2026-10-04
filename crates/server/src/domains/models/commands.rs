@@ -22,6 +22,10 @@ pub struct CreateModel {
     /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: String,
     #[serde(default)]
+    pub service: Option<everruns_contracts::ServiceKind>,
+    #[serde(default)]
+    pub profile_key: Option<String>,
+    #[serde(default)]
     pub capabilities: Vec<String>,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
@@ -58,6 +62,8 @@ impl Command for CreateModel {
                 crate::api::models::CreateModelRequest {
                     model_id: self.model_id,
                     display_name: self.display_name,
+                    service: self.service,
+                    profile_key: self.profile_key,
                     capabilities: self.capabilities,
                     enabled: self.enabled,
                     is_favorite: self.is_favorite,
@@ -106,6 +112,7 @@ inventory::submit! { CommandDescriptor::of::<ListProviderModels>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListModels {
+    pub service: Option<everruns_contracts::ServiceKind>,
     pub source: Option<ModelSource>,
     #[serde(
         default = "default_true",
@@ -146,7 +153,7 @@ impl Command for ListModels {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<ModelWithProvider>, CommandError> {
-        q::service(ctx)
+        let models = q::service(ctx)
             .list_all_with_filters(
                 &ctx.caller,
                 self.source,
@@ -154,7 +161,11 @@ impl Command for ListModels {
                 self.favorites_only,
             )
             .await
-            .map_err(classify_anyhow)
+            .map_err(classify_anyhow)?;
+        Ok(models
+            .into_iter()
+            .filter(|model| self.service.is_none_or(|service| model.service == service))
+            .collect())
     }
 }
 
@@ -209,6 +220,10 @@ pub struct UpdateModel {
     pub model_id: Option<String>,
     /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
+    /// Change the selected service; it must match the assigned profile.
+    pub service: Option<everruns_contracts::ServiceKind>,
+    /// Explicitly reassign the stable profile; preference-only edits preserve it.
+    pub profile_key: Option<String>,
     pub capabilities: Option<Vec<String>>,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
@@ -251,6 +266,8 @@ impl Command for UpdateModel {
                     provider_id: provider_id.map(|id| ProviderId::from_uuid(id).to_string()),
                     model_id: self.model_id,
                     display_name: self.display_name,
+                    service: self.service,
+                    profile_key: self.profile_key,
                     capabilities: self.capabilities,
                     enabled: self.enabled,
                     is_favorite: self.is_favorite,
@@ -409,3 +426,96 @@ impl Command for GetDefaultModel {
     }
 }
 inventory::submit! { CommandDescriptor::of::<GetDefaultModel>() }
+
+/// Read or change the organization's explicit decision model selection.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct GetDefaultDecisionModel {}
+impl Command for GetDefaultDecisionModel {
+    type Output = Option<ModelWithProvider>;
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "get_default_decision_model",
+            category: "models",
+            description: "Get the selected decision model.",
+            method: "GET",
+            path: "/v1/models/decision-default",
+        }
+    }
+    fn policy() -> Option<&'static Policy> {
+        Some(&LLM_MODEL_VIEW)
+    }
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let id = ctx
+            .db
+            .get_decision_default(ctx.caller.org_id)
+            .await
+            .map_err(classify_anyhow)?;
+        let models = q::service(ctx)
+            .list_all(&ctx.caller)
+            .await
+            .map_err(classify_anyhow)?;
+        Ok(id.and_then(|id| models.into_iter().find(|m| m.id.uuid() == id)))
+    }
+}
+inventory::submit! { CommandDescriptor::of::<GetDefaultDecisionModel>() }
+/// Select or clear the organization decision default.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetDefaultDecisionModel {
+    /// Prefixed saved model ID; omit or pass null to clear the default.
+    pub model_id: Option<String>,
+}
+impl Command for SetDefaultDecisionModel {
+    type Output = Option<ModelWithProvider>;
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "set_default_decision_model",
+            category: "models",
+            description: "Set the selected decision model.",
+            method: "PUT",
+            path: "/v1/models/decision-default",
+        }
+    }
+    fn policy() -> Option<&'static Policy> {
+        Some(&LLM_MODEL_MANAGE)
+    }
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let model = match self.model_id {
+            None => None,
+            Some(id) => {
+                let models = q::service(ctx)
+                    .list_all(&ctx.caller)
+                    .await
+                    .map_err(classify_anyhow)?;
+                let model = models
+                    .into_iter()
+                    .find(|m| m.id.to_string() == id)
+                    .ok_or_else(|| CommandError::bad_request("Decision model not found"))?;
+                if model.service != everruns_contracts::ServiceKind::Decisions
+                    || !model.enabled
+                    || !model.healthy
+                    || model
+                        .profile
+                        .as_ref()
+                        .and_then(|p| p.decisions.as_ref())
+                        .is_none_or(|profile| {
+                            !profile.calibrated
+                                || ["noul", "choice", "score"]
+                                    .iter()
+                                    .any(|kind| !profile.primitives.iter().any(|p| p == kind))
+                        })
+                {
+                    return Err(CommandError::bad_request(
+                        "Enabled, healthy decision model required",
+                    ));
+                }
+                Some(model)
+            }
+        };
+        ctx.db
+            .set_decision_default(ctx.caller.org_id, model.as_ref().map(|m| m.id.uuid()))
+            .await
+            .map_err(classify_anyhow)?;
+        Ok(model)
+    }
+}
+inventory::submit! { CommandDescriptor::of::<SetDefaultDecisionModel>() }

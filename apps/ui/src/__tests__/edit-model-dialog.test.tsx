@@ -1,3 +1,4 @@
+jest.mock("@/hooks/use-providers", () => ({ useModelProfiles: () => ({ data: [] }) }));
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
 import { EditModelDialog } from "@/components/models/edit-model-dialog";
@@ -95,6 +96,8 @@ describe("EditModelDialog", () => {
         model_id: "gpt-4.5",
         display_name: "GPT-4.5 via OpenRouter",
         enabled: true,
+        service: "chat",
+        profile_key: undefined,
       });
     });
   });

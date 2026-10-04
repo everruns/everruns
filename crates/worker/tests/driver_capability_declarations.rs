@@ -64,8 +64,14 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         (
             DriverId::OpenRouter,
             "OpenRouter",
-            &[ServiceKind::Chat],
+            &[ServiceKind::Chat, ServiceKind::Decisions],
             true,
+        ),
+        (
+            DriverId::external("typesafe"),
+            "TypeSafe",
+            &[ServiceKind::Decisions],
+            false,
         ),
         (DriverId::Mai, "Microsoft MAI", &[ServiceKind::Chat], false),
         (
@@ -143,6 +149,16 @@ fn each_driver_powers_the_services_the_page_claims() {
             "{id}'s interactive connect flow changed; the page says \
              offers_oauth={offers_oauth}"
         );
+
+        if services.contains(&ServiceKind::Decisions) {
+            let provider = registry
+                .create_provider(
+                    &everruns_contracts::driver_registry::ProviderConfig::new(id.clone())
+                        .with_api_key("synthetic-key"),
+                )
+                .expect("decision account can be built");
+            assert!(provider.supports_service(ServiceKind::Decisions));
+        }
 
         // A declared service needs a factory behind it, or the page promises
         // something no provider can actually be built for.

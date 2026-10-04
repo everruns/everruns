@@ -2812,6 +2812,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/model-profiles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider. */
+    get: operations["list_model_profiles"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/model-profiles/{key}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication. */
+    get: operations["get_model_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/models": {
     parameters: {
       query?: never;
@@ -2839,6 +2873,24 @@ export interface paths {
     /** GET /v1/models/config */
     get: operations["model_config"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/models/decision-default": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null. */
+    get: operations["get_default_decision_model"];
+    /** @description Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default. */
+    put: operations["set_default_decision_model"];
     post?: never;
     delete?: never;
     options?: never;
@@ -8284,6 +8336,9 @@ export interface components {
        * @example gpt-5.2
        */
       model_id: string;
+      /** @description Stable curated profile key; omitted values infer a provider-specific binding. */
+      profile_key?: string | null;
+      service?: components["schemas"]["ServiceKind"] | null;
     };
     /** @description Request to create a new organization */
     CreateOrganizationRequest: {
@@ -8884,6 +8939,21 @@ export interface components {
        */
       latest_projected_at?: string | null;
     };
+    /** @description Typed decision semantics and serving-independent limits. */
+    DecisionModelProfile: {
+      /** @description Whether returned probabilities are calibrated native decision measurements. */
+      calibrated: boolean;
+      /** @description Maximum options in one choice question, when known. */
+      max_choice_options?: number | null;
+      /** @description Maximum levels in one score question, when known. */
+      max_score_levels?: number | null;
+      /** @description Native primitive names supported by this profile (noul, choice or score). */
+      primitives: string[];
+      /** @description Maximum token count for the complete request, when known. */
+      request_tokens?: number | null;
+      /** @description Maximum token count for the evaluated state, when known. */
+      state_tokens?: number | null;
+    };
     /**
      * @description Persisted, org-scoped declarative capability — a YAML/JSON-defined
      *     bundle of skills, files, and tool defs that an agent or harness can
@@ -9065,6 +9135,7 @@ export interface components {
       credential_schema: components["schemas"]["CredentialFormSchema"];
       /** @description Driver id (e.g. `openai`, `bedrock`, `mai`). */
       driver: string;
+      services: components["schemas"]["ServiceKind"][];
       /** @description Whether the driver declares an interactive "Connect with …" OAuth flow. */
       supports_oauth: boolean;
     };
@@ -12537,6 +12608,24 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
+    ListResponse_ModelProfileResponse: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /** @description Stable profile identity, including a vendor or custom-account namespace. */
+        key: string;
+        /** @description Capabilities, decision semantics, limits and pricing for this model. */
+        profile: components["schemas"]["ModelProfile"];
+        /** @description Model service described by the profile. */
+        service: components["schemas"]["ServiceKind"];
+        /** @description Profile origin: curated, discovered, predefined or manual. */
+        source: string;
+        vendor?: components["schemas"]["ModelVendor"] | null;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
     ListResponse_MyInvitationResponse: {
       /** @description Array of items returned by the list operation. */
       data: {
@@ -13036,11 +13125,15 @@ export interface components {
         is_favorite: boolean;
         /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`). */
         model_id: string;
+        /** @description Stable assigned profile identity. */
+        profile_key: string;
         /**
          * @description Owning provider's prefixed public identifier.
          * @example provider_01933b5a00007000800000000000001
          */
         provider_id: string;
+        /** @description The typed service selected by this model. */
+        service: components["schemas"]["ServiceKind"];
         /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
         source: components["schemas"]["ModelSource"];
         /**
@@ -13121,6 +13214,8 @@ export interface components {
         model_id: string;
         model_vendor?: components["schemas"]["ModelVendor"] | null;
         profile?: components["schemas"]["ModelProfile"] | null;
+        /** @description Stable assigned profile identity. */
+        profile_key: string;
         /**
          * @description Owning provider's prefixed public identifier.
          * @example provider_01933b5a00007000800000000000001
@@ -13133,6 +13228,8 @@ export interface components {
         provider_name: string;
         /** @description Joined provider implementation type. */
         provider_type: components["schemas"]["DriverId"];
+        /** @description The typed service selected by this model. */
+        service: components["schemas"]["ServiceKind"];
         /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
         source: components["schemas"]["ModelSource"];
         /**
@@ -14413,11 +14510,15 @@ export interface components {
       is_favorite: boolean;
       /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`). */
       model_id: string;
+      /** @description Stable assigned profile identity. */
+      profile_key: string;
       /**
        * @description Owning provider's prefixed public identifier.
        * @example provider_01933b5a00007000800000000000001
        */
       provider_id: string;
+      /** @description The typed service selected by this model. */
+      service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
       /**
@@ -14511,6 +14612,7 @@ export interface components {
       /** @description Whether the model supports file/image attachments */
       attachment: boolean;
       cost?: components["schemas"]["ModelCost"] | null;
+      decisions?: components["schemas"]["DecisionModelProfile"] | null;
       /** @description Short human-readable description of the model's strengths and intended use */
       description?: string | null;
       /** @description Model family (e.g., "gpt-5.6-sol", "claude-sonnet-5") */
@@ -14560,6 +14662,18 @@ export interface components {
       tool_search?: boolean;
       verbosity?: components["schemas"]["VerbosityConfig"] | null;
     };
+    /** @description Read-only model behavior, independent from the credentials of a serving account. */
+    ModelProfileResponse: {
+      /** @description Stable profile identity, including a vendor or custom-account namespace. */
+      key: string;
+      /** @description Capabilities, decision semantics, limits and pricing for this model. */
+      profile: components["schemas"]["ModelProfile"];
+      /** @description Model service described by the profile. */
+      service: components["schemas"]["ServiceKind"];
+      /** @description Profile origin: curated, discovered, predefined or manual. */
+      source: string;
+      vendor?: components["schemas"]["ModelVendor"] | null;
+    };
     /**
      * @description How the model was added to the system
      * @example predefined
@@ -14582,6 +14696,7 @@ export interface components {
       | "meta"
       | "minimax"
       | "moonshot"
+      | "typesafe"
       | "xai"
       | "llmsim";
     /** @description LLM Model with provider info */
@@ -14636,6 +14751,8 @@ export interface components {
       model_id: string;
       model_vendor?: components["schemas"]["ModelVendor"] | null;
       profile?: components["schemas"]["ModelProfile"] | null;
+      /** @description Stable assigned profile identity. */
+      profile_key: string;
       /**
        * @description Owning provider's prefixed public identifier.
        * @example provider_01933b5a00007000800000000000001
@@ -14648,6 +14765,8 @@ export interface components {
       provider_name: string;
       /** @description Joined provider implementation type. */
       provider_type: components["schemas"]["DriverId"];
+      /** @description The typed service selected by this model. */
+      service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
       /**
@@ -17552,6 +17671,15 @@ export interface components {
       signal_type: string;
     };
     /**
+     * @description A typed service a provider driver can offer (see knowledge/foundations/providers.md).
+     *
+     *     Drivers declare supported services in code; catalog models persist their
+     *     selected service. One provider account composes typed chat, decision and
+     *     embedding drivers over shared authentication.
+     * @enum {string}
+     */
+    ServiceKind: "chat" | "decisions" | "embeddings" | "realtime" | "images" | "rerank";
+    /**
      * @description Session - instance of agentic loop execution.
      *     A session represents a single conversation with an agent.
      */
@@ -18337,6 +18465,11 @@ export interface components {
        * @example agentver_01933b5a00007000800000000000001
        */
       version_id: string;
+    };
+    /** @description Select or clear the organization decision default. */
+    SetDefaultDecisionModel: {
+      /** @description Prefixed saved model ID; omit or pass null to clear the default. */
+      model_id?: string | null;
     };
     /** @description Request body for setting a preference value. */
     SetPreferenceRequest: {
@@ -19975,11 +20108,14 @@ export interface components {
        * @example gpt-5.4-mini
        */
       model_id?: string | null;
+      /** @description Explicitly reassign the stable profile; preference-only edits preserve it. */
+      profile_key?: string | null;
       /**
        * @description Provider that owns this model.
        * @example provider_019df670b5af7db7a5685a4ad18a544a
        */
       provider_id?: string | null;
+      service?: components["schemas"]["ServiceKind"] | null;
     };
     UpdateOrgFeatureFlagsRequest: {
       /** @description Map of flag name -> enabled. Omitted flags are unchanged. */
@@ -21557,11 +21693,15 @@ export interface components {
       is_favorite: boolean;
       /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`). */
       model_id: string;
+      /** @description Stable assigned profile identity. */
+      profile_key: string;
       /**
        * @description Owning provider's prefixed public identifier.
        * @example provider_01933b5a00007000800000000000001
        */
       provider_id: string;
+      /** @description The typed service selected by this model. */
+      service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
       /**
@@ -21644,6 +21784,8 @@ export interface components {
       model_id: string;
       model_vendor?: components["schemas"]["ModelVendor"] | null;
       profile?: components["schemas"]["ModelProfile"] | null;
+      /** @description Stable assigned profile identity. */
+      profile_key: string;
       /**
        * @description Owning provider's prefixed public identifier.
        * @example provider_01933b5a00007000800000000000001
@@ -21656,6 +21798,8 @@ export interface components {
       provider_name: string;
       /** @description Joined provider implementation type. */
       provider_type: components["schemas"]["DriverId"];
+      /** @description The typed service selected by this model. */
+      service: components["schemas"]["ServiceKind"];
       /** @description How this model entry was added (manually, discovered, or seeded as predefined). */
       source: components["schemas"]["ModelSource"];
       /**
@@ -30914,9 +31058,65 @@ export interface operations {
       };
     };
   };
+  list_model_profiles: {
+    parameters: {
+      query?: {
+        /** @description Return only profiles for this service. */
+        service?: components["schemas"]["ServiceKind"] | null;
+        /** @description Prefixed provider account ID used to restrict available profiles. */
+        provider_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Authorized model profiles */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_ModelProfileResponse"];
+        };
+      };
+    };
+  };
+  get_model_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        key: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Model profile */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelProfileResponse"];
+        };
+      };
+      /** @description Unknown profile */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_all_models: {
     parameters: {
       query?: {
+        /** @description Filter by typed model service. */
+        service?: components["schemas"]["ServiceKind"] | null;
         /** @description Filter by model source (manual, discovered, predefined) */
         source?: components["schemas"]["ModelSource"] | null;
         /** @description Include models that are stale (not seen in recent sync). Default: true */
@@ -30957,6 +31157,50 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResourceConfigResponse"];
+        };
+      };
+    };
+  };
+  get_default_decision_model: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Selected decision model */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelWithProvider"] | null;
+        };
+      };
+    };
+  };
+  set_default_decision_model: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetDefaultDecisionModel"];
+      };
+    };
+    responses: {
+      /** @description Selected decision model */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelWithProvider"] | null;
         };
       };
     };

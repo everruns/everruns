@@ -1,12 +1,5 @@
-# OpenAI Decisions integration
-# Decision: its own crate, not a module of `everruns-openai`. The decision
-#   driver needs `everruns-core` (DecisionDriver, DecisionRequest), and the chat
-#   driver crate deliberately depends only on `everruns-contracts`.
-# Decision: unpublished while the Decisions API is in limited preview and its
-#   wire shape is unconfirmed (EVE-1118). The endpoint answered our account with
-#   "Decision API is not enabled for this user" on 2026-09-30, so the request and
-#   response types in `src/wire.rs` are inferred from the DevDay announcement,
-#   not a published reference. Publish once they are verified.
+# Unpublished application helper for the opt-in OpenAI Decisions preview.
+# Protocol implementation lives in everruns-drivers/openai/decisions.
 
 [package]
 name = "everruns-integrations-openai-decisions"
@@ -22,6 +15,7 @@ publish = false
 
 [dependencies]
 everruns-core.workspace = true
+everruns-drivers = { workspace = true, features = ["openai"] }
 everruns-contracts = { workspace = true, default-features = false }
 
 async-trait.workspace = true

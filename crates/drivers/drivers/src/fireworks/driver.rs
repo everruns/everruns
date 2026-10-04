@@ -285,6 +285,7 @@ impl FireworksModelInfo {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }
     }
 }

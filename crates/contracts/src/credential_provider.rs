@@ -225,12 +225,6 @@ pub fn provider_from_env_with<F>(
 where
     F: Fn(&str) -> Option<String>,
 {
-    let factory = driver
-        .chat
-        .as_ref()
-        .ok_or_else(|| EnvCredentialError::NoChatService {
-            driver: driver.id.to_string(),
-        })?;
     let missing = || EnvCredentialError::Missing {
         driver: driver.id.to_string(),
         variables: driver.declared_env_vars(),
@@ -262,6 +256,15 @@ where
     // so a multi-field driver reads its credentials exactly as it does on the
     // server.
     let config = crate::driver_registry::DriverConfig::from_provider_config(&config);
+    if let Some(factory) = &driver.provider {
+        return Ok(factory(&config).with_driver_id(driver.id.clone()));
+    }
+    let factory = driver
+        .chat
+        .as_ref()
+        .ok_or_else(|| EnvCredentialError::NoChatService {
+            driver: driver.id.to_string(),
+        })?;
     Ok(
         crate::runtime_provider::Provider::from_driver(id, factory(&config).into())
             // The runtime key is caller-chosen; record the driver kind so model

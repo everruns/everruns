@@ -515,3 +515,16 @@ It uses the stub by default so it runs with no key; pass `--live` (with
 `--features typesafe` and `TYPESAFE_API_KEY` set) to send the same questions to a
 real decision service. [`agent_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_decisions.rs)
 does the same for the agent path.
+
+### Shared provider accounts for decisions
+
+`Decisions::from_registry` accepts a `ProviderRegistry` and an explicit `ModelSpec`.
+Select `ModelSpec::on("typesafe", "jev-1.13.0")` for direct TypeSafe, or
+`ModelSpec::on("openrouter", "jev-1.13.0")` for OpenRouter. The OpenRouter driver maps that
+explicit alias to `typesafe/jev-1.13`; other IDs remain opaque. Providers hold authentication
+once, so their chat and decision drivers use the same account. Returned model IDs report
+the snapshot that actually answered.
+
+`Jev::with_provider(provider, model_spec)` supplies that same account to a Framework capability.
+Use its exact provider key in the model spec. Existing `Jev::new` and `Jev::with_client` conveniences
+remain available for applications holding a direct TypeSafe key.

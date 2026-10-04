@@ -10,4 +10,4 @@ mod llm;
 mod registry;
 
 pub use llm::{LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
-pub use registry::{DecisionDriverRegistry, DecisionRouter, DecisionRoutingError};
+pub use registry::DecisionRouter;

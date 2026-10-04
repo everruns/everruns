@@ -52,7 +52,6 @@ crates/server/src/domains/evals/service.rs
 crates/server/src/domains/session_files/service.rs
 crates/server/src/domains/session_tasks/commands.rs
 crates/server/src/seed.rs
-crates/server/src/services/provider_resolver.rs
 crates/server/src/slack_delivery.rs
 crates/server/src/storage/memory/tests.rs
 crates/server/src/storage/models.rs

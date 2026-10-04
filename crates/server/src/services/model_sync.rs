@@ -4,7 +4,7 @@
 // Supports both manual sync (via API endpoint) and background sync (periodic).
 //
 // Decision: Reuses the same API key resolution logic as ProviderResolverService
-// (decrypt from DB first, then env fallback). Enumerates providers across
+// (decrypt the saved account; tenant sync never reads deployment keys). Enumerates providers across
 // all orgs for background sync, not just DEFAULT_ORG_ID.
 
 use crate::kernel_imports::{
@@ -112,16 +112,48 @@ impl ModelSyncService {
         config.request_options =
             crate::services::provider_resolver::provider_request_options(&provider_row.settings);
 
-        let driver = self
+        let provider = self
             .driver_registry
-            .create_chat_driver(&config)
-            .map_err(|e| anyhow::anyhow!("Failed to create driver: {}", e))?;
-
+            .create_provider(&config)
+            .map_err(|e| anyhow::anyhow!("Failed to compose provider: {e}"))?;
+        let decision_entries =
+            everruns_contracts::model_profile_data::profile_entries_for_provider(
+                &provider_row.provider_type,
+            )
+            .into_iter()
+            .filter(|entry| entry.service == everruns_contracts::ServiceKind::Decisions);
+        let existing = self
+            .db
+            .list_models_for_provider(org_id, provider_id)
+            .await?;
+        for entry in decision_entries {
+            let wire_id =
+                if provider_row.provider_type == "openrouter" && entry.model_id == "jev-1.13.0" {
+                    "typesafe/jev-1.13".to_string()
+                } else {
+                    entry.model_id
+                };
+            if !existing.iter().any(|model| model.model_id == wire_id) {
+                self.db
+                    .create_model(
+                        org_id,
+                        CreateModelRow {
+                            provider_id: provider_row.id,
+                            model_id: wire_id,
+                            display_name: entry.profile.name,
+                            capabilities: vec!["decisions".into()],
+                            enabled: false,
+                            is_favorite: false,
+                            source: "predefined".into(),
+                            provider_metadata: None,
+                        },
+                    )
+                    .await?;
+            }
+        }
+        let driver = provider;
         // Call list_models on the driver
-        let discovered = match driver
-            .list_models(&everruns_contracts::runtime_provider::ProviderEndpoint::default())
-            .await
-        {
+        let discovered = match driver.list_models().await {
             Ok(Some(models)) => models,
             Ok(None) => {
                 tracing::debug!(
@@ -223,13 +255,41 @@ impl ModelSyncService {
             seen_model_ids.insert(model.model_id.clone());
 
             // Build provider metadata (includes discovered_profile when available)
-            let metadata = serde_json::json!({
+            let mut metadata = serde_json::json!({
                 "display_name": model.display_name,
                 "created_at": model.created_at,
                 "owned_by": model.owned_by,
                 "discovered_profile": model.discovered_profile,
                 "catalog_order": (provider.provider_type == "chatgpt").then_some(rank),
             });
+
+            let stored = existing
+                .iter()
+                .find(|m| m.model_id == model.model_id)
+                .and_then(|m| m.provider_metadata.as_ref());
+            if let Some(binding) =
+                stored.and_then(|m| m.get(crate::services::model_catalog::BINDING))
+            {
+                metadata[crate::services::model_catalog::BINDING] = binding.clone();
+            }
+            if metadata
+                .get(crate::services::model_catalog::BINDING)
+                .is_none()
+            {
+                metadata = crate::services::model_catalog::assign(
+                    &provider.provider_type,
+                    &model.model_id,
+                    &model.capabilities,
+                    None,
+                    None,
+                    Some(metadata),
+                )?;
+            }
+            let mut capabilities = model.capabilities.clone();
+            let tag = crate::services::model_catalog::service(Some(&metadata)).to_string();
+            if !capabilities.contains(&tag) {
+                capabilities.push(tag);
+            }
 
             if existing_ids.contains(model.model_id.as_str()) {
                 // Update existing model's last_seen_at and metadata
@@ -238,7 +298,7 @@ impl ModelSyncService {
                     let update = UpdateModel {
                         last_seen_at: Some(now),
                         provider_metadata: Some(metadata),
-                        capabilities: Some(model.capabilities.clone()),
+                        capabilities: Some(capabilities.clone()),
                         ..Default::default()
                     };
                     self.db
@@ -258,7 +318,7 @@ impl ModelSyncService {
                     provider_id: provider.id,
                     model_id: model.model_id.clone(),
                     display_name,
-                    capabilities: model.capabilities.clone(),
+                    capabilities: capabilities.clone(),
                     enabled: provider.provider_type == "chatgpt",
                     is_favorite: false,
                     source: "discovered".to_string(),

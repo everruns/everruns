@@ -82,7 +82,7 @@ impl Question {
     /// A yes/no question.
     ///
     /// ```
-    /// use everruns_integrations_typesafe::Question;
+    /// use everruns_drivers::systemone::client::Question;
     /// let q = Question::noul("Does this message convey urgency?");
     /// ```
     pub fn noul(instructions: impl Into<Value>) -> Self {
@@ -115,7 +115,7 @@ impl Question {
     /// A single-selection question over the given options.
     ///
     /// ```
-    /// use everruns_integrations_typesafe::Question;
+    /// use everruns_drivers::systemone::client::Question;
     /// let q = Question::choice(
     ///     "Which team should handle this?",
     ///     [("billing", "Payments, invoicing, refunds"), ("technical", "Bugs and outages")],
@@ -151,7 +151,7 @@ impl Question {
     /// A graded question over ordered levels, lowest first.
     ///
     /// ```
-    /// use everruns_integrations_typesafe::Question;
+    /// use everruns_drivers::systemone::client::Question;
     /// let q = Question::score(
     ///     "How funny is this joke?",
     ///     ["Not funny at all", "Mildly amusing", "Genuinely funny", "Hilarious"],
@@ -178,8 +178,8 @@ impl Question {
     }
 
     /// Reject questions the API would reject, before spending a round trip.
-    pub(crate) fn validate(&self, id: &str) -> crate::Result<()> {
-        let invalid = |msg: String| Err(crate::Error::InvalidRequest(msg));
+    pub(crate) fn validate(&self, id: &str) -> crate::systemone::client::Result<()> {
+        let invalid = |msg: String| Err(crate::systemone::client::Error::InvalidRequest(msg));
         match self {
             Self::Noul { instructions, .. } | Self::Choice { instructions, .. } => {
                 if is_blank(instructions) {
@@ -272,14 +272,15 @@ impl Evaluation {
         self.questions.is_empty()
     }
 
-    pub(crate) fn validate(&self) -> crate::Result<()> {
+    /// Validate the primitive request before spending a provider call.
+    pub fn validate(&self) -> crate::systemone::client::Result<()> {
         if self.questions.is_empty() {
-            return Err(crate::Error::InvalidRequest(
+            return Err(crate::systemone::client::Error::InvalidRequest(
                 "an evaluation must carry at least one question".to_string(),
             ));
         }
         if self.model.trim().is_empty() {
-            return Err(crate::Error::InvalidRequest(
+            return Err(crate::systemone::client::Error::InvalidRequest(
                 "model must not be empty".to_string(),
             ));
         }

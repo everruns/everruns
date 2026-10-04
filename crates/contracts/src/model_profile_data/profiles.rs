@@ -263,6 +263,18 @@ const MICROSOFT_MAI: &[&str] = &["mai", "openai", "openrouter", "openai_completi
 const META_MUSE: &[&str] = &["meta", "openai", "openrouter", "openai_completions"];
 
 static REGISTRY: &[ModelDescriptor] = &[
+    md_service(
+        &["jev-1.13.0", "jev-1.13", "typesafe/jev-1.13"],
+        ModelVendor::TypeSafe,
+        &["typesafe", "openrouter"],
+        ServiceKind::Decisions,
+    ),
+    md_service(
+        &["jev-latest", "typesafe/jev-latest"],
+        ModelVendor::TypeSafe,
+        &["typesafe", "openrouter"],
+        ServiceKind::Decisions,
+    ),
     // OpenAI
     md_service(
         &["text-embedding-3-small"],
@@ -605,7 +617,8 @@ pub fn get_model_service_kind(provider_type: &str, model_id: &str) -> ServiceKin
 /// availability and vendor tagging live in `REGISTRY`, not here. The segments
 /// are grouped by author for readability only — there is no provider dispatch.
 fn profile_data(canonical: &str) -> Option<ModelProfile> {
-    openai_profile_data(canonical)
+    jev_profile_data(canonical)
+        .or_else(|| openai_profile_data(canonical))
         .or_else(|| anthropic_profile_data(canonical))
         .or_else(|| gemini_profile_data(canonical))
         .or_else(|| meta_profile_data(canonical))
@@ -693,6 +706,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            decisions: None,
         }),
         _ => None,
     }
@@ -704,3 +718,46 @@ mod claude_tests;
 
 #[cfg(test)]
 mod tests;
+
+fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
+    if !matches!(canonical, "jev-1.13.0" | "jev-latest") {
+        return None;
+    }
+    Some(ModelProfile {
+        name: if canonical == "jev-latest" {
+            "Jev Latest"
+        } else {
+            "Jev 1.13"
+        }
+        .into(),
+        family: "jev".into(),
+        description: Some("Typed calibrated decisions over text state.".into()),
+        release_date: None,
+        last_updated: None,
+        attachment: false,
+        reasoning: false,
+        temperature: false,
+        knowledge: None,
+        tool_call: false,
+        structured_output: true,
+        open_weights: false,
+        cost: Some(crate::model_profile_data::ModelCost::new(0.042, 0.0)),
+        limits: None,
+        modalities: None,
+        reasoning_effort: None,
+        speed: None,
+        verbosity: None,
+        tool_search: false,
+        supported_parameters: Vec::new(),
+        supports_phases: false,
+        supports_server_compaction: false,
+        decisions: Some(crate::model_profile_data::DecisionModelProfile {
+            primitives: vec!["noul".into(), "choice".into(), "score".into()],
+            calibrated: true,
+            max_choice_options: Some(255),
+            max_score_levels: Some(10),
+            state_tokens: Some(32_000),
+            request_tokens: Some(64_000),
+        }),
+    })
+}

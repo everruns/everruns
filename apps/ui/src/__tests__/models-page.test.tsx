@@ -66,6 +66,10 @@ const mockUseCreateModel = jest.fn();
 const mockUseDeleteModel = jest.fn();
 
 jest.mock("@/hooks/use-providers", () => ({
+  useDecisionDefault: () => ({ data: null, setDefault: { isPending: false, mutate: jest.fn() } }),
+  useProvidersConfig: () => ({ data: undefined }),
+  useModelProfiles: () => ({ data: [] }),
+  useUpdateModel: () => ({ isPending: false }),
   useProviders: () => mockUseProviders(),
   useModels: () => mockUseModels(),
   useCreateModel: () => mockUseCreateModel(),
